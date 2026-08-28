@@ -18,14 +18,27 @@ data class TrackChannel(
     val id: Int,
     val name: String,
     val isMaster: Boolean = false,
+    val isEnabled: Boolean = true, // Power On/Off
     val isMuted: Boolean = false,
     val isSolo: Boolean = false,
     val volume: Float = 0.65f,
+    val pan: Float = 0.0f, // -1.0f (Left) to +1.0f (Right)
     val fxSummary: String = "Fx, EQ...",
-    val soundfontName: String = "FluidR3-Mono.sf2",
-    val patchName: String = "Grand Piano",
+    val soundfontName: String = "", // Empty -> "-"
+    val patchName: String = "",
     val bank: Int = 0,
-    val program: Int = 0
+    val program: Int = 0,
+    // FX Tabs per track
+    val reverbPreset: String = "Concert Hall",
+    val reverbMix: Float = 0.25f,
+    val reverbSize: Float = 0.60f,
+    val reverbDecay: Float = 0.45f,
+    val velocityCurve: Float = 0.5f, // 0 = Soft, 0.5 = Linear, 1 = Hard
+    val splitNoteMin: Int = 36, // C2
+    val splitNoteMax: Int = 84, // C6
+    // Peak meters (0f..1f)
+    val peakMeterL: Float = 0.0f,
+    val peakMeterR: Float = 0.0f
 )
 
 data class DrumPadItem(
@@ -33,7 +46,7 @@ data class DrumPadItem(
     val label: String,
     val soundType: DrumSoundType = DrumSoundType.SAMPLE,
     val sampleFileName: String = "kick_808.wav",
-    val sf2Note: String = "C2", // e.g. C1 to C8
+    val sf2Note: String = "C2",
     val sf2NoteOctave: Int = 2,
     val sf2NoteKey: String = "C",
     val isPressed: Boolean = false
@@ -42,7 +55,8 @@ data class DrumPadItem(
 data class LoopFile(
     val name: String,
     val duration: String,
-    val folder: String
+    val folder: String,
+    val bpm: Int = 120
 )
 
 data class LoopFolder(
@@ -71,6 +85,14 @@ data class SoundfontBankFile(
     val size: String
 )
 
+data class MidiDeviceItem(
+    val id: String,
+    val name: String,
+    val type: String = "USB MIDI",
+    val isConnected: Boolean = true,
+    val isEnabled: Boolean = true
+)
+
 data class FxParameters(
     // EQ
     val eqLow: Float = 0.5f,
@@ -78,6 +100,7 @@ data class FxParameters(
     val eqHigh: Float = 0.5f,
     val eqGain: Float = 0.5f,
     // Reverb
+    val reverbPreset: String = "Concert Hall",
     val reverbMix: Float = 0.24f,
     val reverbSize: Float = 0.6f,
     val reverbDecay: Float = 0.45f,

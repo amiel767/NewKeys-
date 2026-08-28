@@ -31,7 +31,7 @@ fun TonicPadDialog(
     isMultiPadEnabled: Boolean,
     onToggleMultiPad: () -> Unit,
     octaveRange: String,
-    mode: String,
+    onCycleOctave: () -> Unit,
     brightness: Float,
     onBrightnessChange: (Float) -> Unit,
     shimmer: Float,
@@ -44,14 +44,14 @@ fun TonicPadDialog(
 ) {
     val density = LocalDensity.current
 
-    // Floating window state (offsets & dimensions)
+    // Floating window state (offsets & dimensions) - free 360 drag
     var floatingOffsetX by remember { mutableFloatStateOf(60f) }
     var floatingOffsetY by remember { mutableFloatStateOf(40f) }
     var windowWidthDp by remember { mutableStateOf(520.dp) }
     var windowHeightDp by remember { mutableStateOf(290.dp) }
 
     if (isPinned) {
-        // FLOATING RESIZABLE WINDOW (No backdrop scrim)
+        // FLOATING RESIZABLE WINDOW (Free movement anywhere on screen)
         Box(
             modifier = modifier
                 .offset { IntOffset(floatingOffsetX.roundToInt(), floatingOffsetY.roundToInt()) }
@@ -72,7 +72,7 @@ fun TonicPadDialog(
                 isMultiPadEnabled = isMultiPadEnabled,
                 onToggleMultiPad = onToggleMultiPad,
                 octaveRange = octaveRange,
-                mode = mode,
+                onCycleOctave = onCycleOctave,
                 brightness = brightness,
                 onBrightnessChange = onBrightnessChange,
                 shimmer = shimmer,
@@ -82,8 +82,9 @@ fun TonicPadDialog(
                 onClose = onClose,
                 onOpenSf2Picker = onOpenSf2Picker,
                 onDragHeader = { dx, dy ->
-                    floatingOffsetX = (floatingOffsetX + dx).coerceIn(0f, 600f)
-                    floatingOffsetY = (floatingOffsetY + dy).coerceIn(0f, 350f)
+                    // Free dragging anywhere on the screen canvas
+                    floatingOffsetX += dx
+                    floatingOffsetY += dy
                 }
             )
 
@@ -99,8 +100,8 @@ fun TonicPadDialog(
                             change.consume()
                             val dxDp = with(density) { dragAmount.x.toDp() }
                             val dyDp = with(density) { dragAmount.y.toDp() }
-                            windowWidthDp = (windowWidthDp + dxDp).coerceIn(320.dp, 750.dp)
-                            windowHeightDp = (windowHeightDp + dyDp).coerceIn(180.dp, 440.dp)
+                            windowWidthDp = (windowWidthDp + dxDp).coerceIn(300.dp, 900.dp)
+                            windowHeightDp = (windowHeightDp + dyDp).coerceIn(160.dp, 500.dp)
                         }
                     }
                     .padding(4.dp),
@@ -144,7 +145,7 @@ fun TonicPadDialog(
                     isMultiPadEnabled = isMultiPadEnabled,
                     onToggleMultiPad = onToggleMultiPad,
                     octaveRange = octaveRange,
-                    mode = mode,
+                    onCycleOctave = onCycleOctave,
                     brightness = brightness,
                     onBrightnessChange = onBrightnessChange,
                     shimmer = shimmer,
@@ -167,7 +168,7 @@ private fun TonicPadContent(
     isMultiPadEnabled: Boolean,
     onToggleMultiPad: () -> Unit,
     octaveRange: String,
-    mode: String,
+    onCycleOctave: () -> Unit,
     brightness: Float,
     onBrightnessChange: (Float) -> Unit,
     shimmer: Float,
@@ -223,7 +224,7 @@ private fun TonicPadContent(
                         Text(text = "✥", fontSize = 11.sp, color = NeonCyan)
                     }
                     Text(
-                        text = if (isUltraCompact) "Tonic Pad" else "Tonic Pad — Warm Pads",
+                        text = if (isUltraCompact) "Tonic Pad" else "Tonic Pad — Ambient Layers",
                         fontSize = if (isCompact) 12.sp else 13.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
@@ -262,7 +263,7 @@ private fun TonicPadContent(
             if (!isUltraCompact) {
                 Spacer(modifier = Modifier.height(4.dp))
 
-                // Soundfont Banner
+                // Soundfont Banner (Clean realistic patch picker)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -285,9 +286,9 @@ private fun TonicPadContent(
                     }
 
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(text = "Soundfont", fontSize = 8.sp, color = TextDim2)
+                        Text(text = "Soundfont Source", fontSize = 8.sp, color = TextDim2)
                         Text(
-                            text = "WarmPads-Vol2.sf2",
+                            text = "Warm Worship Ambient Layer",
                             fontSize = if (isCompact) 10.5.sp else 11.5.sp,
                             fontWeight = FontWeight.Bold,
                             color = TextPrimary
@@ -300,69 +301,54 @@ private fun TonicPadContent(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Info & Multi-Pad Tags Row
+            // Octave & Polyphonic Row (Interactive Octave Tag, removed chromatic mode)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // Octave Tag
+                // Interactive Clickable Octave Range Button
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0x0DFFFFFF))
-                        .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(6.dp))
-                        .padding(horizontal = 6.dp, vertical = if (isCompact) 3.dp else 4.dp)
+                        .clip(RoundedCornerShape(7.dp))
+                        .background(Color(0x1A22D3EE))
+                        .border(1.dp, NeonCyan.copy(alpha = 0.6f), RoundedCornerShape(7.dp))
+                        .clickable { onCycleOctave() }
+                        .padding(horizontal = 8.dp, vertical = if (isCompact) 4.dp else 6.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(text = "OCT", fontSize = 8.sp, color = TextDim)
-                        Text(text = octaveRange, fontSize = if (isCompact) 10.sp else 11.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                    }
-                }
-
-                // Mode Tag
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0x0DFFFFFF))
-                        .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(6.dp))
-                        .padding(horizontal = 6.dp, vertical = if (isCompact) 3.dp else 4.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(text = "MODE", fontSize = 8.sp, color = TextDim)
-                        Text(text = mode, fontSize = if (isCompact) 10.sp else 11.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                        Text(text = "OCTAVE", fontSize = 8.sp, color = NeonCyan)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text(text = octaveRange, fontSize = if (isCompact) 10.5.sp else 11.5.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
+                            Text(text = "↻", fontSize = 10.sp, color = NeonCyanLight)
+                        }
                     }
                 }
 
                 // Multi-Pad Feature Tag (Polyphonic trigger)
                 Box(
                     modifier = Modifier
-                        .weight(1.3f)
-                        .clip(RoundedCornerShape(6.dp))
+                        .weight(1.2f)
+                        .clip(RoundedCornerShape(7.dp))
                         .background(if (isMultiPadEnabled) Color(0x2E22D3EE) else Color(0x0DFFFFFF))
                         .border(
                             1.dp,
                             if (isMultiPadEnabled) NeonCyan else Color(0x14FFFFFF),
-                            RoundedCornerShape(6.dp)
+                            RoundedCornerShape(7.dp)
                         )
                         .clickable { onToggleMultiPad() }
-                        .padding(horizontal = 6.dp, vertical = if (isCompact) 3.dp else 4.dp)
+                        .padding(horizontal = 8.dp, vertical = if (isCompact) 4.dp else 6.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(text = "POLY", fontSize = 8.sp, color = if (isMultiPadEnabled) NeonCyan else TextDim)
+                        Text(text = "POLYPHONIE", fontSize = 8.sp, color = if (isMultiPadEnabled) NeonCyan else TextDim)
                         Text(
                             text = if (isMultiPadEnabled) "MULTI: ON" else "OFF",
                             fontSize = if (isCompact) 9.5.sp else 10.5.sp,
@@ -373,16 +359,16 @@ private fun TonicPadContent(
                 }
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
-            // Tonic Body: 12 Chromatic Note Grid + Knobs Sidebar
+            // Tonic Body: 12 Note Grid + Knobs Sidebar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // 12 Chromatic Note Grid (4 cols x 3 rows) with proportional sizing
+                // 12 Chromatic Note Grid (4 cols x 3 rows)
                 BoxWithConstraints(
                     modifier = Modifier
                         .weight(1f)
@@ -395,7 +381,6 @@ private fun TonicPadContent(
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(gap)
                     ) {
-                        // 3 rows of 4 notes each
                         for (rowIndex in 0..2) {
                             Row(
                                 modifier = Modifier

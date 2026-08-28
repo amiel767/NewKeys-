@@ -2,10 +2,12 @@ package com.example.ui.components
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,18 +19,29 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 @Composable
 fun BottomBar(
     isRecording: Boolean,
+    recordingDuration: Int = 0,
+    lastRecordedFile: String? = null,
     onToggleRecording: () -> Unit,
     bpm: Int,
     onBpmChange: (Int) -> Unit,
@@ -40,61 +53,111 @@ fun BottomBar(
     onSelectSignature: (String) -> Unit,
     metroVolume: Float,
     onMetroVolumeChange: (Float) -> Unit,
+    isKeyboardActive: Boolean,
+    onToggleKeyboard: () -> Unit,
     onKeyboardHandleClick: () -> Unit,
     onKeyboardDrag: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val barHeight = 34.dp
+    val barHeight = 36.dp
+    val coroutineScope = rememberCoroutineScope()
 
     Row(
         modifier = modifier
             .fillMaxWidth()
             .height(barHeight),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        // REC Button
+        // 1. REC BUTTON WITH SOFT BLINKING LED
+        val infiniteTransition = rememberInfiniteTransition(label = "rec_pulse")
+        val recPulseAlpha by infiniteTransition.animateFloat(
+            initialValue = 0.35f,
+            targetValue = 1.0f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "rec_pulse_alpha"
+        )
+
         val recBrush = if (isRecording) {
-            Brush.verticalGradient(listOf(Color(0xFFFF2222), Color(0xFFCC0000)))
+            Brush.verticalGradient(listOf(Color(0xFFFF1E1E), Color(0xFFB30000)))
         } else {
-            Brush.verticalGradient(listOf(Color(0xFFFF5B5B), RecRed))
+            Brush.verticalGradient(listOf(Color(0xFFFF4B4B), RecRed))
         }
 
         Box(
             modifier = Modifier
-                .width(56.dp)
+                .width(if (isRecording) 82.dp else 56.dp)
                 .fillMaxHeight()
                 .clip(RoundedCornerShape(10.dp))
                 .background(recBrush)
-                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(10.dp))
+                .border(1.dp, Color(0x4DFFFFFF), RoundedCornerShape(10.dp))
                 .clickable { onToggleRecording() }
                 .testTag("btn_rec"),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = if (isRecording) "● REC" else "Rec",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = Color.White
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                // Blinking red recording LED
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .shadow(if (isRecording) 8.dp else 0.dp, CircleShape)
+                        .clip(CircleShape)
+                        .background(
+                            if (isRecording) Color.White.copy(alpha = recPulseAlpha) else Color.White
+                        )
+                )
+
+                val mins = recordingDuration / 60
+                val secs = recordingDuration % 60
+                val timeStr = String.format("%02d:%02d", mins, secs)
+
+                Text(
+                    text = if (isRecording) timeStr else "REC",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White
+                )
+            }
         }
 
-        // BPM Box
+        // 2. BPM BOX WITH FAST LONG-PRESS SCROLLING
         Row(
             modifier = Modifier
                 .height(barHeight)
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(10.dp))
                 .background(DarkSurface)
-                .border(1.dp, BorderSubtle, RoundedCornerShape(12.dp))
+                .border(1.dp, BorderSubtle, RoundedCornerShape(10.dp))
                 .testTag("bpm_box"),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Minus Button with auto-repeat on hold
             Box(
                 modifier = Modifier
                     .width(26.dp)
                     .fillMaxHeight()
                     .background(Color(0x1022D3EE))
-                    .clickable { onBpmChange(-1) },
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onPress = {
+                                onBpmChange(-1)
+                                val job = coroutineScope.launch {
+                                    delay(300)
+                                    while (isActive) {
+                                        onBpmChange(-1)
+                                        delay(60)
+                                    }
+                                }
+                                tryAwaitRelease()
+                                job.cancel()
+                            }
+                        )
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Text(text = "−", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = NeonCyan)
@@ -102,99 +165,124 @@ fun BottomBar(
 
             Column(
                 modifier = Modifier
-                    .padding(horizontal = 8.dp)
-                    .defaultMinSize(minWidth = 42.dp),
+                    .padding(horizontal = 6.dp)
+                    .defaultMinSize(minWidth = 40.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
                 Text(
                     text = "$bpm",
-                    fontSize = 13.sp,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = TextPrimary,
-                    lineHeight = 15.sp
+                    lineHeight = 13.sp
                 )
                 Text(
                     text = "BPM",
-                    fontSize = 7.5.sp,
+                    fontSize = 7.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = TextDim2,
-                    letterSpacing = 0.6.sp,
+                    letterSpacing = 0.5.sp,
                     lineHeight = 8.sp
                 )
             }
 
+            // Plus Button with auto-repeat on hold
             Box(
                 modifier = Modifier
                     .width(26.dp)
                     .fillMaxHeight()
                     .background(Color(0x1022D3EE))
-                    .clickable { onBpmChange(1) },
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onPress = {
+                                onBpmChange(1)
+                                val job = coroutineScope.launch {
+                                    delay(300)
+                                    while (isActive) {
+                                        onBpmChange(1)
+                                        delay(60)
+                                    }
+                                }
+                                tryAwaitRelease()
+                                job.cancel()
+                            }
+                        )
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Text(text = "+", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = NeonCyan)
             }
         }
 
-        // Metronome Button
+        // 3. MINIMALIST VECTOR METRONOME ICON BUTTON
         Box(
             modifier = Modifier
                 .height(barHeight)
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(10.dp))
                 .background(DarkSurface)
-                .border(1.dp, BorderSubtle, RoundedCornerShape(12.dp))
+                .border(1.dp, if (isMetronomeOn) NeonCyan else BorderSubtle, RoundedCornerShape(10.dp))
                 .clickable { onToggleMetroPanel() }
-                .padding(horizontal = 12.dp)
+                .padding(horizontal = 9.dp)
                 .testTag("btn_metro"),
             contentAlignment = Alignment.Center
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(7.dp)
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
-                // Metronome LED Indicator
-                val infiniteTransition = rememberInfiniteTransition(label = "metro_pulse")
-                val pulseAlpha by infiniteTransition.animateFloat(
-                    initialValue = 0.4f,
-                    targetValue = 1.0f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(durationMillis = (60000 / bpm).coerceIn(200, 1000), easing = FastOutSlowInEasing),
-                        repeatMode = RepeatMode.Reverse
-                    ),
-                    label = "metro_pulse_alpha"
-                )
+                // Minimalist vector pendulum icon
+                Canvas(modifier = Modifier.size(16.dp)) {
+                    val w = size.width
+                    val h = size.height
+
+                    val bodyPath = Path().apply {
+                        moveTo(w * 0.35f, h * 0.15f)
+                        lineTo(w * 0.65f, h * 0.15f)
+                        lineTo(w * 0.85f, h * 0.90f)
+                        lineTo(w * 0.15f, h * 0.90f)
+                        close()
+                    }
+                    drawPath(
+                        path = bodyPath,
+                        color = if (isMetronomeOn) NeonCyan.copy(alpha = 0.3f) else Color(0x22FFFFFF)
+                    )
+                    drawPath(
+                        path = bodyPath,
+                        color = if (isMetronomeOn) NeonCyan else TextDim,
+                        style = Stroke(width = 1.2f)
+                    )
+
+                    drawLine(
+                        color = if (isMetronomeOn) NeonCyanLight else TextPrimary,
+                        start = Offset(w * 0.5f, h * 0.85f),
+                        end = Offset(w * 0.5f + (if (isMetronomeOn) 3f else 0f), h * 0.25f),
+                        strokeWidth = 1.6f,
+                        cap = StrokeCap.Round
+                    )
+                }
 
                 Box(
                     modifier = Modifier
-                        .size(7.dp)
-                        .shadow(if (isMetronomeOn) 6.dp else 0.dp, CircleShape)
+                        .size(6.dp)
                         .clip(CircleShape)
-                        .background(
-                            if (isMetronomeOn) NeonCyan.copy(alpha = pulseAlpha) else TextDim2
-                        )
-                )
-
-                Text(
-                    text = "Metro",
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isMetronomeOn) NeonCyan else TextDim
+                        .background(if (isMetronomeOn) NeonCyan else TextDim2)
                 )
             }
         }
 
-        // Retractable Keyboard Handle (Sliding pull-tab)
+        // 4. RETRACTABLE KEYBOARD GRABBER BAR (Clean, no text)
         Box(
             modifier = Modifier
                 .weight(1f)
                 .height(barHeight)
-                .clip(RoundedCornerShape(17.dp))
+                .clip(RoundedCornerShape(12.dp))
                 .background(
                     Brush.horizontalGradient(
-                        listOf(Color(0xFF1E293B), Color(0xFF0F172A))
+                        listOf(Color(0xFF19202E), Color(0xFF121622))
                     )
                 )
-                .border(1.dp, Color(0x2E67E8F9), RoundedCornerShape(17.dp))
+                .border(1.dp, Color(0x2E67E8F9), RoundedCornerShape(12.dp))
                 .clickable { onKeyboardHandleClick() }
                 .pointerInput(Unit) {
                     detectDragGestures { change, dragAmount ->
@@ -202,25 +290,84 @@ fun BottomBar(
                         onKeyboardDrag(dragAmount.y)
                     }
                 }
-                .padding(horizontal = 14.dp)
+                .padding(horizontal = 10.dp)
                 .testTag("kb_handle"),
             contentAlignment = Alignment.Center
         ) {
-            // Central Grip Ridges
+            // Tactile ridges only
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Box(modifier = Modifier.width(26.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x5967E8F9)))
-                Box(modifier = Modifier.width(26.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x5967E8F9)))
-                Box(modifier = Modifier.width(26.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x5967E8F9)))
+                Box(modifier = Modifier.width(26.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x6667E8F9)))
+                Box(modifier = Modifier.width(26.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x6667E8F9)))
+                Box(modifier = Modifier.width(26.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x6667E8F9)))
             }
+        }
 
-            // Hint Text
-            Text(
-                text = "glisser ↑ clavier",
-                fontSize = 9.5.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xB394A3B8),
-                modifier = Modifier.align(Alignment.CenterEnd)
-            )
+        // 5. PIANO LOGO TOGGLE BUTTON (Aligned below Master Fader)
+        // Faithful to Screenshot_20260828-232237_Excalidrawing.png "Logo piano"
+        val kbBtnBg by animateColorAsState(
+            targetValue = if (isKeyboardActive) Color(0xFF1E3A5F) else DarkSurface,
+            label = "kb_btn_bg"
+        )
+        val kbBorderColor by animateColorAsState(
+            targetValue = if (isKeyboardActive) NeonCyan else BorderSubtle,
+            label = "kb_border_color"
+        )
+
+        Box(
+            modifier = Modifier
+                .width(46.dp)
+                .height(barHeight)
+                .clip(RoundedCornerShape(10.dp))
+                .background(kbBtnBg)
+                .border(1.2.dp, kbBorderColor, RoundedCornerShape(10.dp))
+                .clickable { onToggleKeyboard() }
+                .testTag("btn_piano_toggle"),
+            contentAlignment = Alignment.Center
+        ) {
+            // Stylized Piano Keys Vector Icon
+            Canvas(modifier = Modifier.size(20.dp)) {
+                val w = size.width
+                val h = size.height
+
+                // Base keyboard outline
+                val keyOutlineColor = if (isKeyboardActive) NeonCyanLight else TextDim
+                drawRoundRect(
+                    color = keyOutlineColor,
+                    topLeft = Offset(1f, 2f),
+                    size = Size(w - 2f, h - 4f),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.dp.toPx()),
+                    style = Stroke(width = 1.4f)
+                )
+
+                // White key separators
+                val keySpacing = (w - 2f) / 4f
+                for (i in 1..3) {
+                    drawLine(
+                        color = keyOutlineColor.copy(alpha = 0.7f),
+                        start = Offset(1f + i * keySpacing, 2f),
+                        end = Offset(1f + i * keySpacing, h - 2f),
+                        strokeWidth = 1f
+                    )
+                }
+
+                // Black keys
+                val blackKeyColor = if (isKeyboardActive) NeonCyan else Color.White
+                drawRect(
+                    color = blackKeyColor,
+                    topLeft = Offset(1f + keySpacing * 0.7f, 2f),
+                    size = Size(keySpacing * 0.6f, (h - 4f) * 0.55f)
+                )
+                drawRect(
+                    color = blackKeyColor,
+                    topLeft = Offset(1f + keySpacing * 1.7f, 2f),
+                    size = Size(keySpacing * 0.6f, (h - 4f) * 0.55f)
+                )
+                drawRect(
+                    color = blackKeyColor,
+                    topLeft = Offset(1f + keySpacing * 2.7f, 2f),
+                    size = Size(keySpacing * 0.6f, (h - 4f) * 0.55f)
+                )
+            }
         }
     }
 }
@@ -291,8 +438,8 @@ fun MetronomeFloatingPanel(
 
             // Signature Section
             Text(
-                text = "SIGNATURE",
-                fontSize = 10.sp,
+                text = "SIGNATURE RYTHMIQUE",
+                fontSize = 9.5.sp,
                 fontWeight = FontWeight.Bold,
                 color = TextDim,
                 letterSpacing = 0.6.sp
@@ -319,12 +466,12 @@ fun MetronomeFloatingPanel(
                                 RoundedCornerShape(8.dp)
                             )
                             .clickable { onSelectSignature(sig) }
-                            .padding(vertical = 6.dp),
+                            .padding(vertical = 5.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = sig,
-                            fontSize = 11.sp,
+                            fontSize = 10.5.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (isSelected) Color(0xFF00232B) else TextDim
                         )
@@ -336,8 +483,8 @@ fun MetronomeFloatingPanel(
 
             // Volume Section
             Text(
-                text = "VOLUME CLIC",
-                fontSize = 10.sp,
+                text = "VOLUME DU CLIC",
+                fontSize = 9.5.sp,
                 fontWeight = FontWeight.Bold,
                 color = TextDim,
                 letterSpacing = 0.6.sp

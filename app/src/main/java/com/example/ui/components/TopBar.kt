@@ -2,7 +2,11 @@ package com.example.ui.components
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -17,6 +21,8 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -26,6 +32,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -40,14 +47,29 @@ fun TopBar(
     octave: Int,
     onTransposeChange: (Int) -> Unit,
     onOctaveChange: (Int) -> Unit,
+    
+    // Loops
     isLoopsOpen: Boolean,
     onToggleLoops: () -> Unit,
+    isLoopPlaying: Boolean,
+    onToggleLoopPlayPause: () -> Unit,
+    loopVolume: Float,
+    onLoopVolumeChange: (Float) -> Unit,
     selectedBeats: Int,
     onSelectBeats: (Int) -> Unit,
     loopFolders: List<LoopFolder>,
     activeLoopFile: LoopFile?,
     onToggleLoopFolder: (String) -> Unit,
     onSelectLoopFile: (LoopFile) -> Unit,
+    
+    // Sustain & Splitter
+    isSustainActive: Boolean,
+    isMidiPedalPressed: Boolean,
+    onToggleSustain: () -> Unit,
+    isSplitterActive: Boolean,
+    onToggleSplitter: () -> Unit,
+    
+    // Launchers
     onOpenDrumPad: () -> Unit,
     onOpenTonicPad: () -> Unit,
     onPanic: () -> Unit,
@@ -57,7 +79,7 @@ fun TopBar(
 ) {
     val topBarHeight = 34.dp
     val loopsButtonWidth by animateDpAsState(
-        targetValue = if (isLoopsOpen) 155.dp else 130.dp,
+        targetValue = if (isLoopsOpen) 160.dp else 138.dp,
         animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
         label = "loopsBtnWidth"
     )
@@ -70,9 +92,9 @@ fun TopBar(
         Row(
             modifier = Modifier.fillMaxSize(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // Transpose Stepper
+            // 1. Transpose Stepper
             StepperControl(
                 label = "TRANS",
                 value = if (transpose > 0) "+$transpose" else "$transpose",
@@ -81,7 +103,7 @@ fun TopBar(
                 modifier = Modifier.testTag("stepper_trans")
             )
 
-            // Octave Stepper
+            // 2. Octave Stepper
             StepperControl(
                 label = "OCT",
                 value = if (octave > 0) "+$octave" else "$octave",
@@ -90,11 +112,10 @@ fun TopBar(
                 modifier = Modifier.testTag("stepper_oct")
             )
 
-            // Loops Pill Button
+            // 3. Loops Pill with Large Extremity Play/Pause Button
             Box(
                 modifier = Modifier
                     .height(34.dp)
-                    .width(loopsButtonWidth)
                     .clip(RoundedCornerShape(17.dp))
                     .background(
                         if (isLoopsOpen) {
@@ -105,11 +126,10 @@ fun TopBar(
                     )
                     .border(
                         1.dp,
-                        if (isLoopsOpen) NeonPurpleLight else Color(0x33FFFFFF),
+                        if (isLoopsOpen) NeonPurpleLight else Color(0x4DFFFFFF),
                         RoundedCornerShape(17.dp)
                     )
-                    .clickable { onToggleLoops() }
-                    .padding(horizontal = 12.dp)
+                    .padding(start = 10.dp, end = 3.dp, top = 2.dp, bottom = 2.dp)
                     .testTag("loops_pill_btn"),
                 contentAlignment = Alignment.Center
             ) {
@@ -117,30 +137,139 @@ fun TopBar(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    // Clickable Text Label to expand dropdown
+                    Row(
+                        modifier = Modifier.clickable { onToggleLoops() },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "Loops",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = if (isLoopsOpen) "▲" else "▼",
+                            fontSize = 8.5.sp,
+                            color = Color(0xCCFFFFFF)
+                        )
+                    }
+
+                    // Large Prominent Play/Pause Action Button at the Extremity
                     Box(
                         modifier = Modifier
-                            .size(8.dp)
-                            .shadow(4.dp, CircleShape)
+                            .size(28.dp)
                             .clip(CircleShape)
-                            .background(if (isLoopsOpen) NeonCyanLight else NeonViolet)
-                    )
-                    Text(
-                        text = "Loops",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Text(
-                        text = if (isLoopsOpen) "▲" else "▼",
-                        fontSize = 10.sp,
-                        color = Color(0xCCFFFFFF)
-                    )
+                            .background(
+                                if (isLoopPlaying) {
+                                    Brush.verticalGradient(listOf(NeonCyanLight, NeonCyan))
+                                } else {
+                                    Brush.verticalGradient(listOf(Color(0x33FFFFFF), Color(0x1AFFFFFF)))
+                                }
+                            )
+                            .border(
+                                1.dp,
+                                if (isLoopPlaying) NeonCyanLight else Color(0x44FFFFFF),
+                                CircleShape
+                            )
+                            .clickable { onToggleLoopPlayPause() }
+                            .testTag("btn_loops_play_extremity"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (isLoopPlaying) "❚❚" else "▶",
+                            fontSize = if (isLoopPlaying) 11.sp else 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isLoopPlaying) Color(0xFF003844) else Color.White
+                        )
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // Drum Pad Launcher Icon (3x3 neon gradient dots)
+            // 4. Global Sustain Button
+            // Spec: "Mode Manuel: Appui court = Bascule On/Off. Mode Pédale (MIDI externe): Clignotement fluide lors de l'appui."
+            val infiniteTransition = rememberInfiniteTransition(label = "sustain_pedal_blink")
+            val pedalBlinkAlpha by infiniteTransition.animateFloat(
+                initialValue = 0.3f,
+                targetValue = 1.0f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 260, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "pedal_blink_alpha"
+            )
+
+            val isSustainLit = isSustainActive || isMidiPedalPressed
+            val sustainAlpha = if (isMidiPedalPressed) pedalBlinkAlpha else if (isSustainActive) 1.0f else 0.4f
+
+            Box(
+                modifier = Modifier
+                    .height(34.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (isSustainLit) SoloAmber.copy(alpha = 0.25f * sustainAlpha) else DarkSurface)
+                    .border(
+                        1.dp,
+                        if (isSustainLit) SoloAmber.copy(alpha = sustainAlpha) else BorderSubtle,
+                        RoundedCornerShape(10.dp)
+                    )
+                    .clickable { onToggleSustain() }
+                    .padding(horizontal = 8.dp)
+                    .testTag("btn_global_sustain"),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(if (isSustainLit) SoloAmber else TextDim2)
+                    )
+                    Text(
+                        text = "SUSTAIN",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isSustainLit) SoloAmber else TextDim
+                    )
+                }
+            }
+
+            // 5. Global Splitter Button (Scissors ✂️)
+            Box(
+                modifier = Modifier
+                    .height(34.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (isSplitterActive) Color(0x3322D3EE) else DarkSurface)
+                    .border(
+                        1.dp,
+                        if (isSplitterActive) NeonCyan else BorderSubtle,
+                        RoundedCornerShape(10.dp)
+                    )
+                    .clickable { onToggleSplitter() }
+                    .padding(horizontal = 8.dp)
+                    .testTag("btn_global_splitter"),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Text(text = "✂️", fontSize = 10.sp)
+                    Text(
+                        text = "SPLIT",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isSplitterActive) NeonCyan else TextDim
+                    )
+                }
+            }
+
+            // 6. Drum Pad Launcher Icon (Neon Pad Matrix)
             Box(
                 modifier = Modifier
                     .size(34.dp)
@@ -173,10 +302,10 @@ fun TopBar(
                 }
             }
 
-            // Tonic Pad Launcher Icon
+            // 7. Tonic Pad Launcher Icon
             Box(
                 modifier = Modifier
-                    .width(40.dp)
+                    .width(38.dp)
                     .height(34.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(DarkSurface)
@@ -199,7 +328,7 @@ fun TopBar(
                 }
             }
 
-            // Panic Button
+            // 8. Panic Button
             Box(
                 modifier = Modifier
                     .height(34.dp)
@@ -209,19 +338,19 @@ fun TopBar(
                     )
                     .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(17.dp))
                     .clickable { onPanic() }
-                    .padding(horizontal = 14.dp)
+                    .padding(horizontal = 12.dp)
                     .testTag("btn_panic"),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = "Panic",
-                    fontSize = 12.sp,
+                    fontSize = 11.5.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
             }
 
-            // Scenes Menu Button
+            // 9. Scene Expansion Button
             Box(
                 modifier = Modifier
                     .size(34.dp)
@@ -235,12 +364,12 @@ fun TopBar(
                 Icon(
                     imageVector = Icons.Default.Menu,
                     contentDescription = "Scenes",
-                    tint = TextDim,
+                    tint = NeonCyan,
                     modifier = Modifier.size(16.dp)
                 )
             }
 
-            // Settings Button
+            // 10. Settings Button
             Box(
                 modifier = Modifier
                     .size(34.dp)
@@ -281,7 +410,7 @@ fun StepperControl(
         // Minus Button
         Box(
             modifier = Modifier
-                .width(26.dp)
+                .width(24.dp)
                 .fillMaxHeight()
                 .background(Color(0x1022D3EE))
                 .clickable { onMinus() },
@@ -289,7 +418,7 @@ fun StepperControl(
         ) {
             Text(
                 text = "−",
-                fontSize = 15.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = NeonCyan
             )
@@ -298,32 +427,32 @@ fun StepperControl(
         // Center Value & Label
         Column(
             modifier = Modifier
-                .padding(horizontal = 8.dp)
-                .defaultMinSize(minWidth = 38.dp),
+                .padding(horizontal = 6.dp)
+                .defaultMinSize(minWidth = 36.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
             Text(
                 text = label,
-                fontSize = 8.sp,
+                fontSize = 7.5.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = TextDim2,
                 letterSpacing = 0.5.sp,
-                lineHeight = 9.sp
+                lineHeight = 8.5.sp
             )
             Text(
                 text = value,
-                fontSize = 12.sp,
+                fontSize = 11.5.sp,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary,
-                lineHeight = 14.sp
+                lineHeight = 13.sp
             )
         }
 
         // Plus Button
         Box(
             modifier = Modifier
-                .width(26.dp)
+                .width(24.dp)
                 .fillMaxHeight()
                 .background(Color(0x1022D3EE))
                 .clickable { onPlus() },
@@ -331,7 +460,7 @@ fun StepperControl(
         ) {
             Text(
                 text = "+",
-                fontSize = 15.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = NeonCyan
             )
@@ -342,6 +471,10 @@ fun StepperControl(
 @Composable
 fun LoopsFloatingPanel(
     isOpen: Boolean,
+    isLoopPlaying: Boolean,
+    onToggleLoopPlayPause: () -> Unit,
+    loopVolume: Float,
+    onLoopVolumeChange: (Float) -> Unit,
     selectedBeats: Int,
     onSelectBeats: (Int) -> Unit,
     loopFolders: List<LoopFolder>,
@@ -353,89 +486,106 @@ fun LoopsFloatingPanel(
 ) {
     AnimatedVisibility(
         visible = isOpen,
-        enter = fadeIn(tween(200)) + expandHorizontally(
-            animationSpec = tween(320, easing = FastOutSlowInEasing),
-            expandFrom = Alignment.Start
-        ) + expandVertically(
-            animationSpec = tween(280, easing = FastOutSlowInEasing),
-            expandFrom = Alignment.Top
+        enter = fadeIn(tween(220, easing = FastOutSlowInEasing)) + scaleIn(
+            initialScale = 0.94f,
+            animationSpec = tween(240, easing = FastOutSlowInEasing)
         ),
-        exit = fadeOut(tween(150)) + shrinkHorizontally(
-            animationSpec = tween(220),
-            shrinkTowards = Alignment.Start
-        ) + shrinkVertically(
-            animationSpec = tween(200),
-            shrinkTowards = Alignment.Top
-        ),
+        exit = fadeOut(tween(160)) + scaleOut(targetScale = 0.96f),
         modifier = modifier
     ) {
         Column(
             modifier = Modifier
                 .width(420.dp)
-                .heightIn(max = 280.dp)
-                .shadow(20.dp, RoundedCornerShape(18.dp))
+                .heightIn(max = 340.dp)
+                .shadow(24.dp, RoundedCornerShape(18.dp))
                 .clip(RoundedCornerShape(18.dp))
                 .background(
                     Brush.linearGradient(
-                        colors = listOf(Color(0xFF2A2140), Color(0xFF1C1830))
+                        colors = listOf(Color(0xFF2A2140), Color(0xFF1C1830), Color(0xFF131022))
                     )
                 )
                 .border(1.dp, Color(0x668B5CF6), RoundedCornerShape(18.dp))
-                .padding(12.dp)
+                .padding(14.dp)
         ) {
-            // Section: Durée
-            Text(
-                text = "DURÉE",
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextDim,
-                letterSpacing = 0.6.sp
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Beat duration chips
+            // Header with Large Play/Pause Button, Title, and Volume
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                listOf(2, 4, 8, 16, 32).forEach { beats ->
-                    val isSelected = selectedBeats == beats
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Large Prominent Play Button (32dp)
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .size(32.dp)
+                            .clip(CircleShape)
                             .background(
-                                if (isSelected) {
-                                    Brush.verticalGradient(listOf(NeonPurpleLight, NeonPurple))
+                                if (isLoopPlaying) {
+                                    Brush.verticalGradient(listOf(NeonCyanLight, NeonCyan))
                                 } else {
-                                    Brush.verticalGradient(listOf(Color(0x0DFFFFFF), Color(0x08FFFFFF)))
+                                    Brush.verticalGradient(listOf(Color(0x448B5CF6), Color(0x228B5CF6)))
                                 }
                             )
                             .border(
-                                1.dp,
-                                if (isSelected) Color.Transparent else Color(0x1AFFFFFF),
-                                RoundedCornerShape(8.dp)
+                                1.5.dp,
+                                if (isLoopPlaying) NeonCyanLight else NeonPurpleLight,
+                                CircleShape
                             )
-                            .clickable { onSelectBeats(beats) }
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                            .clickable { onToggleLoopPlayPause() },
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "$beats beats",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isSelected) Color.White else TextDim
+                            text = if (isLoopPlaying) "❚❚" else "▶",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isLoopPlaying) Color(0xFF003844) else Color.White
                         )
                     }
+
+                    Column {
+                        Text(
+                            text = "LECTEUR DE LOOPS",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = if (activeLoopFile != null) activeLoopFile.name else "Aucune boucle active",
+                            fontSize = 9.sp,
+                            color = if (isLoopPlaying) NeonCyan else TextDim
+                        )
+                    }
+                }
+
+                // Volume Slider
+                Row(
+                    modifier = Modifier.width(130.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(text = "VOL", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = TextDim)
+                    Slider(
+                        value = loopVolume,
+                        onValueChange = onLoopVolumeChange,
+                        colors = SliderDefaults.colors(
+                            thumbColor = NeonPurpleLight,
+                            activeTrackColor = NeonPurpleLight,
+                            inactiveTrackColor = Color(0x1AFFFFFF)
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Section: Fichiers
+            // Simple, Unified Scrollable List of Folders & Audio Files
             Text(
-                text = "FICHIERS (DOSSIER LOOPS)",
-                fontSize = 10.sp,
+                text = "DOSSIERS & FICHIERS AUDIO",
+                fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
                 color = TextDim,
                 letterSpacing = 0.6.sp
@@ -443,7 +593,6 @@ fun LoopsFloatingPanel(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Folders and audio files
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -452,21 +601,21 @@ fun LoopsFloatingPanel(
             ) {
                 items(loopFolders) { folder ->
                     Column(modifier = Modifier.fillMaxWidth()) {
-                        // Folder Header
+                        // Folder Header Row
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0x0AFFFFFF))
-                                .border(1.dp, Color(0x10FFFFFF), RoundedCornerShape(8.dp))
+                                .background(if (folder.isOpen) Color(0x1AFFFFFF) else Color(0x0AFFFFFF))
+                                .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(8.dp))
                                 .clickable { onToggleFolder(folder.name) }
-                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Text(
                                 text = if (folder.isOpen) "▼" else "▶",
-                                fontSize = 8.sp,
+                                fontSize = 8.5.sp,
                                 color = TextDim
                             )
                             Text(text = folder.icon, fontSize = 12.sp)
@@ -478,52 +627,56 @@ fun LoopsFloatingPanel(
                                 modifier = Modifier.weight(1f)
                             )
                             Text(
-                                text = "${folder.files.size}",
-                                fontSize = 9.sp,
+                                text = "${folder.files.size} fichiers",
+                                fontSize = 8.5.sp,
                                 color = TextDim2
                             )
                         }
 
-                        // Folder items
+                        // Folder items (Files)
                         if (folder.isOpen) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(start = 12.dp, top = 2.dp, bottom = 2.dp),
-                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                                    .padding(start = 14.dp, top = 3.dp, bottom = 3.dp),
+                                verticalArrangement = Arrangement.spacedBy(3.dp)
                             ) {
                                 folder.files.forEach { file ->
                                     val isActive = activeLoopFile == file
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .clip(RoundedCornerShape(6.dp))
+                                            .clip(RoundedCornerShape(8.dp))
                                             .background(
-                                                if (isActive) Color(0x2E7C3AED) else Color.Transparent
+                                                if (isActive) Color(0x337C3AED) else Color(0x08FFFFFF)
                                             )
                                             .border(
                                                 1.dp,
                                                 if (isActive) NeonPurpleLight else Color.Transparent,
-                                                RoundedCornerShape(6.dp)
+                                                RoundedCornerShape(8.dp)
                                             )
                                             .clickable { onSelectFile(file) }
-                                            .padding(horizontal = 6.dp, vertical = 4.dp),
+                                            .padding(horizontal = 8.dp, vertical = 6.dp),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         Box(
                                             modifier = Modifier
-                                                .size(18.dp)
+                                                .size(22.dp)
                                                 .clip(CircleShape)
-                                                .background(Color(0x26A78BFA))
-                                                .border(1.dp, Color(0x66A78BFA), CircleShape),
+                                                .background(if (isActive && isLoopPlaying) NeonCyan else Color(0x26A78BFA))
+                                                .border(
+                                                    1.dp,
+                                                    if (isActive && isLoopPlaying) NeonCyan else Color(0x66A78BFA),
+                                                    CircleShape
+                                                ),
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            Icon(
-                                                imageVector = Icons.Default.PlayArrow,
-                                                contentDescription = "Play",
-                                                tint = NeonPurpleLight,
-                                                modifier = Modifier.size(10.dp)
+                                            Text(
+                                                text = if (isActive && isLoopPlaying) "❚❚" else "▶",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isActive && isLoopPlaying) Color(0xFF003844) else NeonPurpleLight
                                             )
                                         }
 
@@ -532,12 +685,12 @@ fun LoopsFloatingPanel(
                                                 text = file.name,
                                                 fontSize = 10.5.sp,
                                                 fontWeight = FontWeight.SemiBold,
-                                                color = TextPrimary
+                                                color = if (isActive) Color.White else TextPrimary
                                             )
                                             Text(
-                                                text = "${file.duration} · Loops/${file.folder}/",
-                                                fontSize = 8.5.sp,
-                                                color = TextDim2
+                                                text = "${file.duration} · ${file.bpm} BPM · loops/${file.folder}/",
+                                                fontSize = 8.sp,
+                                                color = if (isActive) NeonPurpleLight else TextDim2
                                             )
                                         }
                                     }

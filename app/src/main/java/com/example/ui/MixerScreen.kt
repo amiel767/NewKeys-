@@ -1,9 +1,13 @@
 package com.example.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
@@ -28,6 +32,7 @@ fun MixerScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    var isSplashFinished by remember { mutableStateOf(false) }
 
     // Smooth animation for keyboard retraction & tracks compression
     val animatedKbFraction by animateFloatAsState(
@@ -56,7 +61,7 @@ fun MixerScreen(
                     )
                 )
                 .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(14.dp))
-                .padding(horizontal = 10.dp, vertical = 8.dp)
+                .padding(horizontal = 8.dp, vertical = 6.dp)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // 1. TOP BAR
@@ -67,35 +72,47 @@ fun MixerScreen(
                     onOctaveChange = { viewModel.updateOctave(it) },
                     isLoopsOpen = uiState.isLoopsPanelOpen,
                     onToggleLoops = { viewModel.toggleLoopsPanel() },
+                    isLoopPlaying = uiState.isLoopPlaying,
+                    onToggleLoopPlayPause = { viewModel.toggleLoopPlayPause() },
+                    loopVolume = uiState.loopVolume,
+                    onLoopVolumeChange = { viewModel.setLoopVolume(it) },
                     selectedBeats = uiState.selectedBeatCount,
                     onSelectBeats = { viewModel.selectBeatCount(it) },
                     loopFolders = uiState.loopFolders,
                     activeLoopFile = uiState.activeLoopFile,
                     onToggleLoopFolder = { viewModel.toggleLoopFolder(it) },
                     onSelectLoopFile = { viewModel.selectLoopFile(it) },
+                    isSustainActive = uiState.isSustainActive,
+                    isMidiPedalPressed = uiState.isMidiPedalPressed,
+                    onToggleSustain = { viewModel.toggleSustain() },
+                    isSplitterActive = uiState.isSplitterActive,
+                    onToggleSplitter = { viewModel.toggleSplitter() },
                     onOpenDrumPad = { viewModel.openPopup(ActivePopup.DRUM_PAD) },
                     onOpenTonicPad = { viewModel.openPopup(ActivePopup.TONIC_PAD) },
                     onPanic = { viewModel.triggerPanic() },
-                    onOpenScenes = { viewModel.openPopup(ActivePopup.SCENE) },
+                    onOpenScenes = {
+                        if (uiState.activePopup == ActivePopup.SCENE) viewModel.closePopup() else viewModel.openPopup(ActivePopup.SCENE)
+                    },
                     onOpenSettings = { viewModel.openSettingsDrawer() }
                 )
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(4.dp))
 
                 // 2. MIXER TRACKS SECTION (8 Tracks + 1 Master)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     // Regular Tracks 1..8
                     uiState.tracks.forEach { track ->
                         VerticalTrackChannel(
                             track = track,
                             onVolumeChange = { vol -> viewModel.setTrackVolume(track.id, vol) },
-                            onMuteToggle = { viewModel.toggleMute(track.id) },
-                            onSoloToggle = { viewModel.toggleSolo(track.id) },
+                            onPowerToggle = { viewModel.toggleTrackPower(track.id) },
+                            onPanChange = { pan -> viewModel.setTrackPan(track.id, pan) },
+                            onMuteSoloClick = { viewModel.toggleMuteSoloSequence(track.id) },
                             onTrackNameClick = { viewModel.openSoundfontForTrack(track.id) },
                             onFxClick = { viewModel.openEffectsForTrack(track.id) },
                             modifier = Modifier
@@ -104,25 +121,28 @@ fun MixerScreen(
                         )
                     }
 
-                    // Master Channel
+                    // Master Channel (Faithful to Screenshot_20260828-232237_Excalidrawing.png)
                     VerticalTrackChannel(
                         track = uiState.masterTrack,
                         onVolumeChange = { vol -> viewModel.setTrackVolume(0, vol) },
-                        onMuteToggle = {},
-                        onSoloToggle = {},
+                        onPowerToggle = {},
+                        onPanChange = {},
+                        onMuteSoloClick = {},
                         onTrackNameClick = {},
                         onFxClick = { viewModel.openEffectsForTrack(0) },
                         modifier = Modifier
-                            .weight(1.1f)
+                            .weight(1.08f)
                             .fillMaxHeight()
                     )
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(4.dp))
 
-                // 3. BOTTOM BAR
+                // 3. BOTTOM BAR (With Piano Logo Toggle Button Aligned Below Master)
                 BottomBar(
                     isRecording = uiState.isRecording,
+                    recordingDuration = uiState.recordingDuration,
+                    lastRecordedFile = uiState.lastRecordedFile,
                     onToggleRecording = { viewModel.toggleRecording() },
                     bpm = uiState.bpm,
                     onBpmChange = { viewModel.updateBpm(it) },
@@ -134,9 +154,10 @@ fun MixerScreen(
                     onSelectSignature = { viewModel.setMetronomeSignature(it) },
                     metroVolume = uiState.metronomeVolume,
                     onMetroVolumeChange = { viewModel.setMetronomeVolume(it) },
+                    isKeyboardActive = uiState.keyboardHeightFraction > 0f,
+                    onToggleKeyboard = { viewModel.cycleKeyboardExpansion() },
                     onKeyboardHandleClick = { viewModel.cycleKeyboardExpansion() },
                     onKeyboardDrag = { deltaY ->
-                        // dragging up decreases Y, so delta < 0 increases fraction
                         val fractionDelta = -deltaY / 200f
                         viewModel.setKeyboardHeightFraction(uiState.keyboardHeightFraction + fractionDelta)
                     }
@@ -145,10 +166,6 @@ fun MixerScreen(
                 // 4. RETRACTABLE VIRTUAL PIANO KEYBOARD
                 VirtualPianoKeyboard(
                     heightFraction = animatedKbFraction,
-                    isVelocityEnabled = uiState.isVelocityEnabled,
-                    onToggleVelocity = { viewModel.toggleVelocity() },
-                    isSustainActive = uiState.isSustainActive,
-                    onToggleSustain = { viewModel.toggleSustain() },
                     pressedKeys = uiState.pressedKeys,
                     onKeyDown = { viewModel.onKeyDown(it) },
                     onKeyUp = { viewModel.onKeyUp(it) },
@@ -160,10 +177,28 @@ fun MixerScreen(
                 )
             }
 
+            // Outside touch scrim for quick closing of floating dropdowns (Loops, Metronome, Scene)
+            if (uiState.isLoopsPanelOpen || uiState.isMetroPanelOpen || uiState.activePopup == ActivePopup.SCENE) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0x22000000))
+                        .clickable {
+                            if (uiState.isLoopsPanelOpen) viewModel.closeLoopsPanel()
+                            if (uiState.isMetroPanelOpen) viewModel.closeMetroPanel()
+                            if (uiState.activePopup == ActivePopup.SCENE) viewModel.closePopup()
+                        }
+                )
+            }
+
             // Floating Loops Dropdown Panel
             if (uiState.isLoopsPanelOpen) {
                 LoopsFloatingPanel(
                     isOpen = uiState.isLoopsPanelOpen,
+                    isLoopPlaying = uiState.isLoopPlaying,
+                    onToggleLoopPlayPause = { viewModel.toggleLoopPlayPause() },
+                    loopVolume = uiState.loopVolume,
+                    onLoopVolumeChange = { viewModel.setLoopVolume(it) },
                     selectedBeats = uiState.selectedBeatCount,
                     onSelectBeats = { viewModel.selectBeatCount(it) },
                     loopFolders = uiState.loopFolders,
@@ -172,7 +207,7 @@ fun MixerScreen(
                     onSelectFile = { viewModel.selectLoopFile(it) },
                     onClose = { viewModel.closeLoopsPanel() },
                     modifier = Modifier
-                        .padding(top = 40.dp, start = 140.dp)
+                        .padding(top = 38.dp, start = 120.dp)
                         .align(Alignment.TopStart)
                 )
             }
@@ -189,8 +224,23 @@ fun MixerScreen(
                     onVolumeChange = { viewModel.setMetronomeVolume(it) },
                     onClose = { viewModel.closeMetroPanel() },
                     modifier = Modifier
-                        .padding(bottom = 44.dp, start = 140.dp)
+                        .padding(bottom = 40.dp, start = 120.dp)
                         .align(Alignment.BottomStart)
+                )
+            }
+
+            // Scene In-Place Expanding View
+            if (uiState.activePopup == ActivePopup.SCENE) {
+                SceneDialog(
+                    isOpen = true,
+                    scenes = uiState.scenes,
+                    activeSceneId = uiState.activeSceneId,
+                    onSelectScene = { viewModel.selectScene(it) },
+                    onSaveCurrentScene = { viewModel.saveCurrentScene(it) },
+                    onClose = { viewModel.closePopup() },
+                    modifier = Modifier
+                        .padding(top = 38.dp, end = 10.dp)
+                        .align(Alignment.TopEnd)
                 )
             }
         }
@@ -229,7 +279,7 @@ fun MixerScreen(
                 isMultiPadEnabled = uiState.isMultiPadEnabled,
                 onToggleMultiPad = { viewModel.toggleMultiPad() },
                 octaveRange = uiState.tonicOctaveRange,
-                mode = uiState.tonicMode,
+                onCycleOctave = { viewModel.cycleTonicOctave() },
                 brightness = uiState.tonicBrightness,
                 onBrightnessChange = { viewModel.setTonicBrightness(it) },
                 shimmer = uiState.tonicShimmer,
@@ -244,10 +294,16 @@ fun MixerScreen(
         when (uiState.activePopup) {
             ActivePopup.EFFECTS -> {
                 val fxParams = uiState.fxParameters[uiState.activeEffectTrackId] ?: FxParameters()
+                val currentTrack = if (uiState.activeEffectTrackId == 0) uiState.masterTrack else uiState.tracks.find { it.id == uiState.activeEffectTrackId }
                 EffectsDialog(
                     trackId = uiState.activeEffectTrackId,
+                    track = currentTrack,
                     fxParameters = fxParams,
+                    isGlobalSplitterActive = uiState.isSplitterActive,
                     onUpdateFx = { transform -> viewModel.updateFxParameter(uiState.activeEffectTrackId, transform) },
+                    onSetReverbPreset = { viewModel.setTrackReverbPreset(uiState.activeEffectTrackId, it) },
+                    onSetVelocityCurve = { viewModel.setTrackVelocityCurve(uiState.activeEffectTrackId, it) },
+                    onSetSplitRange = { min, max -> viewModel.setTrackSplitRange(uiState.activeEffectTrackId, min, max) },
                     activeTab = uiState.activeFxTab,
                     onTabChange = { viewModel.setFxTab(it) },
                     onClose = { viewModel.closePopup() }
@@ -266,28 +322,43 @@ fun MixerScreen(
                     onClose = { viewModel.closePopup() }
                 )
             }
-            ActivePopup.SCENE -> {
-                SceneDialog(
-                    scenes = uiState.scenes,
-                    activeSceneId = uiState.activeSceneId,
-                    onSelectScene = { viewModel.selectScene(it) },
-                    onClose = { viewModel.closePopup() }
-                )
-            }
-            ActivePopup.DRUM_PAD, ActivePopup.TONIC_PAD, ActivePopup.NONE -> {}
+            ActivePopup.SCENE, ActivePopup.DRUM_PAD, ActivePopup.TONIC_PAD, ActivePopup.NONE -> {}
         }
 
-        // Settings Drawer
+        // Settings Drawer (Extended towards center with subpages & 3D knobs)
         SettingsDrawer(
             isOpen = uiState.isSettingsDrawerOpen,
             onClose = { viewModel.closeSettingsDrawer() },
+            subPage = uiState.settingsSubPage,
+            onNavigateSubPage = { viewModel.setSettingsSubPage(it) },
+            midiDevices = uiState.midiDevices,
+            onToggleMidiDevice = { viewModel.toggleMidiDevice(it) },
+            audioEngine = uiState.audioEngine,
+            onSelectAudioEngine = { viewModel.setAudioEngine(it) },
+            audioBufferSize = uiState.audioBufferSize,
+            onSelectBufferSize = { viewModel.setAudioBufferSize(it) },
+            polyphony = uiState.polyphony,
+            onSelectPolyphony = { viewModel.setPolyphony(it) },
             isLowLatency = uiState.isLowLatencyAudio,
             onToggleLowLatency = { viewModel.toggleLowLatencyAudio() },
-            isVelocityTouch = uiState.isKeyboardVelocityTouch,
-            onToggleVelocityTouch = { viewModel.toggleKeyboardVelocityTouch() },
-            isMetroInRec = uiState.isMetronomeInRec,
-            onToggleMetroInRec = { viewModel.toggleMetronomeInRec() },
-            appFolder = uiState.appFolder
+            selectedLanguage = uiState.selectedLanguage,
+            onSelectLanguage = { viewModel.setSelectedLanguage(it) },
+            soundGoodizer = uiState.soundGoodizer,
+            onSoundGoodizerChange = { viewModel.setSoundGoodizer(it) },
+            masterPunch = uiState.masterPunch,
+            onMasterPunchChange = { viewModel.setMasterPunch(it) },
+            spatialWidener = uiState.spatialWidener,
+            onSpatialWidenerChange = { viewModel.setSpatialWidener(it) },
+            velocityMin = uiState.globalVelocityMin,
+            velocityMax = uiState.globalVelocityMax,
+            onVelocityRangeChange = { min, max -> viewModel.setGlobalVelocityRange(min, max) }
         )
+
+        // Startup Splash Screen Animation
+        if (!isSplashFinished) {
+            LiveKeysSplashScreen(
+                onFinished = { isSplashFinished = true }
+            )
+        }
     }
 }

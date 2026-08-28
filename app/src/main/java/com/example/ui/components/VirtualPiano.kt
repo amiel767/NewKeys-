@@ -25,10 +25,6 @@ import com.example.ui.theme.*
 @Composable
 fun VirtualPianoKeyboard(
     heightFraction: Float,
-    isVelocityEnabled: Boolean,
-    onToggleVelocity: () -> Unit,
-    isSustainActive: Boolean,
-    onToggleSustain: () -> Unit,
     pressedKeys: Set<String>,
     onKeyDown: (String) -> Unit,
     onKeyUp: (String) -> Unit,
@@ -54,87 +50,28 @@ fun VirtualPianoKeyboard(
             .border(1.dp, Color(0x1F6496FF), RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
             .testTag("virtual_piano_panel")
     ) {
-        // Keyboard Top Controls Row
-        Row(
+        // Slim Top Grabber Bar (No clutter buttons per spec)
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(28.dp)
+                .height(18.dp)
                 .background(Color(0x08FFFFFF))
-                .padding(horizontal = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .clickable { onGrabberClick() }
+                .pointerInput(Unit) {
+                    detectDragGestures { change, dragAmount ->
+                        change.consume()
+                        onGrabberDrag(dragAmount.y)
+                    }
+                },
+            contentAlignment = Alignment.Center
         ) {
-            // Vélocité Button (Interactive)
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(if (isVelocityEnabled) Color(0x2E22D3EE) else Color(0x0FFFFFFF))
-                    .border(
-                        1.dp,
-                        if (isVelocityEnabled) NeonCyan else Color(0x14FFFFFF),
-                        RoundedCornerShape(6.dp)
-                    )
-                    .clickable { onToggleVelocity() }
-                    .padding(horizontal = 8.dp, vertical = 3.dp)
-                    .testTag("btn_velocity"),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = if (isVelocityEnabled) "Vélocité: ON" else "Vélocité: OFF",
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isVelocityEnabled) NeonCyan else TextDim
-                )
-            }
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            // Grabber Drag Handle
-            Box(
-                modifier = Modifier
-                    .width(60.dp)
-                    .fillMaxHeight()
-                    .clickable { onGrabberClick() }
-                    .pointerInput(Unit) {
-                        detectDragGestures { change, dragAmount ->
-                            change.consume()
-                            onGrabberDrag(dragAmount.y)
-                        }
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .width(34.dp)
-                        .height(4.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(Color(0x5967E8F9))
-                )
-            }
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            // Sustain Button (Interactive)
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(if (isSustainActive) Color(0x33FFC247) else Color(0x0FFFFFFF))
-                    .border(
-                        1.dp,
-                        if (isSustainActive) SoloAmber else Color(0x14FFFFFF),
-                        RoundedCornerShape(6.dp)
-                    )
-                    .clickable { onToggleSustain() }
-                    .padding(horizontal = 8.dp, vertical = 3.dp)
-                    .testTag("btn_sustain"),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = if (isSustainActive) "Sustain: HOLD" else "Sustain",
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isSustainActive) SoloAmber else TextDim
-                )
-            }
+                    .width(44.dp)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Color(0x6667E8F9))
+            )
         }
 
         // Piano Keys View (2 Full Octaves: C3 to B4)
@@ -169,7 +106,7 @@ fun VirtualPianoKeyboard(
                         )
                     } else {
                         Brush.verticalGradient(
-                            listOf(Color(0xFF12141F), Color(0xFF0A0B12))
+                            listOf(Color(0xFF141624), Color(0xFF090A12))
                         )
                     }
 
@@ -201,7 +138,7 @@ fun VirtualPianoKeyboard(
                             fontSize = 8.5.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (isPressed) Color(0xFF002E38) else Color(0xFF4A5578),
-                            modifier = Modifier.padding(bottom = 4.dp)
+                            modifier = Modifier.padding(bottom = 3.dp)
                         )
                     }
                 }
