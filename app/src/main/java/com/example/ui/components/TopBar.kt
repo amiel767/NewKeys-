@@ -209,10 +209,10 @@ fun TopBar(
                 modifier = Modifier
                     .height(34.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(if (isSustainLit) SoloAmber.copy(alpha = 0.25f * sustainAlpha) else DarkSurface)
+                    .background(DarkSurface)
                     .border(
                         1.dp,
-                        if (isSustainLit) SoloAmber.copy(alpha = sustainAlpha) else BorderSubtle,
+                        BorderSubtle,
                         RoundedCornerShape(10.dp)
                     )
                     .clickable { onToggleSustain() }
@@ -228,7 +228,7 @@ fun TopBar(
                         modifier = Modifier
                             .size(6.dp)
                             .clip(CircleShape)
-                            .background(if (isSustainLit) SoloAmber else TextDim2)
+                            .background(if (isSustainLit) SoloAmber.copy(alpha = sustainAlpha) else TextDim2)
                     )
                     Text(
                         text = "SUSTAIN",

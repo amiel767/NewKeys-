@@ -10,7 +10,6 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -18,7 +17,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -33,24 +31,26 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.TrackChannel
 import com.example.ui.theme.*
 import kotlin.math.PI
 import kotlin.math.cos
-import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
- * VerticalTrackChannel designed faithfully to the provided Excalidraw specifications:
+ * VerticalTrackChannel designed faithfully to user specifications and screenshots:
  *
  * For Regular Tracks (1..8):
- * 1. Top: Display Box with Soundfont / Patch Title (.sf2)
- * 2. Under Display: Left = Pan Rotary Knob, Right = M/S Button (Mute/Solo)
- * 3. Middle: Vertical Fader with 3D Realistic Cap and Stereo VU-Meter
- * 4. Bottom: Left = FX Button (Cyan outline), Right = Power Button (Magenta ⏻)
+ * 1. Top: Display Box with Soundfont / Patch Title (.sf2 or "-" if none)
+ * 2. Under Display:
+ *    - Left: Pan Rotary Knob with Neon LED glowing arc
+ *    - Right: Extended Rounded Rectangle M/S capsule with pure glowing colors (no letters)
+ * 3. Middle: Vertical Fader with 3D Realistic Cap and Stereo 2-Color Neon VU-Meter
+ * 4. Bottom:
+ *    - Left: FX Button (Cyan outline)
+ *    - Right: Power Button (Square button that glows bright Blue/Cyan when ON, fades dark when OFF)
  *
  * For Master Track:
  * 1. Top: Master Display Box (Cyan text "MASTER")
@@ -90,7 +90,7 @@ fun VerticalTrackChannel(
     val borderColor = if (isMaster) {
         Color(0x66D946EF)
     } else if (isEnabled) {
-        if (track.isSolo) SoloAmber.copy(alpha = 0.6f) else if (track.isMuted) MuteRed.copy(alpha = 0.5f) else Color(0x22FFFFFF)
+        if (track.isSolo) SoloAmber.copy(alpha = 0.65f) else if (track.isMuted) MuteRed.copy(alpha = 0.55f) else Color(0x22FFFFFF)
     } else {
         Color(0x12FFFFFF)
     }
@@ -142,7 +142,7 @@ fun VerticalTrackChannel(
 
         Spacer(modifier = Modifier.height(4.dp))
 
-        // ================= 2. KNOB & M/S ROW (Regular Tracks) =================
+        // ================= 2. KNOB & EXTENDED M/S ROW (Regular Tracks) =================
         if (!isMaster) {
             Row(
                 modifier = Modifier
@@ -152,11 +152,10 @@ fun VerticalTrackChannel(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Left: Pan Rotary Knob (Slightly larger, perfectly centered)
+                // Left: Pan Rotary Knob with glowing LED Neon arc
                 Box(
                     modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
+                        .size(25.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     MicroPanKnob(
@@ -168,48 +167,49 @@ fun VerticalTrackChannel(
 
                 Spacer(modifier = Modifier.width(3.dp))
 
-                // Right: M/S (Mute/Solo) Square Button
+                // Right: Extended Rounded Rectangle M/S Capsule (no letters, pure reactive color)
                 val isSolo = track.isSolo
                 val isMuted = track.isMuted
 
-                val btnBg by animateColorAsState(
+                val pillBg by animateColorAsState(
                     targetValue = when {
+                        !isEnabled -> Color(0x14FFFFFF)
                         isSolo -> SoloAmber
                         isMuted -> Color(0xFFE11D48)
-                        else -> Color(0xFFE11D48).copy(alpha = 0.25f)
+                        else -> Color(0xFF10B981) // Clean glowing green active
                     },
-                    animationSpec = tween(120),
-                    label = "mute_solo_bg"
+                    animationSpec = tween(80),
+                    label = "ms_pill_bg"
                 )
-                val btnText = when {
-                    isSolo -> "S"
-                    isMuted -> "M"
-                    else -> "M/S"
-                }
-                val btnTextColor = when {
-                    isSolo -> Color(0xFF201300)
-                    isMuted -> Color.White
-                    else -> Color(0xFFFF85A1)
+
+                val pillBorderColor = when {
+                    !isEnabled -> Color(0x1AFFFFFF)
+                    isSolo -> Color(0xFFFFD54F)
+                    isMuted -> Color(0xFFFF4D6D)
+                    else -> Color(0xFF34D399)
                 }
 
                 Box(
                     modifier = Modifier
-                        .size(24.dp)
+                        .weight(1f)
+                        .height(23.dp)
                         .clip(RoundedCornerShape(6.dp))
-                        .background(btnBg)
-                        .border(
-                            1.dp,
-                            if (isSolo) SoloAmber else if (isMuted) Color(0xFFFF5277) else Color(0x4DE11D48),
-                            RoundedCornerShape(6.dp)
+                        .background(pillBg)
+                        .border(1.dp, pillBorderColor, RoundedCornerShape(6.dp))
+                        .shadow(
+                            elevation = if (isEnabled && (isSolo || isMuted)) 4.dp else 1.dp,
+                            shape = RoundedCornerShape(6.dp),
+                            spotColor = if (isSolo) SoloAmber else if (isMuted) MuteRed else Color(0xFF10B981)
                         )
                         .clickable { onMuteSoloClick() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = btnText,
-                        fontSize = if (btnText.length > 1) 7.5.sp else 9.5.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = btnTextColor
+                    // Small internal status dot / indicator
+                    Box(
+                        modifier = Modifier
+                            .size(width = 8.dp, height = 3.dp)
+                            .clip(RoundedCornerShape(1.5.dp))
+                            .background(Color.White.copy(alpha = if (isEnabled) 0.85f else 0.2f))
                     )
                 }
             }
@@ -234,7 +234,7 @@ fun VerticalTrackChannel(
 
         // ================= 4. BOTTOM ACTION BUTTONS =================
         if (!isMaster) {
-            // Regular Track: Left = FX button (Cyan), Right = Power button (Magenta)
+            // Regular Track: Left = FX button (Cyan), Right = Power square button (Blue when ON, dark when OFF)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -263,24 +263,30 @@ fun VerticalTrackChannel(
 
                 Spacer(modifier = Modifier.width(3.dp))
 
-                // Power Icon Button (Magenta box with ⏻)
-                val powerBg = if (isEnabled) Color(0xFFD946EF) else Color(0x26D946EF)
-                val powerTextColor = if (isEnabled) Color.White else Color(0xFFF0ABFC)
+                // Power Square Button: Lights up in Cyan/Blue when ON, fades dark/dim when OFF
+                val powerBg by animateColorAsState(
+                    targetValue = if (isEnabled) Color(0xFF0077B6) else Color(0xFF1E1E26),
+                    animationSpec = tween(100),
+                    label = "power_bg"
+                )
+                val powerBorder = if (isEnabled) NeonCyan else Color(0x2EFFFFFF)
+                val powerDotColor = if (isEnabled) Color(0xFF90E0EF) else Color(0x44FFFFFF)
 
                 Box(
                     modifier = Modifier
                         .size(23.dp)
                         .clip(RoundedCornerShape(6.dp))
                         .background(powerBg)
-                        .border(1.dp, if (isEnabled) NeonPinkLight else Color(0x4DD946EF), RoundedCornerShape(6.dp))
+                        .border(1.dp, powerBorder, RoundedCornerShape(6.dp))
                         .clickable { onPowerToggle() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = "⏻",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = powerTextColor
+                    // Small illuminated power glyph / dot
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(powerDotColor)
                     )
                 }
             }
@@ -313,7 +319,7 @@ fun VerticalTrackChannel(
 
 /**
  * Micro Rotary Pan Knob (-1.0f Left to +1.0f Right)
- * Sized and centered accurately to align with adjacent M/S button.
+ * Styled with outer glowing LED Neon arc.
  */
 @Composable
 fun MicroPanKnob(
@@ -327,7 +333,7 @@ fun MicroPanKnob(
 
     Box(
         modifier = modifier
-            .size(24.dp)
+            .size(25.dp)
             .pointerInput(isEnabled) {
                 if (isEnabled) {
                     detectVerticalDragGestures { _, dragAmount ->
@@ -339,60 +345,71 @@ fun MicroPanKnob(
             },
         contentAlignment = Alignment.Center
     ) {
-        Canvas(modifier = Modifier.size(21.dp)) {
+        Canvas(modifier = Modifier.size(22.dp)) {
             val strokeWidth = 2.0f
             val radius = (size.minDimension - strokeWidth) / 2f
             val center = Offset(size.width / 2f, size.height / 2f)
 
-            // Knob Bezel 3D shadow & metallic body
+            // Outer dark track
+            drawCircle(
+                color = Color(0xFF14141E),
+                radius = radius,
+                center = center
+            )
+
+            // Glowing LED Neon arc
+            if (isEnabled) {
+                val startAngle = 135f
+                val sweepAngle = 270f * ((currentPan + 1f) / 2f)
+                drawArc(
+                    brush = Brush.sweepGradient(
+                        listOf(NeonCyan, Color(0xFFFF9E00), NeonMagenta, NeonCyan),
+                        center = center
+                    ),
+                    startAngle = startAngle,
+                    sweepAngle = sweepAngle.coerceAtLeast(6f),
+                    useCenter = false,
+                    style = Stroke(width = 2.4f, cap = StrokeCap.Round)
+                )
+            }
+
+            // Knob Center Body
+            val innerRadius = radius * 0.72f
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        Color(0xFF4A4A62),
-                        Color(0xFF2C2C3C),
-                        Color(0xFF181822)
+                        Color(0xFF3E3E52),
+                        Color(0xFF242432),
+                        Color(0xFF12121A)
                     ),
                     center = center,
-                    radius = radius
+                    radius = innerRadius
                 ),
-                radius = radius
+                radius = innerRadius,
+                center = center
             )
 
-            // Outer Neon/Bezel Accent Ring
-            drawCircle(
-                color = if (isEnabled) NeonCyan.copy(alpha = 0.65f) else Color(0x2AFFFFFF),
-                radius = radius,
-                style = Stroke(width = 1.3f)
-            )
-
-            // Center Notch (12 o'clock = 0 center)
+            // Center Notch Pointer (12 o'clock = 0 center)
             val angleDeg = 270f + (currentPan * 65f)
             val angleRad = (angleDeg * PI / 180f).toFloat()
 
-            val pointerColor = if (isEnabled) NeonCyanLight else Color.LightGray
-            val endX = center.x + radius * 0.82f * cos(angleRad)
-            val endY = center.y + radius * 0.82f * sin(angleRad)
+            val pointerColor = if (isEnabled) NeonCyanLight else Color.DarkGray
+            val endX = center.x + innerRadius * 0.85f * cos(angleRad)
+            val endY = center.y + innerRadius * 0.85f * sin(angleRad)
 
             drawLine(
                 color = pointerColor,
                 start = center,
                 end = Offset(endX, endY),
-                strokeWidth = 2.4f,
+                strokeWidth = 2.0f,
                 cap = StrokeCap.Round
-            )
-
-            // Center metallic core dot
-            drawCircle(
-                color = if (isEnabled) NeonCyan else Color.Gray,
-                radius = 2f,
-                center = center
             )
         }
     }
 }
 
 /**
- * Fader Slider with 3D Realistic Fader Cap and Stereo Background VU-Meter
+ * Fader Slider with 3D Realistic Fader Cap and Stereo 2-Color Neon VU-Meter
  */
 @Composable
 fun FaderSliderWithVuMeter(
@@ -444,7 +461,8 @@ fun FaderSliderWithVuMeter(
             },
         contentAlignment = Alignment.BottomCenter
     ) {
-        // ================= BACKGROUND STEREO VU-METER =================
+        // ================= BACKGROUND STEREO 2-COLOR NEON VU-METER =================
+        // Only illuminates when isEnabled and peakMeter > 0f
         Row(
             modifier = Modifier
                 .width(16.dp)
@@ -461,18 +479,19 @@ fun FaderSliderWithVuMeter(
             ) {
                 val barWidth = size.width - 1f
                 val h = size.height
-                val meterHeight = (peakMeterL * h).coerceIn(0f, h)
+                val meterHeight = if (isEnabled) (peakMeterL * h).coerceIn(0f, h) else 0f
 
-                // Groove slot background
+                // Dark groove slot background
                 drawRect(
                     color = Color(0x1A000000),
                     topLeft = Offset.Zero,
                     size = Size(barWidth, h)
                 )
 
-                if (meterHeight > 0f) {
+                if (meterHeight > 0.5f) {
+                    // 2-Color Neon LED style (Neon Cyan in mid/low, transitioning to Neon Magenta/Amber at peak)
                     val brush = Brush.verticalGradient(
-                        colors = listOf(MuteRed, SoloAmber, NeonCyan, Color(0xFF10B981)),
+                        colors = listOf(NeonMagenta, SoloAmber, NeonCyan),
                         startY = 0f,
                         endY = h
                     )
@@ -495,7 +514,7 @@ fun FaderSliderWithVuMeter(
             ) {
                 val barWidth = size.width - 1f
                 val h = size.height
-                val meterHeight = (peakMeterR * h).coerceIn(0f, h)
+                val meterHeight = if (isEnabled) (peakMeterR * h).coerceIn(0f, h) else 0f
 
                 drawRect(
                     color = Color(0x1A000000),
@@ -503,9 +522,9 @@ fun FaderSliderWithVuMeter(
                     size = Size(barWidth, h)
                 )
 
-                if (meterHeight > 0f) {
+                if (meterHeight > 0.5f) {
                     val brush = Brush.verticalGradient(
-                        colors = listOf(MuteRed, SoloAmber, NeonCyan, Color(0xFF10B981)),
+                        colors = listOf(NeonMagenta, SoloAmber, NeonCyan),
                         startY = 0f,
                         endY = h
                     )

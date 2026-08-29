@@ -1,5 +1,12 @@
 package com.example.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -8,6 +15,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -28,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.DrumPadItem
 import com.example.model.DrumSoundType
+import com.example.model.StorageItem
 import com.example.ui.theme.*
 import kotlin.math.roundToInt
 
@@ -40,29 +49,32 @@ fun DrumPadDialog(
     onReverbChange: (Float) -> Unit,
     activeTab: String,
     onTabChange: (String) -> Unit,
+    subView: String,
+    onSetSubView: (String) -> Unit,
+    soundfonts: List<StorageItem>,
+    audioFiles: List<StorageItem>,
     isPinned: Boolean,
     onTogglePin: () -> Unit,
     onClose: () -> Unit,
-    onOpenSf2Picker: () -> Unit,
     onPadPressed: (Int) -> Unit,
     onPadReleased: (Int) -> Unit,
-    onOpenAssigner: (Int) -> Unit,
-    editingPadId: Int?,
-    onAssignSample: (Int, String) -> Unit,
-    onAssignSf2Note: (Int, String, Int) -> Unit,
-    onCloseAssigner: () -> Unit,
+    onAssignPadSample: (Int, StorageItem) -> Unit,
+    onAssignPadNote: (Int, String, Int, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
 
-    // Floating window state (offsets & dimensions) - free 360 drag
     var floatingOffsetX by remember { mutableFloatStateOf(40f) }
     var floatingOffsetY by remember { mutableFloatStateOf(30f) }
     var windowWidthDp by remember { mutableStateOf(520.dp) }
-    var windowHeightDp by remember { mutableStateOf(290.dp) }
+    var windowHeightDp by remember { mutableStateOf(310.dp) }
+
+    var selectedSampleForAssign by remember { mutableStateOf<StorageItem?>(null) }
+    var selectedNoteForAssign by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    var isAssignModalOpen by remember { mutableStateOf(false) }
 
     if (isPinned) {
-        // FLOATING RESIZABLE WINDOW (Free movement anywhere on screen)
+        // Floating resizable window
         Box(
             modifier = modifier
                 .offset { IntOffset(floatingOffsetX.roundToInt(), floatingOffsetY.roundToInt()) }
@@ -70,9 +82,7 @@ fun DrumPadDialog(
                 .shadow(24.dp, RoundedCornerShape(16.dp))
                 .clip(RoundedCornerShape(16.dp))
                 .background(
-                    Brush.linearGradient(
-                        colors = listOf(Color(0xFF282838), Color(0xFF1B1B24), Color(0xFF14141C))
-                    )
+                    Brush.linearGradient(listOf(Color(0xFF282838), Color(0xFF1B1B24), Color(0xFF14141C)))
                 )
                 .border(1.5.dp, NeonCyan, RoundedCornerShape(16.dp))
                 .testTag("floating_drum_pad")
@@ -80,26 +90,35 @@ fun DrumPadDialog(
             DrumPadContent(
                 drumPads = drumPads,
                 volume = volume,
-                onVolumeChange = onVolumeChange,
                 reverb = reverb,
-                onReverbChange = onReverbChange,
                 activeTab = activeTab,
                 onTabChange = onTabChange,
+                subView = subView,
+                onSetSubView = onSetSubView,
+                soundfonts = soundfonts,
+                audioFiles = audioFiles,
                 isPinned = isPinned,
                 onTogglePin = onTogglePin,
                 onClose = onClose,
-                onOpenSf2Picker = onOpenSf2Picker,
                 onPadPressed = onPadPressed,
                 onPadReleased = onPadReleased,
-                onOpenAssigner = onOpenAssigner,
+                onSelectSampleForAssign = { sample ->
+                    selectedSampleForAssign = sample
+                    selectedNoteForAssign = null
+                    isAssignModalOpen = true
+                },
+                onSelectNoteForAssign = { note, oct ->
+                    selectedNoteForAssign = note to oct
+                    selectedSampleForAssign = null
+                    isAssignModalOpen = true
+                },
                 onDragHeader = { dx, dy ->
-                    // Free dragging across screen
                     floatingOffsetX += dx
                     floatingOffsetY += dy
                 }
             )
 
-            // Resize Handle in bottom-right corner
+            // Resize Handle
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
@@ -111,36 +130,18 @@ fun DrumPadDialog(
                             change.consume()
                             val dxDp = with(density) { dragAmount.x.toDp() }
                             val dyDp = with(density) { dragAmount.y.toDp() }
-                            windowWidthDp = (windowWidthDp + dxDp).coerceIn(300.dp, 900.dp)
-                            windowHeightDp = (windowHeightDp + dyDp).coerceIn(160.dp, 500.dp)
+                            windowWidthDp = (windowWidthDp + dxDp).coerceIn(320.dp, 800.dp)
+                            windowHeightDp = (windowHeightDp + dyDp).coerceIn(200.dp, 500.dp)
                         }
                     }
                     .padding(4.dp),
                 contentAlignment = Alignment.BottomEnd
             ) {
-                Text(
-                    text = "◢",
-                    fontSize = 12.sp,
-                    color = NeonCyan,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            // Sound Assigner Modal on Long Press
-            if (editingPadId != null) {
-                val pad = drumPads.find { it.id == editingPadId }
-                if (pad != null) {
-                    DrumSoundAssignerModal(
-                        pad = pad,
-                        onAssignSample = { sample -> onAssignSample(pad.id, sample) },
-                        onAssignSf2Note = { key, oct -> onAssignSf2Note(pad.id, key, oct) },
-                        onClose = onCloseAssigner
-                    )
-                }
+                Text(text = "◢", fontSize = 12.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
             }
         }
     } else {
-        // STANDARD CENTERED MODAL DIALOG
+        // Standard Modal Dialog with smooth entrance animation
         Box(
             modifier = modifier
                 .fillMaxSize()
@@ -148,49 +149,141 @@ fun DrumPadDialog(
                 .clickable { onClose() },
             contentAlignment = Alignment.Center
         ) {
+            AnimatedVisibility(
+                visible = true,
+                enter = fadeIn(tween(200, easing = FastOutSlowInEasing)) + scaleIn(
+                    initialScale = 0.92f,
+                    animationSpec = tween(220, easing = FastOutSlowInEasing)
+                ),
+                exit = fadeOut(tween(160)) + scaleOut(targetScale = 0.95f)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .fillMaxHeight(0.90f)
+                        .shadow(24.dp, RoundedCornerShape(20.dp))
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(
+                            Brush.linearGradient(listOf(Color(0xFF2A2A38), Color(0xFF1B1B24), Color(0xFF17171F)))
+                        )
+                        .border(1.2.dp, NeonCyan, RoundedCornerShape(20.dp))
+                        .clickable(enabled = false) {}
+                        .padding(14.dp)
+                        .testTag("dialog_drum_pad")
+                ) {
+                    DrumPadContent(
+                        drumPads = drumPads,
+                        volume = volume,
+                        reverb = reverb,
+                        activeTab = activeTab,
+                        onTabChange = onTabChange,
+                        subView = subView,
+                        onSetSubView = onSetSubView,
+                        soundfonts = soundfonts,
+                        audioFiles = audioFiles,
+                        isPinned = isPinned,
+                        onTogglePin = onTogglePin,
+                        onClose = onClose,
+                        onPadPressed = onPadPressed,
+                        onPadReleased = onPadReleased,
+                        onSelectSampleForAssign = { sample ->
+                            selectedSampleForAssign = sample
+                            selectedNoteForAssign = null
+                            isAssignModalOpen = true
+                        },
+                        onSelectNoteForAssign = { note, oct ->
+                            selectedNoteForAssign = note to oct
+                            selectedSampleForAssign = null
+                            isAssignModalOpen = true
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    // Modal to choose which Pad (1..8) to assign the selected sound to
+    if (isAssignModalOpen) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0x80000000))
+                .clickable { isAssignModalOpen = false },
+            contentAlignment = Alignment.Center
+        ) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth(0.92f)
-                    .fillMaxHeight(0.90f)
-                    .shadow(24.dp, RoundedCornerShape(20.dp))
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(Color(0xFF2A2A38), Color(0xFF1B1B24), Color(0xFF17171F))
-                        )
-                    )
-                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(20.dp))
+                    .width(340.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0xFF1E1E28))
+                    .border(1.dp, NeonCyan, RoundedCornerShape(16.dp))
                     .clickable(enabled = false) {}
-                    .testTag("dialog_drum_pad")
+                    .padding(16.dp)
             ) {
-                DrumPadContent(
-                    drumPads = drumPads,
-                    volume = volume,
-                    onVolumeChange = onVolumeChange,
-                    reverb = reverb,
-                    onReverbChange = onReverbChange,
-                    activeTab = activeTab,
-                    onTabChange = onTabChange,
-                    isPinned = isPinned,
-                    onTogglePin = onTogglePin,
-                    onClose = onClose,
-                    onOpenSf2Picker = onOpenSf2Picker,
-                    onPadPressed = onPadPressed,
-                    onPadReleased = onPadReleased,
-                    onOpenAssigner = onOpenAssigner,
-                    onDragHeader = null
-                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "ASSIGNER AU PAD",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NeonCyan
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    val targetName = selectedSampleForAssign?.name ?: selectedNoteForAssign?.let { "${it.first}${it.second}" } ?: ""
+                    Text(
+                        text = "Son : $targetName",
+                        fontSize = 10.sp,
+                        color = TextPrimary
+                    )
 
-                // Sound Assigner Modal on Long Press
-                if (editingPadId != null) {
-                    val pad = drumPads.find { it.id == editingPadId }
-                    if (pad != null) {
-                        DrumSoundAssignerModal(
-                            pad = pad,
-                            onAssignSample = { sample -> onAssignSample(pad.id, sample) },
-                            onAssignSf2Note = { key, oct -> onAssignSf2Note(pad.id, key, oct) },
-                            onClose = onCloseAssigner
-                        )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // 4x2 Pad selection grid
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for (row in 0 until 2) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                for (col in 0 until 4) {
+                                    val padId = row * 4 + col + 1
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(36.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color(0x2222D3EE))
+                                            .border(1.dp, Color(0x6622D3EE), RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                selectedSampleForAssign?.let { onAssignPadSample(padId, it) }
+                                                selectedNoteForAssign?.let { (k, o) -> onAssignPadNote(padId, "$k$o", o, k) }
+                                                isAssignModalOpen = false
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "Pad $padId",
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0x14FFFFFF))
+                            .clickable { isAssignModalOpen = false }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = "Annuler", fontSize = 11.sp, color = TextDim)
                     }
                 }
             }
@@ -202,475 +295,382 @@ fun DrumPadDialog(
 private fun DrumPadContent(
     drumPads: List<DrumPadItem>,
     volume: Float,
-    onVolumeChange: (Float) -> Unit,
     reverb: Float,
-    onReverbChange: (Float) -> Unit,
     activeTab: String,
     onTabChange: (String) -> Unit,
+    subView: String,
+    onSetSubView: (String) -> Unit,
+    soundfonts: List<StorageItem>,
+    audioFiles: List<StorageItem>,
     isPinned: Boolean,
     onTogglePin: () -> Unit,
     onClose: () -> Unit,
-    onOpenSf2Picker: () -> Unit,
     onPadPressed: (Int) -> Unit,
     onPadReleased: (Int) -> Unit,
-    onOpenAssigner: (Int) -> Unit,
-    onDragHeader: ((Float, Float) -> Unit)?
+    onSelectSampleForAssign: (StorageItem) -> Unit,
+    onSelectNoteForAssign: (String, Int) -> Unit,
+    onDragHeader: (Float, Float) -> Unit = { _, _ -> }
 ) {
-    BoxWithConstraints(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(10.dp)
-    ) {
-        val isCompact = maxWidth < 440.dp || maxHeight < 240.dp
-        val isUltraCompact = maxWidth < 360.dp || maxHeight < 200.dp
-
-        Column(modifier = Modifier.fillMaxSize()) {
-            // Header with draggable bar when pinned
-            val headerModifier = if (onDragHeader != null) {
-                Modifier
-                    .fillMaxWidth()
-                    .height(if (isCompact) 24.dp else 28.dp)
-                    .pointerInput(Unit) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Top Header
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(32.dp)
+                .pointerInput(isPinned) {
+                    if (isPinned) {
                         detectDragGestures { change, dragAmount ->
                             change.consume()
                             onDragHeader(dragAmount.x, dragAmount.y)
                         }
                     }
-            } else {
-                Modifier
-                    .fillMaxWidth()
-                    .height(if (isCompact) 24.dp else 28.dp)
-            }
-
+                },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
             Row(
-                modifier = headerModifier,
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    if (isPinned) {
-                        Text(text = "✥", fontSize = 11.sp, color = NeonCyan)
-                    }
-                    Text(
-                        text = if (isUltraCompact) "Drum Pad" else "Drum Pad Matrix",
-                        fontSize = if (isCompact) 12.sp else 13.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary
-                    )
-                }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    // Pin Button (Floating toggle)
+                if (subView == "sf2_picker") {
                     Box(
                         modifier = Modifier
-                            .size(if (isCompact) 22.dp else 26.dp)
                             .clip(RoundedCornerShape(6.dp))
-                            .background(if (isPinned) NeonCyan else Color(0x14FFFFFF))
-                            .border(1.dp, if (isPinned) Color.Transparent else Color(0x26FFFFFF), RoundedCornerShape(6.dp))
-                            .clickable { onTogglePin() },
-                        contentAlignment = Alignment.Center
+                            .background(Color(0x2222D3EE))
+                            .border(1.dp, NeonCyan, RoundedCornerShape(6.dp))
+                            .clickable { onSetSubView("main") }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                        Text(text = "📌", fontSize = if (isCompact) 9.sp else 11.sp)
-                    }
-
-                    // Close Button
-                    Box(
-                        modifier = Modifier
-                            .size(if (isCompact) 22.dp else 26.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0x14FFFFFF))
-                            .border(1.dp, Color(0x26FFFFFF), RoundedCornerShape(6.dp))
-                            .clickable { onClose() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(text = "✕", fontSize = if (isCompact) 10.sp else 12.sp, color = TextPrimary)
+                        Text(text = "← Retour", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
                     }
                 }
+
+                Text(
+                    text = if (subView == "sf2_picker") "Choisir un SoundFont (.sf2)" else "🥁 Drum Pad Synth & Sampler",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
             }
 
-            if (!isUltraCompact) {
-                Spacer(modifier = Modifier.height(4.dp))
-
-                // Soundfont Banner
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0x0AFFFFFF))
-                        .border(1.dp, Color(0x17FFFFFF), RoundedCornerShape(8.dp))
-                        .clickable { onOpenSf2Picker() }
-                        .padding(horizontal = 8.dp, vertical = if (isCompact) 4.dp else 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (subView == "main") {
                     Box(
                         modifier = Modifier
-                            .size(if (isCompact) 22.dp else 26.dp)
                             .clip(RoundedCornerShape(6.dp))
-                            .background(Brush.linearGradient(listOf(NeonCyanLight, NeonCyanDark))),
+                            .background(Color(0x1A8B5CF6))
+                            .border(1.dp, NeonPurpleLight, RoundedCornerShape(6.dp))
+                            .clickable { onSetSubView("sf2_picker") }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(text = "📦 Banques SF2", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = NeonPurpleLight)
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(if (isPinned) Color(0x3322D3EE) else Color(0x14FFFFFF))
+                        .clickable { onTogglePin() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = if (isPinned) "📌" else "📍", fontSize = 11.sp)
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0x14FFFFFF))
+                        .clickable { onClose() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "✕", fontSize = 12.sp, color = TextPrimary)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        if (subView == "sf2_picker") {
+            // INNER SOUNDFONT PICKER (Does not exit popup!)
+            Column(modifier = Modifier.fillMaxSize()) {
+                Text(
+                    text = "SOUNDFONTS DÉTECTÉS DANS LE STOCKAGE",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextDim
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+
+                if (soundfonts.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0x08FFFFFF))
+                            .padding(12.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(text = "🥁", fontSize = if (isCompact) 10.sp else 11.sp)
-                    }
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(text = "Kit Soundfont", fontSize = 8.sp, color = TextDim2)
                         Text(
-                            text = "Standard Studio Drum Kit",
-                            fontSize = if (isCompact) 10.5.sp else 11.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TextPrimary
+                            text = "Aucun fichier .sf2 trouvé.\nPlacez vos SoundFonts dans /LiveKeys/SoundFonts",
+                            fontSize = 10.sp,
+                            color = TextDim,
+                            textAlign = TextAlign.Center
                         )
                     }
-
-                    Text(text = "›", fontSize = 14.sp, color = TextDim)
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        items(soundfonts) { sf2 ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0x0AFFFFFF))
+                                    .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(8.dp))
+                                    .clickable { onSetSubView("main") }
+                                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(text = "📦", fontSize = 12.sp)
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = sf2.name,
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = TextPrimary
+                                    )
+                                    Text(
+                                        text = sf2.formattedSize,
+                                        fontSize = 8.sp,
+                                        color = TextDim2
+                                    )
+                                }
+                                Text(text = "Charger", fontSize = 9.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                 }
             }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // Sub-Tabs Header (Pads / Bank / Files)
+        } else {
+            // MAIN VIEW WITH TABS: PADS, FICHIERS, NOTES SF2
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                listOf("pads" to "Pads Matrix", "bank" to "Samples Preset", "files" to "Fichiers").forEach { (tabKey, tabLabel) ->
-                    val isSelected = activeTab == tabKey
+                listOf("pads" to "8 Pads", "files" to "Fichiers Audio", "sf2_notes" to "Notes SoundFont").forEach { (tabKey, tabLabel) ->
+                    val isSel = activeTab == tabKey
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(
-                                if (isSelected) Brush.horizontalGradient(listOf(NeonCyanLight, NeonCyanDark)) else Brush.linearGradient(listOf(Color(0x0FFFFFFF), Color(0x08FFFFFF)))
-                            )
-                            .border(
-                                1.dp,
-                                if (isSelected) Color.Transparent else Color(0x1AFFFFFF),
-                                RoundedCornerShape(6.dp)
-                            )
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isSel) NeonCyan else Color(0x0DFFFFFF))
                             .clickable { onTabChange(tabKey) }
-                            .padding(vertical = if (isCompact) 3.dp else 5.dp),
+                            .padding(vertical = 5.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = tabLabel,
-                            fontSize = if (isCompact) 9.sp else 10.5.sp,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (isSelected) Color(0xFF00232B) else TextDim
+                            color = if (isSel) Color(0xFF002933) else TextDim
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // Tab Content
             when (activeTab) {
                 "pads" -> {
-                    // Pads Grid (2 rows x 4 cols) + Volume/Reverb Sidebar
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        // 8-Pad Dynamic Matrix (4x2)
-                        BoxWithConstraints(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                        ) {
-                            val gap = if (isCompact) 4.dp else 6.dp
-                            val rowHeight = (maxHeight - gap) / 2
-
-                            Column(
-                                modifier = Modifier.fillMaxSize(),
-                                verticalArrangement = Arrangement.spacedBy(gap)
-                            ) {
-                                // Top row: Pads 1..4
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(rowHeight),
-                                    horizontalArrangement = Arrangement.spacedBy(gap)
-                                ) {
-                                    drumPads.take(4).forEach { pad ->
-                                        DrumPadCell(
-                                            pad = pad,
-                                            isCompact = isCompact,
-                                            onPressed = { onPadPressed(pad.id) },
-                                            onReleased = { onPadReleased(pad.id) },
-                                            onLongPress = { onOpenAssigner(pad.id) },
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .fillMaxHeight()
-                                        )
-                                    }
-                                }
-
-                                // Bottom row: Pads 5..8
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(rowHeight),
-                                    horizontalArrangement = Arrangement.spacedBy(gap)
-                                ) {
-                                    drumPads.drop(4).take(4).forEach { pad ->
-                                        DrumPadCell(
-                                            pad = pad,
-                                            isCompact = isCompact,
-                                            onPressed = { onPadPressed(pad.id) },
-                                            onReleased = { onPadReleased(pad.id) },
-                                            onLongPress = { onOpenAssigner(pad.id) },
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .fillMaxHeight()
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // Knobs Sidebar
-                        Column(
-                            modifier = Modifier
-                                .width(if (isCompact) 65.dp else 80.dp)
-                                .fillMaxHeight(),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            RotaryKnob(
-                                value = volume,
-                                onValueChange = onVolumeChange,
-                                label = "Volume",
-                                valueText = "${(volume * 100).toInt()}%",
-                                size = if (isCompact) 36.dp else 46.dp
-                            )
-
-                            RotaryKnob(
-                                value = reverb,
-                                onValueChange = onReverbChange,
-                                label = "Reverb",
-                                valueText = "${(reverb * 100).toInt()}%",
-                                size = if (isCompact) 36.dp else 46.dp
-                            )
-                        }
-                    }
-                }
-                "bank" -> {
-                    // Sample Bank list
-                    LazyColumn(
+                    // 2x4 Pads Grid
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        items(drumPads) { pad ->
+                        for (row in 0 until 2) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color(0x0AFFFFFF))
-                                    .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(8.dp))
-                                    .clickable { onOpenAssigner(pad.id) }
-                                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                    .weight(1f),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Text(text = "Pad ${pad.id} : ${pad.label}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                                val assignedText = if (pad.soundType == DrumSoundType.SAMPLE) pad.sampleFileName else "Note SF2: ${pad.sf2Note}"
-                                Text(text = assignedText, fontSize = 9.5.sp, color = NeonCyan)
+                                for (col in 0 until 4) {
+                                    val index = row * 4 + col
+                                    val pad = drumPads.getOrNull(index) ?: DrumPadItem(index + 1, "Pad ${index + 1}")
+                                    val isPressed = pad.isPressed
+
+                                    val padBrush = if (isPressed) {
+                                        Brush.verticalGradient(listOf(NeonPinkLight, NeonPink))
+                                    } else {
+                                        Brush.verticalGradient(listOf(Color(0xFF262636), Color(0xFF161622)))
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(padBrush)
+                                            .border(
+                                                1.2.dp,
+                                                if (isPressed) NeonCyan else Color(0x2EFFFFFF),
+                                                RoundedCornerShape(10.dp)
+                                            )
+                                            .pointerInput(pad.id) {
+                                                detectTapGestures(
+                                                    onPress = {
+                                                        onPadPressed(pad.id)
+                                                        tryAwaitRelease()
+                                                        onPadReleased(pad.id)
+                                                    }
+                                                )
+                                            }
+                                            .padding(6.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text(
+                                                text = pad.label,
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = if (isPressed) Color.White else TextPrimary
+                                            )
+                                            Text(
+                                                text = if (pad.soundType == DrumSoundType.SAMPLE) pad.sampleFileName else pad.sf2Note,
+                                                fontSize = 8.sp,
+                                                color = if (isPressed) Color.White.copy(alpha = 0.8f) else TextDim2,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
+
                 "files" -> {
-                    // Explorer / Samples list
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        val samples = listOf(
-                            "kick_808_deep.wav",
-                            "snare_crisp.wav",
-                            "hat_trap_closed.wav",
-                            "hat_open_bright.wav",
-                            "clap_vinyl.mp3",
-                            "tom_floor_punch.wav",
-                            "crash_bright.mp3"
+                    // Files tab: short tap = play sample; long press = assign to Pad
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        Text(
+                            text = "TOUCHER = ÉCOUTER · APPUI LONG = ASSIGNER À UN PAD",
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NeonCyan
                         )
-                        items(samples) { sample ->
-                            Row(
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        if (audioFiles.isEmpty()) {
+                            Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .weight(1f)
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(Color(0x0AFFFFFF))
-                                    .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(8.dp))
-                                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                    .background(Color(0x08FFFFFF)),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Text(text = "🎵 $sample", fontSize = 11.sp, color = TextPrimary)
-                                Text(text = "44.1 kHz", fontSize = 9.sp, color = TextDim2)
+                                Text(text = "Placez des fichiers audio dans /LiveKeys/Loops", fontSize = 9.sp, color = TextDim)
+                            }
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                items(audioFiles) { file ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(Color(0x0AFFFFFF))
+                                            .pointerInput(file.path) {
+                                                detectTapGestures(
+                                                    onTap = { /* Play sample preview */ },
+                                                    onLongPress = { onSelectSampleForAssign(file) }
+                                                )
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(text = "🎵", fontSize = 10.sp)
+                                        Text(
+                                            text = file.name,
+                                            fontSize = 9.5.sp,
+                                            color = TextPrimary,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Text(text = "Appui long ↗", fontSize = 8.sp, color = NeonCyan)
+                                    }
+                                }
                             }
                         }
                     }
                 }
-            }
-        }
-    }
-}
 
-@Composable
-private fun DrumPadCell(
-    pad: DrumPadItem,
-    isCompact: Boolean,
-    onPressed: () -> Unit,
-    onReleased: () -> Unit,
-    onLongPress: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val isPressed = pad.isPressed
-    val padColors = when (pad.id) {
-        1 -> listOf(Color(0xFFFF5C8A), Color(0xFFE11D48))
-        2 -> listOf(Color(0xFFFF6FAE), Color(0xFFC026D3))
-        3 -> listOf(Color(0xFF00E5FF), Color(0xFF00B0FF))
-        4 -> listOf(Color(0xFF38BDF8), Color(0xFF0284C7))
-        5 -> listOf(Color(0xFFF472B6), Color(0xFFDB2777))
-        6 -> listOf(Color(0xFFA78BFA), Color(0xFF7C3AED))
-        7 -> listOf(Color(0xFFC084FC), Color(0xFF9333EA))
-        else -> listOf(Color(0xFFE879F9), Color(0xFFC026D3))
-    }
+                "sf2_notes" -> {
+                    // Soundfont notes: short tap = preview; long press = assign to Pad
+                    val notesList = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+                    val octaves = listOf(1, 2, 3, 4)
 
-    val cellBrush = if (isPressed) {
-        Brush.verticalGradient(listOf(Color.White, padColors.first()))
-    } else {
-        Brush.verticalGradient(padColors)
-    }
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        Text(
+                            text = "TOUCHER = ÉCOUTER · APPUI LONG = ASSIGNER",
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NeonCyan
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
 
-    Box(
-        modifier = modifier
-            .shadow(if (isPressed) 14.dp else 3.dp, RoundedCornerShape(10.dp))
-            .clip(RoundedCornerShape(10.dp))
-            .background(cellBrush)
-            .border(
-                1.5.dp,
-                if (isPressed) Color.White else Color(0x33FFFFFF),
-                RoundedCornerShape(10.dp)
-            )
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onPress = {
-                        onPressed()
-                        tryAwaitRelease()
-                        onReleased()
-                    }
-                )
-            }
-            .padding(4.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = pad.label,
-                fontSize = if (isCompact) 10.sp else 12.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = if (isPressed) Color(0xFF1E1E2E) else Color.White,
-                textAlign = TextAlign.Center
-            )
-
-            val subText = if (pad.soundType == DrumSoundType.SAMPLE) {
-                pad.sampleFileName.substringBeforeLast(".")
-            } else {
-                pad.sf2Note
-            }
-
-            Text(
-                text = subText,
-                fontSize = if (isCompact) 7.5.sp else 9.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = if (isPressed) Color(0xFF333344) else Color(0xCCFFFFFF),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center
-            )
-        }
-    }
-}
-
-@Composable
-fun DrumSoundAssignerModal(
-    pad: DrumPadItem,
-    onAssignSample: (String) -> Unit,
-    onAssignSf2Note: (String, Int) -> Unit,
-    onClose: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0x99000000))
-            .clickable { onClose() },
-        contentAlignment = Alignment.Center
-    ) {
-        Box(
-            modifier = Modifier
-                .width(360.dp)
-                .shadow(20.dp, RoundedCornerShape(16.dp))
-                .clip(RoundedCornerShape(16.dp))
-                .background(Brush.linearGradient(listOf(Color(0xFF262635), Color(0xFF171720))))
-                .border(1.dp, NeonCyan, RoundedCornerShape(16.dp))
-                .clickable(enabled = false) {}
-                .padding(14.dp)
-        ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(text = "Assigner Pad ${pad.id} (${pad.label})", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                    Text(text = "✕", fontSize = 12.sp, color = TextDim, modifier = Modifier.clickable { onClose() })
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Text(text = "ÉCHANTILLONS DISPONIBLES :", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextDim)
-                Spacer(modifier = Modifier.height(6.dp))
-
-                val sampleList = listOf(
-                    "kick_808_deep.wav",
-                    "snare_crisp.wav",
-                    "hat_trap_closed.wav",
-                    "hat_open_bright.wav",
-                    "clap_vinyl.mp3",
-                    "tom_floor_punch.wav",
-                    "crash_bright.mp3"
-                )
-
-                LazyColumn(modifier = Modifier.height(160.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    items(sampleList) { sample ->
-                        val isSelected = pad.sampleFileName == sample
-                        Box(
+                        LazyColumn(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (isSelected) Color(0x3322D3EE) else Color(0x0DFFFFFF))
-                                .border(1.dp, if (isSelected) NeonCyan else Color(0x14FFFFFF), RoundedCornerShape(6.dp))
-                                .clickable {
-                                    onAssignSample(sample)
-                                    onClose()
-                                }
-                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                                .weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
-                            Text(text = sample, fontSize = 11.sp, color = if (isSelected) NeonCyan else TextPrimary)
+                            items(octaves) { oct ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    notesList.forEach { note ->
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(28.dp)
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(if (note.contains("#")) Color(0xFF1E2235) else Color(0xFF2E344E))
+                                                .pointerInput("$note$oct") {
+                                                    detectTapGestures(
+                                                        onTap = { /* preview note */ },
+                                                        onLongPress = { onSelectNoteForAssign(note, oct) }
+                                                    )
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "$note$oct",
+                                                fontSize = 8.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

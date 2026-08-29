@@ -1,10 +1,12 @@
 package com.example
 
+import android.app.Application
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.test.core.app.ApplicationProvider
 import com.example.ui.MixerScreen
 import com.example.ui.theme.DarkBg
 import com.example.ui.theme.SoundfontLiveMixerTheme
@@ -20,14 +22,15 @@ import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(qualifiers = RobolectricDeviceQualifiers.Pixel8Landscape, sdk = [36])
+@Config(qualifiers = RobolectricDeviceQualifiers.Pixel6, sdk = [36])
 class GreetingScreenshotTest {
 
   @get:Rule val composeTestRule = createComposeRule()
 
   @Test
   fun mixer_screen_screenshot() {
-    val viewModel = MixerViewModel()
+    val app = ApplicationProvider.getApplicationContext<Application>()
+    val viewModel = MixerViewModel(app)
     composeTestRule.setContent {
       SoundfontLiveMixerTheme {
         Surface(modifier = Modifier.fillMaxSize(), color = DarkBg) {
@@ -39,4 +42,3 @@ class GreetingScreenshotTest {
     composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/mixer_screen.png")
   }
 }
-

@@ -7,7 +7,15 @@ import com.example.ui.theme.MuteRed
 import com.example.ui.theme.SoloAmber
 
 enum class ActivePopup {
-    NONE, DRUM_PAD, TONIC_PAD, SCENE, EFFECTS, SOUNDFONT
+    NONE, DRUM_PAD, TONIC_PAD, SCENE, EFFECTS, SOUNDFONT, STYLE
+}
+
+enum class AppTheme(val displayName: String, val description: String) {
+    CYBER_NEON("Cyber Neon (Défaut)", "Teintes sombres avec accents cyan & violet néon"),
+    OBSIDIAN_GOLD("Obsidian Gold", "Noir profond avec accents dorés et ambrés luxueux"),
+    TOKYO_NIGHT("Tokyo Night", "Bleu nuit profond avec touches rose magenta et indigo"),
+    STUDIO_SLATE("Studio Slate", "Gris studio professionnel épuré et minimaliste"),
+    OLED_BLACK("OLED Pure Black", "Noir absolu pour économie d'énergie et contraste max")
 }
 
 enum class DrumSoundType {

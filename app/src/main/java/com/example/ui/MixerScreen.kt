@@ -121,7 +121,7 @@ fun MixerScreen(
                         )
                     }
 
-                    // Master Channel (Faithful to Screenshot_20260828-232237_Excalidrawing.png)
+                    // Master Channel
                     VerticalTrackChannel(
                         track = uiState.masterTrack,
                         onVolumeChange = { vol -> viewModel.setTrackVolume(0, vol) },
@@ -138,7 +138,7 @@ fun MixerScreen(
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                // 3. BOTTOM BAR (With Piano Logo Toggle Button Aligned Below Master)
+                // 3. BOTTOM BAR (With Arranger Sync Controls & Piano Logo Toggle Button)
                 BottomBar(
                     isRecording = uiState.isRecording,
                     recordingDuration = uiState.recordingDuration,
@@ -154,6 +154,13 @@ fun MixerScreen(
                     onSelectSignature = { viewModel.setMetronomeSignature(it) },
                     metroVolume = uiState.metronomeVolume,
                     onMetroVolumeChange = { viewModel.setMetronomeVolume(it) },
+                    isStylePlaying = uiState.isStylePlaying,
+                    isSyncStartActive = uiState.isSyncStartActive,
+                    activeStyleSection = uiState.activeStyleSection,
+                    selectedStyleName = uiState.selectedStyleName,
+                    onOpenStyleDialog = { viewModel.openPopup(ActivePopup.STYLE) },
+                    onToggleSyncStart = { viewModel.toggleSyncStart() },
+                    onTriggerStyleSection = { viewModel.triggerStyleSection(it) },
                     isKeyboardActive = uiState.keyboardHeightFraction > 0f,
                     onToggleKeyboard = { viewModel.cycleKeyboardExpansion() },
                     onKeyboardHandleClick = { viewModel.cycleKeyboardExpansion() },
@@ -163,7 +170,7 @@ fun MixerScreen(
                     }
                 )
 
-                // 4. RETRACTABLE VIRTUAL PIANO KEYBOARD
+                // 4. RETRACTABLE MULTI-TOUCH VIRTUAL PIANO KEYBOARD
                 VirtualPianoKeyboard(
                     heightFraction = animatedKbFraction,
                     pressedKeys = uiState.pressedKeys,
@@ -247,6 +254,32 @@ fun MixerScreen(
 
         // ================= POPUP OVERLAYS & FLOATING WINDOWS =================
 
+        // Style Arranger Dialog (.sty)
+        if (uiState.activePopup == ActivePopup.STYLE) {
+            StyleDialog(
+                isOpen = true,
+                styleFiles = uiState.styleFiles,
+                soundfonts = uiState.soundfontFiles,
+                selectedStyleName = uiState.selectedStyleName,
+                isStylePlaying = uiState.isStylePlaying,
+                styleVolume = uiState.styleVolume,
+                onStyleVolumeChange = { viewModel.setStyleVolume(it) },
+                activeTab = uiState.styleActiveTab,
+                onTabChange = { viewModel.setStyleTab(it) },
+                onSelectStyleFile = { viewModel.selectStyleFile(it) },
+                onSelectSf2Source = { viewModel.selectStyleSf2Source(it) },
+                fxLow = uiState.styleFxLow,
+                fxMid = uiState.styleFxMid,
+                fxHigh = uiState.styleFxHigh,
+                reverbMix = uiState.styleReverbMix,
+                onFxLowChange = { viewModel.setStyleFxLow(it) },
+                onFxMidChange = { viewModel.setStyleFxMid(it) },
+                onFxHighChange = { viewModel.setStyleFxHigh(it) },
+                onReverbMixChange = { viewModel.setStyleReverbMix(it) },
+                onClose = { viewModel.closePopup() }
+            )
+        }
+
         // Drum Pad (Shown if pinned or active)
         if (uiState.isDrumPadPinned || uiState.activePopup == ActivePopup.DRUM_PAD) {
             DrumPadDialog(
@@ -257,17 +290,17 @@ fun MixerScreen(
                 onReverbChange = { viewModel.setDrumReverb(it) },
                 activeTab = uiState.drumActiveTab,
                 onTabChange = { viewModel.setDrumTab(it) },
+                subView = uiState.drumSubView,
+                onSetSubView = { viewModel.setDrumSubView(it) },
+                soundfonts = uiState.soundfontFiles,
+                audioFiles = uiState.loopAudioFiles,
                 isPinned = uiState.isDrumPadPinned,
                 onTogglePin = { viewModel.togglePinDrumPad() },
                 onClose = { viewModel.closeDrumPad() },
-                onOpenSf2Picker = { viewModel.openSoundfontForTrack(1, "drum") },
                 onPadPressed = { viewModel.onDrumPadPressed(it) },
                 onPadReleased = { viewModel.onDrumPadReleased(it) },
-                onOpenAssigner = { viewModel.openDrumSoundAssigner(it) },
-                editingPadId = uiState.editingDrumPadId,
-                onAssignSample = { id, sample -> viewModel.assignDrumSample(id, sample) },
-                onAssignSf2Note = { id, key, oct -> viewModel.assignDrumSf2Note(id, key, oct) },
-                onCloseAssigner = { viewModel.closeDrumSoundAssigner() }
+                onAssignPadSample = { padId, sample -> viewModel.assignDrumSample(padId, sample.name) },
+                onAssignPadNote = { padId, noteStr, oct, key -> viewModel.assignDrumSf2Note(padId, key, oct) }
             )
         }
 
@@ -279,7 +312,8 @@ fun MixerScreen(
                 isMultiPadEnabled = uiState.isMultiPadEnabled,
                 onToggleMultiPad = { viewModel.toggleMultiPad() },
                 octaveRange = uiState.tonicOctaveRange,
-                onCycleOctave = { viewModel.cycleTonicOctave() },
+                onOctaveMinus = { viewModel.onTonicOctaveMinus() },
+                onOctavePlus = { viewModel.onTonicOctavePlus() },
                 brightness = uiState.tonicBrightness,
                 onBrightnessChange = { viewModel.setTonicBrightness(it) },
                 shimmer = uiState.tonicShimmer,
@@ -287,7 +321,7 @@ fun MixerScreen(
                 isPinned = uiState.isTonicPadPinned,
                 onTogglePin = { viewModel.togglePinTonicPad() },
                 onClose = { viewModel.closeTonicPad() },
-                onOpenSf2Picker = { viewModel.openSoundfontForTrack(1, "pad") }
+                soundfonts = uiState.soundfontFiles
             )
         }
 
@@ -322,10 +356,10 @@ fun MixerScreen(
                     onClose = { viewModel.closePopup() }
                 )
             }
-            ActivePopup.SCENE, ActivePopup.DRUM_PAD, ActivePopup.TONIC_PAD, ActivePopup.NONE -> {}
+            ActivePopup.STYLE, ActivePopup.SCENE, ActivePopup.DRUM_PAD, ActivePopup.TONIC_PAD, ActivePopup.NONE -> {}
         }
 
-        // Settings Drawer (Extended towards center with subpages & 3D knobs)
+        // Settings Drawer (AOSP MaterialExpressive with Theme selector & 3D knobs)
         SettingsDrawer(
             isOpen = uiState.isSettingsDrawerOpen,
             onClose = { viewModel.closeSettingsDrawer() },
@@ -341,6 +375,8 @@ fun MixerScreen(
             onSelectPolyphony = { viewModel.setPolyphony(it) },
             isLowLatency = uiState.isLowLatencyAudio,
             onToggleLowLatency = { viewModel.toggleLowLatencyAudio() },
+            currentTheme = uiState.currentTheme,
+            onSelectTheme = { viewModel.setAppTheme(it) },
             selectedLanguage = uiState.selectedLanguage,
             onSelectLanguage = { viewModel.setSelectedLanguage(it) },
             soundGoodizer = uiState.soundGoodizer,

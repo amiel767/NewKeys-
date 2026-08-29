@@ -6,11 +6,14 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.MixerScreen
 import com.example.ui.theme.DarkBg
 import com.example.ui.theme.SoundfontLiveMixerTheme
@@ -34,10 +37,11 @@ class MainActivity : ComponentActivity() {
     }
 
     setContent {
-      SoundfontLiveMixerTheme {
+      val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+      SoundfontLiveMixerTheme(appTheme = uiState.currentTheme) {
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = DarkBg
+            color = MaterialTheme.colorScheme.background
         ) {
           MixerScreen(viewModel = viewModel)
         }

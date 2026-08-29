@@ -13,7 +13,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.RangeSlider
-import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -33,12 +32,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.model.AppTheme
 import com.example.model.MidiDeviceItem
 import com.example.ui.theme.*
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
+/**
+ * AOSP MaterialExpressive Settings Drawer
+ */
 @Composable
 fun SettingsDrawer(
     isOpen: Boolean,
@@ -60,7 +63,9 @@ fun SettingsDrawer(
     isLowLatency: Boolean,
     onToggleLowLatency: () -> Unit,
     
-    // Language & Themes
+    // Theme & Language
+    currentTheme: AppTheme = AppTheme.CYBER_NEON,
+    onSelectTheme: (AppTheme) -> Unit = {},
     selectedLanguage: String,
     onSelectLanguage: (String) -> Unit,
     
@@ -91,12 +96,11 @@ fun SettingsDrawer(
                 .clickable { onClose() },
             contentAlignment = Alignment.CenterEnd
         ) {
-            // Extended Drawer (Extends generously towards the center of the screen)
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
-                    .widthIn(min = 420.dp, max = 520.dp)
-                    .fillMaxWidth(0.55f)
+                    .widthIn(min = 420.dp, max = 540.dp)
+                    .fillMaxWidth(0.56f)
                     .shadow(32.dp, RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp))
                     .clip(RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp))
                     .background(
@@ -130,6 +134,13 @@ fun SettingsDrawer(
                             onBack = { onNavigateSubPage("main") }
                         )
                     }
+                    "theme" -> {
+                        ThemeSelectorSubPage(
+                            currentTheme = currentTheme,
+                            onSelectTheme = onSelectTheme,
+                            onBack = { onNavigateSubPage("main") }
+                        )
+                    }
                     "theme_lang" -> {
                         LanguageThemeSubPage(
                             selectedLanguage = selectedLanguage,
@@ -145,6 +156,7 @@ fun SettingsDrawer(
                             audioEngine = audioEngine,
                             audioBufferSize = audioBufferSize,
                             polyphony = polyphony,
+                            currentTheme = currentTheme,
                             selectedLanguage = selectedLanguage,
                             soundGoodizer = soundGoodizer,
                             onSoundGoodizerChange = onSoundGoodizerChange,
@@ -171,6 +183,7 @@ private fun MainSettingsPage(
     audioEngine: String,
     audioBufferSize: Int,
     polyphony: Int,
+    currentTheme: AppTheme,
     selectedLanguage: String,
     soundGoodizer: Float,
     onSoundGoodizerChange: (Float) -> Unit,
@@ -199,7 +212,7 @@ private fun MainSettingsPage(
                 ) {
                     Text(text = "⚙", fontSize = 14.sp, color = Color(0xFF002B36))
                 }
-                Text(text = "Paramètres LiveKeys", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
+                Text(text = "Paramètres LiveKeys", fontSize = 14.5.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
             }
 
             Box(
@@ -214,15 +227,27 @@ private fun MainSettingsPage(
             }
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // 1. TOP MIDI DEVICE NAVIGATION CARD
+            // 1. THEME SELECTOR CARD
+            item {
+                SettingsNavCard(
+                    icon = "🎨",
+                    title = "Thème Visuel de l'Interface",
+                    subtitle = "${currentTheme.displayName} • Personnalisation",
+                    badge = currentTheme.displayName,
+                    badgeColor = NeonCyan,
+                    onClick = { onNavigateSubPage("theme") }
+                )
+            }
+
+            // 2. MIDI DEVICE CARD
             item {
                 SettingsNavCard(
                     icon = "🎹",
@@ -234,7 +259,7 @@ private fun MainSettingsPage(
                 )
             }
 
-            // 2. AUDIO ENGINE & LATENCY CARD
+            // 3. AUDIO ENGINE & LATENCY CARD
             item {
                 SettingsNavCard(
                     icon = "⚡",
@@ -246,19 +271,19 @@ private fun MainSettingsPage(
                 )
             }
 
-            // 3. LANGUAGE & THEME CARD
+            // 4. LANGUAGE CARD
             item {
                 SettingsNavCard(
                     icon = "🌐",
-                    title = "Langue & Affichage",
-                    subtitle = "$selectedLanguage • Dark Cyber Studio",
+                    title = "Langue de l'Interface",
+                    subtitle = "$selectedLanguage • Internationalisation",
                     badge = selectedLanguage,
                     badgeColor = SoloAmber,
                     onClick = { onNavigateSubPage("theme_lang") }
                 )
             }
 
-            // 4. 3D MASTER FX SECTION (SoundGoodizer + 2 Knobs)
+            // 5. 3D MASTER FX SECTION (Effet 3D + 2 Knobs)
             item {
                 Column(
                     modifier = Modifier
@@ -274,13 +299,13 @@ private fun MainSettingsPage(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "TRAITEMENTS MASTER 3D",
-                            fontSize = 10.sp,
+                            text = "TRAITEMENTS MASTER (EFFETS 3D)",
+                            fontSize = 9.5.sp,
                             fontWeight = FontWeight.Bold,
                             color = NeonCyan,
                             letterSpacing = 0.8.sp
                         )
-                        Text(text = "Analog Stage", fontSize = 9.sp, color = TextDim2)
+                        Text(text = "DSP Analog Stage", fontSize = 8.5.sp, color = TextDim2)
                     }
 
                     Spacer(modifier = Modifier.height(10.dp))
@@ -290,15 +315,13 @@ private fun MainSettingsPage(
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // 1. SoundGoodizer Knob
                         SettingsKnob3D(
                             value = soundGoodizer,
                             onValueChange = onSoundGoodizerChange,
-                            label = "SoundGoodizer",
+                            label = "Effet 3D",
                             accentColor = Color(0xFFFF9100)
                         )
 
-                        // 2. Master Punch Knob
                         SettingsKnob3D(
                             value = masterPunch,
                             onValueChange = onMasterPunchChange,
@@ -306,7 +329,6 @@ private fun MainSettingsPage(
                             accentColor = Color(0xFFE040FB)
                         )
 
-                        // 3. Spatial Widener Knob
                         SettingsKnob3D(
                             value = spatialWidener,
                             onValueChange = onSpatialWidenerChange,
@@ -317,7 +339,7 @@ private fun MainSettingsPage(
                 }
             }
 
-            // 5. GLOBAL VELOCITY SETTINGS (Tout en bas)
+            // 6. GLOBAL VELOCITY SETTINGS
             item {
                 Column(
                     modifier = Modifier
@@ -334,14 +356,14 @@ private fun MainSettingsPage(
                     ) {
                         Text(
                             text = "RÉGLAGE VÉLOCITÉ (MIN / MAX)",
-                            fontSize = 10.sp,
+                            fontSize = 9.5.sp,
                             fontWeight = FontWeight.Bold,
                             color = NeonCyan,
                             letterSpacing = 0.8.sp
                         )
                         Text(
                             text = "${(velocityMin * 100).toInt()}% — ${(velocityMax * 100).toInt()}%",
-                            fontSize = 10.sp,
+                            fontSize = 9.5.sp,
                             fontWeight = FontWeight.Bold,
                             color = TextPrimary
                         )
@@ -349,7 +371,6 @@ private fun MainSettingsPage(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Range Slider
                     RangeSlider(
                         value = velocityMin..velocityMax,
                         onValueChange = { range ->
@@ -378,6 +399,87 @@ private fun MainSettingsPage(
 }
 
 @Composable
+fun ThemeSelectorSubPage(
+    currentTheme: AppTheme,
+    onSelectTheme: (AppTheme) -> Unit,
+    onBack: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        SubPageHeader(title = "Thème de l'Application", onBack = onBack)
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Text(
+            text = "PERSONNALISATION VISUELLE EXPRESSIVE",
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold,
+            color = TextDim,
+            letterSpacing = 0.5.sp
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(AppTheme.values()) { theme ->
+                val isSelected = currentTheme == theme
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (isSelected) Color(0x2222D3EE) else Color(0x0EFFFFFF))
+                        .border(1.dp, if (isSelected) NeonCyan else Color(0x14FFFFFF), RoundedCornerShape(12.dp))
+                        .clickable { onSelectTheme(theme) }
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    when (theme) {
+                                        AppTheme.CYBER_NEON -> Brush.linearGradient(listOf(Color(0xFF22D3EE), Color(0xFFF43F5E)))
+                                        AppTheme.OBSIDIAN_GOLD -> Brush.linearGradient(listOf(Color(0xFFFBBF24), Color(0xFFD97706)))
+                                        AppTheme.TOKYO_NIGHT -> Brush.linearGradient(listOf(Color(0xFF818CF8), Color(0xFFC084FC)))
+                                        AppTheme.STUDIO_SLATE -> Brush.linearGradient(listOf(Color(0xFF94A3B8), Color(0xFF64748B)))
+                                        AppTheme.OLED_BLACK -> Brush.linearGradient(listOf(Color(0xFF38BDF8), Color(0xFF000000)))
+                                    }
+                                )
+                        )
+
+                        Column {
+                            Text(
+                                text = theme.displayName,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSelected) NeonCyan else TextPrimary
+                            )
+                            Text(
+                                text = when (theme) {
+                                    AppTheme.CYBER_NEON -> "Cyan & Magenta néon futuriste"
+                                    AppTheme.OBSIDIAN_GOLD -> "Or luxueux & noir profond"
+                                    AppTheme.TOKYO_NIGHT -> "Violet électrique & bleu nuit"
+                                    AppTheme.STUDIO_SLATE -> "Studio épuré gris ardoise"
+                                    AppTheme.OLED_BLACK -> "Noir absolu ultra contrasté"
+                                },
+                                fontSize = 8.5.sp,
+                                color = TextDim
+                            )
+                        }
+                    }
+
+                    if (isSelected) {
+                        Text(text = "✓", fontSize = 14.sp, color = NeonCyan, fontWeight = FontWeight.ExtraBold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun SettingsNavCard(
     icon: String,
     title: String,
@@ -397,14 +499,14 @@ fun SettingsNavCard(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text(text = icon, fontSize = 20.sp)
+        Text(text = icon, fontSize = 18.sp)
 
         Column(modifier = Modifier.weight(1f)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text(text = title, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(text = title, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
@@ -414,7 +516,7 @@ fun SettingsNavCard(
                     Text(text = badge, fontSize = 7.5.sp, fontWeight = FontWeight.ExtraBold, color = badgeColor)
                 }
             }
-            Text(text = subtitle, fontSize = 9.5.sp, color = TextDim)
+            Text(text = subtitle, fontSize = 9.sp, color = TextDim)
         }
 
         Text(text = "›", fontSize = 18.sp, color = TextDim)
@@ -447,7 +549,6 @@ fun SettingsKnob3D(
             val center = Offset(size.width / 2f, size.height / 2f)
             val radius = size.minDimension / 2f - 4f
 
-            // Outer metallic rim shadow
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(Color(0xFF38384A), Color(0xFF1E1E28), Color(0xFF12121A)),
@@ -457,7 +558,6 @@ fun SettingsKnob3D(
                 radius = radius
             )
 
-            // Arc track
             val startAngle = 135f
             val sweepAngle = 270f * curVal
 
@@ -481,7 +581,6 @@ fun SettingsKnob3D(
                 style = Stroke(width = 4f, cap = StrokeCap.Round)
             )
 
-            // Notch line
             val angleDeg = 135f + sweepAngle
             val angleRad = (angleDeg * PI / 180f).toFloat()
             val notchStartX = center.x + radius * 0.4f * cos(angleRad)
@@ -564,7 +663,6 @@ fun MidiDevicesSubPage(
                         Text(text = "${device.type} • Statut: Connecté", fontSize = 9.sp, color = TextDim)
                     }
 
-                    // Switch Toggle
                     Box(
                         modifier = Modifier
                             .width(42.dp)
@@ -605,7 +703,6 @@ fun AudioEngineSubPage(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Moteur Audio Selector
         Text(text = "DRIVER / MOTEUR AUDIO", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextDim)
         Spacer(modifier = Modifier.height(6.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -632,7 +729,6 @@ fun AudioEngineSubPage(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // Buffer Size Selector
         Text(text = "TAILLE DU BUFFER AUDIO (FRAMES)", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextDim)
         Spacer(modifier = Modifier.height(6.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -659,7 +755,6 @@ fun AudioEngineSubPage(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // Polyphony Selector
         Text(text = "POLYPHONIE MAX (VOIX)", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextDim)
         Spacer(modifier = Modifier.height(6.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -743,6 +838,6 @@ fun SubPageHeader(
             Text(text = "← Retour", fontSize = 11.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
         }
 
-        Text(text = title, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+        Text(text = title, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
     }
 }

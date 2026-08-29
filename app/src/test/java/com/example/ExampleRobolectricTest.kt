@@ -1,8 +1,8 @@
 package com.example
 
+import android.app.Application
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.example.model.ActivePopup
 import com.example.model.DrumSoundType
 import com.example.viewmodel.MixerViewModel
 import org.junit.Assert.*
@@ -24,7 +24,8 @@ class ExampleRobolectricTest {
 
   @Test
   fun `mixer view model handles track controls and volume`() {
-    val vm = MixerViewModel()
+    val app = ApplicationProvider.getApplicationContext<Application>()
+    val vm = MixerViewModel(app)
     val initialState = vm.uiState.value
     assertEquals(8, initialState.tracks.size)
 
@@ -33,19 +34,17 @@ class ExampleRobolectricTest {
     assertEquals(0.9f, vm.uiState.value.tracks.first { it.id == 1 }.volume, 0.001f)
 
     // Toggle mute
-    vm.toggleMute(1)
+    vm.toggleMuteSoloSequence(1)
     assertTrue(vm.uiState.value.tracks.first { it.id == 1 }.isMuted)
-
-    // Toggle solo
-    vm.toggleSolo(2)
-    assertTrue(vm.uiState.value.tracks.first { it.id == 2 }.isSolo)
   }
 
   @Test
   fun `mixer view model handles pad triggers and sound assignment`() {
-    val vm = MixerViewModel()
+    val app = ApplicationProvider.getApplicationContext<Application>()
+    val vm = MixerViewModel(app)
 
     // Multi-pad selection for tonics
+    vm.toggleMultiPad()
     vm.onTonicNoteClick("C")
     vm.onTonicNoteClick("G")
     assertTrue(vm.uiState.value.activeTonicNotes.contains("C"))
@@ -68,17 +67,16 @@ class ExampleRobolectricTest {
 
   @Test
   fun `keyboard controls and panic function`() {
-    val vm = MixerViewModel()
+    val app = ApplicationProvider.getApplicationContext<Application>()
+    val vm = MixerViewModel(app)
 
+    vm.cycleKeyboardExpansion()
     vm.onKeyDown("C4")
     vm.onKeyDown("E4")
     assertEquals(2, vm.uiState.value.pressedKeys.size)
 
     vm.toggleSustain()
     assertTrue(vm.uiState.value.isSustainActive)
-
-    vm.toggleVelocity()
-    assertTrue(vm.uiState.value.isVelocityEnabled)
 
     // Panic stops all notes & loops
     vm.triggerPanic()
@@ -87,4 +85,3 @@ class ExampleRobolectricTest {
     assertFalse(vm.uiState.value.isSustainActive)
   }
 }
-

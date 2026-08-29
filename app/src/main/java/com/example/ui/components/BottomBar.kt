@@ -19,7 +19,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -53,6 +52,17 @@ fun BottomBar(
     onSelectSignature: (String) -> Unit,
     metroVolume: Float,
     onMetroVolumeChange: (Float) -> Unit,
+    
+    // Style / Arranger Controls (.sty)
+    isStylePlaying: Boolean = false,
+    isSyncStartActive: Boolean = false,
+    activeStyleSection: String = "MAIN A",
+    selectedStyleName: String = "-",
+    onOpenStyleDialog: () -> Unit = {},
+    onToggleSyncStart: () -> Unit = {},
+    onTriggerStyleSection: (String) -> Unit = {},
+    
+    // Virtual Keyboard
     isKeyboardActive: Boolean,
     onToggleKeyboard: () -> Unit,
     onKeyboardHandleClick: () -> Unit,
@@ -67,7 +77,7 @@ fun BottomBar(
             .fillMaxWidth()
             .height(barHeight),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+        horizontalArrangement = Arrangement.spacedBy(5.dp)
     ) {
         // 1. REC BUTTON WITH SOFT BLINKING LED
         val infiniteTransition = rememberInfiniteTransition(label = "rec_pulse")
@@ -89,24 +99,23 @@ fun BottomBar(
 
         Box(
             modifier = Modifier
-                .width(if (isRecording) 82.dp else 56.dp)
+                .width(if (isRecording) 78.dp else 52.dp)
                 .fillMaxHeight()
-                .clip(RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(9.dp))
                 .background(recBrush)
-                .border(1.dp, Color(0x4DFFFFFF), RoundedCornerShape(10.dp))
+                .border(1.dp, Color(0x4DFFFFFF), RoundedCornerShape(9.dp))
                 .clickable { onToggleRecording() }
                 .testTag("btn_rec"),
             contentAlignment = Alignment.Center
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                // Blinking red recording LED
                 Box(
                     modifier = Modifier
-                        .size(8.dp)
-                        .shadow(if (isRecording) 8.dp else 0.dp, CircleShape)
+                        .size(7.dp)
+                        .shadow(if (isRecording) 6.dp else 0.dp, CircleShape)
                         .clip(CircleShape)
                         .background(
                             if (isRecording) Color.White.copy(alpha = recPulseAlpha) else Color.White
@@ -119,7 +128,7 @@ fun BottomBar(
 
                 Text(
                     text = if (isRecording) timeStr else "REC",
-                    fontSize = 11.sp,
+                    fontSize = 10.5.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = Color.White
                 )
@@ -130,16 +139,15 @@ fun BottomBar(
         Row(
             modifier = Modifier
                 .height(barHeight)
-                .clip(RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(9.dp))
                 .background(DarkSurface)
-                .border(1.dp, BorderSubtle, RoundedCornerShape(10.dp))
+                .border(1.dp, BorderSubtle, RoundedCornerShape(9.dp))
                 .testTag("bpm_box"),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Minus Button with auto-repeat on hold
             Box(
                 modifier = Modifier
-                    .width(26.dp)
+                    .width(22.dp)
                     .fillMaxHeight()
                     .background(Color(0x1022D3EE))
                     .pointerInput(Unit) {
@@ -160,37 +168,36 @@ fun BottomBar(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = "−", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = NeonCyan)
+                Text(text = "−", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = NeonCyan)
             }
 
             Column(
                 modifier = Modifier
-                    .padding(horizontal = 6.dp)
-                    .defaultMinSize(minWidth = 40.dp),
+                    .padding(horizontal = 4.dp)
+                    .defaultMinSize(minWidth = 34.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
                 Text(
                     text = "$bpm",
-                    fontSize = 12.sp,
+                    fontSize = 11.5.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = TextPrimary,
-                    lineHeight = 13.sp
+                    lineHeight = 12.sp
                 )
                 Text(
                     text = "BPM",
-                    fontSize = 7.sp,
+                    fontSize = 6.5.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = TextDim2,
                     letterSpacing = 0.5.sp,
-                    lineHeight = 8.sp
+                    lineHeight = 7.sp
                 )
             }
 
-            // Plus Button with auto-repeat on hold
             Box(
                 modifier = Modifier
-                    .width(26.dp)
+                    .width(22.dp)
                     .fillMaxHeight()
                     .background(Color(0x1022D3EE))
                     .pointerInput(Unit) {
@@ -211,28 +218,27 @@ fun BottomBar(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = "+", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = NeonCyan)
+                Text(text = "+", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = NeonCyan)
             }
         }
 
-        // 3. MINIMALIST VECTOR METRONOME ICON BUTTON
+        // 3. MINIMALIST METRONOME BUTTON
         Box(
             modifier = Modifier
                 .height(barHeight)
-                .clip(RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(9.dp))
                 .background(DarkSurface)
-                .border(1.dp, if (isMetronomeOn) NeonCyan else BorderSubtle, RoundedCornerShape(10.dp))
+                .border(1.dp, if (isMetronomeOn) NeonCyan else BorderSubtle, RoundedCornerShape(9.dp))
                 .clickable { onToggleMetroPanel() }
-                .padding(horizontal = 9.dp)
+                .padding(horizontal = 7.dp)
                 .testTag("btn_metro"),
             contentAlignment = Alignment.Center
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                // Minimalist vector pendulum icon
-                Canvas(modifier = Modifier.size(16.dp)) {
+                Canvas(modifier = Modifier.size(14.dp)) {
                     val w = size.width
                     val h = size.height
 
@@ -252,37 +258,128 @@ fun BottomBar(
                         color = if (isMetronomeOn) NeonCyan else TextDim,
                         style = Stroke(width = 1.2f)
                     )
-
                     drawLine(
                         color = if (isMetronomeOn) NeonCyanLight else TextPrimary,
                         start = Offset(w * 0.5f, h * 0.85f),
                         end = Offset(w * 0.5f + (if (isMetronomeOn) 3f else 0f), h * 0.25f),
-                        strokeWidth = 1.6f,
+                        strokeWidth = 1.4f,
                         cap = StrokeCap.Round
                     )
                 }
 
                 Box(
                     modifier = Modifier
-                        .size(6.dp)
+                        .size(5.dp)
                         .clip(CircleShape)
                         .background(if (isMetronomeOn) NeonCyan else TextDim2)
                 )
             }
         }
 
-        // 4. RETRACTABLE KEYBOARD GRABBER BAR (Clean, no text)
+        // ================= 4. STYLE / ARRANGER SYNC & CONTROLS DECK =================
+        // Added in empty space next to piano per user request
+        Row(
+            modifier = Modifier
+                .height(barHeight)
+                .clip(RoundedCornerShape(9.dp))
+                .background(Color(0xFF141722))
+                .border(1.dp, Color(0x334F46E5), RoundedCornerShape(9.dp))
+                .padding(horizontal = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            // [ .STY ] File Selector Button
+            Box(
+                modifier = Modifier
+                    .height(28.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(
+                        Brush.horizontalGradient(listOf(Color(0xFF4F46E5), Color(0xFF6366F1)))
+                    )
+                    .border(1.dp, Color(0xFF818CF8), RoundedCornerShape(6.dp))
+                    .clickable { onOpenStyleDialog() }
+                    .padding(horizontal = 6.dp)
+                    .testTag("btn_sty_file"),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(text = "🎵", fontSize = 8.sp)
+                    Text(
+                        text = if (selectedStyleName.length > 7) selectedStyleName.take(7) + "…" else if (selectedStyleName != "-") selectedStyleName else ".STY",
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White
+                    )
+                }
+            }
+
+            // SYNC START Button
+            StyleControlButton(
+                label = "SYNC",
+                isActive = isSyncStartActive,
+                activeColor = SoloAmber,
+                onClick = onToggleSyncStart,
+                testTag = "btn_style_sync"
+            )
+
+            // INTRO Button
+            StyleControlButton(
+                label = "INTRO",
+                isActive = isStylePlaying && activeStyleSection == "INTRO",
+                activeColor = NeonCyan,
+                onClick = { onTriggerStyleSection("INTRO") },
+                testTag = "btn_style_intro"
+            )
+
+            // MAIN A Button
+            StyleControlButton(
+                label = "MAIN A",
+                isActive = isStylePlaying && activeStyleSection == "MAIN A",
+                activeColor = Color(0xFF10B981),
+                onClick = { onTriggerStyleSection("MAIN A") },
+                testTag = "btn_style_main_a"
+            )
+
+            // MAIN B Button
+            StyleControlButton(
+                label = "MAIN B",
+                isActive = isStylePlaying && activeStyleSection == "MAIN B",
+                activeColor = Color(0xFF06B6D4),
+                onClick = { onTriggerStyleSection("MAIN B") },
+                testTag = "btn_style_main_b"
+            )
+
+            // FILL IN Button
+            StyleControlButton(
+                label = "FILL",
+                isActive = isStylePlaying && activeStyleSection == "FILL IN",
+                activeColor = NeonMagenta,
+                onClick = { onTriggerStyleSection("FILL IN") },
+                testTag = "btn_style_fill"
+            )
+
+            // ENDING Button
+            StyleControlButton(
+                label = "END",
+                isActive = isStylePlaying && activeStyleSection == "ENDING",
+                activeColor = MuteRed,
+                onClick = { onTriggerStyleSection("ENDING") },
+                testTag = "btn_style_ending"
+            )
+        }
+
+        // 5. RETRACTABLE KEYBOARD GRABBER BAR (Clean, no text)
         Box(
             modifier = Modifier
                 .weight(1f)
                 .height(barHeight)
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(10.dp))
                 .background(
                     Brush.horizontalGradient(
                         listOf(Color(0xFF19202E), Color(0xFF121622))
                     )
                 )
-                .border(1.dp, Color(0x2E67E8F9), RoundedCornerShape(12.dp))
+                .border(1.dp, Color(0x2E67E8F9), RoundedCornerShape(10.dp))
                 .clickable { onKeyboardHandleClick() }
                 .pointerInput(Unit) {
                     detectDragGestures { change, dragAmount ->
@@ -290,20 +387,18 @@ fun BottomBar(
                         onKeyboardDrag(dragAmount.y)
                     }
                 }
-                .padding(horizontal = 10.dp)
+                .padding(horizontal = 8.dp)
                 .testTag("kb_handle"),
             contentAlignment = Alignment.Center
         ) {
-            // Tactile ridges only
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Box(modifier = Modifier.width(26.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x6667E8F9)))
-                Box(modifier = Modifier.width(26.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x6667E8F9)))
-                Box(modifier = Modifier.width(26.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x6667E8F9)))
+            Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                Box(modifier = Modifier.width(20.dp).height(2.5.dp).clip(RoundedCornerShape(1.5.dp)).background(Color(0x6667E8F9)))
+                Box(modifier = Modifier.width(20.dp).height(2.5.dp).clip(RoundedCornerShape(1.5.dp)).background(Color(0x6667E8F9)))
+                Box(modifier = Modifier.width(20.dp).height(2.5.dp).clip(RoundedCornerShape(1.5.dp)).background(Color(0x6667E8F9)))
             }
         }
 
-        // 5. PIANO LOGO TOGGLE BUTTON (Aligned below Master Fader)
-        // Faithful to Screenshot_20260828-232237_Excalidrawing.png "Logo piano"
+        // 6. PIANO LOGO TOGGLE BUTTON (Aligned below Master Fader)
         val kbBtnBg by animateColorAsState(
             targetValue = if (isKeyboardActive) Color(0xFF1E3A5F) else DarkSurface,
             label = "kb_btn_bg"
@@ -315,21 +410,19 @@ fun BottomBar(
 
         Box(
             modifier = Modifier
-                .width(46.dp)
+                .width(44.dp)
                 .height(barHeight)
-                .clip(RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(9.dp))
                 .background(kbBtnBg)
-                .border(1.2.dp, kbBorderColor, RoundedCornerShape(10.dp))
+                .border(1.2.dp, kbBorderColor, RoundedCornerShape(9.dp))
                 .clickable { onToggleKeyboard() }
                 .testTag("btn_piano_toggle"),
             contentAlignment = Alignment.Center
         ) {
-            // Stylized Piano Keys Vector Icon
-            Canvas(modifier = Modifier.size(20.dp)) {
+            Canvas(modifier = Modifier.size(18.dp)) {
                 val w = size.width
                 val h = size.height
 
-                // Base keyboard outline
                 val keyOutlineColor = if (isKeyboardActive) NeonCyanLight else TextDim
                 drawRoundRect(
                     color = keyOutlineColor,
@@ -339,7 +432,6 @@ fun BottomBar(
                     style = Stroke(width = 1.4f)
                 )
 
-                // White key separators
                 val keySpacing = (w - 2f) / 4f
                 for (i in 1..3) {
                     drawLine(
@@ -350,7 +442,6 @@ fun BottomBar(
                     )
                 }
 
-                // Black keys
                 val blackKeyColor = if (isKeyboardActive) NeonCyan else Color.White
                 drawRect(
                     color = blackKeyColor,
@@ -369,6 +460,45 @@ fun BottomBar(
                 )
             }
         }
+    }
+}
+
+/**
+ * Hyper-reactive tactile button for Style / Arranger Sync & Section controls
+ */
+@Composable
+private fun StyleControlButton(
+    label: String,
+    isActive: Boolean,
+    activeColor: Color,
+    onClick: () -> Unit,
+    testTag: String
+) {
+    val btnBg by animateColorAsState(
+        targetValue = if (isActive) activeColor.copy(alpha = 0.28f) else Color(0x0CFFFFFF),
+        animationSpec = tween(60),
+        label = "style_btn_bg"
+    )
+    val borderColor = if (isActive) activeColor else Color(0x1EFFFFFF)
+    val textColor = if (isActive) activeColor else TextDim
+
+    Box(
+        modifier = Modifier
+            .height(28.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(btnBg)
+            .border(1.dp, borderColor, RoundedCornerShape(6.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 6.dp)
+            .testTag(testTag),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            fontSize = 8.5.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = textColor
+        )
     }
 }
 
@@ -401,7 +531,6 @@ fun MetronomeFloatingPanel(
                 .border(1.dp, Color(0x4D22D3EE), RoundedCornerShape(16.dp))
                 .padding(14.dp)
         ) {
-            // Title & Toggle Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -414,7 +543,6 @@ fun MetronomeFloatingPanel(
                     color = TextPrimary
                 )
 
-                // Neon Toggle
                 Box(
                     modifier = Modifier
                         .width(38.dp)
@@ -436,7 +564,6 @@ fun MetronomeFloatingPanel(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Signature Section
             Text(
                 text = "SIGNATURE RYTHMIQUE",
                 fontSize = 9.5.sp,
@@ -481,7 +608,6 @@ fun MetronomeFloatingPanel(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Volume Section
             Text(
                 text = "VOLUME DU CLIC",
                 fontSize = 9.5.sp,
