@@ -165,6 +165,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     private var peakMeterJob: Job? = null
     private var recordingTimerJob: Job? = null
+    private var styleTransitionJob: Job? = null
     private var lastTapTimeMap = mutableMapOf<Int, Long>()
 
     init {
@@ -627,6 +628,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onKeyDown(key: String) {
         if (_uiState.value.isKeyboardLocked || _uiState.value.keyboardHeightFraction <= 0f) return
+
+        // If Sync Start is armed, automatically trigger style playback upon touching a piano key
+        if (_uiState.value.isSyncStartActive && !_uiState.value.isStylePlaying) {
+            val startSec = if (_uiState.value.activeStyleSection == "INTRO") "INTRO" else "MAIN A"
+            triggerStyleSection(startSec)
+        }
+
         _uiState.update { state ->
             state.copy(pressedKeys = state.pressedKeys + key)
         }
@@ -644,6 +652,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     // ================= ARRANGER / STYLE (.STY) CONTROLS =================
     fun toggleStylePlay() {
+        styleTransitionJob?.cancel()
         _uiState.update { it.copy(isStylePlaying = !it.isStylePlaying) }
     }
 
@@ -651,12 +660,103 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(isSyncStartActive = !it.isSyncStartActive) }
     }
 
+    /**
+     * Automatic Style Section Sequencer:
+     * - INTRO: Plays intro, then automatically transitions to MAIN A when done.
+     * - FILL / FILL IN: Plays 1-bar fill, then automatically returns to previous MAIN section.
+     * - MAIN A / MAIN B: Loops continuously until another section is triggered.
+     * - ENDING / END: Plays ending, then automatically stops style playback.
+     */
     fun triggerStyleSection(section: String) {
-        _uiState.update { state ->
-            state.copy(
-                activeStyleSection = section,
-                isStylePlaying = if (section == "ENDING") state.isStylePlaying else true
-            )
+        styleTransitionJob?.cancel()
+        val currentBpm = _uiState.value.bpm.coerceIn(40, 260)
+        val oneBarMillis = (4 * 60_000L) / currentBpm
+
+        val normSection = when (section.uppercase()) {
+            "INTRO" -> "INTRO"
+            "FILL", "FILL IN" -> "FILL IN"
+            "ENDING", "END" -> "ENDING"
+            "MAIN B" -> "MAIN B"
+            else -> "MAIN A"
+        }
+
+        when (normSection) {
+            "INTRO" -> {
+                _uiState.update {
+                    it.copy(
+                        activeStyleSection = "INTRO",
+                        isStylePlaying = true,
+                        isSyncStartActive = false
+                    )
+                }
+                // Automatic transition: After INTRO (2 bars), advance to MAIN A
+                styleTransitionJob = viewModelScope.launch {
+                    val introDuration = (2 * oneBarMillis).coerceIn(2000L, 8000L)
+                    delay(introDuration)
+                    _uiState.update {
+                        if (it.isStylePlaying && it.activeStyleSection == "INTRO") {
+                            it.copy(activeStyleSection = "MAIN A")
+                        } else it
+                    }
+                }
+            }
+            "FILL IN" -> {
+                val previousMain = if (_uiState.value.activeStyleSection == "MAIN B") "MAIN B" else "MAIN A"
+                _uiState.update {
+                    it.copy(
+                        activeStyleSection = "FILL IN",
+                        isStylePlaying = true,
+                        isSyncStartActive = false
+                    )
+                }
+                // Automatic transition: After 1 bar FILL IN, return to previous MAIN
+                styleTransitionJob = viewModelScope.launch {
+                    val fillDuration = oneBarMillis.coerceIn(1000L, 4000L)
+                    delay(fillDuration)
+                    _uiState.update {
+                        if (it.isStylePlaying && it.activeStyleSection == "FILL IN") {
+                            it.copy(activeStyleSection = previousMain)
+                        } else it
+                    }
+                }
+            }
+            "ENDING" -> {
+                _uiState.update {
+                    it.copy(
+                        activeStyleSection = "ENDING",
+                        isStylePlaying = true,
+                        isSyncStartActive = false
+                    )
+                }
+                // Automatic transition: After ENDING (2 bars), stop all playback
+                styleTransitionJob = viewModelScope.launch {
+                    val endDuration = (2 * oneBarMillis).coerceIn(2000L, 8000L)
+                    delay(endDuration)
+                    _uiState.update {
+                        if (it.activeStyleSection == "ENDING") {
+                            it.copy(isStylePlaying = false, activeStyleSection = "MAIN A")
+                        } else it
+                    }
+                }
+            }
+            "MAIN A" -> {
+                _uiState.update {
+                    it.copy(
+                        activeStyleSection = "MAIN A",
+                        isStylePlaying = true,
+                        isSyncStartActive = false
+                    )
+                }
+            }
+            "MAIN B" -> {
+                _uiState.update {
+                    it.copy(
+                        activeStyleSection = "MAIN B",
+                        isStylePlaying = true,
+                        isSyncStartActive = false
+                    )
+                }
+            }
         }
     }
 

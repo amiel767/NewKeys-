@@ -69,7 +69,7 @@ fun BottomBar(
     onKeyboardDrag: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val barHeight = 36.dp
+    val barHeight = 44.dp
     val coroutineScope = rememberCoroutineScope()
 
     Row(
@@ -291,22 +291,22 @@ fun BottomBar(
             // [ .STY ] File Selector Button
             Box(
                 modifier = Modifier
-                    .height(28.dp)
-                    .clip(RoundedCornerShape(6.dp))
+                    .height(34.dp)
+                    .clip(RoundedCornerShape(7.dp))
                     .background(
                         Brush.horizontalGradient(listOf(Color(0xFF4F46E5), Color(0xFF6366F1)))
                     )
-                    .border(1.dp, Color(0xFF818CF8), RoundedCornerShape(6.dp))
+                    .border(1.dp, Color(0xFF818CF8), RoundedCornerShape(7.dp))
                     .clickable { onOpenStyleDialog() }
-                    .padding(horizontal = 6.dp)
+                    .padding(horizontal = 7.dp)
                     .testTag("btn_sty_file"),
                 contentAlignment = Alignment.Center
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(text = "🎵", fontSize = 8.sp)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(text = "🎵", fontSize = 9.sp)
                     Text(
                         text = if (selectedStyleName.length > 7) selectedStyleName.take(7) + "…" else if (selectedStyleName != "-") selectedStyleName else ".STY",
-                        fontSize = 8.5.sp,
+                        fontSize = 9.5.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = Color.White
                     )
@@ -484,18 +484,18 @@ private fun StyleControlButton(
 
     Box(
         modifier = Modifier
-            .height(28.dp)
-            .clip(RoundedCornerShape(6.dp))
+            .height(34.dp)
+            .clip(RoundedCornerShape(7.dp))
             .background(btnBg)
-            .border(1.dp, borderColor, RoundedCornerShape(6.dp))
+            .border(1.dp, borderColor, RoundedCornerShape(7.dp))
             .clickable { onClick() }
-            .padding(horizontal = 6.dp)
+            .padding(horizontal = 7.dp)
             .testTag(testTag),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = label,
-            fontSize = 8.5.sp,
+            fontSize = 9.5.sp,
             fontWeight = FontWeight.ExtraBold,
             color = textColor
         )

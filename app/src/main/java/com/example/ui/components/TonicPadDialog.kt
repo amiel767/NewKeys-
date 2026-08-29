@@ -76,6 +76,7 @@ fun TonicPadDialog(
                     Brush.linearGradient(listOf(Color(0xFF282238), Color(0xFF1B1626), Color(0xFF130F1C)))
                 )
                 .border(1.5.dp, NeonPurpleLight, RoundedCornerShape(18.dp))
+                .padding(10.dp)
                 .testTag("floating_tonic_pad")
         ) {
             TonicPadContent(
@@ -113,7 +114,7 @@ fun TonicPadDialog(
                         detectDragGestures { change, dragAmount ->
                             change.consume()
                             val dDp = with(density) { (dragAmount.x + dragAmount.y) / 2f }.toDp()
-                            windowSizeDp = (windowSizeDp + dDp).coerceIn(320.dp, 600.dp)
+                            windowSizeDp = (windowSizeDp + dDp).coerceIn(280.dp, 600.dp)
                         }
                     }
                     .padding(4.dp),

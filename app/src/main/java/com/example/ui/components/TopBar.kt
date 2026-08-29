@@ -580,7 +580,50 @@ fun LoopsFloatingPanel(
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Loop Duration / Bars Selector: 2, 4, 8, 16, 32, 64
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0x12FFFFFF))
+                    .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 8.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "DURÉE DE BOUCLE :",
+                    fontSize = 8.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = NeonCyan
+                )
+
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf(2, 4, 8, 16, 32, 64).forEach { beats ->
+                        val isSel = (selectedBeats == beats)
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isSel) NeonPurpleLight else Color(0x18FFFFFF))
+                                .border(1.dp, if (isSel) NeonPurpleLight else Color(0x22FFFFFF), RoundedCornerShape(6.dp))
+                                .clickable { onSelectBeats(beats) }
+                                .padding(horizontal = 7.dp, vertical = 3.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "${beats}T",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isSel) Color.White else TextPrimary
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Simple, Unified Scrollable List of Folders & Audio Files
             Text(

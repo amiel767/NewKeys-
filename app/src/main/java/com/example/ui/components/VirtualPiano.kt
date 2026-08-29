@@ -59,8 +59,8 @@ fun VirtualPianoKeyboard(
     val scrollState = rememberScrollState()
     var currentScale by remember { mutableFloatStateOf(keyScale) }
 
-    // 4 Full Octaves available (e.g. C2 to B5)
-    val octaves = listOf(2, 3, 4, 5)
+    // 5 Full Octaves (C2 to B6) + Final C7 Key = C2 to C7 range
+    val octaves = listOf(2, 3, 4, 5, 6)
     val noteLetters = listOf("C", "D", "E", "F", "G", "A", "B")
 
     Column(
@@ -119,14 +119,62 @@ fun VirtualPianoKeyboard(
                 horizontalArrangement = Arrangement.spacedBy(1.dp)
             ) {
                 octaves.forEach { oct ->
-                    val isBase = (oct == 3)
                     OctaveGroupView(
                         octave = oct,
                         whiteWidthDp = baseWhiteWidthDp,
                         pressedKeys = pressedKeys,
                         onKeyDown = onKeyDown,
                         onKeyUp = onKeyUp,
-                        onOctaveShift = { delta -> onOctaveChange((baseOctave + delta).coerceIn(1, 6)) }
+                        onOctaveShift = { delta -> onOctaveChange((baseOctave + delta).coerceIn(1, 7)) }
+                    )
+                }
+
+                // Final High C7 Key (completing C2 to C7 range)
+                val isC7Pressed = pressedKeys.contains("C7")
+                val keyBrush = if (isC7Pressed) {
+                    Brush.verticalGradient(
+                        listOf(Color(0xFF0F2633), Color(0x9906B6D4), NeonCyan)
+                    )
+                } else {
+                    Brush.verticalGradient(
+                        listOf(Color(0xFFE8E8EE), Color(0xFFD4D4DF), Color(0xFFB8B8C8))
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .width(baseWhiteWidthDp)
+                        .fillMaxHeight()
+                        .padding(horizontal = 0.5.dp)
+                        .clip(RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp))
+                        .background(keyBrush)
+                        .border(
+                            1.dp,
+                            if (isC7Pressed) NeonCyan else Color(0x33000000),
+                            RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp)
+                        )
+                        .pointerInput("C7") {
+                            awaitEachGesture {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val anyDown = event.changes.any { it.pressed }
+                                    if (anyDown) {
+                                        onKeyDown("C7")
+                                    } else {
+                                        onKeyUp("C7")
+                                        break
+                                    }
+                                }
+                            }
+                        },
+                    contentAlignment = Alignment.BottomCenter
+                ) {
+                    Text(
+                        text = "C7",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isC7Pressed) Color(0xFF002E38) else Color(0xFF1E2238),
+                        modifier = Modifier.padding(bottom = 3.dp)
                     )
                 }
             }
