@@ -55,18 +55,24 @@ class FileManager(private val context: Context) {
         }
     }
 
-    val soundfontsDir: File get() = File(baseDir, "SoundFonts").also { if (!it.exists()) it.mkdirs() }
-    val loopsDir: File get() = File(baseDir, "Loops").also { if (!it.exists()) it.mkdirs() }
-    val recordingsDir: File get() = File(baseDir, "Recordings").also { if (!it.exists()) it.mkdirs() }
-    val stylesDir: File get() = File(baseDir, "Styles").also { if (!it.exists()) it.mkdirs() }
+    val soundfontsDir: File get() = File(baseDir, "SoundFonts")
+    val loopsDir: File get() = File(baseDir, "Loops")
+    val drumPadDir: File get() = File(baseDir, "DrumPad")
+    val recordingsDir: File get() = File(baseDir, "Recordings")
+    val stylesDir: File get() = File(baseDir, "Styles")
+    val midiDir: File get() = File(baseDir, "Midi")
 
-    init {
-        // Silent initialization of all subdirectories on startup
+    /**
+     * Ensures all subdirectories exist asynchronously on Dispatchers.IO
+     */
+    suspend fun ensureDirectoriesExist() = withContext(Dispatchers.IO) {
         try {
-            soundfontsDir
-            loopsDir
-            recordingsDir
-            stylesDir
+            if (!soundfontsDir.exists()) soundfontsDir.mkdirs()
+            if (!loopsDir.exists()) loopsDir.mkdirs()
+            if (!drumPadDir.exists()) drumPadDir.mkdirs()
+            if (!recordingsDir.exists()) recordingsDir.mkdirs()
+            if (!stylesDir.exists()) stylesDir.mkdirs()
+            if (!midiDir.exists()) midiDir.mkdirs()
         } catch (_: Exception) { }
     }
 
@@ -258,6 +264,45 @@ class FileManager(private val context: Context) {
     }
 
     /**
+     * Scans for Drum Samples in /LiveKeys/DrumPad and /DrumPad
+     */
+    suspend fun getDrumSampleFiles(): List<StorageItem> = withContext(Dispatchers.IO) {
+        val result = mutableListOf<StorageItem>()
+        try {
+            val dirs = listOf(
+                drumPadDir,
+                File(Environment.getExternalStorageDirectory(), "DrumPad"),
+                File(Environment.getExternalStorageDirectory(), "Music/DrumPad"),
+                loopsDir
+            )
+            val visited = mutableSetOf<String>()
+            for (dir in dirs) {
+                if (!dir.exists() || !dir.canRead()) continue
+                dir.walkTopDown()
+                    .maxDepth(3)
+                    .filter { it.isFile && isAudioFile(it) }
+                    .forEach { file ->
+                        if (visited.add(file.absolutePath)) {
+                            result.add(
+                                StorageItem(
+                                    name = file.name,
+                                    path = file.absolutePath,
+                                    isDirectory = false,
+                                    size = file.length(),
+                                    extension = file.extension.lowercase(),
+                                    formattedSize = formatSize(file.length())
+                                )
+                            )
+                        }
+                    }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        result.sortedBy { it.name.lowercase() }
+    }
+
+    /**
      * Scans for Arranger / Styles (.sty, .prs, .sst, .mid) in /LiveKeys/Styles
      */
     suspend fun getStyleFiles(): List<StorageItem> = withContext(Dispatchers.IO) {
@@ -313,9 +358,108 @@ class FileManager(private val context: Context) {
         result.sortedByDescending { it.name }
     }
 
+    /**
+     * Scans for MIDI (.mid, .midi) in /LiveKeys/Midi and system Music directories
+     */
+    suspend fun getMidiFiles(): List<StorageItem> = withContext(Dispatchers.IO) {
+        val result = mutableListOf<StorageItem>()
+        try {
+            val dirs = listOf(
+                midiDir,
+                File(Environment.getExternalStorageDirectory(), "Music/Midi"),
+                File(Environment.getExternalStorageDirectory(), "Midi"),
+                File(Environment.getExternalStorageDirectory(), "Music")
+            )
+            val visited = mutableSetOf<String>()
+            for (dir in dirs) {
+                if (!dir.exists() || !dir.canRead()) continue
+                dir.walkTopDown()
+                    .maxDepth(3)
+                    .filter { it.isFile && isMidiFile(it) }
+                    .forEach { file ->
+                        if (visited.add(file.absolutePath)) {
+                            result.add(
+                                StorageItem(
+                                    name = file.name,
+                                    path = file.absolutePath,
+                                    isDirectory = false,
+                                    size = file.length(),
+                                    extension = file.extension.lowercase(),
+                                    formattedSize = formatSize(file.length())
+                                )
+                            )
+                        }
+                    }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        result.sortedBy { it.name.lowercase() }
+    }
+
+    /**
+     * Returns MIDI directory tree for MIDI browser panel
+     */
+    suspend fun getMidiFolderTree(): List<LoopFolder> = withContext(Dispatchers.IO) {
+        val folders = mutableListOf<LoopFolder>()
+        try {
+            if (midiDir.exists() && midiDir.canRead()) {
+                val rootFiles = midiDir.listFiles { file -> file.isFile && isMidiFile(file) }
+                    ?.map { file ->
+                        LoopFile(
+                            name = file.name,
+                            duration = "MIDI",
+                            folder = "Midi",
+                            bpm = 120
+                        )
+                    } ?: emptyList()
+
+                if (rootFiles.isNotEmpty()) {
+                    folders.add(
+                        LoopFolder(
+                            name = "Racine /Midi",
+                            icon = "🎹",
+                            files = rootFiles,
+                            isOpen = true
+                        )
+                    )
+                }
+
+                midiDir.listFiles { file -> file.isDirectory }?.forEach { subDir ->
+                    val subFiles = subDir.listFiles { file -> file.isFile && isMidiFile(file) }
+                        ?.map { file ->
+                            LoopFile(
+                                name = file.name,
+                                duration = "MIDI",
+                                folder = subDir.name,
+                                bpm = 120
+                            )
+                        } ?: emptyList()
+
+                    folders.add(
+                        LoopFolder(
+                            name = subDir.name,
+                            icon = "📁",
+                            files = subFiles,
+                            isOpen = false
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        folders
+    }
+
     private fun isAudioFile(file: File): Boolean {
         val ext = file.extension.lowercase()
         return ext in listOf("wav", "mp3", "ogg", "flac", "m4a", "aac")
+    }
+
+    private fun isMidiFile(file: File): Boolean {
+        val ext = file.extension.lowercase()
+        return ext in listOf("mid", "midi")
     }
 
     private fun isStyleFile(file: File): Boolean {

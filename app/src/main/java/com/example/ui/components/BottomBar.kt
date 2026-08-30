@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.*
@@ -53,14 +54,14 @@ fun BottomBar(
     metroVolume: Float,
     onMetroVolumeChange: (Float) -> Unit,
     
-    // Style / Arranger Controls (.sty)
-    isStylePlaying: Boolean = false,
-    isSyncStartActive: Boolean = false,
-    activeStyleSection: String = "MAIN A",
-    selectedStyleName: String = "-",
-    onOpenStyleDialog: () -> Unit = {},
-    onToggleSyncStart: () -> Unit = {},
-    onTriggerStyleSection: (String) -> Unit = {},
+    // MIDI Player Controls (.mid) - Replaces .sty per user instructions
+    isMidiPlaying: Boolean = false,
+    selectedMidiName: String = "-",
+    onOpenMidiDialog: () -> Unit = {},
+    onToggleMidiPlayPause: () -> Unit = {},
+    
+    // Chord Display (Afficheur d'accords)
+    detectedChord: DetectedChord? = null,
     
     // Virtual Keyboard
     isKeyboardActive: Boolean,
@@ -79,7 +80,7 @@ fun BottomBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp)
     ) {
-        // 1. REC BUTTON WITH SOFT BLINKING LED
+        // ================= 1. REC BUTTON =================
         val infiniteTransition = rememberInfiniteTransition(label = "rec_pulse")
         val recPulseAlpha by infiniteTransition.animateFloat(
             initialValue = 0.35f,
@@ -99,7 +100,7 @@ fun BottomBar(
 
         Box(
             modifier = Modifier
-                .width(if (isRecording) 78.dp else 52.dp)
+                .width(if (isRecording) 78.dp else 50.dp)
                 .fillMaxHeight()
                 .clip(RoundedCornerShape(9.dp))
                 .background(recBrush)
@@ -135,7 +136,7 @@ fun BottomBar(
             }
         }
 
-        // 2. BPM BOX WITH FAST LONG-PRESS SCROLLING
+        // ================= 2. BPM BOX =================
         Row(
             modifier = Modifier
                 .height(barHeight)
@@ -149,16 +150,15 @@ fun BottomBar(
                 modifier = Modifier
                     .width(22.dp)
                     .fillMaxHeight()
-                    .background(Color(0x1022D3EE))
                     .pointerInput(Unit) {
                         detectTapGestures(
                             onPress = {
-                                onBpmChange(-1)
                                 val job = coroutineScope.launch {
-                                    delay(300)
+                                    onBpmChange(-1)
+                                    delay(400)
                                     while (isActive) {
                                         onBpmChange(-1)
-                                        delay(60)
+                                        delay(70)
                                     }
                                 }
                                 tryAwaitRelease()
@@ -168,47 +168,44 @@ fun BottomBar(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = "−", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = NeonCyan)
+                Text(text = "−", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
             }
 
-            Column(
-                modifier = Modifier
-                    .padding(horizontal = 4.dp)
-                    .defaultMinSize(minWidth = 34.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+            Box(
+                modifier = Modifier.padding(horizontal = 4.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "$bpm",
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = TextPrimary,
-                    lineHeight = 12.sp
-                )
-                Text(
-                    text = "BPM",
-                    fontSize = 6.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextDim2,
-                    letterSpacing = 0.5.sp,
-                    lineHeight = 7.sp
-                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "$bpm",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = NeonCyanLight,
+                        lineHeight = 13.sp
+                    )
+                    Text(
+                        text = "BPM",
+                        fontSize = 7.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextDim,
+                        lineHeight = 8.sp
+                    )
+                }
             }
 
             Box(
                 modifier = Modifier
                     .width(22.dp)
                     .fillMaxHeight()
-                    .background(Color(0x1022D3EE))
                     .pointerInput(Unit) {
                         detectTapGestures(
                             onPress = {
-                                onBpmChange(1)
                                 val job = coroutineScope.launch {
-                                    delay(300)
+                                    onBpmChange(1)
+                                    delay(400)
                                     while (isActive) {
                                         onBpmChange(1)
-                                        delay(60)
+                                        delay(70)
                                     }
                                 }
                                 tryAwaitRelease()
@@ -218,157 +215,159 @@ fun BottomBar(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = "+", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = NeonCyan)
+                Text(text = "+", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
             }
         }
 
-        // 3. MINIMALIST METRONOME BUTTON
+        // ================= 3. METRONOME BUTTON =================
+        val metroBg by animateColorAsState(
+            targetValue = if (isMetronomeOn) Color(0xFF0F394A) else DarkSurface,
+            label = "metro_bg"
+        )
+        val metroBorder by animateColorAsState(
+            targetValue = if (isMetronomeOn) NeonCyan else BorderSubtle,
+            label = "metro_border"
+        )
+
         Box(
             modifier = Modifier
+                .width(42.dp)
                 .height(barHeight)
                 .clip(RoundedCornerShape(9.dp))
-                .background(DarkSurface)
-                .border(1.dp, if (isMetronomeOn) NeonCyan else BorderSubtle, RoundedCornerShape(9.dp))
+                .background(metroBg)
+                .border(1.dp, metroBorder, RoundedCornerShape(9.dp))
                 .clickable { onToggleMetroPanel() }
-                .padding(horizontal = 7.dp)
-                .testTag("btn_metro"),
+                .testTag("btn_metronome"),
             contentAlignment = Alignment.Center
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Canvas(modifier = Modifier.size(14.dp)) {
-                    val w = size.width
-                    val h = size.height
+            Canvas(modifier = Modifier.size(20.dp)) {
+                val w = size.width
+                val h = size.height
 
-                    val bodyPath = Path().apply {
-                        moveTo(w * 0.35f, h * 0.15f)
-                        lineTo(w * 0.65f, h * 0.15f)
-                        lineTo(w * 0.85f, h * 0.90f)
-                        lineTo(w * 0.15f, h * 0.90f)
-                        close()
-                    }
-                    drawPath(
-                        path = bodyPath,
-                        color = if (isMetronomeOn) NeonCyan.copy(alpha = 0.3f) else Color(0x22FFFFFF)
-                    )
-                    drawPath(
-                        path = bodyPath,
-                        color = if (isMetronomeOn) NeonCyan else TextDim,
-                        style = Stroke(width = 1.2f)
-                    )
-                    drawLine(
-                        color = if (isMetronomeOn) NeonCyanLight else TextPrimary,
-                        start = Offset(w * 0.5f, h * 0.85f),
-                        end = Offset(w * 0.5f + (if (isMetronomeOn) 3f else 0f), h * 0.25f),
-                        strokeWidth = 1.4f,
-                        cap = StrokeCap.Round
-                    )
+                val bodyPath = Path().apply {
+                    moveTo(w * 0.28f, h * 0.90f)
+                    lineTo(w * 0.42f, h * 0.18f)
+                    lineTo(w * 0.58f, h * 0.18f)
+                    lineTo(w * 0.72f, h * 0.90f)
+                    close()
                 }
 
-                Box(
-                    modifier = Modifier
-                        .size(5.dp)
-                        .clip(CircleShape)
-                        .background(if (isMetronomeOn) NeonCyan else TextDim2)
+                drawPath(
+                    path = bodyPath,
+                    color = if (isMetronomeOn) NeonCyan.copy(alpha = 0.25f) else Color(0x18FFFFFF)
+                )
+                drawPath(
+                    path = bodyPath,
+                    color = if (isMetronomeOn) NeonCyan else TextDim,
+                    style = Stroke(width = 1.3f)
+                )
+
+                val armAngle = if (isMetronomeOn) 0.35f else 0.0f
+                val pivotX = w * 0.50f
+                val pivotY = h * 0.85f
+                val topArmX = pivotX + kotlin.math.sin(armAngle) * (h * 0.68f)
+                val topArmY = pivotY - kotlin.math.cos(armAngle) * (h * 0.68f)
+
+                drawLine(
+                    color = if (isMetronomeOn) Color.White else TextPrimary,
+                    start = Offset(pivotX, pivotY),
+                    end = Offset(topArmX, topArmY),
+                    strokeWidth = 1.6f,
+                    cap = StrokeCap.Round
                 )
             }
         }
 
-        // ================= 4. STYLE / ARRANGER SYNC & CONTROLS DECK =================
-        // Added in empty space next to piano per user request
-        Row(
+        // ================= 4. MIDI PLAYER CONTROLS (.MID) =================
+        // Replaces .sty per user request with Play/Pause button + File manager capsule
+        Box(
             modifier = Modifier
                 .height(barHeight)
                 .clip(RoundedCornerShape(9.dp))
-                .background(Color(0xFF141722))
-                .border(1.dp, Color(0x334F46E5), RoundedCornerShape(9.dp))
-                .padding(horizontal = 3.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                .background(
+                    if (isMidiPlaying) {
+                        Brush.horizontalGradient(listOf(Color(0xFF0369A1), Color(0xFF0284C7)))
+                    } else {
+                        Brush.verticalGradient(listOf(Color(0xFF1E293B), Color(0xFF0F172A)))
+                    }
+                )
+                .border(
+                    1.dp,
+                    if (isMidiPlaying) Color(0xFF38BDF8) else Color(0x4438BDF8),
+                    RoundedCornerShape(9.dp)
+                )
+                .padding(start = 8.dp, end = 4.dp, top = 2.dp, bottom = 2.dp)
+                .testTag("midi_pill_btn"),
+            contentAlignment = Alignment.Center
         ) {
-            // [ .STY ] File Selector Button
-            Box(
-                modifier = Modifier
-                    .height(34.dp)
-                    .clip(RoundedCornerShape(7.dp))
-                    .background(
-                        Brush.horizontalGradient(listOf(Color(0xFF4F46E5), Color(0xFF6366F1)))
-                    )
-                    .border(1.dp, Color(0xFF818CF8), RoundedCornerShape(7.dp))
-                    .clickable { onOpenStyleDialog() }
-                    .padding(horizontal = 7.dp)
-                    .testTag("btn_sty_file"),
-                contentAlignment = Alignment.Center
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(text = "🎵", fontSize = 9.sp)
+                // Clickable Text Label to expand MIDI file manager
+                Row(
+                    modifier = Modifier.clickable { onOpenMidiDialog() },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(text = "🎹", fontSize = 11.sp)
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text(
+                                text = "Midi",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = "▼",
+                                fontSize = 8.sp,
+                                color = Color(0xCCFFFFFF)
+                            )
+                        }
+                        Text(
+                            text = if (selectedMidiName != "-") selectedMidiName else "/Midi",
+                            fontSize = 8.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = if (isMidiPlaying) Color(0xFFBAE6FD) else TextDim2,
+                            modifier = Modifier.widthIn(max = 65.dp)
+                        )
+                    }
+                }
+
+                // Large Prominent MIDI Play/Pause Button
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isMidiPlaying) {
+                                Brush.verticalGradient(listOf(Color(0xFF38BDF8), Color(0xFF0284C7)))
+                            } else {
+                                Brush.verticalGradient(listOf(Color(0x3338BDF8), Color(0x1A38BDF8)))
+                            }
+                        )
+                        .border(
+                            1.dp,
+                            if (isMidiPlaying) Color(0xFF38BDF8) else Color(0x5538BDF8),
+                            CircleShape
+                        )
+                        .clickable { onToggleMidiPlayPause() }
+                        .testTag("btn_midi_play_bottom"),
+                    contentAlignment = Alignment.Center
+                ) {
                     Text(
-                        text = if (selectedStyleName.length > 7) selectedStyleName.take(7) + "…" else if (selectedStyleName != "-") selectedStyleName else ".STY",
-                        fontSize = 9.5.sp,
+                        text = if (isMidiPlaying) "❚❚" else "▶",
+                        fontSize = if (isMidiPlaying) 10.sp else 11.5.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = Color.White
+                        color = if (isMidiPlaying) Color(0xFF002233) else Color.White
                     )
                 }
             }
-
-            // SYNC START Button
-            StyleControlButton(
-                label = "SYNC",
-                isActive = isSyncStartActive,
-                activeColor = SoloAmber,
-                onClick = onToggleSyncStart,
-                testTag = "btn_style_sync"
-            )
-
-            // INTRO Button
-            StyleControlButton(
-                label = "INTRO",
-                isActive = isStylePlaying && activeStyleSection == "INTRO",
-                activeColor = NeonCyan,
-                onClick = { onTriggerStyleSection("INTRO") },
-                testTag = "btn_style_intro"
-            )
-
-            // MAIN A Button
-            StyleControlButton(
-                label = "MAIN A",
-                isActive = isStylePlaying && activeStyleSection == "MAIN A",
-                activeColor = Color(0xFF10B981),
-                onClick = { onTriggerStyleSection("MAIN A") },
-                testTag = "btn_style_main_a"
-            )
-
-            // MAIN B Button
-            StyleControlButton(
-                label = "MAIN B",
-                isActive = isStylePlaying && activeStyleSection == "MAIN B",
-                activeColor = Color(0xFF06B6D4),
-                onClick = { onTriggerStyleSection("MAIN B") },
-                testTag = "btn_style_main_b"
-            )
-
-            // FILL IN Button
-            StyleControlButton(
-                label = "FILL",
-                isActive = isStylePlaying && activeStyleSection == "FILL IN",
-                activeColor = NeonMagenta,
-                onClick = { onTriggerStyleSection("FILL IN") },
-                testTag = "btn_style_fill"
-            )
-
-            // ENDING Button
-            StyleControlButton(
-                label = "END",
-                isActive = isStylePlaying && activeStyleSection == "ENDING",
-                activeColor = MuteRed,
-                onClick = { onTriggerStyleSection("ENDING") },
-                testTag = "btn_style_ending"
-            )
         }
 
-        // 5. RETRACTABLE KEYBOARD GRABBER BAR (Clean, no text)
+        // ================= 5. AFFICHEUR D'ACCORDS / KEYBOARD GRABBER BOX =================
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -376,10 +375,10 @@ fun BottomBar(
                 .clip(RoundedCornerShape(10.dp))
                 .background(
                     Brush.horizontalGradient(
-                        listOf(Color(0xFF19202E), Color(0xFF121622))
+                        listOf(Color(0xFF161E2E), Color(0xFF0E131E))
                     )
                 )
-                .border(1.dp, Color(0x2E67E8F9), RoundedCornerShape(10.dp))
+                .border(1.dp, Color(0x3300E5FF), RoundedCornerShape(10.dp))
                 .clickable { onKeyboardHandleClick() }
                 .pointerInput(Unit) {
                     detectDragGestures { change, dragAmount ->
@@ -387,25 +386,73 @@ fun BottomBar(
                         onKeyboardDrag(dragAmount.y)
                     }
                 }
-                .padding(horizontal = 8.dp)
-                .testTag("kb_handle"),
-            contentAlignment = Alignment.Center
+                .padding(horizontal = 8.dp, vertical = 3.dp)
+                .testTag("chord_display_box"),
+            contentAlignment = Alignment.CenterStart
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                Box(modifier = Modifier.width(20.dp).height(2.5.dp).clip(RoundedCornerShape(1.5.dp)).background(Color(0x6667E8F9)))
-                Box(modifier = Modifier.width(20.dp).height(2.5.dp).clip(RoundedCornerShape(1.5.dp)).background(Color(0x6667E8F9)))
-                Box(modifier = Modifier.width(20.dp).height(2.5.dp).clip(RoundedCornerShape(1.5.dp)).background(Color(0x6667E8F9)))
+            if (detectedChord != null) {
+                // Real-time Jazz & Pop Chord Display
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = detectedChord.primaryName,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = NeonCyanLight,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = detectedChord.alternateNames,
+                            fontSize = 8.sp,
+                            color = TextDim,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0x2200E5FF))
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = detectedChord.formula,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = NeonCyan
+                        )
+                    }
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "═ Glisser Clavier / Afficheur d'Accords ═",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = TextDim2
+                    )
+                }
             }
         }
 
-        // 6. PIANO LOGO TOGGLE BUTTON (Aligned below Master Fader)
-        val kbBtnBg by animateColorAsState(
-            targetValue = if (isKeyboardActive) Color(0xFF1E3A5F) else DarkSurface,
-            label = "kb_btn_bg"
+        // ================= 6. KEYBOARD TOGGLE BUTTON =================
+        val keyboardBg by animateColorAsState(
+            targetValue = if (isKeyboardActive) Color(0xFF0F394A) else DarkSurface,
+            label = "kb_bg"
         )
-        val kbBorderColor by animateColorAsState(
+        val keyboardBorder by animateColorAsState(
             targetValue = if (isKeyboardActive) NeonCyan else BorderSubtle,
-            label = "kb_border_color"
+            label = "kb_border"
         )
 
         Box(
@@ -413,17 +460,17 @@ fun BottomBar(
                 .width(44.dp)
                 .height(barHeight)
                 .clip(RoundedCornerShape(9.dp))
-                .background(kbBtnBg)
-                .border(1.2.dp, kbBorderColor, RoundedCornerShape(9.dp))
+                .background(keyboardBg)
+                .border(1.dp, keyboardBorder, RoundedCornerShape(9.dp))
                 .clickable { onToggleKeyboard() }
-                .testTag("btn_piano_toggle"),
+                .testTag("btn_toggle_keyboard"),
             contentAlignment = Alignment.Center
         ) {
-            Canvas(modifier = Modifier.size(18.dp)) {
+            Canvas(modifier = Modifier.size(24.dp, 18.dp)) {
                 val w = size.width
                 val h = size.height
 
-                val keyOutlineColor = if (isKeyboardActive) NeonCyanLight else TextDim
+                val keyOutlineColor = if (isKeyboardActive) NeonCyan else TextDim
                 drawRoundRect(
                     color = keyOutlineColor,
                     topLeft = Offset(1f, 2f),
@@ -463,45 +510,6 @@ fun BottomBar(
     }
 }
 
-/**
- * Hyper-reactive tactile button for Style / Arranger Sync & Section controls
- */
-@Composable
-private fun StyleControlButton(
-    label: String,
-    isActive: Boolean,
-    activeColor: Color,
-    onClick: () -> Unit,
-    testTag: String
-) {
-    val btnBg by animateColorAsState(
-        targetValue = if (isActive) activeColor.copy(alpha = 0.28f) else Color(0x0CFFFFFF),
-        animationSpec = tween(60),
-        label = "style_btn_bg"
-    )
-    val borderColor = if (isActive) activeColor else Color(0x1EFFFFFF)
-    val textColor = if (isActive) activeColor else TextDim
-
-    Box(
-        modifier = Modifier
-            .height(34.dp)
-            .clip(RoundedCornerShape(7.dp))
-            .background(btnBg)
-            .border(1.dp, borderColor, RoundedCornerShape(7.dp))
-            .clickable { onClick() }
-            .padding(horizontal = 7.dp)
-            .testTag(testTag),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = label,
-            fontSize = 9.5.sp,
-            fontWeight = FontWeight.ExtraBold,
-            color = textColor
-        )
-    }
-}
-
 @Composable
 fun MetronomeFloatingPanel(
     isOpen: Boolean,
@@ -514,6 +522,12 @@ fun MetronomeFloatingPanel(
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val allSignatures = listOf(
+        "2/4", "3/4", "4/4", "5/4",
+        "6/4", "7/4", "3/8", "5/8",
+        "6/8", "7/8", "9/8", "12/8"
+    )
+
     AnimatedVisibility(
         visible = isOpen,
         enter = fadeIn(tween(180)) + expandVertically(tween(220)),
@@ -522,7 +536,7 @@ fun MetronomeFloatingPanel(
     ) {
         Column(
             modifier = Modifier
-                .width(260.dp)
+                .width(280.dp)
                 .shadow(20.dp, RoundedCornerShape(16.dp))
                 .clip(RoundedCornerShape(16.dp))
                 .background(
@@ -538,7 +552,7 @@ fun MetronomeFloatingPanel(
             ) {
                 Text(
                     text = "Métronome",
-                    fontSize = 12.5.sp,
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
                 )
@@ -565,8 +579,8 @@ fun MetronomeFloatingPanel(
             Spacer(modifier = Modifier.height(10.dp))
 
             Text(
-                text = "SIGNATURE RYTHMIQUE",
-                fontSize = 9.5.sp,
+                text = "SIGNATURE RYTHMIQUE (TOUTES SIGNATURES)",
+                fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
                 color = TextDim,
                 letterSpacing = 0.6.sp
@@ -574,34 +588,39 @@ fun MetronomeFloatingPanel(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                listOf("2/4", "3/4", "4/4", "6/8").forEach { sig ->
-                    val isSelected = selectedSignature == sig
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(
-                                if (isSelected) Brush.verticalGradient(listOf(NeonCyanLight, NeonCyanDark)) else Brush.linearGradient(listOf(Color(0x0DFFFFFF), Color(0x08FFFFFF)))
+            // 3 Rows x 4 Columns Grid of Signatures
+            allSignatures.chunked(4).forEach { rowList ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    rowList.forEach { sig ->
+                        val isSelected = selectedSignature == sig
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(26.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(
+                                    if (isSelected) Brush.verticalGradient(listOf(NeonCyanLight, NeonCyanDark)) else Brush.linearGradient(listOf(Color(0x0DFFFFFF), Color(0x08FFFFFF)))
+                                )
+                                .border(
+                                    1.dp,
+                                    if (isSelected) Color.Transparent else Color(0x1AFFFFFF),
+                                    RoundedCornerShape(6.dp)
+                                )
+                                .clickable { onSelectSignature(sig) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = sig,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSelected) Color(0xFF00232B) else TextDim
                             )
-                            .border(
-                                1.dp,
-                                if (isSelected) Color.Transparent else Color(0x1AFFFFFF),
-                                RoundedCornerShape(8.dp)
-                            )
-                            .clickable { onSelectSignature(sig) }
-                            .padding(vertical = 5.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = sig,
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isSelected) Color(0xFF00232B) else TextDim
-                        )
+                        }
                     }
                 }
             }

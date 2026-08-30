@@ -8,8 +8,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -40,22 +42,22 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * VerticalTrackChannel designed faithfully to user specifications and screenshots:
+ * VerticalTrackChannel faithfully built to user specifications:
  *
  * For Regular Tracks (1..8):
  * 1. Top: Display Box with Soundfont / Patch Title (.sf2 or "-" if none)
  * 2. Under Display:
  *    - Left: Pan Rotary Knob with Neon LED glowing arc
- *    - Right: Extended Rounded Rectangle M/S capsule with pure glowing colors (no letters)
- * 3. Middle: Vertical Fader with 3D Realistic Cap and Stereo 2-Color Neon VU-Meter
+ *    - Right: Pure Saturated Mute (Rouge) & Solo (Jaune LED) buttons (clean without inner white boxes)
+ * 3. Middle: Vertical Fader with 3D Metallic Ribbed Bonnet & Center Bright Glowing LED Line + Stereo Neon VU-Meter
  * 4. Bottom:
  *    - Left: FX Button (Cyan outline)
- *    - Right: Power Button (Square button that glows bright Blue/Cyan when ON, fades dark when OFF)
+ *    - Right: Power Button (Square button glowing Blue/Cyan when ON, dark when OFF)
  *
  * For Master Track:
  * 1. Top: Master Display Box (Cyan text "MASTER")
- * 2. Middle: Vertical Fader with 3D Realistic Cap and Master Stereo VU-Meter
- * 3. Bottom inside Master Track: FX Button (Orange "FX")
+ * 2. Middle: Vertical Fader with 3D Realistic Metallic Bonnet (Magenta LED) + Master VU-Meter
+ * 3. Bottom inside Master Track: FX Button (Amber "FX")
  */
 @Composable
 fun VerticalTrackChannel(
@@ -90,7 +92,7 @@ fun VerticalTrackChannel(
     val borderColor = if (isMaster) {
         Color(0x66D946EF)
     } else if (isEnabled) {
-        if (track.isSolo) SoloAmber.copy(alpha = 0.65f) else if (track.isMuted) MuteRed.copy(alpha = 0.55f) else Color(0x22FFFFFF)
+        if (track.isSolo) Color(0xFFFFD600).copy(alpha = 0.8f) else if (track.isMuted) Color(0xFFFF1E40).copy(alpha = 0.8f) else Color(0x22FFFFFF)
     } else {
         Color(0x12FFFFFF)
     }
@@ -142,20 +144,19 @@ fun VerticalTrackChannel(
 
         Spacer(modifier = Modifier.height(4.dp))
 
-        // ================= 2. KNOB & EXTENDED M/S ROW (Regular Tracks) =================
+        // ================= 2. KNOB & PURE COLORED M/S ROW =================
         if (!isMaster) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(26.dp)
+                    .height(25.dp)
                     .padding(horizontal = 1.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Left: Pan Rotary Knob with glowing LED Neon arc
+                // Left: Pan Rotary Knob
                 Box(
-                    modifier = Modifier
-                        .size(25.dp),
+                    modifier = Modifier.size(24.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     MicroPanKnob(
@@ -167,57 +168,48 @@ fun VerticalTrackChannel(
 
                 Spacer(modifier = Modifier.width(3.dp))
 
-                // Right: Extended Rounded Rectangle M/S Capsule (no letters, pure reactive color)
+                // Right: Pure Colored Mute / Solo Button (Clean pure saturated color without inner white dot)
                 val isSolo = track.isSolo
                 val isMuted = track.isMuted
 
-                val pillBg by animateColorAsState(
+                val btnBg by animateColorAsState(
                     targetValue = when {
                         !isEnabled -> Color(0x14FFFFFF)
-                        isSolo -> SoloAmber
-                        isMuted -> Color(0xFFE11D48)
-                        else -> Color(0xFF10B981) // Clean glowing green active
+                        isSolo -> Color(0xFFFFD600) // Pure Yellow LED for Solo
+                        isMuted -> Color(0xFFFF1E40) // Pure Red for Mute
+                        else -> Color(0xFF10B981) // Pure Green for Unmuted Active
                     },
                     animationSpec = tween(80),
-                    label = "ms_pill_bg"
+                    label = "mute_solo_color"
                 )
 
-                val pillBorderColor = when {
+                val btnBorder = when {
                     !isEnabled -> Color(0x1AFFFFFF)
-                    isSolo -> Color(0xFFFFD54F)
-                    isMuted -> Color(0xFFFF4D6D)
-                    else -> Color(0xFF34D399)
+                    isSolo -> Color(0xFFFFF176)
+                    isMuted -> Color(0xFFFF8A80)
+                    else -> Color(0xFF6EE7B7)
                 }
 
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .height(23.dp)
+                        .height(22.dp)
                         .clip(RoundedCornerShape(6.dp))
-                        .background(pillBg)
-                        .border(1.dp, pillBorderColor, RoundedCornerShape(6.dp))
+                        .background(btnBg)
+                        .border(1.dp, btnBorder, RoundedCornerShape(6.dp))
                         .shadow(
                             elevation = if (isEnabled && (isSolo || isMuted)) 4.dp else 1.dp,
                             shape = RoundedCornerShape(6.dp),
-                            spotColor = if (isSolo) SoloAmber else if (isMuted) MuteRed else Color(0xFF10B981)
+                            spotColor = if (isSolo) Color(0xFFFFD600) else if (isMuted) Color(0xFFFF1E40) else Color(0xFF10B981)
                         )
-                        .clickable { onMuteSoloClick() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    // Small internal status dot / indicator
-                    Box(
-                        modifier = Modifier
-                            .size(width = 8.dp, height = 3.dp)
-                            .clip(RoundedCornerShape(1.5.dp))
-                            .background(Color.White.copy(alpha = if (isEnabled) 0.85f else 0.2f))
-                    )
-                }
+                        .clickable { onMuteSoloClick() }
+                )
             }
         }
 
         Spacer(modifier = Modifier.height(3.dp))
 
-        // ================= 3. VERTICAL FADER WITH 3D CAP & VU-METER =================
+        // ================= 3. VERTICAL FADER WITH REALISTIC METALLIC LED BONNET =================
         FaderSliderWithVuMeter(
             value = track.volume,
             peakMeterL = track.peakMeterL,
@@ -234,7 +226,6 @@ fun VerticalTrackChannel(
 
         // ================= 4. BOTTOM ACTION BUTTONS =================
         if (!isMaster) {
-            // Regular Track: Left = FX button (Cyan), Right = Power square button (Blue when ON, dark when OFF)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -242,7 +233,7 @@ fun VerticalTrackChannel(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // FX Button (Cyan outlined box with bold text)
+                // FX Button (Cyan outline)
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -263,7 +254,7 @@ fun VerticalTrackChannel(
 
                 Spacer(modifier = Modifier.width(3.dp))
 
-                // Power Square Button: Lights up in Cyan/Blue when ON, fades dark/dim when OFF
+                // Power Square Button: Lights up in Cyan/Blue when ON
                 val powerBg by animateColorAsState(
                     targetValue = if (isEnabled) Color(0xFF0077B6) else Color(0xFF1E1E26),
                     animationSpec = tween(100),
@@ -281,7 +272,6 @@ fun VerticalTrackChannel(
                         .clickable { onPowerToggle() },
                     contentAlignment = Alignment.Center
                 ) {
-                    // Small illuminated power glyph / dot
                     Box(
                         modifier = Modifier
                             .size(7.dp)
@@ -291,7 +281,7 @@ fun VerticalTrackChannel(
                 }
             }
         } else {
-            // Master Track: FX Button (Orange / Amber "FX")
+            // Master Track: FX Button
             Box(
                 modifier = Modifier
                     .fillMaxWidth(0.92f)
@@ -318,8 +308,89 @@ fun VerticalTrackChannel(
 }
 
 /**
+ * Compact Horizontal Track Channel (Used when keyboard is expanded to maximum height)
+ */
+@Composable
+fun CompactHorizontalTrack(
+    track: TrackChannel,
+    onVolumeChange: (Float) -> Unit,
+    onPowerToggle: () -> Unit = {},
+    onTrackNameClick: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    val isMaster = track.isMaster
+    val isEnabled = track.isEnabled
+
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (isMaster) Color(0xFF281335) else Color(0xFF171722))
+            .border(1.dp, if (isMaster) Color(0x66D946EF) else Color(0x22FFFFFF), RoundedCornerShape(8.dp))
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Name Box
+        Text(
+            text = if (isMaster) "MST" else "P${track.id}",
+            fontSize = 9.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = if (isMaster) NeonMagenta else NeonCyan,
+            modifier = Modifier
+                .clickable { if (!isMaster) onTrackNameClick() }
+                .padding(end = 4.dp)
+        )
+
+        // Horizontal Volume Slider
+        var widthPx by remember { mutableFloatStateOf(60f) }
+        val currentOnVolumeChange by rememberUpdatedState(onVolumeChange)
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(18.dp)
+                .onSizeChanged { widthPx = it.width.toFloat() }
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures { change, _ ->
+                        val target = (change.position.x / widthPx).coerceIn(0f, 1f)
+                        currentOnVolumeChange(target)
+                        change.consume()
+                    }
+                },
+            contentAlignment = Alignment.CenterStart
+        ) {
+            // Track Groove
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(5.dp)
+                    .clip(RoundedCornerShape(2.5.dp))
+                    .background(Color(0xFF0C0D12))
+            )
+            // Filled Level
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(track.volume)
+                    .height(5.dp)
+                    .clip(RoundedCornerShape(2.5.dp))
+                    .background(if (isMaster) NeonMagenta else NeonCyan)
+            )
+        }
+
+        if (!isMaster) {
+            Spacer(modifier = Modifier.width(3.dp))
+            Box(
+                modifier = Modifier
+                    .size(14.dp)
+                    .clip(CircleShape)
+                    .background(if (isEnabled) NeonCyan else Color(0x33FFFFFF))
+                    .clickable { onPowerToggle() }
+            )
+        }
+    }
+}
+
+/**
  * Micro Rotary Pan Knob (-1.0f Left to +1.0f Right)
- * Styled with outer glowing LED Neon arc.
  */
 @Composable
 fun MicroPanKnob(
@@ -333,7 +404,7 @@ fun MicroPanKnob(
 
     Box(
         modifier = modifier
-            .size(25.dp)
+            .size(24.dp)
             .pointerInput(isEnabled) {
                 if (isEnabled) {
                     detectVerticalDragGestures { _, dragAmount ->
@@ -389,7 +460,7 @@ fun MicroPanKnob(
                 center = center
             )
 
-            // Center Notch Pointer (12 o'clock = 0 center)
+            // Center Notch Pointer
             val angleDeg = 270f + (currentPan * 65f)
             val angleRad = (angleDeg * PI / 180f).toFloat()
 
@@ -409,7 +480,7 @@ fun MicroPanKnob(
 }
 
 /**
- * Fader Slider with 3D Realistic Fader Cap and Stereo 2-Color Neon VU-Meter
+ * Fader Slider with 3D Realistic Brushed Metal Bonnet & Illuminated Center LED Line
  */
 @Composable
 fun FaderSliderWithVuMeter(
@@ -424,7 +495,7 @@ fun FaderSliderWithVuMeter(
     var containerHeightPx by remember { mutableFloatStateOf(120f) }
     var isDragging by remember { mutableStateOf(false) }
 
-    val capHeightDp = 34.dp
+    val capHeightDp = 36.dp
     val density = LocalDensity.current
     val capHeightPx = remember(density, capHeightDp) { with(density) { capHeightDp.toPx() } }
     val currentOnValueChange by rememberUpdatedState(onValueChange)
@@ -461,8 +532,7 @@ fun FaderSliderWithVuMeter(
             },
         contentAlignment = Alignment.BottomCenter
     ) {
-        // ================= BACKGROUND STEREO 2-COLOR NEON VU-METER =================
-        // Only illuminates when isEnabled and peakMeter > 0f
+        // ================= BACKGROUND STEREO NEON VU-METER =================
         Row(
             modifier = Modifier
                 .width(16.dp)
@@ -481,7 +551,6 @@ fun FaderSliderWithVuMeter(
                 val h = size.height
                 val meterHeight = if (isEnabled) (peakMeterL * h).coerceIn(0f, h) else 0f
 
-                // Dark groove slot background
                 drawRect(
                     color = Color(0x1A000000),
                     topLeft = Offset.Zero,
@@ -489,7 +558,6 @@ fun FaderSliderWithVuMeter(
                 )
 
                 if (meterHeight > 0.5f) {
-                    // 2-Color Neon LED style (Neon Cyan in mid/low, transitioning to Neon Magenta/Amber at peak)
                     val brush = Brush.verticalGradient(
                         colors = listOf(NeonMagenta, SoloAmber, NeonCyan),
                         startY = 0f,
@@ -547,81 +615,82 @@ fun FaderSliderWithVuMeter(
                 .border(0.5.dp, Color(0x33FFFFFF), RoundedCornerShape(2.dp))
         )
 
-        // ================= 3D REALISTIC FADER CAP =================
+        // ================= 3D REALISTIC METALLIC BONNET WITH CENTER LED LINE =================
         val usableHeightPx = (containerHeightPx - capHeightPx).coerceAtLeast(0f)
         val capOffsetFromTop = (1f - value.coerceIn(0f, 1f)) * usableHeightPx
+        val ledColor = if (isMaster) NeonMagenta else NeonCyan
 
-        // Realistic 3D metallic/curved white-silver fader cap
         Box(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .graphicsLayer {
                     translationY = capOffsetFromTop
                 }
-                .width(26.dp)
+                .width(27.dp)
                 .height(capHeightDp)
                 .shadow(
                     elevation = if (isDragging) 8.dp else 4.dp,
-                    shape = RoundedCornerShape(6.dp),
+                    shape = RoundedCornerShape(5.dp),
                     spotColor = Color.Black
                 )
-                .clip(RoundedCornerShape(6.dp))
+                .clip(RoundedCornerShape(5.dp))
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            Color(0xFFEBEBF2),
-                            Color(0xFFD6D6E0),
-                            Color(0xFFB5B5C4),
-                            Color(0xFF8E8E9E),
-                            Color(0xFF707080)
+                            Color(0xFF4A4E5C),
+                            Color(0xFF2C2F3A),
+                            Color(0xFF1E2028),
+                            Color(0xFF121319),
+                            Color(0xFF0A0B0E)
                         )
                     )
                 )
-                .border(1.dp, Color(0xFFFFFFFF), RoundedCornerShape(6.dp))
+                .border(1.dp, Color(0x55FFFFFF), RoundedCornerShape(5.dp))
         ) {
-            // 3D Bevel & Grip Ridges
+            // Horizontal Ribbed Metallic Grooves + Center Bright LED Slit
             Column(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp),
+                verticalArrangement = Arrangement.SpaceEvenly,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Top Light Reflection Rim
+                // Top Highlight Bevel
                 Box(
                     modifier = Modifier
-                        .padding(top = 2.dp, start = 3.dp, end = 3.dp)
-                        .fillMaxWidth()
-                        .height(2.dp)
-                        .clip(RoundedCornerShape(1.dp))
-                        .background(Color.White.copy(alpha = 0.9f))
+                        .fillMaxWidth(0.9f)
+                        .height(1.5.dp)
+                        .clip(RoundedCornerShape(0.5.dp))
+                        .background(Color(0x88FFFFFF))
                 )
 
-                // Tactile Grip Grooves
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Box(modifier = Modifier.width(14.dp).height(1.5.dp).background(Color(0x33000000)))
-                    // Center Indicator Line (Neon Cyan for track, Neon Magenta for Master)
-                    Box(
-                        modifier = Modifier
-                            .width(18.dp)
-                            .height(2.5.dp)
-                            .clip(RoundedCornerShape(1.dp))
-                            .background(
-                                if (isMaster) Color(0xFFD946EF) else Color(0xFF06B6D4)
-                            )
-                    )
-                    Box(modifier = Modifier.width(14.dp).height(1.5.dp).background(Color(0x33000000)))
-                }
+                // Top Grip Ribs
+                Box(modifier = Modifier.fillMaxWidth(0.75f).height(1.dp).background(Color(0x33FFFFFF)))
+                Box(modifier = Modifier.fillMaxWidth(0.75f).height(1.dp).background(Color(0x22000000)))
 
-                // Bottom Shadow Bumper
+                // CENTER BRIGHT GLOWING LED SLIT (La petite ligne de couleur au milieu)
                 Box(
                     modifier = Modifier
-                        .padding(bottom = 2.dp, start = 3.dp, end = 3.dp)
-                        .fillMaxWidth()
-                        .height(2.dp)
-                        .clip(RoundedCornerShape(1.dp))
-                        .background(Color(0x66000000))
+                        .fillMaxWidth(0.92f)
+                        .height(3.dp)
+                        .shadow(4.dp, RoundedCornerShape(1.5.dp), spotColor = ledColor)
+                        .clip(RoundedCornerShape(1.5.dp))
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(ledColor.copy(alpha = 0.4f), Color.White, ledColor, ledColor.copy(alpha = 0.4f))
+                            )
+                        )
+                )
+
+                // Bottom Grip Ribs
+                Box(modifier = Modifier.fillMaxWidth(0.75f).height(1.dp).background(Color(0x22000000)))
+                Box(modifier = Modifier.fillMaxWidth(0.75f).height(1.dp).background(Color(0x33FFFFFF)))
+
+                // Bottom Shadow Rim
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.9f)
+                        .height(1.5.dp)
+                        .clip(RoundedCornerShape(0.5.dp))
+                        .background(Color(0x55000000))
                 )
             }
         }

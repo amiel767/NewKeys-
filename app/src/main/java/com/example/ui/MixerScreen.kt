@@ -1,10 +1,8 @@
 package com.example.ui
 
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -33,6 +31,11 @@ fun MixerScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var isSplashFinished by remember { mutableStateOf(false) }
+
+    // Real-time zero-latency chord analysis from pressed keys
+    val detectedChord = remember(uiState.pressedKeys) {
+        ChordCalculator.detect(uiState.pressedKeys)
+    }
 
     // Smooth animation for keyboard retraction & tracks compression
     val animatedKbFraction by animateFloatAsState(
@@ -81,7 +84,7 @@ fun MixerScreen(
                     loopFolders = uiState.loopFolders,
                     activeLoopFile = uiState.activeLoopFile,
                     onToggleLoopFolder = { viewModel.toggleLoopFolder(it) },
-                    onSelectLoopFile = { viewModel.selectLoopFile(it) },
+                    onSelectLoopFile = { viewModel.selectAndToggleLoopFile(it) },
                     isSustainActive = uiState.isSustainActive,
                     isMidiPedalPressed = uiState.isMidiPedalPressed,
                     onToggleSustain = { viewModel.toggleSustain() },
@@ -112,7 +115,7 @@ fun MixerScreen(
                             onVolumeChange = { vol -> viewModel.setTrackVolume(track.id, vol) },
                             onPowerToggle = { viewModel.toggleTrackPower(track.id) },
                             onPanChange = { pan -> viewModel.setTrackPan(track.id, pan) },
-                            onMuteSoloClick = { viewModel.toggleMuteSoloSequence(track.id) },
+                            onMuteSoloClick = { viewModel.onTrackMuteSoloClick(track.id) },
                             onTrackNameClick = { viewModel.openSoundfontForTrack(track.id) },
                             onFxClick = { viewModel.openEffectsForTrack(track.id) },
                             modifier = Modifier
@@ -138,7 +141,7 @@ fun MixerScreen(
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                // 3. BOTTOM BAR (With Arranger Sync Controls & Piano Logo Toggle Button)
+                // 3. BOTTOM BAR (With MIDI Player, Real Chord Detector & Piano Toggle)
                 BottomBar(
                     isRecording = uiState.isRecording,
                     recordingDuration = uiState.recordingDuration,
@@ -154,13 +157,16 @@ fun MixerScreen(
                     onSelectSignature = { viewModel.setMetronomeSignature(it) },
                     metroVolume = uiState.metronomeVolume,
                     onMetroVolumeChange = { viewModel.setMetronomeVolume(it) },
-                    isStylePlaying = uiState.isStylePlaying,
-                    isSyncStartActive = uiState.isSyncStartActive,
-                    activeStyleSection = uiState.activeStyleSection,
-                    selectedStyleName = uiState.selectedStyleName,
-                    onOpenStyleDialog = { viewModel.openPopup(ActivePopup.STYLE) },
-                    onToggleSyncStart = { viewModel.toggleSyncStart() },
-                    onTriggerStyleSection = { viewModel.triggerStyleSection(it) },
+                    
+                    // MIDI Player Controls
+                    isMidiPlaying = uiState.isMidiPlaying,
+                    selectedMidiName = uiState.selectedMidiName,
+                    onOpenMidiDialog = { viewModel.toggleMidiPanel() },
+                    onToggleMidiPlayPause = { viewModel.toggleMidiPlayPause() },
+                    
+                    // Real-time Detected Chord
+                    detectedChord = detectedChord,
+                    
                     isKeyboardActive = uiState.keyboardHeightFraction > 0f,
                     onToggleKeyboard = { viewModel.cycleKeyboardExpansion() },
                     onKeyboardHandleClick = { viewModel.cycleKeyboardExpansion() },
@@ -170,7 +176,7 @@ fun MixerScreen(
                     }
                 )
 
-                // 4. RETRACTABLE MULTI-TOUCH VIRTUAL PIANO KEYBOARD
+                // 4. RETRACTABLE MULTI-TOUCH VIRTUAL PIANO KEYBOARD WITH OCTAVE NAV & SCROLL BUTTONS
                 VirtualPianoKeyboard(
                     heightFraction = animatedKbFraction,
                     pressedKeys = uiState.pressedKeys,
@@ -184,8 +190,8 @@ fun MixerScreen(
                 )
             }
 
-            // Outside touch scrim for quick closing of floating dropdowns (Loops, Metronome, Scene)
-            if (uiState.isLoopsPanelOpen || uiState.isMetroPanelOpen || uiState.activePopup == ActivePopup.SCENE) {
+            // Outside touch scrim for quick closing of floating dropdowns
+            if (uiState.isLoopsPanelOpen || uiState.isMetroPanelOpen || uiState.isMidiPanelOpen || uiState.activePopup == ActivePopup.SCENE) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -193,13 +199,21 @@ fun MixerScreen(
                         .clickable {
                             if (uiState.isLoopsPanelOpen) viewModel.closeLoopsPanel()
                             if (uiState.isMetroPanelOpen) viewModel.closeMetroPanel()
+                            if (uiState.isMidiPanelOpen) viewModel.closeMidiPanel()
                             if (uiState.activePopup == ActivePopup.SCENE) viewModel.closePopup()
                         }
                 )
             }
 
             // Floating Loops Dropdown Panel
-            if (uiState.isLoopsPanelOpen) {
+            AnimatedVisibility(
+                visible = uiState.isLoopsPanelOpen,
+                enter = fadeIn(tween(180)) + slideInVertically(initialOffsetY = { -20 }, animationSpec = tween(200)),
+                exit = fadeOut(tween(150)) + slideOutVertically(targetOffsetY = { -20 }, animationSpec = tween(150)),
+                modifier = Modifier
+                    .padding(top = 38.dp, start = 120.dp)
+                    .align(Alignment.TopStart)
+            ) {
                 LoopsFloatingPanel(
                     isOpen = uiState.isLoopsPanelOpen,
                     isLoopPlaying = uiState.isLoopPlaying,
@@ -211,16 +225,20 @@ fun MixerScreen(
                     loopFolders = uiState.loopFolders,
                     activeLoopFile = uiState.activeLoopFile,
                     onToggleFolder = { viewModel.toggleLoopFolder(it) },
-                    onSelectFile = { viewModel.selectLoopFile(it) },
-                    onClose = { viewModel.closeLoopsPanel() },
-                    modifier = Modifier
-                        .padding(top = 38.dp, start = 120.dp)
-                        .align(Alignment.TopStart)
+                    onSelectFile = { viewModel.selectAndToggleLoopFile(it) },
+                    onClose = { viewModel.closeLoopsPanel() }
                 )
             }
 
             // Floating Metronome Dropdown Panel
-            if (uiState.isMetroPanelOpen) {
+            AnimatedVisibility(
+                visible = uiState.isMetroPanelOpen,
+                enter = fadeIn(tween(180)) + slideInVertically(initialOffsetY = { 20 }, animationSpec = tween(200)),
+                exit = fadeOut(tween(150)) + slideOutVertically(targetOffsetY = { 20 }, animationSpec = tween(150)),
+                modifier = Modifier
+                    .padding(bottom = 40.dp, start = 120.dp)
+                    .align(Alignment.BottomStart)
+            ) {
                 MetronomeFloatingPanel(
                     isOpen = uiState.isMetroPanelOpen,
                     isMetronomeOn = uiState.isMetronomeOn,
@@ -229,58 +247,56 @@ fun MixerScreen(
                     onSelectSignature = { viewModel.setMetronomeSignature(it) },
                     volume = uiState.metronomeVolume,
                     onVolumeChange = { viewModel.setMetronomeVolume(it) },
-                    onClose = { viewModel.closeMetroPanel() },
-                    modifier = Modifier
-                        .padding(bottom = 40.dp, start = 120.dp)
-                        .align(Alignment.BottomStart)
+                    onClose = { viewModel.closeMetroPanel() }
+                )
+            }
+
+            // Floating MIDI File Browser Panel
+            AnimatedVisibility(
+                visible = uiState.isMidiPanelOpen,
+                enter = fadeIn(tween(180)) + slideInVertically(initialOffsetY = { 20 }, animationSpec = tween(200)),
+                exit = fadeOut(tween(150)) + slideOutVertically(targetOffsetY = { 20 }, animationSpec = tween(150)),
+                modifier = Modifier
+                    .padding(bottom = 40.dp, start = 220.dp)
+                    .align(Alignment.BottomStart)
+            ) {
+                MidiFloatingPanel(
+                    isOpen = uiState.isMidiPanelOpen,
+                    isMidiPlaying = uiState.isMidiPlaying,
+                    onToggleMidiPlayPause = { viewModel.toggleMidiPlayPause() },
+                    midiVolume = uiState.midiVolume,
+                    onMidiVolumeChange = { viewModel.setMidiVolume(it) },
+                    midiFolders = uiState.midiFolders,
+                    activeMidiName = uiState.selectedMidiName,
+                    onToggleFolder = { viewModel.toggleMidiFolder(it) },
+                    onSelectMidiFile = { viewModel.playMidiFile(it) },
+                    onClose = { viewModel.closeMidiPanel() }
                 )
             }
 
             // Scene In-Place Expanding View
-            if (uiState.activePopup == ActivePopup.SCENE) {
+            AnimatedVisibility(
+                visible = uiState.activePopup == ActivePopup.SCENE,
+                enter = fadeIn(tween(180)) + slideInVertically(initialOffsetY = { -20 }, animationSpec = tween(200)),
+                exit = fadeOut(tween(150)) + slideOutVertically(targetOffsetY = { -20 }, animationSpec = tween(150)),
+                modifier = Modifier
+                    .padding(top = 38.dp, end = 10.dp)
+                    .align(Alignment.TopEnd)
+            ) {
                 SceneDialog(
                     isOpen = true,
                     scenes = uiState.scenes,
                     activeSceneId = uiState.activeSceneId,
                     onSelectScene = { viewModel.selectScene(it) },
                     onSaveCurrentScene = { viewModel.saveCurrentScene(it) },
-                    onClose = { viewModel.closePopup() },
-                    modifier = Modifier
-                        .padding(top = 38.dp, end = 10.dp)
-                        .align(Alignment.TopEnd)
+                    onClose = { viewModel.closePopup() }
                 )
             }
         }
 
         // ================= POPUP OVERLAYS & FLOATING WINDOWS =================
 
-        // Style Arranger Dialog (.sty)
-        if (uiState.activePopup == ActivePopup.STYLE) {
-            StyleDialog(
-                isOpen = true,
-                styleFiles = uiState.styleFiles,
-                soundfonts = uiState.soundfontFiles,
-                selectedStyleName = uiState.selectedStyleName,
-                isStylePlaying = uiState.isStylePlaying,
-                styleVolume = uiState.styleVolume,
-                onStyleVolumeChange = { viewModel.setStyleVolume(it) },
-                activeTab = uiState.styleActiveTab,
-                onTabChange = { viewModel.setStyleTab(it) },
-                onSelectStyleFile = { viewModel.selectStyleFile(it) },
-                onSelectSf2Source = { viewModel.selectStyleSf2Source(it) },
-                fxLow = uiState.styleFxLow,
-                fxMid = uiState.styleFxMid,
-                fxHigh = uiState.styleFxHigh,
-                reverbMix = uiState.styleReverbMix,
-                onFxLowChange = { viewModel.setStyleFxLow(it) },
-                onFxMidChange = { viewModel.setStyleFxMid(it) },
-                onFxHighChange = { viewModel.setStyleFxHigh(it) },
-                onReverbMixChange = { viewModel.setStyleReverbMix(it) },
-                onClose = { viewModel.closePopup() }
-            )
-        }
-
-        // Drum Pad (Shown if pinned or active)
+        // Drum Pad (Square Grid with Long-Press Customization: Palette, Gradient, LED, Neon, Material You)
         if (uiState.isDrumPadPinned || uiState.activePopup == ActivePopup.DRUM_PAD) {
             DrumPadDialog(
                 drumPads = uiState.drumPads,
@@ -299,6 +315,9 @@ fun MixerScreen(
                 onClose = { viewModel.closeDrumPad() },
                 onPadPressed = { viewModel.onDrumPadPressed(it) },
                 onPadReleased = { viewModel.onDrumPadReleased(it) },
+                onUpdatePadCustomization = { padId, label, style ->
+                    viewModel.updateDrumPadCustomization(padId, label, style)
+                },
                 onAssignPadSample = { padId, sample -> viewModel.assignDrumSample(padId, sample.name) },
                 onAssignPadNote = { padId, noteStr, oct, key -> viewModel.assignDrumSf2Note(padId, key, oct) }
             )
@@ -356,10 +375,10 @@ fun MixerScreen(
                     onClose = { viewModel.closePopup() }
                 )
             }
-            ActivePopup.STYLE, ActivePopup.SCENE, ActivePopup.DRUM_PAD, ActivePopup.TONIC_PAD, ActivePopup.NONE -> {}
+            else -> {}
         }
 
-        // Settings Drawer (AOSP MaterialExpressive with Theme selector & 3D knobs)
+        // Settings Drawer (AOSP Material You with Theme selector & FL SoundGoodizer A/B/C/D)
         SettingsDrawer(
             isOpen = uiState.isSettingsDrawerOpen,
             onClose = { viewModel.closeSettingsDrawer() },
@@ -381,6 +400,8 @@ fun MixerScreen(
             onSelectLanguage = { viewModel.setSelectedLanguage(it) },
             soundGoodizer = uiState.soundGoodizer,
             onSoundGoodizerChange = { viewModel.setSoundGoodizer(it) },
+            soundGoodizerMode = uiState.soundGoodizerMode,
+            onSoundGoodizerModeChange = { viewModel.setSoundGoodizerMode(it) },
             masterPunch = uiState.masterPunch,
             onMasterPunchChange = { viewModel.setMasterPunch(it) },
             spatialWidener = uiState.spatialWidener,

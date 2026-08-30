@@ -16,8 +16,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,6 +32,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.model.SoundfontPreset
 import com.example.model.StorageItem
 import com.example.ui.theme.*
 import kotlin.math.roundToInt
@@ -55,17 +54,28 @@ fun TonicPadDialog(
     onTogglePin: () -> Unit,
     onClose: () -> Unit,
     soundfonts: List<StorageItem> = emptyList(),
+    currentLoadedSf2Name: String = "Worship Ambient Pad.sf2",
+    loadedSf2Presets: List<SoundfontPreset> = emptyList(),
+    onSelectPreset: (SoundfontPreset) -> Unit = {},
+    onSelectSf2File: (StorageItem) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
-    var isSf2PickerOpen by remember { mutableStateOf(false) }
+    var isSoundPickerOpen by remember { mutableStateOf(false) }
 
-    var floatingOffsetX by remember { mutableFloatStateOf(60f) }
-    var floatingOffsetY by remember { mutableFloatStateOf(40f) }
-    var windowSizeDp by remember { mutableStateOf(440.dp) } // Square format
+    // Position and size state maintained consistently
+    var floatingOffsetX by remember { mutableFloatStateOf(100f) }
+    var floatingOffsetY by remember { mutableFloatStateOf(60f) }
+    var windowSizeDp by remember { mutableStateOf(440.dp) }
+
+    // Format single octave display (e.g. "C4" if range is "C3 — C4" or "C4")
+    val singleOctaveText = remember(octaveRange) {
+        val match = Regex("C[0-8]").findAll(octaveRange).map { it.value }.toList()
+        if (match.isNotEmpty()) match.last() else "C4"
+    }
 
     if (isPinned) {
-        // Floating resizable window (Square)
+        // Pinned Mobile & Resizable Window (stays exactly in place and size)
         Box(
             modifier = modifier
                 .offset { IntOffset(floatingOffsetX.roundToInt(), floatingOffsetY.roundToInt()) }
@@ -73,9 +83,9 @@ fun TonicPadDialog(
                 .shadow(24.dp, RoundedCornerShape(18.dp))
                 .clip(RoundedCornerShape(18.dp))
                 .background(
-                    Brush.linearGradient(listOf(Color(0xFF282238), Color(0xFF1B1626), Color(0xFF130F1C)))
+                    Brush.linearGradient(listOf(Color(0xFF241C30), Color(0xFF161220), Color(0xFF0F0C16)))
                 )
-                .border(1.5.dp, NeonPurpleLight, RoundedCornerShape(18.dp))
+                .border(1.5.dp, Color(0xFF8B5CF6), RoundedCornerShape(18.dp))
                 .padding(10.dp)
                 .testTag("floating_tonic_pad")
         ) {
@@ -84,7 +94,7 @@ fun TonicPadDialog(
                 onNoteClick = onNoteClick,
                 isMultiPadEnabled = isMultiPadEnabled,
                 onToggleMultiPad = onToggleMultiPad,
-                octaveRange = octaveRange,
+                singleOctaveText = singleOctaveText,
                 onOctaveMinus = onOctaveMinus,
                 onOctavePlus = onOctavePlus,
                 brightness = brightness,
@@ -94,37 +104,39 @@ fun TonicPadDialog(
                 isPinned = isPinned,
                 onTogglePin = onTogglePin,
                 onClose = onClose,
-                isSf2PickerOpen = isSf2PickerOpen,
-                onToggleSf2Picker = { isSf2PickerOpen = it },
+                isSoundPickerOpen = isSoundPickerOpen,
+                onToggleSoundPicker = { isSoundPickerOpen = it },
                 soundfonts = soundfonts,
+                currentLoadedSf2Name = currentLoadedSf2Name,
+                loadedSf2Presets = loadedSf2Presets,
+                onSelectPreset = onSelectPreset,
+                onSelectSf2File = onSelectSf2File,
                 onDragHeader = { dx, dy ->
                     floatingOffsetX += dx
                     floatingOffsetY += dy
                 }
             )
 
-            // Resize Handle
+            // Discrete Resize Arrow (No background box around the arrow)
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .size(26.dp)
-                    .clip(RoundedCornerShape(bottomEnd = 18.dp))
-                    .background(Color(0x228B5CF6))
+                    .size(24.dp)
                     .pointerInput(density) {
                         detectDragGestures { change, dragAmount ->
                             change.consume()
                             val dDp = with(density) { (dragAmount.x + dragAmount.y) / 2f }.toDp()
-                            windowSizeDp = (windowSizeDp + dDp).coerceIn(280.dp, 600.dp)
+                            windowSizeDp = (windowSizeDp + dDp).coerceIn(300.dp, 600.dp)
                         }
                     }
-                    .padding(4.dp),
+                    .padding(end = 4.dp, bottom = 4.dp),
                 contentAlignment = Alignment.BottomEnd
             ) {
-                Text(text = "◢", fontSize = 11.sp, color = NeonPurpleLight, fontWeight = FontWeight.Bold)
+                Text(text = "◢", fontSize = 12.sp, color = NeonPurpleLight, fontWeight = FontWeight.Bold)
             }
         }
     } else {
-        // Standard Square Modal Dialog
+        // Standard Centered Modal (Cannot be moved until pinned)
         Box(
             modifier = modifier
                 .fillMaxSize()
@@ -142,15 +154,15 @@ fun TonicPadDialog(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(460.dp) // Square form factor per user request
+                        .size(440.dp)
                         .shadow(24.dp, RoundedCornerShape(20.dp))
                         .clip(RoundedCornerShape(20.dp))
                         .background(
-                            Brush.linearGradient(listOf(Color(0xFF282238), Color(0xFF1B1626), Color(0xFF130F1C)))
+                            Brush.linearGradient(listOf(Color(0xFF241C30), Color(0xFF161220), Color(0xFF0F0C16)))
                         )
-                        .border(1.2.dp, NeonPurpleLight, RoundedCornerShape(20.dp))
+                        .border(1.2.dp, Color(0xFF8B5CF6), RoundedCornerShape(20.dp))
                         .clickable(enabled = false) {}
-                        .padding(14.dp)
+                        .padding(12.dp)
                         .testTag("dialog_tonic_pad")
                 ) {
                     TonicPadContent(
@@ -158,7 +170,7 @@ fun TonicPadDialog(
                         onNoteClick = onNoteClick,
                         isMultiPadEnabled = isMultiPadEnabled,
                         onToggleMultiPad = onToggleMultiPad,
-                        octaveRange = octaveRange,
+                        singleOctaveText = singleOctaveText,
                         onOctaveMinus = onOctaveMinus,
                         onOctavePlus = onOctavePlus,
                         brightness = brightness,
@@ -168,9 +180,13 @@ fun TonicPadDialog(
                         isPinned = isPinned,
                         onTogglePin = onTogglePin,
                         onClose = onClose,
-                        isSf2PickerOpen = isSf2PickerOpen,
-                        onToggleSf2Picker = { isSf2PickerOpen = it },
+                        isSoundPickerOpen = isSoundPickerOpen,
+                        onToggleSoundPicker = { isSoundPickerOpen = it },
                         soundfonts = soundfonts,
+                        currentLoadedSf2Name = currentLoadedSf2Name,
+                        loadedSf2Presets = loadedSf2Presets,
+                        onSelectPreset = onSelectPreset,
+                        onSelectSf2File = onSelectSf2File,
                         onDragHeader = null
                     )
                 }
@@ -185,7 +201,7 @@ private fun TonicPadContent(
     onNoteClick: (String) -> Unit,
     isMultiPadEnabled: Boolean,
     onToggleMultiPad: () -> Unit,
-    octaveRange: String,
+    singleOctaveText: String,
     onOctaveMinus: () -> Unit,
     onOctavePlus: () -> Unit,
     brightness: Float,
@@ -195,12 +211,17 @@ private fun TonicPadContent(
     isPinned: Boolean,
     onTogglePin: () -> Unit,
     onClose: () -> Unit,
-    isSf2PickerOpen: Boolean,
-    onToggleSf2Picker: (Boolean) -> Unit,
+    isSoundPickerOpen: Boolean,
+    onToggleSoundPicker: (Boolean) -> Unit,
     soundfonts: List<StorageItem>,
+    currentLoadedSf2Name: String,
+    loadedSf2Presets: List<SoundfontPreset>,
+    onSelectPreset: (SoundfontPreset) -> Unit,
+    onSelectSf2File: (StorageItem) -> Unit,
     onDragHeader: ((Float, Float) -> Unit)?
 ) {
     val chromaticNotes = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+    var soundTab by remember { mutableStateOf("presets") } // "presets" (SF2 chargé) or "files" (Dossier /Soundfonts)
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Header
@@ -223,51 +244,55 @@ private fun TonicPadContent(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                if (isSf2PickerOpen) {
+                if (isSoundPickerOpen) {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
                             .background(Color(0x228B5CF6))
                             .border(1.dp, NeonPurpleLight, RoundedCornerShape(6.dp))
-                            .clickable { onToggleSf2Picker(false) }
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .clickable { onToggleSoundPicker(false) }
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
                     ) {
                         Text(text = "← Retour", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = NeonPurpleLight)
                     }
                 }
                 Text(
-                    text = if (isSf2PickerOpen) "Choisir un SoundFont" else "🎵 Tonic Pad Drone & Ambience",
-                    fontSize = 12.sp,
+                    text = if (isSoundPickerOpen) "Sound: Sélectionner" else "🎵 Tonic Pad Drone & Ambience",
+                    fontSize = 11.5.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
                 )
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (!isSf2PickerOpen) {
+            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                if (!isSoundPickerOpen) {
+                    // "Sound" Button (Renamed from Banque SF2 per Page 1)
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0x1A8B5CF6))
+                            .background(Color(0x228B5CF6))
                             .border(1.dp, NeonPurpleLight, RoundedCornerShape(6.dp))
-                            .clickable { onToggleSf2Picker(true) }
+                            .clickable { onToggleSoundPicker(true) }
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                        Text(text = "📦 Banques SF2", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = NeonPurpleLight)
+                        Text(text = "🔊 Sound", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = NeonPurpleLight)
                     }
                 }
 
+                // Pin Button
                 Box(
                     modifier = Modifier
                         .size(26.dp)
                         .clip(RoundedCornerShape(6.dp))
-                        .background(if (isPinned) Color(0x338B5CF6) else Color(0x14FFFFFF))
+                        .background(if (isPinned) Color(0x448B5CF6) else Color(0x14FFFFFF))
+                        .border(1.dp, if (isPinned) NeonPurpleLight else Color.Transparent, RoundedCornerShape(6.dp))
                         .clickable { onTogglePin() },
                     contentAlignment = Alignment.Center
                 ) {
                     Text(text = if (isPinned) "📌" else "📍", fontSize = 11.sp)
                 }
 
+                // Close Button
                 Box(
                     modifier = Modifier
                         .size(26.dp)
@@ -276,84 +301,163 @@ private fun TonicPadContent(
                         .clickable { onClose() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = "✕", fontSize = 12.sp, color = TextPrimary)
+                    Text(text = "✕", fontSize = 11.5.sp, color = TextPrimary)
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(6.dp))
 
-        if (isSf2PickerOpen) {
-            // INNER SOUNDFONT PICKER
+        if (isSoundPickerOpen) {
+            // SOUND PICKER WITH 2 TABS (1. .SF2 CHARGÉ INSTRUMENTS, 2. DOSSIER /SOUNDFONTS)
             Column(modifier = Modifier.fillMaxSize()) {
-                Text(
-                    text = "BANQUES SOUNDFONT /LiveKeys/SoundFonts",
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextDim
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-
-                if (soundfonts.isEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0x14FFFFFF))
+                        .padding(2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    // Tab 1: .sf2 Chargé
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth()
                             .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0x08FFFFFF)),
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (soundTab == "presets") Color(0xFF8B5CF6) else Color.Transparent)
+                            .clickable { soundTab = "presets" }
+                            .padding(vertical = 5.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "Déposez vos fichiers .sf2 dans /LiveKeys/SoundFonts",
+                            text = "1. .sf2 Chargé",
                             fontSize = 10.sp,
-                            color = TextDim,
-                            textAlign = TextAlign.Center
+                            fontWeight = FontWeight.Bold,
+                            color = if (soundTab == "presets") Color.White else TextDim
                         )
                     }
-                } else {
-                    LazyColumn(
+
+                    // Tab 2: Dossier /Soundfonts
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
+                            .weight(1f)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (soundTab == "files") Color(0xFF8B5CF6) else Color.Transparent)
+                            .clickable { soundTab = "files" }
+                            .padding(vertical = 5.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "2. Dossier /Soundfonts",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (soundTab == "files") Color.White else TextDim
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                if (soundTab == "presets") {
+                    // Instruments list in current .sf2
+                    val presetsList = if (loadedSf2Presets.isNotEmpty()) loadedSf2Presets else listOf(
+                        SoundfontPreset(0, "Worship Warm Pad", 0),
+                        SoundfontPreset(1, "Deep Shimmer Drone", 0),
+                        SoundfontPreset(2, "Celestial Choir Pad", 0),
+                        SoundfontPreset(3, "Soft Analog Strings", 0),
+                        SoundfontPreset(4, "Glass Bell Ambience", 0)
+                    )
+
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        items(soundfonts) { sf2 ->
+                        items(presetsList) { preset ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(Color(0x0AFFFFFF))
-                                    .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(8.dp))
-                                    .clickable { onToggleSf2Picker(false) }
+                                    .background(Color(0x0EFFFFFF))
+                                    .border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        onSelectPreset(preset)
+                                        onToggleSoundPicker(false)
+                                    }
                                     .padding(horizontal = 10.dp, vertical = 7.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text(text = "📦", fontSize = 12.sp)
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(text = sf2.name, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                                    Text(text = sf2.formattedSize, fontSize = 8.sp, color = TextDim2)
+                                Column {
+                                    Text(text = preset.name, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                                    Text(text = "Bank: ${preset.bankNumber} · Preset: ${preset.id}", fontSize = 8.5.sp, color = TextDim2)
                                 }
-                                Text(text = "Sélectionner", fontSize = 9.sp, color = NeonPurpleLight, fontWeight = FontWeight.Bold)
+                                Text(text = "Charger", fontSize = 9.sp, color = NeonPurpleLight, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                } else {
+                    // Files in /LiveKeys/SoundFonts
+                    if (soundfonts.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0x08FFFFFF)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Aucun .sf2 dans /LiveKeys/SoundFonts\nDéposez vos fichiers SoundFont pour les charger",
+                                fontSize = 10.sp,
+                                color = TextDim,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            items(soundfonts) { sf2 ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color(0x0EFFFFFF))
+                                        .border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            onSelectSf2File(sf2)
+                                            onToggleSoundPicker(false)
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(text = sf2.name, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                                        Text(text = sf2.formattedSize, fontSize = 8.sp, color = TextDim2)
+                                    }
+                                    Text(text = "Ouvrir", fontSize = 9.sp, color = NeonPurpleLight, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
                 }
             }
         } else {
-            // Top Controls: Interactive Octave Stepper & Multi-Pad toggle
+            // TOP CONTROLS: SINGLE OCTAVE DISPLAY (C4) WITH - / + BUTTONS & MULTI-PAD TOGGLE
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // Interactive Octave Stepper
+                // Interactive Octave Stepper showing ONLY single octave "C4"
                 Row(
                     modifier = Modifier
-                        .height(30.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                        .height(28.dp)
+                        .clip(RoundedCornerShape(7.dp))
                         .background(Color(0x1AFFFFFF))
-                        .border(1.dp, Color(0x2EFFFFFF), RoundedCornerShape(8.dp)),
+                        .border(1.dp, Color(0x2EFFFFFF), RoundedCornerShape(7.dp)),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
@@ -363,14 +467,14 @@ private fun TonicPadContent(
                             .clickable { onOctaveMinus() },
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(text = "−", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = NeonPurpleLight)
+                        Text(text = "−", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = NeonPurpleLight)
                     }
 
                     Text(
-                        text = "Octave: $octaveRange",
-                        fontSize = 9.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary,
+                        text = "Octave: $singleOctaveText",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White,
                         modifier = Modifier.padding(horizontal = 6.dp)
                     )
 
@@ -381,23 +485,23 @@ private fun TonicPadContent(
                             .clickable { onOctavePlus() },
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(text = "+", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = NeonPurpleLight)
+                        Text(text = "+", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = NeonPurpleLight)
                     }
                 }
 
-                // Mode Multi Pad toggle (Single-touch on/off)
+                // Mode Multi-Pad Toggle
                 Box(
                     modifier = Modifier
-                        .height(30.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (isMultiPadEnabled) NeonPurple else Color(0x14FFFFFF))
-                        .border(1.dp, if (isMultiPadEnabled) NeonPurpleLight else Color(0x22FFFFFF), RoundedCornerShape(8.dp))
+                        .height(28.dp)
+                        .clip(RoundedCornerShape(7.dp))
+                        .background(if (isMultiPadEnabled) Color(0xFF8B5CF6) else Color(0x14FFFFFF))
+                        .border(1.dp, if (isMultiPadEnabled) NeonPurpleLight else Color(0x22FFFFFF), RoundedCornerShape(7.dp))
                         .clickable { onToggleMultiPad() }
-                        .padding(horizontal = 10.dp),
+                        .padding(horizontal = 9.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = if (isMultiPadEnabled) "Multi-Pad: ACTIF" else "Multi-Pad: OFF",
+                        text = if (isMultiPadEnabled) "Multi-Pad: ON" else "Multi-Pad: OFF",
                         fontSize = 9.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (isMultiPadEnabled) Color.White else TextDim
@@ -405,49 +509,49 @@ private fun TonicPadContent(
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // 12 Chromatic Notes Grid (4x3 Square arrangement)
+            // 12 CHROMATIC NOTES GRID (4x3 Arrangement)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                verticalArrangement = Arrangement.spacedBy(5.dp)
             ) {
                 for (row in 0 until 3) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
                         for (col in 0 until 4) {
                             val note = chromaticNotes[row * 4 + col]
                             val isActive = activeNotes.contains(note)
 
                             val padBg = if (isActive) {
-                                Brush.verticalGradient(listOf(NeonPurpleLight, NeonPurple, NeonPurpleDark))
+                                Brush.verticalGradient(listOf(NeonPurpleLight, Color(0xFF7C3AED), Color(0xFF4C1D95)))
                             } else {
-                                Brush.verticalGradient(listOf(Color(0xFF262035), Color(0xFF181422)))
+                                Brush.verticalGradient(listOf(Color(0xFF282038), Color(0xFF1A1426)))
                             }
 
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxHeight()
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .clip(RoundedCornerShape(9.dp))
                                     .background(padBg)
                                     .border(
                                         1.2.dp,
-                                        if (isActive) NeonCyanLight else Color(0x268B5CF6),
-                                        RoundedCornerShape(10.dp)
+                                        if (isActive) Color(0xFFC4B5FD) else Color(0x268B5CF6),
+                                        RoundedCornerShape(9.dp)
                                     )
                                     .clickable { onNoteClick(note) },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = note,
-                                    fontSize = 14.sp,
+                                    fontSize = 13.5.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = if (isActive) Color.White else TextPrimary
                                 )
@@ -459,36 +563,33 @@ private fun TonicPadContent(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Sliders: Luminosité & Shimmer
+            // 3D SEMI-REALISTIC KNOBS WITH FLUID GLOWING LED (Brightness & Shimmer)
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0x0CFFFFFF))
+                    .padding(vertical = 4.dp, horizontal = 12.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(text = "Luminosité", fontSize = 8.sp, color = TextDim)
-                    Slider(
-                        value = brightness,
-                        onValueChange = onBrightnessChange,
-                        colors = SliderDefaults.colors(
-                            thumbColor = NeonPurpleLight,
-                            activeTrackColor = NeonPurple,
-                            inactiveTrackColor = Color(0x1AFFFFFF)
-                        )
-                    )
-                }
+                Led3DKnob(
+                    value = brightness,
+                    onValueChange = onBrightnessChange,
+                    label = "Brightness",
+                    valueText = "${(brightness * 100).toInt()}%",
+                    size = 46.dp,
+                    baseColor = Color(0xFF8B5CF6)
+                )
 
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(text = "Shimmer Ambience", fontSize = 8.sp, color = TextDim)
-                    Slider(
-                        value = shimmer,
-                        onValueChange = onShimmerChange,
-                        colors = SliderDefaults.colors(
-                            thumbColor = NeonCyan,
-                            activeTrackColor = NeonCyan,
-                            inactiveTrackColor = Color(0x1AFFFFFF)
-                        )
-                    )
-                }
+                Led3DKnob(
+                    value = shimmer,
+                    onValueChange = onShimmerChange,
+                    label = "Shimmer",
+                    valueText = "${(shimmer * 100).toInt()}%",
+                    size = 46.dp,
+                    baseColor = NeonCyan
+                )
             }
         }
     }

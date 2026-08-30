@@ -27,14 +27,7 @@ class MainActivity : ComponentActivity() {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
 
-    // Configure sticky immersive fullscreen mode (no status bar, no nav bar)
     WindowCompat.setDecorFitsSystemWindows(window, false)
-    val insetsController = WindowCompat.getInsetsController(window, window.decorView)
-    insetsController.apply {
-      hide(WindowInsetsCompat.Type.systemBars())
-      systemBarsBehavior =
-          WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-    }
 
     setContent {
       val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -46,6 +39,14 @@ class MainActivity : ComponentActivity() {
           MixerScreen(viewModel = viewModel)
         }
       }
+    }
+
+    // Configure sticky immersive fullscreen mode after window attachment
+    window.decorView.post {
+      val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+      insetsController.systemBarsBehavior =
+          WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+      insetsController.hide(WindowInsetsCompat.Type.systemBars())
     }
   }
 

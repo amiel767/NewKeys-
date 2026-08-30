@@ -15,7 +15,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlin.random.Random
 
 data class MixerUiState(
@@ -37,8 +36,11 @@ data class MixerUiState(
     val realLoopFiles: List<StorageItem> = emptyList(),
     val realStyleFiles: List<StorageItem> = emptyList(),
     val realRecordingFiles: List<StorageItem> = emptyList(),
+    val realMidiFiles: List<StorageItem> = emptyList(),
     val currentLoopDirPath: String = "",
     val currentLoopDirItems: List<StorageItem> = emptyList(),
+    val currentMidiDirPath: String = "",
+    val currentMidiDirItems: List<StorageItem> = emptyList(),
     val isScanningStorage: Boolean = false,
     
     // Loops Module
@@ -50,18 +52,13 @@ data class MixerUiState(
     val activeLoopFile: LoopFile? = null,
     val activeStorageLoopItem: StorageItem? = null,
     
-    // Style / Arranger Module (.sty engine)
-    val isStylePlaying: Boolean = false,
-    val isSyncStartActive: Boolean = false,
-    val activeStyleSection: String = "MAIN A", // "INTRO", "MAIN A", "MAIN B", "FILL IN", "ENDING"
-    val selectedStyleName: String = "-",
-    val selectedStyleFile: StorageItem? = null,
-    val styleVolume: Float = 0.75f,
-    val styleActiveTab: String = "files", // "files", "effects", "sf2"
-    val styleFxLow: Float = 0.5f,
-    val styleFxMid: Float = 0.5f,
-    val styleFxHigh: Float = 0.5f,
-    val styleReverbMix: Float = 0.20f,
+    // MIDI Player Module (.mid) - Replaces .sty per user instructions
+    val isMidiPlaying: Boolean = false,
+    val isMidiPanelOpen: Boolean = false,
+    val selectedMidiName: String = "-",
+    val selectedMidiFile: StorageItem? = null,
+    val midiVolume: Float = 0.80f,
+    val midiFolders: List<LoopFolder> = emptyList(),
     
     // Global Sustain & Splitter
     val isSustainActive: Boolean = false,
@@ -83,11 +80,12 @@ data class MixerUiState(
     ),
     
     // Virtual Keyboard & Multi-Touch
-    val isKeyboardLocked: Boolean = true, // Default retracted / locked until user toggles piano icon
-    val keyboardHeightFraction: Float = 0f, // 0f = collapsed, 0.5f = half, 1f = full
+    val isKeyboardLocked: Boolean = false,
+    val keyboardHeightFraction: Float = 0f,
     val pressedKeys: Set<String> = emptySet(),
-    val keyboardKeyScale: Float = 1.0f, // Pinch to zoom keys (0.6f .. 1.8f)
+    val keyboardKeyScale: Float = 1.0f,
     val keyboardScrollOffset: Float = 0f,
+    val pitchBend: Float = 0.0f,
     
     // Popups
     val activePopup: ActivePopup = ActivePopup.NONE,
@@ -95,33 +93,33 @@ data class MixerUiState(
     val isTonicPadPinned: Boolean = false,
     val activeEffectTrackId: Int = 1,
     val activeSoundfontTrackId: Int = 1,
-    val activeSoundfontSource: String = "track", // "track", "drum", "pad", "style"
+    val activeSoundfontSource: String = "track",
     
     // Drum Pad
     val drumPads: List<DrumPadItem> = emptyList(),
     val drumVolume: Float = 0.75f,
     val drumReverb: Float = 0.24f,
-    val drumActiveTab: String = "pads", // "pads", "bank", "files"
-    val drumSubView: String = "main", // "main", "sf2_picker"
+    val drumActiveTab: String = "pads",
+    val drumSubView: String = "main",
     val editingDrumPadId: Int? = null,
     val selectedDrumSampleForAssign: StorageItem? = null,
     val isAssignPadDialogOpen: Boolean = false,
     
     // Tonic Pad
-    val isMultiPadEnabled: Boolean = false, // Multi is OFF by default per user request
+    val isMultiPadEnabled: Boolean = false,
     val activeTonicNotes: Set<String> = emptySet(),
     val tonicOctaveRange: String = "C3 — C4",
     val tonicMode: String = "Chromatique",
     val tonicBrightness: Float = 0.70f,
     val tonicShimmer: Float = 0.15f,
-    val tonicSubView: String = "main", // "main", "sf2_picker"
+    val tonicSubView: String = "main",
     
     // FX Rack
-    val activeFxTab: String = "eq", // "eq", "reverb", "velocity", "splitter", "comp", "delay"
+    val activeFxTab: String = "eq",
     val fxParameters: Map<Int, FxParameters> = emptyMap(),
     
     // Soundfonts & Scenes
-    val activeSf2Tab: String = "bank", // "bank", "other"
+    val activeSf2Tab: String = "bank",
     val soundfontPresets: List<SoundfontPreset> = emptyList(),
     val soundfontBankFiles: List<SoundfontBankFile> = emptyList(),
     val selectedSf2PresetId: Int = 0,
@@ -130,51 +128,71 @@ data class MixerUiState(
     
     // Settings Drawer (Material Expressive AOSP style)
     val isSettingsDrawerOpen: Boolean = false,
-    val settingsSubPage: String = "main", // "main", "themes", "midi", "system_audio", "master_fx"
+    val settingsSubPage: String = "main",
     val isLowLatencyAudio: Boolean = true,
     val isKeyboardVelocityTouch: Boolean = true,
     val isMetronomeInRec: Boolean = false,
     val appFolder: String = "/LiveKeys",
     
     // System & Audio Engine Settings
-    val audioEngine: String = "Oboe (C++)", // "Oboe (C++)", "AAudio", "OpenSL ES"
-    val audioBufferSize: Int = 128, // 64, 128, 256, 512 frames
-    val polyphony: Int = 128, // 32, 64, 128, 256
-    val selectedLanguage: String = "Français", // "Français", "English", "Español"
+    val audioEngine: String = "Oboe (C++)",
+    val audioBufferSize: Int = 128,
+    val polyphony: Int = 128,
+    val selectedLanguage: String = "Français",
     val globalVelocityMin: Float = 0.10f,
     val globalVelocityMax: Float = 1.0f,
     
-    // Master FX 3D (renamed to Effect 3D)
-    val soundGoodizer: Float = 0.42f,
+    // Master FX SoundGoodizer (FL Studio Engine)
+    val soundGoodizer: Float = 0.45f,
+    val soundGoodizerMode: SoundGoodizerMode = SoundGoodizerMode.A,
     val masterPunch: Float = 0.55f,
     val spatialWidener: Float = 0.38f,
     
-    // Connected MIDI Devices (Pedal removed per user request)
+    // Connected MIDI Devices
     val midiDevices: List<MidiDeviceItem> = emptyList()
 ) {
     val soundfontFiles: List<StorageItem> get() = realSoundfonts
     val loopAudioFiles: List<StorageItem> get() = realLoopFiles
     val styleFiles: List<StorageItem> get() = realStyleFiles
+    val midiFiles: List<StorageItem> get() = realMidiFiles
 }
 
 class MixerViewModel(application: Application) : AndroidViewModel(application) {
     val fileManager = FileManager(application.applicationContext)
+    val audioEngine = AudioEngine(application.applicationContext)
 
     private val _uiState = MutableStateFlow(createInitialState())
     val uiState: StateFlow<MixerUiState> = _uiState.asStateFlow()
 
     private var peakMeterJob: Job? = null
     private var recordingTimerJob: Job? = null
-    private var styleTransitionJob: Job? = null
     private var lastTapTimeMap = mutableMapOf<Int, Long>()
 
     init {
         startPeakMeterSimulation()
         refreshStorageFiles()
+        
+        // Listen to USB MIDI hardware events
+        audioEngine.onMidiNoteOnListener = { noteName, _ ->
+            onKeyDown(noteName)
+        }
+        audioEngine.onMidiNoteOffListener = { noteName ->
+            onKeyUp(noteName)
+        }
+        audioEngine.onMidiPitchBendListener = { bendValue ->
+            _uiState.update { it.copy(pitchBend = bendValue) }
+        }
+        audioEngine.onMidiSustainListener = { isPressed ->
+            _uiState.update { it.copy(isMidiPedalPressed = isPressed) }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        audioEngine.release()
     }
 
     private fun createInitialState(): MixerUiState {
-        // Spec: "Purge des Données Fantômes : si getSoundFontFiles() est vide, le nom affiché sur la piste doit être un simple tiret '-'."
         val initialTracks = (1..8).map { i ->
             TrackChannel(
                 id = i,
@@ -208,82 +226,102 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 7 -> "Tom Hi"
                 else -> "Crash"
             }
-            val defaultNote = when (padIdx) {
-                1 -> "C1"
-                2 -> "D1"
-                3 -> "F#1"
-                4 -> "A#1"
-                5 -> "D#1"
-                6 -> "F1"
-                7 -> "A1"
-                else -> "C#2"
+            val defaultStyle = when (padIdx) {
+                1, 2 -> DrumPadStyle.GRADIENT_CYAN
+                3, 4 -> DrumPadStyle.LED_AMBER
+                5, 6 -> DrumPadStyle.NEON_MAGENTA
+                else -> DrumPadStyle.MY_CORAL
             }
             DrumPadItem(
                 id = padIdx,
                 label = defaultLabel,
                 soundType = DrumSoundType.SAMPLE,
-                sampleFileName = "-",
-                sf2Note = defaultNote,
-                sf2NoteOctave = 1,
-                sf2NoteKey = "C"
+                sampleFileName = "sample_$padIdx.wav",
+                colorStyle = defaultStyle
             )
         }
 
         val initialScenes = listOf(
-            ScenePreset("intro", "Intro Worship Ballade", "Aujourd'hui 14:02", NeonCyan),
-            ScenePreset("refrain", "Refrain Puissant Orchestral", "Aujourd'hui 13:40", NeonMagenta),
-            ScenePreset("break", "Break Shimmer Ambiance", "Hier 20:11", SoloAmber),
-            ScenePreset("live", "Live Set Principal A", "22 août", MuteRed)
+            ScenePreset("intro", "Intro & Verset", "Preset A", NeonCyan),
+            ScenePreset("chorus", "Refrain Puissant", "Preset B", NeonMagenta),
+            ScenePreset("bridge", "Pont Atmosphérique", "Preset C", SoloAmber),
+            ScenePreset("outro", "Outro Piano Solo", "Preset D", NeonPurpleLight)
         )
 
-        // Only show connected USB/Bluetooth MIDI controllers (no pedal row per user instruction)
-        val initialMidiDevices = listOf(
-            MidiDeviceItem("usb_1", "Roland RD-88 (USB MIDI)", "USB MIDI Direct", isConnected = true, isEnabled = true),
-            MidiDeviceItem("bt_1", "Yamaha MD-BT01", "Bluetooth LE MIDI", isConnected = true, isEnabled = true),
-            MidiDeviceItem("usb_2", "Korg nanoKEY Studio", "USB MIDI Controller", isConnected = true, isEnabled = false)
-        )
+        val defaultFx = (0..8).associateWith { FxParameters() }
 
-        val initialFx = (0..8).associateWith { FxParameters() }
+        val defaultPresets = (0..15).map { idx ->
+            val name = when (idx) {
+                0 -> "Grand Piano Concert"
+                1 -> "Bright Yamaha C7"
+                2 -> "Vintage Rhodes Mark I"
+                3 -> "Wurlitzer 200A"
+                4 -> "Hammond B3 Organ"
+                5 -> "Church Pipe Organ"
+                6 -> "Warm Analog Pad"
+                7 -> "Strings Ensemble Legato"
+                8 -> "Acoustic Brass Section"
+                9 -> "Synth Lead 80s"
+                10 -> "Sub Bass 808"
+                11 -> "Finger Acoustic Bass"
+                12 -> "Nylon Guitar"
+                13 -> "Clean Stratocaster"
+                14 -> "Worship Ambient Shimmer"
+                else -> "Orchestra Hit"
+            }
+            SoundfontPreset(id = idx, name = name, bankNumber = 0)
+        }
 
         return MixerUiState(
-            storageBaseDirPath = fileManager.baseDir.absolutePath,
-            currentLoopDirPath = fileManager.loopsDir.absolutePath,
             tracks = initialTracks,
             drumPads = initialDrumPads,
             scenes = initialScenes,
-            fxParameters = initialFx,
-            midiDevices = initialMidiDevices
+            fxParameters = defaultFx,
+            soundfontPresets = defaultPresets,
+            currentTheme = AppTheme.CYBER_NEON
         )
     }
 
-    /**
-     * Scans real storage folders on Dispatchers.IO and updates UI state dynamically
-     */
+    // ================= REAL STORAGE & FILE REFRESH =================
     fun refreshStorageFiles() {
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.update { it.copy(isScanningStorage = true) }
             try {
-                val soundfonts = fileManager.getSoundFontFiles()
-                val loops = fileManager.getLoopFiles()
-                val loopFolders = fileManager.getLoopFolderTree()
-                val styles = fileManager.getStyleFiles()
-                val recordings = fileManager.getRecordingFiles()
-                val loopDirItems = fileManager.listItemsInDirectory(fileManager.loopsDir.absolutePath)
+                fileManager.ensureDirectoriesExist()
 
-                // SoundFont Bank Files
-                val bankFiles = soundfonts.map {
-                    SoundfontBankFile(it.name, it.path, it.formattedSize)
+                val sfs = fileManager.getSoundFontFiles()
+                val loops = fileManager.getLoopFiles()
+                val loopFolderTree = fileManager.getLoopFolderTree()
+                val midis = fileManager.getMidiFiles()
+                val midiFolderTree = fileManager.getMidiFolderTree()
+                val styles = fileManager.getStyleFiles()
+                val recs = fileManager.getRecordingFiles()
+
+                val loopDirItems = fileManager.listItemsInDirectory(fileManager.loopsDir.absolutePath)
+                val midiDirItems = fileManager.listItemsInDirectory(fileManager.midiDir.absolutePath)
+
+                val bankFiles = sfs.map { sf ->
+                    SoundfontBankFile(
+                        name = sf.name,
+                        path = sf.path,
+                        size = sf.formattedSize
+                    )
                 }
 
-                _uiState.update { state ->
-                    // If tracks have no soundfont assigned and we have soundfonts, update only if user loads one
-                    state.copy(
-                        realSoundfonts = soundfonts,
+                _uiState.update {
+                    it.copy(
+                        storageBaseDirPath = fileManager.baseDir.absolutePath,
+                        currentLoopDirPath = fileManager.loopsDir.absolutePath,
+                        currentMidiDirPath = fileManager.midiDir.absolutePath,
+                        realSoundfonts = sfs,
                         realLoopFiles = loops,
-                        loopFolders = loopFolders,
+                        loopFolders = loopFolderTree,
                         realStyleFiles = styles,
-                        realRecordingFiles = recordings,
+                        realRecordingFiles = recs,
+                        realMidiFiles = midis,
+                        midiFolders = midiFolderTree,
                         currentLoopDirItems = loopDirItems,
+                        currentMidiDirItems = midiDirItems,
                         soundfontBankFiles = bankFiles,
                         isScanningStorage = false
                     )
@@ -295,9 +333,78 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /**
-     * Navigates to a specific directory in the Material Loops File Explorer
-     */
+    // ================= MIDI FILE PLAYER (.MID) =================
+    fun toggleMidiPlayPause() {
+        val currPlaying = _uiState.value.isMidiPlaying
+        if (currPlaying) {
+            audioEngine.pauseMidiPlayer()
+            _uiState.update { it.copy(isMidiPlaying = false) }
+        } else {
+            audioEngine.resumeMidiPlayer()
+            _uiState.update { it.copy(isMidiPlaying = true) }
+        }
+    }
+
+    fun playMidiFile(item: StorageItem) {
+        audioEngine.playMidiFile(item.path, _uiState.value.midiVolume)
+        _uiState.update {
+            it.copy(
+                selectedMidiFile = item,
+                selectedMidiName = item.name.substringBeforeLast("."),
+                isMidiPlaying = true,
+                isMidiPanelOpen = false
+            )
+        }
+    }
+
+    fun playMidiFile(loopFile: LoopFile) {
+        val file = java.io.File(fileManager.midiDir, "${loopFile.folder}/${loopFile.name}".replace("Racine /Midi/", "").replace("Midi/", ""))
+        val path = if (file.exists()) file.absolutePath else java.io.File(fileManager.midiDir, loopFile.name).absolutePath
+        audioEngine.playMidiFile(path, _uiState.value.midiVolume)
+        _uiState.update {
+            it.copy(
+                selectedMidiName = loopFile.name.substringBeforeLast("."),
+                isMidiPlaying = true,
+                isMidiPanelOpen = false
+            )
+        }
+    }
+
+    fun toggleMidiPanel() {
+        _uiState.update { it.copy(isMidiPanelOpen = !it.isMidiPanelOpen, isLoopsPanelOpen = false, isMetroPanelOpen = false) }
+    }
+
+    fun closeMidiPanel() {
+        _uiState.update { it.copy(isMidiPanelOpen = false) }
+    }
+
+    fun setMidiVolume(vol: Float) {
+        _uiState.update { it.copy(midiVolume = vol.coerceIn(0f, 1f)) }
+        audioEngine.setMidiVolume(vol)
+    }
+
+    fun navigateToMidiDirectory(dirPath: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val items = fileManager.listItemsInDirectory(dirPath)
+            _uiState.update {
+                it.copy(
+                    currentMidiDirPath = dirPath,
+                    currentMidiDirItems = items
+                )
+            }
+        }
+    }
+
+    fun navigateUpMidiDirectory() {
+        val current = _uiState.value.currentMidiDirPath
+        val baseMidi = fileManager.midiDir.absolutePath
+        if (current.startsWith(baseMidi) && current.length > baseMidi.length) {
+            val parent = java.io.File(current).parentFile?.absolutePath ?: baseMidi
+            navigateToMidiDirectory(parent)
+        }
+    }
+
+    // ================= LOOPS SEQUENCER =================
     fun navigateToLoopDirectory(dirPath: String) {
         viewModelScope.launch(Dispatchers.IO) {
             val items = fileManager.listItemsInDirectory(dirPath)
@@ -319,6 +426,72 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun toggleLoopsPanel() {
+        _uiState.update { it.copy(isLoopsPanelOpen = !it.isLoopsPanelOpen, isMetroPanelOpen = false, isMidiPanelOpen = false) }
+    }
+
+    fun closeLoopsPanel() {
+        _uiState.update { it.copy(isLoopsPanelOpen = false) }
+    }
+
+    fun toggleLoopPlayPause() {
+        val next = !_uiState.value.isLoopPlaying
+        if (next) {
+            _uiState.value.activeLoopFile?.let {
+                val f = java.io.File(fileManager.loopsDir, "${it.folder}/${it.name}".replace("Racine /Loops/", "").replace("Loops/", ""))
+                audioEngine.playLoopFile(f.absolutePath, _uiState.value.loopVolume)
+            }
+        } else {
+            audioEngine.stopLoopPlayer()
+        }
+        _uiState.update { it.copy(isLoopPlaying = next) }
+    }
+
+    fun setLoopVolume(vol: Float) {
+        _uiState.update { it.copy(loopVolume = vol.coerceIn(0f, 1f)) }
+        audioEngine.setLoopVolume(vol)
+    }
+
+    fun selectBeatCount(beats: Int) {
+        _uiState.update { it.copy(selectedBeatCount = beats) }
+    }
+
+    fun toggleLoopFolder(folderName: String) {
+        _uiState.update { state ->
+            val updated = state.loopFolders.map { folder ->
+                if (folder.name == folderName) folder.copy(isOpen = !folder.isOpen) else folder
+            }
+            state.copy(loopFolders = updated)
+        }
+    }
+
+    fun toggleMidiFolder(folderName: String) {
+        _uiState.update { state ->
+            val updated = state.midiFolders.map { folder ->
+                if (folder.name == folderName) folder.copy(isOpen = !folder.isOpen) else folder
+            }
+            state.copy(midiFolders = updated)
+        }
+    }
+
+    fun selectAndToggleLoopFile(file: LoopFile) {
+        val isSame = (_uiState.value.activeLoopFile?.name == file.name)
+        if (isSame && _uiState.value.isLoopPlaying) {
+            audioEngine.stopLoopPlayer()
+            _uiState.update { it.copy(isLoopPlaying = false) }
+        } else {
+            val f = java.io.File(fileManager.loopsDir, "${file.folder}/${file.name}".replace("Racine /Loops/", "").replace("Loops/", ""))
+            val path = if (f.exists()) f.absolutePath else java.io.File(fileManager.loopsDir, file.name).absolutePath
+            audioEngine.playLoopFile(path, _uiState.value.loopVolume)
+            _uiState.update {
+                it.copy(
+                    activeLoopFile = file,
+                    isLoopPlaying = true
+                )
+            }
+        }
+    }
+
     // ================= THEME SELECTION =================
     fun setAppTheme(theme: AppTheme) {
         _uiState.update { it.copy(currentTheme = theme) }
@@ -327,52 +500,43 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     // ================= PEAK METERS SIMULATION =================
     private fun startPeakMeterSimulation() {
         peakMeterJob?.cancel()
-        peakMeterJob = viewModelScope.launch {
+        peakMeterJob = viewModelScope.launch(Dispatchers.Default) {
             while (isActive) {
-                delay(80)
-                _uiState.update { state ->
-                    val isLooping = state.isLoopPlaying
-                    val isStyling = state.isStylePlaying
-                    val hasPressedKeys = state.pressedKeys.isNotEmpty()
-                    val hasActiveTonic = state.activeTonicNotes.isNotEmpty()
+                delay(65)
+                val curr = _uiState.value
+                val hasActiveAudio = curr.pressedKeys.isNotEmpty() || curr.isLoopPlaying || curr.isMidiPlaying || curr.isMetronomeOn
 
-                    val isAudioActive = hasPressedKeys || isLooping || isStyling || hasActiveTonic
-
-                    val updatedTracks = state.tracks.map { track ->
-                        if (!track.isEnabled || track.isMuted || !isAudioActive) {
-                            track.copy(peakMeterL = 0f, peakMeterR = 0f)
-                        } else {
-                            val baseSignal = when {
-                                hasPressedKeys -> 0.72f
-                                hasActiveTonic -> 0.50f
-                                isStyling -> 0.60f
-                                isLooping -> 0.45f
-                                else -> 0.0f
+                if (hasActiveAudio) {
+                    _uiState.update {
+                        val updatedTracks = it.tracks.map { track ->
+                            if (!track.isEnabled || track.isMuted) {
+                                track.copy(peakMeterL = 0f, peakMeterR = 0f)
+                            } else {
+                                val baseAmp = track.volume * (0.35f + Random.nextFloat() * 0.45f)
+                                val panL = (1f - track.pan).coerceIn(0f, 1f)
+                                val panR = (1f + track.pan).coerceIn(0f, 1f)
+                                track.copy(
+                                    peakMeterL = (baseAmp * panL).coerceIn(0f, 1f),
+                                    peakMeterR = (baseAmp * panR).coerceIn(0f, 1f)
+                                )
                             }
-                            val volFactor = track.volume
-                            val pan = track.pan
-                            val l = (baseSignal * volFactor * (1f - pan * 0.5f) * (0.85f + Random.nextFloat() * 0.15f)).coerceIn(0f, 0.98f)
-                            val r = (baseSignal * volFactor * (1f + pan * 0.5f) * (0.85f + Random.nextFloat() * 0.15f)).coerceIn(0f, 0.98f)
-                            track.copy(peakMeterL = l, peakMeterR = r)
                         }
+
+                        val masterL = if (curr.masterTrack.isEnabled) {
+                            val avgL = updatedTracks.map { it.peakMeterL }.average().toFloat()
+                            (avgL * curr.masterTrack.volume * (0.9f + Random.nextFloat() * 0.12f)).coerceIn(0f, 1f)
+                        } else 0f
+
+                        val masterR = if (curr.masterTrack.isEnabled) {
+                            val avgR = updatedTracks.map { it.peakMeterR }.average().toFloat()
+                            (avgR * curr.masterTrack.volume * (0.9f + Random.nextFloat() * 0.12f)).coerceIn(0f, 1f)
+                        } else 0f
+
+                        curr.copy(
+                            tracks = updatedTracks,
+                            masterTrack = curr.masterTrack.copy(peakMeterL = masterL, peakMeterR = masterR)
+                        )
                     }
-
-                    // Master Meter
-                    val activeTrackCount = updatedTracks.count { it.isEnabled && !it.isMuted && (it.peakMeterL > 0f || it.peakMeterR > 0f) }
-                    val masterL = if (activeTrackCount > 0 && isAudioActive) {
-                        val avgL = updatedTracks.map { it.peakMeterL }.average().toFloat()
-                        (avgL * state.masterTrack.volume * (0.9f + Random.nextFloat() * 0.12f)).coerceIn(0f, 1f)
-                    } else 0f
-
-                    val masterR = if (activeTrackCount > 0 && isAudioActive) {
-                        val avgR = updatedTracks.map { it.peakMeterR }.average().toFloat()
-                        (avgR * state.masterTrack.volume * (0.9f + Random.nextFloat() * 0.12f)).coerceIn(0f, 1f)
-                    } else 0f
-
-                    state.copy(
-                        tracks = updatedTracks,
-                        masterTrack = state.masterTrack.copy(peakMeterL = masterL, peakMeterR = masterR)
-                    )
                 }
             }
         }
@@ -388,119 +552,27 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateBpm(delta: Int) {
-        _uiState.update { it.copy(bpm = (it.bpm + delta).coerceIn(20, 300)) }
-    }
-
-    fun setBpmDirect(value: Int) {
-        _uiState.update { it.copy(bpm = value.coerceIn(20, 300)) }
-    }
-
-    // ================= LOOPS SEQUENCER / MATERIAL EXPLORER =================
-    fun toggleLoopsPanel() {
-        _uiState.update { it.copy(isLoopsPanelOpen = !it.isLoopsPanelOpen, isMetroPanelOpen = false) }
-    }
-
-    fun closeLoopsPanel() {
-        _uiState.update { it.copy(isLoopsPanelOpen = false) }
-    }
-
-    fun toggleLoopPlayPause() {
-        _uiState.update { it.copy(isLoopPlaying = !it.isLoopPlaying) }
-    }
-
-    fun setLoopVolume(vol: Float) {
-        _uiState.update { it.copy(loopVolume = vol.coerceIn(0f, 1f)) }
-    }
-
-    fun selectBeatCount(beats: Int) {
-        _uiState.update { it.copy(selectedBeatCount = beats) }
-    }
-
-    fun toggleLoopFolder(name: String) {
-        _uiState.update { state ->
-            val updated = state.loopFolders.map { folder ->
-                if (folder.name == name) folder.copy(isOpen = !folder.isOpen) else folder
-            }
-            state.copy(loopFolders = updated)
+        val newBpm = (_uiState.value.bpm + delta).coerceIn(20, 300)
+        _uiState.update { it.copy(bpm = newBpm) }
+        if (_uiState.value.isMetronomeOn) {
+            audioEngine.startMetronome(newBpm, _uiState.value.metronomeSignature, _uiState.value.metronomeVolume)
         }
     }
 
-    /**
-     * Touching a loop file starts it; touching it again stops it.
-     */
-    fun selectAndToggleLoopFile(file: LoopFile) {
-        _uiState.update { state ->
-            if (state.activeLoopFile == file && state.isLoopPlaying) {
-                state.copy(isLoopPlaying = false)
-            } else {
-                state.copy(
-                    activeLoopFile = file,
-                    isLoopPlaying = true
-                )
-            }
-        }
-    }
-
-    /**
-     * Touching a StorageItem in the Material Explorer starts it; touching again stops it.
-     */
-    fun selectAndToggleStorageLoop(item: StorageItem) {
-        _uiState.update { state ->
-            if (state.activeStorageLoopItem?.path == item.path && state.isLoopPlaying) {
-                state.copy(isLoopPlaying = false)
-            } else {
-                state.copy(
-                    activeStorageLoopItem = item,
-                    activeLoopFile = LoopFile(item.name, item.formattedSize, "Loops", 120),
-                    isLoopPlaying = true
-                )
-            }
-        }
-    }
-
-    fun triggerPanic() {
-        _uiState.update {
-            it.copy(
-                pressedKeys = emptySet(),
-                isSustainActive = false,
-                isMidiPedalPressed = false,
-                isLoopPlaying = false,
-                isStylePlaying = false,
-                activeTonicNotes = emptySet()
-            )
-        }
-    }
-
-    // ================= GLOBAL SUSTAIN & SPLITTER =================
-    fun toggleSustain() {
-        _uiState.update { it.copy(isSustainActive = !it.isSustainActive) }
-    }
-
-    fun setMidiPedalPressed(pressed: Boolean) {
-        _uiState.update { it.copy(isMidiPedalPressed = pressed) }
-    }
-
-    fun toggleSplitter() {
-        _uiState.update { it.copy(isSplitterActive = !it.isSplitterActive) }
-    }
-
-    // ================= RECORDING & METRONOME =================
+    // ================= RECORDING =================
     fun toggleRecording() {
-        _uiState.update { state ->
-            val newRec = !state.isRecording
-            if (newRec) {
-                startRecordingTimer()
-                state.copy(isRecording = true, recordingDuration = 0)
-            } else {
-                stopRecordingTimer()
-                val filename = "LiveKeys_Rec_${System.currentTimeMillis() % 10000}.wav"
-                state.copy(isRecording = false, lastRecordedFile = filename)
-            }
+        val next = !_uiState.value.isRecording
+        if (next) {
+            startRecordingTimer()
+        } else {
+            stopRecordingTimer()
         }
+        _uiState.update { it.copy(isRecording = next) }
     }
 
     private fun startRecordingTimer() {
         recordingTimerJob?.cancel()
+        _uiState.update { it.copy(recordingDuration = 0) }
         recordingTimerJob = viewModelScope.launch {
             while (isActive) {
                 delay(1000)
@@ -511,15 +583,22 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun stopRecordingTimer() {
         recordingTimerJob?.cancel()
-        recordingTimerJob = null
+        _uiState.update { it.copy(lastRecordedFile = "REC_${System.currentTimeMillis()}.wav") }
     }
 
+    // ================= METRONOME =================
     fun toggleMetronome() {
-        _uiState.update { it.copy(isMetronomeOn = !it.isMetronomeOn) }
+        val next = !_uiState.value.isMetronomeOn
+        if (next) {
+            audioEngine.startMetronome(_uiState.value.bpm, _uiState.value.metronomeSignature, _uiState.value.metronomeVolume)
+        } else {
+            audioEngine.stopMetronome()
+        }
+        _uiState.update { it.copy(isMetronomeOn = next) }
     }
 
     fun toggleMetroPanel() {
-        _uiState.update { it.copy(isMetroPanelOpen = !it.isMetroPanelOpen, isLoopsPanelOpen = false) }
+        _uiState.update { it.copy(isMetroPanelOpen = !it.isMetroPanelOpen, isLoopsPanelOpen = false, isMidiPanelOpen = false) }
     }
 
     fun closeMetroPanel() {
@@ -528,16 +607,56 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setMetronomeSignature(sig: String) {
         _uiState.update { it.copy(metronomeSignature = sig) }
+        if (_uiState.value.isMetronomeOn) {
+            audioEngine.startMetronome(_uiState.value.bpm, sig, _uiState.value.metronomeVolume)
+        }
     }
 
     fun setMetronomeVolume(vol: Float) {
-        _uiState.update { it.copy(metronomeVolume = vol.coerceIn(0f, 1f)) }
+        val clamped = vol.coerceIn(0f, 1f)
+        _uiState.update { it.copy(metronomeVolume = clamped) }
+        if (_uiState.value.isMetronomeOn) {
+            audioEngine.startMetronome(_uiState.value.bpm, _uiState.value.metronomeSignature, clamped)
+        }
     }
 
-    // ================= TRACKS CONSOLE & FADERS =================
+    // ================= SUSTAIN, PANIC & SPLITTER =================
+    fun toggleSustain() {
+        _uiState.update { state ->
+            val nextSustain = !state.isSustainActive
+            val updatedKeys = if (!nextSustain && !state.isMidiPedalPressed) emptySet() else state.pressedKeys
+            state.copy(
+                isSustainActive = nextSustain,
+                pressedKeys = updatedKeys
+            )
+        }
+    }
+
+    fun toggleSplitter() {
+        _uiState.update { it.copy(isSplitterActive = !it.isSplitterActive) }
+    }
+
+    fun triggerPanic() {
+        audioEngine.allNotesOff()
+        audioEngine.stopMetronome()
+        audioEngine.stopLoopPlayer()
+        audioEngine.stopMidiPlayer()
+        _uiState.update { state ->
+            state.copy(
+                pressedKeys = emptySet(),
+                activeTonicNotes = emptySet(),
+                isLoopPlaying = false,
+                isMidiPlaying = false,
+                isMetronomeOn = false
+            )
+        }
+    }
+
+    // ================= TRACK MIXER CONTROLS =================
     fun setTrackVolume(trackId: Int, volume: Float) {
         _uiState.update { state ->
             if (trackId == 0) {
+                audioEngine.masterVolume = volume.coerceIn(0f, 1f)
                 state.copy(masterTrack = state.masterTrack.copy(volume = volume.coerceIn(0f, 1f)))
             } else {
                 val updated = state.tracks.map { track ->
@@ -545,15 +664,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 state.copy(tracks = updated)
             }
-        }
-    }
-
-    fun toggleTrackPower(trackId: Int) {
-        _uiState.update { state ->
-            val updated = state.tracks.map { track ->
-                if (track.id == trackId) track.copy(isEnabled = !track.isEnabled) else track
-            }
-            state.copy(tracks = updated)
         }
     }
 
@@ -566,12 +676,15 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /**
-     * Mute / Solo Tap handler:
-     * - 1 tap: Mute (Red)
-     * - 2 fast taps: Solo (Yellow)
-     * - Subsequent tap: Neutral (Active Green)
-     */
+    fun toggleTrackPower(trackId: Int) {
+        _uiState.update { state ->
+            val updated = state.tracks.map { track ->
+                if (track.id == trackId) track.copy(isEnabled = !track.isEnabled) else track
+            }
+            state.copy(tracks = updated)
+        }
+    }
+
     fun onTrackMuteSoloClick(trackId: Int) {
         val now = System.currentTimeMillis()
         val lastTap = lastTapTimeMap[trackId] ?: 0L
@@ -579,7 +692,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         lastTapTimeMap[trackId] = now
 
         _uiState.update { state ->
-            val track = state.tracks.find { it.id == trackId } ?: return@update state
             val updated = state.tracks.map { t ->
                 if (t.id == trackId) {
                     if (isDoubleTap) {
@@ -610,7 +722,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setKeyboardHeightFraction(fraction: Float) {
         _uiState.update { state ->
-            if (state.isKeyboardLocked) state else state.copy(keyboardHeightFraction = fraction.coerceIn(0f, 1f))
+            state.copy(keyboardHeightFraction = fraction.coerceIn(0f, 1f))
         }
     }
 
@@ -627,20 +739,16 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onKeyDown(key: String) {
-        if (_uiState.value.isKeyboardLocked || _uiState.value.keyboardHeightFraction <= 0f) return
-
-        // If Sync Start is armed, automatically trigger style playback upon touching a piano key
-        if (_uiState.value.isSyncStartActive && !_uiState.value.isStylePlaying) {
-            val startSec = if (_uiState.value.activeStyleSection == "INTRO") "INTRO" else "MAIN A"
-            triggerStyleSection(startSec)
-        }
-
+        audioEngine.noteOn(key, 0.85f)
         _uiState.update { state ->
             state.copy(pressedKeys = state.pressedKeys + key)
         }
     }
 
     fun onKeyUp(key: String) {
+        if (!_uiState.value.isSustainActive && !_uiState.value.isMidiPedalPressed) {
+            audioEngine.noteOff(key)
+        }
         _uiState.update { state ->
             if (!state.isSustainActive && !state.isMidiPedalPressed) {
                 state.copy(pressedKeys = state.pressedKeys - key)
@@ -650,142 +758,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ================= ARRANGER / STYLE (.STY) CONTROLS =================
-    fun toggleStylePlay() {
-        styleTransitionJob?.cancel()
-        _uiState.update { it.copy(isStylePlaying = !it.isStylePlaying) }
-    }
-
-    fun toggleSyncStart() {
-        _uiState.update { it.copy(isSyncStartActive = !it.isSyncStartActive) }
-    }
-
-    /**
-     * Automatic Style Section Sequencer:
-     * - INTRO: Plays intro, then automatically transitions to MAIN A when done.
-     * - FILL / FILL IN: Plays 1-bar fill, then automatically returns to previous MAIN section.
-     * - MAIN A / MAIN B: Loops continuously until another section is triggered.
-     * - ENDING / END: Plays ending, then automatically stops style playback.
-     */
-    fun triggerStyleSection(section: String) {
-        styleTransitionJob?.cancel()
-        val currentBpm = _uiState.value.bpm.coerceIn(40, 260)
-        val oneBarMillis = (4 * 60_000L) / currentBpm
-
-        val normSection = when (section.uppercase()) {
-            "INTRO" -> "INTRO"
-            "FILL", "FILL IN" -> "FILL IN"
-            "ENDING", "END" -> "ENDING"
-            "MAIN B" -> "MAIN B"
-            else -> "MAIN A"
-        }
-
-        when (normSection) {
-            "INTRO" -> {
-                _uiState.update {
-                    it.copy(
-                        activeStyleSection = "INTRO",
-                        isStylePlaying = true,
-                        isSyncStartActive = false
-                    )
-                }
-                // Automatic transition: After INTRO (2 bars), advance to MAIN A
-                styleTransitionJob = viewModelScope.launch {
-                    val introDuration = (2 * oneBarMillis).coerceIn(2000L, 8000L)
-                    delay(introDuration)
-                    _uiState.update {
-                        if (it.isStylePlaying && it.activeStyleSection == "INTRO") {
-                            it.copy(activeStyleSection = "MAIN A")
-                        } else it
-                    }
-                }
-            }
-            "FILL IN" -> {
-                val previousMain = if (_uiState.value.activeStyleSection == "MAIN B") "MAIN B" else "MAIN A"
-                _uiState.update {
-                    it.copy(
-                        activeStyleSection = "FILL IN",
-                        isStylePlaying = true,
-                        isSyncStartActive = false
-                    )
-                }
-                // Automatic transition: After 1 bar FILL IN, return to previous MAIN
-                styleTransitionJob = viewModelScope.launch {
-                    val fillDuration = oneBarMillis.coerceIn(1000L, 4000L)
-                    delay(fillDuration)
-                    _uiState.update {
-                        if (it.isStylePlaying && it.activeStyleSection == "FILL IN") {
-                            it.copy(activeStyleSection = previousMain)
-                        } else it
-                    }
-                }
-            }
-            "ENDING" -> {
-                _uiState.update {
-                    it.copy(
-                        activeStyleSection = "ENDING",
-                        isStylePlaying = true,
-                        isSyncStartActive = false
-                    )
-                }
-                // Automatic transition: After ENDING (2 bars), stop all playback
-                styleTransitionJob = viewModelScope.launch {
-                    val endDuration = (2 * oneBarMillis).coerceIn(2000L, 8000L)
-                    delay(endDuration)
-                    _uiState.update {
-                        if (it.activeStyleSection == "ENDING") {
-                            it.copy(isStylePlaying = false, activeStyleSection = "MAIN A")
-                        } else it
-                    }
-                }
-            }
-            "MAIN A" -> {
-                _uiState.update {
-                    it.copy(
-                        activeStyleSection = "MAIN A",
-                        isStylePlaying = true,
-                        isSyncStartActive = false
-                    )
-                }
-            }
-            "MAIN B" -> {
-                _uiState.update {
-                    it.copy(
-                        activeStyleSection = "MAIN B",
-                        isStylePlaying = true,
-                        isSyncStartActive = false
-                    )
-                }
-            }
-        }
-    }
-
-    fun selectStyleFile(file: StorageItem) {
-        _uiState.update {
-            it.copy(
-                selectedStyleName = file.name.substringBeforeLast("."),
-                selectedStyleFile = file,
-                isStylePlaying = true
-            )
-        }
-    }
-
-    fun setStyleVolume(vol: Float) {
-        _uiState.update { it.copy(styleVolume = vol.coerceIn(0f, 1f)) }
-    }
-
-    fun setStyleActiveTab(tab: String) {
-        _uiState.update { it.copy(styleActiveTab = tab) }
-    }
-
-    fun setStyleFxLow(v: Float) = _uiState.update { it.copy(styleFxLow = v.coerceIn(0f, 1f)) }
-    fun setStyleFxMid(v: Float) = _uiState.update { it.copy(styleFxMid = v.coerceIn(0f, 1f)) }
-    fun setStyleFxHigh(v: Float) = _uiState.update { it.copy(styleFxHigh = v.coerceIn(0f, 1f)) }
-    fun setStyleReverbMix(v: Float) = _uiState.update { it.copy(styleReverbMix = v.coerceIn(0f, 1f)) }
-
     // ================= POPUPS & DIALOGS =================
     fun openPopup(popup: ActivePopup) {
-        _uiState.update { it.copy(activePopup = popup, isLoopsPanelOpen = false, isMetroPanelOpen = false) }
+        _uiState.update { it.copy(activePopup = popup, isLoopsPanelOpen = false, isMetroPanelOpen = false, isMidiPanelOpen = false) }
     }
 
     fun closePopup() {
@@ -843,62 +818,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ================= TRACK FX TABS SPECIFICS =================
-    /**
-     * Reverb preset toggle: Touch once to activate, touch again to deactivate and return to "Custom"
-     */
-    fun toggleTrackReverbPreset(trackId: Int, preset: String) {
-        _uiState.update { state ->
-            val updated = state.tracks.map { track ->
-                if (track.id == trackId) {
-                    val nextPreset = if (track.reverbPreset == preset) "Custom" else preset
-                    track.copy(reverbPreset = nextPreset)
-                } else track
-            }
-            state.copy(tracks = updated)
-        }
-    }
-
-    fun setTrackReverbMix(trackId: Int, mix: Float) {
-        _uiState.update { state ->
-            val updated = state.tracks.map { track ->
-                if (track.id == trackId) track.copy(reverbMix = mix.coerceIn(0f, 1f)) else track
-            }
-            state.copy(tracks = updated)
-        }
-    }
-
-    fun setTrackVelocityCurve(trackId: Int, curve: Float) {
-        _uiState.update { state ->
-            val updated = state.tracks.map { track ->
-                if (track.id == trackId) track.copy(velocityCurve = curve.coerceIn(0f, 1f)) else track
-            }
-            state.copy(tracks = updated)
-        }
-    }
-
-    fun setTrackSplitRange(trackId: Int, minNote: Int, maxNote: Int) {
-        _uiState.update { state ->
-            val updated = state.tracks.map { track ->
-                if (track.id == trackId) track.copy(splitNoteMin = minNote, splitNoteMax = maxNote) else track
-            }
-            state.copy(tracks = updated)
-        }
-    }
-
-    fun updateFxParameter(trackId: Int, transform: (FxParameters) -> FxParameters) {
-        _uiState.update { state ->
-            val current = state.fxParameters[trackId] ?: FxParameters()
-            val updatedMap = state.fxParameters.toMutableMap()
-            updatedMap[trackId] = transform(current)
-            state.copy(fxParameters = updatedMap)
-        }
-    }
-
-    fun setFxTab(tab: String) {
-        _uiState.update { it.copy(activeFxTab = tab) }
-    }
-
     // ================= DRUM PAD CONTROLS =================
     fun setDrumTab(tab: String) {
         _uiState.update { it.copy(drumActiveTab = tab) }
@@ -917,9 +836,14 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onDrumPadPressed(padId: Int) {
+        val pad = _uiState.value.drumPads.find { it.id == padId }
+        if (pad != null) {
+            audioEngine.playDrumPadSound(pad, _uiState.value.drumVolume)
+        }
+
         _uiState.update { state ->
-            val updated = state.drumPads.map { pad ->
-                if (pad.id == padId) pad.copy(isPressed = true) else pad
+            val updated = state.drumPads.map { p ->
+                if (p.id == padId) p.copy(isPressed = true) else p
             }
             state.copy(drumPads = updated)
         }
@@ -927,51 +851,40 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onDrumPadReleased(padId: Int) {
         _uiState.update { state ->
-            val updated = state.drumPads.map { pad ->
-                if (pad.id == padId) pad.copy(isPressed = false) else pad
+            val updated = state.drumPads.map { p ->
+                if (p.id == padId) p.copy(isPressed = false) else p
             }
             state.copy(drumPads = updated)
         }
     }
 
-    fun openAssignPadDialog(sample: StorageItem) {
-        _uiState.update {
-            it.copy(
-                selectedDrumSampleForAssign = sample,
-                isAssignPadDialogOpen = true
-            )
+    fun updateDrumPadCustomization(padId: Int, label: String, style: DrumPadStyle) {
+        _uiState.update { state ->
+            val updated = state.drumPads.map { pad ->
+                if (pad.id == padId) {
+                    pad.copy(label = label.take(12), colorStyle = style)
+                } else pad
+            }
+            state.copy(drumPads = updated)
         }
     }
 
-    fun closeAssignPadDialog() {
-        _uiState.update {
-            it.copy(
-                selectedDrumSampleForAssign = null,
-                isAssignPadDialogOpen = false
-            )
-        }
-    }
-
-    fun assignSampleToPad(padId: Int, sample: StorageItem) {
+    fun assignDrumSample(padId: Int, sampleName: String) {
         _uiState.update { state ->
             val updated = state.drumPads.map { pad ->
                 if (pad.id == padId) {
                     pad.copy(
                         soundType = DrumSoundType.SAMPLE,
-                        sampleFileName = sample.name,
-                        label = sample.name.substringBeforeLast(".").take(8)
+                        sampleFileName = sampleName,
+                        label = sampleName.substringBeforeLast(".").take(8)
                     )
                 } else pad
             }
-            state.copy(
-                drumPads = updated,
-                isAssignPadDialogOpen = false,
-                selectedDrumSampleForAssign = null
-            )
+            state.copy(drumPads = updated)
         }
     }
 
-    fun assignSf2NoteToPad(padId: Int, note: String, octave: Int, key: String) {
+    fun assignDrumSf2Note(padId: Int, key: String, octave: Int) {
         _uiState.update { state ->
             val updated = state.drumPads.map { pad ->
                 if (pad.id == padId) {
@@ -997,44 +910,33 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(tonicSubView = subView) }
     }
 
-    fun cycleTonicOctave() {
-        val octaves = listOf("C1 — C2", "C2 — C3", "C3 — C4", "C4 — C5", "C5 — C6")
-        _uiState.update { state ->
-            val currentIndex = octaves.indexOf(state.tonicOctaveRange)
-            val nextIndex = if (currentIndex in 0 until octaves.lastIndex) currentIndex + 1 else 0
-            state.copy(tonicOctaveRange = octaves[nextIndex])
-        }
-    }
-
-    /**
-     * In Pad, touch a cell to activate, touch again to deactivate.
-     */
     fun onTonicNoteClick(note: String) {
         _uiState.update { state ->
-            if (state.isMultiPadEnabled) {
-                val newSet = if (state.activeTonicNotes.contains(note)) {
-                    state.activeTonicNotes - note
-                } else {
-                    state.activeTonicNotes + note
-                }
-                state.copy(activeTonicNotes = newSet)
+            val newSet = if (state.isMultiPadEnabled) {
+                if (state.activeTonicNotes.contains(note)) state.activeTonicNotes - note else state.activeTonicNotes + note
             } else {
-                val newSet = if (state.activeTonicNotes.contains(note)) {
-                    emptySet()
-                } else {
-                    setOf(note)
-                }
-                state.copy(activeTonicNotes = newSet)
+                if (state.activeTonicNotes.contains(note)) emptySet() else setOf(note)
             }
+            state.copy(activeTonicNotes = newSet)
         }
     }
 
-    fun setTonicOctaveRange(range: String) {
-        _uiState.update { it.copy(tonicOctaveRange = range) }
+    fun onTonicOctaveMinus() {
+        val octaves = listOf("C1 — C2", "C2 — C3", "C3 — C4", "C4 — C5", "C5 — C6")
+        _uiState.update { state ->
+            val idx = octaves.indexOf(state.tonicOctaveRange)
+            val nextIdx = if (idx > 0) idx - 1 else 0
+            state.copy(tonicOctaveRange = octaves[nextIdx])
+        }
     }
 
-    fun setTonicMode(mode: String) {
-        _uiState.update { it.copy(tonicMode = mode) }
+    fun onTonicOctavePlus() {
+        val octaves = listOf("C1 — C2", "C2 — C3", "C3 — C4", "C4 — C5", "C5 — C6")
+        _uiState.update { state ->
+            val idx = octaves.indexOf(state.tonicOctaveRange)
+            val nextIdx = if (idx in 0 until octaves.lastIndex) idx + 1 else octaves.lastIndex
+            state.copy(tonicOctaveRange = octaves[nextIdx])
+        }
     }
 
     fun setTonicBrightness(brightness: Float) {
@@ -1050,18 +952,18 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(activeSf2Tab = tab) }
     }
 
-    fun selectRealSoundfont(storageItem: StorageItem) {
+    fun selectSf2Preset(preset: SoundfontPreset) {
         _uiState.update { state ->
             val trackId = state.activeSoundfontTrackId
             val updatedTracks = state.tracks.map { track ->
                 if (track.id == trackId) {
-                    track.copy(
-                        soundfontName = storageItem.name,
-                        patchName = storageItem.name.substringBeforeLast(".")
-                    )
+                    track.copy(patchName = preset.name, bank = preset.bankNumber)
                 } else track
             }
-            state.copy(tracks = updatedTracks)
+            state.copy(
+                selectedSf2PresetId = preset.id,
+                tracks = updatedTracks
+            )
         }
     }
 
@@ -1100,7 +1002,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ================= SETTINGS DRAWER & EFFECT 3D =================
+    // ================= SETTINGS DRAWER & FL SOUNDGOODIZER =================
     fun openSettingsDrawer() {
         _uiState.update { it.copy(isSettingsDrawerOpen = true, settingsSubPage = "main") }
     }
@@ -1134,15 +1036,26 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setSoundGoodizer(v: Float) {
-        _uiState.update { it.copy(soundGoodizer = v.coerceIn(0f, 1f)) }
+        val clamped = v.coerceIn(0f, 1f)
+        _uiState.update { it.copy(soundGoodizer = clamped) }
+        audioEngine.soundGoodizerAmount = clamped
+    }
+
+    fun setSoundGoodizerMode(mode: SoundGoodizerMode) {
+        _uiState.update { it.copy(soundGoodizerMode = mode) }
+        audioEngine.soundGoodizerMode = mode.name
     }
 
     fun setMasterPunch(v: Float) {
-        _uiState.update { it.copy(masterPunch = v.coerceIn(0f, 1f)) }
+        val clamped = v.coerceIn(0f, 1f)
+        _uiState.update { it.copy(masterPunch = clamped) }
+        audioEngine.masterPunch = clamped
     }
 
     fun setSpatialWidener(v: Float) {
-        _uiState.update { it.copy(spatialWidener = v.coerceIn(0f, 1f)) }
+        val clamped = v.coerceIn(0f, 1f)
+        _uiState.update { it.copy(spatialWidener = clamped) }
+        audioEngine.spatialWidener = clamped
     }
 
     fun toggleMidiDevice(deviceId: String) {
@@ -1156,27 +1069,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleLowLatencyAudio() {
         _uiState.update { it.copy(isLowLatencyAudio = !it.isLowLatencyAudio) }
-    }
-
-    fun toggleKeyboardVelocityTouch() {
-        _uiState.update { it.copy(isKeyboardVelocityTouch = !it.isKeyboardVelocityTouch) }
-    }
-
-    fun toggleMetronomeInRec() {
-        _uiState.update { it.copy(isMetronomeInRec = !it.isMetronomeInRec) }
-    }
-
-    // Convenience and alias methods
-    fun selectLoopFile(file: LoopFile) {
-        selectAndToggleLoopFile(file)
-    }
-
-    fun selectLoopFile(item: StorageItem) {
-        selectAndToggleStorageLoop(item)
-    }
-
-    fun toggleMuteSoloSequence(trackId: Int) {
-        onTrackMuteSoloClick(trackId)
     }
 
     fun cycleKeyboardExpansion() {
@@ -1193,56 +1085,47 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun setStyleTab(tab: String) {
-        setStyleActiveTab(tab)
-    }
-
-    fun selectStyleSf2Source(source: String) {
-        _uiState.update { it.copy(activeSoundfontSource = source) }
-    }
-
-    fun selectStyleSf2Source(source: StorageItem) {
-        _uiState.update { it.copy(activeSoundfontSource = source.name) }
-    }
-
-    fun assignDrumSample(padId: Int, sampleName: String) {
+    // ================= FX PARAMETERS =================
+    fun updateFxParameter(trackId: Int, transform: (FxParameters) -> FxParameters) {
         _uiState.update { state ->
-            val updated = state.drumPads.map { pad ->
-                if (pad.id == padId) {
-                    pad.copy(
-                        soundType = DrumSoundType.SAMPLE,
-                        sampleFileName = sampleName,
-                        label = sampleName.substringBeforeLast(".").take(8)
-                    )
-                } else pad
-            }
-            state.copy(drumPads = updated)
+            val current = state.fxParameters[trackId] ?: FxParameters()
+            val updatedMap = state.fxParameters.toMutableMap()
+            updatedMap[trackId] = transform(current)
+            state.copy(fxParameters = updatedMap)
         }
     }
 
-    fun assignDrumSf2Note(padId: Int, key: String, octave: Int) {
-        assignSf2NoteToPad(padId, "$key$octave", octave, key)
-    }
-
-    fun onTonicOctaveMinus() {
-        val octaves = listOf("C1 — C2", "C2 — C3", "C3 — C4", "C4 — C5", "C5 — C6")
-        _uiState.update { state ->
-            val idx = octaves.indexOf(state.tonicOctaveRange)
-            val nextIdx = if (idx > 0) idx - 1 else 0
-            state.copy(tonicOctaveRange = octaves[nextIdx])
-        }
-    }
-
-    fun onTonicOctavePlus() {
-        val octaves = listOf("C1 — C2", "C2 — C3", "C3 — C4", "C4 — C5", "C5 — C6")
-        _uiState.update { state ->
-            val idx = octaves.indexOf(state.tonicOctaveRange)
-            val nextIdx = if (idx in 0 until octaves.lastIndex) idx + 1 else octaves.lastIndex
-            state.copy(tonicOctaveRange = octaves[nextIdx])
-        }
+    fun setFxTab(tab: String) {
+        _uiState.update { it.copy(activeFxTab = tab) }
     }
 
     fun setTrackReverbPreset(trackId: Int, preset: String) {
-        toggleTrackReverbPreset(trackId, preset)
+        _uiState.update { state ->
+            val updated = state.tracks.map { track ->
+                if (track.id == trackId) {
+                    val nextPreset = if (track.reverbPreset == preset) "Custom" else preset
+                    track.copy(reverbPreset = nextPreset)
+                } else track
+            }
+            state.copy(tracks = updated)
+        }
+    }
+
+    fun setTrackVelocityCurve(trackId: Int, curve: Float) {
+        _uiState.update { state ->
+            val updated = state.tracks.map { track ->
+                if (track.id == trackId) track.copy(velocityCurve = curve.coerceIn(0f, 1f)) else track
+            }
+            state.copy(tracks = updated)
+        }
+    }
+
+    fun setTrackSplitRange(trackId: Int, minNote: Int, maxNote: Int) {
+        _uiState.update { state ->
+            val updated = state.tracks.map { track ->
+                if (track.id == trackId) track.copy(splitNoteMin = minNote, splitNoteMax = maxNote) else track
+            }
+            state.copy(tracks = updated)
+        }
     }
 }
