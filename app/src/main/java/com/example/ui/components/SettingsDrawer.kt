@@ -208,11 +208,6 @@ private fun AospMainSettingsPage(
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
-                    Text(
-                        text = "Google AOSP & Audio DSP",
-                        fontSize = 10.sp,
-                        color = TextDim2
-                    )
                 }
             }
 
@@ -234,9 +229,9 @@ private fun AospMainSettingsPage(
                 .weight(1f),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // CARD 1: SOUNDGOODIZER & MASTER PROCESSING (FL STUDIO ENGINE)
+            // CARD 1: SOUNDGOODIZER & MASTER PROCESSING
             item {
-                AospCard(title = "FL SoundGoodizer & Master DSP") {
+                AospCard(title = "SoundGoodizer") {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -250,7 +245,6 @@ private fun AospMainSettingsPage(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(text = "Mode SoundGoodizer", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                            Text(text = soundGoodizerMode.description, fontSize = 9.sp, color = NeonCyan)
                         }
 
                         Row(
@@ -347,7 +341,7 @@ private fun AospMainSettingsPage(
                         AospSettingItem(
                             iconText = "🎹",
                             iconBg = Color(0xFF10B981),
-                            title = "USB MIDI Host & Claviers",
+                            title = "USB MIDI",
                             subtitle = "Détection matérielle active (${midiDevices.count { it.isConnected }} connectés)",
                             onClick = { onNavigateSubPage("midi") }
                         )
@@ -555,7 +549,7 @@ private fun AudioEngineSubPage(
     onToggleLowLatency: () -> Unit,
     onBack: () -> Unit
 ) {
-    val engines = listOf("Oboe (C++)", "AAudio Native", "OpenSL ES")
+    val engines = listOf("Oboe", "AAudio Native", "OpenSL ES")
     val bufferSizes = listOf(64, 128, 256, 512)
 
     Column(modifier = Modifier.fillMaxSize()) {

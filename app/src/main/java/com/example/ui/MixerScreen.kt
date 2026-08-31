@@ -274,13 +274,31 @@ fun MixerScreen(
                 )
             }
 
-            // Scene In-Place Expanding View
+            // Scene In-Place Expanding View: 0.5s seamless fluid high-resolution expansion from scene button square
             AnimatedVisibility(
                 visible = uiState.activePopup == ActivePopup.SCENE,
-                enter = fadeIn(tween(180)) + slideInVertically(initialOffsetY = { -20 }, animationSpec = tween(200)),
-                exit = fadeOut(tween(150)) + slideOutVertically(targetOffsetY = { -20 }, animationSpec = tween(150)),
+                enter = fadeIn(animationSpec = tween(500, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
+                        scaleIn(
+                            initialScale = 0.08f,
+                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.92f, 0.05f),
+                            animationSpec = tween(500, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+                        ) +
+                        expandIn(
+                            expandFrom = Alignment.TopEnd,
+                            animationSpec = tween(500, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+                        ),
+                exit = fadeOut(animationSpec = tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
+                        scaleOut(
+                            targetScale = 0.08f,
+                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.92f, 0.05f),
+                            animationSpec = tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+                        ) +
+                        shrinkOut(
+                            shrinkTowards = Alignment.TopEnd,
+                            animationSpec = tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+                        ),
                 modifier = Modifier
-                    .padding(top = 38.dp, end = 10.dp)
+                    .padding(top = 44.dp, end = 12.dp)
                     .align(Alignment.TopEnd)
             ) {
                 SceneDialog(
@@ -295,8 +313,9 @@ fun MixerScreen(
         }
 
         // ================= POPUP OVERLAYS & FLOATING WINDOWS =================
+        val defaultSfName = uiState.tracks.firstOrNull { it.soundfontName.isNotEmpty() }?.soundfontName ?: "FluidR3_GM.sf2"
 
-        // Drum Pad (Square Grid with Long-Press Customization: Palette, Gradient, LED, Neon, Material You)
+        // Drum Pad (Identical size & behavior to PAD, 8 pads immediately visible, position/size memory with Pin)
         if (uiState.isDrumPadPinned || uiState.activePopup == ActivePopup.DRUM_PAD) {
             DrumPadDialog(
                 drumPads = uiState.drumPads,
@@ -309,12 +328,23 @@ fun MixerScreen(
                 subView = uiState.drumSubView,
                 onSetSubView = { viewModel.setDrumSubView(it) },
                 soundfonts = uiState.soundfontFiles,
+                currentSoundfontName = defaultSfName,
+                loadedSf2Presets = uiState.soundfontPresets,
+                onSelectPreset = { viewModel.selectSf2Preset(it) },
+                onSelectSf2File = { viewModel.loadSoundfontFromStorage(it) },
+                onOpenSoundfontPicker = { viewModel.openSoundfontForTrack(1) },
                 audioFiles = uiState.loopAudioFiles,
                 isPinned = uiState.isDrumPadPinned,
                 onTogglePin = { viewModel.togglePinDrumPad() },
                 onClose = { viewModel.closeDrumPad() },
+                initialOffsetX = uiState.drumPadOffsetX,
+                initialOffsetY = uiState.drumPadOffsetY,
+                initialSizeDp = uiState.drumPadSizeDp,
+                onTransformChange = { x, y, size -> viewModel.updateDrumPadTransform(x, y, size) },
                 onPadPressed = { viewModel.onDrumPadPressed(it) },
                 onPadReleased = { viewModel.onDrumPadReleased(it) },
+                onPlayNote = { note, oct -> viewModel.playDrumNote(note, oct) },
+                onPlaySample = { sample -> viewModel.playDrumSample(sample) },
                 onUpdatePadCustomization = { padId, label, style ->
                     viewModel.updateDrumPadCustomization(padId, label, style)
                 },
@@ -323,7 +353,7 @@ fun MixerScreen(
             )
         }
 
-        // Tonic Pad (Shown if pinned or active)
+        // Tonic Pad (Shown if pinned or active, with position/size memory with Pin)
         if (uiState.isTonicPadPinned || uiState.activePopup == ActivePopup.TONIC_PAD) {
             TonicPadDialog(
                 activeNotes = uiState.activeTonicNotes,
@@ -340,7 +370,15 @@ fun MixerScreen(
                 isPinned = uiState.isTonicPadPinned,
                 onTogglePin = { viewModel.togglePinTonicPad() },
                 onClose = { viewModel.closeTonicPad() },
-                soundfonts = uiState.soundfontFiles
+                soundfonts = uiState.soundfontFiles,
+                currentLoadedSf2Name = defaultSfName,
+                loadedSf2Presets = uiState.soundfontPresets,
+                onSelectPreset = { viewModel.selectSf2Preset(it) },
+                onSelectSf2File = { viewModel.loadSoundfontFromStorage(it) },
+                initialOffsetX = uiState.tonicPadOffsetX,
+                initialOffsetY = uiState.tonicPadOffsetY,
+                initialSizeDp = uiState.tonicPadSizeDp,
+                onTransformChange = { x, y, size -> viewModel.updateTonicPadTransform(x, y, size) }
             )
         }
 

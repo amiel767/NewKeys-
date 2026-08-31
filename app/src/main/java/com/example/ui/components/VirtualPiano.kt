@@ -6,6 +6,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -29,19 +30,20 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.*
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 /**
  * Ultra-Responsive Multi-touch Polyphonic Virtual Piano Keyboard with:
- * - Direct Octave Jump Chips (C2, C3, C4, C5, C6) for instant fluid scrolling.
- * - Dedicated Scroll Buttons (< and >) and Scroll Lock toggle.
- * - Continuous Glissando / "Notes Runs" across white & black keys without interruption.
- * - Multi-finger simultaneous polyphony with zero latency.
+ * - Fluid Left/Right Arrow Scroll Buttons (◀ and ▶) for smooth sliding across octaves.
+ * - Standard Acoustic Piano Geometry with exact C2 to C7 alignment and zero drift across C4/C5/C6.
+ * - Multi-finger simultaneous polyphony with zero latency glissando.
  * - Pitch Bend Wheel with spring-back physics.
- * - C-only markers ("C2", "C3", "C4", "C5", "C6", "C7") covering C2 to C7 range.
+ * - Clear C-only markers ("C2", "C3", "C4", "C5", "C6", "C7").
  */
 @Composable
 fun VirtualPianoKeyboard(
@@ -66,7 +68,6 @@ fun VirtualPianoKeyboard(
 
     val scrollState = rememberScrollState()
     var currentScale by remember { mutableFloatStateOf(keyScale) }
-    var isScrollLocked by remember { mutableStateOf(false) }
 
     val coroutineScope = rememberCoroutineScope()
     val density = LocalDensity.current
@@ -85,14 +86,14 @@ fun VirtualPianoKeyboard(
             .border(1.dp, Color(0x3300E5FF), RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
             .testTag("virtual_piano_panel")
     ) {
-        // ================= TOP STRIP: DRAG HANDLE & OCTAVE NAVIGATION =================
+        // ================= TOP STRIP: DRAG HANDLE & DIRECTIONAL SCROLL BUTTONS =================
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(24.dp)
+                .height(26.dp)
                 .background(Color(0xFF141724))
                 .border(0.5.dp, Color(0x22FFFFFF))
-                .padding(horizontal = 6.dp),
+                .padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -119,91 +120,76 @@ fun VirtualPianoKeyboard(
                 )
             }
 
-            // Octave Jump Buttons: < [C2] [C3] [C4] [C5] [C6] >
+            // Left & Right Fluid Scroll Arrows
             Row(
+                modifier = Modifier
+                    .pointerInput(Unit) {
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            scrollState.dispatchRawDelta(-dragAmount.x)
+                        }
+                    },
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // Scroll Left
+                Text(
+                    text = "CLAVIER",
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextDim2
+                )
+
+                // Left Arrow: Smooth scroll towards lower notes (1 octave jump)
                 Box(
                     modifier = Modifier
-                        .size(20.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0x22FFFFFF))
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(Color(0x2200E5FF))
+                        .border(1.dp, Color(0x5500E5FF), CircleShape)
                         .clickable {
                             coroutineScope.launch {
-                                scrollState.animateScrollTo((scrollState.value - 240).coerceAtLeast(0))
+                                val octaveStep = with(density) { (42.dp * currentScale * 7f).toPx() }
+                                scrollState.animateScrollBy(-octaveStep, tween(280))
                             }
-                        },
+                        }
+                        .testTag("btn_scroll_left"),
                     contentAlignment = Alignment.Center
-                ) {
-                    Text(text = "◀", fontSize = 8.sp, color = TextPrimary)
-                }
-
-                octaves.forEach { oct ->
-                    val baseWhiteWidthDp = 42.dp * currentScale.coerceIn(0.65f, 1.8f)
-                    val whiteWidthPx = with(density) { baseWhiteWidthDp.toPx() }
-                    val targetScroll = ((oct - 2) * 7 * whiteWidthPx).toInt()
-
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0x2600E5FF))
-                            .border(0.8.dp, Color(0x5500E5FF), RoundedCornerShape(4.dp))
-                            .clickable {
-                                coroutineScope.launch {
-                                    scrollState.animateScrollTo(targetScroll)
-                                }
-                            }
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "C$oct",
-                            fontSize = 8.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = NeonCyanLight
-                        )
-                    }
-                }
-
-                // Scroll Right
-                Box(
-                    modifier = Modifier
-                        .size(20.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0x22FFFFFF))
-                        .clickable {
-                            coroutineScope.launch {
-                                scrollState.animateScrollTo((scrollState.value + 240).coerceAtMost(scrollState.maxValue))
-                            }
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(text = "▶", fontSize = 8.sp, color = TextPrimary)
-                }
-            }
-
-            // Lock & Zoom indicator
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(if (isScrollLocked) Color(0xFFFF9100) else Color(0x22FFFFFF))
-                        .clickable { isScrollLocked = !isScrollLocked }
-                        .padding(horizontal = 5.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = if (isScrollLocked) "🔒 Fixe" else "🔓 Libre",
-                        fontSize = 7.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        text = "◀",
+                        fontSize = 11.sp,
+                        color = NeonCyan,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                // Right Arrow: Smooth scroll towards higher notes (1 octave jump)
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(Color(0x2200E5FF))
+                        .border(1.dp, Color(0x5500E5FF), CircleShape)
+                        .clickable {
+                            coroutineScope.launch {
+                                val octaveStep = with(density) { (42.dp * currentScale * 7f).toPx() }
+                                scrollState.animateScrollBy(octaveStep, tween(280))
+                            }
+                        }
+                        .testTag("btn_scroll_right"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "▶",
+                        fontSize = 11.sp,
+                        color = NeonCyan,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
         }
 
-        // Main Keyboard Row: Left Controls (Pitch Bend & Scroll Lock) + Piano Keys Area
+        // Main Keyboard Row: Left Controls (Pitch Bend) + Piano Keys Area
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -240,9 +226,9 @@ fun VirtualPianoKeyboard(
             }
 
             // ================= PIANO KEYS CONTAINER =================
-            val baseWhiteWidthDp = 42.dp * currentScale.coerceIn(0.65f, 1.8f)
+            val baseWhiteWidthDp = 42.dp * currentScale.coerceIn(0.55f, 2.2f)
             val whiteWidthPx = with(density) { baseWhiteWidthDp.toPx() }
-            val blackKeyWidthPx = whiteWidthPx * 0.62f
+            val blackKeyWidthPx = whiteWidthPx * 0.60f
 
             // Total 35 white keys (5 octaves * 7) + 1 C7 = 36 white keys
             val totalWhiteKeys = 36
@@ -253,10 +239,12 @@ fun VirtualPianoKeyboard(
             val currentOnKeyDown by rememberUpdatedState(onKeyDown)
             val currentOnKeyUp by rememberUpdatedState(onKeyUp)
 
-            val scrollModifier = if (!isScrollLocked) {
-                Modifier.horizontalScroll(scrollState)
-            } else {
-                Modifier
+            // Auto-center initially around C3/C4 so both left (◀) and right (▶) scroll directions are active immediately
+            LaunchedEffect(whiteWidthPx) {
+                if (scrollState.value == 0 && whiteWidthPx > 0) {
+                    val initialScrollPx = (whiteWidthPx * 10f).toInt()
+                    scrollState.scrollTo(initialScrollPx)
+                }
             }
 
             Box(
@@ -264,16 +252,16 @@ fun VirtualPianoKeyboard(
                     .weight(1f)
                     .fillMaxHeight()
                     .padding(bottom = 3.dp)
-                    .then(scrollModifier)
+                    .horizontalScroll(scrollState)
                     .pointerInput(Unit) {
                         detectTransformGestures { _, _, zoom, _ ->
-                            if (!isScrollLocked) {
-                                currentScale = (currentScale * zoom).coerceIn(0.65f, 1.8f)
+                            if (zoom != 1.0f) {
+                                currentScale = (currentScale * zoom).coerceIn(0.55f, 2.2f)
                                 onKeyScaleChange(currentScale)
                             }
                         }
                     }
-                    .pointerInput(whiteWidthPx, currentScale) {
+                    .pointerInput(whiteWidthPx, currentScale, scrollState.value) {
                         awaitEachGesture {
                             while (true) {
                                 val event = awaitPointerEvent()
@@ -289,12 +277,12 @@ fun VirtualPianoKeyboard(
                                 // Process active pointers
                                 for (change in event.changes) {
                                     if (change.pressed) {
-                                        val x = change.position.x
+                                        val actualX = change.position.x + scrollState.value
                                         val y = change.position.y
                                         val height = size.height.toFloat()
 
                                         val detectedKey = resolveKeyAtPosition(
-                                            x = x,
+                                            x = actualX,
                                             y = y,
                                             totalHeight = height,
                                             whiteWidthPx = whiteWidthPx,
@@ -327,7 +315,7 @@ fun VirtualPianoKeyboard(
                     modifier = Modifier
                         .width(totalKeyboardWidthDp)
                         .fillMaxHeight(),
-                    horizontalArrangement = Arrangement.spacedBy(1.dp)
+                    horizontalArrangement = Arrangement.Start
                 ) {
                     octaves.forEach { oct ->
                         OctaveGroupView(
@@ -345,7 +333,7 @@ fun VirtualPianoKeyboard(
                         )
                     } else {
                         Brush.verticalGradient(
-                            listOf(Color(0xFFF2F2F7), Color(0xFFDCDCE8), Color(0xFFC0C0D0))
+                            listOf(Color(0xFFFFFFFF), Color(0xFFF0F1F7), Color(0xFFD6D9E6))
                         )
                     }
 
@@ -353,7 +341,6 @@ fun VirtualPianoKeyboard(
                         modifier = Modifier
                             .width(baseWhiteWidthDp)
                             .fillMaxHeight()
-                            .padding(horizontal = 0.5.dp)
                             .clip(RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp))
                             .background(keyBrush)
                             .border(
@@ -476,21 +463,30 @@ private fun PitchBendWheel(
 }
 
 /**
- * High-performance 1-Octave Group Component: 7 White Keys + 5 Black Keys
+ * Standard Acoustic 1-Octave Group Component: 7 White Keys + 5 Black Keys
+ * Exact layout across all octaves with zero drift.
  */
 @Composable
 private fun OctaveGroupView(
     octave: Int,
-    whiteWidthDp: androidx.compose.ui.unit.Dp,
+    whiteWidthDp: Dp,
     pressedKeys: Set<String>
 ) {
     val whiteNotes = listOf("C", "D", "E", "F", "G", "A", "B")
-    val blackNotes = mapOf(
-        0 to "C#",
-        1 to "D#",
-        3 to "F#",
-        4 to "G#",
-        5 to "A#"
+    val blackKeyWidthDp = whiteWidthDp * 0.60f
+
+    // Standard piano layout: black keys centered on white key splits:
+    // C# between C(0) and D(1) -> boundary at 1 * whiteWidthDp
+    // D# between D(1) and E(2) -> boundary at 2 * whiteWidthDp
+    // F# between F(3) and G(4) -> boundary at 4 * whiteWidthDp
+    // G# between G(4) and A(5) -> boundary at 5 * whiteWidthDp
+    // A# between A(5) and B(6) -> boundary at 6 * whiteWidthDp
+    val blackSpecs = listOf(
+        "C#" to 1,
+        "D#" to 2,
+        "F#" to 4,
+        "G#" to 5,
+        "A#" to 6
     )
 
     Box(
@@ -501,7 +497,7 @@ private fun OctaveGroupView(
         // Layer 1: White Keys
         Row(
             modifier = Modifier.fillMaxSize(),
-            horizontalArrangement = Arrangement.spacedBy(1.dp)
+            horizontalArrangement = Arrangement.Start
         ) {
             whiteNotes.forEach { noteName ->
                 val fullKey = "$noteName$octave"
@@ -524,7 +520,7 @@ private fun OctaveGroupView(
 
                 Box(
                     modifier = Modifier
-                        .weight(1f)
+                        .width(whiteWidthDp)
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp))
                         .background(keyBrush)
@@ -548,13 +544,13 @@ private fun OctaveGroupView(
             }
         }
 
-        // Layer 2: Black Keys
-        blackNotes.forEach { (index, noteName) ->
+        // Layer 2: Black Keys placed at exact split lines
+        blackSpecs.forEach { (noteName, boundaryIndex) ->
             val fullKey = "$noteName$octave"
             val isPressed = pressedKeys.contains(fullKey)
 
-            val leftOffsetDp = whiteWidthDp * (index + 0.69f)
-            val blackKeyWidthDp = whiteWidthDp * 0.62f
+            // Centered on the boundary between the two white keys
+            val leftOffsetDp = (whiteWidthDp * boundaryIndex) - (blackKeyWidthDp / 2f)
 
             val keyBrush = if (isPressed) {
                 Brush.verticalGradient(
@@ -589,7 +585,7 @@ private fun OctaveGroupView(
 }
 
 /**
- * Geometric resolver: maps (x, y) coordinates to exact key name.
+ * Geometric resolver: maps (x, y) coordinates to exact key name with perfect split detection.
  */
 private fun resolveKeyAtPosition(
     x: Float,
@@ -600,24 +596,31 @@ private fun resolveKeyAtPosition(
 ): String? {
     if (x < 0 || y < 0 || y > totalHeight) return null
 
-    val octaveIndex = (x / (whiteWidthPx * 7)).toInt()
+    val octaveWidth = whiteWidthPx * 7
+    val octaveIndex = (x / octaveWidth).toInt()
     val octave = (2 + octaveIndex).coerceIn(2, 6)
 
-    val xWithinOctave = x - (octaveIndex * (whiteWidthPx * 7))
+    // Handle high C7
+    if (octaveIndex >= 5) {
+        return "C7"
+    }
+
+    val xWithinOctave = x - (octaveIndex * octaveWidth)
     val isUpperHalf = y <= (totalHeight * 0.60f)
 
     if (isUpperHalf) {
         val blackSpecs = listOf(
-            0 to "C#",
-            1 to "D#",
-            3 to "F#",
-            4 to "G#",
-            5 to "A#"
+            "C#" to 1,
+            "D#" to 2,
+            "F#" to 4,
+            "G#" to 5,
+            "A#" to 6
         )
 
-        for ((idx, note) in blackSpecs) {
-            val left = whiteWidthPx * (idx + 0.69f)
-            val right = left + blackWidthPx
+        for ((note, boundaryIndex) in blackSpecs) {
+            val center = boundaryIndex * whiteWidthPx
+            val left = center - (blackWidthPx / 2f)
+            val right = center + (blackWidthPx / 2f)
             if (xWithinOctave in left..right) {
                 return "$note$octave"
             }

@@ -28,6 +28,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -58,15 +59,19 @@ fun TonicPadDialog(
     loadedSf2Presets: List<SoundfontPreset> = emptyList(),
     onSelectPreset: (SoundfontPreset) -> Unit = {},
     onSelectSf2File: (StorageItem) -> Unit = {},
+    initialOffsetX: Float = 0f,
+    initialOffsetY: Float = 0f,
+    initialSizeDp: Float = 440f,
+    onTransformChange: (Float, Float, Float) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
     var isSoundPickerOpen by remember { mutableStateOf(false) }
 
-    // Position and size state maintained consistently
-    var floatingOffsetX by remember { mutableFloatStateOf(100f) }
-    var floatingOffsetY by remember { mutableFloatStateOf(60f) }
-    var windowSizeDp by remember { mutableStateOf(440.dp) }
+    // Position and size state maintained consistently without jumping
+    var floatingOffsetX by remember { mutableFloatStateOf(initialOffsetX) }
+    var floatingOffsetY by remember { mutableFloatStateOf(initialOffsetY) }
+    var windowSizeDp by remember { mutableStateOf(initialSizeDp.dp) }
 
     // Format single octave display (e.g. "C4" if range is "C3 — C4" or "C4")
     val singleOctaveText = remember(octaveRange) {
@@ -74,18 +79,27 @@ fun TonicPadDialog(
         if (match.isNotEmpty()) match.last() else "C4"
     }
 
-    if (isPinned) {
-        // Pinned Mobile & Resizable Window (stays exactly in place and size)
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxSize()
+            .background(if (isPinned) Color.Transparent else Color(0x660A0A0E))
+            .clickable(enabled = !isPinned) { onClose() },
+        contentAlignment = Alignment.Center
+    ) {
+        val maxDragX = (maxWidth.value - 300f).coerceAtLeast(0f) * 1.5f
+        val maxDragY = (maxHeight.value - 300f).coerceAtLeast(0f) * 1.5f
+
         Box(
-            modifier = modifier
+            modifier = Modifier
                 .offset { IntOffset(floatingOffsetX.roundToInt(), floatingOffsetY.roundToInt()) }
                 .size(windowSizeDp)
-                .shadow(24.dp, RoundedCornerShape(18.dp))
+                .shadow(if (isPinned) 24.dp else 30.dp, RoundedCornerShape(18.dp))
                 .clip(RoundedCornerShape(18.dp))
                 .background(
                     Brush.linearGradient(listOf(Color(0xFF241C30), Color(0xFF161220), Color(0xFF0F0C16)))
                 )
                 .border(1.5.dp, Color(0xFF8B5CF6), RoundedCornerShape(18.dp))
+                .clickable(enabled = false) {}
                 .padding(10.dp)
                 .testTag("floating_tonic_pad")
         ) {
@@ -112,8 +126,9 @@ fun TonicPadDialog(
                 onSelectPreset = onSelectPreset,
                 onSelectSf2File = onSelectSf2File,
                 onDragHeader = { dx, dy ->
-                    floatingOffsetX += dx
-                    floatingOffsetY += dy
+                    floatingOffsetX = (floatingOffsetX + dx).coerceIn(-maxDragX, maxDragX)
+                    floatingOffsetY = (floatingOffsetY + dy).coerceIn(-maxDragY, maxDragY)
+                    onTransformChange(floatingOffsetX, floatingOffsetY, windowSizeDp.value)
                 }
             )
 
@@ -127,69 +142,13 @@ fun TonicPadDialog(
                             change.consume()
                             val dDp = with(density) { (dragAmount.x + dragAmount.y) / 2f }.toDp()
                             windowSizeDp = (windowSizeDp + dDp).coerceIn(300.dp, 600.dp)
+                            onTransformChange(floatingOffsetX, floatingOffsetY, windowSizeDp.value)
                         }
                     }
                     .padding(end = 4.dp, bottom = 4.dp),
                 contentAlignment = Alignment.BottomEnd
             ) {
                 Text(text = "◢", fontSize = 12.sp, color = NeonPurpleLight, fontWeight = FontWeight.Bold)
-            }
-        }
-    } else {
-        // Standard Centered Modal (Cannot be moved until pinned)
-        Box(
-            modifier = modifier
-                .fillMaxSize()
-                .background(Color(0x660A0A0E))
-                .clickable { onClose() },
-            contentAlignment = Alignment.Center
-        ) {
-            AnimatedVisibility(
-                visible = true,
-                enter = fadeIn(tween(200, easing = FastOutSlowInEasing)) + scaleIn(
-                    initialScale = 0.92f,
-                    animationSpec = tween(220, easing = FastOutSlowInEasing)
-                ),
-                exit = fadeOut(tween(160)) + scaleOut(targetScale = 0.95f)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(440.dp)
-                        .shadow(24.dp, RoundedCornerShape(20.dp))
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(
-                            Brush.linearGradient(listOf(Color(0xFF241C30), Color(0xFF161220), Color(0xFF0F0C16)))
-                        )
-                        .border(1.2.dp, Color(0xFF8B5CF6), RoundedCornerShape(20.dp))
-                        .clickable(enabled = false) {}
-                        .padding(12.dp)
-                        .testTag("dialog_tonic_pad")
-                ) {
-                    TonicPadContent(
-                        activeNotes = activeNotes,
-                        onNoteClick = onNoteClick,
-                        isMultiPadEnabled = isMultiPadEnabled,
-                        onToggleMultiPad = onToggleMultiPad,
-                        singleOctaveText = singleOctaveText,
-                        onOctaveMinus = onOctaveMinus,
-                        onOctavePlus = onOctavePlus,
-                        brightness = brightness,
-                        onBrightnessChange = onBrightnessChange,
-                        shimmer = shimmer,
-                        onShimmerChange = onShimmerChange,
-                        isPinned = isPinned,
-                        onTogglePin = onTogglePin,
-                        onClose = onClose,
-                        isSoundPickerOpen = isSoundPickerOpen,
-                        onToggleSoundPicker = { isSoundPickerOpen = it },
-                        soundfonts = soundfonts,
-                        currentLoadedSf2Name = currentLoadedSf2Name,
-                        loadedSf2Presets = loadedSf2Presets,
-                        onSelectPreset = onSelectPreset,
-                        onSelectSf2File = onSelectSf2File,
-                        onDragHeader = null
-                    )
-                }
             }
         }
     }
@@ -266,16 +225,31 @@ private fun TonicPadContent(
 
             Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 if (!isSoundPickerOpen) {
-                    // "Sound" Button (Renamed from Banque SF2 per Page 1)
+                    // Loaded Soundfont Capsule Button
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
                             .background(Color(0x228B5CF6))
                             .border(1.dp, NeonPurpleLight, RoundedCornerShape(6.dp))
                             .clickable { onToggleSoundPicker(true) }
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .padding(horizontal = 7.dp, vertical = 4.dp)
                     ) {
-                        Text(text = "🔊 Sound", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = NeonPurpleLight)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(text = "🎹", fontSize = 9.sp)
+                            Text(
+                                text = currentLoadedSf2Name.ifEmpty { "Soundfont" },
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = NeonPurpleLight,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.widthIn(max = 110.dp)
+                            )
+                            Text(text = "▼", fontSize = 7.sp, color = Color(0xAAFFFFFF))
+                        }
                     }
                 }
 
@@ -319,7 +293,7 @@ private fun TonicPadContent(
                         .padding(2.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    // Tab 1: .sf2 Chargé
+                    // Tab 1: Presets Soundfont
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -330,14 +304,14 @@ private fun TonicPadContent(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "1. .sf2 Chargé",
+                            text = "Presets Soundfont",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (soundTab == "presets") Color.White else TextDim
                         )
                     }
 
-                    // Tab 2: Dossier /Soundfonts
+                    // Tab 2: Soundfonts
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -348,7 +322,7 @@ private fun TonicPadContent(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "2. Dossier /Soundfonts",
+                            text = "Soundfonts",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (soundTab == "files") Color.White else TextDim

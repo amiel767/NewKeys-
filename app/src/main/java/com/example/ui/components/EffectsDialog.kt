@@ -153,17 +153,44 @@ fun EffectsDialog(
                         val reverbPresets = listOf(
                             "Concert Hall", "Warm Room", "Plate 80s", "Cathedral", "Ambient Shimmer", "Vocal Chamber", "Studio Room"
                         )
+                        val isEnabled = fxParameters.isReverbEnabled
                         val currentPreset = track?.reverbPreset ?: fxParameters.reverbPreset
 
                         Column(modifier = Modifier.fillMaxSize()) {
-                            // Presets Selector
-                            Text(
-                                text = "PRESETS REVERB",
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextDim,
-                                letterSpacing = 0.6.sp
-                            )
+                            // Presets Header with ON/OFF Switch
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "PRESETS REVERB",
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextDim,
+                                    letterSpacing = 0.6.sp
+                                )
+
+                                // ON / OFF Button
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (isEnabled) Color(0xFF00E5FF) else Color(0x1EFFFFFF))
+                                        .border(1.dp, if (isEnabled) Color(0xFF00E5FF) else Color(0x33FFFFFF), RoundedCornerShape(6.dp))
+                                        .clickable {
+                                            onUpdateFx { it.copy(isReverbEnabled = !it.isReverbEnabled) }
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = if (isEnabled) "REVERB ON" else "BYPASS (OFF)",
+                                        fontSize = 8.5.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (isEnabled) Color(0xFF002933) else TextDim
+                                    )
+                                }
+                            }
 
                             Spacer(modifier = Modifier.height(4.dp))
 
@@ -172,7 +199,7 @@ fun EffectsDialog(
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 items(reverbPresets) { preset ->
-                                    val isSel = currentPreset == preset
+                                    val isSel = (currentPreset == preset)
                                     Box(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(6.dp))
@@ -180,7 +207,6 @@ fun EffectsDialog(
                                             .border(1.dp, if (isSel) Color.Transparent else Color(0x1FFFFFFF), RoundedCornerShape(6.dp))
                                             .clickable {
                                                 onSetReverbPreset(preset)
-                                                onUpdateFx { it.copy(reverbPreset = preset) }
                                             }
                                             .padding(horizontal = 8.dp, vertical = 4.dp),
                                         contentAlignment = Alignment.Center
@@ -197,7 +223,7 @@ fun EffectsDialog(
 
                             Spacer(modifier = Modifier.height(10.dp))
 
-                            // 4 Reverb Knobs
+                            // 4 Reverb Knobs (Mix, Size, Decay, Damp)
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -207,17 +233,21 @@ fun EffectsDialog(
                             ) {
                                 FxUnitCard("Mix") {
                                     RotaryKnob(
-                                        value = fxParameters.reverbMix,
-                                        onValueChange = { v -> onUpdateFx { it.copy(reverbMix = v) } },
+                                        value = if (isEnabled) fxParameters.reverbMix else 0f,
+                                        onValueChange = { v ->
+                                            onUpdateFx { it.copy(reverbMix = v, reverbPreset = "Custom") }
+                                        },
                                         label = "Mix",
-                                        valueText = "${(fxParameters.reverbMix * 100).toInt()}%",
+                                        valueText = if (isEnabled) "${(fxParameters.reverbMix * 100).toInt()}%" else "OFF",
                                         size = 46.dp
                                     )
                                 }
                                 FxUnitCard("Size") {
                                     RotaryKnob(
                                         value = fxParameters.reverbSize,
-                                        onValueChange = { v -> onUpdateFx { it.copy(reverbSize = v) } },
+                                        onValueChange = { v ->
+                                            onUpdateFx { it.copy(reverbSize = v, reverbPreset = "Custom") }
+                                        },
                                         label = "Size",
                                         valueText = "${(fxParameters.reverbSize * 100).toInt()}%",
                                         size = 46.dp
@@ -226,7 +256,9 @@ fun EffectsDialog(
                                 FxUnitCard("Decay") {
                                     RotaryKnob(
                                         value = fxParameters.reverbDecay,
-                                        onValueChange = { v -> onUpdateFx { it.copy(reverbDecay = v) } },
+                                        onValueChange = { v ->
+                                            onUpdateFx { it.copy(reverbDecay = v, reverbPreset = "Custom") }
+                                        },
                                         label = "Decay",
                                         valueText = "${(fxParameters.reverbDecay * 6).toInt()}s",
                                         size = 46.dp
@@ -235,7 +267,9 @@ fun EffectsDialog(
                                 FxUnitCard("Damp") {
                                     RotaryKnob(
                                         value = fxParameters.reverbDamp,
-                                        onValueChange = { v -> onUpdateFx { it.copy(reverbDamp = v) } },
+                                        onValueChange = { v ->
+                                            onUpdateFx { it.copy(reverbDamp = v, reverbPreset = "Custom") }
+                                        },
                                         label = "Damp",
                                         valueText = "${(fxParameters.reverbDamp * 100).toInt()}%",
                                         size = 46.dp

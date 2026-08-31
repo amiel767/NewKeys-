@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -23,13 +24,20 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.*
 import com.example.ui.theme.*
+import kotlin.math.roundToInt
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DrumPadDialog(
     drumPads: List<DrumPadItem>,
@@ -42,43 +50,95 @@ fun DrumPadDialog(
     subView: String,
     onSetSubView: (String) -> Unit,
     soundfonts: List<StorageItem>,
+    currentSoundfontName: String = "FluidR3_GM.sf2",
+    loadedSf2Presets: List<SoundfontPreset> = emptyList(),
+    onSelectPreset: (SoundfontPreset) -> Unit = {},
+    onSelectSf2File: (StorageItem) -> Unit = {},
+    onOpenSoundfontPicker: () -> Unit = {},
     audioFiles: List<StorageItem>,
     isPinned: Boolean,
     onTogglePin: () -> Unit,
     onClose: () -> Unit,
     onPadPressed: (Int) -> Unit,
     onPadReleased: (Int) -> Unit,
+    onPlayNote: (note: String, octave: Int) -> Unit = { _, _ -> },
+    onPlaySample: (StorageItem) -> Unit = {},
     onUpdatePadCustomization: (padId: Int, label: String, style: DrumPadStyle) -> Unit,
     onAssignPadSample: (padId: Int, sample: StorageItem) -> Unit,
     onAssignPadNote: (padId: Int, noteStr: String, oct: Int, key: String) -> Unit,
+    initialOffsetX: Float = 0f,
+    initialOffsetY: Float = 0f,
+    initialSizeDp: Float = 440f,
+    onTransformChange: (Float, Float, Float) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
+    val density = LocalDensity.current
     var editingPad by remember { mutableStateOf<DrumPadItem?>(null) }
+    var quickAssignNote by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    var quickAssignSample by remember { mutableStateOf<StorageItem?>(null) }
+    var isSoundPickerOpen by remember { mutableStateOf(false) }
+
+    // Persistent drag position and size state
+    var offsetX by remember { mutableFloatStateOf(initialOffsetX) }
+    var offsetY by remember { mutableFloatStateOf(initialOffsetY) }
+    var windowSizeDp by remember { mutableStateOf(initialSizeDp.dp) }
 
     AnimatedVisibility(
         visible = true,
-        enter = fadeIn(tween(200)) + scaleIn(initialScale = 0.94f, animationSpec = tween(220)),
-        exit = fadeOut(tween(160)) + scaleOut(targetScale = 0.94f, animationSpec = tween(180)),
+        enter = fadeIn(tween(180)) + scaleIn(initialScale = 0.94f, animationSpec = tween(200)),
+        exit = fadeOut(tween(150)) + scaleOut(targetScale = 0.94f, animationSpec = tween(160)),
         modifier = modifier
     ) {
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0x88000000))
+                .background(if (isPinned) Color.Transparent else Color(0x77000000))
+                .clickable(enabled = !isPinned) { onClose() }
                 .testTag("drum_pad_overlay"),
             contentAlignment = Alignment.Center
         ) {
+            val maxDragX = (maxWidth.value - 300f).coerceAtLeast(0f) * 1.5f
+            val maxDragY = (maxHeight.value - 300f).coerceAtLeast(0f) * 1.5f
+
             Box(
                 modifier = Modifier
-                    .widthIn(min = 440.dp, max = 560.dp)
-                    .fillMaxHeight(0.88f)
-                    .shadow(32.dp, RoundedCornerShape(24.dp))
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(Color(0xFF141722))
-                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(24.dp))
-                    .padding(14.dp)
+                    .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
+                    .size(windowSizeDp)
+                    .shadow(if (isPinned) 24.dp else 32.dp, RoundedCornerShape(20.dp))
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color(0xFF131622))
+                    .border(
+                        1.2.dp,
+                        if (isPinned) NeonCyan.copy(alpha = 0.8f) else Color(0x33FFFFFF),
+                        RoundedCornerShape(20.dp)
+                    )
+                    .clickable(enabled = false) {}
+                    .padding(10.dp)
             ) {
                 when {
+                    isSoundPickerOpen -> {
+                        DrumSoundfontPickerSubView(
+                            soundfonts = soundfonts,
+                            loadedSf2Presets = loadedSf2Presets,
+                            onSelectPreset = { preset ->
+                                onSelectPreset(preset)
+                                isSoundPickerOpen = false
+                            },
+                            onSelectSf2File = { file ->
+                                onSelectSf2File(file)
+                                isSoundPickerOpen = false
+                            },
+                            isPinned = isPinned,
+                            onTogglePin = onTogglePin,
+                            onClose = onClose,
+                            onBack = { isSoundPickerOpen = false },
+                            onDragHeader = { dx, dy ->
+                                offsetX = (offsetX + dx).coerceIn(-maxDragX, maxDragX)
+                                offsetY = (offsetY + dy).coerceIn(-maxDragY, maxDragY)
+                                onTransformChange(offsetX, offsetY, windowSizeDp.value)
+                            }
+                        )
+                    }
                     editingPad != null -> {
                         PadCustomizerScreen(
                             pad = editingPad!!,
@@ -109,7 +169,7 @@ fun DrumPadDialog(
                         )
                     }
                     else -> {
-                        MainDrumPadContent(
+                        MainDrumPadSquareContent(
                             drumPads = drumPads,
                             volume = volume,
                             onVolumeChange = onVolumeChange,
@@ -117,24 +177,81 @@ fun DrumPadDialog(
                             onReverbChange = onReverbChange,
                             activeTab = activeTab,
                             onTabChange = onTabChange,
+                            currentSoundfontName = currentSoundfontName,
+                            onOpenSoundfontPicker = { isSoundPickerOpen = true },
                             isPinned = isPinned,
                             onTogglePin = onTogglePin,
                             onClose = onClose,
+                            onDragWindow = { dx, dy ->
+                                offsetX = (offsetX + dx).coerceIn(-maxDragX, maxDragX)
+                                offsetY = (offsetY + dy).coerceIn(-maxDragY, maxDragY)
+                                onTransformChange(offsetX, offsetY, windowSizeDp.value)
+                            },
                             onPadPressed = onPadPressed,
                             onPadReleased = onPadReleased,
                             onLongPressPad = { pad -> editingPad = pad },
                             audioFiles = audioFiles,
-                            onAssignSample = { padId, file -> onAssignPadSample(padId, file) }
+                            onPlayNote = onPlayNote,
+                            onPlaySample = onPlaySample,
+                            onLongPressNote = { note, oct -> quickAssignNote = note to oct },
+                            onLongPressSample = { file -> quickAssignSample = file }
                         )
                     }
+                }
+
+                // Discrete Resize Arrow (Identical to TonicPad)
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(24.dp)
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                val dDp = with(density) { (dragAmount.x + dragAmount.y) / 2f }.toDp()
+                                windowSizeDp = (windowSizeDp + dDp).coerceIn(300.dp, 600.dp)
+                                onTransformChange(offsetX, offsetY, windowSizeDp.value)
+                            }
+                        }
+                        .padding(end = 4.dp, bottom = 4.dp),
+                    contentAlignment = Alignment.BottomEnd
+                ) {
+                    Text(text = "◢", fontSize = 12.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
+                }
+
+                // Quick Pad Assignment Modal (When long-pressing note or sample)
+                if (quickAssignNote != null) {
+                    val (note, oct) = quickAssignNote!!
+                    QuickPadAssignModal(
+                        title = "Assigner Note $note$oct au Pad",
+                        pads = drumPads,
+                        onSelectPad = { padId ->
+                            onAssignPadNote(padId, "$note$oct", oct, note)
+                            quickAssignNote = null
+                        },
+                        onDismiss = { quickAssignNote = null }
+                    )
+                }
+
+                if (quickAssignSample != null) {
+                    val sample = quickAssignSample!!
+                    QuickPadAssignModal(
+                        title = "Assigner ${sample.name.take(16)} au Pad",
+                        pads = drumPads,
+                        onSelectPad = { padId ->
+                            onAssignPadSample(padId, sample)
+                            quickAssignSample = null
+                        },
+                        onDismiss = { quickAssignSample = null }
+                    )
                 }
             }
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MainDrumPadContent(
+private fun MainDrumPadSquareContent(
     drumPads: List<DrumPadItem>,
     volume: Float,
     onVolumeChange: (Float) -> Unit,
@@ -142,49 +259,73 @@ private fun MainDrumPadContent(
     onReverbChange: (Float) -> Unit,
     activeTab: String,
     onTabChange: (String) -> Unit,
+    currentSoundfontName: String,
+    onOpenSoundfontPicker: () -> Unit,
     isPinned: Boolean,
     onTogglePin: () -> Unit,
     onClose: () -> Unit,
+    onDragWindow: (Float, Float) -> Unit,
     onPadPressed: (Int) -> Unit,
     onPadReleased: (Int) -> Unit,
     onLongPressPad: (DrumPadItem) -> Unit,
     audioFiles: List<StorageItem>,
-    onAssignSample: (Int, StorageItem) -> Unit
+    onPlayNote: (String, Int) -> Unit,
+    onPlaySample: (StorageItem) -> Unit,
+    onLongPressNote: (String, Int) -> Unit,
+    onLongPressSample: (StorageItem) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
-        // Header
+        // ================= TOP BAR WITH TITLE, SOUNDFONT PICKER & MINIMALIST PIN =================
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 10.dp),
+                .pointerInput(Unit) {
+                    detectDragGestures { change, dragAmount ->
+                        change.consume()
+                        onDragWindow(dragAmount.x, dragAmount.y)
+                    }
+                }
+                .padding(bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                Text(text = "🥁", fontSize = 14.sp)
+                Text(
+                    text = "DrumPad",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+
+                // Soundfont Capsule Indicator & Selector
                 Box(
                     modifier = Modifier
-                        .size(32.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFFEC4899).copy(alpha = 0.25f)),
-                    contentAlignment = Alignment.Center
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFF1E2232))
+                        .border(0.8.dp, Color(0x3322D3EE), RoundedCornerShape(6.dp))
+                        .clickable { onOpenSoundfontPicker() }
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
-                    Text(text = "🥁", fontSize = 16.sp)
-                }
-                Column {
-                    Text(
-                        text = "Drum Pad",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Text(
-                        text = "Appui long = Modifier couleur & style",
-                        fontSize = 9.sp,
-                        color = TextDim2
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Text(text = "🎹", fontSize = 9.sp)
+                        Text(
+                            text = currentSoundfontName.ifEmpty { "Soundfont" },
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = NeonCyanLight,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.widthIn(max = 95.dp)
+                        )
+                        Text(text = "▼", fontSize = 7.sp, color = Color(0xAAFFFFFF))
+                    }
                 }
             }
 
@@ -192,26 +333,28 @@ private fun MainDrumPadContent(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // Pin button
+                // Minimalist Pin Icon
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
+                        .size(26.dp)
+                        .clip(CircleShape)
                         .background(if (isPinned) Color(0x3322D3EE) else Color(0x14FFFFFF))
-                        .border(1.dp, if (isPinned) NeonCyan else Color(0x1AFFFFFF), RoundedCornerShape(8.dp))
+                        .border(1.dp, if (isPinned) NeonCyan else Color(0x22FFFFFF), CircleShape)
                         .clickable { onTogglePin() }
-                        .padding(horizontal = 8.dp, vertical = 5.dp)
+                        .testTag("btn_pin_drumpad"),
+                    contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = if (isPinned) "📌 Épinglé" else "📌 Épingler",
-                        fontSize = 10.sp,
+                        text = if (isPinned) "📍" else "📌",
+                        fontSize = 11.sp,
                         color = if (isPinned) NeonCyan else TextDim
                     )
                 }
 
-                // Close button
+                // Close Button
                 Box(
                     modifier = Modifier
-                        .size(28.dp)
+                        .size(26.dp)
                         .clip(CircleShape)
                         .background(Color(0x14FFFFFF))
                         .clickable { onClose() },
@@ -222,29 +365,33 @@ private fun MainDrumPadContent(
             }
         }
 
-        // Tabs (Pads, Samples)
+        // ================= 3 TABS: Pads, Notes, Fichiers =================
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFF1E212E))
-                .padding(3.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color(0xFF1C1F2D))
+                .padding(2.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
         ) {
-            listOf("pads" to "Grille 8 Pads", "files" to "Échantillons / Samples").forEach { (tabId, label) ->
+            listOf(
+                "pad" to "Pads",
+                "notes" to "Notes",
+                "files" to "Fichiers"
+            ).forEach { (tabId, label) ->
                 val isSel = (tabId == activeTab)
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(6.dp))
                         .background(if (isSel) NeonCyan else Color.Transparent)
                         .clickable { onTabChange(tabId) }
-                        .padding(vertical = 6.dp),
+                        .padding(vertical = 4.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = label,
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
                         color = if (isSel) Color(0xFF002233) else TextDim
                     )
@@ -252,87 +399,298 @@ private fun MainDrumPadContent(
             }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
-        if (activeTab == "pads") {
-            // Square 8-Pad Grid (4 cols x 2 rows)
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(4),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(drumPads) { pad ->
-                    SquareDrumPadCell(
-                        pad = pad,
-                        onPress = { onPadPressed(pad.id) },
-                        onRelease = { onPadReleased(pad.id) },
-                        onLongPress = { onLongPressPad(pad) }
-                    )
-                }
-            }
-
-            // Quick Volume Slider
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(text = "Vol Drum", fontSize = 10.sp, color = TextDim)
-                Slider(
-                    value = volume,
-                    onValueChange = onVolumeChange,
-                    colors = SliderDefaults.colors(thumbColor = NeonCyan, activeTrackColor = NeonCyan),
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        } else {
-            // Audio samples file list
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                if (audioFiles.isEmpty()) {
-                    item {
-                        Text(
-                            text = "Aucun échantillon audio trouvé dans /LiveKeys/DrumPad",
-                            fontSize = 11.sp,
-                            color = TextDim,
-                            modifier = Modifier.padding(16.dp)
-                        )
-                    }
-                } else {
-                    items(audioFiles) { file ->
+        // ================= TAB CONTENT =================
+        when (activeTab) {
+            "pad" -> {
+                // 1_PAD TAB: 8 Fluid Adaptive Pads (2 rows x 4 cols) + 3D Knobs
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                ) {
+                    // 8-Pad Adaptive Fluid Grid
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        // Top Row (Pads 1..4)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color(0xFF1E212E))
-                                .padding(10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                                .weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Column {
-                                Text(text = file.name, fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.SemiBold)
-                                Text(text = file.formattedSize, fontSize = 9.sp, color = TextDim2)
+                            drumPads.take(4).forEach { pad ->
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                ) {
+                                    FluidSquareDrumPadCell(
+                                        pad = pad,
+                                        onPress = { onPadPressed(pad.id) },
+                                        onRelease = { onPadReleased(pad.id) },
+                                        onLongPress = { onLongPressPad(pad) }
+                                    )
+                                }
                             }
+                        }
 
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                (1..4).forEach { pId ->
+                        // Bottom Row (Pads 5..8)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            drumPads.drop(4).take(4).forEach { pad ->
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                ) {
+                                    FluidSquareDrumPadCell(
+                                        pad = pad,
+                                        onPress = { onPadPressed(pad.id) },
+                                        onRelease = { onPadReleased(pad.id) },
+                                        onLongPress = { onLongPressPad(pad) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // 3D Realistic Knobs with Morphing Glowing LED Rings (Volume & Reverb)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF181B26))
+                            .border(0.8.dp, Color(0x22FFFFFF), RoundedCornerShape(10.dp))
+                            .padding(vertical = 3.dp, horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Led3DKnob(
+                            value = volume,
+                            onValueChange = onVolumeChange,
+                            label = "VOLUME",
+                            valueText = "${(volume * 100).toInt()}%",
+                            size = 36.dp,
+                            baseColor = NeonCyan
+                        )
+
+                        Led3DKnob(
+                            value = reverb,
+                            onValueChange = onReverbChange,
+                            label = "REVERB",
+                            valueText = "${(reverb * 100).toInt()}%",
+                            size = 36.dp,
+                            baseColor = NeonMagenta
+                        )
+                    }
+                }
+            }
+
+            "notes" -> {
+                // NOTES TAB: Notes C-B with Octave selector C1 to C8
+                var selectedOctave by remember { mutableIntStateOf(3) }
+                val notes = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                ) {
+                    // Octave Selection with +/- arrow buttons (C1 to C8)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(text = "Octave :", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextDim)
+
+                        // Decrement Button (-)
+                        Box(
+                            modifier = Modifier
+                                .size(26.dp)
+                                .clip(CircleShape)
+                                .background(Color(0x1EFFFFFF))
+                                .border(1.dp, Color(0x33FFFFFF), CircleShape)
+                                .clickable { if (selectedOctave > 1) selectedOctave-- },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "−",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (selectedOctave > 1) NeonCyan else TextDim2
+                            )
+                        }
+
+                        // Current Octave Badge (C1..C8)
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(NeonCyan.copy(alpha = 0.2f))
+                                .border(1.2.dp, NeonCyan, RoundedCornerShape(8.dp))
+                                .padding(horizontal = 12.dp, vertical = 3.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "C$selectedOctave",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = NeonCyanLight
+                            )
+                        }
+
+                        // Increment Button (+)
+                        Box(
+                            modifier = Modifier
+                                .size(26.dp)
+                                .clip(CircleShape)
+                                .background(Color(0x1EFFFFFF))
+                                .border(1.dp, Color(0x33FFFFFF), CircleShape)
+                                .clickable { if (selectedOctave < 8) selectedOctave++ },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "+",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (selectedOctave < 8) NeonCyan else TextDim2
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.weight(1f))
+                        Text(
+                            text = "Appui court = Jouer · Long = Assigner",
+                            fontSize = 8.sp,
+                            color = TextDim2
+                        )
+                    }
+
+                    // Notes Grid
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(4),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(notes) { note ->
+                            val isSharp = note.contains("#")
+                            Box(
+                                modifier = Modifier
+                                    .aspectRatio(1.2f)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (isSharp) Color(0xFF171A24) else Color(0xFF222738))
+                                    .border(1.dp, if (isSharp) Color(0x4400E5FF) else Color(0x22FFFFFF), RoundedCornerShape(10.dp))
+                                    .combinedClickable(
+                                        onClick = { onPlayNote(note, selectedOctave) },
+                                        onLongClick = { onLongPressNote(note, selectedOctave) }
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = "$note$selectedOctave",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSharp) NeonCyanLight else Color.White
+                                    )
+                                    Text(text = "Note", fontSize = 7.5.sp, color = TextDim)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            "files" -> {
+                // 3_FILES TAB: Elements of /DrumPad in clean AOSP style list
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                ) {
+                    Text(
+                        text = "Éléments du dossier /DrumPad (Appui court = Jouer · Long = Assigner)",
+                        fontSize = 8.5.sp,
+                        color = TextDim2,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        if (audioFiles.isEmpty()) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "Aucun fichier audio dans /LiveKeys/DrumPad",
+                                        fontSize = 10.sp,
+                                        color = TextDim
+                                    )
+                                }
+                            }
+                        } else {
+                            items(audioFiles) { file ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color(0xFF1E212E))
+                                        .border(0.8.dp, Color(0x1AFFFFFF), RoundedCornerShape(8.dp))
+                                        .combinedClickable(
+                                            onClick = { onPlaySample(file) },
+                                            onLongClick = { onLongPressSample(file) }
+                                        )
+                                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(text = "🎵", fontSize = 11.sp)
+                                        Column {
+                                            Text(
+                                                text = file.name,
+                                                fontSize = 10.5.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Color.White
+                                            )
+                                            Text(text = file.formattedSize, fontSize = 8.sp, color = TextDim2)
+                                        }
+                                    }
+
                                     Box(
                                         modifier = Modifier
-                                            .clip(RoundedCornerShape(6.dp))
+                                            .clip(RoundedCornerShape(4.dp))
                                             .background(Color(0x2222D3EE))
-                                            .clickable { onAssignSample(pId, file) }
-                                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
                                     ) {
-                                        Text(text = "P$pId", fontSize = 9.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
+                                        Text(text = "Assigner", fontSize = 8.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
@@ -346,7 +704,7 @@ private fun MainDrumPadContent(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SquareDrumPadCell(
+private fun FluidSquareDrumPadCell(
     pad: DrumPadItem,
     onPress: () -> Unit,
     onRelease: () -> Unit,
@@ -356,24 +714,24 @@ private fun SquareDrumPadCell(
 
     Box(
         modifier = Modifier
-            .aspectRatio(1f)
-            .clip(RoundedCornerShape(16.dp))
+            .fillMaxSize()
+            .clip(RoundedCornerShape(12.dp))
             .background(
                 if (pad.isPressed) {
                     Brush.verticalGradient(listOf(style.primaryColor, style.secondaryColor))
                 } else {
                     Brush.verticalGradient(
                         listOf(
-                            style.primaryColor.copy(alpha = 0.22f),
+                            style.primaryColor.copy(alpha = 0.25f),
                             style.secondaryColor.copy(alpha = 0.12f)
                         )
                     )
                 }
             )
             .border(
-                2.dp,
+                1.5.dp,
                 if (pad.isPressed) Color.White else style.primaryColor.copy(alpha = 0.65f),
-                RoundedCornerShape(16.dp)
+                RoundedCornerShape(12.dp)
             )
             .combinedClickable(
                 onClick = {
@@ -382,7 +740,7 @@ private fun SquareDrumPadCell(
                 },
                 onLongClick = onLongPress
             )
-            .padding(8.dp),
+            .padding(4.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -395,17 +753,327 @@ private fun SquareDrumPadCell(
                 fontWeight = FontWeight.ExtraBold,
                 color = if (pad.isPressed) Color.White else style.primaryColor
             )
-            Text(
-                text = pad.label,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
+            if (pad.label.isNotEmpty()) {
+                Text(
+                    text = pad.label,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             Text(
                 text = if (pad.soundType == DrumSoundType.SF2_NOTE) pad.sf2Note else pad.sampleFileName.take(6),
-                fontSize = 8.sp,
-                color = TextDim
+                fontSize = 7.5.sp,
+                color = TextDim,
+                maxLines = 1
             )
+        }
+    }
+}
+
+@Composable
+private fun DrumSoundfontPickerSubView(
+    soundfonts: List<StorageItem>,
+    loadedSf2Presets: List<SoundfontPreset>,
+    onSelectPreset: (SoundfontPreset) -> Unit,
+    onSelectSf2File: (StorageItem) -> Unit,
+    isPinned: Boolean,
+    onTogglePin: () -> Unit,
+    onClose: () -> Unit,
+    onBack: () -> Unit,
+    onDragHeader: ((Float, Float) -> Unit)?
+) {
+    var soundTab by remember { mutableStateOf("presets") } // "presets" or "files"
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Header with Back, Title, Pin & Close
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(32.dp)
+                .pointerInput(isPinned) {
+                    if (isPinned && onDragHeader != null) {
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            onDragHeader(dragAmount.x, dragAmount.y)
+                        }
+                    }
+                },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0x2200E5FF))
+                        .border(1.dp, NeonCyan, RoundedCornerShape(6.dp))
+                        .clickable { onBack() }
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(text = "← Retour", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
+                }
+
+                Text(
+                    text = "Soundfonts & Presets",
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                // Pin Button
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(if (isPinned) Color(0x3322D3EE) else Color(0x14FFFFFF))
+                        .border(1.dp, if (isPinned) NeonCyan else Color.Transparent, RoundedCornerShape(6.dp))
+                        .clickable { onTogglePin() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = if (isPinned) "📍" else "📌", fontSize = 11.sp, color = if (isPinned) NeonCyan else TextDim)
+                }
+
+                // Close Button
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0x14FFFFFF))
+                        .clickable { onClose() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "✕", fontSize = 11.5.sp, color = TextPrimary)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // 2 Tabs: Presets Soundfont & Soundfonts
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color(0x14FFFFFF))
+                .padding(2.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            // Tab 1: Presets Soundfont
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(if (soundTab == "presets") NeonCyan else Color.Transparent)
+                    .clickable { soundTab = "presets" }
+                    .padding(vertical = 5.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Presets Soundfont",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (soundTab == "presets") Color(0xFF003844) else TextDim
+                )
+            }
+
+            // Tab 2: Soundfonts
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(if (soundTab == "files") NeonCyan else Color.Transparent)
+                    .clickable { soundTab = "files" }
+                    .padding(vertical = 5.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Soundfonts",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (soundTab == "files") Color(0xFF003844) else TextDim
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        if (soundTab == "presets") {
+            val presetsList = if (loadedSf2Presets.isNotEmpty()) loadedSf2Presets else listOf(
+                SoundfontPreset(0, "Standard Drum Kit", 128),
+                SoundfontPreset(1, "Electronic Drum Kit", 128),
+                SoundfontPreset(2, "Power Drum Kit", 128),
+                SoundfontPreset(3, "Synth Bass & Kick", 0),
+                SoundfontPreset(4, "Percussion Set", 128)
+            )
+
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                items(presetsList) { preset ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0x0EFFFFFF))
+                            .border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(8.dp))
+                            .clickable { onSelectPreset(preset) }
+                            .padding(horizontal = 10.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(text = preset.name, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                            Text(text = "Bank: ${preset.bankNumber} · Preset: ${preset.id}", fontSize = 8.5.sp, color = TextDim2)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color(0x2200E5FF))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(text = "Charger", fontSize = 8.5.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        } else {
+            // Soundfonts files list (.sf2 files)
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                if (soundfonts.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(text = "Aucun fichier .sf2 trouvé", fontSize = 10.sp, color = TextDim)
+                        }
+                    }
+                } else {
+                    items(soundfonts) { file ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0x0EFFFFFF))
+                                .border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(8.dp))
+                                .clickable { onSelectSf2File(file) }
+                                .padding(horizontal = 10.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(text = "📦", fontSize = 11.sp)
+                                Column {
+                                    Text(text = file.name, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                                    Text(text = file.formattedSize, fontSize = 8.5.sp, color = TextDim2)
+                                }
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(Color(0x2200E5FF))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(text = "Ouvrir", fontSize = 8.5.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuickPadAssignModal(
+    title: String,
+    pads: List<DrumPadItem>,
+    onSelectPad: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0x99000000))
+            .clickable { onDismiss() }
+            .padding(16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xFF1A1D2C))
+                .border(1.dp, NeonCyan, RoundedCornerShape(16.dp))
+                .clickable(enabled = false) {}
+                .padding(14.dp)
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = title,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(4),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    items(pads) { pad ->
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF252A3C))
+                                .border(1.dp, pad.colorStyle.primaryColor, RoundedCornerShape(8.dp))
+                                .clickable { onSelectPad(pad.id) }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "Pad ${pad.id}",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = pad.colorStyle.primaryColor
+                                )
+                                if (pad.label.isNotEmpty()) {
+                                    Text(
+                                        text = pad.label,
+                                        fontSize = 8.sp,
+                                        color = TextDim
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+                TextButton(onClick = onDismiss) {
+                    Text(text = "Annuler", fontSize = 10.sp, color = TextDim)
+                }
+            }
         }
     }
 }
@@ -427,35 +1095,35 @@ private fun PadCustomizerScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 12.dp),
+                .padding(bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(6.dp))
                     .background(Color(0x14FFFFFF))
                     .clickable { onBack() }
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
-                Text(text = "← Annuler", fontSize = 10.sp, color = NeonCyan)
+                Text(text = "← Annuler", fontSize = 9.5.sp, color = NeonCyan)
             }
 
             Text(
                 text = "Modifier Pad ${pad.id}",
-                fontSize = 14.sp,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White
             )
 
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(6.dp))
                     .background(NeonCyan)
                     .clickable { onSave(labelText, selectedStyle) }
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
             ) {
-                Text(text = "Enregistrer", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF002233))
+                Text(text = "Enregistrer", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF002233))
             }
         }
 
@@ -463,15 +1131,16 @@ private fun PadCustomizerScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             // 1. Rename Input
             item {
-                Text(text = "NOM DU PAD", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
-                Spacer(modifier = Modifier.height(4.dp))
+                Text(text = "NOM DU PAD", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
+                Spacer(modifier = Modifier.height(3.dp))
                 OutlinedTextField(
                     value = labelText,
                     onValueChange = { labelText = it.take(12) },
+                    placeholder = { Text("Ex: Kick, Snare...", fontSize = 10.sp, color = TextDim) },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = NeonCyan,
@@ -485,101 +1154,100 @@ private fun PadCustomizerScreen(
 
             // 2. Sound Assignment Shortcuts
             item {
-                Text(text = "SOURCE SONORE", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
-                Spacer(modifier = Modifier.height(4.dp))
+                Text(text = "SOURCE SONORE", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
+                Spacer(modifier = Modifier.height(3.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(8.dp))
                             .background(Color(0xFF1E212E))
                             .clickable { onAssignSoundfont() }
-                            .padding(10.dp),
+                            .padding(8.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(text = "🎹 Note SoundFont (SF2)", fontSize = 10.sp, color = NeonCyan)
+                        Text(text = "🎹 Note Soundfont", fontSize = 9.sp, color = NeonCyanLight, fontWeight = FontWeight.Bold)
                     }
 
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(8.dp))
                             .background(Color(0xFF1E212E))
                             .clickable { onAssignSample() }
-                            .padding(10.dp),
+                            .padding(8.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(text = "🎵 Échantillon WAV/MP3", fontSize = 10.sp, color = NeonMagenta)
+                        Text(text = "📁 Échantillon /DrumPad", fontSize = 9.sp, color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
             }
 
-            // 3. Category selector (GRADIENT, LED, NEON, MATERIAL YOU)
+            // 3. Style Categories & Palette
             item {
-                Text(text = "PALETTE DE COULEURS", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
-                Spacer(modifier = Modifier.height(4.dp))
+                Text(text = "PALETTE DE COULEURS & STYLE", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
+                Spacer(modifier = Modifier.height(3.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     DrumPadCategory.values().forEach { cat ->
-                        val isSel = (cat == selectedCategory)
+                        val isCatSel = (cat == selectedCategory)
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSel) NeonCyan else Color(0x14FFFFFF))
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isCatSel) NeonCyan else Color(0x14FFFFFF))
                                 .clickable { selectedCategory = cat }
-                                .padding(vertical = 6.dp),
+                                .padding(vertical = 4.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = cat.title,
-                                fontSize = 8.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isSel) Color(0xFF002233) else TextPrimary
+                                fontSize = 8.sp,
+                                fontWeight = if (isCatSel) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isCatSel) Color(0xFF002233) else TextDim
                             )
                         }
                     }
                 }
             }
 
-            // 4. Colors inside the selected category
-            item {
-                val stylesInCat = DrumPadStyle.values().filter { it.category == selectedCategory }
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    stylesInCat.forEach { st ->
-                        val isSel = (st == selectedStyle)
-                        Row(
+            // Style Swatches
+            val stylesInCat = DrumPadStyle.values().filter { it.category == selectedCategory }
+            items(stylesInCat.chunked(3)) { rowStyles ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    rowStyles.forEach { st ->
+                        val isSelected = (st == selectedStyle)
+                        Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (isSel) Color(0xFF2A2E40) else Color(0xFF1E212E))
-                                .border(1.5.dp, if (isSel) NeonCyan else Color.Transparent, RoundedCornerShape(12.dp))
+                                .weight(1f)
+                                .height(38.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Brush.verticalGradient(listOf(st.primaryColor, st.secondaryColor)))
+                                .border(
+                                    2.dp,
+                                    if (isSelected) Color.White else Color.Transparent,
+                                    RoundedCornerShape(8.dp)
+                                )
                                 .clickable { selectedStyle = st }
-                                .padding(10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                .padding(4.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Brush.linearGradient(listOf(st.primaryColor, st.secondaryColor)))
-                            )
                             Text(
                                 text = st.displayName,
-                                fontSize = 11.sp,
+                                fontSize = 8.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White,
-                                modifier = Modifier.weight(1f)
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
-                            if (isSel) {
-                                Text(text = "✓", fontSize = 12.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
-                            }
                         }
                     }
                 }
@@ -595,93 +1263,113 @@ private fun DrumSf2PickerSubView(
     onBack: () -> Unit
 ) {
     var selectedKey by remember { mutableStateOf("C") }
-    var selectedOct by remember { mutableStateOf(1) }
+    var selectedOct by remember { mutableIntStateOf(2) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 12.dp),
+                .padding(bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(6.dp))
                     .background(Color(0x14FFFFFF))
                     .clickable { onBack() }
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
-                Text(text = "← Retour", fontSize = 10.sp, color = NeonCyan)
+                Text(text = "← Retour", fontSize = 9.5.sp, color = NeonCyan)
             }
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(text = "Assigner Note SoundFont", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(text = "Assigner Note Soundfont", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
         }
 
-        Text(text = "CHOISIR LA NOTE ET L'OCTAVE", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Note Selector
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B").forEach { k ->
-                val isSel = (k == selectedKey)
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(if (isSel) NeonCyan else Color(0x14FFFFFF))
-                        .clickable { selectedKey = k }
-                        .padding(vertical = 8.dp),
-                    contentAlignment = Alignment.Center
+            item {
+                Text(text = "CHOISIR LA NOTE & OCTAVE", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
+            }
+
+            item {
+                val notes = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(4),
+                    modifier = Modifier.height(130.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Text(
-                        text = k,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isSel) Color(0xFF002233) else TextPrimary
-                    )
+                    items(notes) { n ->
+                        val isSel = (n == selectedKey)
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isSel) NeonCyan else Color(0xFF1E212E))
+                                .clickable { selectedKey = n }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = n,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSel) Color(0xFF002233) else Color.White
+                            )
+                        }
+                    }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(10.dp))
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = "Octave :", fontSize = 9.5.sp, color = TextDim)
+                    (1..4).forEach { o ->
+                        val isSel = (o == selectedOct)
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isSel) NeonCyan else Color(0x14FFFFFF))
+                                .clickable { selectedOct = o }
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "C$o",
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSel) Color(0xFF002233) else TextPrimary
+                            )
+                        }
+                    }
+                }
+            }
 
-        // Octave Selector
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            (0..6).forEach { oct ->
-                val isSel = (oct == selectedOct)
+            item {
+                Spacer(modifier = Modifier.height(6.dp))
                 Box(
                     modifier = Modifier
-                        .weight(1f)
+                        .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
-                        .background(if (isSel) Color(0xFFEC4899) else Color(0x14FFFFFF))
-                        .clickable { selectedOct = oct }
-                        .padding(vertical = 8.dp),
+                        .background(NeonCyan)
+                        .clickable { onSelectNote(selectedKey, selectedOct) }
+                        .padding(vertical = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "Oct $oct",
-                        fontSize = 10.sp,
+                        text = "Valider $selectedKey$selectedOct",
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isSel) Color.White else TextPrimary
+                        color = Color(0xFF002233)
                     )
                 }
             }
-        }
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        Button(
-            onClick = { onSelectNote(selectedKey, selectedOct) },
-            colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(text = "Assigner $selectedKey$selectedOct au Pad", color = Color(0xFF002233), fontWeight = FontWeight.Bold)
         }
     }
 }

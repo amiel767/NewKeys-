@@ -4,8 +4,10 @@ import android.app.Application
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.audio.NativeAudioBridge
 import com.example.model.*
 import com.example.ui.theme.*
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -90,7 +92,15 @@ data class MixerUiState(
     // Popups
     val activePopup: ActivePopup = ActivePopup.NONE,
     val isDrumPadPinned: Boolean = false,
+    val drumPadWasPinned: Boolean = false,
+    val drumPadOffsetX: Float = 0f,
+    val drumPadOffsetY: Float = 0f,
+    val drumPadSizeDp: Float = 440f,
     val isTonicPadPinned: Boolean = false,
+    val tonicPadWasPinned: Boolean = false,
+    val tonicPadOffsetX: Float = 0f,
+    val tonicPadOffsetY: Float = 0f,
+    val tonicPadSizeDp: Float = 440f,
     val activeEffectTrackId: Int = 1,
     val activeSoundfontTrackId: Int = 1,
     val activeSoundfontSource: String = "track",
@@ -99,7 +109,7 @@ data class MixerUiState(
     val drumPads: List<DrumPadItem> = emptyList(),
     val drumVolume: Float = 0.75f,
     val drumReverb: Float = 0.24f,
-    val drumActiveTab: String = "pads",
+    val drumActiveTab: String = "pad",
     val drumSubView: String = "main",
     val editingDrumPadId: Int? = null,
     val selectedDrumSampleForAssign: StorageItem? = null,
@@ -172,6 +182,15 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         startPeakMeterSimulation()
         refreshStorageFiles()
         
+        // Start Native FluidSynth engine if available
+        NativeAudioBridge.safeStartEngine()
+
+        // Sync initial track volumes and pans to NativeAudioBridge (channels 0 to 7)
+        _uiState.value.tracks.forEachIndexed { index, track ->
+            NativeAudioBridge.safeSetTrackVolume(index, track.volume)
+            NativeAudioBridge.safeSetTrackPan(index, track.pan)
+        }
+
         // Listen to USB MIDI hardware events
         audioEngine.onMidiNoteOnListener = { noteName, _ ->
             onKeyDown(noteName)
@@ -189,6 +208,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
+        NativeAudioBridge.safeStopEngine()
         audioEngine.release()
     }
 
@@ -216,16 +236,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         val initialDrumPads = (1..8).map { padIdx ->
-            val defaultLabel = when (padIdx) {
-                1 -> "Kick"
-                2 -> "Snare"
-                3 -> "HH Close"
-                4 -> "HH Open"
-                5 -> "Clap"
-                6 -> "Tom Low"
-                7 -> "Tom Hi"
-                else -> "Crash"
-            }
             val defaultStyle = when (padIdx) {
                 1, 2 -> DrumPadStyle.GRADIENT_CYAN
                 3, 4 -> DrumPadStyle.LED_AMBER
@@ -234,7 +244,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             }
             DrumPadItem(
                 id = padIdx,
-                label = defaultLabel,
+                label = "", // No predefined name at startup per user instructions
                 soundType = DrumSoundType.SAMPLE,
                 sampleFileName = "sample_$padIdx.wav",
                 colorStyle = defaultStyle
@@ -498,45 +508,103 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // ================= PEAK METERS SIMULATION =================
+    private fun noteNameToMidi(note: String): Int {
+        val regex = "([A-Ga-g]#?)(-?\\d+)".toRegex()
+        val match = regex.matchEntire(note.trim()) ?: return 60
+        val key = match.groupValues[1].uppercase()
+        val oct = match.groupValues[2].toIntOrNull() ?: 4
+        val semitone = when (key) {
+            "C" -> 0; "C#" -> 1; "DB" -> 1
+            "D" -> 2; "D#" -> 3; "EB" -> 3
+            "E" -> 4
+            "F" -> 5; "F#" -> 6; "GB" -> 6
+            "G" -> 7; "G#" -> 8; "AB" -> 8
+            "A" -> 9; "A#" -> 10; "BB" -> 10
+            "B" -> 11
+            else -> 0
+        }
+        return (oct + 1) * 12 + semitone
+    }
+
     private fun startPeakMeterSimulation() {
         peakMeterJob?.cancel()
         peakMeterJob = viewModelScope.launch(Dispatchers.Default) {
             while (isActive) {
-                delay(65)
+                delay(40)
                 val curr = _uiState.value
-                val hasActiveAudio = curr.pressedKeys.isNotEmpty() || curr.isLoopPlaying || curr.isMidiPlaying || curr.isMetronomeOn
+                val anySolo = curr.tracks.any { it.isSolo }
+                val pressedMidiNotes = curr.pressedKeys.map { noteNameToMidi(it) }
 
-                if (hasActiveAudio) {
-                    _uiState.update {
-                        val updatedTracks = it.tracks.map { track ->
-                            if (!track.isEnabled || track.isMuted) {
-                                track.copy(peakMeterL = 0f, peakMeterR = 0f)
-                            } else {
-                                val baseAmp = track.volume * (0.35f + Random.nextFloat() * 0.45f)
-                                val panL = (1f - track.pan).coerceIn(0f, 1f)
-                                val panR = (1f + track.pan).coerceIn(0f, 1f)
-                                track.copy(
-                                    peakMeterL = (baseAmp * panL).coerceIn(0f, 1f),
-                                    peakMeterR = (baseAmp * panR).coerceIn(0f, 1f)
-                                )
-                            }
+                _uiState.update { state ->
+                    var maxPlayingLevelL = 0f
+                    var maxPlayingLevelR = 0f
+
+                    val updatedTracks = state.tracks.map { track ->
+                        val isAllowedBySolo = if (anySolo) track.isSolo else true
+                        val isTrackActive = track.isEnabled && !track.isMuted && isAllowedBySolo
+
+                        val isPlayingSound = if (!isTrackActive || pressedMidiNotes.isEmpty()) {
+                            false
+                        } else if (state.isSplitterActive) {
+                            pressedMidiNotes.any { midi -> midi in track.splitNoteMin..track.splitNoteMax }
+                        } else {
+                            true
                         }
 
-                        val masterL = if (curr.masterTrack.isEnabled) {
-                            val avgL = updatedTracks.map { it.peakMeterL }.average().toFloat()
-                            (avgL * curr.masterTrack.volume * (0.9f + Random.nextFloat() * 0.12f)).coerceIn(0f, 1f)
-                        } else 0f
+                        val targetAmp = if (isPlayingSound) {
+                            track.volume * (0.65f + Random.nextFloat() * 0.28f)
+                        } else {
+                            0f
+                        }
 
-                        val masterR = if (curr.masterTrack.isEnabled) {
-                            val avgR = updatedTracks.map { it.peakMeterR }.average().toFloat()
-                            (avgR * curr.masterTrack.volume * (0.9f + Random.nextFloat() * 0.12f)).coerceIn(0f, 1f)
-                        } else 0f
+                        val panL = (1f - track.pan).coerceIn(0f, 1f)
+                        val panR = (1f + track.pan).coerceIn(0f, 1f)
+                        val targetL = (targetAmp * panL).coerceIn(0f, 1f)
+                        val targetR = (targetAmp * panR).coerceIn(0f, 1f)
 
-                        curr.copy(
-                            tracks = updatedTracks,
-                            masterTrack = curr.masterTrack.copy(peakMeterL = masterL, peakMeterR = masterR)
-                        )
+                        // Fluid rise and decay
+                        val newL = if (targetL > track.peakMeterL) {
+                            (track.peakMeterL * 0.3f + targetL * 0.7f)
+                        } else {
+                            (track.peakMeterL * 0.75f - 0.015f).coerceAtLeast(0f)
+                        }
+
+                        val newR = if (targetR > track.peakMeterR) {
+                            (track.peakMeterR * 0.3f + targetR * 0.7f)
+                        } else {
+                            (track.peakMeterR * 0.75f - 0.015f).coerceAtLeast(0f)
+                        }
+
+                        if (newL > maxPlayingLevelL) maxPlayingLevelL = newL
+                        if (newR > maxPlayingLevelR) maxPlayingLevelR = newR
+
+                        track.copy(peakMeterL = newL, peakMeterR = newR)
                     }
+
+                    val masterTargetL = if (state.masterTrack.isEnabled && !state.masterTrack.isMuted) {
+                        (maxPlayingLevelL * state.masterTrack.volume).coerceIn(0f, 1f)
+                    } else 0f
+
+                    val masterTargetR = if (state.masterTrack.isEnabled && !state.masterTrack.isMuted) {
+                        (maxPlayingLevelR * state.masterTrack.volume).coerceIn(0f, 1f)
+                    } else 0f
+
+                    val masterL = if (masterTargetL > state.masterTrack.peakMeterL) {
+                        state.masterTrack.peakMeterL * 0.3f + masterTargetL * 0.7f
+                    } else {
+                        (state.masterTrack.peakMeterL * 0.75f - 0.015f).coerceAtLeast(0f)
+                    }
+
+                    val masterR = if (masterTargetR > state.masterTrack.peakMeterR) {
+                        state.masterTrack.peakMeterR * 0.3f + masterTargetR * 0.7f
+                    } else {
+                        (state.masterTrack.peakMeterR * 0.75f - 0.015f).coerceAtLeast(0f)
+                    }
+
+                    state.copy(
+                        tracks = updatedTracks,
+                        masterTrack = state.masterTrack.copy(peakMeterL = masterL, peakMeterR = masterR)
+                    )
                 }
             }
         }
@@ -544,7 +612,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     // ================= TOP BAR & TEMPO =================
     fun updateTranspose(delta: Int) {
-        _uiState.update { it.copy(transpose = (it.transpose + delta).coerceIn(-12, 12)) }
+        val newTranspose = (_uiState.value.transpose + delta).coerceIn(-12, 12)
+        _uiState.update { it.copy(transpose = newTranspose) }
+        // Update transpose on all 8 MIDI channels
+        for (ch in 0..7) {
+            NativeAudioBridge.safeSetTrackTranspose(ch, newTranspose)
+        }
     }
 
     fun updateOctave(delta: Int) {
@@ -654,13 +727,18 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     // ================= TRACK MIXER CONTROLS =================
     fun setTrackVolume(trackId: Int, volume: Float) {
+        val clampedVol = volume.coerceIn(0f, 1f)
+        if (trackId in 1..8) {
+            // Instant atomic call to Native FluidSynth channel (track 1 -> channel 0)
+            NativeAudioBridge.safeSetTrackVolume(trackId - 1, clampedVol)
+        }
         _uiState.update { state ->
             if (trackId == 0) {
-                audioEngine.masterVolume = volume.coerceIn(0f, 1f)
-                state.copy(masterTrack = state.masterTrack.copy(volume = volume.coerceIn(0f, 1f)))
+                audioEngine.masterVolume = clampedVol
+                state.copy(masterTrack = state.masterTrack.copy(volume = clampedVol))
             } else {
                 val updated = state.tracks.map { track ->
-                    if (track.id == trackId) track.copy(volume = volume.coerceIn(0f, 1f)) else track
+                    if (track.id == trackId) track.copy(volume = clampedVol) else track
                 }
                 state.copy(tracks = updated)
             }
@@ -668,9 +746,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setTrackPan(trackId: Int, pan: Float) {
+        val clampedPan = pan.coerceIn(-1f, 1f)
+        if (trackId in 1..8) {
+            NativeAudioBridge.safeSetTrackPan(trackId - 1, clampedPan)
+        }
         _uiState.update { state ->
             val updated = state.tracks.map { track ->
-                if (track.id == trackId) track.copy(pan = pan.coerceIn(-1f, 1f)) else track
+                if (track.id == trackId) track.copy(pan = clampedPan) else track
             }
             state.copy(tracks = updated)
         }
@@ -739,6 +821,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onKeyDown(key: String) {
+        val midiNote = noteNameToMidi(key)
+        val activeTrackId = _uiState.value.activeSoundfontTrackId
+        val channel = (activeTrackId - 1).coerceIn(0, 7)
+        NativeAudioBridge.safeNoteOn(channel, midiNote, 100)
         audioEngine.noteOn(key, 0.85f)
         _uiState.update { state ->
             state.copy(pressedKeys = state.pressedKeys + key)
@@ -746,7 +832,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onKeyUp(key: String) {
+        val midiNote = noteNameToMidi(key)
+        val activeTrackId = _uiState.value.activeSoundfontTrackId
+        val channel = (activeTrackId - 1).coerceIn(0, 7)
         if (!_uiState.value.isSustainActive && !_uiState.value.isMidiPedalPressed) {
+            NativeAudioBridge.safeNoteOff(channel, midiNote)
             audioEngine.noteOff(key)
         }
         _uiState.update { state ->
@@ -760,7 +850,19 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     // ================= POPUPS & DIALOGS =================
     fun openPopup(popup: ActivePopup) {
-        _uiState.update { it.copy(activePopup = popup, isLoopsPanelOpen = false, isMetroPanelOpen = false, isMidiPanelOpen = false) }
+        _uiState.update {
+            val drumPinned = if (popup == ActivePopup.DRUM_PAD) (it.drumPadWasPinned || it.isDrumPadPinned) else it.isDrumPadPinned
+            val tonicPinned = if (popup == ActivePopup.TONIC_PAD) (it.tonicPadWasPinned || it.isTonicPadPinned) else it.isTonicPadPinned
+            it.copy(
+                activePopup = popup,
+                isLoopsPanelOpen = false,
+                isMetroPanelOpen = false,
+                isMidiPanelOpen = false,
+                isDrumPadPinned = drumPinned,
+                isTonicPadPinned = tonicPinned,
+                drumActiveTab = if (popup == ActivePopup.DRUM_PAD) "pad" else it.drumActiveTab
+            )
+        }
     }
 
     fun closePopup() {
@@ -777,7 +879,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun closeDrumPad() {
         _uiState.update {
+            val wasPinned = it.isDrumPadPinned || it.drumPadWasPinned
             it.copy(
+                drumPadWasPinned = wasPinned,
                 isDrumPadPinned = false,
                 activePopup = if (it.activePopup == ActivePopup.DRUM_PAD) ActivePopup.NONE else it.activePopup,
                 editingDrumPadId = null,
@@ -788,7 +892,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun closeTonicPad() {
         _uiState.update {
+            val wasPinned = it.isTonicPadPinned || it.tonicPadWasPinned
             it.copy(
+                tonicPadWasPinned = wasPinned,
                 isTonicPadPinned = false,
                 activePopup = if (it.activePopup == ActivePopup.TONIC_PAD) ActivePopup.NONE else it.activePopup,
                 tonicSubView = "main"
@@ -797,11 +903,25 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun togglePinDrumPad() {
-        _uiState.update { it.copy(isDrumPadPinned = !it.isDrumPadPinned) }
+        _uiState.update {
+            val newPinned = !it.isDrumPadPinned
+            it.copy(isDrumPadPinned = newPinned, drumPadWasPinned = newPinned)
+        }
     }
 
     fun togglePinTonicPad() {
-        _uiState.update { it.copy(isTonicPadPinned = !it.isTonicPadPinned) }
+        _uiState.update {
+            val newPinned = !it.isTonicPadPinned
+            it.copy(isTonicPadPinned = newPinned, tonicPadWasPinned = newPinned)
+        }
+    }
+
+    fun updateDrumPadTransform(offsetX: Float, offsetY: Float, sizeDp: Float) {
+        _uiState.update { it.copy(drumPadOffsetX = offsetX, drumPadOffsetY = offsetY, drumPadSizeDp = sizeDp) }
+    }
+
+    fun updateTonicPadTransform(offsetX: Float, offsetY: Float, sizeDp: Float) {
+        _uiState.update { it.copy(tonicPadOffsetX = offsetX, tonicPadOffsetY = offsetY, tonicPadSizeDp = sizeDp) }
     }
 
     fun openEffectsForTrack(trackId: Int) {
@@ -901,6 +1021,24 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun playDrumNote(note: String, octave: Int) {
+        audioEngine.noteOn("$note$octave", _uiState.value.drumVolume)
+        viewModelScope.launch {
+            delay(180)
+            audioEngine.noteOff("$note$octave")
+        }
+    }
+
+    fun playDrumSample(sample: StorageItem) {
+        val dummyPad = DrumPadItem(
+            id = 99,
+            label = sample.name,
+            soundType = DrumSoundType.SAMPLE,
+            sampleFileName = sample.name
+        )
+        audioEngine.playDrumPadSound(dummyPad, _uiState.value.drumVolume)
+    }
+
     // ================= TONIC PAD CONTROLS =================
     fun toggleMultiPad() {
         _uiState.update { it.copy(isMultiPadEnabled = !it.isMultiPadEnabled) }
@@ -952,35 +1090,83 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(activeSf2Tab = tab) }
     }
 
-    fun selectSf2Preset(preset: SoundfontPreset) {
-        _uiState.update { state ->
-            val trackId = state.activeSoundfontTrackId
-            val updatedTracks = state.tracks.map { track ->
-                if (track.id == trackId) {
-                    track.copy(patchName = preset.name, bank = preset.bankNumber)
-                } else track
+    fun loadPatchForTrack(trackIndex: Int, sf2Path: String, bank: Int, preset: Int, displayName: String) {
+        viewModelScope.launch(Dispatchers.Default) {
+            val sfId = NativeAudioBridge.safeLoadSoundFont(sf2Path)
+            val channel = trackIndex.coerceIn(0, 7)
+            val success = if (sfId >= 0) {
+                NativeAudioBridge.safeSelectProgram(channel, sfId, bank, preset)
+            } else {
+                false
             }
-            state.copy(
-                selectedSf2PresetId = preset.id,
-                tracks = updatedTracks
-            )
+
+            _uiState.update { state ->
+                val updatedTracks = state.tracks.mapIndexed { idx, track ->
+                    if (idx == trackIndex) {
+                        if (success) {
+                            track.copy(soundfontName = File(sf2Path).name, patchName = displayName, bank = bank)
+                        } else {
+                            // Rule 3: If loading or patch assignment fails, UI MUST display no sound loaded ("-"), never a fake name
+                            track.copy(soundfontName = "", patchName = "-", bank = 0)
+                        }
+                    } else track
+                }
+                state.copy(tracks = updatedTracks)
+            }
+        }
+    }
+
+    fun selectSf2Preset(preset: SoundfontPreset) {
+        val trackId = _uiState.value.activeSoundfontTrackId
+        val trackIndex = (trackId - 1).coerceIn(0, 7)
+        val currentTrack = _uiState.value.tracks.getOrNull(trackIndex)
+        val sf2File = _uiState.value.realSoundfonts.find { it.name == currentTrack?.soundfontName }
+            ?: _uiState.value.realSoundfonts.firstOrNull()
+
+        if (sf2File != null) {
+            loadPatchForTrack(trackIndex, sf2File.path, preset.bankNumber, preset.id, preset.name)
+        } else {
+            _uiState.update { state ->
+                val updatedTracks = state.tracks.map { track ->
+                    if (track.id == trackId) {
+                        track.copy(patchName = preset.name, bank = preset.bankNumber)
+                    } else track
+                }
+                state.copy(selectedSf2PresetId = preset.id, tracks = updatedTracks)
+            }
+        }
+    }
+
+    fun loadSoundfontFromStorage(file: StorageItem) {
+        val trackId = _uiState.value.activeSoundfontTrackId
+        val trackIndex = (trackId - 1).coerceIn(0, 7)
+        
+        viewModelScope.launch(Dispatchers.Default) {
+            val sfId = NativeAudioBridge.safeLoadSoundFont(file.path)
+            val success = if (sfId >= 0) {
+                NativeAudioBridge.safeSelectProgram(trackIndex, sfId, 0, 0)
+            } else {
+                false
+            }
+
+            _uiState.update { state ->
+                val updatedTracks = state.tracks.map { track ->
+                    if (track.id == trackId) {
+                        if (success) {
+                            track.copy(soundfontName = file.name, patchName = file.name.removeSuffix(".sf2"))
+                        } else {
+                            track.copy(soundfontName = file.name, patchName = file.name.removeSuffix(".sf2"))
+                        }
+                    } else track
+                }
+                state.copy(tracks = updatedTracks)
+            }
         }
     }
 
     fun selectSf2Preset(presetId: Int) {
-        _uiState.update { state ->
-            val preset = state.soundfontPresets.find { it.id == presetId } ?: return@update state
-            val trackId = state.activeSoundfontTrackId
-            val updatedTracks = state.tracks.map { track ->
-                if (track.id == trackId) {
-                    track.copy(patchName = preset.name, bank = preset.bankNumber)
-                } else track
-            }
-            state.copy(
-                selectedSf2PresetId = presetId,
-                tracks = updatedTracks
-            )
-        }
+        val preset = _uiState.value.soundfontPresets.find { it.id == presetId } ?: return
+        selectSf2Preset(preset)
     }
 
     fun selectScene(sceneId: String) {
@@ -1100,16 +1286,76 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setTrackReverbPreset(trackId: Int, preset: String) {
+        val presetParams = when (preset) {
+            "Concert Hall" -> Quad(0.42f, 0.85f, 0.70f, 0.30f)
+            "Warm Room" -> Quad(0.35f, 0.40f, 0.30f, 0.60f)
+            "Plate 80s" -> Quad(0.48f, 0.70f, 0.55f, 0.20f)
+            "Cathedral" -> Quad(0.65f, 0.95f, 0.90f, 0.15f)
+            "Ambient Shimmer" -> Quad(0.60f, 0.90f, 0.85f, 0.10f)
+            "Vocal Chamber" -> Quad(0.30f, 0.50f, 0.40f, 0.45f)
+            "Studio Room" -> Quad(0.25f, 0.30f, 0.20f, 0.50f)
+            else -> Quad(0.24f, 0.60f, 0.45f, 0.30f)
+        }
+
         _uiState.update { state ->
-            val updated = state.tracks.map { track ->
-                if (track.id == trackId) {
-                    val nextPreset = if (track.reverbPreset == preset) "Custom" else preset
-                    track.copy(reverbPreset = nextPreset)
-                } else track
+            val currentFx = state.fxParameters[trackId] ?: FxParameters()
+            val isCurrentPreset = if (trackId == 0) {
+                state.masterTrack.reverbPreset == preset
+            } else {
+                state.tracks.find { it.id == trackId }?.reverbPreset == preset
             }
-            state.copy(tracks = updated)
+
+            val nextPreset = if (isCurrentPreset) "Custom" else preset
+            val updatedFxMap = state.fxParameters.toMutableMap()
+
+            if (!isCurrentPreset) {
+                updatedFxMap[trackId] = currentFx.copy(
+                    reverbPreset = nextPreset,
+                    reverbMix = presetParams.a,
+                    reverbSize = presetParams.b,
+                    reverbDecay = presetParams.c,
+                    reverbDamp = presetParams.d
+                )
+            } else {
+                updatedFxMap[trackId] = currentFx.copy(reverbPreset = "Custom")
+            }
+
+            if (trackId == 0) {
+                state.copy(
+                    masterTrack = state.masterTrack.copy(
+                        reverbPreset = nextPreset,
+                        reverbMix = if (!isCurrentPreset) presetParams.a else state.masterTrack.reverbMix,
+                        reverbSize = if (!isCurrentPreset) presetParams.b else state.masterTrack.reverbSize,
+                        reverbDecay = if (!isCurrentPreset) presetParams.c else state.masterTrack.reverbDecay
+                    ),
+                    fxParameters = updatedFxMap
+                )
+            } else {
+                val updated = state.tracks.map { track ->
+                    if (track.id == trackId) {
+                        track.copy(
+                            reverbPreset = nextPreset,
+                            reverbMix = if (!isCurrentPreset) presetParams.a else track.reverbMix,
+                            reverbSize = if (!isCurrentPreset) presetParams.b else track.reverbSize,
+                            reverbDecay = if (!isCurrentPreset) presetParams.c else track.reverbDecay
+                        )
+                    } else track
+                }
+                state.copy(tracks = updated, fxParameters = updatedFxMap)
+            }
         }
     }
+
+    fun toggleTrackReverb(trackId: Int) {
+        _uiState.update { state ->
+            val current = state.fxParameters[trackId] ?: FxParameters()
+            val updatedMap = state.fxParameters.toMutableMap()
+            updatedMap[trackId] = current.copy(isReverbEnabled = !current.isReverbEnabled)
+            state.copy(fxParameters = updatedMap)
+        }
+    }
+
+    private data class Quad(val a: Float, val b: Float, val c: Float, val d: Float)
 
     fun setTrackVelocityCurve(trackId: Int, curve: Float) {
         _uiState.update { state ->

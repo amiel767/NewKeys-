@@ -305,35 +305,42 @@ fun BottomBar(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 // Clickable Text Label to expand MIDI file manager
-                Row(
-                    modifier = Modifier.clickable { onOpenMidiDialog() },
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                Column(
+                    modifier = Modifier
+                        .clickable { onOpenMidiDialog() }
+                        .padding(horizontal = 2.dp),
+                    verticalArrangement = Arrangement.Center
                 ) {
-                    Text(text = "🎹", fontSize = 11.sp)
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text(
-                                text = "Midi",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                            Text(
-                                text = "▼",
-                                fontSize = 8.sp,
-                                color = Color(0xCCFFFFFF)
-                            )
-                        }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
                         Text(
-                            text = if (selectedMidiName != "-") selectedMidiName else "/Midi",
-                            fontSize = 8.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            color = if (isMidiPlaying) Color(0xFFBAE6FD) else TextDim2,
-                            modifier = Modifier.widthIn(max = 65.dp)
+                            text = "🎹",
+                            fontSize = 11.sp
+                        )
+                        Text(
+                            text = "MIDI",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "▼",
+                            fontSize = 7.sp,
+                            color = Color(0xCCFFFFFF)
                         )
                     }
+                    Text(
+                        text = if (selectedMidiName != "-") selectedMidiName else "/Midi",
+                        fontSize = 8.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = if (isMidiPlaying) Color(0xFFBAE6FD) else TextDim2,
+                        modifier = Modifier
+                            .widthIn(max = 68.dp)
+                            .padding(start = 2.dp)
+                    )
                 }
 
                 // Large Prominent MIDI Play/Pause Button
@@ -367,7 +374,7 @@ fun BottomBar(
             }
         }
 
-        // ================= 5. AFFICHEUR D'ACCORDS / KEYBOARD GRABBER BOX =================
+        // ================= 5. AFFICHEUR D'ACCORDS (CHORD DISPLAY BAR) =================
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -379,14 +386,7 @@ fun BottomBar(
                     )
                 )
                 .border(1.dp, Color(0x3300E5FF), RoundedCornerShape(10.dp))
-                .clickable { onKeyboardHandleClick() }
-                .pointerInput(Unit) {
-                    detectDragGestures { change, dragAmount ->
-                        change.consume()
-                        onKeyboardDrag(dragAmount.y)
-                    }
-                }
-                .padding(horizontal = 8.dp, vertical = 3.dp)
+                .padding(horizontal = 10.dp, vertical = 3.dp)
                 .testTag("chord_display_box"),
             contentAlignment = Alignment.CenterStart
         ) {
@@ -428,19 +428,6 @@ fun BottomBar(
                             color = NeonCyan
                         )
                     }
-                }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        text = "═ Glisser Clavier / Afficheur d'Accords ═",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = TextDim2
-                    )
                 }
             }
         }

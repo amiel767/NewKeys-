@@ -171,44 +171,6 @@ fun SplitterKeyboard(
             }
         }
 
-        // Quick Presets Row
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            val presets = listOf(
-                "Basse (C1—B2)" to (24 to 47),
-                "Piano (C3—C5)" to (48 to 72),
-                "Lead (C5—C7)" to (72 to 96),
-                "Tout (C1—C7)" to (24 to 96)
-            )
-
-            presets.forEach { (label, range) ->
-                val isSelected = startNote == range.first && endNote == range.second
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(if (isSelected) NeonCyan.copy(alpha = 0.2f) else Color(0x0EFFFFFF))
-                        .border(1.dp, if (isSelected) NeonCyan else Color(0x1AFFFFFF), RoundedCornerShape(6.dp))
-                        .clickable {
-                            startNote = range.first
-                            endNote = range.second
-                            onSetSplitRange(startNote, endNote)
-                        }
-                        .padding(vertical = 4.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = label,
-                        fontSize = 8.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isSelected) NeonCyan else TextDim
-                    )
-                }
-            }
-        }
-
         // Classical Piano Virtual Keyboard (Overlapping White and Black Keys)
         // 3 Full Octaves displayed based on baseOctave
         val octavesToShow = 3

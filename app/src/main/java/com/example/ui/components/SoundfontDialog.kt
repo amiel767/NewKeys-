@@ -96,12 +96,12 @@ fun SoundfontDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Tabs (Bank chargé, Autres .sf2)
+                // Tabs (Presets du Soundfont, Fichiers Soundfonts)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    listOf("bank" to "Bank chargé", "other" to "Autres .sf2").forEach { (tabKey, tabLabel) ->
+                    listOf("bank" to "Presets Soundfont", "other" to "Soundfonts").forEach { (tabKey, tabLabel) ->
                         val isSelected = activeTab == tabKey
                         Box(
                             modifier = Modifier

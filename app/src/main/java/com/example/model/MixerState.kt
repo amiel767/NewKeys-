@@ -158,6 +158,7 @@ data class FxParameters(
     val eqHigh: Float = 0.5f,
     val eqGain: Float = 0.5f,
     // Reverb
+    val isReverbEnabled: Boolean = true,
     val reverbPreset: String = "Concert Hall",
     val reverbMix: Float = 0.24f,
     val reverbSize: Float = 0.6f,
