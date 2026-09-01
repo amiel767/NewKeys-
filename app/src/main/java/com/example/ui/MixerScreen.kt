@@ -60,7 +60,7 @@ fun MixerScreen(
                 .clip(RoundedCornerShape(14.dp))
                 .background(
                     Brush.linearGradient(
-                        colors = listOf(Color(0xFF15151D), Color(0xFF101014), Color(0xFF0D0D11))
+                        colors = listOf(Color(0xFF131D28), Color(0xFF101922), Color(0xFF0C131B))
                     )
                 )
                 .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(14.dp))
@@ -186,7 +186,11 @@ fun MixerScreen(
                         val fractionDelta = -deltaY / 200f
                         viewModel.setKeyboardHeightFraction(uiState.keyboardHeightFraction + fractionDelta)
                     },
-                    onGrabberClick = { viewModel.cycleKeyboardExpansion() }
+                    onGrabberClick = { viewModel.cycleKeyboardExpansion() },
+                    isSustainActive = uiState.isSustainActive,
+                    onToggleSustain = { viewModel.toggleSustain() },
+                    pitchBend = uiState.pitchBend,
+                    onPitchBendChange = { viewModel.setPitchBend(it) }
                 )
             }
 
@@ -406,8 +410,10 @@ fun MixerScreen(
                     source = uiState.activeSoundfontSource,
                     presets = uiState.soundfontPresets,
                     bankFiles = uiState.soundfontBankFiles,
+                    soundfontStorageFiles = uiState.realSoundfonts,
                     selectedPresetId = uiState.selectedSf2PresetId,
                     onSelectPreset = { viewModel.selectSf2Preset(it) },
+                    onSelectSf2File = { viewModel.loadSoundfontFromStorage(it) },
                     activeTab = uiState.activeSf2Tab,
                     onTabChange = { viewModel.setSf2Tab(it) },
                     onClose = { viewModel.closePopup() }

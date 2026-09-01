@@ -89,12 +89,20 @@ fun DrumPadDialog(
         exit = fadeOut(tween(150)) + scaleOut(targetScale = 0.94f, animationSpec = tween(160)),
         modifier = modifier
     ) {
-        BoxWithConstraints(
-            modifier = Modifier
+        val rootModifier = if (!isPinned) {
+            Modifier
                 .fillMaxSize()
-                .background(if (isPinned) Color.Transparent else Color(0x77000000))
-                .clickable(enabled = !isPinned) { onClose() }
-                .testTag("drum_pad_overlay"),
+                .background(Color(0x77000000))
+                .clickable { onClose() }
+                .testTag("drum_pad_overlay")
+        } else {
+            Modifier
+                .fillMaxSize()
+                .testTag("drum_pad_overlay")
+        }
+
+        BoxWithConstraints(
+            modifier = rootModifier,
             contentAlignment = Alignment.Center
         ) {
             val maxDragX = (maxWidth.value - 300f).coerceAtLeast(0f) * 1.5f
@@ -112,7 +120,6 @@ fun DrumPadDialog(
                         if (isPinned) NeonCyan.copy(alpha = 0.8f) else Color(0x33FFFFFF),
                         RoundedCornerShape(20.dp)
                     )
-                    .clickable(enabled = false) {}
                     .padding(10.dp)
             ) {
                 when {

@@ -1,7 +1,6 @@
 package com.example.ui.components
 
 import androidx.compose.animation.*
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -27,16 +26,17 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.ScenePreset
 import com.example.ui.theme.*
 
 /**
- * Scene Expanded Dialog styled following Google AOSP Material You / Settings Design:
- * - Clean Preference Groups with rounded container styling
- * - AOSP section headers, preference rows with title, summary and radio selectors
- * - Interactive scene recording with manual custom name input
+ * Scene Compact Dialog (reduced by 30% in size) styled following Google AOSP Material / Settings Design:
+ * - Quick "Enregistrer" action button placed directly next to the close '✕' button.
+ * - Ultra-compact AOSP preference rows with title, date and radio selector.
+ * - Saves scenes to app scene storage.
  */
 @Composable
 fun SceneDialog(
@@ -53,13 +53,13 @@ fun SceneDialog(
 
     Box(
         modifier = modifier
-            .widthIn(min = 360.dp, max = 460.dp)
-            .shadow(32.dp, RoundedCornerShape(24.dp))
-            .clip(RoundedCornerShape(24.dp))
-            .background(Color(0xFF1E2024))
-            .border(1.2.dp, Color(0x3300E5FF), RoundedCornerShape(24.dp))
+            .widthIn(min = 250.dp, max = 310.dp)
+            .shadow(24.dp, RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xFF181D26))
+            .border(1.dp, Color(0x3322D3EE), RoundedCornerShape(16.dp))
             .clickable(enabled = false) {}
-            .padding(18.dp)
+            .padding(12.dp)
             .testTag("scene_aosp_settings_dialog")
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -71,153 +71,106 @@ fun SceneDialog(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(38.dp)
+                            .size(28.dp)
                             .clip(CircleShape)
                             .background(NeonCyan.copy(alpha = 0.15f)),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = "⚙",
-                            fontSize = 18.sp,
+                            fontSize = 13.sp,
                             color = NeonCyan
                         )
                     }
                     Column {
                         Text(
-                            text = "Scènes de mixage",
-                            fontSize = 18.sp,
+                            text = "Scènes",
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFFE2E2E6)
                         )
                         Text(
-                            text = "Sélectionnez ou enregistrez une scène",
-                            fontSize = 11.5.sp,
+                            text = "Mixer presets",
+                            fontSize = 9.5.sp,
                             color = Color(0xFF90909A)
                         )
                     }
                 }
 
-                // Close button
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(Color(0x1FFFFFFF))
-                        .clickable { onClose() },
-                    contentAlignment = Alignment.Center
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text(text = "✕", fontSize = 13.sp, color = Color(0xFFC4C6D0))
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // AOSP Section Header
-            Text(
-                text = "SCÈNES DISPONIBLES",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = NeonCyan,
-                letterSpacing = 0.6.sp,
-                modifier = Modifier.padding(start = 6.dp, bottom = 8.dp)
-            )
-
-            // AOSP Preference Group Card Container
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xFF282A30))
-                    .padding(vertical = 4.dp)
-            ) {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 200.dp)
-                ) {
-                    items(scenes) { scene ->
-                        val isSelected = activeSceneId == scene.id
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSelectScene(scene.id) }
-                                .background(if (isSelected) Color(0x1800E5FF) else Color.Transparent)
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(14.dp)
-                        ) {
-                            // Scene Color Dot Indicator
-                            Box(
-                                modifier = Modifier
-                                    .size(12.dp)
-                                    .clip(CircleShape)
-                                    .background(scene.color)
-                            )
-
-                            // Title and Summary Text
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = scene.name,
-                                    fontSize = 14.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSelected) NeonCyanLight else Color(0xFFE2E2E6)
-                                )
-                                Text(
-                                    text = "Enregistré le ${scene.timestamp}",
-                                    fontSize = 11.sp,
-                                    color = Color(0xFF8E9199)
-                                )
+                    // Button "Enregistrer" next to X button
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(NeonCyan)
+                            .clickable {
+                                isNamingOpen = !isNamingOpen
+                                if (isNamingOpen) {
+                                    sceneNameInput = "Scène ${scenes.size + 1}"
+                                }
                             }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "💾 Enregistrer",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF002B33)
+                        )
+                    }
 
-                            // AOSP Radio Button
-                            RadioButton(
-                                selected = isSelected,
-                                onClick = { onSelectScene(scene.id) },
-                                colors = RadioButtonDefaults.colors(
-                                    selectedColor = NeonCyan,
-                                    unselectedColor = Color(0xFF6E7179)
-                                ),
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
+                    // Close button
+                    Box(
+                        modifier = Modifier
+                            .size(26.dp)
+                            .clip(CircleShape)
+                            .background(Color(0x1FFFFFFF))
+                            .clickable { onClose() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = "✕", fontSize = 11.sp, color = Color(0xFFC4C6D0))
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // Scene Recording Section (Manual Name Input)
-            if (isNamingOpen) {
+            // Scene Naming Section
+            AnimatedVisibility(visible = isNamingOpen) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(Color(0xFF282A30))
-                        .border(1.dp, NeonCyan.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF222834))
+                        .border(1.dp, NeonCyan.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                        .padding(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
-                        text = "NOMMER LA SCÈNE",
-                        fontSize = 11.sp,
+                        text = "ENREGISTRER LA SCÈNE",
+                        fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
                         color = NeonCyan,
-                        letterSpacing = 0.6.sp
+                        letterSpacing = 0.5.sp
                     )
 
-                    // Text Input Field
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(42.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFF1B1C20))
-                            .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(10.dp))
-                            .padding(horizontal = 12.dp),
+                            .height(34.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0xFF141720))
+                            .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp),
                         contentAlignment = Alignment.CenterStart
                     ) {
                         BasicTextField(
@@ -225,7 +178,7 @@ fun SceneDialog(
                             onValueChange = { sceneNameInput = it },
                             textStyle = TextStyle(
                                 color = Color.White,
-                                fontSize = 13.5.sp,
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Medium
                             ),
                             cursorBrush = SolidColor(NeonCyan),
@@ -240,43 +193,29 @@ fun SceneDialog(
                             ),
                             modifier = Modifier.fillMaxWidth()
                         )
-
-                        if (sceneNameInput.isEmpty()) {
-                            Text(
-                                text = "Entrez le nom de la scène...",
-                                color = Color(0x66FFFFFF),
-                                fontSize = 13.sp
-                            )
-                        }
                     }
 
-                    // Action Buttons (Annuler & Enregistrer)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .height(38.dp)
-                                .clip(RoundedCornerShape(19.dp))
-                                .background(Color(0x22FFFFFF))
+                                .height(26.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0x1FFFFFFF))
                                 .clickable { isNamingOpen = false },
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = "Annuler",
-                                fontSize = 12.5.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFFC4C6D0)
-                            )
+                            Text(text = "Annuler", fontSize = 10.sp, color = TextDim)
                         }
 
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .height(38.dp)
-                                .clip(RoundedCornerShape(19.dp))
+                                .height(26.dp)
+                                .clip(RoundedCornerShape(6.dp))
                                 .background(NeonCyan)
                                 .clickable {
                                     val finalName = sceneNameInput.trim().ifEmpty { "Scène ${scenes.size + 1}" }
@@ -285,35 +224,85 @@ fun SceneDialog(
                                 },
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = "Enregistrer",
-                                fontSize = 12.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF00363F)
-                            )
+                            Text(text = "Valider", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF002B33))
                         }
                     }
                 }
-            } else {
-                // AOSP Tonal Action Button to start recording
-                Box(
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // AOSP Section Header
+            Text(
+                text = "SCÈNES DISPONIBLES",
+                fontSize = 9.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = NeonCyan,
+                letterSpacing = 0.5.sp,
+                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
+            )
+
+            // AOSP Compact Preference Group Card Container
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFF202632))
+                    .padding(vertical = 2.dp)
+            ) {
+                LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(44.dp)
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(NeonCyan)
-                        .clickable {
-                            sceneNameInput = "Scène ${scenes.size + 1}"
-                            isNamingOpen = true
-                        },
-                    contentAlignment = Alignment.Center
+                        .heightIn(max = 170.dp)
                 ) {
-                    Text(
-                        text = "💾 Enregistrer la scène",
-                        fontSize = 13.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF00363F)
-                    )
+                    items(scenes) { scene ->
+                        val isSelected = activeSceneId == scene.id
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelectScene(scene.id) }
+                                .background(if (isSelected) Color(0x1800E5FF) else Color.Transparent)
+                                .padding(horizontal = 10.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // Scene Color Dot Indicator
+                            Box(
+                                modifier = Modifier
+                                    .size(9.dp)
+                                    .clip(CircleShape)
+                                    .background(scene.color)
+                            )
+
+                            // Title and Summary Text
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = scene.name,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) NeonCyanLight else Color(0xFFE2E2E6),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = scene.timestamp,
+                                    fontSize = 9.sp,
+                                    color = Color(0xFF8E9199)
+                                )
+                            }
+
+                            // AOSP Radio Button
+                            RadioButton(
+                                selected = isSelected,
+                                onClick = { onSelectScene(scene.id) },
+                                colors = RadioButtonDefaults.colors(
+                                    selectedColor = NeonCyan,
+                                    unselectedColor = Color(0xFF6E7179)
+                                ),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
                 }
             }
         }

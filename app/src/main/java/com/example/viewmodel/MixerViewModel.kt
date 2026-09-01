@@ -170,6 +170,7 @@ data class MixerUiState(
 class MixerViewModel(application: Application) : AndroidViewModel(application) {
     val fileManager = FileManager(application.applicationContext)
     val audioEngine = AudioEngine(application.applicationContext)
+    private val appStatePersistence = AppStatePersistence(application.applicationContext)
 
     private val _uiState = MutableStateFlow(createInitialState())
     val uiState: StateFlow<MixerUiState> = _uiState.asStateFlow()
@@ -191,6 +192,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             NativeAudioBridge.safeSetTrackPan(index, track.pan)
         }
 
+        // Detect and register USB MIDI Hardware devices
+        val initialMidiDevs = audioEngine.getConnectedUsbMidiDevices()
+        _uiState.update { it.copy(midiDevices = initialMidiDevs) }
+        audioEngine.onDeviceListChanged = { updatedList ->
+            _uiState.update { it.copy(midiDevices = updatedList) }
+        }
+
         // Listen to USB MIDI hardware events
         audioEngine.onMidiNoteOnListener = { noteName, _ ->
             onKeyDown(noteName)
@@ -204,6 +212,100 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         audioEngine.onMidiSustainListener = { isPressed ->
             _uiState.update { it.copy(isMidiPedalPressed = isPressed) }
         }
+
+        // Restore persisted state from previous session
+        restoreSavedAppState()
+    }
+
+    private fun restoreSavedAppState() {
+        val saved = appStatePersistence.loadAppState() ?: return
+        _uiState.update { state ->
+            val restoredTheme = saved.themeName?.let { name ->
+                try { AppTheme.valueOf(name) } catch (_: Exception) { null }
+            } ?: state.currentTheme
+
+            val restoredMode = saved.soundGoodizerMode?.let { name ->
+                try { SoundGoodizerMode.valueOf(name) } catch (_: Exception) { null }
+            } ?: state.soundGoodizerMode
+
+            val restoredTracks = if (saved.tracks.isNotEmpty()) {
+                state.tracks.map { currentTrack ->
+                    val savedT = saved.tracks.find { it.id == currentTrack.id }
+                    if (savedT != null) {
+                        currentTrack.copy(
+                            isEnabled = savedT.isEnabled,
+                            volume = savedT.volume,
+                            pan = savedT.pan,
+                            soundfontName = savedT.soundfontName,
+                            patchName = savedT.patchName,
+                            bank = savedT.bank,
+                            program = savedT.program,
+                            reverbPreset = savedT.reverbPreset,
+                            reverbMix = savedT.reverbMix
+                        )
+                    } else currentTrack
+                }
+            } else state.tracks
+
+            val restoredDrums = if (saved.drumPads.isNotEmpty()) {
+                state.drumPads.map { currentPad ->
+                    val savedD = saved.drumPads.find { it.id == currentPad.id }
+                    if (savedD != null) {
+                        val style = try { DrumPadStyle.valueOf(savedD.styleName) } catch (_: Exception) { currentPad.colorStyle }
+                        val soundType = try { DrumSoundType.valueOf(savedD.soundType) } catch (_: Exception) { currentPad.soundType }
+                        currentPad.copy(
+                            label = savedD.label,
+                            soundType = soundType,
+                            sampleFileName = savedD.sampleFileName,
+                            sf2Note = savedD.sf2Note,
+                            colorStyle = style
+                        )
+                    } else currentPad
+                }
+            } else state.drumPads
+
+            state.copy(
+                currentTheme = restoredTheme,
+                bpm = saved.bpm ?: state.bpm,
+                transpose = saved.transpose ?: state.transpose,
+                octave = saved.octave ?: state.octave,
+                activeSceneId = saved.activeSceneId ?: state.activeSceneId,
+                soundGoodizer = saved.soundGoodizerAmount ?: state.soundGoodizer,
+                soundGoodizerMode = restoredMode,
+                masterPunch = saved.masterPunch ?: state.masterPunch,
+                spatialWidener = saved.spatialWidener ?: state.spatialWidener,
+                masterTrack = state.masterTrack.copy(volume = saved.masterVolume ?: state.masterTrack.volume),
+                tracks = restoredTracks,
+                drumPads = restoredDrums
+            )
+        }
+
+        // Apply restored parameters to native DSP
+        saved.tracks.forEach { t ->
+            val ch = (t.id - 1).coerceIn(0, 7)
+            NativeAudioBridge.safeSetTrackVolume(ch, t.volume)
+            NativeAudioBridge.safeSetTrackPan(ch, t.pan)
+        }
+    }
+
+    private fun persistCurrentState() {
+        val state = _uiState.value
+        appStatePersistence.saveAppState(
+            currentTheme = state.currentTheme,
+            bpm = state.bpm,
+            transpose = state.transpose,
+            octave = state.octave,
+            activeSceneId = state.activeSceneId,
+            soundGoodizerAmount = state.soundGoodizer,
+            soundGoodizerMode = state.soundGoodizerMode,
+            masterPunch = state.masterPunch,
+            spatialWidener = state.spatialWidener,
+            masterVolume = state.masterTrack.volume,
+            tracks = state.tracks,
+            drumPads = state.drumPads,
+            activeSf2TrackId = state.activeSoundfontTrackId,
+            lastActivity = "mixer"
+        )
     }
 
     override fun onCleared() {
@@ -260,34 +362,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
         val defaultFx = (0..8).associateWith { FxParameters() }
 
-        val defaultPresets = (0..15).map { idx ->
-            val name = when (idx) {
-                0 -> "Grand Piano Concert"
-                1 -> "Bright Yamaha C7"
-                2 -> "Vintage Rhodes Mark I"
-                3 -> "Wurlitzer 200A"
-                4 -> "Hammond B3 Organ"
-                5 -> "Church Pipe Organ"
-                6 -> "Warm Analog Pad"
-                7 -> "Strings Ensemble Legato"
-                8 -> "Acoustic Brass Section"
-                9 -> "Synth Lead 80s"
-                10 -> "Sub Bass 808"
-                11 -> "Finger Acoustic Bass"
-                12 -> "Nylon Guitar"
-                13 -> "Clean Stratocaster"
-                14 -> "Worship Ambient Shimmer"
-                else -> "Orchestra Hit"
-            }
-            SoundfontPreset(id = idx, name = name, bankNumber = 0)
-        }
-
         return MixerUiState(
             tracks = initialTracks,
             drumPads = initialDrumPads,
             scenes = initialScenes,
             fxParameters = defaultFx,
-            soundfontPresets = defaultPresets,
+            soundfontPresets = emptyList(),
             currentTheme = AppTheme.CYBER_NEON
         )
     }
@@ -356,7 +436,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun playMidiFile(item: StorageItem) {
-        audioEngine.playMidiFile(item.path, _uiState.value.midiVolume)
+        audioEngine.playMidiFile(filePath = item.path, isLooping = false, volume = _uiState.value.midiVolume)
         _uiState.update {
             it.copy(
                 selectedMidiFile = item,
@@ -370,7 +450,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     fun playMidiFile(loopFile: LoopFile) {
         val file = java.io.File(fileManager.midiDir, "${loopFile.folder}/${loopFile.name}".replace("Racine /Midi/", "").replace("Midi/", ""))
         val path = if (file.exists()) file.absolutePath else java.io.File(fileManager.midiDir, loopFile.name).absolutePath
-        audioEngine.playMidiFile(path, _uiState.value.midiVolume)
+        audioEngine.playMidiFile(filePath = path, isLooping = false, volume = _uiState.value.midiVolume)
         _uiState.update {
             it.copy(
                 selectedMidiName = loopFile.name.substringBeforeLast("."),
@@ -543,7 +623,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         val isAllowedBySolo = if (anySolo) track.isSolo else true
                         val isTrackActive = track.isEnabled && !track.isMuted && isAllowedBySolo
 
-                        val isPlayingSound = if (!isTrackActive || pressedMidiNotes.isEmpty()) {
+                        val isPlayingSound = if (!isTrackActive || pressedMidiNotes.isEmpty() || track.soundfontName.isEmpty()) {
                             false
                         } else if (state.isSplitterActive) {
                             pressedMidiNotes.any { midi -> midi in track.splitNoteMin..track.splitNoteMax }
@@ -743,6 +823,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 state.copy(tracks = updated)
             }
         }
+        persistCurrentState()
     }
 
     fun setTrackPan(trackId: Int, pan: Float) {
@@ -756,6 +837,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             }
             state.copy(tracks = updated)
         }
+        persistCurrentState()
     }
 
     fun toggleTrackPower(trackId: Int) {
@@ -818,6 +900,16 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { state ->
             state.copy(keyboardScrollOffset = offset)
         }
+    }
+
+    fun setPitchBend(bend: Float) {
+        val clamped = bend.coerceIn(-1.0f, 1.0f)
+        val activeTrackId = _uiState.value.activeSoundfontTrackId
+        val channel = (activeTrackId - 1).coerceIn(0, 7)
+        val midiBend = ((clamped + 1.0f) * 8191.5f).toInt().coerceIn(0, 16383)
+        NativeAudioBridge.safePitchBend(channel, midiBend)
+        audioEngine.setPitchBend(clamped)
+        _uiState.update { it.copy(pitchBend = clamped) }
     }
 
     fun onKeyDown(key: String) {
@@ -1123,44 +1215,70 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val sf2File = _uiState.value.realSoundfonts.find { it.name == currentTrack?.soundfontName }
             ?: _uiState.value.realSoundfonts.firstOrNull()
 
+        _uiState.update { state ->
+            val updatedTracks = state.tracks.map { track ->
+                if (track.id == trackId) {
+                    track.copy(
+                        patchName = preset.name,
+                        bank = preset.bankNumber,
+                        program = preset.id
+                    )
+                } else track
+            }
+            state.copy(selectedSf2PresetId = preset.id, tracks = updatedTracks)
+        }
+
         if (sf2File != null) {
             loadPatchForTrack(trackIndex, sf2File.path, preset.bankNumber, preset.id, preset.name)
-        } else {
-            _uiState.update { state ->
-                val updatedTracks = state.tracks.map { track ->
-                    if (track.id == trackId) {
-                        track.copy(patchName = preset.name, bank = preset.bankNumber)
-                    } else track
-                }
-                state.copy(selectedSf2PresetId = preset.id, tracks = updatedTracks)
-            }
         }
+        persistCurrentState()
     }
 
     fun loadSoundfontFromStorage(file: StorageItem) {
         val trackId = _uiState.value.activeSoundfontTrackId
         val trackIndex = (trackId - 1).coerceIn(0, 7)
         
-        viewModelScope.launch(Dispatchers.Default) {
+        viewModelScope.launch(Dispatchers.IO) {
+            // 1. Extract real binary presets from the .sf2 file
+            val parsedInfo = SF2Parser.parsePresets(File(file.path))
+            val realPresets = parsedInfo.map { info ->
+                SoundfontPreset(
+                    id = info.preset,
+                    name = info.name,
+                    bankNumber = info.bank
+                )
+            }
+
+            val firstPreset = realPresets.firstOrNull() ?: SoundfontPreset(
+                id = 0,
+                name = file.name.removeSuffix(".sf2"),
+                bankNumber = 0
+            )
+
+            // 2. Load SoundFont into Native Synth Engine
             val sfId = NativeAudioBridge.safeLoadSoundFont(file.path)
-            val success = if (sfId >= 0) {
-                NativeAudioBridge.safeSelectProgram(trackIndex, sfId, 0, 0)
-            } else {
-                false
+            if (sfId >= 0) {
+                NativeAudioBridge.safeSelectProgram(trackIndex, sfId, firstPreset.bankNumber, firstPreset.id)
             }
 
             _uiState.update { state ->
                 val updatedTracks = state.tracks.map { track ->
                     if (track.id == trackId) {
-                        if (success) {
-                            track.copy(soundfontName = file.name, patchName = file.name.removeSuffix(".sf2"))
-                        } else {
-                            track.copy(soundfontName = file.name, patchName = file.name.removeSuffix(".sf2"))
-                        }
+                        track.copy(
+                            soundfontName = file.name,
+                            patchName = firstPreset.name,
+                            bank = firstPreset.bankNumber,
+                            program = firstPreset.id
+                        )
                     } else track
                 }
-                state.copy(tracks = updatedTracks)
+                state.copy(
+                    soundfontPresets = realPresets,
+                    selectedSf2PresetId = firstPreset.id,
+                    tracks = updatedTracks
+                )
             }
+            persistCurrentState()
         }
     }
 

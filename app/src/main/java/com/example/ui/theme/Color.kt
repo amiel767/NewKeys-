@@ -3,14 +3,14 @@ package com.example.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // Base Dark Hardware Surfaces
-val DarkBg = Color(0xFF121218)
-val DarkSurface = Color(0xFF22222C)
-val DarkSurface2 = Color(0xFF1A1A22)
-val DarkSurface3 = Color(0xFF2B2B37)
-val DarkTrackBg = Color(0xFF1E1E28)
-val DarkTrackEnd = Color(0xFF14141B)
-val MasterTrackBg = Color(0xFF3D1F4D)
-val MasterTrackEnd = Color(0xFF1F0D24)
+val DarkBg = Color(0xFF101922)
+val DarkSurface = Color(0xFF16212D)
+val DarkSurface2 = Color(0xFF1A2634)
+val DarkSurface3 = Color(0xFF202D3C)
+val DarkTrackBg = Color(0xFF202534)
+val DarkTrackEnd = Color(0xFF161B28)
+val MasterTrackBg = Color(0xFF281F38)
+val MasterTrackEnd = Color(0xFF161220)
 
 // Neon & Brand Accents
 val NeonCyan = Color(0xFF22D3EE)

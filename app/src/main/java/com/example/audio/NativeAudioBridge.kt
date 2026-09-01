@@ -28,6 +28,7 @@ object NativeAudioBridge {
     external fun setTrackVolume(channel: Int, volume01: Float)
     external fun setTrackPan(channel: Int, pan: Float)
     external fun setTrackTranspose(channel: Int, semitones: Int)
+    external fun pitchBend(channel: Int, bendValue: Int)
 
     // Safe wrappers to avoid crashes if native library isn't compiled into the APK yet
     fun safeStartEngine(): Boolean {
@@ -129,6 +130,16 @@ object NativeAudioBridge {
                 setTrackTranspose(channel, semitones)
             } catch (e: Throwable) {
                 Log.e("NativeAudioBridge", "Error invoking setTrackTranspose: ${e.message}")
+            }
+        }
+    }
+
+    fun safePitchBend(channel: Int, bendValue: Int) {
+        if (isLibraryLoaded) {
+            try {
+                pitchBend(channel, bendValue)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking pitchBend: ${e.message}")
             }
         }
     }

@@ -79,11 +79,17 @@ fun TonicPadDialog(
         if (match.isNotEmpty()) match.last() else "C4"
     }
 
-    BoxWithConstraints(
-        modifier = modifier
+    val rootModifier = if (!isPinned) {
+        modifier
             .fillMaxSize()
-            .background(if (isPinned) Color.Transparent else Color(0x660A0A0E))
-            .clickable(enabled = !isPinned) { onClose() },
+            .background(Color(0x660A0A0E))
+            .clickable { onClose() }
+    } else {
+        modifier.fillMaxSize()
+    }
+
+    BoxWithConstraints(
+        modifier = rootModifier,
         contentAlignment = Alignment.Center
     ) {
         val maxDragX = (maxWidth.value - 300f).coerceAtLeast(0f) * 1.5f
@@ -99,7 +105,6 @@ fun TonicPadDialog(
                     Brush.linearGradient(listOf(Color(0xFF241C30), Color(0xFF161220), Color(0xFF0F0C16)))
                 )
                 .border(1.5.dp, Color(0xFF8B5CF6), RoundedCornerShape(18.dp))
-                .clickable(enabled = false) {}
                 .padding(10.dp)
                 .testTag("floating_tonic_pad")
         ) {
@@ -187,7 +192,7 @@ private fun TonicPadContent(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(32.dp)
+                .height(30.dp)
                 .pointerInput(isPinned) {
                     if (isPinned && onDragHeader != null) {
                         detectDragGestures { change, dragAmount ->
@@ -201,7 +206,8 @@ private fun TonicPadContent(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.weight(1f, fill = false)
             ) {
                 if (isSoundPickerOpen) {
                     Box(
@@ -210,20 +216,25 @@ private fun TonicPadContent(
                             .background(Color(0x228B5CF6))
                             .border(1.dp, NeonPurpleLight, RoundedCornerShape(6.dp))
                             .clickable { onToggleSoundPicker(false) }
-                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
-                        Text(text = "← Retour", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = NeonPurpleLight)
+                        Text(text = "← Retour", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = NeonPurpleLight)
                     }
                 }
                 Text(
-                    text = if (isSoundPickerOpen) "Sound: Sélectionner" else "🎵 Tonic Pad Drone & Ambience",
-                    fontSize = 11.5.sp,
+                    text = if (isSoundPickerOpen) "Sounds" else "🎵 Tonic Pad",
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    color = TextPrimary
+                    color = TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 if (!isSoundPickerOpen) {
                     // Loaded Soundfont Capsule Button
                     Box(
@@ -232,23 +243,23 @@ private fun TonicPadContent(
                             .background(Color(0x228B5CF6))
                             .border(1.dp, NeonPurpleLight, RoundedCornerShape(6.dp))
                             .clickable { onToggleSoundPicker(true) }
-                            .padding(horizontal = 7.dp, vertical = 4.dp)
+                            .padding(horizontal = 5.dp, vertical = 3.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
-                            Text(text = "🎹", fontSize = 9.sp)
+                            Text(text = "🎹", fontSize = 8.5.sp)
                             Text(
                                 text = currentLoadedSf2Name.ifEmpty { "Soundfont" },
-                                fontSize = 9.5.sp,
+                                fontSize = 8.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = NeonPurpleLight,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.widthIn(max = 110.dp)
+                                modifier = Modifier.widthIn(max = 75.dp)
                             )
-                            Text(text = "▼", fontSize = 7.sp, color = Color(0xAAFFFFFF))
+                            Text(text = "▼", fontSize = 6.5.sp, color = Color(0xAAFFFFFF))
                         }
                     }
                 }
@@ -256,26 +267,26 @@ private fun TonicPadContent(
                 // Pin Button
                 Box(
                     modifier = Modifier
-                        .size(26.dp)
+                        .size(24.dp)
                         .clip(RoundedCornerShape(6.dp))
                         .background(if (isPinned) Color(0x448B5CF6) else Color(0x14FFFFFF))
                         .border(1.dp, if (isPinned) NeonPurpleLight else Color.Transparent, RoundedCornerShape(6.dp))
                         .clickable { onTogglePin() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = if (isPinned) "📌" else "📍", fontSize = 11.sp)
+                    Text(text = if (isPinned) "📌" else "📍", fontSize = 10.sp)
                 }
 
                 // Close Button
                 Box(
                     modifier = Modifier
-                        .size(26.dp)
+                        .size(24.dp)
                         .clip(RoundedCornerShape(6.dp))
                         .background(Color(0x14FFFFFF))
                         .clickable { onClose() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = "✕", fontSize = 11.5.sp, color = TextPrimary)
+                    Text(text = "✕", fontSize = 10.5.sp, color = TextPrimary)
                 }
             }
         }

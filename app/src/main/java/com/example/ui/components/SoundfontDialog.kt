@@ -17,10 +17,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.SoundfontBankFile
 import com.example.model.SoundfontPreset
+import com.example.model.StorageItem
 import com.example.ui.theme.*
 
 @Composable
@@ -28,9 +30,11 @@ fun SoundfontDialog(
     trackId: Int,
     source: String,
     presets: List<SoundfontPreset>,
-    bankFiles: List<SoundfontBankFile>,
+    bankFiles: List<SoundfontBankFile> = emptyList(),
+    soundfontStorageFiles: List<StorageItem> = emptyList(),
     selectedPresetId: Int,
     onSelectPreset: (Int) -> Unit,
+    onSelectSf2File: ((StorageItem) -> Unit)? = null,
     activeTab: String,
     onTabChange: (String) -> Unit,
     onClose: () -> Unit,
@@ -101,7 +105,7 @@ fun SoundfontDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    listOf("bank" to "Presets Soundfont", "other" to "Soundfonts").forEach { (tabKey, tabLabel) ->
+                    listOf("bank" to "Presets Soundfont", "other" to "Fichiers .SF2").forEach { (tabKey, tabLabel) ->
                         val isSelected = activeTab == tabKey
                         Box(
                             modifier = Modifier
@@ -131,114 +135,165 @@ fun SoundfontDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Preset Lists
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    if (activeTab == "bank") {
-                        items(presets) { preset ->
-                            val isSelected = selectedPresetId == preset.id
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(
-                                        if (isSelected) Color(0x2622D3EE) else Color(0x0AFFFFFF)
-                                    )
-                                    .border(
-                                        1.dp,
-                                        if (isSelected) NeonCyan else Color(0x14FFFFFF),
-                                        RoundedCornerShape(10.dp)
-                                    )
-                                    .clickable { onSelectPreset(preset.id) }
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Box(
+                // Content Lists
+                if (activeTab == "bank") {
+                    if (presets.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(
+                                text = "Aucun preset trouvé dans ce SoundFont.\nSélectionnez un fichier .sf2 dans l'onglet 'Fichiers .SF2'.",
+                                fontSize = 11.sp,
+                                color = TextDim,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            items(presets) { preset ->
+                                val isSelected = selectedPresetId == preset.id
+                                Row(
                                     modifier = Modifier
-                                        .size(28.dp)
-                                        .clip(RoundedCornerShape(7.dp))
-                                        .background(Brush.linearGradient(listOf(NeonCyanLight, NeonCyanDark))),
-                                    contentAlignment = Alignment.Center
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(
+                                            if (isSelected) Color(0x2622D3EE) else Color(0x0AFFFFFF)
+                                        )
+                                        .border(
+                                            1.dp,
+                                            if (isSelected) NeonCyan else Color(0x14FFFFFF),
+                                            RoundedCornerShape(10.dp)
+                                        )
+                                        .clickable { onSelectPreset(preset.id) }
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Text(
-                                        text = "${preset.id}",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color(0xFF003844)
-                                    )
-                                }
+                                    Box(
+                                        modifier = Modifier
+                                            .size(28.dp)
+                                            .clip(RoundedCornerShape(7.dp))
+                                            .background(Brush.linearGradient(listOf(NeonCyanLight, NeonCyanDark))),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "${preset.id}",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFF003844)
+                                        )
+                                    }
 
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = preset.name,
-                                        fontSize = 12.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = TextPrimary
-                                    )
-                                    Text(
-                                        text = "Bank ${preset.bankNumber} · Soundfont Standard",
-                                        fontSize = 9.5.sp,
-                                        color = TextDim2
-                                    )
-                                }
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = preset.name,
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TextPrimary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "Bank ${preset.bankNumber} · Preset #${preset.id}",
+                                            fontSize = 9.5.sp,
+                                            color = TextDim2
+                                        )
+                                    }
 
-                                if (isSelected) {
-                                    Text(
-                                        text = "✓",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = NeonCyan
-                                    )
+                                    if (isSelected) {
+                                        Text(
+                                            text = "✓ Actif",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = NeonCyan
+                                        )
+                                    }
                                 }
                             }
                         }
+                    }
+                } else {
+                    // Soundfonts list (.sf2 files found in storage)
+                    val filesToDisplay = if (soundfontStorageFiles.isNotEmpty()) soundfontStorageFiles else bankFiles.map {
+                        StorageItem(name = it.name, path = it.path, isDirectory = false, formattedSize = it.size)
+                    }
+
+                    if (filesToDisplay.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(
+                                text = "Aucun fichier .sf2 détecté dans /LiveKeys/SoundFonts/.\nPlacez vos banques SoundFont (.sf2) dans la mémoire de l'appareil.",
+                                fontSize = 11.sp,
+                                color = TextDim,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
                     } else {
-                        items(bankFiles) { file ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(Color(0x0AFFFFFF))
-                                    .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(10.dp))
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Box(
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            items(filesToDisplay) { file ->
+                                Row(
                                     modifier = Modifier
-                                        .size(28.dp)
-                                        .clip(RoundedCornerShape(7.dp))
-                                        .background(Brush.linearGradient(listOf(NeonPurpleLight, NeonPurple))),
-                                    contentAlignment = Alignment.Center
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0x0AFFFFFF))
+                                        .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            onSelectSf2File?.invoke(file)
+                                            onTabChange("bank")
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Text(text = "🎹", fontSize = 12.sp)
-                                }
+                                    Box(
+                                        modifier = Modifier
+                                            .size(28.dp)
+                                            .clip(RoundedCornerShape(7.dp))
+                                            .background(Brush.linearGradient(listOf(NeonPurpleLight, NeonPurple))),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(text = "🎹", fontSize = 12.sp)
+                                    }
 
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = file.name,
-                                        fontSize = 12.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = TextPrimary
-                                    )
-                                    Text(
-                                        text = "${file.size} · ${file.path}",
-                                        fontSize = 9.5.sp,
-                                        color = TextDim2
-                                    )
-                                }
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = file.name,
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TextPrimary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "${file.size} · ${file.path}",
+                                            fontSize = 9.sp,
+                                            color = TextDim2,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
 
-                                Text(
-                                    text = "Charger",
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = NeonCyan
-                                )
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(Color(0x2222D3EE))
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = "Charger",
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = NeonCyan
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
