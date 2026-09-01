@@ -4,7 +4,7 @@
 #if __has_include(<fluidsynth.h>)
 #include <fluidsynth.h>
 #else
-// Fallback definitions if fluidsynth is not yet linked during initial phase
+// Fallback definitions if fluidsynth headers are unavailable
 typedef void fluid_settings_t;
 typedef void fluid_synth_t;
 #define FLUID_OK 0
@@ -20,6 +20,7 @@ inline int fluid_synth_program_select(fluid_synth_t*, int, int, int, int) { retu
 inline int fluid_synth_noteon(fluid_synth_t*, int, int, int) { return 0; }
 inline int fluid_synth_noteoff(fluid_synth_t*, int, int) { return 0; }
 inline int fluid_synth_all_notes_off(fluid_synth_t*, int) { return 0; }
+inline int fluid_synth_pitch_bend(fluid_synth_t*, int, int) { return 0; }
 inline int fluid_synth_cc(fluid_synth_t*, int, int, int) { return 0; }
 inline int fluid_synth_write_float(fluid_synth_t*, int, void*, int, int, void*, int, int) { return 0; }
 #endif
@@ -27,10 +28,12 @@ inline int fluid_synth_write_float(fluid_synth_t*, int, void*, int, int, void*, 
 #include <atomic>
 #include <array>
 #include <string>
+#include <vector>
 
-// One FluidSynth instance drives ALL tracks at once, using MIDI channels 0-15,
-// instead of one synth instance per track — this avoids duplicating the whole
-// SoundFont sample data in memory 8 times over.
+/**
+ * Autonomous FluidSynth instance. Multiple instances can co-exist
+ * (e.g. FaderEngine, PadEngine, DrumEngine) with independent SoundFont banks and MIDI channels.
+ */
 class SoundfontEngine {
 public:
     static constexpr int kMaxChannels = 16;
@@ -44,20 +47,19 @@ public:
     void noteOn(int channel, int midiNote, int velocity);
     void noteOff(int channel, int midiNote);
     void allNotesOff(int channel);
+    void pitchBend(int channel, int bendValue);
 
     void setChannelVolume(int channel, float volume01);
     void setChannelPan(int channel, float pan);
-
-    // Real transpose: re-maps which MIDI note number gets played (NOT a
-    // playback-speed/pitch-bend hack), so the timbre stays natural.
     void setChannelTransposeSemitones(int channel, int semitones);
 
-    void renderStereo(float *outputBuffer, int32_t numFrames);
+    void renderStereo(float *outputBuffer, int32_t numFrames, bool accumulate = false);
 
 private:
     fluid_settings_t *mSettings = nullptr;
     fluid_synth_t *mSynth = nullptr;
     std::array<std::atomic<int>, kMaxChannels> mTransposeSemitones{};
+    std::vector<float> mTempRenderBuffer;
 };
 
 #endif //DAWSTUDIO_SOUNDFONT_ENGINE_H

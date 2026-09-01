@@ -1,6 +1,7 @@
 package com.example.viewmodel
 
 import android.app.Application
+import android.util.Log
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -199,12 +200,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.update { it.copy(midiDevices = updatedList) }
         }
 
-        // Listen to USB MIDI hardware events
+        // Listen to USB MIDI hardware events (updates UI key states safely without recursion)
         audioEngine.onMidiNoteOnListener = { noteName, _ ->
-            onKeyDown(noteName)
+            _uiState.update { it.copy(pressedKeys = it.pressedKeys + noteName) }
         }
         audioEngine.onMidiNoteOffListener = { noteName ->
-            onKeyUp(noteName)
+            _uiState.update { it.copy(pressedKeys = it.pressedKeys - noteName) }
         }
         audioEngine.onMidiPitchBendListener = { bendValue ->
             _uiState.update { it.copy(pitchBend = bendValue) }
@@ -610,81 +611,92 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         peakMeterJob?.cancel()
         peakMeterJob = viewModelScope.launch(Dispatchers.Default) {
             while (isActive) {
-                delay(40)
-                val curr = _uiState.value
-                val anySolo = curr.tracks.any { it.isSolo }
-                val pressedMidiNotes = curr.pressedKeys.map { noteNameToMidi(it) }
+                try {
+                    delay(40)
+                    val curr = _uiState.value
+                    val anySolo = curr.tracks.any { it.isSolo }
+                    val pressedMidiNotes = curr.pressedKeys.map { noteNameToMidi(it) }
 
-                _uiState.update { state ->
-                    var maxPlayingLevelL = 0f
-                    var maxPlayingLevelR = 0f
+                    _uiState.update { state ->
+                        var maxPlayingLevelL = 0f
+                        var maxPlayingLevelR = 0f
 
-                    val updatedTracks = state.tracks.map { track ->
-                        val isAllowedBySolo = if (anySolo) track.isSolo else true
-                        val isTrackActive = track.isEnabled && !track.isMuted && isAllowedBySolo
+                        val updatedTracks = state.tracks.map { track ->
+                            val isAllowedBySolo = if (anySolo) track.isSolo else true
+                            val isTrackActive = track.isEnabled && !track.isMuted && isAllowedBySolo
 
-                        val isPlayingSound = if (!isTrackActive || pressedMidiNotes.isEmpty() || track.soundfontName.isEmpty()) {
-                            false
-                        } else if (state.isSplitterActive) {
-                            pressedMidiNotes.any { midi -> midi in track.splitNoteMin..track.splitNoteMax }
-                        } else {
-                            true
+                            val isPlayingSound = if (!isTrackActive || pressedMidiNotes.isEmpty() || track.soundfontName.isEmpty()) {
+                                false
+                            } else if (state.isSplitterActive) {
+                                pressedMidiNotes.any { midi -> midi in track.splitNoteMin..track.splitNoteMax }
+                            } else {
+                                true
+                            }
+
+                            val targetAmp = if (isPlayingSound) {
+                                val baseAmp = track.volume * (0.65f + Random.nextFloat() * 0.28f)
+                                if (baseAmp.isFinite()) baseAmp.coerceIn(0f, 1f) else 0f
+                            } else {
+                                0f
+                            }
+
+                            val panL = (1f - track.pan).coerceIn(0f, 1f)
+                            val panR = (1f + track.pan).coerceIn(0f, 1f)
+                            val targetL = (targetAmp * panL).coerceIn(0f, 1f)
+                            val targetR = (targetAmp * panR).coerceIn(0f, 1f)
+
+                            val prevL = if (track.peakMeterL.isFinite()) track.peakMeterL else 0f
+                            val prevR = if (track.peakMeterR.isFinite()) track.peakMeterR else 0f
+
+                            // Fluid rise and decay
+                            val newL = if (targetL > prevL) {
+                                (prevL * 0.3f + targetL * 0.7f).coerceIn(0f, 1f)
+                            } else {
+                                (prevL * 0.75f - 0.015f).coerceIn(0f, 1f)
+                            }
+
+                            val newR = if (targetR > prevR) {
+                                (prevR * 0.3f + targetR * 0.7f).coerceIn(0f, 1f)
+                            } else {
+                                (prevR * 0.75f - 0.015f).coerceIn(0f, 1f)
+                            }
+
+                            if (newL > maxPlayingLevelL) maxPlayingLevelL = newL
+                            if (newR > maxPlayingLevelR) maxPlayingLevelR = newR
+
+                            track.copy(peakMeterL = newL, peakMeterR = newR)
                         }
 
-                        val targetAmp = if (isPlayingSound) {
-                            track.volume * (0.65f + Random.nextFloat() * 0.28f)
+                        val masterTargetL = if (state.masterTrack.isEnabled && !state.masterTrack.isMuted) {
+                            (maxPlayingLevelL * state.masterTrack.volume).coerceIn(0f, 1f)
+                        } else 0f
+
+                        val masterTargetR = if (state.masterTrack.isEnabled && !state.masterTrack.isMuted) {
+                            (maxPlayingLevelR * state.masterTrack.volume).coerceIn(0f, 1f)
+                        } else 0f
+
+                        val masterPrevL = if (state.masterTrack.peakMeterL.isFinite()) state.masterTrack.peakMeterL else 0f
+                        val masterPrevR = if (state.masterTrack.peakMeterR.isFinite()) state.masterTrack.peakMeterR else 0f
+
+                        val masterL = if (masterTargetL > masterPrevL) {
+                            (masterPrevL * 0.3f + masterTargetL * 0.7f).coerceIn(0f, 1f)
                         } else {
-                            0f
+                            (masterPrevL * 0.75f - 0.015f).coerceIn(0f, 1f)
                         }
 
-                        val panL = (1f - track.pan).coerceIn(0f, 1f)
-                        val panR = (1f + track.pan).coerceIn(0f, 1f)
-                        val targetL = (targetAmp * panL).coerceIn(0f, 1f)
-                        val targetR = (targetAmp * panR).coerceIn(0f, 1f)
-
-                        // Fluid rise and decay
-                        val newL = if (targetL > track.peakMeterL) {
-                            (track.peakMeterL * 0.3f + targetL * 0.7f)
+                        val masterR = if (masterTargetR > masterPrevR) {
+                            (masterPrevR * 0.3f + masterTargetR * 0.7f).coerceIn(0f, 1f)
                         } else {
-                            (track.peakMeterL * 0.75f - 0.015f).coerceAtLeast(0f)
+                            (masterPrevR * 0.75f - 0.015f).coerceIn(0f, 1f)
                         }
 
-                        val newR = if (targetR > track.peakMeterR) {
-                            (track.peakMeterR * 0.3f + targetR * 0.7f)
-                        } else {
-                            (track.peakMeterR * 0.75f - 0.015f).coerceAtLeast(0f)
-                        }
-
-                        if (newL > maxPlayingLevelL) maxPlayingLevelL = newL
-                        if (newR > maxPlayingLevelR) maxPlayingLevelR = newR
-
-                        track.copy(peakMeterL = newL, peakMeterR = newR)
+                        state.copy(
+                            tracks = updatedTracks,
+                            masterTrack = state.masterTrack.copy(peakMeterL = masterL, peakMeterR = masterR)
+                        )
                     }
-
-                    val masterTargetL = if (state.masterTrack.isEnabled && !state.masterTrack.isMuted) {
-                        (maxPlayingLevelL * state.masterTrack.volume).coerceIn(0f, 1f)
-                    } else 0f
-
-                    val masterTargetR = if (state.masterTrack.isEnabled && !state.masterTrack.isMuted) {
-                        (maxPlayingLevelR * state.masterTrack.volume).coerceIn(0f, 1f)
-                    } else 0f
-
-                    val masterL = if (masterTargetL > state.masterTrack.peakMeterL) {
-                        state.masterTrack.peakMeterL * 0.3f + masterTargetL * 0.7f
-                    } else {
-                        (state.masterTrack.peakMeterL * 0.75f - 0.015f).coerceAtLeast(0f)
-                    }
-
-                    val masterR = if (masterTargetR > state.masterTrack.peakMeterR) {
-                        state.masterTrack.peakMeterR * 0.3f + masterTargetR * 0.7f
-                    } else {
-                        (state.masterTrack.peakMeterR * 0.75f - 0.015f).coerceAtLeast(0f)
-                    }
-
-                    state.copy(
-                        tracks = updatedTracks,
-                        masterTrack = state.masterTrack.copy(peakMeterL = masterL, peakMeterR = masterR)
-                    )
+                } catch (e: Throwable) {
+                    Log.e("MixerViewModel", "Error in peak meter calculation: ${e.message}")
                 }
             }
         }
@@ -874,6 +886,17 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // ================= VIRTUAL KEYBOARD & MULTI-TOUCH =================
+    fun cycleKeyboardExpansion() {
+        _uiState.update { state ->
+            val nextFraction = when {
+                state.keyboardHeightFraction <= 0.05f -> 0.42f
+                state.keyboardHeightFraction < 0.65f -> 0.70f
+                else -> 0f
+            }
+            state.copy(keyboardHeightFraction = nextFraction)
+        }
+    }
+
     fun toggleKeyboardLock() {
         _uiState.update { state ->
             val newLocked = !state.isKeyboardLocked
@@ -917,7 +940,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val activeTrackId = _uiState.value.activeSoundfontTrackId
         val channel = (activeTrackId - 1).coerceIn(0, 7)
         NativeAudioBridge.safeNoteOn(channel, midiNote, 100)
-        audioEngine.noteOn(key, 0.85f)
         _uiState.update { state ->
             state.copy(pressedKeys = state.pressedKeys + key)
         }
@@ -929,7 +951,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val channel = (activeTrackId - 1).coerceIn(0, 7)
         if (!_uiState.value.isSustainActive && !_uiState.value.isMidiPedalPressed) {
             NativeAudioBridge.safeNoteOff(channel, midiNote)
-            audioEngine.noteOff(key)
         }
         _uiState.update { state ->
             if (!state.isSustainActive && !state.isMidiPedalPressed) {
@@ -1183,11 +1204,17 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadPatchForTrack(trackIndex: Int, sf2Path: String, bank: Int, preset: Int, displayName: String) {
+        val source = _uiState.value.activeSoundfontSource
+        val engineIndex = when (source) {
+            "drum" -> NativeAudioBridge.ENGINE_DRUM
+            "pad" -> NativeAudioBridge.ENGINE_PAD
+            else -> NativeAudioBridge.ENGINE_FADER
+        }
         viewModelScope.launch(Dispatchers.Default) {
-            val sfId = NativeAudioBridge.safeLoadSoundFont(sf2Path)
+            val sfId = NativeAudioBridge.safeLoadSoundFont(engineIndex, sf2Path)
             val channel = trackIndex.coerceIn(0, 7)
             val success = if (sfId >= 0) {
-                NativeAudioBridge.safeSelectProgram(channel, sfId, bank, preset)
+                NativeAudioBridge.safeSelectProgram(engineIndex, channel, sfId, bank, preset)
             } else {
                 false
             }
@@ -1196,10 +1223,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 val updatedTracks = state.tracks.mapIndexed { idx, track ->
                     if (idx == trackIndex) {
                         if (success) {
-                            track.copy(soundfontName = File(sf2Path).name, patchName = displayName, bank = bank)
+                            track.copy(soundfontName = File(sf2Path).name, patchName = displayName, bank = bank, program = preset)
                         } else {
-                            // Rule 3: If loading or patch assignment fails, UI MUST display no sound loaded ("-"), never a fake name
-                            track.copy(soundfontName = "", patchName = "-", bank = 0)
+                            track.copy(soundfontName = "", patchName = "-", bank = 0, program = 0)
                         }
                     } else track
                 }
@@ -1237,17 +1263,25 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     fun loadSoundfontFromStorage(file: StorageItem) {
         val trackId = _uiState.value.activeSoundfontTrackId
         val trackIndex = (trackId - 1).coerceIn(0, 7)
+        val source = _uiState.value.activeSoundfontSource
+        val engineIndex = when (source) {
+            "drum" -> NativeAudioBridge.ENGINE_DRUM
+            "pad" -> NativeAudioBridge.ENGINE_PAD
+            else -> NativeAudioBridge.ENGINE_FADER
+        }
         
         viewModelScope.launch(Dispatchers.IO) {
-            // 1. Extract real binary presets from the .sf2 file
+            // 1. Extract real binary presets from the .sf2 file sorted by Bank and Program
             val parsedInfo = SF2Parser.parsePresets(File(file.path))
-            val realPresets = parsedInfo.map { info ->
-                SoundfontPreset(
-                    id = info.preset,
-                    name = info.name,
-                    bankNumber = info.bank
-                )
-            }
+            val realPresets = parsedInfo
+                .sortedWith(compareBy({ it.bank }, { it.preset }))
+                .map { info ->
+                    SoundfontPreset(
+                        id = info.preset,
+                        name = "[${info.bank.toString().padStart(3, '0')}:${info.preset.toString().padStart(3, '0')}] ${info.name}",
+                        bankNumber = info.bank
+                    )
+                }
 
             val firstPreset = realPresets.firstOrNull() ?: SoundfontPreset(
                 id = 0,
@@ -1255,10 +1289,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 bankNumber = 0
             )
 
-            // 2. Load SoundFont into Native Synth Engine
-            val sfId = NativeAudioBridge.safeLoadSoundFont(file.path)
+            // 2. Load SoundFont into the targeted Native Synth Engine
+            val sfId = NativeAudioBridge.safeLoadSoundFont(engineIndex, file.path)
             if (sfId >= 0) {
-                NativeAudioBridge.safeSelectProgram(trackIndex, sfId, firstPreset.bankNumber, firstPreset.id)
+                NativeAudioBridge.safeSelectProgram(engineIndex, trackIndex, sfId, firstPreset.bankNumber, firstPreset.id)
             }
 
             _uiState.update { state ->
@@ -1320,6 +1354,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setAudioEngine(engine: String) {
+        val driverType = if (engine.contains("OpenSL", ignoreCase = true)) {
+            NativeAudioBridge.DRIVER_OPENSL_ES
+        } else {
+            NativeAudioBridge.DRIVER_OBOE
+        }
+        NativeAudioBridge.safeSetAudioDriver(driverType)
         _uiState.update { it.copy(audioEngine = engine) }
     }
 
@@ -1373,20 +1413,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleLowLatencyAudio() {
         _uiState.update { it.copy(isLowLatencyAudio = !it.isLowLatencyAudio) }
-    }
-
-    fun cycleKeyboardExpansion() {
-        _uiState.update { state ->
-            val nextFraction = when {
-                state.keyboardHeightFraction <= 0f -> 0.55f
-                state.keyboardHeightFraction in 0.01f..0.65f -> 1.0f
-                else -> 0f
-            }
-            state.copy(
-                keyboardHeightFraction = nextFraction,
-                isKeyboardLocked = nextFraction == 0f
-            )
-        }
     }
 
     // ================= FX PARAMETERS =================

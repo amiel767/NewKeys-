@@ -16,6 +16,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -77,10 +78,12 @@ fun VirtualPianoKeyboard(
         ChordCalculator.detect(pressedKeys)
     }
 
+    val keyboardHeightDp = (heightFraction * 340f).coerceIn(60f, 360f).dp
+
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .fillMaxHeight(heightFraction)
+            .height(keyboardHeightDp)
             .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
             .background(
                 Brush.verticalGradient(
@@ -90,18 +93,18 @@ fun VirtualPianoKeyboard(
             .border(1.dp, Color(0x3322D3EE), RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
             .testTag("virtual_piano_keyboard")
     ) {
-        // Grabber bar to resize / collapse keyboard
+        // Grabber bar to resize / collapse keyboard with prominent touch area
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(14.dp)
+                .height(18.dp)
                 .background(Color(0xFF181F2C))
                 .clickable { onGrabberClick?.invoke() }
                 .pointerInput(Unit) {
                     if (onGrabberDrag != null) {
-                        detectDragGestures { change, dragAmount ->
+                        detectVerticalDragGestures { change, dragAmount ->
                             change.consume()
-                            onGrabberDrag(dragAmount.y)
+                            onGrabberDrag(dragAmount)
                         }
                     }
                 },
@@ -109,10 +112,10 @@ fun VirtualPianoKeyboard(
         ) {
             Box(
                 modifier = Modifier
-                    .width(42.dp)
-                    .height(3.5.dp)
+                    .width(48.dp)
+                    .height(4.dp)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(Color(0x66FFFFFF))
+                    .background(Color(0x88FFFFFF))
             )
         }
 

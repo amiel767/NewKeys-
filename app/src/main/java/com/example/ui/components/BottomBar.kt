@@ -8,6 +8,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -374,7 +375,7 @@ fun BottomBar(
             }
         }
 
-        // ================= 5. AFFICHEUR D'ACCORDS (CHORD DISPLAY BAR) =================
+        // ================= 5. AFFICHEUR D'ACCORDS (CHORD DISPLAY BAR / DRAG HANDLE) =================
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -382,11 +383,25 @@ fun BottomBar(
                 .clip(RoundedCornerShape(10.dp))
                 .background(
                     Brush.horizontalGradient(
-                        listOf(Color(0xFF161E2E), Color(0xFF0E131E))
+                        listOf(
+                            if (isKeyboardActive) Color(0xFF192538) else Color(0xFF161E2E),
+                            if (isKeyboardActive) Color(0xFF121B2B) else Color(0xFF0E131E)
+                        )
                     )
                 )
-                .border(1.dp, Color(0x3300E5FF), RoundedCornerShape(10.dp))
+                .border(
+                    1.dp,
+                    if (isKeyboardActive) NeonCyan.copy(alpha = 0.8f) else Color(0x3300E5FF),
+                    RoundedCornerShape(10.dp)
+                )
                 .padding(horizontal = 10.dp, vertical = 3.dp)
+                .clickable { onKeyboardHandleClick() }
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures { change, dragAmount ->
+                        change.consume()
+                        onKeyboardDrag(dragAmount)
+                    }
+                }
                 .testTag("chord_display_box"),
             contentAlignment = Alignment.CenterStart
         ) {
@@ -428,6 +443,36 @@ fun BottomBar(
                             color = NeonCyan
                         )
                     }
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Text(
+                            text = if (isKeyboardActive) "CLAVIER ACTIF" else "ACCORDS",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isKeyboardActive) NeonCyan else Color(0x66FFFFFF)
+                        )
+                        Text(
+                            text = "▲ Glisser vers le haut",
+                            fontSize = 8.sp,
+                            color = Color(0x44FFFFFF)
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .width(28.dp)
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(1.5.dp))
+                            .background(if (isKeyboardActive) NeonCyan.copy(alpha = 0.5f) else Color(0x33FFFFFF))
+                    )
                 }
             }
         }

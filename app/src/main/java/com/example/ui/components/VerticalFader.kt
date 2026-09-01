@@ -129,29 +129,68 @@ fun VerticalTrackChannel(
     val faderBodyColor = Color(0xF0202534)
     val subtleDarkBorder = Color(0x12FFFFFF) // Extremely subtle dark border, no white contour
 
-    // Sound-reactive audio activity (Peak Meter)
+    // Sound-reactive audio activity (Peak Meter) with guaranteed base visibility
     val audioActivity = if (isEnabled) maxOf(track.peakMeterL, track.peakMeterR).coerceIn(0f, 1f) else 0f
-    val auraAlpha = (audioActivity * 0.55f).coerceIn(0f, 0.55f)
+    val baseIdleAlpha = if (isEnabled) 0.32f else 0.12f
+    val reactiveAlpha = (baseIdleAlpha + audioActivity * 0.65f).coerceIn(0.10f, 0.95f)
 
-    Column(
+    Box(
         modifier = modifier
             .fillMaxHeight()
             .clip(RoundedCornerShape(12.dp))
             .background(faderBodyColor)
-            // Sound-Reactive Sunday Keys Aura: strictly alpha = 0f at rest, glows & pulses on audio signal
-            .background(
-                Brush.verticalGradient(
-                    0.0f to Color.Transparent,
-                    0.50f to Color.Transparent,
-                    0.80f to vibrantLedColor.copy(alpha = auraAlpha * 0.45f),
-                    1.0f to vibrantLedColor.copy(alpha = auraAlpha)
-                )
-            )
             .border(1.dp, subtleDarkBorder, RoundedCornerShape(12.dp))
-            .padding(horizontal = 4.dp, vertical = 5.dp)
-            .testTag("track_${track.id}"),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .testTag("track_${track.id}")
     ) {
+        // 1. Ambient & Reactive Neon Aura at the bottom of the fader (visible from start, pulses with sound)
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .fillMaxHeight(0.60f)
+                .background(
+                    Brush.verticalGradient(
+                        0.0f to Color.Transparent,
+                        0.45f to vibrantLedColor.copy(alpha = reactiveAlpha * 0.25f),
+                        0.80f to vibrantLedColor.copy(alpha = reactiveAlpha * 0.60f),
+                        1.0f to vibrantLedColor.copy(alpha = reactiveAlpha * 0.95f)
+                    )
+                )
+        )
+
+        // 2. Radial bottom floor glow
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(48.dp)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            vibrantLedColor.copy(alpha = reactiveAlpha * 0.70f),
+                            vibrantLedColor.copy(alpha = reactiveAlpha * 0.20f),
+                            Color.Transparent
+                        )
+                    )
+                )
+        )
+
+        // 3. Crisp luminous bottom LED strip accent
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth(0.85f)
+                .height(2.5.dp)
+                .clip(RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp))
+                .background(vibrantLedColor.copy(alpha = reactiveAlpha))
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 4.dp, vertical = 5.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
         // ================= 1. TOP DISPLAY BOX =================
         Box(
             modifier = Modifier
@@ -352,6 +391,7 @@ fun VerticalTrackChannel(
             }
         }
     }
+}
 }
 
 /**

@@ -10,13 +10,30 @@
 
 #include "soundfont_engine.h"
 #include <memory>
+#include <array>
+#include <vector>
 
+/**
+ * Multi-Instance Audio Engine with Oboe / OpenSL ES driver support.
+ * Manages 3 autonomous synth instances:
+ * - Engine 0: FaderEngine (Main Tracks 1..8 & Master)
+ * - Engine 1: PadEngine (Tonic Pad)
+ * - Engine 2: DrumEngine (Drum Pad)
+ */
 #if HAS_OBOE
 class AudioEngine : public oboe::AudioStreamDataCallback {
 public:
-    bool start();
+    AudioEngine();
+    ~AudioEngine();
+
+    bool start(int driverType = 0); // 0 = Oboe High-Performance (AAudio), 1 = OpenSL ES
     void stop();
-    SoundfontEngine &soundfont() { return mSoundfontEngine; }
+    void setDriver(int driverType);
+
+    SoundfontEngine &getEngine(int engineIndex) {
+        if (engineIndex < 0 || engineIndex >= 3) return mEngines[0];
+        return mEngines[engineIndex];
+    }
 
     oboe::DataCallbackResult onAudioReady(
         oboe::AudioStream *audioStream,
@@ -25,17 +42,26 @@ public:
 
 private:
     std::shared_ptr<oboe::AudioStream> mStream;
-    SoundfontEngine mSoundfontEngine;
+    int mDriverType = 0;
+    std::array<SoundfontEngine, 3> mEngines; // 0 = Fader, 1 = Pad, 2 = Drum
 };
 #else
 class AudioEngine {
 public:
-    bool start() { return mSoundfontEngine.init(48000); }
-    void stop() { mSoundfontEngine.destroy(); }
-    SoundfontEngine &soundfont() { return mSoundfontEngine; }
+    AudioEngine();
+    ~AudioEngine();
+
+    bool start(int driverType = 0);
+    void stop();
+    void setDriver(int driverType) {}
+
+    SoundfontEngine &getEngine(int engineIndex) {
+        if (engineIndex < 0 || engineIndex >= 3) return mEngines[0];
+        return mEngines[engineIndex];
+    }
 
 private:
-    SoundfontEngine mSoundfontEngine;
+    std::array<SoundfontEngine, 3> mEngines;
 };
 #endif
 

@@ -1,70 +1,136 @@
 #include <jni.h>
-#include <memory>
 #include <string>
+#include <android/log.h>
 #include "audio_engine.h"
 
-static std::unique_ptr<AudioEngine> gEngine;
+#define TAG "LiveKeysNative"
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
-extern "C" JNIEXPORT jboolean JNICALL
-Java_com_example_audio_NativeAudioBridge_startEngine(JNIEnv *env, jobject) {
-    if (!gEngine) gEngine = std::make_unique<AudioEngine>();
-    return gEngine->start();
+static AudioEngine gAudioEngine;
+
+extern "C" {
+
+JNIEXPORT jboolean JNICALL
+Java_com_example_audio_NativeAudioBridge_startEngine(
+        JNIEnv *env,
+        jobject /* this */,
+        jint driverType) {
+    return static_cast<jboolean>(gAudioEngine.start(driverType));
 }
 
-extern "C" JNIEXPORT void JNICALL
-Java_com_example_audio_NativeAudioBridge_stopEngine(JNIEnv *env, jobject) {
-    if (gEngine) gEngine->stop();
+JNIEXPORT void JNICALL
+Java_com_example_audio_NativeAudioBridge_stopEngine(
+        JNIEnv *env,
+        jobject /* this */) {
+    gAudioEngine.stop();
 }
 
-extern "C" JNIEXPORT jint JNICALL
+JNIEXPORT void JNICALL
+Java_com_example_audio_NativeAudioBridge_setAudioDriver(
+        JNIEnv *env,
+        jobject /* this */,
+        jint driverType) {
+    gAudioEngine.setDriver(driverType);
+}
+
+JNIEXPORT jint JNICALL
 Java_com_example_audio_NativeAudioBridge_loadSoundFont(
-    JNIEnv *env, jobject, jstring absolutePath) {
-    if (!gEngine) return -1;
-    const char *pathChars = env->GetStringUTFChars(absolutePath, nullptr);
-    std::string path(pathChars);
-    env->ReleaseStringUTFChars(absolutePath, pathChars);
-    return gEngine->soundfont().loadSoundFont(path);
+        JNIEnv *env,
+        jobject /* this */,
+        jint engineIndex,
+        jstring soundFontPath) {
+    if (!soundFontPath) return -1;
+
+    const char *path = env->GetStringUTFChars(soundFontPath, nullptr);
+    if (!path) return -1;
+
+    int sfontId = gAudioEngine.getEngine(engineIndex).loadSoundFont(path);
+    env->ReleaseStringUTFChars(soundFontPath, path);
+    return sfontId;
 }
 
-extern "C" JNIEXPORT jboolean JNICALL
+JNIEXPORT jboolean JNICALL
 Java_com_example_audio_NativeAudioBridge_selectProgram(
-    JNIEnv *env, jobject, jint channel, jint soundFontId, jint bank, jint preset) {
-    if (!gEngine) return JNI_FALSE;
-    return gEngine->soundfont().selectProgram(channel, soundFontId, bank, preset);
+        JNIEnv *env,
+        jobject /* this */,
+        jint engineIndex,
+        jint channel,
+        jint soundFontId,
+        jint bank,
+        jint preset) {
+    return static_cast<jboolean>(
+            gAudioEngine.getEngine(engineIndex).selectProgram(channel, soundFontId, bank, preset));
 }
 
-extern "C" JNIEXPORT void JNICALL
+JNIEXPORT void JNICALL
 Java_com_example_audio_NativeAudioBridge_noteOn(
-    JNIEnv *env, jobject, jint channel, jint midiNote, jint velocity) {
-    if (gEngine) gEngine->soundfont().noteOn(channel, midiNote, velocity);
+        JNIEnv *env,
+        jobject /* this */,
+        jint engineIndex,
+        jint channel,
+        jint midiNote,
+        jint velocity) {
+    gAudioEngine.getEngine(engineIndex).noteOn(channel, midiNote, velocity);
 }
 
-extern "C" JNIEXPORT void JNICALL
+JNIEXPORT void JNICALL
 Java_com_example_audio_NativeAudioBridge_noteOff(
-    JNIEnv *env, jobject, jint channel, jint midiNote) {
-    if (gEngine) gEngine->soundfont().noteOff(channel, midiNote);
+        JNIEnv *env,
+        jobject /* this */,
+        jint engineIndex,
+        jint channel,
+        jint midiNote) {
+    gAudioEngine.getEngine(engineIndex).noteOff(channel, midiNote);
 }
 
-extern "C" JNIEXPORT void JNICALL
+JNIEXPORT void JNICALL
 Java_com_example_audio_NativeAudioBridge_allNotesOff(
-    JNIEnv *env, jobject, jint channel) {
-    if (gEngine) gEngine->soundfont().allNotesOff(channel);
+        JNIEnv *env,
+        jobject /* this */,
+        jint engineIndex,
+        jint channel) {
+    gAudioEngine.getEngine(engineIndex).allNotesOff(channel);
 }
 
-extern "C" JNIEXPORT void JNICALL
+JNIEXPORT void JNICALL
 Java_com_example_audio_NativeAudioBridge_setTrackVolume(
-    JNIEnv *env, jobject, jint channel, jfloat volume01) {
-    if (gEngine) gEngine->soundfont().setChannelVolume(channel, volume01);
+        JNIEnv *env,
+        jobject /* this */,
+        jint engineIndex,
+        jint channel,
+        jfloat volume) {
+    gAudioEngine.getEngine(engineIndex).setChannelVolume(channel, volume);
 }
 
-extern "C" JNIEXPORT void JNICALL
+JNIEXPORT void JNICALL
 Java_com_example_audio_NativeAudioBridge_setTrackPan(
-    JNIEnv *env, jobject, jint channel, jfloat pan) {
-    if (gEngine) gEngine->soundfont().setChannelPan(channel, pan);
+        JNIEnv *env,
+        jobject /* this */,
+        jint engineIndex,
+        jint channel,
+        jfloat pan) {
+    gAudioEngine.getEngine(engineIndex).setChannelPan(channel, pan);
 }
 
-extern "C" JNIEXPORT void JNICALL
+JNIEXPORT void JNICALL
 Java_com_example_audio_NativeAudioBridge_setTrackTranspose(
-    JNIEnv *env, jobject, jint channel, jint semitones) {
-    if (gEngine) gEngine->soundfont().setChannelTransposeSemitones(channel, semitones);
+        JNIEnv *env,
+        jobject /* this */,
+        jint engineIndex,
+        jint channel,
+        jint semitones) {
+    gAudioEngine.getEngine(engineIndex).setChannelTransposeSemitones(channel, semitones);
 }
+
+JNIEXPORT void JNICALL
+Java_com_example_audio_NativeAudioBridge_pitchBend(
+        JNIEnv *env,
+        jobject /* this */,
+        jint engineIndex,
+        jint channel,
+        jint bendValue) {
+    gAudioEngine.getEngine(engineIndex).pitchBend(channel, bendValue);
+}
+
+} // extern "C"

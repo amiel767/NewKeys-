@@ -193,17 +193,17 @@ class AudioEngine(private val context: Context) {
     fun noteOn(noteName: String, velocity: Float = 0.85f, channel: Int = activeTargetChannel) {
         val midiNote = noteNameToMidi(noteName)
         val velInt = (velocity * 127f).toInt().coerceIn(1, 127)
-        midiEventChannel.trySend(MidiEngineEvent.NoteOn(channel, midiNote, velInt))
+        NativeAudioBridge.safeNoteOn(channel.coerceIn(0, 7), midiNote, velInt)
     }
 
     fun noteOff(noteName: String, channel: Int = activeTargetChannel) {
         val midiNote = noteNameToMidi(noteName)
-        midiEventChannel.trySend(MidiEngineEvent.NoteOff(channel, midiNote))
+        NativeAudioBridge.safeNoteOff(channel.coerceIn(0, 7), midiNote)
     }
 
     fun setPitchBend(bend: Float, channel: Int = activeTargetChannel) {
         val midiBend = ((bend + 1.0f) * 8191.5f).toInt().coerceIn(0, 16383)
-        midiEventChannel.trySend(MidiEngineEvent.PitchBend(channel, midiBend))
+        NativeAudioBridge.safePitchBend(channel.coerceIn(0, 7), midiBend)
     }
 
     fun allNotesOff() {
@@ -264,10 +264,16 @@ class AudioEngine(private val context: Context) {
                                 val data2 = if (count > 2) (msg[offset + 2].toInt() and 0x7F) else 0
 
                                 when (command) {
-                                    0x90 -> { // Note On
-                                        midiEventChannel.trySend(
-                                            MidiEngineEvent.NoteOn(channel, data1, data2)
-                                        )
+                                    0x90 -> { // Note On (velocity == 0 is treated as Note Off)
+                                        if (data2 <= 0) {
+                                            midiEventChannel.trySend(
+                                                MidiEngineEvent.NoteOff(channel, data1)
+                                            )
+                                        } else {
+                                            midiEventChannel.trySend(
+                                                MidiEngineEvent.NoteOn(channel, data1, data2)
+                                            )
+                                        }
                                     }
                                     0x80 -> { // Note Off
                                         midiEventChannel.trySend(

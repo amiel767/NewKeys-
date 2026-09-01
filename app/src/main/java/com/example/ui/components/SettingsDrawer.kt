@@ -549,7 +549,7 @@ private fun AudioEngineSubPage(
     onToggleLowLatency: () -> Unit,
     onBack: () -> Unit
 ) {
-    val engines = listOf("Oboe", "AAudio Native", "OpenSL ES")
+    val engines = listOf("FluidSynth (Oboe High-Performance)", "FluidSynth (OpenSL ES)")
     val bufferSizes = listOf(64, 128, 256, 512)
 
     Column(modifier = Modifier.fillMaxSize()) {

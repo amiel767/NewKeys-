@@ -5,6 +5,13 @@ import android.util.Log
 object NativeAudioBridge {
     private var isLibraryLoaded = false
 
+    const val ENGINE_FADER = 0
+    const val ENGINE_PAD = 1
+    const val ENGINE_DRUM = 2
+
+    const val DRIVER_OBOE = 0
+    const val DRIVER_OPENSL_ES = 1
+
     init {
         try {
             System.loadLibrary("native-lib")
@@ -18,23 +25,24 @@ object NativeAudioBridge {
 
     fun isNativeReady(): Boolean = isLibraryLoaded
 
-    external fun startEngine(): Boolean
+    external fun startEngine(driverType: Int = 0): Boolean
     external fun stopEngine()
-    external fun loadSoundFont(absolutePath: String): Int
-    external fun selectProgram(channel: Int, soundFontId: Int, bank: Int, preset: Int): Boolean
-    external fun noteOn(channel: Int, midiNote: Int, velocity: Int)
-    external fun noteOff(channel: Int, midiNote: Int)
-    external fun allNotesOff(channel: Int)
-    external fun setTrackVolume(channel: Int, volume01: Float)
-    external fun setTrackPan(channel: Int, pan: Float)
-    external fun setTrackTranspose(channel: Int, semitones: Int)
-    external fun pitchBend(channel: Int, bendValue: Int)
+    external fun setAudioDriver(driverType: Int)
+    external fun loadSoundFont(engineIndex: Int, absolutePath: String): Int
+    external fun selectProgram(engineIndex: Int, channel: Int, soundFontId: Int, bank: Int, preset: Int): Boolean
+    external fun noteOn(engineIndex: Int, channel: Int, midiNote: Int, velocity: Int)
+    external fun noteOff(engineIndex: Int, channel: Int, midiNote: Int)
+    external fun allNotesOff(engineIndex: Int, channel: Int)
+    external fun setTrackVolume(engineIndex: Int, channel: Int, volume01: Float)
+    external fun setTrackPan(engineIndex: Int, channel: Int, pan: Float)
+    external fun setTrackTranspose(engineIndex: Int, channel: Int, semitones: Int)
+    external fun pitchBend(engineIndex: Int, channel: Int, bendValue: Int)
 
-    // Safe wrappers to avoid crashes if native library isn't compiled into the APK yet
-    fun safeStartEngine(): Boolean {
+    // Safe wrappers to avoid crashes if native library isn't compiled or loaded
+    fun safeStartEngine(driverType: Int = 0): Boolean {
         return if (isLibraryLoaded) {
             try {
-                startEngine()
+                startEngine(driverType)
             } catch (e: Throwable) {
                 Log.e("NativeAudioBridge", "Error invoking startEngine: ${e.message}")
                 false
@@ -52,10 +60,20 @@ object NativeAudioBridge {
         }
     }
 
-    fun safeLoadSoundFont(absolutePath: String): Int {
+    fun safeSetAudioDriver(driverType: Int) {
+        if (isLibraryLoaded) {
+            try {
+                setAudioDriver(driverType)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking setAudioDriver: ${e.message}")
+            }
+        }
+    }
+
+    fun safeLoadSoundFont(engineIndex: Int = ENGINE_FADER, absolutePath: String): Int {
         return if (isLibraryLoaded) {
             try {
-                loadSoundFont(absolutePath)
+                loadSoundFont(engineIndex, absolutePath)
             } catch (e: Throwable) {
                 Log.e("NativeAudioBridge", "Error invoking loadSoundFont: ${e.message}")
                 -1
@@ -63,10 +81,16 @@ object NativeAudioBridge {
         } else -1
     }
 
-    fun safeSelectProgram(channel: Int, soundFontId: Int, bank: Int, preset: Int): Boolean {
+    fun safeSelectProgram(
+        engineIndex: Int = ENGINE_FADER,
+        channel: Int,
+        soundFontId: Int,
+        bank: Int,
+        preset: Int
+    ): Boolean {
         return if (isLibraryLoaded) {
             try {
-                selectProgram(channel, soundFontId, bank, preset)
+                selectProgram(engineIndex, channel, soundFontId, bank, preset)
             } catch (e: Throwable) {
                 Log.e("NativeAudioBridge", "Error invoking selectProgram: ${e.message}")
                 false
@@ -74,70 +98,98 @@ object NativeAudioBridge {
         } else false
     }
 
-    fun safeNoteOn(channel: Int, midiNote: Int, velocity: Int = 100) {
+    fun safeNoteOn(
+        channel: Int,
+        midiNote: Int,
+        velocity: Int = 100,
+        engineIndex: Int = ENGINE_FADER
+    ) {
         if (isLibraryLoaded) {
             try {
-                noteOn(channel, midiNote, velocity)
+                noteOn(engineIndex, channel, midiNote, velocity)
             } catch (e: Throwable) {
                 Log.e("NativeAudioBridge", "Error invoking noteOn: ${e.message}")
             }
         }
     }
 
-    fun safeNoteOff(channel: Int, midiNote: Int) {
+    fun safeNoteOff(
+        channel: Int,
+        midiNote: Int,
+        engineIndex: Int = ENGINE_FADER
+    ) {
         if (isLibraryLoaded) {
             try {
-                noteOff(channel, midiNote)
+                noteOff(engineIndex, channel, midiNote)
             } catch (e: Throwable) {
                 Log.e("NativeAudioBridge", "Error invoking noteOff: ${e.message}")
             }
         }
     }
 
-    fun safeAllNotesOff(channel: Int) {
+    fun safeAllNotesOff(
+        channel: Int = -1,
+        engineIndex: Int = ENGINE_FADER
+    ) {
         if (isLibraryLoaded) {
             try {
-                allNotesOff(channel)
+                allNotesOff(engineIndex, channel)
             } catch (e: Throwable) {
                 Log.e("NativeAudioBridge", "Error invoking allNotesOff: ${e.message}")
             }
         }
     }
 
-    fun safeSetTrackVolume(channel: Int, volume01: Float) {
+    fun safeSetTrackVolume(
+        channel: Int,
+        volume01: Float,
+        engineIndex: Int = ENGINE_FADER
+    ) {
         if (isLibraryLoaded) {
             try {
-                setTrackVolume(channel, volume01)
+                setTrackVolume(engineIndex, channel, volume01)
             } catch (e: Throwable) {
                 Log.e("NativeAudioBridge", "Error invoking setTrackVolume: ${e.message}")
             }
         }
     }
 
-    fun safeSetTrackPan(channel: Int, pan: Float) {
+    fun safeSetTrackPan(
+        channel: Int,
+        pan: Float,
+        engineIndex: Int = ENGINE_FADER
+    ) {
         if (isLibraryLoaded) {
             try {
-                setTrackPan(channel, pan)
+                setTrackPan(engineIndex, channel, pan)
             } catch (e: Throwable) {
                 Log.e("NativeAudioBridge", "Error invoking setTrackPan: ${e.message}")
             }
         }
     }
 
-    fun safeSetTrackTranspose(channel: Int, semitones: Int) {
+    fun safeSetTrackTranspose(
+        channel: Int,
+        semitones: Int,
+        engineIndex: Int = ENGINE_FADER
+    ) {
         if (isLibraryLoaded) {
             try {
-                setTrackTranspose(channel, semitones)
+                setTrackTranspose(engineIndex, channel, semitones)
             } catch (e: Throwable) {
                 Log.e("NativeAudioBridge", "Error invoking setTrackTranspose: ${e.message}")
             }
         }
     }
 
-    fun safePitchBend(channel: Int, bendValue: Int) {
+    fun safePitchBend(
+        channel: Int,
+        bendValue: Int,
+        engineIndex: Int = ENGINE_FADER
+    ) {
         if (isLibraryLoaded) {
             try {
-                pitchBend(channel, bendValue)
+                pitchBend(engineIndex, channel, bendValue)
             } catch (e: Throwable) {
                 Log.e("NativeAudioBridge", "Error invoking pitchBend: ${e.message}")
             }

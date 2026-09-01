@@ -137,10 +137,14 @@ fun SoundfontDialog(
 
                 // Content Lists
                 if (activeTab == "bank") {
-                    if (presets.isEmpty()) {
+                    val memoizedPresets = androidx.compose.runtime.remember(presets) {
+                        presets.sortedWith(compareBy({ it.bankNumber }, { it.id }))
+                    }
+
+                    if (memoizedPresets.isEmpty()) {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Text(
-                                text = "Aucun preset trouvé dans ce SoundFont.\nSélectionnez un fichier .sf2 dans l'onglet 'Fichiers .SF2'.",
+                                text = "Aucun preset disponible.\nSélectionnez une banque .sf2 dans l'onglet 'Fichiers .SF2'.",
                                 fontSize = 11.sp,
                                 color = TextDim,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -153,7 +157,10 @@ fun SoundfontDialog(
                                 .weight(1f),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            items(presets) { preset ->
+                            items(
+                                items = memoizedPresets,
+                                key = { "${it.bankNumber}:${it.id}" }
+                            ) { preset ->
                                 val isSelected = selectedPresetId == preset.id
                                 Row(
                                     modifier = Modifier

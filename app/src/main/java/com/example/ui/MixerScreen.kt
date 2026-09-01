@@ -49,22 +49,32 @@ fun MixerScreen(
         modifier = modifier
             .fillMaxSize()
             .background(DarkBg)
-            .padding(6.dp)
+            .padding(
+                start = 6.dp,
+                end = 6.dp,
+                top = 6.dp,
+                bottom = if (animatedKbFraction > 0.05f) 0.dp else 6.dp
+            )
             .testTag("mixer_screen_root")
     ) {
         // Device Chassis Card
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .shadow(16.dp, RoundedCornerShape(14.dp))
-                .clip(RoundedCornerShape(14.dp))
+                .shadow(16.dp, RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomStart = if (animatedKbFraction > 0.05f) 0.dp else 14.dp, bottomEnd = if (animatedKbFraction > 0.05f) 0.dp else 14.dp))
+                .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomStart = if (animatedKbFraction > 0.05f) 0.dp else 14.dp, bottomEnd = if (animatedKbFraction > 0.05f) 0.dp else 14.dp))
                 .background(
                     Brush.linearGradient(
                         colors = listOf(Color(0xFF131D28), Color(0xFF101922), Color(0xFF0C131B))
                     )
                 )
-                .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(14.dp))
-                .padding(horizontal = 8.dp, vertical = 6.dp)
+                .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomStart = if (animatedKbFraction > 0.05f) 0.dp else 14.dp, bottomEnd = if (animatedKbFraction > 0.05f) 0.dp else 14.dp))
+                .padding(
+                    start = 8.dp,
+                    end = 8.dp,
+                    top = 6.dp,
+                    bottom = if (animatedKbFraction > 0.05f) 0.dp else 6.dp
+                )
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // 1. TOP BAR
@@ -102,41 +112,57 @@ fun MixerScreen(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 // 2. MIXER TRACKS SECTION (8 Tracks + 1 Master)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    // Regular Tracks 1..8
-                    uiState.tracks.forEach { track ->
+                if (animatedKbFraction >= 0.50f) {
+                    CompactHorizontalFadersRack(
+                        tracks = uiState.tracks,
+                        masterTrack = uiState.masterTrack,
+                        onVolumeChange = { id, vol -> viewModel.setTrackVolume(id, vol) },
+                        onPowerToggle = { id -> viewModel.toggleTrackPower(id) },
+                        onPanChange = { id, pan -> viewModel.setTrackPan(id, pan) },
+                        onMuteSoloClick = { id -> viewModel.onTrackMuteSoloClick(id) },
+                        onTrackNameClick = { id -> viewModel.openSoundfontForTrack(id) },
+                        onFxClick = { id -> viewModel.openEffectsForTrack(id) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(68.dp)
+                    )
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        // Regular Tracks 1..8
+                        uiState.tracks.forEach { track ->
+                            VerticalTrackChannel(
+                                track = track,
+                                onVolumeChange = { vol -> viewModel.setTrackVolume(track.id, vol) },
+                                onPowerToggle = { viewModel.toggleTrackPower(track.id) },
+                                onPanChange = { pan -> viewModel.setTrackPan(track.id, pan) },
+                                onMuteSoloClick = { viewModel.onTrackMuteSoloClick(track.id) },
+                                onTrackNameClick = { viewModel.openSoundfontForTrack(track.id) },
+                                onFxClick = { viewModel.openEffectsForTrack(track.id) },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                            )
+                        }
+
+                        // Master Channel
                         VerticalTrackChannel(
-                            track = track,
-                            onVolumeChange = { vol -> viewModel.setTrackVolume(track.id, vol) },
-                            onPowerToggle = { viewModel.toggleTrackPower(track.id) },
-                            onPanChange = { pan -> viewModel.setTrackPan(track.id, pan) },
-                            onMuteSoloClick = { viewModel.onTrackMuteSoloClick(track.id) },
-                            onTrackNameClick = { viewModel.openSoundfontForTrack(track.id) },
-                            onFxClick = { viewModel.openEffectsForTrack(track.id) },
+                            track = uiState.masterTrack,
+                            onVolumeChange = { vol -> viewModel.setTrackVolume(0, vol) },
+                            onPowerToggle = {},
+                            onPanChange = {},
+                            onMuteSoloClick = {},
+                            onTrackNameClick = {},
+                            onFxClick = { viewModel.openEffectsForTrack(0) },
                             modifier = Modifier
-                                .weight(1f)
+                                .weight(1.08f)
                                 .fillMaxHeight()
                         )
                     }
-
-                    // Master Channel
-                    VerticalTrackChannel(
-                        track = uiState.masterTrack,
-                        onVolumeChange = { vol -> viewModel.setTrackVolume(0, vol) },
-                        onPowerToggle = {},
-                        onPanChange = {},
-                        onMuteSoloClick = {},
-                        onTrackNameClick = {},
-                        onFxClick = { viewModel.openEffectsForTrack(0) },
-                        modifier = Modifier
-                            .weight(1.08f)
-                            .fillMaxHeight()
-                    )
                 }
 
                 Spacer(modifier = Modifier.height(4.dp))
