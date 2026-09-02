@@ -63,6 +63,17 @@ Java_com_example_audio_NativeAudioBridge_selectProgram(
             gAudioEngine.getEngine(engineIndex).selectProgram(channel, soundFontId, bank, preset));
 }
 
+JNIEXPORT jboolean JNICALL
+Java_com_example_audio_NativeAudioBridge_programChange(
+        JNIEnv *env,
+        jobject /* this */,
+        jint engineIndex,
+        jint channel,
+        jint preset) {
+    return static_cast<jboolean>(
+            gAudioEngine.getEngine(engineIndex).programChange(channel, preset));
+}
+
 JNIEXPORT void JNICALL
 Java_com_example_audio_NativeAudioBridge_noteOn(
         JNIEnv *env,

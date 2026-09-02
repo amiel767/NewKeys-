@@ -17,6 +17,8 @@ inline int fluid_settings_setnum(fluid_settings_t*, const char*, double) { retur
 inline int fluid_settings_setint(fluid_settings_t*, const char*, int) { return 0; }
 inline int fluid_synth_sfload(fluid_synth_t*, const char*, int) { return -1; }
 inline int fluid_synth_program_select(fluid_synth_t*, int, int, int, int) { return -1; }
+inline int fluid_synth_program_change(fluid_synth_t*, int, int) { return -1; }
+inline int fluid_synth_bank_select(fluid_synth_t*, int, int) { return -1; }
 inline int fluid_synth_noteon(fluid_synth_t*, int, int, int) { return 0; }
 inline int fluid_synth_noteoff(fluid_synth_t*, int, int) { return 0; }
 inline int fluid_synth_all_notes_off(fluid_synth_t*, int) { return 0; }
@@ -43,6 +45,7 @@ public:
 
     int loadSoundFont(const std::string &absolutePath);
     bool selectProgram(int channel, int soundFontId, int bank, int preset);
+    bool programChange(int channel, int program);
 
     void noteOn(int channel, int midiNote, int velocity);
     void noteOff(int channel, int midiNote);

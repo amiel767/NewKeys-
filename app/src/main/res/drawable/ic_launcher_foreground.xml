@@ -3,6 +3,6 @@
     <item
         android:width="66dp"
         android:height="66dp"
-        android:drawable="@drawable/app_icon_soundfont_1787907382671"
+        android:drawable="@drawable/livekeys_sound_logo_1788292570407"
         android:gravity="center" />
 </layer-list>

@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "Soundfont Live Mixer"
+rootProject.name = "LiveKeys Sound"
 
 include(":app")

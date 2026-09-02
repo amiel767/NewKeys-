@@ -13,6 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
@@ -34,35 +35,44 @@ fun LiveKeysSplashScreen(
     modifier: Modifier = Modifier
 ) {
     var isVisible by remember { mutableStateOf(true) }
+    var startFadeIn by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        delay(1800)
+        delay(100)
+        startFadeIn = true
+        delay(1900)
         isVisible = false
-        delay(350)
+        delay(400)
         onFinished()
     }
 
+    val animatedFade by animateFloatAsState(
+        targetValue = if (startFadeIn && isVisible) 1f else 0f,
+        animationSpec = tween(650, easing = FastOutSlowInEasing),
+        label = "splash_fade"
+    )
+
     AnimatedVisibility(
         visible = isVisible,
-        enter = fadeIn(tween(300)),
-        exit = fadeOut(tween(350)),
+        enter = fadeIn(tween(400)),
+        exit = fadeOut(tween(400)),
         modifier = modifier
     ) {
         val infiniteTransition = rememberInfiniteTransition(label = "splash_pulse")
         val scale by infiniteTransition.animateFloat(
-            initialValue = 0.96f,
-            targetValue = 1.04f,
+            initialValue = 0.97f,
+            targetValue = 1.03f,
             animationSpec = infiniteRepeatable(
-                animation = tween(900, easing = FastOutSlowInEasing),
+                animation = tween(1000, easing = FastOutSlowInEasing),
                 repeatMode = RepeatMode.Reverse
             ),
             label = "scale"
         )
         val glowAlpha by infiniteTransition.animateFloat(
             initialValue = 0.4f,
-            targetValue = 0.9f,
+            targetValue = 0.95f,
             animationSpec = infiniteRepeatable(
-                animation = tween(750, easing = LinearEasing),
+                animation = tween(800, easing = LinearEasing),
                 repeatMode = RepeatMode.Reverse
             ),
             label = "glowAlpha"
@@ -71,11 +81,7 @@ fun LiveKeysSplashScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(Color(0xFF1E1035), Color(0xFF0F0B1E), Color(0xFF080610))
-                    )
-                )
+                .background(Color(0xFF070709))
                 .clickable {
                     isVisible = false
                     onFinished()
@@ -84,56 +90,66 @@ fun LiveKeysSplashScreen(
             contentAlignment = Alignment.Center
         ) {
             Column(
+                modifier = Modifier
+                    .alpha(animatedFade)
+                    .scale(scale),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                // Glowing Logo Card
+                // Glowing LK Logo with White Keyboard Emblem on Pure Black
                 Box(
                     modifier = Modifier
-                        .scale(scale)
-                        .size(110.dp)
-                        .shadow(28.dp, CircleShape, spotColor = NeonCyan)
+                        .size(120.dp)
+                        .shadow(32.dp, CircleShape, spotColor = Color.White)
                         .clip(CircleShape)
-                        .background(
-                            Brush.linearGradient(
-                                listOf(Color(0xFF281845), Color(0xFF130D26))
-                            )
-                        )
-                        .border(2.dp, NeonCyan.copy(alpha = glowAlpha), CircleShape)
-                        .padding(4.dp),
+                        .background(Color(0xFF000000))
+                        .border(2.dp, Color.White.copy(alpha = glowAlpha), CircleShape)
+                        .padding(6.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Image(
-                        painter = painterResource(id = R.drawable.livekeys_logo_1787950407314),
-                        contentDescription = "LiveKeys Logo",
+                        painter = painterResource(id = R.drawable.livekeys_sound_logo_1788292570407),
+                        contentDescription = "LiveKeys Sound Logo",
                         modifier = Modifier
                             .fillMaxSize()
                             .clip(CircleShape)
                     )
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "LIVEKEYS",
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 5.sp,
+                        color = Color.White
+                    )
+                    Text(
+                        text = "SOUND",
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.Light,
+                        letterSpacing = 4.sp,
+                        color = NeonCyan
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
 
                 Text(
-                    text = "LIVEKEYS",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 4.sp,
-                    color = Color.White
-                )
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Text(
-                    text = "SOUNDFONT LIVE PERFORMANCE MIXER",
+                    text = "PROFESSIONAL LIVE SOUND ENGINE",
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.5.sp,
-                    color = NeonCyanLight,
+                    letterSpacing = 2.sp,
+                    color = Color(0x99FFFFFF),
                     textAlign = TextAlign.Center
                 )
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
                 // Equalizer Bar Animation
                 Row(
@@ -148,7 +164,7 @@ fun LiveKeysSplashScreen(
                                 .clip(RoundedCornerShape(2.dp))
                                 .background(
                                     Brush.verticalGradient(
-                                        listOf(NeonCyanLight, NeonMagenta)
+                                        listOf(Color.White, NeonCyan)
                                     )
                                 )
                         )

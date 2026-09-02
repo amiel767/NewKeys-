@@ -490,13 +490,29 @@ fun FaderSliderWithVuMeter(
     var containerHeightPx by remember { mutableFloatStateOf(120f) }
     var isDragging by remember { mutableStateOf(false) }
 
-    // Fader Bonnet Dimensions: larger and wider per user instruction
-    val capWidthDp = 38.dp
-    val capHeightDp = 58.dp
+    // Fader Bonnet Dimensions: Console Pro 3D Thumb
+    val capWidthDp = 36.dp
+    val capHeightDp = 52.dp
 
     val density = LocalDensity.current
     val capHeightPx = remember(density, capHeightDp) { with(density) { capHeightDp.toPx() } }
     val currentOnValueChange by rememberUpdatedState(onValueChange)
+
+    // Calculate decibels from 0..1 fader position
+    fun valueToDb(v: Float): String {
+        return when {
+            v <= 0.001f -> "-∞ dB"
+            v >= 0.99f -> "+6.0 dB"
+            v >= 0.75f -> {
+                val db = (v - 0.75f) / 0.25f * 6.0f
+                String.format("+%.1f dB", db)
+            }
+            else -> {
+                val db = (v / 0.75f - 1f) * 48f
+                String.format("%.1f dB", db)
+            }
+        }
+    }
 
     Box(
         modifier = modifier
@@ -530,16 +546,61 @@ fun FaderSliderWithVuMeter(
             },
         contentAlignment = Alignment.BottomCenter
     ) {
-        // ================= 1. VERTICAL BLACK COLUMN WITH ROUNDED FADED GREY CONTOUR =================
+        // ================= 0. dB GRADUATION TICKS ON LEFT & RIGHT =================
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(vertical = 8.dp)
+        ) {
+            val h = size.height
+            val w = size.width
+            val tickColor = Color(0x33FFFFFF)
+            val unityColor = Color(0x8822D3EE)
+
+            // Tick fractions from bottom (0 = -inf, 0.20 = -24, 0.40 = -12, 0.55 = -6, 0.75 = 0dB, 1.0 = +6dB)
+            val tickPositions = listOf(
+                0.0f to false,   // -inf
+                0.20f to false,  // -24dB
+                0.40f to false,  // -12dB
+                0.55f to false,  // -6dB
+                0.75f to true,   // 0dB (Unity)
+                1.0f to false    // +6dB
+            )
+
+            tickPositions.forEach { (fraction, isUnity) ->
+                val y = h * (1f - fraction)
+                val tColor = if (isUnity) unityColor else tickColor
+                val tLength = if (isUnity) 5.dp.toPx() else 3.5.dp.toPx()
+                val strokeW = if (isUnity) 1.5f else 1.0f
+
+                // Left tick
+                drawLine(
+                    color = tColor,
+                    start = Offset(2.dp.toPx(), y),
+                    end = Offset(2.dp.toPx() + tLength, y),
+                    strokeWidth = strokeW,
+                    cap = StrokeCap.Round
+                )
+                // Right tick
+                drawLine(
+                    color = tColor,
+                    start = Offset(w - 2.dp.toPx() - tLength, y),
+                    end = Offset(w - 2.dp.toPx(), y),
+                    strokeWidth = strokeW,
+                    cap = StrokeCap.Round
+                )
+            }
+        }
+
+        // ================= 1. VERTICAL BLACK COLUMN WITH ROUNDED METALLIC CONTOUR =================
         Box(
             modifier = Modifier
-                .width(13.dp)
+                .width(12.dp)
                 .fillMaxHeight()
                 .padding(vertical = 4.dp)
-                .clip(RoundedCornerShape(6.5.dp))
-                .background(Color(0xFF12151E))
-                // Faded translucent rounded metallic grey border around vertical slot
-                .border(1.2.dp, Color(0x388896AB), RoundedCornerShape(6.5.dp)),
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color(0xFF10131B))
+                .border(1.2.dp, Color(0x388896AB), RoundedCornerShape(6.dp)),
             contentAlignment = Alignment.BottomCenter
         ) {
             // Deep black inner groove
@@ -549,7 +610,7 @@ fun FaderSliderWithVuMeter(
                     .fillMaxHeight()
                     .padding(vertical = 2.dp)
                     .clip(RoundedCornerShape(2.5.dp))
-                    .background(Color(0xFF06070B)),
+                    .background(Color(0xFF040508)),
                 contentAlignment = Alignment.BottomCenter
             ) {
                 // Track volume level indicator inside the groove
@@ -562,7 +623,7 @@ fun FaderSliderWithVuMeter(
                             .background(
                                 Brush.verticalGradient(
                                     listOf(
-                                        ledColor.copy(alpha = 0.65f),
+                                        ledColor.copy(alpha = 0.70f),
                                         ledColor.copy(alpha = 0.25f)
                                     )
                                 )
@@ -593,7 +654,7 @@ fun FaderSliderWithVuMeter(
             }
         }
 
-        // ================= 2. REALISTIC 3D WHITE/SILVER BONNET (FROM USER IMAGE) =================
+        // ================= 2. CONSOLE PRO 3D DARK MATTE METAL BONNET (THUMB) =================
         val usableHeightPx = (containerHeightPx - capHeightPx).coerceAtLeast(0f)
         val capOffsetFromTop = (1f - value.coerceIn(0f, 1f)) * usableHeightPx
 
@@ -606,126 +667,133 @@ fun FaderSliderWithVuMeter(
                 .width(capWidthDp)
                 .height(capHeightDp)
                 .shadow(
-                    elevation = if (isDragging) 14.dp else 7.dp,
-                    shape = RoundedCornerShape(9.dp),
+                    elevation = if (isDragging) 16.dp else 8.dp,
+                    shape = RoundedCornerShape(8.dp),
                     spotColor = Color.Black
                 )
-                .clip(RoundedCornerShape(9.dp))
+                .clip(RoundedCornerShape(8.dp))
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            Color(0xFFF7F9FB),
-                            Color(0xFFE9EDF2),
-                            Color(0xFFD8DDE4),
-                            Color(0xFFC5CCD6),
-                            Color(0xFFAEB7C2)
+                            Color(0xFF384050),
+                            Color(0xFF282E3B),
+                            Color(0xFF1E232E),
+                            Color(0xFF171B24)
                         )
                     )
                 )
-                .border(1.dp, Color(0x88CBD5E1), RoundedCornerShape(9.dp))
+                .border(1.dp, Color(0x448896AB), RoundedCornerShape(8.dp))
         ) {
-            // High-precision Canvas rendering 3D tactile bevels, colored center stripe & wavy grooves
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val w = size.width
                 val h = size.height
 
-                // 1. Subtle Side Bevel Gradients for Volumetric 3D Cylinder Feel
-                drawRoundRect(
-                    brush = Brush.horizontalGradient(
-                        0.0f to Color(0x35000000),
-                        0.12f to Color(0x00FFFFFF),
-                        0.50f to Color(0x25FFFFFF),
-                        0.88f to Color(0x00000000),
-                        1.0f to Color(0x45000000)
-                    ),
-                    size = size,
-                    cornerRadius = CornerRadius(9.dp.toPx(), 9.dp.toPx())
-                )
-
-                // 2. CENTER POSITION LINE (Colored in track vivid color with black border)
-                val centerY = h * 0.50f
-                val startX = w * 0.08f
-                val endX = w * 0.92f
-
-                // Line bottom shadow/highlight
+                // Top beveled chamfer highlight
                 drawLine(
-                    color = Color(0x66FFFFFF),
-                    start = Offset(startX, centerY + 2.0f),
-                    end = Offset(endX, centerY + 2.0f),
-                    strokeWidth = 1.0f,
+                    color = Color(0x88FFFFFF),
+                    start = Offset(w * 0.15f, 1.5f),
+                    end = Offset(w * 0.85f, 1.5f),
+                    strokeWidth = 1.4f,
                     cap = StrokeCap.Round
                 )
-                // Black outer groove line
+
+                // Bottom beveled chamfer shadow
                 drawLine(
-                    color = Color(0xFF14161C),
-                    start = Offset(startX, centerY),
-                    end = Offset(endX, centerY),
-                    strokeWidth = 3.2f,
-                    cap = StrokeCap.Round
-                )
-                // Vibrant colored center indicator
-                val indicatorColor = if (isEnabled) ledColor else Color(0xFF718096)
-                drawLine(
-                    color = indicatorColor,
-                    start = Offset(startX + 2f, centerY),
-                    end = Offset(endX - 2f, centerY),
+                    color = Color(0x66000000),
+                    start = Offset(w * 0.10f, h - 1.5f),
+                    end = Offset(w * 0.90f, h - 1.5f),
                     strokeWidth = 1.6f,
                     cap = StrokeCap.Round
                 )
 
-                // 3. WAVY HORIZONTAL TEXTURED GRIP GROOVES (3 above, 3 below)
-                fun drawWavyGroove(grooveCenterY: Float) {
-                    val wavePath = Path()
-                    val waveWidth = endX - startX
-                    val steps = 32
-                    val amplitude = 1.8f
+                // Side cylinder lighting gradients
+                drawRoundRect(
+                    brush = Brush.horizontalGradient(
+                        0.0f to Color(0x45000000),
+                        0.15f to Color(0x00FFFFFF),
+                        0.50f to Color(0x22FFFFFF),
+                        0.85f to Color(0x00000000),
+                        1.0f to Color(0x55000000)
+                    ),
+                    size = size,
+                    cornerRadius = CornerRadius(8.dp.toPx(), 8.dp.toPx())
+                )
 
-                    for (i in 0..steps) {
-                        val frac = i.toFloat() / steps.toFloat()
-                        val px = startX + frac * waveWidth
-                        val py = grooveCenterY + sin(frac * 2.0 * PI).toFloat() * amplitude
-                        if (i == 0) wavePath.moveTo(px, py) else wavePath.lineTo(px, py)
-                    }
-
-                    // Lower highlight for 3D depression look
-                    val highlightPath = Path()
-                    for (i in 0..steps) {
-                        val frac = i.toFloat() / steps.toFloat()
-                        val px = startX + frac * waveWidth
-                        val py = grooveCenterY + 1.1f + sin(frac * 2.0 * PI).toFloat() * amplitude
-                        if (i == 0) highlightPath.moveTo(px, py) else highlightPath.lineTo(px, py)
-                    }
-                    drawPath(
-                        path = highlightPath,
-                        color = Color(0x55FFFFFF),
-                        style = Stroke(width = 1.0f, cap = StrokeCap.Round)
+                // Tactile horizontal brushed ribs
+                val ribColor = Color(0x18FFFFFF)
+                val ribShadow = Color(0x35000000)
+                listOf(0.20f, 0.30f, 0.70f, 0.80f).forEach { frac ->
+                    val ribY = h * frac
+                    drawLine(
+                        color = ribShadow,
+                        start = Offset(w * 0.15f, ribY),
+                        end = Offset(w * 0.85f, ribY),
+                        strokeWidth = 1.8f,
+                        cap = StrokeCap.Round
                     )
-
-                    // Upper shadow
-                    drawPath(
-                        path = wavePath,
-                        color = Color(0x35374151),
-                        style = Stroke(width = 1.6f, cap = StrokeCap.Round)
+                    drawLine(
+                        color = ribColor,
+                        start = Offset(w * 0.15f, ribY + 1.2f),
+                        end = Offset(w * 0.85f, ribY + 1.2f),
+                        strokeWidth = 1.0f,
+                        cap = StrokeCap.Round
                     )
                 }
 
-                // 3 Grooves above center line
-                drawWavyGroove(h * 0.18f)
-                drawWavyGroove(h * 0.28f)
-                drawWavyGroove(h * 0.38f)
+                // Center laser engraved neon LED strip
+                val centerY = h * 0.50f
+                val startX = w * 0.10f
+                val endX = w * 0.90f
 
-                // 3 Grooves below center line
-                drawWavyGroove(h * 0.62f)
-                drawWavyGroove(h * 0.72f)
-                drawWavyGroove(h * 0.82f)
-
-                // Top highlight rim
+                // Outer dark groove
                 drawLine(
-                    color = Color(0xBBFFFFFF),
-                    start = Offset(w * 0.20f, 2.5f),
-                    end = Offset(w * 0.80f, 2.5f),
-                    strokeWidth = 1.5f,
+                    color = Color(0xFF0A0C10),
+                    start = Offset(startX, centerY),
+                    end = Offset(endX, centerY),
+                    strokeWidth = 4.0f,
                     cap = StrokeCap.Round
+                )
+                // Vibrant neon core
+                val indicatorColor = if (isEnabled) ledColor else Color(0xFF64748B)
+                drawLine(
+                    color = indicatorColor,
+                    start = Offset(startX + 2f, centerY),
+                    end = Offset(endX - 2f, centerY),
+                    strokeWidth = 2.0f,
+                    cap = StrokeCap.Round
+                )
+                // Center white hot laser filament
+                if (isEnabled) {
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.90f),
+                        start = Offset(startX + 6f, centerY),
+                        end = Offset(endX - 6f, centerY),
+                        strokeWidth = 0.8f,
+                        cap = StrokeCap.Round
+                    )
+                }
+            }
+        }
+
+        // ================= 3. LIVE dB VALUE BADGE DISPLAY DURING DRAGGING =================
+        if (isDragging) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .graphicsLayer {
+                        translationY = (capOffsetFromTop - 26.dp.toPx()).coerceAtLeast(0f)
+                    }
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(Color(0xE60A101D))
+                    .border(1.dp, ledColor, RoundedCornerShape(5.dp))
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = valueToDb(value),
+                    fontSize = 8.5.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = NeonCyanLight,
+                    maxLines = 1
                 )
             }
         }

@@ -68,7 +68,20 @@ int SoundfontEngine::loadSoundFont(const std::string &absolutePath) {
 bool SoundfontEngine::selectProgram(int channel, int soundFontId, int bank, int preset) {
     if (!mSynth || channel < 0 || channel >= kMaxChannels) return false;
 
-    int result = fluid_synth_program_select(mSynth, channel, soundFontId, bank, preset);
+    int result = FLUID_FAILED;
+    if (soundFontId > 0) {
+        result = fluid_synth_program_select(mSynth, channel, soundFontId, bank, preset);
+    }
+    if (result != FLUID_OK) {
+        fluid_synth_bank_select(mSynth, channel, bank);
+        result = fluid_synth_program_change(mSynth, channel, preset);
+    }
+    return (result == FLUID_OK);
+}
+
+bool SoundfontEngine::programChange(int channel, int program) {
+    if (!mSynth || channel < 0 || channel >= kMaxChannels) return false;
+    int result = fluid_synth_program_change(mSynth, channel, program);
     return (result == FLUID_OK);
 }
 

@@ -30,6 +30,7 @@ object NativeAudioBridge {
     external fun setAudioDriver(driverType: Int)
     external fun loadSoundFont(engineIndex: Int, absolutePath: String): Int
     external fun selectProgram(engineIndex: Int, channel: Int, soundFontId: Int, bank: Int, preset: Int): Boolean
+    external fun programChange(engineIndex: Int, channel: Int, preset: Int): Boolean
     external fun noteOn(engineIndex: Int, channel: Int, midiNote: Int, velocity: Int)
     external fun noteOff(engineIndex: Int, channel: Int, midiNote: Int)
     external fun allNotesOff(engineIndex: Int, channel: Int)
@@ -93,6 +94,21 @@ object NativeAudioBridge {
                 selectProgram(engineIndex, channel, soundFontId, bank, preset)
             } catch (e: Throwable) {
                 Log.e("NativeAudioBridge", "Error invoking selectProgram: ${e.message}")
+                false
+            }
+        } else false
+    }
+
+    fun safeProgramChange(
+        engineIndex: Int = ENGINE_FADER,
+        channel: Int,
+        preset: Int
+    ): Boolean {
+        return if (isLibraryLoaded) {
+            try {
+                programChange(engineIndex, channel, preset)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking programChange: ${e.message}")
                 false
             }
         } else false

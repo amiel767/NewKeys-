@@ -71,6 +71,17 @@ enum class DrumPadStyle(
     MY_PEACH("Peach Blossom", DrumPadCategory.MATERIAL_YOU, Color(0xFFFED7AA), Color(0xFFC2410C))
 }
 
+data class TrackLayer(
+    val isEnabled: Boolean = true,
+    val soundfontName: String = "",
+    val patchName: String = "",
+    val soundfontId: Int = -1,
+    val bank: Int = 0,
+    val program: Int = 0,
+    val volume: Float = 1.0f,
+    val transpose: Int = 0
+)
+
 data class TrackChannel(
     val id: Int,
     val name: String,
@@ -85,6 +96,11 @@ data class TrackChannel(
     val patchName: String = "",
     val bank: Int = 0,
     val program: Int = 0,
+    val soundfontId: Int = -1,
+    // Dual Layering A / B
+    val layerA: TrackLayer = TrackLayer(isEnabled = true),
+    val layerB: TrackLayer = TrackLayer(isEnabled = false),
+    val activeLayerTab: String = "A", // "A" or "B"
     // FX Tabs per track
     val reverbPreset: String = "Concert Hall",
     val reverbMix: Float = 0.25f,
