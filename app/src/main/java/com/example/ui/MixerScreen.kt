@@ -372,7 +372,7 @@ fun MixerScreen(
                 onUpdatePadCustomization = { padId, label, style ->
                     viewModel.updateDrumPadCustomization(padId, label, style)
                 },
-                onAssignPadSample = { padId, sample -> viewModel.assignDrumSample(padId, sample.name) },
+                onAssignPadSample = { padId, sample -> viewModel.assignDrumSample(padId, sample.name, sample.path) },
                 onAssignPadNote = { padId, noteStr, oct, key -> viewModel.assignDrumSf2Note(padId, key, oct) }
             )
         }
@@ -395,8 +395,8 @@ fun MixerScreen(
                 onTogglePin = { viewModel.togglePinTonicPad() },
                 onClose = { viewModel.closeTonicPad() },
                 soundfonts = uiState.soundfontFiles,
-                currentLoadedSf2Name = defaultSfName,
-                loadedSf2Presets = uiState.soundfontPresets,
+                currentLoadedSf2Name = uiState.tonicSoundfontName.ifEmpty { defaultSfName },
+                loadedSf2Presets = if (uiState.tonicPresets.isNotEmpty()) uiState.tonicPresets else uiState.soundfontPresets,
                 onSelectPreset = { viewModel.selectSf2Preset(it) },
                 onSelectSf2File = { viewModel.loadSoundfontFromStorage(it) },
                 initialOffsetX = uiState.tonicPadOffsetX,
@@ -425,13 +425,24 @@ fun MixerScreen(
                 )
             }
             ActivePopup.SOUNDFONT -> {
+                val activePresets = when (uiState.activeSoundfontSource) {
+                    "drum" -> if (uiState.drumPadPresets.isNotEmpty()) uiState.drumPadPresets else uiState.soundfontPresets
+                    "pad" -> if (uiState.tonicPresets.isNotEmpty()) uiState.tonicPresets else uiState.soundfontPresets
+                    else -> uiState.soundfontPresets
+                }
+                val activePresetId = when (uiState.activeSoundfontSource) {
+                    "drum" -> uiState.selectedDrumPresetId
+                    "pad" -> uiState.selectedTonicPresetId
+                    else -> uiState.selectedSf2PresetId
+                }
+
                 SoundfontDialog(
                     trackId = uiState.activeSoundfontTrackId,
                     source = uiState.activeSoundfontSource,
-                    presets = uiState.soundfontPresets,
+                    presets = activePresets,
                     bankFiles = uiState.soundfontBankFiles,
                     soundfontStorageFiles = uiState.realSoundfonts,
-                    selectedPresetId = uiState.selectedSf2PresetId,
+                    selectedPresetId = activePresetId,
                     onSelectPreset = { viewModel.selectSf2Preset(it) },
                     onSelectSf2File = { viewModel.loadSoundfontFromStorage(it) },
                     activeTab = uiState.activeSf2Tab,

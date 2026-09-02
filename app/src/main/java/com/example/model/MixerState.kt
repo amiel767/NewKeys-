@@ -119,6 +119,7 @@ data class DrumPadItem(
     val label: String,
     val soundType: DrumSoundType = DrumSoundType.SAMPLE,
     val sampleFileName: String = "kick_808.wav",
+    val sampleFilePath: String = "",
     val sf2Note: String = "C2",
     val sf2NoteOctave: Int = 2,
     val sf2NoteKey: String = "C",

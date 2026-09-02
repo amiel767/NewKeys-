@@ -229,7 +229,57 @@ private fun AospMainSettingsPage(
                 .weight(1f),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // CARD 1: SOUNDGOODIZER & MASTER PROCESSING
+            // CARD 1: CONNECTIVITÉ & PÉRIPHÉRIQUES (AOSP STYLE)
+            item {
+                AospCard(title = "Périphériques & Connectivité") {
+                    Column {
+                        AospSettingItem(
+                            iconText = "🎹",
+                            iconBg = Color(0xFF10B981),
+                            title = "USB MIDI",
+                            subtitle = "Détection matérielle active (${midiDevices.count { it.isConnected }} connectés)",
+                            onClick = { onNavigateSubPage("midi") }
+                        )
+
+                        AospDivider()
+
+                        AospSettingItem(
+                            iconText = "⚡",
+                            iconBg = Color(0xFF06B6D4),
+                            title = "Moteur Audio & Latence",
+                            subtitle = "$audioEngine · Tampon $audioBufferSize frames (~4.2ms)",
+                            onClick = { onNavigateSubPage("audio") }
+                        )
+                    }
+                }
+            }
+
+            // CARD 2: PERSONNALISATION & APPARENCE (MATERIAL YOU)
+            item {
+                AospCard(title = "Personnalisation & Interface") {
+                    Column {
+                        AospSettingItem(
+                            iconText = "🎨",
+                            iconBg = Color(0xFF8B5CF6),
+                            title = "Thème d'application",
+                            subtitle = currentTheme.displayName,
+                            onClick = { onNavigateSubPage("themes") }
+                        )
+
+                        AospDivider()
+
+                        AospSettingItem(
+                            iconText = "🌐",
+                            iconBg = Color(0xFFEC4899),
+                            title = "Langue / Language",
+                            subtitle = selectedLanguage,
+                            onClick = {}
+                        )
+                    }
+                }
+            }
+
+            // CARD 3: SOUNDGOODIZER & MASTER PROCESSING (PLACED AT THE BOTTOM)
             item {
                 AospCard(title = "SoundGoodizer") {
                     Column(
@@ -330,56 +380,6 @@ private fun AospMainSettingsPage(
                                 modifier = Modifier.weight(1f)
                             )
                         }
-                    }
-                }
-            }
-
-            // CARD 2: CONNECTIVITÉ & PÉRIPHÉRIQUES (AOSP STYLE)
-            item {
-                AospCard(title = "Périphériques & Connectivité") {
-                    Column {
-                        AospSettingItem(
-                            iconText = "🎹",
-                            iconBg = Color(0xFF10B981),
-                            title = "USB MIDI",
-                            subtitle = "Détection matérielle active (${midiDevices.count { it.isConnected }} connectés)",
-                            onClick = { onNavigateSubPage("midi") }
-                        )
-
-                        AospDivider()
-
-                        AospSettingItem(
-                            iconText = "⚡",
-                            iconBg = Color(0xFF06B6D4),
-                            title = "Moteur Audio & Latence",
-                            subtitle = "$audioEngine · Tampon $audioBufferSize frames (~4.2ms)",
-                            onClick = { onNavigateSubPage("audio") }
-                        )
-                    }
-                }
-            }
-
-            // CARD 3: PERSONNALISATION & APPARENCE (MATERIAL YOU)
-            item {
-                AospCard(title = "Personnalisation & Interface") {
-                    Column {
-                        AospSettingItem(
-                            iconText = "🎨",
-                            iconBg = Color(0xFF8B5CF6),
-                            title = "Thème d'application",
-                            subtitle = currentTheme.displayName,
-                            onClick = { onNavigateSubPage("themes") }
-                        )
-
-                        AospDivider()
-
-                        AospSettingItem(
-                            iconText = "🌐",
-                            iconBg = Color(0xFFEC4899),
-                            title = "Langue / Language",
-                            subtitle = selectedLanguage,
-                            onClick = {}
-                        )
                     }
                 }
             }

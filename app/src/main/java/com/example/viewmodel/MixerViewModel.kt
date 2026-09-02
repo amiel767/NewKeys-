@@ -116,6 +116,12 @@ data class MixerUiState(
     val editingDrumPadId: Int? = null,
     val selectedDrumSampleForAssign: StorageItem? = null,
     val isAssignPadDialogOpen: Boolean = false,
+    val drumPadSoundfontName: String = "Acoustic Kit.sf2",
+    val drumPadPatchName: String = "Standard Drum Kit",
+    val drumPadBank: Int = 128,
+    val drumPadProgram: Int = 0,
+    val drumPadPresets: List<SoundfontPreset> = emptyList(),
+    val selectedDrumPresetId: Int = 0,
     
     // Tonic Pad
     val isMultiPadEnabled: Boolean = false,
@@ -125,6 +131,12 @@ data class MixerUiState(
     val tonicBrightness: Float = 0.70f,
     val tonicShimmer: Float = 0.15f,
     val tonicSubView: String = "main",
+    val tonicSoundfontName: String = "Worship Ambient Pad.sf2",
+    val tonicPatchName: String = "Lush Warm Pad",
+    val tonicBank: Int = 0,
+    val tonicProgram: Int = 89,
+    val tonicPresets: List<SoundfontPreset> = emptyList(),
+    val selectedTonicPresetId: Int = 89,
     
     // FX Rack
     val activeFxTab: String = "eq",
@@ -1117,13 +1129,14 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun assignDrumSample(padId: Int, sampleName: String) {
+    fun assignDrumSample(padId: Int, sampleName: String, samplePath: String = "") {
         _uiState.update { state ->
             val updated = state.drumPads.map { pad ->
                 if (pad.id == padId) {
                     pad.copy(
                         soundType = DrumSoundType.SAMPLE,
                         sampleFileName = sampleName,
+                        sampleFilePath = samplePath,
                         label = sampleName.substringBeforeLast(".").take(8)
                     )
                 } else pad
@@ -1150,21 +1163,15 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun playDrumNote(note: String, octave: Int) {
-        audioEngine.noteOn("$note$octave", _uiState.value.drumVolume)
+        audioEngine.noteOn("$note$octave", _uiState.value.drumVolume, channel = 8)
         viewModelScope.launch {
             delay(180)
-            audioEngine.noteOff("$note$octave")
+            audioEngine.noteOff("$note$octave", channel = 8)
         }
     }
 
     fun playDrumSample(sample: StorageItem) {
-        val dummyPad = DrumPadItem(
-            id = 99,
-            label = sample.name,
-            soundType = DrumSoundType.SAMPLE,
-            sampleFileName = sample.name
-        )
-        audioEngine.playDrumPadSound(dummyPad, _uiState.value.drumVolume)
+        audioEngine.playDrumSample(sample.name, sample.path, _uiState.value.drumVolume)
     }
 
     // ================= TONIC PAD CONTROLS =================
@@ -1183,6 +1190,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 if (state.activeTonicNotes.contains(note)) emptySet() else setOf(note)
             }
+            audioEngine.setTonicDrone(newSet, state.tonicBrightness, state.tonicShimmer)
             state.copy(activeTonicNotes = newSet)
         }
     }
@@ -1206,11 +1214,15 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setTonicBrightness(brightness: Float) {
-        _uiState.update { it.copy(tonicBrightness = brightness.coerceIn(0f, 1f)) }
+        val clamped = brightness.coerceIn(0f, 1f)
+        audioEngine.setTonicDrone(_uiState.value.activeTonicNotes, clamped, _uiState.value.tonicShimmer)
+        _uiState.update { it.copy(tonicBrightness = clamped) }
     }
 
     fun setTonicShimmer(shimmer: Float) {
-        _uiState.update { it.copy(tonicShimmer = shimmer.coerceIn(0f, 1f)) }
+        val clamped = shimmer.coerceIn(0f, 1f)
+        audioEngine.setTonicDrone(_uiState.value.activeTonicNotes, _uiState.value.tonicBrightness, clamped)
+        _uiState.update { it.copy(tonicShimmer = clamped) }
     }
 
     // ================= SOUNDFONTS & SCENES =================
@@ -1225,50 +1237,106 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             "pad" -> NativeAudioBridge.ENGINE_PAD
             else -> NativeAudioBridge.ENGINE_FADER
         }
+        val targetChannel = when (source) {
+            "drum" -> 8
+            "pad" -> 9
+            else -> trackIndex.coerceIn(0, 7)
+        }
+
+        audioEngine.setChannelProgram(targetChannel, preset, bank)
+
         viewModelScope.launch(Dispatchers.Default) {
             val sfId = NativeAudioBridge.safeLoadSoundFont(engineIndex, sf2Path)
-            val channel = trackIndex.coerceIn(0, 7)
-            val success = if (sfId >= 0) {
-                NativeAudioBridge.safeSelectProgram(engineIndex, channel, sfId, bank, preset)
-            } else {
-                false
+            if (sfId >= 0) {
+                NativeAudioBridge.safeSelectProgram(engineIndex, if (source == "track") targetChannel else 0, sfId, bank, preset)
             }
 
             _uiState.update { state ->
-                val updatedTracks = state.tracks.mapIndexed { idx, track ->
-                    if (idx == trackIndex) {
-                        if (success) {
-                            track.copy(soundfontName = File(sf2Path).name, patchName = displayName, bank = bank, program = preset)
-                        } else {
-                            track.copy(soundfontName = "", patchName = "-", bank = 0, program = 0)
+                when (source) {
+                    "drum" -> {
+                        state.copy(
+                            drumPadSoundfontName = File(sf2Path).name,
+                            drumPadPatchName = displayName,
+                            drumPadBank = bank,
+                            drumPadProgram = preset,
+                            selectedDrumPresetId = preset
+                        )
+                    }
+                    "pad" -> {
+                        state.copy(
+                            tonicSoundfontName = File(sf2Path).name,
+                            tonicPatchName = displayName,
+                            tonicBank = bank,
+                            tonicProgram = preset,
+                            selectedTonicPresetId = preset
+                        )
+                    }
+                    else -> {
+                        val updatedTracks = state.tracks.mapIndexed { idx, track ->
+                            if (idx == trackIndex) {
+                                track.copy(soundfontName = File(sf2Path).name, patchName = displayName, bank = bank, program = preset)
+                            } else track
                         }
-                    } else track
+                        state.copy(tracks = updatedTracks, selectedSf2PresetId = preset)
+                    }
                 }
-                state.copy(tracks = updatedTracks)
             }
         }
     }
 
     fun selectSf2Preset(preset: SoundfontPreset) {
+        val source = _uiState.value.activeSoundfontSource
         val trackId = _uiState.value.activeSoundfontTrackId
         val trackIndex = (trackId - 1).coerceIn(0, 7)
+
         val currentTrack = _uiState.value.tracks.getOrNull(trackIndex)
-        val sf2File = _uiState.value.realSoundfonts.find { it.name == currentTrack?.soundfontName }
+        val sf2FileName = when (source) {
+            "drum" -> _uiState.value.drumPadSoundfontName
+            "pad" -> _uiState.value.tonicSoundfontName
+            else -> currentTrack?.soundfontName
+        }
+
+        val sf2File = _uiState.value.realSoundfonts.find { it.name == sf2FileName }
             ?: _uiState.value.realSoundfonts.firstOrNull()
 
-        audioEngine.setChannelInstrument(trackIndex, preset.id % 8)
-
-        _uiState.update { state ->
-            val updatedTracks = state.tracks.map { track ->
-                if (track.id == trackId) {
-                    track.copy(
-                        patchName = preset.name,
-                        bank = preset.bankNumber,
-                        program = preset.id
+        when (source) {
+            "drum" -> {
+                audioEngine.setChannelProgram(8, preset.id, preset.bankNumber)
+                _uiState.update { state ->
+                    state.copy(
+                        drumPadPatchName = preset.name,
+                        drumPadBank = preset.bankNumber,
+                        drumPadProgram = preset.id,
+                        selectedDrumPresetId = preset.id
                     )
-                } else track
+                }
             }
-            state.copy(selectedSf2PresetId = preset.id, tracks = updatedTracks)
+            "pad" -> {
+                audioEngine.setChannelProgram(9, preset.id, preset.bankNumber)
+                _uiState.update { state ->
+                    state.copy(
+                        tonicPatchName = preset.name,
+                        tonicBank = preset.bankNumber,
+                        tonicProgram = preset.id,
+                        selectedTonicPresetId = preset.id
+                    )
+                }
+            }
+            else -> {
+                audioEngine.setChannelProgram(trackIndex, preset.id, preset.bankNumber)
+                _uiState.update { state ->
+                    val updatedTracks = state.tracks.map { track ->
+                        if (track.id == trackId) {
+                            track.copy(
+                                patchName = preset.name,
+                                bank = preset.bankNumber,
+                                program = preset.id
+                            )
+                        } else track
+                    }
+                    state.copy(selectedSf2PresetId = preset.id, tracks = updatedTracks)
+                }
+            }
         }
 
         if (sf2File != null) {
@@ -1278,66 +1346,103 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadSoundfontFromStorage(file: StorageItem) {
+        val source = _uiState.value.activeSoundfontSource
         val trackId = _uiState.value.activeSoundfontTrackId
         val trackIndex = (trackId - 1).coerceIn(0, 7)
-        val source = _uiState.value.activeSoundfontSource
         val engineIndex = when (source) {
             "drum" -> NativeAudioBridge.ENGINE_DRUM
             "pad" -> NativeAudioBridge.ENGINE_PAD
             else -> NativeAudioBridge.ENGINE_FADER
         }
+        val targetChannel = when (source) {
+            "drum" -> 8
+            "pad" -> 9
+            else -> trackIndex
+        }
         
         viewModelScope.launch(Dispatchers.IO) {
             // 1. Extract real binary presets from the .sf2 file sorted by Bank and Program
             val parsedInfo = SF2Parser.parsePresets(File(file.path))
-            val realPresets = parsedInfo
-                .sortedWith(compareBy({ it.bank }, { it.preset }))
-                .map { info ->
-                    val cleanName = info.name.trim().ifEmpty { "Preset ${info.preset + 1}" }
-                    SoundfontPreset(
-                        id = info.preset,
-                        name = cleanName,
-                        bankNumber = info.bank
-                    )
-                }
+            val realPresets = if (parsedInfo.isNotEmpty()) {
+                parsedInfo
+                    .sortedWith(compareBy({ it.bank }, { it.preset }))
+                    .map { info ->
+                        val cleanName = info.name.trim().ifEmpty { "Preset ${info.preset + 1}" }
+                        SoundfontPreset(
+                            id = info.preset,
+                            name = cleanName,
+                            bankNumber = info.bank
+                        )
+                    }
+            } else {
+                listOf(
+                    SoundfontPreset(id = 0, name = file.name.removeSuffix(".sf2"), bankNumber = 0)
+                )
+            }
 
-            val firstPreset = realPresets.firstOrNull() ?: SoundfontPreset(
-                id = 0,
-                name = file.name.removeSuffix(".sf2"),
-                bankNumber = 0
-            )
+            val firstPreset = realPresets.first()
 
-            audioEngine.setChannelInstrument(trackIndex, firstPreset.id % 8)
+            audioEngine.setChannelProgram(targetChannel, firstPreset.id, firstPreset.bankNumber)
 
             // 2. Load SoundFont into the targeted Native Synth Engine
             val sfId = NativeAudioBridge.safeLoadSoundFont(engineIndex, file.path)
             if (sfId >= 0) {
-                NativeAudioBridge.safeSelectProgram(engineIndex, trackIndex, sfId, firstPreset.bankNumber, firstPreset.id)
+                NativeAudioBridge.safeSelectProgram(engineIndex, if (source == "track") trackIndex else 0, sfId, firstPreset.bankNumber, firstPreset.id)
             }
 
             _uiState.update { state ->
-                val updatedTracks = state.tracks.map { track ->
-                    if (track.id == trackId) {
-                        track.copy(
-                            soundfontName = file.name,
-                            patchName = firstPreset.name,
-                            bank = firstPreset.bankNumber,
-                            program = firstPreset.id
+                when (source) {
+                    "drum" -> {
+                        state.copy(
+                            drumPadSoundfontName = file.name,
+                            drumPadPatchName = firstPreset.name,
+                            drumPadBank = firstPreset.bankNumber,
+                            drumPadProgram = firstPreset.id,
+                            drumPadPresets = realPresets,
+                            selectedDrumPresetId = firstPreset.id
                         )
-                    } else track
+                    }
+                    "pad" -> {
+                        state.copy(
+                            tonicSoundfontName = file.name,
+                            tonicPatchName = firstPreset.name,
+                            tonicBank = firstPreset.bankNumber,
+                            tonicProgram = firstPreset.id,
+                            tonicPresets = realPresets,
+                            selectedTonicPresetId = firstPreset.id
+                        )
+                    }
+                    else -> {
+                        val updatedTracks = state.tracks.map { track ->
+                            if (track.id == trackId) {
+                                track.copy(
+                                    soundfontName = file.name,
+                                    patchName = firstPreset.name,
+                                    bank = firstPreset.bankNumber,
+                                    program = firstPreset.id
+                                )
+                            } else track
+                        }
+                        state.copy(
+                            soundfontPresets = realPresets,
+                            selectedSf2PresetId = firstPreset.id,
+                            tracks = updatedTracks
+                        )
+                    }
                 }
-                state.copy(
-                    soundfontPresets = realPresets,
-                    selectedSf2PresetId = firstPreset.id,
-                    tracks = updatedTracks
-                )
             }
             persistCurrentState()
         }
     }
 
     fun selectSf2Preset(presetId: Int) {
-        val preset = _uiState.value.soundfontPresets.find { it.id == presetId } ?: return
+        val source = _uiState.value.activeSoundfontSource
+        val presetsList = when (source) {
+            "drum" -> if (_uiState.value.drumPadPresets.isNotEmpty()) _uiState.value.drumPadPresets else _uiState.value.soundfontPresets
+            "pad" -> if (_uiState.value.tonicPresets.isNotEmpty()) _uiState.value.tonicPresets else _uiState.value.soundfontPresets
+            else -> _uiState.value.soundfontPresets
+        }
+        val preset = presetsList.find { it.id == presetId } ?: presetsList.firstOrNull() ?: return
         selectSf2Preset(preset)
     }
 

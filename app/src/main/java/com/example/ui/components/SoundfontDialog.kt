@@ -54,8 +54,6 @@ fun SoundfontDialog(
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var searchQuery by remember { mutableStateOf("") }
-
     val title = when (source) {
         "drum" -> "SoundFonts & Drum Pad"
         "pad" -> "SoundFonts & Tonic Pad"
@@ -154,74 +152,9 @@ fun SoundfontDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-                // ================= 2. MATERIAL YOU PILL SEARCH BAR =================
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(44.dp)
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(Color(0xFF282C35))
-                        .border(1.dp, outlineBorderColor, RoundedCornerShape(22.dp))
-                        .padding(horizontal = 14.dp),
-                    contentAlignment = Alignment.CenterStart
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = "🔍",
-                            fontSize = 13.sp
-                        )
-
-                        Box(modifier = Modifier.weight(1f)) {
-                            if (searchQuery.isEmpty()) {
-                                Text(
-                                    text = if (activeTab == "bank") "Rechercher un preset ou son..." else "Rechercher un fichier .sf2...",
-                                    fontSize = 12.5.sp,
-                                    color = Color(0xFF64748B)
-                                )
-                            }
-                            BasicTextField(
-                                value = searchQuery,
-                                onValueChange = { searchQuery = it },
-                                singleLine = true,
-                                textStyle = TextStyle(
-                                    color = textPrimaryM3,
-                                    fontSize = 12.5.sp,
-                                    fontWeight = FontWeight.Medium
-                                ),
-                                cursorBrush = SolidColor(primaryPillColor),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-
-                        if (searchQuery.isNotEmpty()) {
-                            Box(
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF3B414E))
-                                    .clickable { searchQuery = "" },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "✕",
-                                    fontSize = 9.sp,
-                                    color = textPrimaryM3,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // ================= 3. ANDROID 16 PILL SEGMENTED SWITCHER =================
+                // ================= 2. ANDROID 16 PILL SEGMENTED SWITCHER =================
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -244,7 +177,6 @@ fun SoundfontDialog(
                                     .background(if (isSelected) primaryPillColor else Color.Transparent)
                                     .clickable {
                                         onTabChange(tabKey)
-                                        searchQuery = ""
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
@@ -261,18 +193,13 @@ fun SoundfontDialog(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // ================= 4. GROUPED SETTINGS CONTENT LIST =================
+                // ================= 3. GROUPED SETTINGS CONTENT LIST =================
                 if (activeTab == "bank") {
-                    val filteredPresets = remember(presets, searchQuery) {
-                        val sorted = presets.sortedWith(compareBy({ it.bankNumber }, { it.id }))
-                        if (searchQuery.isBlank()) sorted
-                        else sorted.filter {
-                            it.name.contains(searchQuery, ignoreCase = true) ||
-                            it.id.toString().contains(searchQuery)
-                        }
+                    val sortedPresets = remember(presets) {
+                        presets.sortedWith(compareBy({ it.bankNumber }, { it.id }))
                     }
 
-                    if (filteredPresets.isEmpty()) {
+                    if (sortedPresets.isEmpty()) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -288,8 +215,7 @@ fun SoundfontDialog(
                             ) {
                                 Text(text = "🎵", fontSize = 28.sp)
                                 Text(
-                                    text = if (searchQuery.isNotEmpty()) "Aucun preset correspondant à \"$searchQuery\""
-                                           else "Aucun preset disponible dans la banque actuelle.\nVeuillez choisir une banque dans l'onglet 'Fichiers .SF2'.",
+                                    text = "Aucun preset disponible dans la banque actuelle.\nVeuillez choisir une banque dans l'onglet 'Fichiers .SF2'.",
                                     fontSize = 12.sp,
                                     color = textSecondaryM3,
                                     textAlign = TextAlign.Center
@@ -304,7 +230,7 @@ fun SoundfontDialog(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             items(
-                                items = filteredPresets,
+                                items = sortedPresets,
                                 key = { "${it.bankNumber}:${it.id}" }
                             ) { preset ->
                                 val isSelected = selectedPresetId == preset.id
@@ -388,12 +314,7 @@ fun SoundfontDialog(
                         StorageItem(name = it.name, path = it.path, isDirectory = false, formattedSize = it.size)
                     }
 
-                    val filteredFiles = remember(rawFiles, searchQuery) {
-                        if (searchQuery.isBlank()) rawFiles
-                        else rawFiles.filter { it.name.contains(searchQuery, ignoreCase = true) }
-                    }
-
-                    if (filteredFiles.isEmpty()) {
+                    if (rawFiles.isEmpty()) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -409,8 +330,7 @@ fun SoundfontDialog(
                             ) {
                                 Text(text = "📂", fontSize = 28.sp)
                                 Text(
-                                    text = if (searchQuery.isNotEmpty()) "Aucun fichier correspondant à \"$searchQuery\""
-                                           else "Aucun fichier .sf2 détecté dans /LiveKeys/SoundFonts/.\nPlacez vos banques SoundFont (.sf2) dans la mémoire de l'appareil.",
+                                    text = "Aucun fichier .sf2 détecté dans /LiveKeys/SoundFonts/.\nPlacez vos banques SoundFont (.sf2) dans la mémoire de l'appareil.",
                                     fontSize = 12.sp,
                                     color = textSecondaryM3,
                                     textAlign = TextAlign.Center
@@ -424,7 +344,7 @@ fun SoundfontDialog(
                                 .weight(1f),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            items(filteredFiles) { file ->
+                            items(rawFiles) { file ->
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
