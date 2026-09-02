@@ -264,6 +264,56 @@ class FileManager(private val context: Context) {
     }
 
     /**
+     * Scans the /LiveKeys/DrumPad directory specifically on Dispatchers.IO
+     */
+    suspend fun getDrumPadFiles(): List<StorageItem> = withContext(Dispatchers.IO) {
+        val result = mutableListOf<StorageItem>()
+        try {
+            if (drumPadDir.exists() && drumPadDir.canRead()) {
+                drumPadDir.walkTopDown()
+                    .maxDepth(4)
+                    .filter { it.isFile && isAudioFile(it) }
+                    .forEach { file ->
+                        result.add(
+                            StorageItem(
+                                name = file.name,
+                                path = file.absolutePath,
+                                isDirectory = false,
+                                size = file.length(),
+                                extension = file.extension.lowercase(),
+                                formattedSize = formatSize(file.length())
+                            )
+                        )
+                    }
+            }
+            // Fallback: check secondary external DrumPad directory if primary is empty
+            if (result.isEmpty()) {
+                val extDrumPad = File(Environment.getExternalStorageDirectory(), "DrumPad")
+                if (extDrumPad.exists() && extDrumPad.canRead()) {
+                    extDrumPad.walkTopDown()
+                        .maxDepth(3)
+                        .filter { it.isFile && isAudioFile(it) }
+                        .forEach { file ->
+                            result.add(
+                                StorageItem(
+                                    name = file.name,
+                                    path = file.absolutePath,
+                                    isDirectory = false,
+                                    size = file.length(),
+                                    extension = file.extension.lowercase(),
+                                    formattedSize = formatSize(file.length())
+                                )
+                            )
+                        }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        result.sortedBy { it.name.lowercase() }
+    }
+
+    /**
      * Scans for Drum Samples in /LiveKeys/DrumPad and /DrumPad
      */
     suspend fun getDrumSampleFiles(): List<StorageItem> = withContext(Dispatchers.IO) {

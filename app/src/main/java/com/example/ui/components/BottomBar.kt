@@ -55,12 +55,6 @@ fun BottomBar(
     metroVolume: Float,
     onMetroVolumeChange: (Float) -> Unit,
     
-    // MIDI Player Controls (.mid) - Replaces .sty per user instructions
-    isMidiPlaying: Boolean = false,
-    selectedMidiName: String = "-",
-    onOpenMidiDialog: () -> Unit = {},
-    onToggleMidiPlayPause: () -> Unit = {},
-    
     // Chord Display (Afficheur d'accords)
     detectedChord: DetectedChord? = null,
     
@@ -279,103 +273,7 @@ fun BottomBar(
             }
         }
 
-        // ================= 4. MIDI PLAYER CONTROLS (.MID) =================
-        // Replaces .sty per user request with Play/Pause button + File manager capsule
-        Box(
-            modifier = Modifier
-                .height(barHeight)
-                .clip(RoundedCornerShape(9.dp))
-                .background(
-                    if (isMidiPlaying) {
-                        Brush.horizontalGradient(listOf(Color(0xFF0369A1), Color(0xFF0284C7)))
-                    } else {
-                        Brush.verticalGradient(listOf(Color(0xFF1E293B), Color(0xFF0F172A)))
-                    }
-                )
-                .border(
-                    1.dp,
-                    if (isMidiPlaying) Color(0xFF38BDF8) else Color(0x4438BDF8),
-                    RoundedCornerShape(9.dp)
-                )
-                .padding(start = 8.dp, end = 4.dp, top = 2.dp, bottom = 2.dp)
-                .testTag("midi_pill_btn"),
-            contentAlignment = Alignment.Center
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                // Clickable Text Label to expand MIDI file manager
-                Column(
-                    modifier = Modifier
-                        .clickable { onOpenMidiDialog() }
-                        .padding(horizontal = 2.dp),
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            text = "🎹",
-                            fontSize = 11.sp
-                        )
-                        Text(
-                            text = "MIDI",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White
-                        )
-                        Text(
-                            text = "▼",
-                            fontSize = 7.sp,
-                            color = Color(0xCCFFFFFF)
-                        )
-                    }
-                    Text(
-                        text = if (selectedMidiName != "-") selectedMidiName else "/Midi",
-                        fontSize = 8.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = if (isMidiPlaying) Color(0xFFBAE6FD) else TextDim2,
-                        modifier = Modifier
-                            .widthIn(max = 68.dp)
-                            .padding(start = 2.dp)
-                    )
-                }
-
-                // Large Prominent MIDI Play/Pause Button
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (isMidiPlaying) {
-                                Brush.verticalGradient(listOf(Color(0xFF38BDF8), Color(0xFF0284C7)))
-                            } else {
-                                Brush.verticalGradient(listOf(Color(0x3338BDF8), Color(0x1A38BDF8)))
-                            }
-                        )
-                        .border(
-                            1.dp,
-                            if (isMidiPlaying) Color(0xFF38BDF8) else Color(0x5538BDF8),
-                            CircleShape
-                        )
-                        .clickable { onToggleMidiPlayPause() }
-                        .testTag("btn_midi_play_bottom"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = if (isMidiPlaying) "❚❚" else "▶",
-                        fontSize = if (isMidiPlaying) 10.sp else 11.5.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (isMidiPlaying) Color(0xFF002233) else Color.White
-                    )
-                }
-            }
-        }
-
-        // ================= 5. AFFICHEUR D'ACCORDS (CHORD DISPLAY BAR / DRAG HANDLE) =================
+        // ================= 4. AFFICHEUR D'ACCORDS (CHORD DISPLAY BAR) =================
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -395,13 +293,6 @@ fun BottomBar(
                     RoundedCornerShape(10.dp)
                 )
                 .padding(horizontal = 10.dp, vertical = 3.dp)
-                .clickable { onKeyboardHandleClick() }
-                .pointerInput(Unit) {
-                    detectVerticalDragGestures { change, dragAmount ->
-                        change.consume()
-                        onKeyboardDrag(dragAmount)
-                    }
-                }
                 .testTag("chord_display_box"),
             contentAlignment = Alignment.CenterStart
         ) {
@@ -430,18 +321,50 @@ fun BottomBar(
                         )
                     }
 
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0x2200E5FF))
-                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = detectedChord.formula,
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = NeonCyan
-                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color(0x2200E5FF))
+                                .padding(horizontal = 5.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = detectedChord.formula,
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = NeonCyan
+                            )
+                        }
+
+                        // Pile gris pour contrôle clavier
+                        Box(
+                            modifier = Modifier
+                                .width(32.dp)
+                                .height(16.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF374151))
+                                .border(1.dp, Color(0xFF4B5563), RoundedCornerShape(8.dp))
+                                .clickable { onKeyboardHandleClick() }
+                                .pointerInput(Unit) {
+                                    detectVerticalDragGestures { change, dragAmount ->
+                                        change.consume()
+                                        onKeyboardDrag(dragAmount)
+                                    }
+                                }
+                                .testTag("handle_pile_grey"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(16.dp)
+                                    .height(3.dp)
+                                    .clip(RoundedCornerShape(1.5.dp))
+                                    .background(Color(0xFF9CA3AF))
+                            )
+                        }
                     }
                 }
             } else {
@@ -460,19 +383,34 @@ fun BottomBar(
                             fontWeight = FontWeight.Bold,
                             color = if (isKeyboardActive) NeonCyan else Color(0x66FFFFFF)
                         )
-                        Text(
-                            text = "▲ Glisser vers le haut",
-                            fontSize = 8.sp,
-                            color = Color(0x44FFFFFF)
-                        )
                     }
+
+                    // Pile gris pour contrôle clavier
                     Box(
                         modifier = Modifier
-                            .width(28.dp)
-                            .height(3.dp)
-                            .clip(RoundedCornerShape(1.5.dp))
-                            .background(if (isKeyboardActive) NeonCyan.copy(alpha = 0.5f) else Color(0x33FFFFFF))
-                    )
+                            .width(36.dp)
+                            .height(18.dp)
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(Color(0xFF374151))
+                            .border(1.dp, Color(0xFF4B5563), RoundedCornerShape(9.dp))
+                            .clickable { onKeyboardHandleClick() }
+                            .pointerInput(Unit) {
+                                detectVerticalDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    onKeyboardDrag(dragAmount)
+                                }
+                            }
+                            .testTag("handle_pile_grey"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(18.dp)
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(1.5.dp))
+                                .background(Color(0xFF9CA3AF))
+                        )
+                    }
                 }
             }
         }

@@ -50,7 +50,7 @@ fun CompactHorizontalFaderStrip(
 
     Row(
         modifier = modifier
-            .width(220.dp)
+            .width(228.dp)
             .height(58.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(Color(0xFF1B202D))
@@ -62,35 +62,45 @@ fun CompactHorizontalFaderStrip(
                 )
             )
             .border(1.dp, if (isMaster) Color(0x6622D3EE) else Color(0x1EFFFFFF), RoundedCornerShape(10.dp))
-            .padding(horizontal = 6.dp, vertical = 4.dp)
+            .padding(horizontal = 7.dp, vertical = 4.dp)
             .testTag("compact_track_${track.id}"),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+        horizontalArrangement = Arrangement.spacedBy(7.dp)
     ) {
         // Track ID & Name Column
         Column(
             modifier = Modifier
-                .width(54.dp)
+                .width(62.dp)
                 .clickable { if (!isMaster) onTrackNameClick() }
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 Box(
                     modifier = Modifier
-                        .size(14.dp)
+                        .size(17.dp)
                         .clip(CircleShape)
                         .background(if (isEnabled) vibrantLedColor else Color(0xFF64748B)),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = if (isMaster) "M" else "${track.id}",
-                        fontSize = 8.sp,
+                        fontSize = 9.5.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = Color.Black
+                        color = Color.Black,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 10.sp,
+                        style = androidx.compose.ui.text.TextStyle(
+                            platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                includeFontPadding = false
+                            )
+                        )
                     )
                 }
                 Text(
                     text = if (isMaster) "MASTER" else "Piste ${track.id}",
-                    fontSize = 8.5.sp,
+                    fontSize = 9.sp,
                     fontWeight = FontWeight.Bold,
                     color = if (isEnabled) TextPrimary else TextDim2,
                     maxLines = 1

@@ -16,16 +16,33 @@ data class SF2PresetInfo(
     val name: String,
     val bank: Int,
     val preset: Int
-)
+) {
+    val displayName: String get() = SF2Parser.cleanPresetName(name)
+}
 
 /**
  * Pure Kotlin, high-performance binary parser for SoundFont 2 (.sf2) files.
  * Directly navigates RIFF chunks to find the 'pdta' (preset data) list
- * and parses the 'phdr' (Preset Header) chunk records.
+ * and parses ALL 'phdr' (Preset Header) chunk records.
  */
 object SF2Parser {
 
     private const val TAG = "SF2Parser"
+
+    fun cleanPresetName(rawName: String): String {
+        var name = rawName.trim()
+        // Remove patterns like [000:000] or (000)
+        name = name.replace("\\[\\d+:\\d+\\]".toRegex(), "").trim()
+        name = name.replace("\\(\\d+\\)".toRegex(), "").trim()
+        // Remove leading numbers with colons, hyphens, dots, underscores or spaces (e.g. "000:024 ", "000 - ", "024 ")
+        name = name.replace("^[0-9]{1,4}[:\\-\\s_.]+".toRegex(), "").trim()
+        // Remove trailing number suffixes like " 000" or " 024" or "_000"
+        name = name.replace("[_\\-\\s]+[0-9]{1,4}$".toRegex(), "").trim()
+        if (name.isBlank()) {
+            name = rawName.trim().ifBlank { "Instrument" }
+        }
+        return name
+    }
 
     suspend fun parsePresets(sf2File: File): List<SF2PresetInfo> = withContext(Dispatchers.IO) {
         val presets = mutableListOf<SF2PresetInfo>()
@@ -124,10 +141,11 @@ object SF2Parser {
                     }
 
                     if (rawName.isNotEmpty()) {
+                        val cleaned = cleanPresetName(rawName)
                         presets.add(
                             SF2PresetInfo(
                                 presetIndex = presets.size,
-                                name = rawName,
+                                name = cleaned,
                                 bank = wBank,
                                 preset = wPreset
                             )

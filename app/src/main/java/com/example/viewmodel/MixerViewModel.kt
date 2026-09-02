@@ -37,6 +37,7 @@ data class MixerUiState(
     val storageBaseDirPath: String = "",
     val realSoundfonts: List<StorageItem> = emptyList(),
     val realLoopFiles: List<StorageItem> = emptyList(),
+    val realDrumPadFiles: List<StorageItem> = emptyList(),
     val realStyleFiles: List<StorageItem> = emptyList(),
     val realRecordingFiles: List<StorageItem> = emptyList(),
     val realMidiFiles: List<StorageItem> = emptyList(),
@@ -164,6 +165,7 @@ data class MixerUiState(
 ) {
     val soundfontFiles: List<StorageItem> get() = realSoundfonts
     val loopAudioFiles: List<StorageItem> get() = realLoopFiles
+    val drumPadAudioFiles: List<StorageItem> get() = realDrumPadFiles
     val styleFiles: List<StorageItem> get() = realStyleFiles
     val midiFiles: List<StorageItem> get() = realMidiFiles
 }
@@ -382,6 +384,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
                 val sfs = fileManager.getSoundFontFiles()
                 val loops = fileManager.getLoopFiles()
+                val drumPads = fileManager.getDrumPadFiles()
                 val loopFolderTree = fileManager.getLoopFolderTree()
                 val midis = fileManager.getMidiFiles()
                 val midiFolderTree = fileManager.getMidiFolderTree()
@@ -406,6 +409,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         currentMidiDirPath = fileManager.midiDir.absolutePath,
                         realSoundfonts = sfs,
                         realLoopFiles = loops,
+                        realDrumPadFiles = drumPads,
                         loopFolders = loopFolderTree,
                         realStyleFiles = styles,
                         realRecordingFiles = recs,
@@ -821,8 +825,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     fun setTrackVolume(trackId: Int, volume: Float) {
         val clampedVol = volume.coerceIn(0f, 1f)
         if (trackId in 1..8) {
-            // Instant atomic call to Native FluidSynth channel (track 1 -> channel 0)
-            NativeAudioBridge.safeSetTrackVolume(trackId - 1, clampedVol)
+            val ch = trackId - 1
+            audioEngine.setChannelVolume(ch, clampedVol)
+            NativeAudioBridge.safeSetTrackVolume(ch, clampedVol)
         }
         _uiState.update { state ->
             if (trackId == 0) {
@@ -841,7 +846,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     fun setTrackPan(trackId: Int, pan: Float) {
         val clampedPan = pan.coerceIn(-1f, 1f)
         if (trackId in 1..8) {
-            NativeAudioBridge.safeSetTrackPan(trackId - 1, clampedPan)
+            val ch = trackId - 1
+            audioEngine.setChannelPan(ch, clampedPan)
+            NativeAudioBridge.safeSetTrackPan(ch, clampedPan)
         }
         _uiState.update { state ->
             val updated = state.tracks.map { track ->
@@ -855,7 +862,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleTrackPower(trackId: Int) {
         _uiState.update { state ->
             val updated = state.tracks.map { track ->
-                if (track.id == trackId) track.copy(isEnabled = !track.isEnabled) else track
+                if (track.id == trackId) {
+                    val nextState = !track.isEnabled
+                    if (trackId in 1..8) {
+                        audioEngine.setChannelEnabled(trackId - 1, nextState)
+                    }
+                    track.copy(isEnabled = nextState)
+                } else track
             }
             state.copy(tracks = updated)
         }
@@ -939,6 +952,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val midiNote = noteNameToMidi(key)
         val activeTrackId = _uiState.value.activeSoundfontTrackId
         val channel = (activeTrackId - 1).coerceIn(0, 7)
+        audioEngine.noteOn(key, 0.85f, channel)
         NativeAudioBridge.safeNoteOn(channel, midiNote, 100)
         _uiState.update { state ->
             state.copy(pressedKeys = state.pressedKeys + key)
@@ -950,6 +964,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val activeTrackId = _uiState.value.activeSoundfontTrackId
         val channel = (activeTrackId - 1).coerceIn(0, 7)
         if (!_uiState.value.isSustainActive && !_uiState.value.isMidiPedalPressed) {
+            audioEngine.noteOff(key, channel)
             NativeAudioBridge.safeNoteOff(channel, midiNote)
         }
         _uiState.update { state ->
@@ -1241,6 +1256,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val sf2File = _uiState.value.realSoundfonts.find { it.name == currentTrack?.soundfontName }
             ?: _uiState.value.realSoundfonts.firstOrNull()
 
+        audioEngine.setChannelInstrument(trackIndex, preset.id % 8)
+
         _uiState.update { state ->
             val updatedTracks = state.tracks.map { track ->
                 if (track.id == trackId) {
@@ -1276,9 +1293,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             val realPresets = parsedInfo
                 .sortedWith(compareBy({ it.bank }, { it.preset }))
                 .map { info ->
+                    val cleanName = info.name.trim().ifEmpty { "Preset ${info.preset + 1}" }
                     SoundfontPreset(
                         id = info.preset,
-                        name = "[${info.bank.toString().padStart(3, '0')}:${info.preset.toString().padStart(3, '0')}] ${info.name}",
+                        name = cleanName,
                         bankNumber = info.bank
                     )
                 }
@@ -1288,6 +1306,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 name = file.name.removeSuffix(".sf2"),
                 bankNumber = 0
             )
+
+            audioEngine.setChannelInstrument(trackIndex, firstPreset.id % 8)
 
             // 2. Load SoundFont into the targeted Native Synth Engine
             val sfId = NativeAudioBridge.safeLoadSoundFont(engineIndex, file.path)

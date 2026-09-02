@@ -184,12 +184,6 @@ fun MixerScreen(
                     metroVolume = uiState.metronomeVolume,
                     onMetroVolumeChange = { viewModel.setMetronomeVolume(it) },
                     
-                    // MIDI Player Controls
-                    isMidiPlaying = uiState.isMidiPlaying,
-                    selectedMidiName = uiState.selectedMidiName,
-                    onOpenMidiDialog = { viewModel.toggleMidiPanel() },
-                    onToggleMidiPlayPause = { viewModel.toggleMidiPlayPause() },
-                    
                     // Real-time Detected Chord
                     detectedChord = detectedChord,
                     
@@ -363,7 +357,7 @@ fun MixerScreen(
                 onSelectPreset = { viewModel.selectSf2Preset(it) },
                 onSelectSf2File = { viewModel.loadSoundfontFromStorage(it) },
                 onOpenSoundfontPicker = { viewModel.openSoundfontForTrack(1) },
-                audioFiles = uiState.loopAudioFiles,
+                audioFiles = uiState.drumPadAudioFiles,
                 isPinned = uiState.isDrumPadPinned,
                 onTogglePin = { viewModel.togglePinDrumPad() },
                 onClose = { viewModel.closeDrumPad() },
