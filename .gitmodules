@@ -1,3 +1,0 @@
-[submodule "app/src/main/cpp/fluidsynth"]
-	path = app/src/main/cpp/fluidsynth
-	url = https://github.com/FluidSynth/fluidsynth.git
