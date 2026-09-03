@@ -56,6 +56,7 @@ import kotlinx.coroutines.launch
 fun VirtualPianoKeyboard(
     heightFraction: Float = 0.55f,
     pressedKeys: Set<String>,
+    octave: Int = 0,
     onKeyDown: (String) -> Unit,
     onKeyUp: (String) -> Unit,
     onGrabberDrag: ((Float) -> Unit)? = null,
@@ -255,8 +256,10 @@ fun VirtualPianoKeyboard(
                     .padding(end = 4.dp, bottom = 2.dp)
             )
 
-            // Keys Container (5 full octaves C2 to C6 + C7, styled to display 3 full octaves in default view)
-            val octaves = listOf(2, 3, 4, 5, 6)
+            // Keys Container (5 full octaves shifted by global octave, styled to display 3 full octaves in default view)
+            val baseOctave = (2 + octave).coerceIn(0, 4)
+            val octaves = (0..4).map { baseOctave + it }
+            val highestOctave = baseOctave + 5
             val density = LocalDensity.current
 
             // 27.5.dp per white key allows 3 full octaves (21 white keys ≈ 577dp) to be fully visible simultaneously
@@ -327,7 +330,8 @@ fun VirtualPianoKeyboard(
                                                 y = y,
                                                 totalHeight = height,
                                                 whiteWidthPx = whiteWidthPx,
-                                                blackWidthPx = blackKeyWidthPx
+                                                blackWidthPx = blackKeyWidthPx,
+                                                baseOctave = baseOctave
                                             )
 
                                             val prevKey = pointerKeyMap[change.id]
@@ -361,9 +365,10 @@ fun VirtualPianoKeyboard(
                         )
                     }
 
-                    // Final High C7 Key
-                    val isC7Pressed = pressedKeys.contains("C7")
-                    val keyBrush = if (isC7Pressed) {
+                    // Final High C Key
+                    val highCKey = "C$highestOctave"
+                    val isHighCPressed = pressedKeys.contains(highCKey)
+                    val keyBrush = if (isHighCPressed) {
                         Brush.verticalGradient(
                             listOf(Color(0xFF0F2633), Color(0x9900E5FF), NeonCyan)
                         )
@@ -381,16 +386,16 @@ fun VirtualPianoKeyboard(
                             .background(keyBrush)
                             .border(
                                 1.dp,
-                                if (isC7Pressed) NeonCyan else Color(0x33000000),
+                                if (isHighCPressed) NeonCyan else Color(0x33000000),
                                 RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp)
                             ),
                         contentAlignment = Alignment.BottomCenter
                     ) {
                         Text(
-                            text = "C7",
+                            text = highCKey,
                             fontSize = 8.5.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = if (isC7Pressed) Color(0xFF002E38) else Color(0xFF1E2238),
+                            color = if (isHighCPressed) Color(0xFF002E38) else Color(0xFF1E2238),
                             modifier = Modifier.padding(bottom = 3.dp)
                         )
                     }
@@ -629,17 +634,18 @@ private fun resolveKeyAtPosition(
     y: Float,
     totalHeight: Float,
     whiteWidthPx: Float,
-    blackWidthPx: Float
+    blackWidthPx: Float,
+    baseOctave: Int = 2
 ): String? {
     if (x < 0 || y < 0 || y > totalHeight) return null
 
     val octaveWidth = whiteWidthPx * 7
     val octaveIndex = (x / octaveWidth).toInt()
-    val octave = (2 + octaveIndex).coerceIn(2, 6)
+    val currentOctave = (baseOctave + octaveIndex).coerceIn(baseOctave, baseOctave + 4)
 
-    // Handle high C7
+    // Handle high C
     if (octaveIndex >= 5) {
-        return "C7"
+        return "C${baseOctave + 5}"
     }
 
     val xWithinOctave = x - (octaveIndex * octaveWidth)
@@ -659,12 +665,12 @@ private fun resolveKeyAtPosition(
             val left = center - (blackWidthPx / 2f)
             val right = center + (blackWidthPx / 2f)
             if (xWithinOctave in left..right) {
-                return "$note$octave"
+                return "$note$currentOctave"
             }
         }
     }
 
     val whiteIndex = (xWithinOctave / whiteWidthPx).toInt().coerceIn(0, 6)
     val whiteNotes = listOf("C", "D", "E", "F", "G", "A", "B")
-    return "${whiteNotes[whiteIndex]}$octave"
+    return "${whiteNotes[whiteIndex]}$currentOctave"
 }

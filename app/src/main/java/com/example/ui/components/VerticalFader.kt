@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -489,6 +490,13 @@ fun FaderSliderWithVuMeter(
 ) {
     var containerHeightPx by remember { mutableFloatStateOf(160f) }
     var isDragging by remember { mutableStateOf(false) }
+    var localValue by remember { mutableFloatStateOf(value) }
+
+    LaunchedEffect(value) {
+        if (!isDragging) {
+            localValue = value
+        }
+    }
 
     val density = LocalDensity.current
     val currentOnValueChange by rememberUpdatedState(onValueChange)
@@ -513,8 +521,9 @@ fun FaderSliderWithVuMeter(
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val usableHeight = (containerHeightPx - capHeightPx).coerceAtLeast(1f)
-                        val targetVal = 1f - ((down.position.y - capHeightPx / 2f) / usableHeight)
-                        currentOnValueChange(targetVal.coerceIn(0f, 1f))
+                        val targetVal = (1f - ((down.position.y - capHeightPx / 2f) / usableHeight)).coerceIn(0f, 1f)
+                        localValue = targetVal
+                        currentOnValueChange(targetVal)
                         isDragging = true
 
                         while (true) {
@@ -522,8 +531,9 @@ fun FaderSliderWithVuMeter(
                             val change = event.changes.firstOrNull { it.id == down.id } ?: event.changes.firstOrNull() ?: break
                             if (!change.pressed) break
 
-                            val curVal = 1f - ((change.position.y - capHeightPx / 2f) / usableHeight)
-                            currentOnValueChange(curVal.coerceIn(0f, 1f))
+                            val curVal = (1f - ((change.position.y - capHeightPx / 2f) / usableHeight)).coerceIn(0f, 1f)
+                            localValue = curVal
+                            currentOnValueChange(curVal)
                             change.consume()
                         }
                         isDragging = false
@@ -600,11 +610,15 @@ fun FaderSliderWithVuMeter(
                 contentAlignment = Alignment.BottomCenter
             ) {
                 // Track volume level indicator inside the groove
-                if (isEnabled && value > 0.01f) {
+                if (isEnabled) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .fillMaxHeight(value.coerceIn(0f, 1f))
+                            .fillMaxHeight()
+                            .graphicsLayer {
+                                scaleY = localValue.coerceIn(0f, 1f)
+                                transformOrigin = TransformOrigin(0.5f, 1f)
+                            }
                             .clip(RoundedCornerShape(2.dp))
                             .background(
                                 Brush.verticalGradient(
@@ -641,14 +655,12 @@ fun FaderSliderWithVuMeter(
         }
 
         // ================= 2. REALISTIC 3D LIGHT GREY BONNET WITH REAL RELIEF =================
-        val usableHeightPx = (containerHeightPx - capHeightPx).coerceAtLeast(0f)
-        val capOffsetFromTop = (1f - value.coerceIn(0f, 1f)) * usableHeightPx
-
         Box(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .graphicsLayer {
-                    translationY = capOffsetFromTop
+                    val usableHeight = (containerHeightPx - capHeightPx).coerceAtLeast(0f)
+                    translationY = (1f - localValue.coerceIn(0f, 1f)) * usableHeight
                 }
                 .width(capWidthDp)
                 .height(capHeightDp)

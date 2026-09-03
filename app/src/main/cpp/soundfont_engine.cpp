@@ -39,6 +39,7 @@ bool SoundfontEngine::init(int sampleRate) {
 }
 
 void SoundfontEngine::destroy() {
+    std::lock_guard<std::mutex> lock(mMutex);
     if (mSynth) {
         delete_fluid_synth(mSynth);
         mSynth = nullptr;
@@ -50,23 +51,37 @@ void SoundfontEngine::destroy() {
 }
 
 int SoundfontEngine::loadSoundFont(const std::string &absolutePath) {
+    std::lock_guard<std::mutex> lock(mMutex);
     if (!mSynth) {
         LOGE("Cannot load SoundFont: synth instance not initialized");
         return -1;
     }
 
-    int sfontId = fluid_synth_sfload(mSynth, absolutePath.c_str(), 1);
+    // reset_presets = 0 so loading a new SoundFont does NOT override presets on other channels!
+    int sfontId = fluid_synth_sfload(mSynth, absolutePath.c_str(), 0);
     if (sfontId < 0) {
         LOGE("Failed to load SoundFont from path: %s", absolutePath.c_str());
         return -1;
     }
 
-    LOGI("Loaded SoundFont successfully (ID: %d): %s", sfontId, absolutePath.c_str());
+    LOGI("Loaded SoundFont successfully (ID: %d, reset_presets=0): %s", sfontId, absolutePath.c_str());
     return sfontId;
 }
 
+int SoundfontEngine::unloadSoundFont(int sfontId) {
+    if (sfontId <= 0) return -1;
+    std::lock_guard<std::mutex> lock(mMutex);
+    if (!mSynth) return -1;
+
+    int res = fluid_synth_sfunload(mSynth, sfontId, 0);
+    LOGI("Unloaded SoundFont ID: %d (res: %d)", sfontId, res);
+    return res;
+}
+
 bool SoundfontEngine::selectProgram(int channel, int soundFontId, int bank, int preset) {
-    if (!mSynth || channel < 0 || channel >= kMaxChannels) return false;
+    if (channel < 0 || channel >= kMaxChannels) return false;
+    std::lock_guard<std::mutex> lock(mMutex);
+    if (!mSynth) return false;
 
     int result = FLUID_FAILED;
     if (soundFontId > 0) {
@@ -80,7 +95,9 @@ bool SoundfontEngine::selectProgram(int channel, int soundFontId, int bank, int 
 }
 
 bool SoundfontEngine::programChange(int channel, int program) {
-    if (!mSynth || channel < 0 || channel >= kMaxChannels) return false;
+    if (channel < 0 || channel >= kMaxChannels) return false;
+    std::lock_guard<std::mutex> lock(mMutex);
+    if (!mSynth) return false;
     int result = fluid_synth_program_change(mSynth, channel, program);
     return (result == FLUID_OK);
 }
@@ -155,6 +172,16 @@ void SoundfontEngine::setChannelTransposeSemitones(int channel, int semitones) {
 
 void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool accumulate) {
     if (!mSynth) {
+        if (!accumulate) {
+            std::fill(outputBuffer, outputBuffer + (numFrames * 2), 0.0f);
+        }
+        return;
+    }
+
+    // NON-BLOCKING LOCK: If a SoundFont is loading or program is changing,
+    // immediately fill with silence (or keep buffer) instead of blocking the real-time audio thread!
+    std::unique_lock<std::mutex> lock(mMutex, std::try_to_lock);
+    if (!lock.owns_lock()) {
         if (!accumulate) {
             std::fill(outputBuffer, outputBuffer + (numFrames * 2), 0.0f);
         }

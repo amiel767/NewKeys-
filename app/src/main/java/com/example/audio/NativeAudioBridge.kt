@@ -9,6 +9,22 @@ object NativeAudioBridge {
     const val ENGINE_PAD = 1
     const val ENGINE_DRUM = 2
 
+    // ================= DEDICATED NAMED MIDI CHANNELS =================
+    // UI Tracks 1..8 map strictly to MIDI channels 0..7
+    const val CHANNEL_TRACK_1 = 0
+    const val CHANNEL_TRACK_2 = 1
+    const val CHANNEL_TRACK_3 = 2
+    const val CHANNEL_TRACK_4 = 3
+    const val CHANNEL_TRACK_5 = 4
+    const val CHANNEL_TRACK_6 = 5
+    const val CHANNEL_TRACK_7 = 6
+    const val CHANNEL_TRACK_8 = 7
+    const val TRACK_CHANNELS_COUNT = 8
+
+    // Isolated dedicated channels for DrumPad & Tonic Pad
+    const val CHANNEL_DRUMPAD = 8
+    const val CHANNEL_TONIC_PAD = 9
+
     const val DRIVER_OBOE = 0
     const val DRIVER_OPENSL_ES = 1
 
@@ -17,9 +33,9 @@ object NativeAudioBridge {
             System.loadLibrary("native-lib")
             isLibraryLoaded = true
             Log.i("NativeAudioBridge", "Librairie native chargée avec succès")
-        } catch (e: UnsatisfiedLinkError) {
-            Log.e("NativeAudioBridge", "ECHEC chargement librairie native", e)
-            throw e
+        } catch (e: Throwable) {
+            isLibraryLoaded = false
+            Log.w("NativeAudioBridge", "Librairie native non disponible dans cet environnement: ${e.message}")
         }
     }
 
@@ -29,6 +45,7 @@ object NativeAudioBridge {
     external fun stopEngine()
     external fun setAudioDriver(driverType: Int)
     external fun loadSoundFont(engineIndex: Int, absolutePath: String): Int
+    external fun unloadSoundFont(engineIndex: Int, soundFontId: Int): Int
     external fun selectProgram(engineIndex: Int, channel: Int, soundFontId: Int, bank: Int, preset: Int): Boolean
     external fun programChange(engineIndex: Int, channel: Int, preset: Int): Boolean
     external fun noteOn(engineIndex: Int, channel: Int, midiNote: Int, velocity: Int)
@@ -77,6 +94,17 @@ object NativeAudioBridge {
                 loadSoundFont(engineIndex, absolutePath)
             } catch (e: Throwable) {
                 Log.e("NativeAudioBridge", "Error invoking loadSoundFont: ${e.message}")
+                -1
+            }
+        } else -1
+    }
+
+    fun safeUnloadSoundFont(engineIndex: Int = ENGINE_FADER, soundFontId: Int): Int {
+        return if (isLibraryLoaded && soundFontId > 0) {
+            try {
+                unloadSoundFont(engineIndex, soundFontId)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking unloadSoundFont: ${e.message}")
                 -1
             }
         } else -1
@@ -133,6 +161,35 @@ object NativeAudioBridge {
         channel: Int,
         midiNote: Int,
         engineIndex: Int = ENGINE_FADER
+    ) {
+        if (isLibraryLoaded) {
+            try {
+                noteOff(engineIndex, channel, midiNote)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking noteOff: ${e.message}")
+            }
+        }
+    }
+
+    fun safeNoteOnEngine(
+        engineIndex: Int,
+        channel: Int,
+        midiNote: Int,
+        velocity: Int = 100
+    ) {
+        if (isLibraryLoaded) {
+            try {
+                noteOn(engineIndex, channel, midiNote, velocity)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking noteOn: ${e.message}")
+            }
+        }
+    }
+
+    fun safeNoteOffEngine(
+        engineIndex: Int,
+        channel: Int,
+        midiNote: Int
     ) {
         if (isLibraryLoaded) {
             try {

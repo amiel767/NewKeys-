@@ -200,6 +200,7 @@ fun MixerScreen(
                 VirtualPianoKeyboard(
                     heightFraction = animatedKbFraction,
                     pressedKeys = uiState.pressedKeys,
+                    octave = uiState.octave,
                     onKeyDown = { viewModel.onKeyDown(it) },
                     onKeyUp = { viewModel.onKeyUp(it) },
                     onGrabberDrag = { deltaY ->

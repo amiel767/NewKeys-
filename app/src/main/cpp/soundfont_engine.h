@@ -16,6 +16,7 @@ inline int delete_fluid_synth(fluid_synth_t*) { return 0; }
 inline int fluid_settings_setnum(fluid_settings_t*, const char*, double) { return 0; }
 inline int fluid_settings_setint(fluid_settings_t*, const char*, int) { return 0; }
 inline int fluid_synth_sfload(fluid_synth_t*, const char*, int) { return -1; }
+inline int fluid_synth_sfunload(fluid_synth_t*, int, int) { return -1; }
 inline int fluid_synth_program_select(fluid_synth_t*, int, int, int, int) { return -1; }
 inline int fluid_synth_program_change(fluid_synth_t*, int, int) { return -1; }
 inline int fluid_synth_bank_select(fluid_synth_t*, int, int) { return -1; }
@@ -29,6 +30,7 @@ inline int fluid_synth_write_float(fluid_synth_t*, int, void*, int, int, void*, 
 
 #include <atomic>
 #include <array>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -44,6 +46,7 @@ public:
     void destroy();
 
     int loadSoundFont(const std::string &absolutePath);
+    int unloadSoundFont(int sfontId);
     bool selectProgram(int channel, int soundFontId, int bank, int preset);
     bool programChange(int channel, int program);
 
@@ -61,6 +64,7 @@ public:
 private:
     fluid_settings_t *mSettings = nullptr;
     fluid_synth_t *mSynth = nullptr;
+    std::mutex mMutex;
     std::array<std::atomic<int>, kMaxChannels> mTransposeSemitones{};
     std::vector<float> mTempRenderBuffer;
 };

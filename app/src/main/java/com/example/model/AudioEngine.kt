@@ -180,7 +180,12 @@ class AudioEngine(private val context: Context) {
             12 -> 51 // Ride Cymbal
             else -> 36 + (padIndex % 16)
         }
-        NativeAudioBridge.safeNoteOn(NativeAudioBridge.ENGINE_DRUM, padIndex - 1, midiDrumNote, (velocity * 127).toInt())
+        val velInt = (velocity * 127f).toInt().coerceIn(1, 127)
+        NativeAudioBridge.safeNoteOn(NativeAudioBridge.CHANNEL_DRUMPAD, midiDrumNote, velInt)
+        coroutineScope.launch {
+            delay(150)
+            NativeAudioBridge.safeNoteOff(NativeAudioBridge.CHANNEL_DRUMPAD, midiDrumNote)
+        }
     }
 
     // -------------------------------------------------------------
@@ -273,18 +278,18 @@ class AudioEngine(private val context: Context) {
     fun noteOn(noteName: String, velocity: Float = 0.85f, channel: Int = activeTargetChannel) {
         val midiNote = noteNameToMidi(noteName)
         val velInt = (velocity * 127f).toInt().coerceIn(1, 127)
-        NativeAudioBridge.safeNoteOn(channel.coerceIn(0, 7), midiNote, velInt)
+        NativeAudioBridge.safeNoteOn(channel.coerceIn(0, 15), midiNote, velInt)
     }
 
     fun noteOff(noteName: String, channel: Int = activeTargetChannel) {
         val midiNote = noteNameToMidi(noteName)
-        NativeAudioBridge.safeNoteOff(channel.coerceIn(0, 7), midiNote)
+        NativeAudioBridge.safeNoteOff(channel.coerceIn(0, 15), midiNote)
     }
 
     fun setPitchBend(bend: Float, channel: Int = activeTargetChannel) {
         pitchBendFactor = (2.0.pow((bend.coerceIn(-1f, 1f) * 2.0) / 12.0)).toFloat()
         val midiBend = ((bend + 1.0f) * 8191.5f).toInt().coerceIn(0, 16383)
-        NativeAudioBridge.safePitchBend(channel.coerceIn(0, 7), midiBend)
+        NativeAudioBridge.safePitchBend(channel.coerceIn(0, 15), midiBend)
     }
 
     fun allNotesOff() {
@@ -524,10 +529,10 @@ class AudioEngine(private val context: Context) {
     fun playDrumPadSound(drumPad: DrumPadItem, volume: Float = 0.75f) {
         if (drumPad.soundType == DrumSoundType.SF2_NOTE) {
             val noteName = "${drumPad.sf2NoteKey}${drumPad.sf2NoteOctave}"
-            noteOn(noteName, volume, channel = 8)
+            noteOn(noteName, volume, channel = NativeAudioBridge.CHANNEL_DRUMPAD)
             coroutineScope.launch {
                 delay(180)
-                noteOff(noteName, channel = 8)
+                noteOff(noteName, channel = NativeAudioBridge.CHANNEL_DRUMPAD)
             }
         } else {
             // Check sampleFilePath first, then DrumPad directory, then filesDir
@@ -553,7 +558,12 @@ class AudioEngine(private val context: Context) {
 
             if (!soundPlayed) {
                 val midiNote = mapSampleNameToDrumNote(drumPad.sampleFileName, drumPad.id)
-                NativeAudioBridge.safeNoteOn(NativeAudioBridge.ENGINE_DRUM, drumPad.id - 1, midiNote, (volume * 127).toInt())
+                val velInt = (volume * 127f).toInt().coerceIn(1, 127)
+                NativeAudioBridge.safeNoteOn(NativeAudioBridge.CHANNEL_DRUMPAD, midiNote, velInt)
+                coroutineScope.launch {
+                    delay(150)
+                    NativeAudioBridge.safeNoteOff(NativeAudioBridge.CHANNEL_DRUMPAD, midiNote)
+                }
             }
         }
     }
@@ -581,7 +591,12 @@ class AudioEngine(private val context: Context) {
 
         if (!soundPlayed) {
             val midiNote = mapSampleNameToDrumNote(sampleName, 1)
-            NativeAudioBridge.safeNoteOn(NativeAudioBridge.ENGINE_DRUM, 0, midiNote, (volume * 127).toInt())
+            val velInt = (volume * 127f).toInt().coerceIn(1, 127)
+            NativeAudioBridge.safeNoteOn(NativeAudioBridge.CHANNEL_DRUMPAD, midiNote, velInt)
+            coroutineScope.launch {
+                delay(150)
+                NativeAudioBridge.safeNoteOff(NativeAudioBridge.CHANNEL_DRUMPAD, midiNote)
+            }
         }
     }
 

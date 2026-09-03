@@ -19,7 +19,7 @@ class ExampleRobolectricTest {
   fun `read string from context`() {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val appName = context.getString(R.string.app_name)
-    assertEquals("Soundfont Live Mixer", appName)
+    assertEquals("LiveKeys Sound", appName)
   }
 
   @Test
@@ -34,7 +34,7 @@ class ExampleRobolectricTest {
     assertEquals(0.9f, vm.uiState.value.tracks.first { it.id == 1 }.volume, 0.001f)
 
     // Toggle mute
-    vm.toggleMuteSoloSequence(1)
+    vm.onTrackMuteSoloClick(1)
     assertTrue(vm.uiState.value.tracks.first { it.id == 1 }.isMuted)
   }
 

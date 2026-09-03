@@ -50,6 +50,15 @@ Java_com_example_audio_NativeAudioBridge_loadSoundFont(
     return sfontId;
 }
 
+JNIEXPORT jint JNICALL
+Java_com_example_audio_NativeAudioBridge_unloadSoundFont(
+        JNIEnv *env,
+        jobject /* this */,
+        jint engineIndex,
+        jint soundFontId) {
+    return gAudioEngine.getEngine(engineIndex).unloadSoundFont(soundFontId);
+}
+
 JNIEXPORT jboolean JNICALL
 Java_com_example_audio_NativeAudioBridge_selectProgram(
         JNIEnv *env,
