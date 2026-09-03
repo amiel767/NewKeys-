@@ -961,23 +961,19 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onKeyDown(key: String) {
-        val midiNote = noteNameToMidi(key)
         val activeTrackId = _uiState.value.activeSoundfontTrackId
         val channel = (activeTrackId - 1).coerceIn(0, 7)
         audioEngine.noteOn(key, 0.85f, channel)
-        NativeAudioBridge.safeNoteOn(channel, midiNote, 100)
         _uiState.update { state ->
             state.copy(pressedKeys = state.pressedKeys + key)
         }
     }
 
     fun onKeyUp(key: String) {
-        val midiNote = noteNameToMidi(key)
         val activeTrackId = _uiState.value.activeSoundfontTrackId
         val channel = (activeTrackId - 1).coerceIn(0, 7)
         if (!_uiState.value.isSustainActive && !_uiState.value.isMidiPedalPressed) {
             audioEngine.noteOff(key, channel)
-            NativeAudioBridge.safeNoteOff(channel, midiNote)
         }
         _uiState.update { state ->
             if (!state.isSustainActive && !state.isMidiPedalPressed) {

@@ -43,24 +43,6 @@ class SynthChannelParams {
     var shimmer: Float = 0.15f
 }
 
-class SynthVoice {
-    var channel: Int = 0
-    var noteNumber: Int = 60
-    var targetFrequency: Float = 440f
-    var velocity: Float = 0.8f
-    var instrumentType: Int = 0
-    var program: Int = 0
-    var phase: Float = 0f
-    var phase2: Float = 0f
-    var phase3: Float = 0f
-    var phase4: Float = 0f
-    var noiseState: Float = 0f
-    var envStage: Int = 0 // 0 = Off, 1 = Attack, 2 = Decay, 3 = Sustain, 4 = Release
-    var envLevel: Float = 0f
-    var isTonicDrone: Boolean = false
-    var age: Long = 0L
-}
-
 /**
  * Professional Low-Latency Audio & MIDI Engine for Live SoundFont Mixer.
  * Implements:
@@ -108,16 +90,6 @@ class AudioEngine(private val context: Context) {
     var onMidiSustainListener: ((isPressed: Boolean) -> Unit)? = null
     var onDeviceListChanged: ((List<MidiDeviceItem>) -> Unit)? = null
 
-    // ================= 2. REAL-TIME SYNTHESIZER ENGINE =================
-    private val SAMPLE_RATE = 44100
-    private val BUFFER_SIZE = 1024
-    private var synthAudioTrack: AudioTrack? = null
-    private var synthJob: Job? = null
-    private val maxVoices = 32
-    private val voices = Array(maxVoices) { SynthVoice() }
-    private val voiceLock = Any()
-    private var voiceCounter = 0L
-
     // ================= 3. METRONOME AUDIO GENERATOR =================
     private var metronomeAudioTrack: AudioTrack? = null
     private var metronomeJob: Job? = null
@@ -146,337 +118,8 @@ class AudioEngine(private val context: Context) {
         loClickPcm = generateClickSound(freq = 1100.0, durationMs = 28, accent = false)
 
         initSoundPool()
-        startSynthesizerEngine()
         startMidiEventProcessor()
         initUsbMidi()
-    }
-
-    // -------------------------------------------------------------
-    // REAL-TIME POLYPHONIC PCM SYNTHESIS ENGINE
-    // -------------------------------------------------------------
-    private fun startSynthesizerEngine() {
-        try {
-            val minBuf = AudioTrack.getMinBufferSize(
-                SAMPLE_RATE,
-                AudioFormat.CHANNEL_OUT_STEREO,
-                AudioFormat.ENCODING_PCM_16BIT
-            )
-            val bufferSizeInBytes = maxOf(minBuf, BUFFER_SIZE * 4)
-
-            synthAudioTrack = AudioTrack(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .build(),
-                AudioFormat.Builder()
-                    .setSampleRate(SAMPLE_RATE)
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
-                    .build(),
-                bufferSizeInBytes,
-                AudioTrack.MODE_STREAM,
-                AudioManager.AUDIO_SESSION_ID_GENERATE
-            )
-            synthAudioTrack?.play()
-
-            synthJob = coroutineScope.launch(Dispatchers.Default) {
-                val pcmBuffer = ShortArray(BUFFER_SIZE * 2)
-                val twoPi = (2.0 * Math.PI).toFloat()
-                val dt = 1.0f / SAMPLE_RATE.toFloat()
-
-                while (isActive) {
-                    val track = synthAudioTrack ?: break
-
-                    val masterVol = masterVolume.coerceIn(0f, 1f)
-                    val punchFactor = 1.0f + (masterPunch * 0.25f)
-
-                    synchronized(voiceLock) {
-                        for (i in 0 until BUFFER_SIZE) {
-                            var sampleLeft = 0f
-                            var sampleRight = 0f
-
-                            for (v in voices) {
-                                if (v.envStage == 0) continue
-
-                                val ch = v.channel.coerceIn(0, 11)
-                                val chParams = channelParams[ch]
-                                if (!chParams.isEnabled) continue
-
-                                // Envelope generator (ADSR)
-                                if (v.isTonicDrone) {
-                                    // Smooth continuous worship drone
-                                    when (v.envStage) {
-                                        1 -> { // Slow smooth swell
-                                            v.envLevel += 0.0004f
-                                            if (v.envLevel >= 0.85f) {
-                                                v.envLevel = 0.85f
-                                                v.envStage = 3
-                                            }
-                                        }
-                                        4 -> { // Long smooth release
-                                            v.envLevel -= 0.0003f
-                                            if (v.envLevel <= 0f) {
-                                                v.envLevel = 0f
-                                                v.envStage = 0
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    when (v.envStage) {
-                                        1 -> { // Attack
-                                            val attackRate = if (v.program in 48..55 || v.program in 88..95) 0.002f else 0.015f
-                                            v.envLevel += attackRate
-                                            if (v.envLevel >= 1.0f) {
-                                                v.envLevel = 1.0f
-                                                v.envStage = 2
-                                            }
-                                        }
-                                        2 -> { // Decay
-                                            val decayRate = when {
-                                                ch == 8 || v.program in 112..127 -> 0.0008f // Drums / Percussion
-                                                v.program in 8..15 -> 0.00035f // Bells / Vibes
-                                                v.program in 24..39 -> 0.00020f // Guitar / Bass
-                                                v.program in 0..7 -> 0.00015f // Piano
-                                                v.program in 40..55 || v.program in 88..95 -> 0.00003f // Strings / Pads
-                                                else -> 0.00012f
-                                            }
-                                            v.envLevel -= decayRate
-                                            val sustainLevel = when {
-                                                ch == 8 || v.program in 112..127 -> 0.0f
-                                                v.program in 40..55 || v.program in 88..95 -> 0.80f
-                                                v.program in 16..23 -> 0.75f // Organ
-                                                v.program in 0..7 -> 0.35f
-                                                else -> 0.45f
-                                            }
-                                            if (v.envLevel <= sustainLevel) {
-                                                v.envLevel = sustainLevel
-                                                v.envStage = 3
-                                            }
-                                        }
-                                        3 -> { // Sustain
-                                            if (ch == 8 || v.program in 112..127) {
-                                                v.envLevel -= 0.00025f
-                                                if (v.envLevel <= 0f) {
-                                                    v.envLevel = 0f
-                                                    v.envStage = 0
-                                                }
-                                            } else if (v.program in 0..15 || v.program in 24..39) {
-                                                v.envLevel -= 0.000035f
-                                                if (v.envLevel <= 0f) {
-                                                    v.envLevel = 0f
-                                                    v.envStage = 0
-                                                }
-                                            }
-                                        }
-                                        4 -> { // Release
-                                            val relRate = if (v.program in 88..95) 0.0008f else 0.0035f
-                                            v.envLevel -= relRate
-                                            if (v.envLevel <= 0f) {
-                                                v.envLevel = 0f
-                                                v.envStage = 0
-                                            }
-                                        }
-                                    }
-                                }
-
-                                if (v.envLevel <= 0f) continue
-
-                                // Harmonic Synthesis by Program & Timbre
-                                val freq = v.targetFrequency * pitchBendFactor
-                                v.phase = (v.phase + twoPi * freq * dt) % twoPi
-                                v.phase2 = (v.phase2 + twoPi * freq * 2.008f * dt) % twoPi
-                                v.phase3 = (v.phase3 + twoPi * freq * 3.003f * dt) % twoPi
-                                v.phase4 = (v.phase4 + twoPi * freq * 4.001f * dt) % twoPi
-
-                                // Noise generator for drums & breath
-                                v.noiseState = ((v.noiseState * 48271L) % 2147483647L).toFloat() / 2147483647L * 2f - 1f
-
-                                val rawSample = if (v.isTonicDrone) {
-                                    // Rich Lush Ambient Worship Pad
-                                    val bright = chParams.brightness.coerceIn(0.1f, 1.0f)
-                                    val shim = chParams.shimmer.coerceIn(0.0f, 1.0f)
-                                    val sine1 = sin(v.phase)
-                                    val sine2 = sin(v.phase2)
-                                    val sine3 = sin(v.phase3)
-                                    val octaveHigh = sin(v.phase4) * shim
-                                    (0.50f * sine1 + 0.30f * sine2 * bright + 0.15f * sine3 * bright + 0.20f * octaveHigh)
-                                } else if (ch == 8) {
-                                    // Drum Kit Engine
-                                    when (v.noteNumber) {
-                                        35, 36 -> { // Kick / 808 Sub
-                                            val pitchDrop = maxOf(0.5f, 1.0f + (v.envLevel * 3.0f))
-                                            val subPhase = (v.phase * pitchDrop) % twoPi
-                                            sin(subPhase) * 0.95f + (v.noiseState * 0.05f * v.envLevel)
-                                        }
-                                        38, 40 -> { // Snare
-                                            val body = sin(v.phase * 1.5f) * 0.45f
-                                            val snap = v.noiseState * 0.65f
-                                            (body + snap)
-                                        }
-                                        42, 44, 46 -> { // Hi-Hats
-                                            v.noiseState * (0.80f + 0.20f * sin(v.phase4))
-                                        }
-                                        39 -> { // Clap
-                                            val noise = v.noiseState * 0.85f
-                                            noise * if (v.envLevel > 0.7f) 1.2f else 0.8f
-                                        }
-                                        41, 43, 45, 47, 48, 50 -> { // Toms
-                                            sin(v.phase) * 0.80f + sin(v.phase2) * 0.20f
-                                        }
-                                        49, 51, 57 -> { // Cymbal / Crash / Ride
-                                            v.noiseState * 0.70f + sin(v.phase3) * 0.30f
-                                        }
-                                        else -> {
-                                            sin(v.phase) * 0.60f + v.noiseState * 0.40f
-                                        }
-                                    }
-                                } else {
-                                    // Multi-timbral SoundFont Synthesizer (Programs 0..127)
-                                    when (v.program) {
-                                        in 0..7 -> { // Pianos (Acoustic, Bright, Rhodes, FM EP, Clavi)
-                                            when (v.program) {
-                                                4, 5 -> { // Rhodes / FM Electric Piano
-                                                    val mod = 0.48f * sin(v.phase2)
-                                                    0.65f * sin(v.phase + mod) + 0.25f * sin(v.phase3) + 0.10f * sin(v.phase4)
-                                                }
-                                                6 -> { // Harpsichord
-                                                    val saw = 2.0f * (v.phase / twoPi) - 1.0f
-                                                    0.60f * saw + 0.40f * sin(v.phase2)
-                                                }
-                                                7 -> { // Clavinet
-                                                    val sq = if (v.phase < Math.PI) 0.5f else -0.5f
-                                                    0.55f * sq + 0.45f * sin(v.phase3)
-                                                }
-                                                else -> { // Grand Piano
-                                                    0.52f * sin(v.phase) +
-                                                    0.26f * sin(v.phase2) +
-                                                    0.14f * sin(v.phase3) +
-                                                    0.08f * sin(v.phase4)
-                                                }
-                                            }
-                                        }
-                                        in 8..15 -> { // Chromatic Percussion (Celesta, Glockenspiel, Vibes, Marimba)
-                                            0.60f * sin(v.phase) + 0.30f * sin(v.phase3) + 0.10f * sin(v.phase4)
-                                        }
-                                        in 16..23 -> { // Organs (Hammond, Rock, Church, Reed, Accordion)
-                                            0.40f * sin(v.phase) +
-                                            0.35f * sin(v.phase2) +
-                                            0.15f * sin(v.phase3) +
-                                            0.10f * sin(v.phase4)
-                                        }
-                                        in 24..31 -> { // Guitars (Nylon, Steel, Jazz, Clean, Overdrive, Distortion)
-                                            val saw = 2.0f * (v.phase / twoPi) - 1.0f
-                                            val body = sin(v.phase)
-                                            if (v.program >= 29) { // Overdrive / Dist
-                                                (body * 1.8f + saw * 0.6f).coerceIn(-0.85f, 0.85f)
-                                            } else {
-                                                0.55f * body + 0.45f * saw
-                                            }
-                                        }
-                                        in 32..39 -> { // Basses (Acoustic, Fingered, Picked, Fretless, Slap, Synth Bass)
-                                            val saw = 2.0f * (v.phase / twoPi) - 1.0f
-                                            0.65f * sin(v.phase) + 0.35f * saw
-                                        }
-                                        in 40..55 -> { // Strings & Ensembles (Violin, Cello, Strings, Choir, Synth Strings)
-                                            val saw1 = 2.0f * (v.phase / twoPi) - 1.0f
-                                            val saw2 = 2.0f * (v.phase2 / twoPi) - 1.0f
-                                            val sine = sin(v.phase)
-                                            0.40f * saw1 + 0.35f * saw2 + 0.25f * sine
-                                        }
-                                        in 56..63 -> { // Brass (Trumpet, Trombone, Tuba, French Horn, Brass Section)
-                                            val saw1 = 2.0f * (v.phase / twoPi) - 1.0f
-                                            val saw2 = 2.0f * (v.phase2 / twoPi) - 1.0f
-                                            0.58f * saw1 + 0.42f * saw2
-                                        }
-                                        in 64..79 -> { // Reeds & Pipes (Sax, Oboe, Clarinet, Flute, Pan Flute)
-                                            val sine = sin(v.phase)
-                                            val breath = v.noiseState * 0.08f
-                                            0.70f * sine + 0.22f * sin(v.phase2) + breath
-                                        }
-                                        in 80..87 -> { // Synth Leads (Square, Sawtooth, Calliope, Chiff, Charang)
-                                            val saw = 2.0f * (v.phase / twoPi) - 1.0f
-                                            val sq = if (v.phase < Math.PI) 0.55f else -0.55f
-                                            0.50f * saw + 0.50f * sq
-                                        }
-                                        in 88..95 -> { // Synth Pads (Warm Pad, Poly, Choir, Bowed, Halo, Sweep)
-                                            0.45f * sin(v.phase) + 0.35f * sin(v.phase2) + 0.20f * sin(v.phase3)
-                                        }
-                                        else -> {
-                                            0.50f * sin(v.phase) + 0.30f * sin(v.phase2) + 0.20f * sin(v.phase3)
-                                        }
-                                    }
-                                }
-
-                                val voiceGain = rawSample * v.envLevel * v.velocity * chParams.volume
-                                val pan = chParams.pan.coerceIn(-1f, 1f)
-                                val leftGain = (1.0f - pan) * 0.5f
-                                val rightGain = (1.0f + pan) * 0.5f
-
-                                sampleLeft += voiceGain * leftGain
-                                sampleRight += voiceGain * rightGain
-                            }
-
-                            val outL = (sampleLeft * masterVol * punchFactor).coerceIn(-1.0f, 1.0f)
-                            val outR = (sampleRight * masterVol * punchFactor).coerceIn(-1.0f, 1.0f)
-
-                            pcmBuffer[i * 2] = (outL * 32767f).toInt().toShort()
-                            pcmBuffer[i * 2 + 1] = (outR * 32767f).toInt().toShort()
-                        }
-                    }
-
-                    track.write(pcmBuffer, 0, pcmBuffer.size)
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error initializing real-time synthesizer: ${e.message}")
-        }
-    }
-
-    private fun midiToFreq(midiNote: Int): Float {
-        return 440.0f * 2.0.pow((midiNote - 69).toDouble() / 12.0).toFloat()
-    }
-
-    private fun triggerVoiceNoteOn(channel: Int, midiNote: Int, velocity: Float) {
-        synchronized(voiceLock) {
-            val ch = channel.coerceIn(0, 11)
-            val chParams = channelParams[ch]
-            val transposedNote = (midiNote + chParams.transpose).coerceIn(0, 127)
-
-            var targetVoice = voices.find { it.channel == ch && it.noteNumber == transposedNote && it.envStage != 0 }
-            if (targetVoice == null) {
-                targetVoice = voices.find { it.envStage == 0 }
-            }
-            if (targetVoice == null) {
-                targetVoice = voices.minByOrNull { it.age } ?: voices[0]
-            }
-
-            targetVoice.apply {
-                this.channel = ch
-                this.noteNumber = transposedNote
-                this.targetFrequency = midiToFreq(transposedNote)
-                this.velocity = velocity.coerceIn(0.1f, 1.0f)
-                this.instrumentType = chParams.instrumentType
-                this.program = chParams.program
-                this.isTonicDrone = (ch == 9)
-                this.envLevel = 0.05f
-                this.envStage = 1
-                this.age = ++voiceCounter
-            }
-        }
-    }
-
-    private fun triggerVoiceNoteOff(channel: Int, midiNote: Int) {
-        synchronized(voiceLock) {
-            val ch = channel.coerceIn(0, 11)
-            val chParams = channelParams[ch]
-            val transposedNote = (midiNote + chParams.transpose).coerceIn(0, 127)
-
-            for (v in voices) {
-                if (v.channel == ch && v.noteNumber == transposedNote && v.envStage != 0 && v.envStage != 4) {
-                    v.envStage = 4
-                }
-            }
-        }
     }
 
     fun setChannelProgram(channel: Int, program: Int, bank: Int = 0) {
@@ -490,24 +133,6 @@ class AudioEngine(private val context: Context) {
         channelParams[9].brightness = brightness
         channelParams[9].shimmer = shimmer
         channelParams[9].isEnabled = true
-
-        val targetMidiNotes = notes.map { noteNameToMidi(it) }.toSet()
-
-        synchronized(voiceLock) {
-            // Turn off voices no longer in target notes
-            for (v in voices) {
-                if (v.channel == 9 && v.envStage != 0 && !targetMidiNotes.contains(v.noteNumber)) {
-                    v.envStage = 4
-                }
-            }
-            // Trigger voices for new active notes
-            for (midiNote in targetMidiNotes) {
-                val existing = voices.find { it.channel == 9 && it.noteNumber == midiNote && it.envStage != 0 }
-                if (existing == null) {
-                    triggerVoiceNoteOn(9, midiNote, 0.85f)
-                }
-            }
-        }
     }
 
     fun setChannelVolume(channel: Int, volume: Float) {
@@ -555,7 +180,6 @@ class AudioEngine(private val context: Context) {
             12 -> 51 // Ride Cymbal
             else -> 36 + (padIndex % 16)
         }
-        triggerVoiceNoteOn(8, midiDrumNote, velocity)
         NativeAudioBridge.safeNoteOn(NativeAudioBridge.ENGINE_DRUM, padIndex - 1, midiDrumNote, (velocity * 127).toInt())
     }
 
@@ -638,7 +262,6 @@ class AudioEngine(private val context: Context) {
         if (isSustainPedalDown) {
             sustainedNotesToRelease.add(note)
         } else {
-            triggerVoiceNoteOff(channel, note)
             NativeAudioBridge.safeNoteOff(channel, note)
             withContext(Dispatchers.Main.immediate) {
                 onMidiNoteOffListener?.invoke(midiNumberToNoteName(note))
@@ -650,13 +273,11 @@ class AudioEngine(private val context: Context) {
     fun noteOn(noteName: String, velocity: Float = 0.85f, channel: Int = activeTargetChannel) {
         val midiNote = noteNameToMidi(noteName)
         val velInt = (velocity * 127f).toInt().coerceIn(1, 127)
-        triggerVoiceNoteOn(channel.coerceIn(0, 11), midiNote, velocity)
         NativeAudioBridge.safeNoteOn(channel.coerceIn(0, 7), midiNote, velInt)
     }
 
     fun noteOff(noteName: String, channel: Int = activeTargetChannel) {
         val midiNote = noteNameToMidi(noteName)
-        triggerVoiceNoteOff(channel.coerceIn(0, 11), midiNote)
         NativeAudioBridge.safeNoteOff(channel.coerceIn(0, 7), midiNote)
     }
 
@@ -669,12 +290,6 @@ class AudioEngine(private val context: Context) {
     fun allNotesOff() {
         activeHeldNotes.clear()
         sustainedNotesToRelease.clear()
-        synchronized(voiceLock) {
-            for (v in voices) {
-                v.envStage = 0
-                v.envLevel = 0f
-            }
-        }
         for (ch in 0..7) {
             NativeAudioBridge.safeAllNotesOff(ch)
         }
@@ -937,9 +552,7 @@ class AudioEngine(private val context: Context) {
             }
 
             if (!soundPlayed) {
-                // Synthesize punchy acoustic / 808 drum hit based on sample name or pad ID
                 val midiNote = mapSampleNameToDrumNote(drumPad.sampleFileName, drumPad.id)
-                triggerVoiceNoteOn(8, midiNote, volume)
                 NativeAudioBridge.safeNoteOn(NativeAudioBridge.ENGINE_DRUM, drumPad.id - 1, midiNote, (volume * 127).toInt())
             }
         }
@@ -968,7 +581,7 @@ class AudioEngine(private val context: Context) {
 
         if (!soundPlayed) {
             val midiNote = mapSampleNameToDrumNote(sampleName, 1)
-            triggerVoiceNoteOn(8, midiNote, volume)
+            NativeAudioBridge.safeNoteOn(NativeAudioBridge.ENGINE_DRUM, 0, midiNote, (volume * 127).toInt())
         }
     }
 
