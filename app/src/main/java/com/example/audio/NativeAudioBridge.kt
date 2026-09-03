@@ -16,10 +16,10 @@ object NativeAudioBridge {
         try {
             System.loadLibrary("native-lib")
             isLibraryLoaded = true
+            Log.i("NativeAudioBridge", "Librairie native chargée avec succès")
         } catch (e: UnsatisfiedLinkError) {
-            Log.w("NativeAudioBridge", "Native library native-lib not loaded yet: ${e.message}")
-        } catch (e: Exception) {
-            Log.e("NativeAudioBridge", "Error loading native-lib: ${e.message}")
+            Log.e("NativeAudioBridge", "ECHEC chargement librairie native", e)
+            throw e
         }
     }
 
