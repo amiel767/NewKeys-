@@ -63,6 +63,7 @@ object NativeAudioBridge {
     external fun setTrackTranspose(engineIndex: Int, channel: Int, semitones: Int)
     external fun pitchBend(engineIndex: Int, channel: Int, bendValue: Int)
     external fun setMasterVolume(volume01: Float)
+    external fun setPolyphony(engineIndex: Int, polyphony: Int)
 
     // Safe wrappers to avoid crashes if native library isn't compiled or loaded
     fun safeStartEngine(driverType: Int = 0): Boolean {
@@ -283,6 +284,18 @@ object NativeAudioBridge {
                 setMasterVolume(volume01.coerceIn(0f, 1f))
             } catch (e: Throwable) {
                 Log.e("NativeAudioBridge", "Error invoking setMasterVolume: ${e.message}")
+            }
+        }
+    }
+
+    fun safeSetPolyphony(polyphony: Int) {
+        if (isLibraryLoaded) {
+            try {
+                setPolyphony(ENGINE_FADER, polyphony)
+                setPolyphony(ENGINE_PAD, polyphony)
+                setPolyphony(ENGINE_DRUM, polyphony)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking setPolyphony: ${e.message}")
             }
         }
     }

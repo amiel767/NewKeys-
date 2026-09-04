@@ -50,19 +50,17 @@ fun SettingsDrawer(
     midiDevices: List<MidiDeviceItem>,
     onToggleMidiDevice: (String) -> Unit,
     
-    // Audio Engine
-    audioEngine: String,
-    onSelectAudioEngine: (String) -> Unit,
+    // Audio Engine / Buffer & Polyphony
+    audioEngine: String = "Oboe (C++)",
+    onSelectAudioEngine: (String) -> Unit = {},
     audioBufferSize: Int,
     onSelectBufferSize: (Int) -> Unit,
     polyphony: Int,
     onSelectPolyphony: (Int) -> Unit,
-    isLowLatency: Boolean,
-    onToggleLowLatency: () -> Unit,
+    isLowLatency: Boolean = true,
+    onToggleLowLatency: () -> Unit = {},
     
-    // Theme & Language
-    currentTheme: AppTheme = AppTheme.CYBER_NEON,
-    onSelectTheme: (AppTheme) -> Unit = {},
+    // Language
     selectedLanguage: String,
     onSelectLanguage: (String) -> Unit,
     
@@ -77,9 +75,9 @@ fun SettingsDrawer(
     onSpatialWidenerChange: (Float) -> Unit,
     
     // Velocity Settings
-    velocityMin: Float,
-    velocityMax: Float,
-    onVelocityRangeChange: (Float, Float) -> Unit,
+    velocityMin: Float = 0.10f,
+    velocityMax: Float = 1.0f,
+    onVelocityRangeChange: (Float, Float) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     AnimatedVisibility(
@@ -116,23 +114,19 @@ fun SettingsDrawer(
                             onBack = { onNavigateSubPage("main") }
                         )
                     }
-                    "audio" -> {
-                        AudioEngineSubPage(
-                            audioEngine = audioEngine,
-                            onSelectAudioEngine = onSelectAudioEngine,
+                    "buffer_polyphony", "audio" -> {
+                        BufferPolyphonySubPage(
                             audioBufferSize = audioBufferSize,
                             onSelectBufferSize = onSelectBufferSize,
                             polyphony = polyphony,
                             onSelectPolyphony = onSelectPolyphony,
-                            isLowLatency = isLowLatency,
-                            onToggleLowLatency = onToggleLowLatency,
                             onBack = { onNavigateSubPage("main") }
                         )
                     }
-                    "themes" -> {
-                        ThemeSelectorSubPage(
-                            currentTheme = currentTheme,
-                            onSelectTheme = onSelectTheme,
+                    "language" -> {
+                        LanguageSelectorSubPage(
+                            selectedLanguage = selectedLanguage,
+                            onSelectLanguage = onSelectLanguage,
                             onBack = { onNavigateSubPage("main") }
                         )
                     }
@@ -141,9 +135,8 @@ fun SettingsDrawer(
                             onClose = onClose,
                             onNavigateSubPage = onNavigateSubPage,
                             midiDevices = midiDevices,
-                            audioEngine = audioEngine,
                             audioBufferSize = audioBufferSize,
-                            currentTheme = currentTheme,
+                            polyphony = polyphony,
                             selectedLanguage = selectedLanguage,
                             soundGoodizer = soundGoodizer,
                             onSoundGoodizerChange = onSoundGoodizerChange,
@@ -166,9 +159,8 @@ private fun AospMainSettingsPage(
     onClose: () -> Unit,
     onNavigateSubPage: (String) -> Unit,
     midiDevices: List<MidiDeviceItem>,
-    audioEngine: String,
     audioBufferSize: Int,
-    currentTheme: AppTheme,
+    polyphony: Int,
     selectedLanguage: String,
     soundGoodizer: Float,
     onSoundGoodizerChange: (Float) -> Unit,
@@ -229,15 +221,15 @@ private fun AospMainSettingsPage(
                 .weight(1f),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // CARD 1: CONNECTIVITÉ & PÉRIPHÉRIQUES (AOSP STYLE)
+            // CARD 1: PÉRIPHÉRIQUES & AUDIO
             item {
-                AospCard(title = "Périphériques & Connectivité") {
+                AospCard(title = "Périphériques & Audio") {
                     Column {
                         AospSettingItem(
                             iconText = "🎹",
                             iconBg = Color(0xFF10B981),
                             title = "USB MIDI",
-                            subtitle = "Détection matérielle active (${midiDevices.count { it.isConnected }} connectés)",
+                            subtitle = "Détection matérielle (${midiDevices.count { it.isConnected }} connectés)",
                             onClick = { onNavigateSubPage("midi") }
                         )
 
@@ -246,40 +238,30 @@ private fun AospMainSettingsPage(
                         AospSettingItem(
                             iconText = "⚡",
                             iconBg = Color(0xFF06B6D4),
-                            title = "Moteur Audio & Latence",
-                            subtitle = "$audioEngine · Tampon $audioBufferSize frames (~4.2ms)",
-                            onClick = { onNavigateSubPage("audio") }
+                            title = "Buffer & Polyphonie",
+                            subtitle = "Tampon $audioBufferSize frames · Polyphonie $polyphony voix",
+                            onClick = { onNavigateSubPage("buffer_polyphony") }
                         )
                     }
                 }
             }
 
-            // CARD 2: PERSONNALISATION & APPARENCE (MATERIAL YOU)
+            // CARD 2: LANGUE & SYSTÈME
             item {
-                AospCard(title = "Personnalisation & Interface") {
+                AospCard(title = "Langue & Système") {
                     Column {
-                        AospSettingItem(
-                            iconText = "🎨",
-                            iconBg = Color(0xFF8B5CF6),
-                            title = "Thème d'application",
-                            subtitle = currentTheme.displayName,
-                            onClick = { onNavigateSubPage("themes") }
-                        )
-
-                        AospDivider()
-
                         AospSettingItem(
                             iconText = "🌐",
                             iconBg = Color(0xFFEC4899),
                             title = "Langue / Language",
                             subtitle = selectedLanguage,
-                            onClick = {}
+                            onClick = { onNavigateSubPage("language") }
                         )
                     }
                 }
             }
 
-            // CARD 3: SOUNDGOODIZER & MASTER PROCESSING (PLACED AT THE BOTTOM)
+            // CARD 3: SOUNDGOODIZER & MASTER PROCESSING
             item {
                 AospCard(title = "SoundGoodizer") {
                     Column(
@@ -349,36 +331,35 @@ private fun AospMainSettingsPage(
                             )
                         }
 
-                        // Spatial Widener
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "Stéréo 3D ${(spatialWidener * 100).roundToInt()}%",
-                                fontSize = 10.sp,
-                                color = TextDim,
-                                modifier = Modifier.width(90.dp)
-                            )
-                            Slider(
-                                value = spatialWidener,
-                                onValueChange = onSpatialWidenerChange,
-                                colors = SliderDefaults.colors(thumbColor = Color(0xFFA855F7), activeTrackColor = Color(0xFFA855F7)),
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-
-                        // Master Punch
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "Punch ${(masterPunch * 100).roundToInt()}%",
-                                fontSize = 10.sp,
-                                color = TextDim,
-                                modifier = Modifier.width(90.dp)
-                            )
-                            Slider(
-                                value = masterPunch,
-                                onValueChange = onMasterPunchChange,
-                                colors = SliderDefaults.colors(thumbColor = Color(0xFFF97316), activeTrackColor = Color(0xFFF97316)),
-                                modifier = Modifier.weight(1f)
-                            )
+                        // Punch & Widener
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Punch Dynamique: ${(masterPunch * 100).roundToInt()}%",
+                                    fontSize = 9.sp,
+                                    color = TextDim
+                                )
+                                Slider(
+                                    value = masterPunch,
+                                    onValueChange = onMasterPunchChange,
+                                    colors = SliderDefaults.colors(thumbColor = SoloAmber, activeTrackColor = SoloAmber)
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Largeur Stéréo: ${(spatialWidener * 100).roundToInt()}%",
+                                    fontSize = 9.sp,
+                                    color = TextDim
+                                )
+                                Slider(
+                                    value = spatialWidener,
+                                    onValueChange = onSpatialWidenerChange,
+                                    colors = SliderDefaults.colors(thumbColor = NeonMagenta, activeTrackColor = NeonMagenta)
+                                )
+                            }
                         }
                     }
                 }
@@ -553,19 +534,15 @@ private fun MidiDevicesSubPage(
 }
 
 @Composable
-private fun AudioEngineSubPage(
-    audioEngine: String,
-    onSelectAudioEngine: (String) -> Unit,
+private fun BufferPolyphonySubPage(
     audioBufferSize: Int,
     onSelectBufferSize: (Int) -> Unit,
     polyphony: Int,
     onSelectPolyphony: (Int) -> Unit,
-    isLowLatency: Boolean,
-    onToggleLowLatency: () -> Unit,
     onBack: () -> Unit
 ) {
-    val engines = listOf("FluidSynth (Oboe High-Performance)", "FluidSynth (OpenSL ES)")
     val bufferSizes = listOf(64, 128, 256, 512)
+    val polyphonyValues = listOf(64, 128, 256, 512)
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -584,56 +561,91 @@ private fun AudioEngineSubPage(
                 Text(text = "← Retour", fontSize = 10.sp, color = NeonCyan)
             }
             Spacer(modifier = Modifier.width(12.dp))
-            Text(text = "Moteur Audio Basse Latence", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Text(text = "Buffer & Polyphonie", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
         }
 
-        AospCard(title = "Moteur de Synthèse") {
-            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                engines.forEach { eng ->
-                    val isSel = eng == audioEngine
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (isSel) Color(0x3322D3EE) else Color.Transparent)
-                            .clickable { onSelectAudioEngine(eng) }
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(text = eng, fontSize = 11.sp, color = if (isSel) Color.White else TextDim)
-                        if (isSel) Text(text = "✓", fontSize = 11.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            item {
+                AospCard(title = "Taille du Buffer Audio (Latence)") {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "Un buffer plus petit réduit la latence au toucher du clavier. Réglez selon la puissance de l'appareil.",
+                            fontSize = 9.5.sp,
+                            color = TextDim
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            bufferSizes.forEach { sz ->
+                                val isSel = (sz == audioBufferSize)
+                                val latencyMs = when (sz) {
+                                    64 -> "~1.4 ms"
+                                    128 -> "~2.9 ms"
+                                    256 -> "~5.8 ms"
+                                    else -> "~11.6 ms"
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isSel) NeonCyan else Color(0x14FFFFFF))
+                                        .clickable { onSelectBufferSize(sz) }
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(
+                                            text = "$sz",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isSel) Color(0xFF002233) else TextPrimary
+                                        )
+                                        Text(
+                                            text = latencyMs,
+                                            fontSize = 8.sp,
+                                            color = if (isSel) Color(0xFF003344) else TextDim2
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(10.dp))
-
-        AospCard(title = "Taille du Tampon Audio") {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(10.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                bufferSizes.forEach { sz ->
-                    val isSel = sz == audioBufferSize
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (isSel) NeonCyan else Color(0x14FFFFFF))
-                            .clickable { onSelectBufferSize(sz) }
-                            .padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
+            item {
+                AospCard(title = "Polyphonie Maximale (Voix)") {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(
-                            text = "$sz",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isSel) Color(0xFF002233) else TextPrimary
+                            text = "Nombre maximum de notes jouées simultanément par le moteur FluidSynth.",
+                            fontSize = 9.5.sp,
+                            color = TextDim
                         )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            polyphonyValues.forEach { p ->
+                                val isSel = (p == polyphony)
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isSel) Color(0xFF10B981) else Color(0x14FFFFFF))
+                                        .clickable { onSelectPolyphony(p) }
+                                        .padding(vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "$p",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSel) Color(0xFF003311) else TextPrimary
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -642,11 +654,20 @@ private fun AudioEngineSubPage(
 }
 
 @Composable
-private fun ThemeSelectorSubPage(
-    currentTheme: AppTheme,
-    onSelectTheme: (AppTheme) -> Unit,
+private fun LanguageSelectorSubPage(
+    selectedLanguage: String,
+    onSelectLanguage: (String) -> Unit,
     onBack: () -> Unit
 ) {
+    val languages = listOf(
+        Pair("Français", "🇫🇷"),
+        Pair("English", "🇬🇧"),
+        Pair("Español", "🇪🇸"),
+        Pair("Malagasy", "🇲🇬"),
+        Pair("Deutsch", "🇩🇪"),
+        Pair("Português", "🇧🇷")
+    )
+
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
@@ -664,43 +685,33 @@ private fun ThemeSelectorSubPage(
                 Text(text = "← Retour", fontSize = 10.sp, color = NeonCyan)
             }
             Spacer(modifier = Modifier.width(12.dp))
-            Text(text = "Thèmes Material You", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Text(text = "Langue / Language", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
         }
 
         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(AppTheme.values()) { th ->
-                val isSel = th == currentTheme
-                val themeColor = when (th) {
-                    AppTheme.CYBER_NEON -> NeonCyan
-                    AppTheme.OBSIDIAN_GOLD -> Color(0xFFFFC247)
-                    AppTheme.TOKYO_NIGHT -> Color(0xFF7AA2F7)
-                    AppTheme.STUDIO_SLATE -> Color(0xFF90CAF9)
-                    AppTheme.OLED_BLACK -> Color(0xFF00E5FF)
-                }
-
+            items(languages) { (lang, flag) ->
+                val isSel = (lang == selectedLanguage)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
                         .background(if (isSel) Color(0xFF1E2C3D) else Color(0xFF1E212E))
                         .border(1.dp, if (isSel) NeonCyan else Color(0x14FFFFFF), RoundedCornerShape(12.dp))
-                        .clickable { onSelectTheme(th) }
-                        .padding(12.dp),
+                        .clickable { onSelectLanguage(lang) }
+                        .padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(themeColor)
+                    Text(text = flag, fontSize = 20.sp)
+                    Text(
+                        text = lang,
+                        fontSize = 13.sp,
+                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                        color = Color.White,
+                        modifier = Modifier.weight(1f)
                     )
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(text = th.displayName, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                        Text(text = th.description, fontSize = 9.sp, color = TextDim2)
-                    }
                     if (isSel) {
-                        Text(text = "✓", fontSize = 12.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
+                        Text(text = "✓", fontSize = 14.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
                     }
                 }
             }

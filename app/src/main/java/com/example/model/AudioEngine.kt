@@ -101,7 +101,12 @@ class AudioEngine(private val context: Context) {
     private val loClickPcm: ShortArray
 
     // ================= 4. AUDIO / LOOP / SAMPLE PLAYBACK =================
-    private var loopMediaPlayer: MediaPlayer? = null
+    private var loopSoundPool: SoundPool? = null
+    private var loopStreamId: Int = 0
+    private var currentLoopSoundId: Int = 0
+    private var currentLoopFilePath: String = ""
+    @Volatile private var currentLoopVolume: Float = 0.75f
+    private var loopMediaPlayerFallback: MediaPlayer? = null
     private var loopJob: Job? = null
     private var soundPool: SoundPool? = null
     private val loadedSampleIds = mutableMapOf<String, Int>()
@@ -122,7 +127,35 @@ class AudioEngine(private val context: Context) {
         loClickPcm = generateClickSound(freq = 1100.0, durationMs = 28, accent = false)
 
         initSoundPool()
+        initLoopSoundPool()
         initUsbMidi()
+    }
+
+    private fun initLoopSoundPool() {
+        val loopAttrs = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+            .build()
+        loopSoundPool = SoundPool.Builder()
+            .setMaxStreams(4)
+            .setAudioAttributes(loopAttrs)
+            .build()
+    }
+
+    fun getActivePerformanceChannels(preferredChannel: Int = activeTargetChannel): List<Int> {
+        if (preferredChannel >= 8) {
+            return listOf(preferredChannel)
+        }
+        val active = mutableListOf<Int>()
+        for (ch in 0..7) {
+            if (channelParams[ch].isEnabled && channelParams[ch].volume > 0.01f) {
+                active.add(ch)
+            }
+        }
+        if (active.isEmpty()) {
+            active.add(preferredChannel.coerceIn(0, 7))
+        }
+        return active
     }
 
     fun setChannelProgram(channel: Int, program: Int, bank: Int = 0) {
@@ -236,11 +269,10 @@ class AudioEngine(private val context: Context) {
     // DIRECT ZERO-LATENCY MIDI PROCESSOR (RUNS ON MIDI IO THREAD)
     // -------------------------------------------------------------
     fun handleIncomingMidi(channel: Int, command: Int, data1: Int, data2: Int) {
-        // USB MIDI Routing: route to active slot selected on screen if enabled, or 1:1 channel mapping
-        val targetChannel = if (usbMidiRouteToActiveSlot) {
-            activeTargetChannel.coerceIn(0, 15)
+        val targetChannels = if (usbMidiRouteToActiveSlot) {
+            getActivePerformanceChannels(activeTargetChannel)
         } else {
-            midiChannelForSlot(channel)
+            listOf(midiChannelForSlot(channel))
         }
 
         when (command) {
@@ -248,22 +280,26 @@ class AudioEngine(private val context: Context) {
                 if (data2 > 0) {
                     activeHeldNotes.add(data1)
                     sustainedNotesToRelease.remove(data1)
-                    NativeAudioBridge.safeNoteOn(targetChannel, data1, data2)
+                    for (ch in targetChannels) {
+                        NativeAudioBridge.safeNoteOn(ch, data1, data2)
+                    }
                     coroutineScope.launch(Dispatchers.Main) {
                         onMidiNoteOnListener?.invoke(midiNumberToNoteName(data1), data2)
                     }
                 } else {
-                    handleNoteOffDirect(targetChannel, data1)
+                    handleNoteOffDirect(targetChannels, data1)
                 }
             }
 
             0x80 -> { // Note Off
-                handleNoteOffDirect(targetChannel, data1)
+                handleNoteOffDirect(targetChannels, data1)
             }
 
             0xE0 -> { // Pitch Bend
                 val bendVal = ((data2 shl 7) or data1)
-                NativeAudioBridge.safePitchBend(targetChannel, bendVal)
+                for (ch in targetChannels) {
+                    NativeAudioBridge.safePitchBend(ch, bendVal)
+                }
                 val normalized = (bendVal - 8192) / 8192f
                 coroutineScope.launch(Dispatchers.Main) {
                     onMidiPitchBendListener?.invoke(normalized)
@@ -282,7 +318,9 @@ class AudioEngine(private val context: Context) {
 
                         for (note in notesToRelease) {
                             if (!activeHeldNotes.contains(note)) {
-                                NativeAudioBridge.safeNoteOff(targetChannel, note)
+                                for (ch in targetChannels) {
+                                    NativeAudioBridge.safeNoteOff(ch, note)
+                                }
                                 coroutineScope.launch(Dispatchers.Main) {
                                     onMidiNoteOffListener?.invoke(midiNumberToNoteName(note))
                                 }
@@ -298,12 +336,14 @@ class AudioEngine(private val context: Context) {
         }
     }
 
-    private fun handleNoteOffDirect(targetChannel: Int, note: Int) {
+    private fun handleNoteOffDirect(targetChannels: List<Int>, note: Int) {
         activeHeldNotes.remove(note)
         if (isSustainPedalDown) {
             sustainedNotesToRelease.add(note)
         } else {
-            NativeAudioBridge.safeNoteOff(targetChannel, note)
+            for (ch in targetChannels) {
+                NativeAudioBridge.safeNoteOff(ch, note)
+            }
             coroutineScope.launch(Dispatchers.Main) {
                 onMidiNoteOffListener?.invoke(midiNumberToNoteName(note))
             }
@@ -314,18 +354,39 @@ class AudioEngine(private val context: Context) {
     fun noteOn(noteName: String, velocity: Float = 0.85f, channel: Int = activeTargetChannel) {
         val midiNote = noteNameToMidi(noteName)
         val velInt = (velocity * 127f).toInt().coerceIn(1, 127)
-        NativeAudioBridge.safeNoteOn(channel.coerceIn(0, 15), midiNote, velInt)
+        if (channel >= 8) {
+            NativeAudioBridge.safeNoteOn(channel.coerceIn(0, 15), midiNote, velInt)
+        } else {
+            val channels = getActivePerformanceChannels(channel)
+            for (ch in channels) {
+                NativeAudioBridge.safeNoteOn(ch, midiNote, velInt)
+            }
+        }
     }
 
     fun noteOff(noteName: String, channel: Int = activeTargetChannel) {
         val midiNote = noteNameToMidi(noteName)
-        NativeAudioBridge.safeNoteOff(channel.coerceIn(0, 15), midiNote)
+        if (channel >= 8) {
+            NativeAudioBridge.safeNoteOff(channel.coerceIn(0, 15), midiNote)
+        } else {
+            val channels = getActivePerformanceChannels(channel)
+            for (ch in channels) {
+                NativeAudioBridge.safeNoteOff(ch, midiNote)
+            }
+        }
     }
 
     fun setPitchBend(bend: Float, channel: Int = activeTargetChannel) {
         pitchBendFactor = (2.0.pow((bend.coerceIn(-1f, 1f) * 2.0) / 12.0)).toFloat()
         val midiBend = ((bend + 1.0f) * 8191.5f).toInt().coerceIn(0, 16383)
-        NativeAudioBridge.safePitchBend(channel.coerceIn(0, 15), midiBend)
+        if (channel >= 8) {
+            NativeAudioBridge.safePitchBend(channel.coerceIn(0, 15), midiBend)
+        } else {
+            val channels = getActivePerformanceChannels(channel)
+            for (ch in channels) {
+                NativeAudioBridge.safePitchBend(ch, midiBend)
+            }
+        }
     }
 
     fun allNotesOff() {
@@ -718,9 +779,10 @@ class AudioEngine(private val context: Context) {
     fun isMidiPlaying(): Boolean = midiMediaPlayer?.isPlaying == true
 
     // -------------------------------------------------------------
-    // AUDIO LOOPS PLAYER (.wav, .mp3) - ASYNCHRONOUS NON-BLOCKING
+    // AUDIO LOOPS PLAYER (.wav, .mp3) - SEAMLESS ZERO-LATENCY GAPLESS LOOP
     // -------------------------------------------------------------
     fun playLoopFile(filePath: String, volume: Float = 0.75f) {
+        currentLoopVolume = volume.coerceIn(0f, 1f)
         loopJob?.cancel()
         loopJob = coroutineScope.launch(Dispatchers.IO) {
             try {
@@ -728,32 +790,31 @@ class AudioEngine(private val context: Context) {
                 val file = File(filePath)
                 if (!file.exists()) return@launch
 
-                val mp = MediaPlayer().apply {
-                    setAudioAttributes(
-                        AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_MEDIA)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                            .build()
-                    )
-                    setDataSource(filePath)
-                    setVolume(volume, volume)
-                    isLooping = true
-                    setOnPreparedListener { player ->
+                currentLoopFilePath = filePath
+                val pool = loopSoundPool ?: return@launch
+
+                pool.setOnLoadCompleteListener { soundPoolInstance, sampleId, status ->
+                    if (status == 0 && sampleId == currentLoopSoundId && currentLoopFilePath == filePath) {
                         try {
-                            player.start()
+                            val streamId = soundPoolInstance.play(
+                                sampleId,
+                                currentLoopVolume,
+                                currentLoopVolume,
+                                10,
+                                -1, // Infinite seamless loop with zero gap
+                                1.0f
+                            )
+                            loopStreamId = streamId
                         } catch (e: Exception) {
-                            Log.e(TAG, "Error starting loop player after prepare: ${e.message}")
+                            Log.e(TAG, "Error starting loop stream: ${e.message}")
                         }
                     }
-                    setOnErrorListener { _, what, extra ->
-                        Log.e(TAG, "MediaPlayer loop error: what=$what extra=$extra")
-                        true
-                    }
-                    prepareAsync()
                 }
-                loopMediaPlayer = mp
+
+                val soundId = pool.load(filePath, 1)
+                currentLoopSoundId = soundId
             } catch (e: Exception) {
-                Log.e(TAG, "Error loading loop asynchronously: ${e.message}")
+                Log.e(TAG, "Error loading loop: ${e.message}")
             }
         }
     }
@@ -762,15 +823,27 @@ class AudioEngine(private val context: Context) {
         loopJob?.cancel()
         loopJob = null
         try {
-            loopMediaPlayer?.stop()
-            loopMediaPlayer?.release()
+            if (loopStreamId > 0) {
+                loopSoundPool?.stop(loopStreamId)
+                loopStreamId = 0
+            }
+            if (currentLoopSoundId > 0) {
+                loopSoundPool?.unload(currentLoopSoundId)
+                currentLoopSoundId = 0
+            }
+            loopMediaPlayerFallback?.stop()
+            loopMediaPlayerFallback?.release()
+            loopMediaPlayerFallback = null
         } catch (_: Exception) {}
-        loopMediaPlayer = null
+        currentLoopFilePath = ""
     }
 
     fun setLoopVolume(volume: Float) {
+        currentLoopVolume = volume.coerceIn(0f, 1f)
         try {
-            loopMediaPlayer?.setVolume(volume, volume)
+            if (loopStreamId > 0) {
+                loopSoundPool?.setVolume(loopStreamId, currentLoopVolume, currentLoopVolume)
+            }
         } catch (_: Exception) {}
     }
 
@@ -805,7 +878,10 @@ class AudioEngine(private val context: Context) {
         stopMetronome()
         stopLoopPlayer()
         stopMidiPlayer()
+        loopSoundPool?.release()
+        loopSoundPool = null
         soundPool?.release()
+        soundPool = null
         for (dev in openDevices) {
             try { dev.close() } catch (_: Exception) {}
         }

@@ -191,4 +191,13 @@ Java_com_example_audio_NativeAudioBridge_setMasterVolume(
     gAudioEngine.setMasterGain(gain);
 }
 
+JNIEXPORT void JNICALL
+Java_com_example_audio_NativeAudioBridge_setPolyphony(
+        JNIEnv *env,
+        jobject /* this */,
+        jint engineIndex,
+        jint polyphony) {
+    gAudioEngine.getEngine(engineIndex).setPolyphony(polyphony);
+}
+
 } // extern "C"

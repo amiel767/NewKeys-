@@ -1350,6 +1350,20 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
 
+            // Re-validate program selection for all other active audio slots to ensure complete isolation
+            val currentSlots = _uiState.value.audioSlots
+            for (s in currentSlots) {
+                if (s.slotId != slotId && s.soundFontId > 0) {
+                    NativeAudioBridge.safeSelectProgram(
+                        engineIndex = NativeAudioBridge.ENGINE_FADER,
+                        channel = s.midiChannel,
+                        soundFontId = s.soundFontId,
+                        bank = s.bank,
+                        preset = s.preset
+                    )
+                }
+            }
+
             // 5 & 6. Mettre à jour audioSlots[slotId] et notifier l'UI
             val sfName = File(sf2Path).name
             _uiState.update { state ->

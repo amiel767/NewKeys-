@@ -104,6 +104,10 @@ std::vector<NativePresetInfo> SoundfontEngine::listPresets(int soundFontId) {
             result.push_back(info);
         }
     }
+    std::sort(result.begin(), result.end(), [](const NativePresetInfo &a, const NativePresetInfo &b) {
+        if (a.bank != b.bank) return a.bank < b.bank;
+        return a.preset < b.preset;
+    });
     return result;
 }
 
@@ -204,6 +208,13 @@ void SoundfontEngine::setGain(float gain) {
     float clampedGain = std::clamp(gain, 0.0f, 1.2f);
     std::lock_guard<std::mutex> lock(mMutex);
     fluid_synth_set_gain(mSynth, clampedGain);
+}
+
+void SoundfontEngine::setPolyphony(int polyphony) {
+    if (!mSynth) return;
+    int clamped = std::clamp(polyphony, 16, 512);
+    std::lock_guard<std::mutex> lock(mMutex);
+    fluid_synth_set_polyphony(mSynth, clamped);
 }
 
 void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool accumulate) {

@@ -30,16 +30,11 @@ object SF2Parser {
     private const val TAG = "SF2Parser"
 
     fun cleanPresetName(rawName: String): String {
-        var name = rawName.trim()
-        // Remove patterns like [000:000] or (000)
+        var name = rawName.trim { it <= ' ' || it == '\u0000' }
+        // Clean bracketed bank/preset markers like [000:000] if present
         name = name.replace("\\[\\d+:\\d+\\]".toRegex(), "").trim()
-        name = name.replace("\\(\\d+\\)".toRegex(), "").trim()
-        // Remove leading numbers with colons, hyphens, dots, underscores or spaces (e.g. "000:024 ", "000 - ", "024 ")
-        name = name.replace("^[0-9]{1,4}[:\\-\\s_.]+".toRegex(), "").trim()
-        // Remove trailing number suffixes like " 000" or " 024" or "_000"
-        name = name.replace("[_\\-\\s]+[0-9]{1,4}$".toRegex(), "").trim()
         if (name.isBlank()) {
-            name = rawName.trim().ifBlank { "Instrument" }
+            name = "Instrument"
         }
         return name
     }
@@ -157,7 +152,7 @@ object SF2Parser {
             if (presets.isEmpty()) {
                 fallbackSinglePreset(sf2File)
             } else {
-                presets
+                presets.sortedWith(compareBy({ it.bank }, { it.preset }))
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing SF2 binary presets: ${e.message}", e)
