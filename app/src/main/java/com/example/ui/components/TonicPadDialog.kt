@@ -59,6 +59,7 @@ fun TonicPadDialog(
     loadedSf2Presets: List<SoundfontPreset> = emptyList(),
     onSelectPreset: (SoundfontPreset) -> Unit = {},
     onSelectSf2File: (StorageItem) -> Unit = {},
+    onOpenSoundfontPicker: () -> Unit = {},
     initialOffsetX: Float = 0f,
     initialOffsetY: Float = 0f,
     initialSizeDp: Float = 440f,
@@ -130,6 +131,7 @@ fun TonicPadDialog(
                 loadedSf2Presets = loadedSf2Presets,
                 onSelectPreset = onSelectPreset,
                 onSelectSf2File = onSelectSf2File,
+                onOpenSoundfontPicker = onOpenSoundfontPicker,
                 onDragHeader = { dx, dy ->
                     floatingOffsetX = (floatingOffsetX + dx).coerceIn(-maxDragX, maxDragX)
                     floatingOffsetY = (floatingOffsetY + dy).coerceIn(-maxDragY, maxDragY)
@@ -182,6 +184,7 @@ private fun TonicPadContent(
     loadedSf2Presets: List<SoundfontPreset>,
     onSelectPreset: (SoundfontPreset) -> Unit,
     onSelectSf2File: (StorageItem) -> Unit,
+    onOpenSoundfontPicker: () -> Unit = {},
     onDragHeader: ((Float, Float) -> Unit)?
 ) {
     val chromaticNotes = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
@@ -242,7 +245,7 @@ private fun TonicPadContent(
                             .clip(RoundedCornerShape(6.dp))
                             .background(Color(0x228B5CF6))
                             .border(1.dp, NeonPurpleLight, RoundedCornerShape(6.dp))
-                            .clickable { onToggleSoundPicker(true) }
+                            .clickable { onOpenSoundfontPicker() }
                             .padding(horizontal = 5.dp, vertical = 3.dp)
                     ) {
                         Row(

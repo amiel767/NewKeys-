@@ -59,6 +59,35 @@ Java_com_example_audio_NativeAudioBridge_unloadSoundFont(
     return gAudioEngine.getEngine(engineIndex).unloadSoundFont(soundFontId);
 }
 
+JNIEXPORT jobjectArray JNICALL
+Java_com_example_audio_NativeAudioBridge_listPresets(
+        JNIEnv *env,
+        jobject /* this */,
+        jint soundFontId) {
+    
+    // We get the presets from ENGINE_FADER (0) since SoundFonts are loaded there
+    std::vector<NativePresetInfo> presets = gAudioEngine.getEngine(0).listPresets(soundFontId);
+    
+    jclass presetInfoClass = env->FindClass("com/example/audio/PresetInfo");
+    if (presetInfoClass == nullptr) return nullptr;
+    
+    jmethodID constructor = env->GetMethodID(presetInfoClass, "<init>", "(IILjava/lang/String;)V");
+    if (constructor == nullptr) return nullptr;
+    
+    jobjectArray result = env->NewObjectArray(presets.size(), presetInfoClass, nullptr);
+    if (result == nullptr) return nullptr;
+    
+    for (size_t i = 0; i < presets.size(); ++i) {
+        jstring nameStr = env->NewStringUTF(presets[i].name.c_str());
+        jobject presetObj = env->NewObject(presetInfoClass, constructor, presets[i].bank, presets[i].preset, nameStr);
+        env->SetObjectArrayElement(result, i, presetObj);
+        env->DeleteLocalRef(nameStr);
+        env->DeleteLocalRef(presetObj);
+    }
+    
+    return result;
+}
+
 JNIEXPORT jboolean JNICALL
 Java_com_example_audio_NativeAudioBridge_selectProgram(
         JNIEnv *env,

@@ -120,7 +120,7 @@ fun MixerScreen(
                         onPowerToggle = { id -> viewModel.toggleTrackPower(id) },
                         onPanChange = { id, pan -> viewModel.setTrackPan(id, pan) },
                         onMuteSoloClick = { id -> viewModel.onTrackMuteSoloClick(id) },
-                        onTrackNameClick = { id -> viewModel.openSoundfontForTrack(id) },
+                        onTrackNameClick = { id -> viewModel.openSoundfontForSlot(id - 1) },
                         onFxClick = { id -> viewModel.openEffectsForTrack(id) },
                         modifier = Modifier
                             .fillMaxWidth()
@@ -141,7 +141,7 @@ fun MixerScreen(
                                 onPowerToggle = { viewModel.toggleTrackPower(track.id) },
                                 onPanChange = { pan -> viewModel.setTrackPan(track.id, pan) },
                                 onMuteSoloClick = { viewModel.onTrackMuteSoloClick(track.id) },
-                                onTrackNameClick = { viewModel.openSoundfontForTrack(track.id) },
+                                onTrackNameClick = { viewModel.openSoundfontForSlot(track.id - 1) },
                                 onFxClick = { viewModel.openEffectsForTrack(track.id) },
                                 modifier = Modifier
                                     .weight(1f)
@@ -354,10 +354,10 @@ fun MixerScreen(
                 onSetSubView = { viewModel.setDrumSubView(it) },
                 soundfonts = uiState.soundfontFiles,
                 currentSoundfontName = defaultSfName,
-                loadedSf2Presets = uiState.drumPadPresets,
+                loadedSf2Presets = uiState.audioSlots.getOrNull(8)?.presets ?: emptyList(),
                 onSelectPreset = { viewModel.selectSf2Preset(it) },
                 onSelectSf2File = { viewModel.loadSoundfontFromStorage(it) },
-                onOpenSoundfontPicker = { viewModel.openSoundfontForTrack(1) },
+                onOpenSoundfontPicker = { viewModel.openSoundfontForSlot(8) },
                 audioFiles = uiState.drumPadAudioFiles,
                 isPinned = uiState.isDrumPadPinned,
                 onTogglePin = { viewModel.togglePinDrumPad() },
@@ -396,10 +396,11 @@ fun MixerScreen(
                 onTogglePin = { viewModel.togglePinTonicPad() },
                 onClose = { viewModel.closeTonicPad() },
                 soundfonts = uiState.soundfontFiles,
-                currentLoadedSf2Name = uiState.tonicSoundfontName.ifEmpty { defaultSfName },
-                loadedSf2Presets = uiState.tonicPresets,
+                currentLoadedSf2Name = uiState.audioSlots.getOrNull(9)?.soundFontPath?.substringAfterLast("/") ?: defaultSfName,
+                loadedSf2Presets = uiState.audioSlots.getOrNull(9)?.presets ?: emptyList(),
                 onSelectPreset = { viewModel.selectSf2Preset(it) },
                 onSelectSf2File = { viewModel.loadSoundfontFromStorage(it) },
+                onOpenSoundfontPicker = { viewModel.openSoundfontForSlot(9) },
                 initialOffsetX = uiState.tonicPadOffsetX,
                 initialOffsetY = uiState.tonicPadOffsetY,
                 initialSizeDp = uiState.tonicPadSizeDp,
@@ -426,21 +427,13 @@ fun MixerScreen(
                 )
             }
             ActivePopup.SOUNDFONT -> {
-                val track = uiState.tracks.find { it.id == uiState.activeSoundfontTrackId }
-                val activePresets = when (uiState.activeSoundfontSource) {
-                    "drum" -> uiState.drumPadPresets
-                    "pad" -> uiState.tonicPresets
-                    else -> track?.presets ?: emptyList()
-                }
-                val activePresetId = when (uiState.activeSoundfontSource) {
-                    "drum" -> uiState.selectedDrumPresetId
-                    "pad" -> uiState.selectedTonicPresetId
-                    else -> track?.program ?: 0
-                }
+                val slot = uiState.audioSlots.getOrNull(uiState.activeSoundfontSlotId)
+                val activePresets = slot?.presets ?: emptyList()
+                val activePresetId = slot?.preset ?: 0
 
                 SoundfontDialog(
-                    trackId = uiState.activeSoundfontTrackId,
-                    source = uiState.activeSoundfontSource,
+                    trackId = uiState.activeSoundfontSlotId,
+                    source = if (uiState.activeSoundfontSlotId == 8) "drum" else if (uiState.activeSoundfontSlotId == 9) "pad" else "track",
                     presets = activePresets,
                     bankFiles = uiState.soundfontBankFiles,
                     soundfontStorageFiles = uiState.realSoundfonts,

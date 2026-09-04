@@ -2,6 +2,12 @@ package com.example.audio
 
 import android.util.Log
 
+data class PresetInfo(
+    val bank: Int,
+    val preset: Int,
+    val name: String
+)
+
 object NativeAudioBridge {
     private var isLibraryLoaded = false
 
@@ -46,6 +52,7 @@ object NativeAudioBridge {
     external fun setAudioDriver(driverType: Int)
     external fun loadSoundFont(engineIndex: Int, absolutePath: String): Int
     external fun unloadSoundFont(engineIndex: Int, soundFontId: Int): Int
+    external fun listPresets(soundFontId: Int): Array<PresetInfo>
     external fun selectProgram(engineIndex: Int, channel: Int, soundFontId: Int, bank: Int, preset: Int): Boolean
     external fun programChange(engineIndex: Int, channel: Int, preset: Int): Boolean
     external fun noteOn(engineIndex: Int, channel: Int, midiNote: Int, velocity: Int)

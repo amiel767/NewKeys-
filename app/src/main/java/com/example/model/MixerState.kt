@@ -71,16 +71,31 @@ enum class DrumPadStyle(
     MY_PEACH("Peach Blossom", DrumPadCategory.MATERIAL_YOU, Color(0xFFFED7AA), Color(0xFFC2410C))
 }
 
-data class TrackLayer(
-    val isEnabled: Boolean = true,
-    val soundfontName: String = "",
-    val patchName: String = "",
-    val soundfontId: Int = -1,
+fun midiChannelForSlot(slotId: Int): Int {
+    return when (slotId) {
+        in 0..7 -> slotId
+        8 -> 8
+        9 -> 9
+        else -> slotId.coerceIn(0, 15)
+    }
+}
+
+data class AudioSlot(
+    val slotId: Int,           // 0-7 = pistes 1-8, 8 = DrumPad, 9 = Pad
+    val midiChannel: Int = midiChannelForSlot(slotId),
+    val soundFontId: Int = -1,
+    val soundFontPath: String? = null,
     val bank: Int = 0,
-    val program: Int = 0,
-    val volume: Float = 1.0f,
-    val transpose: Int = 0
-)
+    val preset: Int = 0,
+    val patchName: String? = null,
+    val volume: Float = 0.8f,
+    val pan: Float = 0f,
+    val presets: List<SoundfontPreset> = emptyList()
+) {
+    companion object {
+        fun midiChannelForSlot(slotId: Int): Int = com.example.model.midiChannelForSlot(slotId)
+    }
+}
 
 data class TrackChannel(
     val id: Int,
@@ -92,16 +107,10 @@ data class TrackChannel(
     val volume: Float = 0.65f,
     val pan: Float = 0.0f, // -1.0f (Left) to +1.0f (Right)
     val fxSummary: String = "Fx, EQ...",
-    val soundfontName: String = "", // Empty -> "-"
+    val soundfontName: String = "",
     val patchName: String = "",
     val bank: Int = 0,
     val program: Int = 0,
-    val soundfontId: Int = -1,
-    val presets: List<SoundfontPreset> = emptyList(),
-    // Dual Layering A / B
-    val layerA: TrackLayer = TrackLayer(isEnabled = true),
-    val layerB: TrackLayer = TrackLayer(isEnabled = false),
-    val activeLayerTab: String = "A", // "A" or "B"
     // FX Tabs per track
     val reverbPreset: String = "Concert Hall",
     val reverbMix: Float = 0.25f,

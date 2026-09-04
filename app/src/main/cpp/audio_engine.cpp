@@ -15,8 +15,18 @@ AudioEngine::~AudioEngine() {
 }
 
 bool AudioEngine::start(int driverType) {
-    stop();
     mDriverType = driverType;
+    return openAndStartStream();
+}
+
+bool AudioEngine::openAndStartStream() {
+    std::lock_guard<std::mutex> lock(mStreamMutex);
+
+    if (mStream) {
+        mStream->stop();
+        mStream->close();
+        mStream.reset();
+    }
 
     oboe::AudioStreamBuilder builder;
     builder.setDirection(oboe::Direction::Output)
@@ -26,9 +36,10 @@ bool AudioEngine::start(int driverType) {
         ->setChannelCount(oboe::ChannelCount::Stereo)
         ->setSampleRate(48000)
         ->setDataCallback(this)
+        ->setErrorCallback(this)
         ->setUsage(oboe::Usage::Media);
 
-    if (driverType == 1) {
+    if (mDriverType == 1) {
         LOGI("Requesting OpenSL ES audio backend...");
         builder.setAudioApi(oboe::AudioApi::OpenSLES);
     } else {
@@ -50,11 +61,15 @@ bool AudioEngine::start(int driverType) {
     mStream->setBufferSizeInFrames(mStream->getFramesPerBurst() * 2);
 
     int sampleRate = mStream->getSampleRate();
-    LOGI("Audio stream opened: %d Hz, %d frames/burst. Initializing 3 SoundFont engines...",
+    LOGI("Audio stream opened: %d Hz, %d frames/burst.",
          sampleRate, mStream->getFramesPerBurst());
 
+    // Only initialize engines if they are not already initialized.
+    // This preserves all loaded SoundFonts, banks, presets, programs, and volumes across device changes (headphones / USB-C DAC)
     for (int i = 0; i < 3; ++i) {
-        mEngines[i].init(sampleRate);
+        if (!mEngines[i].isInitialized()) {
+            mEngines[i].init(sampleRate);
+        }
     }
 
     result = mStream->requestStart();
@@ -63,15 +78,28 @@ bool AudioEngine::start(int driverType) {
         return false;
     }
 
-    LOGI("Oboe audio engine running with driver mode: %d", driverType);
+    LOGI("Oboe audio engine running with driver mode: %d", mDriverType);
     return true;
 }
 
+void AudioEngine::onErrorBeforeClose(oboe::AudioStream *audioStream, oboe::Result error) {
+    LOGW("Oboe onErrorBeforeClose: %s", oboe::convertToText(error));
+}
+
+void AudioEngine::onErrorAfterClose(oboe::AudioStream *audioStream, oboe::Result error) {
+    LOGI("Oboe stream error/disconnected: %s (Audio route/device changed). Automatically reopening stream...",
+         oboe::convertToText(error));
+    openAndStartStream();
+}
+
 void AudioEngine::stop() {
-    if (mStream) {
-        mStream->stop();
-        mStream->close();
-        mStream.reset();
+    {
+        std::lock_guard<std::mutex> lock(mStreamMutex);
+        if (mStream) {
+            mStream->stop();
+            mStream->close();
+            mStream.reset();
+        }
     }
     for (int i = 0; i < 3; ++i) {
         mEngines[i].destroy();
@@ -82,7 +110,8 @@ void AudioEngine::stop() {
 void AudioEngine::setDriver(int driverType) {
     if (mDriverType != driverType) {
         LOGI("Switching audio driver from %d to %d", mDriverType, driverType);
-        start(driverType);
+        mDriverType = driverType;
+        openAndStartStream();
     }
 }
 

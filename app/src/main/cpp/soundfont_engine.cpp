@@ -78,6 +78,27 @@ int SoundfontEngine::unloadSoundFont(int sfontId) {
     return res;
 }
 
+std::vector<NativePresetInfo> SoundfontEngine::listPresets(int soundFontId) {
+    std::vector<NativePresetInfo> result;
+    if (soundFontId <= 0) return result;
+    std::lock_guard<std::mutex> lock(mMutex);
+    if (!mSynth) return result;
+
+    fluid_sfont_t* sfont = fluid_synth_get_sfont_by_id(mSynth, soundFontId);
+    if (!sfont) return result;
+
+    fluid_sfont_iteration_start(sfont);
+    fluid_preset_t* preset;
+    while ((preset = fluid_sfont_iteration_next(sfont)) != nullptr) {
+        NativePresetInfo info;
+        info.name = fluid_preset_get_name(preset);
+        info.bank = fluid_preset_get_banknum(preset);
+        info.preset = fluid_preset_get_num(preset);
+        result.push_back(info);
+    }
+    return result;
+}
+
 bool SoundfontEngine::selectProgram(int channel, int soundFontId, int bank, int preset) {
     if (channel < 0 || channel >= kMaxChannels) return false;
     std::lock_guard<std::mutex> lock(mMutex);

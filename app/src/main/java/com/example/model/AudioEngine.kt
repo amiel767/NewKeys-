@@ -77,11 +77,10 @@ class AudioEngine(private val context: Context) {
         }
     }
 
-    // ================= 1. ASYNCHRONOUS MIDI FIFO QUEUE =================
-    private val midiEventChannel = Channel<MidiEngineEvent>(Channel.UNLIMITED)
-    private val activeHeldNotes = mutableSetOf<Int>()
-    private val sustainedNotesToRelease = mutableSetOf<Int>()
-    private var isSustainPedalDown = false
+    // ================= 1. DIRECT SYNCHRONOUS MIDI AUDIO + ASYNC UI NOTIFICATION =================
+    private val activeHeldNotes = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
+    private val sustainedNotesToRelease = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
+    @Volatile private var isSustainPedalDown = false
 
     // Callbacks for UI updates (dispatched cleanly)
     var onMidiNoteOnListener: ((noteName: String, velocity: Int) -> Unit)? = null
@@ -90,15 +89,19 @@ class AudioEngine(private val context: Context) {
     var onMidiSustainListener: ((isPressed: Boolean) -> Unit)? = null
     var onDeviceListChanged: ((List<MidiDeviceItem>) -> Unit)? = null
 
-    // ================= 3. METRONOME AUDIO GENERATOR =================
+    // ================= 3. METRONOME AUDIO GENERATOR (ATOMIC BPM UPDATES) =================
     private var metronomeAudioTrack: AudioTrack? = null
     private var metronomeJob: Job? = null
-    private var isMetronomeActive = false
+    @Volatile private var isMetronomeActive = false
+    @Volatile private var metronomeIntervalMs: Long = 500L
+    @Volatile private var metronomeBeatsPerBar: Int = 4
+    @Volatile private var metronomeVolumeGain: Float = 0.8f
     private val hiClickPcm: ShortArray
     private val loClickPcm: ShortArray
 
     // ================= 4. AUDIO / LOOP / SAMPLE PLAYBACK =================
     private var loopMediaPlayer: MediaPlayer? = null
+    private var loopJob: Job? = null
     private var soundPool: SoundPool? = null
     private val loadedSampleIds = mutableMapOf<String, Int>()
 
@@ -118,7 +121,6 @@ class AudioEngine(private val context: Context) {
         loClickPcm = generateClickSound(freq = 1100.0, durationMs = 28, accent = false)
 
         initSoundPool()
-        startMidiEventProcessor()
         initUsbMidi()
     }
 
@@ -221,86 +223,73 @@ class AudioEngine(private val context: Context) {
     }
 
     // -------------------------------------------------------------
-    // ASYNCHRONOUS FIFO MIDI PROCESSOR (DISPATCHERS.DEFAULT)
+    // DIRECT ZERO-LATENCY MIDI PROCESSOR (RUNS ON MIDI IO THREAD)
     // -------------------------------------------------------------
-    private fun startMidiEventProcessor() {
-        coroutineScope.launch(Dispatchers.Default) {
-            for (event in midiEventChannel) {
-                try {
-                    when (event) {
-                        is MidiEngineEvent.NoteOn -> {
-                            val note = event.noteNumber
-                            val ch = event.channel.coerceIn(0, 7)
-                            val vel = event.velocity
+    fun handleIncomingMidi(channel: Int, command: Int, data1: Int, data2: Int) {
+        val targetChannel = midiChannelForSlot(channel)
 
-                            if (vel > 0) {
-                                activeHeldNotes.add(note)
-                                sustainedNotesToRelease.remove(note)
-                                NativeAudioBridge.safeNoteOn(ch, note, vel)
-                                withContext(Dispatchers.Main.immediate) {
-                                    onMidiNoteOnListener?.invoke(midiNumberToNoteName(note), vel)
+        when (command) {
+            0x90 -> { // Note On (velocity == 0 is treated as Note Off)
+                if (data2 > 0) {
+                    activeHeldNotes.add(data1)
+                    sustainedNotesToRelease.remove(data1)
+                    NativeAudioBridge.safeNoteOn(targetChannel, data1, data2)
+                    coroutineScope.launch(Dispatchers.Main) {
+                        onMidiNoteOnListener?.invoke(midiNumberToNoteName(data1), data2)
+                    }
+                } else {
+                    handleNoteOffDirect(targetChannel, data1)
+                }
+            }
+
+            0x80 -> { // Note Off
+                handleNoteOffDirect(targetChannel, data1)
+            }
+
+            0xE0 -> { // Pitch Bend
+                val bendVal = ((data2 shl 7) or data1)
+                NativeAudioBridge.safePitchBend(targetChannel, bendVal)
+                val normalized = (bendVal - 8192) / 8192f
+                coroutineScope.launch(Dispatchers.Main) {
+                    onMidiPitchBendListener?.invoke(normalized)
+                }
+            }
+
+            0xB0 -> { // Control Change (CC)
+                if (data1 == 64) { // Sustain Pedal (CC#64)
+                    val pedalPressed = data2 >= 64
+                    isSustainPedalDown = pedalPressed
+
+                    if (!pedalPressed) {
+                        // Sustain pedal released: immediately flush and send NoteOff for all sustained notes!
+                        val notesToRelease = ArrayList(sustainedNotesToRelease)
+                        sustainedNotesToRelease.clear()
+
+                        for (note in notesToRelease) {
+                            if (!activeHeldNotes.contains(note)) {
+                                NativeAudioBridge.safeNoteOff(targetChannel, note)
+                                coroutineScope.launch(Dispatchers.Main) {
+                                    onMidiNoteOffListener?.invoke(midiNumberToNoteName(note))
                                 }
-                            } else {
-                                handleNoteOffInternal(ch, note)
-                            }
-                        }
-
-                        is MidiEngineEvent.NoteOff -> {
-                            val note = event.noteNumber
-                            val ch = event.channel.coerceIn(0, 7)
-                            handleNoteOffInternal(ch, note)
-                        }
-
-                        is MidiEngineEvent.ControlChange -> {
-                            val ch = event.channel.coerceIn(0, 7)
-                            if (event.controller == 64) { // Sustain Pedal (CC#64)
-                                val pedalPressed = event.value >= 64
-                                isSustainPedalDown = pedalPressed
-
-                                if (!pedalPressed) {
-                                    // Sustain pedal released: immediately flush and send NoteOff for all sustained notes!
-                                    val notesToRelease = ArrayList(sustainedNotesToRelease)
-                                    sustainedNotesToRelease.clear()
-
-                                    for (note in notesToRelease) {
-                                        if (!activeHeldNotes.contains(note)) {
-                                            NativeAudioBridge.safeNoteOff(ch, note)
-                                            withContext(Dispatchers.Main.immediate) {
-                                                onMidiNoteOffListener?.invoke(midiNumberToNoteName(note))
-                                            }
-                                        }
-                                    }
-                                }
-
-                                withContext(Dispatchers.Main.immediate) {
-                                    onMidiSustainListener?.invoke(pedalPressed)
-                                }
-                            }
-                        }
-
-                        is MidiEngineEvent.PitchBend -> {
-                            val ch = event.channel.coerceIn(0, 7)
-                            NativeAudioBridge.safePitchBend(ch, event.bendValue)
-                            val normalized = (event.bendValue - 8192) / 8192f
-                            withContext(Dispatchers.Main.immediate) {
-                                onMidiPitchBendListener?.invoke(normalized)
                             }
                         }
                     }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error in MIDI FIFO processor: ${e.message}")
+
+                    coroutineScope.launch(Dispatchers.Main) {
+                        onMidiSustainListener?.invoke(pedalPressed)
+                    }
                 }
             }
         }
     }
 
-    private suspend fun handleNoteOffInternal(channel: Int, note: Int) {
+    private fun handleNoteOffDirect(targetChannel: Int, note: Int) {
         activeHeldNotes.remove(note)
         if (isSustainPedalDown) {
             sustainedNotesToRelease.add(note)
         } else {
-            NativeAudioBridge.safeNoteOff(channel, note)
-            withContext(Dispatchers.Main.immediate) {
+            NativeAudioBridge.safeNoteOff(targetChannel, note)
+            coroutineScope.launch(Dispatchers.Main) {
                 onMidiNoteOffListener?.invoke(midiNumberToNoteName(note))
             }
         }
@@ -381,35 +370,7 @@ class AudioEngine(private val context: Context) {
                                 val data1 = if (count > 1) (msg[offset + 1].toInt() and 0x7F) else 0
                                 val data2 = if (count > 2) (msg[offset + 2].toInt() and 0x7F) else 0
 
-                                when (command) {
-                                    0x90 -> { // Note On (velocity == 0 is treated as Note Off)
-                                        if (data2 <= 0) {
-                                            midiEventChannel.trySend(
-                                                MidiEngineEvent.NoteOff(channel, data1)
-                                            )
-                                        } else {
-                                            midiEventChannel.trySend(
-                                                MidiEngineEvent.NoteOn(channel, data1, data2)
-                                            )
-                                        }
-                                    }
-                                    0x80 -> { // Note Off
-                                        midiEventChannel.trySend(
-                                            MidiEngineEvent.NoteOff(channel, data1)
-                                        )
-                                    }
-                                    0xE0 -> { // Pitch Bend
-                                        val bendVal = ((data2 shl 7) or data1)
-                                        midiEventChannel.trySend(
-                                            MidiEngineEvent.PitchBend(channel, bendVal)
-                                        )
-                                    }
-                                    0xB0 -> { // Control Change (CC)
-                                        midiEventChannel.trySend(
-                                            MidiEngineEvent.ControlChange(channel, data1, data2)
-                                        )
-                                    }
-                                }
+                                handleIncomingMidi(channel, command, data1, data2)
                             }
                         })
                     }
@@ -459,10 +420,9 @@ class AudioEngine(private val context: Context) {
     }
 
     // -------------------------------------------------------------
-    // METRONOME AUDIO GENERATOR
+    // METRONOME AUDIO GENERATOR (ATOMIC BPM UPDATES)
     // -------------------------------------------------------------
     fun startMetronome(bpm: Int, timeSignature: String, volume: Float) {
-        stopMetronome()
         val beatsPerBar = when (timeSignature) {
             "2/4" -> 2
             "3/4" -> 3
@@ -470,6 +430,17 @@ class AudioEngine(private val context: Context) {
             else -> 4
         }
         val intervalMs = (60000L / bpm.coerceIn(20, 300))
+
+        metronomeBeatsPerBar = beatsPerBar
+        metronomeIntervalMs = intervalMs
+        metronomeVolumeGain = volume.coerceIn(0f, 1f)
+
+        // If metronome is already playing with an active AudioTrack, updating the volatile parameters is enough!
+        if (isMetronomeActive && metronomeAudioTrack != null && metronomeJob?.isActive == true) {
+            return
+        }
+
+        stopMetronome()
 
         try {
             val minBuf = AudioTrack.getMinBufferSize(
@@ -504,18 +475,22 @@ class AudioEngine(private val context: Context) {
                 while (isActive && isMetronomeActive) {
                     val pcmData = if (currentBeat == 0) hiClickPcm else loClickPcm
                     val scaledPcm = ShortArray(pcmData.size)
-                    val gain = volume.coerceIn(0f, 1f)
+                    val gain = metronomeVolumeGain
                     for (i in pcmData.indices) {
                         scaledPcm[i] = (pcmData[i] * gain).toInt().toShort()
                     }
                     metronomeAudioTrack?.write(scaledPcm, 0, scaledPcm.size)
-                    currentBeat = (currentBeat + 1) % beatsPerBar
-                    delay(intervalMs)
+                    currentBeat = (currentBeat + 1) % metronomeBeatsPerBar
+                    delay(metronomeIntervalMs)
                 }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error starting metronome: ${e.message}")
         }
+    }
+
+    fun setMetronomeVolume(volume: Float) {
+        metronomeVolumeGain = volume.coerceIn(0f, 1f)
     }
 
     fun stopMetronome() {
@@ -712,33 +687,49 @@ class AudioEngine(private val context: Context) {
     fun isMidiPlaying(): Boolean = midiMediaPlayer?.isPlaying == true
 
     // -------------------------------------------------------------
-    // AUDIO LOOPS PLAYER (.wav, .mp3)
+    // AUDIO LOOPS PLAYER (.wav, .mp3) - ASYNCHRONOUS NON-BLOCKING
     // -------------------------------------------------------------
     fun playLoopFile(filePath: String, volume: Float = 0.75f) {
-        try {
-            stopLoopPlayer()
-            val file = File(filePath)
-            if (!file.exists()) return
+        loopJob?.cancel()
+        loopJob = coroutineScope.launch(Dispatchers.IO) {
+            try {
+                stopLoopPlayer()
+                val file = File(filePath)
+                if (!file.exists()) return@launch
 
-            loopMediaPlayer = MediaPlayer().apply {
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                        .build()
-                )
-                setDataSource(filePath)
-                setVolume(volume, volume)
-                isLooping = true
-                prepare()
-                start()
+                val mp = MediaPlayer().apply {
+                    setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                            .build()
+                    )
+                    setDataSource(filePath)
+                    setVolume(volume, volume)
+                    isLooping = true
+                    setOnPreparedListener { player ->
+                        try {
+                            player.start()
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error starting loop player after prepare: ${e.message}")
+                        }
+                    }
+                    setOnErrorListener { _, what, extra ->
+                        Log.e(TAG, "MediaPlayer loop error: what=$what extra=$extra")
+                        true
+                    }
+                    prepareAsync()
+                }
+                loopMediaPlayer = mp
+            } catch (e: Exception) {
+                Log.e(TAG, "Error loading loop asynchronously: ${e.message}")
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error playing loop: ${e.message}")
         }
     }
 
     fun stopLoopPlayer() {
+        loopJob?.cancel()
+        loopJob = null
         try {
             loopMediaPlayer?.stop()
             loopMediaPlayer?.release()

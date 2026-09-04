@@ -21,7 +21,7 @@
  * - Engine 2: DrumEngine (Drum Pad)
  */
 #if HAS_OBOE
-class AudioEngine : public oboe::AudioStreamDataCallback {
+class AudioEngine : public oboe::AudioStreamDataCallback, public oboe::AudioStreamErrorCallback {
 public:
     AudioEngine();
     ~AudioEngine();
@@ -40,8 +40,14 @@ public:
         void *audioData,
         int32_t numFrames) override;
 
+    void onErrorBeforeClose(oboe::AudioStream *audioStream, oboe::Result error) override;
+    void onErrorAfterClose(oboe::AudioStream *audioStream, oboe::Result error) override;
+
 private:
+    bool openAndStartStream();
+
     std::shared_ptr<oboe::AudioStream> mStream;
+    std::mutex mStreamMutex;
     int mDriverType = 0;
     std::array<SoundfontEngine, 3> mEngines; // 0 = Fader, 1 = Pad, 2 = Drum
 };

@@ -7,6 +7,8 @@
 // Fallback definitions if fluidsynth headers are unavailable
 typedef void fluid_settings_t;
 typedef void fluid_synth_t;
+typedef void fluid_sfont_t;
+typedef void fluid_preset_t;
 #define FLUID_OK 0
 #define FLUID_FAILED -1
 inline fluid_settings_t* new_fluid_settings() { return nullptr; }
@@ -26,6 +28,12 @@ inline int fluid_synth_all_notes_off(fluid_synth_t*, int) { return 0; }
 inline int fluid_synth_pitch_bend(fluid_synth_t*, int, int) { return 0; }
 inline int fluid_synth_cc(fluid_synth_t*, int, int, int) { return 0; }
 inline int fluid_synth_write_float(fluid_synth_t*, int, void*, int, int, void*, int, int) { return 0; }
+inline fluid_sfont_t* fluid_synth_get_sfont_by_id(fluid_synth_t*, int) { return nullptr; }
+inline void fluid_sfont_iteration_start(fluid_sfont_t*) {}
+inline fluid_preset_t* fluid_sfont_iteration_next(fluid_sfont_t*) { return nullptr; }
+inline const char* fluid_preset_get_name(fluid_preset_t*) { return ""; }
+inline int fluid_preset_get_banknum(fluid_preset_t*) { return 0; }
+inline int fluid_preset_get_num(fluid_preset_t*) { return 0; }
 #endif
 
 #include <atomic>
@@ -33,6 +41,12 @@ inline int fluid_synth_write_float(fluid_synth_t*, int, void*, int, int, void*, 
 #include <mutex>
 #include <string>
 #include <vector>
+
+struct NativePresetInfo {
+    int bank;
+    int preset;
+    std::string name;
+};
 
 /**
  * Autonomous FluidSynth instance. Multiple instances can co-exist
@@ -44,9 +58,11 @@ public:
 
     bool init(int sampleRate);
     void destroy();
+    bool isInitialized() const { return mSynth != nullptr; }
 
     int loadSoundFont(const std::string &absolutePath);
     int unloadSoundFont(int sfontId);
+    std::vector<NativePresetInfo> listPresets(int soundFontId);
     bool selectProgram(int channel, int soundFontId, int bank, int preset);
     bool programChange(int channel, int program);
 
