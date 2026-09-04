@@ -600,8 +600,8 @@ fun LoopsFloatingPanel(
                     color = NeonCyan
                 )
 
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    listOf(2, 4, 8, 16, 32, 64).forEach { beats ->
+                Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    listOf(0, 2, 4, 8, 16, 32, 64).forEach { beats ->
                         val isSel = (selectedBeats == beats)
                         Box(
                             modifier = Modifier
@@ -609,12 +609,12 @@ fun LoopsFloatingPanel(
                                 .background(if (isSel) NeonPurpleLight else Color(0x18FFFFFF))
                                 .border(1.dp, if (isSel) NeonPurpleLight else Color(0x22FFFFFF), RoundedCornerShape(6.dp))
                                 .clickable { onSelectBeats(beats) }
-                                .padding(horizontal = 7.dp, vertical = 3.dp),
+                                .padding(horizontal = 6.dp, vertical = 3.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "${beats}T",
-                                fontSize = 9.sp,
+                                text = if (beats == 0) "AUTO" else "${beats}T",
+                                fontSize = 8.5.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = if (isSel) Color.White else TextPrimary
                             )

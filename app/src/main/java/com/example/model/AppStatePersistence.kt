@@ -65,6 +65,7 @@ class AppStatePersistence(context: Context) {
         val label: String,
         val soundType: String,
         val sampleFileName: String,
+        val sampleFilePath: String = "",
         val sf2Note: String,
         val styleName: String
     )
@@ -144,6 +145,7 @@ class AppStatePersistence(context: Context) {
                     put("label", d.label)
                     put("soundType", d.soundType.name)
                     put("sampleFileName", d.sampleFileName)
+                    put("sampleFilePath", d.sampleFilePath)
                     put("sf2Note", d.sf2Note)
                     put("styleName", d.colorStyle.name)
                 }
@@ -248,6 +250,7 @@ class AppStatePersistence(context: Context) {
                             label = obj.optString("label", ""),
                             soundType = obj.optString("soundType", "SAMPLE"),
                             sampleFileName = obj.optString("sampleFileName", "sample_${i + 1}.wav"),
+                            sampleFilePath = obj.optString("sampleFilePath", ""),
                             sf2Note = obj.optString("sf2Note", "C2"),
                             styleName = obj.optString("styleName", "GRADIENT_CYAN")
                         )

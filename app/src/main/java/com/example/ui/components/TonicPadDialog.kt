@@ -16,7 +16,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +52,10 @@ fun TonicPadDialog(
     octaveRange: String,
     onOctaveMinus: () -> Unit,
     onOctavePlus: () -> Unit,
+    volume: Float = 0.80f,
+    onVolumeChange: (Float) -> Unit = {},
+    reverb: Float = 0.35f,
+    onReverbChange: (Float) -> Unit = {},
     brightness: Float,
     onBrightnessChange: (Float) -> Unit,
     shimmer: Float,
@@ -117,6 +126,10 @@ fun TonicPadDialog(
                 singleOctaveText = singleOctaveText,
                 onOctaveMinus = onOctaveMinus,
                 onOctavePlus = onOctavePlus,
+                volume = volume,
+                onVolumeChange = onVolumeChange,
+                reverb = reverb,
+                onReverbChange = onReverbChange,
                 brightness = brightness,
                 onBrightnessChange = onBrightnessChange,
                 shimmer = shimmer,
@@ -170,6 +183,10 @@ private fun TonicPadContent(
     singleOctaveText: String,
     onOctaveMinus: () -> Unit,
     onOctavePlus: () -> Unit,
+    volume: Float = 0.80f,
+    onVolumeChange: (Float) -> Unit = {},
+    reverb: Float = 0.35f,
+    onReverbChange: (Float) -> Unit = {},
     brightness: Float,
     onBrightnessChange: (Float) -> Unit,
     shimmer: Float,
@@ -548,15 +565,59 @@ private fun TonicPadContent(
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
-            // 3D SEMI-REALISTIC KNOBS WITH FLUID GLOWING LED (Brightness & Shimmer)
+            // VOLUME SLIDER (Direct Volume Control for Tonic Pad)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0x0CFFFFFF))
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.VolumeUp,
+                    contentDescription = "Pad Volume",
+                    tint = Color(0xFFC4B5FD),
+                    modifier = Modifier.size(16.dp)
+                )
+                Text(
+                    text = "Vol",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextDim
+                )
+                Slider(
+                    value = volume,
+                    onValueChange = onVolumeChange,
+                    valueRange = 0f..1f,
+                    modifier = Modifier.weight(1f).height(24.dp),
+                    colors = SliderDefaults.colors(
+                        thumbColor = Color(0xFFC4B5FD),
+                        activeTrackColor = Color(0xFF8B5CF6),
+                        inactiveTrackColor = Color(0x338B5CF6)
+                    )
+                )
+                Text(
+                    text = "${(volume * 100).toInt()}%",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White,
+                    modifier = Modifier.width(32.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // 3D SEMI-REALISTIC KNOBS WITH FLUID GLOWING LED (Brightness, Shimmer, Reverb)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
                     .background(Color(0x0CFFFFFF))
-                    .padding(vertical = 4.dp, horizontal = 12.dp),
+                    .padding(vertical = 4.dp, horizontal = 8.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -565,7 +626,7 @@ private fun TonicPadContent(
                     onValueChange = onBrightnessChange,
                     label = "Brightness",
                     valueText = "${(brightness * 100).toInt()}%",
-                    size = 46.dp,
+                    size = 44.dp,
                     baseColor = Color(0xFF8B5CF6)
                 )
 
@@ -574,8 +635,17 @@ private fun TonicPadContent(
                     onValueChange = onShimmerChange,
                     label = "Shimmer",
                     valueText = "${(shimmer * 100).toInt()}%",
-                    size = 46.dp,
+                    size = 44.dp,
                     baseColor = NeonCyan
+                )
+
+                Led3DKnob(
+                    value = reverb,
+                    onValueChange = onReverbChange,
+                    label = "Reverb",
+                    valueText = "${(reverb * 100).toInt()}%",
+                    size = 44.dp,
+                    baseColor = Color(0xFFEC4899)
                 )
             }
         }

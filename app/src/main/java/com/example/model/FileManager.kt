@@ -55,12 +55,25 @@ class FileManager(private val context: Context) {
         }
     }
 
-    val soundfontsDir: File get() = File(baseDir, "SoundFonts")
+    val soundfontsDir: File get() {
+        val f1 = File(baseDir, "Soundfonts")
+        val f2 = File(baseDir, "SoundFonts")
+        return if (f2.exists() && !f1.exists()) f2 else f1
+    }
     val loopsDir: File get() = File(baseDir, "Loops")
     val drumPadDir: File get() = File(baseDir, "DrumPad")
-    val recordingsDir: File get() = File(baseDir, "Recordings")
-    val stylesDir: File get() = File(baseDir, "Styles")
+    val scenesDir: File get() {
+        val f1 = File(baseDir, "scènes")
+        val f2 = File(baseDir, "Scenes")
+        return if (f2.exists() && !f1.exists()) f2 else f1
+    }
+    val recordingsDir: File get() {
+        val f1 = File(baseDir, "Recording")
+        val f2 = File(baseDir, "Recordings")
+        return if (f2.exists() && !f1.exists()) f2 else f1
+    }
     val midiDir: File get() = File(baseDir, "Midi")
+    val stylesDir: File get() = File(baseDir, "Styles")
 
     /**
      * Ensures all subdirectories exist asynchronously on Dispatchers.IO
@@ -70,9 +83,8 @@ class FileManager(private val context: Context) {
             if (!soundfontsDir.exists()) soundfontsDir.mkdirs()
             if (!loopsDir.exists()) loopsDir.mkdirs()
             if (!drumPadDir.exists()) drumPadDir.mkdirs()
+            if (!scenesDir.exists()) scenesDir.mkdirs()
             if (!recordingsDir.exists()) recordingsDir.mkdirs()
-            if (!stylesDir.exists()) stylesDir.mkdirs()
-            if (!midiDir.exists()) midiDir.mkdirs()
         } catch (_: Exception) { }
     }
 
@@ -382,7 +394,78 @@ class FileManager(private val context: Context) {
     }
 
     /**
-     * Scans for Recordings (.wav, .mp3, .m4a) in /LiveKeys/Recordings
+     * Scans for Scene Presets (.scene) in /LiveKeys/scènes
+     */
+    suspend fun getSceneFiles(): List<StorageItem> = withContext(Dispatchers.IO) {
+        val result = mutableListOf<StorageItem>()
+        try {
+            if (scenesDir.exists() && scenesDir.canRead()) {
+                scenesDir.listFiles { file -> file.isFile && (file.extension.equals("scene", ignoreCase = true) || file.extension.equals("json", ignoreCase = true)) }
+                    ?.forEach { file ->
+                        result.add(
+                            StorageItem(
+                                name = file.nameWithoutExtension,
+                                path = file.absolutePath,
+                                isDirectory = false,
+                                size = file.length(),
+                                extension = file.extension.lowercase(),
+                                formattedSize = formatSize(file.length())
+                            )
+                        )
+                    }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        result.sortedByDescending { File(it.path).lastModified() }
+    }
+
+    /**
+     * Saves a scene JSON configuration directly to a .scene file in /LiveKeys/scènes
+     */
+    suspend fun saveSceneFile(sceneName: String, jsonContent: String): File? = withContext(Dispatchers.IO) {
+        try {
+            if (!scenesDir.exists()) scenesDir.mkdirs()
+            val cleanName = sceneName.trim().replace(Regex("[^a-zA-Z0-9_\\-\\sÀ-ÿ]"), "_")
+            val targetFile = File(scenesDir, "$cleanName.scene")
+            targetFile.writeText(jsonContent, Charsets.UTF_8)
+            targetFile
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    /**
+     * Loads the raw JSON string from a .scene file
+     */
+    suspend fun loadSceneFile(filePath: String): String? = withContext(Dispatchers.IO) {
+        try {
+            val file = File(filePath)
+            if (file.exists() && file.canRead()) {
+                file.readText(Charsets.UTF_8)
+            } else null
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    /**
+     * Deletes a .scene file
+     */
+    suspend fun deleteSceneFile(filePath: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val file = File(filePath)
+            if (file.exists()) file.delete() else false
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    /**
+     * Scans for Recordings (.wav, .mp3, .m4a) in /LiveKeys/Recording
      */
     suspend fun getRecordingFiles(): List<StorageItem> = withContext(Dispatchers.IO) {
         val result = mutableListOf<StorageItem>()

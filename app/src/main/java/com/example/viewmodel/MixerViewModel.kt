@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.random.Random
 
 data class MixerUiState(
@@ -254,10 +255,18 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     if (savedD != null) {
                         val style = try { DrumPadStyle.valueOf(savedD.styleName) } catch (_: Exception) { currentPad.colorStyle }
                         val soundType = try { DrumSoundType.valueOf(savedD.soundType) } catch (_: Exception) { currentPad.soundType }
+                        val filePath = if (savedD.sampleFilePath.isNotEmpty()) savedD.sampleFilePath else {
+                            val f = File(getApplication<Application>().filesDir, "LiveKeys/DrumPad/${savedD.sampleFileName}")
+                            if (f.exists()) f.absolutePath else ""
+                        }
+                        if (filePath.isNotEmpty()) {
+                            audioEngine.preloadDrumSample(filePath)
+                        }
                         currentPad.copy(
                             label = savedD.label,
                             soundType = soundType,
                             sampleFileName = savedD.sampleFileName,
+                            sampleFilePath = filePath,
                             sf2Note = savedD.sf2Note,
                             colorStyle = style
                         )
@@ -398,12 +407,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
 
-        val initialScenes = listOf(
-            ScenePreset("intro", "Intro & Verset", "Preset A", NeonCyan),
-            ScenePreset("chorus", "Refrain Puissant", "Preset B", NeonMagenta),
-            ScenePreset("bridge", "Pont Atmosphérique", "Preset C", SoloAmber),
-            ScenePreset("outro", "Outro Piano Solo", "Preset D", NeonPurpleLight)
-        )
+        val initialScenes = emptyList<ScenePreset>()
 
         val defaultFx = (0..8).associateWith { FxParameters() }
 
@@ -432,6 +436,16 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 val midiFolderTree = fileManager.getMidiFolderTree()
                 val styles = fileManager.getStyleFiles()
                 val recs = fileManager.getRecordingFiles()
+                val sceneFiles = fileManager.getSceneFiles()
+
+                val realScenes = sceneFiles.map { f ->
+                    ScenePreset(
+                        id = f.name,
+                        name = f.name,
+                        timestamp = f.formattedSize,
+                        color = NeonCyan
+                    )
+                }
 
                 val loopDirItems = fileManager.listItemsInDirectory(fileManager.loopsDir.absolutePath)
                 val midiDirItems = fileManager.listItemsInDirectory(fileManager.midiDir.absolutePath)
@@ -460,6 +474,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         currentLoopDirItems = loopDirItems,
                         currentMidiDirItems = midiDirItems,
                         soundfontBankFiles = bankFiles,
+                        scenes = realScenes,
                         isScanningStorage = false
                     )
                 }
@@ -576,7 +591,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         if (next) {
             _uiState.value.activeLoopFile?.let {
                 val f = java.io.File(fileManager.loopsDir, "${it.folder}/${it.name}".replace("Racine /Loops/", "").replace("Loops/", ""))
-                audioEngine.playLoopFile(f.absolutePath, _uiState.value.loopVolume)
+                val path = if (f.exists()) f.absolutePath else java.io.File(fileManager.loopsDir, it.name).absolutePath
+                audioEngine.playLoopFile(path, _uiState.value.loopVolume, _uiState.value.selectedBeatCount, _uiState.value.bpm)
             }
         } else {
             audioEngine.stopLoopPlayer()
@@ -591,6 +607,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectBeatCount(beats: Int) {
         _uiState.update { it.copy(selectedBeatCount = beats) }
+        audioEngine.setLoopBeats(beats, _uiState.value.bpm)
     }
 
     fun toggleLoopFolder(folderName: String) {
@@ -619,7 +636,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             val f = java.io.File(fileManager.loopsDir, "${file.folder}/${file.name}".replace("Racine /Loops/", "").replace("Loops/", ""))
             val path = if (f.exists()) f.absolutePath else java.io.File(fileManager.loopsDir, file.name).absolutePath
-            audioEngine.playLoopFile(path, _uiState.value.loopVolume)
+            audioEngine.playLoopFile(path, _uiState.value.loopVolume, _uiState.value.selectedBeatCount, _uiState.value.bpm)
             _uiState.update {
                 it.copy(
                     activeLoopFile = file,
@@ -752,10 +769,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     fun updateTranspose(delta: Int) {
         val newTranspose = (_uiState.value.transpose + delta).coerceIn(-12, 12)
         _uiState.update { it.copy(transpose = newTranspose) }
+        audioEngine.globalTranspose = newTranspose
         // Update transpose on all 8 MIDI channels
         for (ch in 0..7) {
             NativeAudioBridge.safeSetTrackTranspose(ch, newTranspose)
         }
+        persistCurrentStateDebounced()
     }
 
     fun updateOctave(delta: Int) {
@@ -766,6 +785,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.value.pressedKeys.forEach { key ->
                 audioEngine.noteOff(key, channel)
             }
+            audioEngine.globalOctaveShift = newOctave
             _uiState.update { it.copy(octave = newOctave, pressedKeys = emptySet()) }
             persistCurrentStateDebounced()
         }
@@ -932,7 +952,22 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 if (track.id == trackId) {
                     val nextState = !track.isEnabled
                     if (trackId in 1..8) {
-                        audioEngine.setChannelEnabled(trackId - 1, nextState)
+                        val ch = trackId - 1
+                        audioEngine.setChannelEnabled(ch, nextState)
+                        if (!nextState) {
+                            NativeAudioBridge.safeAllNotesOff(ch)
+                        } else {
+                            val slot = state.audioSlots.getOrNull(ch)
+                            if (slot != null && slot.soundFontId > 0) {
+                                NativeAudioBridge.safeSelectProgram(
+                                    engineIndex = NativeAudioBridge.ENGINE_FADER,
+                                    channel = ch,
+                                    soundFontId = slot.soundFontId,
+                                    bank = slot.bank,
+                                    preset = slot.preset
+                                )
+                            }
+                        }
                     }
                     track.copy(isEnabled = nextState)
                 } else track
@@ -941,6 +976,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             applyTrackVolumes(newState)
             newState
         }
+        persistCurrentStateDebounced()
     }
 
     fun onTrackMuteSoloClick(trackId: Int) {
@@ -1191,19 +1227,28 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun assignDrumSample(padId: Int, sampleName: String, samplePath: String = "") {
+        val resolvedPath = if (samplePath.isNotEmpty()) samplePath else {
+            val f = File(getApplication<Application>().filesDir, "LiveKeys/DrumPad/$sampleName")
+            if (f.exists()) f.absolutePath else ""
+        }
+        if (resolvedPath.isNotEmpty()) {
+            audioEngine.preloadDrumSample(resolvedPath)
+        }
+
         _uiState.update { state ->
             val updated = state.drumPads.map { pad ->
                 if (pad.id == padId) {
                     pad.copy(
                         soundType = DrumSoundType.SAMPLE,
                         sampleFileName = sampleName,
-                        sampleFilePath = samplePath,
+                        sampleFilePath = resolvedPath,
                         label = sampleName.substringBeforeLast(".").take(8)
                     )
                 } else pad
             }
             state.copy(drumPads = updated)
         }
+        persistCurrentStateDebounced()
     }
 
     fun assignDrumSf2Note(padId: Int, key: String, octave: Int) {
@@ -1221,6 +1266,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             }
             state.copy(drumPads = updated)
         }
+        persistCurrentStateDebounced()
     }
 
     fun playDrumNote(note: String, octave: Int) {
@@ -1242,6 +1288,24 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setTonicSubView(subView: String) {
         _uiState.update { it.copy(tonicSubView = subView) }
+    }
+
+    fun setTonicVolume(vol: Float) {
+        val clamped = vol.coerceIn(0f, 1f)
+        audioEngine.setChannelVolume(NativeAudioBridge.CHANNEL_TONIC_PAD, clamped)
+        _uiState.update { state ->
+            val updatedSlots = state.audioSlots.map { slot ->
+                if (slot.slotId == 9) slot.copy(volume = clamped) else slot
+            }
+            state.copy(audioSlots = updatedSlots)
+        }
+        persistCurrentStateDebounced()
+    }
+
+    fun setTonicReverb(rev: Float) {
+        val clamped = rev.coerceIn(0f, 1f)
+        audioEngine.channelParams[9].reverb = clamped
+        persistCurrentStateDebounced()
     }
 
     fun onTonicNoteClick(note: String) {
@@ -1460,21 +1524,191 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectScene(sceneId: String) {
-        _uiState.update { it.copy(activeSceneId = sceneId) }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val sceneFiles = fileManager.getSceneFiles()
+                val targetFile = sceneFiles.find { it.name.equals(sceneId, ignoreCase = true) } ?: return@launch
+                val jsonStr = fileManager.loadSceneFile(targetFile.path) ?: return@launch
+                val obj = org.json.JSONObject(jsonStr)
+
+                val bpm = obj.optInt("bpm", _uiState.value.bpm)
+                val transpose = obj.optInt("transpose", _uiState.value.transpose)
+                val octave = obj.optInt("octave", _uiState.value.octave)
+                val tonicBrightness = obj.optDouble("tonicBrightness", _uiState.value.tonicBrightness.toDouble()).toFloat()
+                val tonicShimmer = obj.optDouble("tonicShimmer", _uiState.value.tonicShimmer.toDouble()).toFloat()
+                val tonicOctaveRange = obj.optString("tonicOctaveRange", _uiState.value.tonicOctaveRange)
+                val drumVol = obj.optDouble("drumVolume", _uiState.value.drumVolume.toDouble()).toFloat()
+                val drumRev = obj.optDouble("drumReverb", _uiState.value.drumReverb.toDouble()).toFloat()
+                val tonicVol = obj.optDouble("tonicVolume", 0.8).toFloat()
+                val tonicRev = obj.optDouble("tonicReverb", 0.25).toFloat()
+
+                val tracksArr = obj.optJSONArray("tracks")
+                val updatedTracks = if (tracksArr != null) {
+                    val list = mutableListOf<TrackChannel>()
+                    for (i in 0 until tracksArr.length()) {
+                        val tObj = tracksArr.getJSONObject(i)
+                        val id = tObj.optInt("id", i + 1)
+                        val originalTrack = _uiState.value.tracks.find { it.id == id } ?: TrackChannel(id, "Track $id")
+                        list.add(
+                            originalTrack.copy(
+                                isEnabled = tObj.optBoolean("isEnabled", originalTrack.isEnabled),
+                                volume = tObj.optDouble("volume", originalTrack.volume.toDouble()).toFloat(),
+                                pan = tObj.optDouble("pan", originalTrack.pan.toDouble()).toFloat(),
+                                soundfontName = tObj.optString("soundfontName", originalTrack.soundfontName),
+                                patchName = tObj.optString("patchName", originalTrack.patchName),
+                                bank = tObj.optInt("bank", originalTrack.bank),
+                                program = tObj.optInt("program", originalTrack.program),
+                                reverbPreset = tObj.optString("reverbPreset", originalTrack.reverbPreset),
+                                reverbMix = tObj.optDouble("reverbMix", originalTrack.reverbMix.toDouble()).toFloat()
+                            )
+                        )
+                    }
+                    list
+                } else _uiState.value.tracks
+
+                val slotsArr = obj.optJSONArray("audioSlots")
+                val updatedSlots = if (slotsArr != null) {
+                    val list = mutableListOf<AudioSlot>()
+                    for (i in 0 until slotsArr.length()) {
+                        val sObj = slotsArr.getJSONObject(i)
+                        val slotId = sObj.optInt("slotId", i)
+                        val origSlot = _uiState.value.audioSlots.find { it.slotId == slotId } ?: AudioSlot(slotId, AudioSlot.midiChannelForSlot(slotId))
+                        val sfPath = sObj.optString("soundFontPath", "").ifEmpty { null }
+                        list.add(
+                            origSlot.copy(
+                                soundFontPath = sfPath,
+                                bank = sObj.optInt("bank", origSlot.bank),
+                                preset = sObj.optInt("preset", origSlot.preset),
+                                patchName = sObj.optString("patchName", origSlot.patchName ?: ""),
+                                volume = sObj.optDouble("volume", origSlot.volume.toDouble()).toFloat(),
+                                pan = sObj.optDouble("pan", origSlot.pan.toDouble()).toFloat()
+                            )
+                        )
+                    }
+                    list
+                } else _uiState.value.audioSlots
+
+                withContext(Dispatchers.Main) {
+                    _uiState.update { state ->
+                        state.copy(
+                            activeSceneId = sceneId,
+                            bpm = bpm,
+                            transpose = transpose,
+                            octave = octave,
+                            tonicBrightness = tonicBrightness,
+                            tonicShimmer = tonicShimmer,
+                            tonicOctaveRange = tonicOctaveRange,
+                            drumVolume = drumVol,
+                            drumReverb = drumRev,
+                            tracks = updatedTracks,
+                            audioSlots = updatedSlots
+                        )
+                    }
+                    applyTrackVolumes(_uiState.value)
+                    setTonicVolume(tonicVol)
+                    setTonicReverb(tonicRev)
+                    setDrumVolume(drumVol)
+                    setDrumReverb(drumRev)
+                    audioEngine.globalTranspose = transpose
+                    audioEngine.globalOctaveShift = octave
+                }
+
+                // Re-apply soundfonts into native engine
+                updatedSlots.forEach { s ->
+                    if (!s.soundFontPath.isNullOrEmpty() && java.io.File(s.soundFontPath).exists()) {
+                        val sfId = NativeAudioBridge.safeLoadSoundFont(NativeAudioBridge.ENGINE_FADER, s.soundFontPath)
+                        if (sfId >= 0) {
+                            NativeAudioBridge.safeSelectProgram(
+                                engineIndex = NativeAudioBridge.ENGINE_FADER,
+                                channel = s.midiChannel,
+                                soundFontId = sfId,
+                                bank = s.bank,
+                                preset = s.preset
+                            )
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
     fun saveCurrentScene(name: String) {
-        val newScene = ScenePreset(
-            id = "scene_${System.currentTimeMillis()}",
-            name = name,
-            timestamp = "À l'instant",
-            color = NeonCyan
-        )
-        _uiState.update { state ->
-            state.copy(
-                scenes = listOf(newScene) + state.scenes,
-                activeSceneId = newScene.id
-            )
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val state = _uiState.value
+                val json = org.json.JSONObject().apply {
+                    put("name", name)
+                    put("bpm", state.bpm)
+                    put("transpose", state.transpose)
+                    put("octave", state.octave)
+                    put("tonicBrightness", state.tonicBrightness)
+                    put("tonicShimmer", state.tonicShimmer)
+                    put("tonicOctaveRange", state.tonicOctaveRange)
+                    put("drumVolume", state.drumVolume)
+                    put("drumReverb", state.drumReverb)
+                    put("tonicVolume", state.audioSlots.getOrNull(9)?.volume ?: 0.8f)
+                    put("tonicReverb", 0.25f)
+                    put("masterVolume", state.masterTrack.volume)
+
+                    val tracksArray = org.json.JSONArray()
+                    state.tracks.forEach { t ->
+                        val tObj = org.json.JSONObject().apply {
+                            put("id", t.id)
+                            put("name", t.name)
+                            put("isEnabled", t.isEnabled)
+                            put("volume", t.volume)
+                            put("pan", t.pan)
+                            put("soundfontName", t.soundfontName)
+                            put("patchName", t.patchName)
+                            put("bank", t.bank)
+                            put("program", t.program)
+                            put("reverbPreset", t.reverbPreset)
+                            put("reverbMix", t.reverbMix)
+                        }
+                        tracksArray.put(tObj)
+                    }
+                    put("tracks", tracksArray)
+
+                    val slotsArray = org.json.JSONArray()
+                    state.audioSlots.forEach { s ->
+                        val sObj = org.json.JSONObject().apply {
+                            put("slotId", s.slotId)
+                            put("soundFontPath", s.soundFontPath ?: "")
+                            put("bank", s.bank)
+                            put("preset", s.preset)
+                            put("patchName", s.patchName ?: "")
+                            put("volume", s.volume)
+                            put("pan", s.pan)
+                        }
+                        slotsArray.put(sObj)
+                    }
+                    put("audioSlots", slotsArray)
+                }
+
+                fileManager.saveSceneFile(name, json.toString())
+                val sceneFiles = fileManager.getSceneFiles()
+                val updatedScenes = sceneFiles.map { f ->
+                    ScenePreset(
+                        id = f.name,
+                        name = f.name,
+                        timestamp = f.formattedSize,
+                        color = NeonCyan
+                    )
+                }
+
+                withContext(Dispatchers.Main) {
+                    _uiState.update {
+                        it.copy(
+                            scenes = updatedScenes,
+                            activeSceneId = name
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 

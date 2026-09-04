@@ -74,7 +74,6 @@ fun DrumPadDialog(
 ) {
     val density = LocalDensity.current
     var editingPad by remember { mutableStateOf<DrumPadItem?>(null) }
-    var quickAssignNote by remember { mutableStateOf<Pair<String, Int>?>(null) }
     var quickAssignSample by remember { mutableStateOf<StorageItem?>(null) }
 
     // Persistent drag position and size state
@@ -157,9 +156,7 @@ fun DrumPadDialog(
                             onPadReleased = onPadReleased,
                             onLongPressPad = { pad -> editingPad = pad },
                             audioFiles = audioFiles,
-                            onPlayNote = onPlayNote,
                             onPlaySample = onPlaySample,
-                            onLongPressNote = { note, oct -> quickAssignNote = note to oct },
                             onLongPressSample = { file -> quickAssignSample = file }
                         )
                     }
@@ -184,20 +181,7 @@ fun DrumPadDialog(
                     Text(text = "◢", fontSize = 12.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
                 }
 
-                // Quick Pad Assignment Modal (When long-pressing note or sample)
-                if (quickAssignNote != null) {
-                    val (note, oct) = quickAssignNote!!
-                    QuickPadAssignModal(
-                        title = "Assigner Note $note$oct au Pad",
-                        pads = drumPads,
-                        onSelectPad = { padId ->
-                            onAssignPadNote(padId, "$note$oct", oct, note)
-                            quickAssignNote = null
-                        },
-                        onDismiss = { quickAssignNote = null }
-                    )
-                }
-
+                // Quick Pad Assignment Modal (When long-pressing sample)
                 if (quickAssignSample != null) {
                     val sample = quickAssignSample!!
                     QuickPadAssignModal(
@@ -233,9 +217,7 @@ private fun MainDrumPadSquareContent(
     onPadReleased: (Int) -> Unit,
     onLongPressPad: (DrumPadItem) -> Unit,
     audioFiles: List<StorageItem>,
-    onPlayNote: (String, Int) -> Unit,
     onPlaySample: (StorageItem) -> Unit,
-    onLongPressNote: (String, Int) -> Unit,
     onLongPressSample: (StorageItem) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
@@ -302,18 +284,17 @@ private fun MainDrumPadSquareContent(
             }
         }
 
-        // ================= 3 TABS: Pads, Notes, Fichiers =================
+        // ================= 2 TABS: Pads, Fichiers =================
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(8.dp))
                 .background(Color(0xFF1C1F2D))
                 .padding(2.dp),
-            horizontalArrangement = Arrangement.spacedBy(3.dp)
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             listOf(
                 "pad" to "Pads",
-                "notes" to "Notes",
                 "files" to "Fichiers"
             ).forEach { (tabId, label) ->
                 val isSel = (tabId == activeTab)
@@ -323,12 +304,12 @@ private fun MainDrumPadSquareContent(
                         .clip(RoundedCornerShape(6.dp))
                         .background(if (isSel) NeonCyan else Color.Transparent)
                         .clickable { onTabChange(tabId) }
-                        .padding(vertical = 4.dp),
+                        .padding(vertical = 5.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = label,
-                        fontSize = 10.sp,
+                        fontSize = 11.sp,
                         fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
                         color = if (isSel) Color(0xFF002233) else TextDim
                     )
@@ -435,127 +416,8 @@ private fun MainDrumPadSquareContent(
                 }
             }
 
-            "notes" -> {
-                // NOTES TAB: Notes C-B with Octave selector C1 to C8
-                var selectedOctave by remember { mutableIntStateOf(3) }
-                val notes = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                ) {
-                    // Octave Selection with +/- arrow buttons (C1 to C8)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(text = "Octave :", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextDim)
-
-                        // Decrement Button (-)
-                        Box(
-                            modifier = Modifier
-                                .size(26.dp)
-                                .clip(CircleShape)
-                                .background(Color(0x1EFFFFFF))
-                                .border(1.dp, Color(0x33FFFFFF), CircleShape)
-                                .clickable { if (selectedOctave > 1) selectedOctave-- },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "−",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (selectedOctave > 1) NeonCyan else TextDim2
-                            )
-                        }
-
-                        // Current Octave Badge (C1..C8)
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(NeonCyan.copy(alpha = 0.2f))
-                                .border(1.2.dp, NeonCyan, RoundedCornerShape(8.dp))
-                                .padding(horizontal = 12.dp, vertical = 3.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "C$selectedOctave",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = NeonCyanLight
-                            )
-                        }
-
-                        // Increment Button (+)
-                        Box(
-                            modifier = Modifier
-                                .size(26.dp)
-                                .clip(CircleShape)
-                                .background(Color(0x1EFFFFFF))
-                                .border(1.dp, Color(0x33FFFFFF), CircleShape)
-                                .clickable { if (selectedOctave < 8) selectedOctave++ },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "+",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (selectedOctave < 8) NeonCyan else TextDim2
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.weight(1f))
-                        Text(
-                            text = "Appui court = Jouer · Long = Assigner",
-                            fontSize = 8.sp,
-                            color = TextDim2
-                        )
-                    }
-
-                    // Notes Grid
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(4),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        items(notes) { note ->
-                            val isSharp = note.contains("#")
-                            Box(
-                                modifier = Modifier
-                                    .aspectRatio(1.2f)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(if (isSharp) Color(0xFF171A24) else Color(0xFF222738))
-                                    .border(1.dp, if (isSharp) Color(0x4400E5FF) else Color(0x22FFFFFF), RoundedCornerShape(10.dp))
-                                    .combinedClickable(
-                                        onClick = { onPlayNote(note, selectedOctave) },
-                                        onLongClick = { onLongPressNote(note, selectedOctave) }
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text(
-                                        text = "$note$selectedOctave",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isSharp) NeonCyanLight else Color.White
-                                    )
-                                    Text(text = "Note", fontSize = 7.5.sp, color = TextDim)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            "files" -> {
-                // 3_FILES TAB: Elements of /DrumPad in clean AOSP style list
+            else -> {
+                // FILES TAB: Elements of /DrumPad in clean AOSP style list
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
