@@ -136,8 +136,8 @@ object SF2Parser {
                     val dwMorphology = buf.int
 
                     // SF2 spec: The terminal record is always named "EOP" (End of Presets)
-                    if (rawName.equals("EOP", ignoreCase = true) && i == recordCount - 1) {
-                        continue
+                    if (rawName.equals("EOP", ignoreCase = true)) {
+                        break
                     }
 
                     if (rawName.isNotEmpty()) {

@@ -373,16 +373,9 @@ fun SoundfontDialog(
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             text = file.name,
-                                            fontSize = 13.sp,
+                                            fontSize = 15.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = textPrimaryM3,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = "${file.size} · ${file.path}",
-                                            fontSize = 10.sp,
-                                            color = textSecondaryM3,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )

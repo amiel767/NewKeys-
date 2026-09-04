@@ -687,7 +687,6 @@ private fun MainDrumPadSquareContent(
                                                 fontWeight = FontWeight.SemiBold,
                                                 color = Color.White
                                             )
-                                            Text(text = file.formattedSize, fontSize = 8.sp, color = TextDim2)
                                         }
                                     }
 
@@ -989,7 +988,6 @@ private fun DrumSoundfontPickerSubView(
                                 Text(text = "📦", fontSize = 11.sp)
                                 Column {
                                     Text(text = file.name, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                                    Text(text = file.formattedSize, fontSize = 8.5.sp, color = TextDim2)
                                 }
                             }
                             Box(

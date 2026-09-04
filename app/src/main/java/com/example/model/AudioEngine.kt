@@ -129,10 +129,42 @@ class AudioEngine(private val context: Context) {
         channelParams[ch].instrumentType = (program / 16).coerceIn(0, 7)
     }
 
-    fun setTonicDrone(notes: Set<String>, brightness: Float = 0.70f, shimmer: Float = 0.15f) {
+    private val activeTonicPitches = mutableSetOf<Int>()
+
+    fun setTonicDrone(notes: Set<String>, octaveRange: String, brightness: Float = 0.70f, shimmer: Float = 0.15f) {
         channelParams[9].brightness = brightness
         channelParams[9].shimmer = shimmer
         channelParams[9].isEnabled = true
+        
+        val baseOctave = when (octaveRange) {
+            "C1 — C2" -> 1
+            "C2 — C3" -> 2
+            "C3 — C4" -> 3
+            "C4 — C5" -> 4
+            "C5 — C6" -> 5
+            else -> 1
+        }
+        
+        val chromaticNotes = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+        val newPitches = notes.mapNotNull { note ->
+            val idx = chromaticNotes.indexOf(note)
+            if (idx >= 0) (baseOctave + 1) * 12 + idx else null
+        }.toSet()
+        
+        // Turn off notes no longer in set
+        val toTurnOff = activeTonicPitches - newPitches
+        for (pitch in toTurnOff) {
+            NativeAudioBridge.safeNoteOff(NativeAudioBridge.ENGINE_FADER, NativeAudioBridge.CHANNEL_TONIC_PAD, pitch)
+        }
+        
+        // Turn on new notes
+        val toTurnOn = newPitches - activeTonicPitches
+        for (pitch in toTurnOn) {
+            NativeAudioBridge.safeNoteOn(NativeAudioBridge.ENGINE_FADER, NativeAudioBridge.CHANNEL_TONIC_PAD, pitch, 80)
+        }
+        
+        activeTonicPitches.clear()
+        activeTonicPitches.addAll(newPitches)
     }
 
     fun setChannelVolume(channel: Int, volume: Float) {

@@ -420,7 +420,6 @@ private fun TonicPadContent(
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(text = sf2.name, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                                        Text(text = sf2.formattedSize, fontSize = 8.sp, color = TextDim2)
                                     }
                                     Text(text = "Ouvrir", fontSize = 9.sp, color = NeonPurpleLight, fontWeight = FontWeight.Bold)
                                 }

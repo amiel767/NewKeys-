@@ -354,7 +354,7 @@ fun MixerScreen(
                 onSetSubView = { viewModel.setDrumSubView(it) },
                 soundfonts = uiState.soundfontFiles,
                 currentSoundfontName = defaultSfName,
-                loadedSf2Presets = uiState.soundfontPresets,
+                loadedSf2Presets = uiState.drumPadPresets,
                 onSelectPreset = { viewModel.selectSf2Preset(it) },
                 onSelectSf2File = { viewModel.loadSoundfontFromStorage(it) },
                 onOpenSoundfontPicker = { viewModel.openSoundfontForTrack(1) },
@@ -397,7 +397,7 @@ fun MixerScreen(
                 onClose = { viewModel.closeTonicPad() },
                 soundfonts = uiState.soundfontFiles,
                 currentLoadedSf2Name = uiState.tonicSoundfontName.ifEmpty { defaultSfName },
-                loadedSf2Presets = if (uiState.tonicPresets.isNotEmpty()) uiState.tonicPresets else uiState.soundfontPresets,
+                loadedSf2Presets = uiState.tonicPresets,
                 onSelectPreset = { viewModel.selectSf2Preset(it) },
                 onSelectSf2File = { viewModel.loadSoundfontFromStorage(it) },
                 initialOffsetX = uiState.tonicPadOffsetX,
@@ -426,15 +426,16 @@ fun MixerScreen(
                 )
             }
             ActivePopup.SOUNDFONT -> {
+                val track = uiState.tracks.find { it.id == uiState.activeSoundfontTrackId }
                 val activePresets = when (uiState.activeSoundfontSource) {
-                    "drum" -> if (uiState.drumPadPresets.isNotEmpty()) uiState.drumPadPresets else uiState.soundfontPresets
-                    "pad" -> if (uiState.tonicPresets.isNotEmpty()) uiState.tonicPresets else uiState.soundfontPresets
-                    else -> uiState.soundfontPresets
+                    "drum" -> uiState.drumPadPresets
+                    "pad" -> uiState.tonicPresets
+                    else -> track?.presets ?: emptyList()
                 }
                 val activePresetId = when (uiState.activeSoundfontSource) {
                     "drum" -> uiState.selectedDrumPresetId
                     "pad" -> uiState.selectedTonicPresetId
-                    else -> uiState.selectedSf2PresetId
+                    else -> track?.program ?: 0
                 }
 
                 SoundfontDialog(

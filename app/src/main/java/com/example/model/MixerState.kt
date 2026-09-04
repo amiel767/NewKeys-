@@ -97,6 +97,7 @@ data class TrackChannel(
     val bank: Int = 0,
     val program: Int = 0,
     val soundfontId: Int = -1,
+    val presets: List<SoundfontPreset> = emptyList(),
     // Dual Layering A / B
     val layerA: TrackLayer = TrackLayer(isEnabled = true),
     val layerB: TrackLayer = TrackLayer(isEnabled = false),

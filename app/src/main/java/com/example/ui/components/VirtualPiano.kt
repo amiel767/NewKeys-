@@ -305,7 +305,7 @@ fun VirtualPianoKeyboard(
                     modifier = Modifier
                         .width(totalKeyboardWidthDp)
                         .fillMaxHeight()
-                        .pointerInput(whiteWidthPx, currentScale) {
+                        .pointerInput(whiteWidthPx, currentScale, baseOctave) {
                             awaitEachGesture {
                                 while (true) {
                                     val event = awaitPointerEvent()

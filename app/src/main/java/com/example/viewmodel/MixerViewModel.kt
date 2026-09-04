@@ -146,9 +146,7 @@ data class MixerUiState(
     
     // Soundfonts & Scenes
     val activeSf2Tab: String = "bank",
-    val soundfontPresets: List<SoundfontPreset> = emptyList(),
     val soundfontBankFiles: List<SoundfontBankFile> = emptyList(),
-    val selectedSf2PresetId: Int = 0,
     val scenes: List<ScenePreset> = emptyList(),
     val activeSceneId: String = "intro",
     
@@ -394,7 +392,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             drumPads = initialDrumPads,
             scenes = initialScenes,
             fxParameters = defaultFx,
-            soundfontPresets = emptyList(),
             currentTheme = AppTheme.CYBER_NEON
         )
     }
@@ -856,15 +853,27 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // ================= TRACK MIXER CONTROLS =================
+    private fun applyTrackVolumes(state: MixerUiState) {
+        val anySolo = state.tracks.any { it.isSolo }
+        state.tracks.forEach { track ->
+            val ch = track.id - 1
+            if (ch in 0..7) {
+                val effectiveVol = when {
+                    !track.isEnabled -> 0f
+                    anySolo && !track.isSolo -> 0f
+                    track.isMuted -> 0f
+                    else -> track.volume
+                }
+                audioEngine.setChannelVolume(ch, effectiveVol)
+                NativeAudioBridge.safeSetTrackVolume(ch, effectiveVol)
+            }
+        }
+    }
+
     fun setTrackVolume(trackId: Int, volume: Float) {
         val clampedVol = volume.coerceIn(0f, 1f)
-        if (trackId in 1..8) {
-            val ch = trackId - 1
-            audioEngine.setChannelVolume(ch, clampedVol)
-            NativeAudioBridge.safeSetTrackVolume(ch, clampedVol)
-        }
         _uiState.update { state ->
-            if (trackId == 0) {
+            val newState = if (trackId == 0) {
                 audioEngine.masterVolume = clampedVol
                 state.copy(masterTrack = state.masterTrack.copy(volume = clampedVol))
             } else {
@@ -873,6 +882,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 state.copy(tracks = updated)
             }
+            applyTrackVolumes(newState)
+            newState
         }
         persistCurrentStateDebounced()
     }
@@ -904,7 +915,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     track.copy(isEnabled = nextState)
                 } else track
             }
-            state.copy(tracks = updated)
+            val newState = state.copy(tracks = updated)
+            applyTrackVolumes(newState)
+            newState
         }
     }
 
@@ -928,7 +941,15 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 } else t
             }
-            state.copy(tracks = updated)
+            val newState = state.copy(tracks = updated)
+            applyTrackVolumes(newState)
+            
+            val isNowMuted = newState.tracks.find { it.id == trackId }?.let { it.isMuted || (newState.tracks.any { t -> t.isSolo } && !it.isSolo) } == true
+            if (isNowMuted && trackId in 1..8) {
+                 NativeAudioBridge.safeAllNotesOff(trackId - 1)
+            }
+            
+            newState
         }
     }
 
@@ -1208,7 +1229,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 if (state.activeTonicNotes.contains(note)) emptySet() else setOf(note)
             }
-            audioEngine.setTonicDrone(newSet, state.tonicBrightness, state.tonicShimmer)
+            audioEngine.setTonicDrone(newSet, state.tonicOctaveRange, state.tonicBrightness, state.tonicShimmer)
             state.copy(activeTonicNotes = newSet)
         }
     }
@@ -1233,13 +1254,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setTonicBrightness(brightness: Float) {
         val clamped = brightness.coerceIn(0f, 1f)
-        audioEngine.setTonicDrone(_uiState.value.activeTonicNotes, clamped, _uiState.value.tonicShimmer)
+        audioEngine.setTonicDrone(_uiState.value.activeTonicNotes, _uiState.value.tonicOctaveRange, clamped, _uiState.value.tonicShimmer)
         _uiState.update { it.copy(tonicBrightness = clamped) }
     }
 
     fun setTonicShimmer(shimmer: Float) {
         val clamped = shimmer.coerceIn(0f, 1f)
-        audioEngine.setTonicDrone(_uiState.value.activeTonicNotes, _uiState.value.tonicBrightness, clamped)
+        audioEngine.setTonicDrone(_uiState.value.activeTonicNotes, _uiState.value.tonicOctaveRange, _uiState.value.tonicBrightness, clamped)
         _uiState.update { it.copy(tonicShimmer = clamped) }
     }
 
@@ -1327,7 +1348,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                                 )
                             } else track
                         }
-                        state.copy(tracks = updatedTracks, selectedSf2PresetId = preset)
+                        state.copy(tracks = updatedTracks)
                     }
                 }
             }
@@ -1384,7 +1405,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                             )
                         } else track
                     }
-                    state.copy(selectedSf2PresetId = preset.id, tracks = updatedTracks)
+                    state.copy(tracks = updatedTracks)
                 }
             }
         }
@@ -1496,13 +1517,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                                     soundfontId = sfId,
                                     patchName = firstPreset.name,
                                     bank = firstPreset.bankNumber,
-                                    program = firstPreset.id
+                                    program = firstPreset.id,
+                                    presets = realPresets
                                 )
                             } else track
                         }
                         state.copy(
-                            soundfontPresets = realPresets,
-                            selectedSf2PresetId = firstPreset.id,
                             tracks = updatedTracks
                         )
                     }
@@ -1514,10 +1534,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectSf2Preset(presetId: Int) {
         val source = _uiState.value.activeSoundfontSource
+        val trackId = _uiState.value.activeSoundfontTrackId
+        
         val presetsList = when (source) {
-            "drum" -> if (_uiState.value.drumPadPresets.isNotEmpty()) _uiState.value.drumPadPresets else _uiState.value.soundfontPresets
-            "pad" -> if (_uiState.value.tonicPresets.isNotEmpty()) _uiState.value.tonicPresets else _uiState.value.soundfontPresets
-            else -> _uiState.value.soundfontPresets
+            "drum" -> _uiState.value.drumPadPresets
+            "pad" -> _uiState.value.tonicPresets
+            else -> _uiState.value.tracks.find { it.id == trackId }?.presets ?: emptyList()
         }
         val preset = presetsList.find { it.id == presetId } ?: presetsList.firstOrNull() ?: return
         selectSf2Preset(preset)
