@@ -525,11 +525,26 @@ private fun MidiDevicesSubPage(
                             Text(text = dev.name, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                             Text(text = if (dev.isConnected) "Connecté" else "Déconnecté", fontSize = 9.sp, color = if (dev.isConnected) Color(0xFF10B981) else TextDim)
                         }
-                        Switch(
-                            checked = dev.isEnabled,
-                            onCheckedChange = { onToggleDevice(dev.id) },
-                            colors = SwitchDefaults.colors(checkedThumbColor = NeonCyan)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .background(if (dev.isEnabled) Color(0xFF10B981) else Color(0xFF4B5563))
+                                    .clickable { onToggleDevice(dev.id) },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(text = if (dev.isEnabled) "✓" else "✕", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                            Switch(
+                                checked = dev.isEnabled,
+                                onCheckedChange = { onToggleDevice(dev.id) },
+                                colors = SwitchDefaults.colors(checkedThumbColor = NeonCyan)
+                            )
+                        }
                     }
                 }
             }

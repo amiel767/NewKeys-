@@ -298,10 +298,22 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         // Apply restored parameters to native DSP
+        val effectiveMasterVol = saved.masterVolume ?: _uiState.value.masterTrack.volume
+        audioEngine.masterVolume = effectiveMasterVol
+        NativeAudioBridge.safeSetMasterVolume(effectiveMasterVol)
+
         saved.tracks.forEach { t ->
             val ch = (t.id - 1).coerceIn(0, 7)
             NativeAudioBridge.safeSetTrackVolume(ch, t.volume)
             NativeAudioBridge.safeSetTrackPan(ch, t.pan)
+        }
+
+        if (saved.audioSlots.isNotEmpty()) {
+            saved.audioSlots.forEach { savedSlot ->
+                if (!savedSlot.soundFontPath.isNullOrEmpty() && File(savedSlot.soundFontPath).exists()) {
+                    loadSoundFontForSlot(savedSlot.slotId, savedSlot.soundFontPath, savedSlot.bank, savedSlot.preset, savedSlot.patchName)
+                }
+            }
         }
     }
 
@@ -329,6 +341,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             spatialWidener = state.spatialWidener,
             masterVolume = state.masterTrack.volume,
             tracks = state.tracks,
+            audioSlots = state.audioSlots,
             drumPads = state.drumPads,
             activeSf2TrackId = state.activeSoundfontSlotId,
             lastActivity = "mixer"
@@ -883,6 +896,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { state ->
             val newState = if (trackId == 0) {
                 audioEngine.masterVolume = clampedVol
+                NativeAudioBridge.safeSetMasterVolume(clampedVol)
                 state.copy(masterTrack = state.masterTrack.copy(volume = clampedVol))
             } else {
                 val updated = state.tracks.map { track ->
@@ -1116,6 +1130,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun openSoundfontForSlot(slotId: Int) {
+        audioEngine.activeTargetChannel = AudioSlot.midiChannelForSlot(slotId)
         _uiState.update {
             it.copy(
                 activePopup = ActivePopup.SOUNDFONT,
@@ -1285,25 +1300,29 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val targetChannel = AudioSlot.midiChannelForSlot(slotId)
 
         viewModelScope.launch(Dispatchers.IO) {
-            // 1 & 2. Déterminer si un soundfont était déjà chargé sur CE slot et si un autre slot l'utilise
             val oldSfId = slot.soundFontId
-            if (oldSfId > 0) {
+
+            // 1. Charger d'abord le nouveau SoundFont
+            val newSfId = NativeAudioBridge.safeLoadSoundFont(NativeAudioBridge.ENGINE_FADER, sf2Path)
+
+            // 2. Décharger l'ancien UNIQUEMENT si le nouveau a réussi et que l'ancien n'est plus utilisé nulle part
+            if (newSfId >= 0 && oldSfId > 0 && oldSfId != newSfId) {
                 val inUse = _uiState.value.audioSlots.any { it.slotId != slotId && it.soundFontId == oldSfId }
                 if (!inUse) {
                     NativeAudioBridge.safeUnloadSoundFont(NativeAudioBridge.ENGINE_FADER, oldSfId)
                 }
             }
 
-            // 3. Appeler safeLoadSoundFont avec le nouveau chemin
-            val newSfId = NativeAudioBridge.safeLoadSoundFont(NativeAudioBridge.ENGINE_FADER, sf2Path)
-
-            // Récupérer la liste des presets du SoundFont chargé
-            val nativePresets = if (newSfId >= 0 && NativeAudioBridge.isNativeReady()) {
-                NativeAudioBridge.listPresets(newSfId).toList()
+            // 3. Récupérer la liste des presets du SoundFont chargé en bornant strictement 0..127 par banque
+            val effectiveSfId = if (newSfId >= 0) newSfId else oldSfId
+            val nativePresets = if (effectiveSfId >= 0 && NativeAudioBridge.isNativeReady()) {
+                NativeAudioBridge.listPresets(effectiveSfId).toList()
             } else emptyList()
 
             val realPresets = if (nativePresets.isNotEmpty()) {
                 nativePresets
+                    .filter { it.preset in 0..127 && it.bank >= 0 }
+                    .distinctBy { Pair(it.bank, it.preset) }
                     .sortedWith(compareBy({ it.bank }, { it.preset }))
                     .map { info ->
                         val cleanName = info.name.trim().ifEmpty { "Preset ${info.preset + 1}" }
@@ -1321,11 +1340,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
             // 4. Appeler safeSelectProgram avec le soundFontId obtenu, le bank, et le preset demandés
             audioEngine.setChannelProgram(targetChannel, targetPreset.id, targetPreset.bankNumber)
-            if (newSfId >= 0) {
+            if (effectiveSfId >= 0) {
                 NativeAudioBridge.safeSelectProgram(
                     engineIndex = NativeAudioBridge.ENGINE_FADER,
                     channel = targetChannel,
-                    soundFontId = newSfId,
+                    soundFontId = effectiveSfId,
                     bank = targetPreset.bankNumber,
                     preset = targetPreset.id
                 )
@@ -1337,7 +1356,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 val updatedSlots = state.audioSlots.map { s ->
                     if (s.slotId == slotId) {
                         s.copy(
-                            soundFontId = newSfId,
+                            soundFontId = effectiveSfId,
                             soundFontPath = sf2Path,
                             patchName = targetPreset.name,
                             bank = targetPreset.bankNumber,

@@ -182,4 +182,13 @@ Java_com_example_audio_NativeAudioBridge_pitchBend(
     gAudioEngine.getEngine(engineIndex).pitchBend(channel, bendValue);
 }
 
+JNIEXPORT void JNICALL
+Java_com_example_audio_NativeAudioBridge_setMasterVolume(
+        JNIEnv *env,
+        jobject /* this */,
+        jfloat volume) {
+    float gain = std::clamp(volume, 0.0f, 1.0f) * 1.0f;
+    gAudioEngine.setMasterGain(gain);
+}
+
 } // extern "C"

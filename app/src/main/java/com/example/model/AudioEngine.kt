@@ -67,8 +67,9 @@ class AudioEngine(private val context: Context) {
     var spatialWidener: Float = 0.35f
     var masterPunch: Float = 0.50f
 
-    // Active track target for global keyboard notes (0..7)
-    var activeTargetChannel: Int = 0
+    // Active track target for global keyboard notes (0..7, 8, 9)
+    @Volatile var activeTargetChannel: Int = 0
+    @Volatile var usbMidiRouteToActiveSlot: Boolean = true
 
     // Channel parameters for 8 mixer channels + Drum (8) + Tonic (9)
     val channelParams = Array(12) { chIdx ->
@@ -93,7 +94,7 @@ class AudioEngine(private val context: Context) {
     private var metronomeAudioTrack: AudioTrack? = null
     private var metronomeJob: Job? = null
     @Volatile private var isMetronomeActive = false
-    @Volatile private var metronomeIntervalMs: Long = 500L
+    @Volatile private var metronomeBpm: Int = 120
     @Volatile private var metronomeBeatsPerBar: Int = 4
     @Volatile private var metronomeVolumeGain: Float = 0.8f
     private val hiClickPcm: ShortArray
@@ -156,13 +157,22 @@ class AudioEngine(private val context: Context) {
         // Turn off notes no longer in set
         val toTurnOff = activeTonicPitches - newPitches
         for (pitch in toTurnOff) {
-            NativeAudioBridge.safeNoteOff(NativeAudioBridge.ENGINE_FADER, NativeAudioBridge.CHANNEL_TONIC_PAD, pitch)
+            NativeAudioBridge.safeNoteOff(
+                channel = NativeAudioBridge.CHANNEL_TONIC_PAD,
+                midiNote = pitch,
+                engineIndex = NativeAudioBridge.ENGINE_FADER
+            )
         }
         
         // Turn on new notes
         val toTurnOn = newPitches - activeTonicPitches
         for (pitch in toTurnOn) {
-            NativeAudioBridge.safeNoteOn(NativeAudioBridge.ENGINE_FADER, NativeAudioBridge.CHANNEL_TONIC_PAD, pitch, 80)
+            NativeAudioBridge.safeNoteOn(
+                channel = NativeAudioBridge.CHANNEL_TONIC_PAD,
+                midiNote = pitch,
+                velocity = 80,
+                engineIndex = NativeAudioBridge.ENGINE_FADER
+            )
         }
         
         activeTonicPitches.clear()
@@ -226,7 +236,12 @@ class AudioEngine(private val context: Context) {
     // DIRECT ZERO-LATENCY MIDI PROCESSOR (RUNS ON MIDI IO THREAD)
     // -------------------------------------------------------------
     fun handleIncomingMidi(channel: Int, command: Int, data1: Int, data2: Int) {
-        val targetChannel = midiChannelForSlot(channel)
+        // USB MIDI Routing: route to active slot selected on screen if enabled, or 1:1 channel mapping
+        val targetChannel = if (usbMidiRouteToActiveSlot) {
+            activeTargetChannel.coerceIn(0, 15)
+        } else {
+            midiChannelForSlot(channel)
+        }
 
         when (command) {
             0x90 -> { // Note On (velocity == 0 is treated as Note Off)
@@ -316,7 +331,7 @@ class AudioEngine(private val context: Context) {
     fun allNotesOff() {
         activeHeldNotes.clear()
         sustainedNotesToRelease.clear()
-        for (ch in 0..7) {
+        for (ch in 0..15) {
             NativeAudioBridge.safeAllNotesOff(ch)
         }
     }
@@ -429,10 +444,8 @@ class AudioEngine(private val context: Context) {
             "6/8" -> 6
             else -> 4
         }
-        val intervalMs = (60000L / bpm.coerceIn(20, 300))
-
+        metronomeBpm = bpm.coerceIn(30, 240)
         metronomeBeatsPerBar = beatsPerBar
-        metronomeIntervalMs = intervalMs
         metronomeVolumeGain = volume.coerceIn(0f, 1f)
 
         // If metronome is already playing with an active AudioTrack, updating the volatile parameters is enough!
@@ -443,8 +456,9 @@ class AudioEngine(private val context: Context) {
         stopMetronome()
 
         try {
+            val sampleRate = 44100
             val minBuf = AudioTrack.getMinBufferSize(
-                44100,
+                sampleRate,
                 AudioFormat.CHANNEL_OUT_MONO,
                 AudioFormat.ENCODING_PCM_16BIT
             )
@@ -458,11 +472,11 @@ class AudioEngine(private val context: Context) {
                 .setAudioFormat(
                     AudioFormat.Builder()
                         .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                        .setSampleRate(44100)
+                        .setSampleRate(sampleRate)
                         .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                         .build()
                 )
-                .setBufferSizeInBytes(max(minBuf, 2048))
+                .setBufferSizeInBytes(max(minBuf, 4096))
                 .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
@@ -472,16 +486,31 @@ class AudioEngine(private val context: Context) {
 
             metronomeJob = coroutineScope.launch(Dispatchers.Default) {
                 var currentBeat = 0
+                val silenceBuffer = ShortArray(2048)
+
                 while (isActive && isMetronomeActive) {
+                    val track = metronomeAudioTrack ?: break
+                    val currentBpm = metronomeBpm.coerceIn(30, 240)
+                    val totalBeatSamples = ((sampleRate.toLong() * 60L) / currentBpm).toInt()
+
                     val pcmData = if (currentBeat == 0) hiClickPcm else loClickPcm
-                    val scaledPcm = ShortArray(pcmData.size)
+                    val clickSamples = min(pcmData.size, totalBeatSamples)
+                    val scaledPcm = ShortArray(clickSamples)
                     val gain = metronomeVolumeGain
-                    for (i in pcmData.indices) {
+                    for (i in 0 until clickSamples) {
                         scaledPcm[i] = (pcmData[i] * gain).toInt().toShort()
                     }
-                    metronomeAudioTrack?.write(scaledPcm, 0, scaledPcm.size)
+                    track.write(scaledPcm, 0, scaledPcm.size)
+
+                    var remainingSilence = totalBeatSamples - clickSamples
+                    while (isActive && isMetronomeActive && remainingSilence > 0) {
+                        val toWrite = min(remainingSilence, silenceBuffer.size)
+                        val written = track.write(silenceBuffer, 0, toWrite)
+                        if (written <= 0) break
+                        remainingSilence -= written
+                    }
+
                     currentBeat = (currentBeat + 1) % metronomeBeatsPerBar
-                    delay(metronomeIntervalMs)
                 }
             }
         } catch (e: Exception) {
@@ -498,6 +527,8 @@ class AudioEngine(private val context: Context) {
         metronomeJob?.cancel()
         metronomeJob = null
         try {
+            metronomeAudioTrack?.pause()
+            metronomeAudioTrack?.flush()
             metronomeAudioTrack?.stop()
             metronomeAudioTrack?.release()
         } catch (_: Exception) {}

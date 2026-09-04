@@ -49,7 +49,7 @@ fun DrumPadDialog(
     onTabChange: (String) -> Unit,
     subView: String,
     onSetSubView: (String) -> Unit,
-    soundfonts: List<StorageItem>,
+    soundfonts: List<StorageItem> = emptyList(),
     currentSoundfontName: String = "FluidR3_GM.sf2",
     loadedSf2Presets: List<SoundfontPreset> = emptyList(),
     onSelectPreset: (SoundfontPreset) -> Unit = {},
@@ -76,7 +76,6 @@ fun DrumPadDialog(
     var editingPad by remember { mutableStateOf<DrumPadItem?>(null) }
     var quickAssignNote by remember { mutableStateOf<Pair<String, Int>?>(null) }
     var quickAssignSample by remember { mutableStateOf<StorageItem?>(null) }
-    var isSoundPickerOpen by remember { mutableStateOf(false) }
 
     // Persistent drag position and size state
     var offsetX by remember { mutableFloatStateOf(initialOffsetX) }
@@ -123,29 +122,6 @@ fun DrumPadDialog(
                     .padding(10.dp)
             ) {
                 when {
-                    isSoundPickerOpen -> {
-                        DrumSoundfontPickerSubView(
-                            soundfonts = soundfonts,
-                            loadedSf2Presets = loadedSf2Presets,
-                            onSelectPreset = { preset ->
-                                onSelectPreset(preset)
-                                isSoundPickerOpen = false
-                            },
-                            onSelectSf2File = { file ->
-                                onSelectSf2File(file)
-                                isSoundPickerOpen = false
-                            },
-                            isPinned = isPinned,
-                            onTogglePin = onTogglePin,
-                            onClose = onClose,
-                            onBack = { isSoundPickerOpen = false },
-                            onDragHeader = { dx, dy ->
-                                offsetX = (offsetX + dx).coerceIn(-maxDragX, maxDragX)
-                                offsetY = (offsetY + dy).coerceIn(-maxDragY, maxDragY)
-                                onTransformChange(offsetX, offsetY, windowSizeDp.value)
-                            }
-                        )
-                    }
                     editingPad != null -> {
                         PadCustomizerScreen(
                             pad = editingPad!!,
@@ -153,26 +129,11 @@ fun DrumPadDialog(
                                 onUpdatePadCustomization(editingPad!!.id, newLabel, newStyle)
                                 editingPad = null
                             },
-                            onAssignSoundfont = {
-                                onSetSubView("sf2_picker")
-                            },
                             onAssignSample = {
                                 onTabChange("files")
                                 editingPad = null
                             },
                             onBack = { editingPad = null }
-                        )
-                    }
-                    subView == "sf2_picker" -> {
-                        DrumSf2PickerSubView(
-                            soundfonts = soundfonts,
-                            onSelectNote = { key, oct ->
-                                editingPad?.let { pad ->
-                                    onAssignPadNote(pad.id, "$key$oct", oct, key)
-                                }
-                                onSetSubView("main")
-                            },
-                            onBack = { onSetSubView("main") }
                         )
                     }
                     else -> {
@@ -184,8 +145,6 @@ fun DrumPadDialog(
                             onReverbChange = onReverbChange,
                             activeTab = activeTab,
                             onTabChange = onTabChange,
-                            currentSoundfontName = currentSoundfontName,
-                            onOpenSoundfontPicker = { isSoundPickerOpen = true },
                             isPinned = isPinned,
                             onTogglePin = onTogglePin,
                             onClose = onClose,
@@ -266,8 +225,6 @@ private fun MainDrumPadSquareContent(
     onReverbChange: (Float) -> Unit,
     activeTab: String,
     onTabChange: (String) -> Unit,
-    currentSoundfontName: String,
-    onOpenSoundfontPicker: () -> Unit,
     isPinned: Boolean,
     onTogglePin: () -> Unit,
     onClose: () -> Unit,
@@ -307,33 +264,6 @@ private fun MainDrumPadSquareContent(
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
-
-                // Soundfont Capsule Indicator & Selector
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0xFF1E2232))
-                        .border(0.8.dp, Color(0x3322D3EE), RoundedCornerShape(6.dp))
-                        .clickable { onOpenSoundfontPicker() }
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(3.dp)
-                    ) {
-                        Text(text = "🎹", fontSize = 9.sp)
-                        Text(
-                            text = currentSoundfontName.ifEmpty { "Soundfont" },
-                            fontSize = 8.5.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = NeonCyanLight,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.widthIn(max = 95.dp)
-                        )
-                        Text(text = "▼", fontSize = 7.sp, color = Color(0xAAFFFFFF))
-                    }
-                }
             }
 
             Row(
@@ -1087,8 +1017,8 @@ private fun QuickPadAssignModal(
 private fun PadCustomizerScreen(
     pad: DrumPadItem,
     onSave: (newLabel: String, newStyle: DrumPadStyle) -> Unit,
-    onAssignSoundfont: () -> Unit,
     onAssignSample: () -> Unit,
+    onAssignSoundfont: () -> Unit = {},
     onBack: () -> Unit
 ) {
     var labelText by remember { mutableStateOf(pad.label) }
@@ -1159,35 +1089,19 @@ private fun PadCustomizerScreen(
 
             // 2. Sound Assignment Shortcuts
             item {
-                Text(text = "SOURCE SONORE", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
+                Text(text = "SOURCE SONORE (ÉCHANTILLONS DÉDIÉS)", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
                 Spacer(modifier = Modifier.height(3.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF1E212E))
+                        .border(1.dp, Color(0x3322D3EE), RoundedCornerShape(8.dp))
+                        .clickable { onAssignSample() }
+                        .padding(10.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF1E212E))
-                            .clickable { onAssignSoundfont() }
-                            .padding(8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(text = "🎹 Note Soundfont", fontSize = 9.sp, color = NeonCyanLight, fontWeight = FontWeight.Bold)
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF1E212E))
-                            .clickable { onAssignSample() }
-                            .padding(8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(text = "📁 Échantillon /DrumPad", fontSize = 9.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                    }
+                    Text(text = "📁 Choisir un échantillon audio / DrumPad", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
 

@@ -29,6 +29,11 @@ public:
     bool start(int driverType = 0); // 0 = Oboe High-Performance (AAudio), 1 = OpenSL ES
     void stop();
     void setDriver(int driverType);
+    void setMasterGain(float gain) {
+        for (auto &engine : mEngines) {
+            engine.setGain(gain);
+        }
+    }
 
     SoundfontEngine &getEngine(int engineIndex) {
         if (engineIndex < 0 || engineIndex >= 3) return mEngines[0];
@@ -60,6 +65,11 @@ public:
     bool start(int driverType = 0);
     void stop();
     void setDriver(int driverType) {}
+    void setMasterGain(float gain) {
+        for (auto &engine : mEngines) {
+            engine.setGain(gain);
+        }
+    }
 
     SoundfontEngine &getEngine(int engineIndex) {
         if (engineIndex < 0 || engineIndex >= 3) return mEngines[0];

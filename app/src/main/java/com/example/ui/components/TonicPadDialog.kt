@@ -245,7 +245,7 @@ private fun TonicPadContent(
                             .clip(RoundedCornerShape(6.dp))
                             .background(Color(0x228B5CF6))
                             .border(1.dp, NeonPurpleLight, RoundedCornerShape(6.dp))
-                            .clickable { onOpenSoundfontPicker() }
+                            .clickable { onToggleSoundPicker(!isSoundPickerOpen) }
                             .padding(horizontal = 5.dp, vertical = 3.dp)
                     ) {
                         Row(

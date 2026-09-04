@@ -31,6 +31,7 @@ class AppStatePersistence(context: Context) {
         private const val KEY_MASTER_VOLUME = "master_volume"
         private const val KEY_TRACKS_JSON = "tracks_json"
         private const val KEY_DRUM_PADS_JSON = "drum_pads_json"
+        private const val KEY_AUDIO_SLOTS_JSON = "audio_slots_json"
         private const val KEY_ACTIVE_SF2_TRACK_ID = "active_sf2_track_id"
         private const val KEY_LAST_ACTIVITY = "last_activity"
     }
@@ -47,6 +48,16 @@ class AppStatePersistence(context: Context) {
         val program: Int,
         val reverbPreset: String,
         val reverbMix: Float
+    )
+
+    data class SavedAudioSlotData(
+        val slotId: Int,
+        val soundFontPath: String?,
+        val bank: Int,
+        val preset: Int,
+        val patchName: String?,
+        val volume: Float,
+        val pan: Float
     )
 
     data class SavedDrumData(
@@ -70,6 +81,7 @@ class AppStatePersistence(context: Context) {
         val spatialWidener: Float?,
         val masterVolume: Float?,
         val tracks: List<SavedTrackData>,
+        val audioSlots: List<SavedAudioSlotData>,
         val drumPads: List<SavedDrumData>,
         val activeSf2TrackId: Int?,
         val lastActivity: String?
@@ -87,6 +99,7 @@ class AppStatePersistence(context: Context) {
         spatialWidener: Float,
         masterVolume: Float,
         tracks: List<TrackChannel>,
+        audioSlots: List<AudioSlot>,
         drumPads: List<DrumPadItem>,
         activeSf2TrackId: Int,
         lastActivity: String = "mixer"
@@ -108,6 +121,20 @@ class AppStatePersistence(context: Context) {
                     put("reverbMix", t.reverbMix.toDouble())
                 }
                 tracksArray.put(obj)
+            }
+
+            val slotsArray = JSONArray()
+            audioSlots.forEach { s ->
+                val obj = JSONObject().apply {
+                    put("slotId", s.slotId)
+                    put("soundFontPath", s.soundFontPath ?: "")
+                    put("bank", s.bank)
+                    put("preset", s.preset)
+                    put("patchName", s.patchName ?: "")
+                    put("volume", s.volume.toDouble())
+                    put("pan", s.pan.toDouble())
+                }
+                slotsArray.put(obj)
             }
 
             val drumArray = JSONArray()
@@ -135,6 +162,7 @@ class AppStatePersistence(context: Context) {
                 putFloat(KEY_SPATIAL_WIDENER, spatialWidener)
                 putFloat(KEY_MASTER_VOLUME, masterVolume)
                 putString(KEY_TRACKS_JSON, tracksArray.toString())
+                putString(KEY_AUDIO_SLOTS_JSON, slotsArray.toString())
                 putString(KEY_DRUM_PADS_JSON, drumArray.toString())
                 putInt(KEY_ACTIVE_SF2_TRACK_ID, activeSf2TrackId)
                 putString(KEY_LAST_ACTIVITY, lastActivity)
@@ -188,6 +216,26 @@ class AppStatePersistence(context: Context) {
                 }
             }
 
+            val slotsList = mutableListOf<SavedAudioSlotData>()
+            val slotsJson = prefs.getString(KEY_AUDIO_SLOTS_JSON, null)
+            if (slotsJson != null) {
+                val array = JSONArray(slotsJson)
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    slotsList.add(
+                        SavedAudioSlotData(
+                            slotId = obj.optInt("slotId", i),
+                            soundFontPath = obj.optString("soundFontPath", "").let { if (it.isEmpty()) null else it },
+                            bank = obj.optInt("bank", 0),
+                            preset = obj.optInt("preset", 0),
+                            patchName = obj.optString("patchName", null),
+                            volume = obj.optDouble("volume", 0.8).toFloat(),
+                            pan = obj.optDouble("pan", 0.0).toFloat()
+                        )
+                    )
+                }
+            }
+
             val drumList = mutableListOf<SavedDrumData>()
             val drumJson = prefs.getString(KEY_DRUM_PADS_JSON, null)
             if (drumJson != null) {
@@ -219,6 +267,7 @@ class AppStatePersistence(context: Context) {
                 spatialWidener = spatialWidener,
                 masterVolume = masterVolume,
                 tracks = tracksList,
+                audioSlots = slotsList,
                 drumPads = drumList,
                 activeSf2TrackId = activeSf2TrackId,
                 lastActivity = lastActivity

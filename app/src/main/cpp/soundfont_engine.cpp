@@ -17,6 +17,7 @@ bool SoundfontEngine::init(int sampleRate) {
     }
 
     fluid_settings_setnum(mSettings, "synth.sample-rate", static_cast<double>(sampleRate));
+    fluid_settings_setnum(mSettings, "synth.gain", 0.90);
     fluid_settings_setint(mSettings, "synth.polyphony", 128);
     fluid_settings_setint(mSettings, "synth.midi-channels", kMaxChannels);
 
@@ -27,6 +28,8 @@ bool SoundfontEngine::init(int sampleRate) {
         mSettings = nullptr;
         return false;
     }
+
+    fluid_synth_set_gain(mSynth, 0.90f);
 
     for (int ch = 0; ch < kMaxChannels; ++ch) {
         mTransposeSemitones[ch].store(0, std::memory_order_relaxed);
@@ -90,11 +93,16 @@ std::vector<NativePresetInfo> SoundfontEngine::listPresets(int soundFontId) {
     fluid_sfont_iteration_start(sfont);
     fluid_preset_t* preset;
     while ((preset = fluid_sfont_iteration_next(sfont)) != nullptr) {
-        NativePresetInfo info;
-        info.name = fluid_preset_get_name(preset);
-        info.bank = fluid_preset_get_banknum(preset);
-        info.preset = fluid_preset_get_num(preset);
-        result.push_back(info);
+        int presetNum = fluid_preset_get_num(preset);
+        int bankNum = fluid_preset_get_banknum(preset);
+        const char* name = fluid_preset_get_name(preset);
+        if (presetNum >= 0 && presetNum <= 127 && bankNum >= 0 && name != nullptr) {
+            NativePresetInfo info;
+            info.name = name;
+            info.bank = bankNum;
+            info.preset = presetNum;
+            result.push_back(info);
+        }
     }
     return result;
 }
@@ -189,6 +197,13 @@ void SoundfontEngine::setChannelTransposeSemitones(int channel, int semitones) {
     if (channel >= 0 && channel < kMaxChannels) {
         mTransposeSemitones[channel].store(semitones, std::memory_order_relaxed);
     }
+}
+
+void SoundfontEngine::setGain(float gain) {
+    if (!mSynth) return;
+    float clampedGain = std::clamp(gain, 0.0f, 1.2f);
+    std::lock_guard<std::mutex> lock(mMutex);
+    fluid_synth_set_gain(mSynth, clampedGain);
 }
 
 void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool accumulate) {

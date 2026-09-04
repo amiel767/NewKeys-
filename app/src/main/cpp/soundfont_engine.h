@@ -34,6 +34,7 @@ inline fluid_preset_t* fluid_sfont_iteration_next(fluid_sfont_t*) { return nullp
 inline const char* fluid_preset_get_name(fluid_preset_t*) { return ""; }
 inline int fluid_preset_get_banknum(fluid_preset_t*) { return 0; }
 inline int fluid_preset_get_num(fluid_preset_t*) { return 0; }
+inline void fluid_synth_set_gain(fluid_synth_t*, float) {}
 #endif
 
 #include <atomic>
@@ -74,6 +75,7 @@ public:
     void setChannelVolume(int channel, float volume01);
     void setChannelPan(int channel, float pan);
     void setChannelTransposeSemitones(int channel, int semitones);
+    void setGain(float gain);
 
     void renderStereo(float *outputBuffer, int32_t numFrames, bool accumulate = false);
 
