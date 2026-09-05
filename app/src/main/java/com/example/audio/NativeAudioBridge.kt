@@ -107,14 +107,18 @@ object NativeAudioBridge {
     }
 
     fun safeLoadSoundFont(engineIndex: Int = ENGINE_FADER, absolutePath: String): Int {
-        return if (isLibraryLoaded) {
-            try {
-                loadSoundFont(engineIndex, absolutePath)
-            } catch (e: Throwable) {
-                Log.e("NativeAudioBridge", "Error invoking loadSoundFont: ${e.message}")
-                -1
-            }
-        } else -1
+        if (!isLibraryLoaded) {
+            Log.e("NativeAudioBridge", "Cannot load SoundFont: native library is not loaded!")
+            return -1
+        }
+        return try {
+            val resId = loadSoundFont(engineIndex, absolutePath)
+            Log.d("NativeAudioBridge", "loadSoundFont(engine=$engineIndex, path='$absolutePath') -> result ID: $resId")
+            resId
+        } catch (e: Throwable) {
+            Log.e("NativeAudioBridge", "Error invoking loadSoundFont for path '$absolutePath': ${e.message}", e)
+            -1
+        }
     }
 
     fun safeUnloadSoundFont(engineIndex: Int = ENGINE_FADER, soundFontId: Int): Int {

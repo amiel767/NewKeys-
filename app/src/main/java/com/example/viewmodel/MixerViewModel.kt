@@ -1406,8 +1406,16 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             val oldSfId = slot.soundFontId
 
-            // 1. Charger d'abord le nouveau SoundFont
-            val newSfId = NativeAudioBridge.safeLoadSoundFont(NativeAudioBridge.ENGINE_FADER, sf2Path)
+            Log.d("SoundFontLoad", "[DIAGNOSTIC] Requested load for slot=$slotId, raw sf2Path=$sf2Path")
+
+            // Ensure file path is accessible by native C++ fopen (bridge external storage files if needed)
+            val nativeReadableFile = fileManager.getNativeReadableSoundFontFile(sf2Path)
+            val readablePath = nativeReadableFile.absolutePath
+            Log.d("SoundFontLoad", "[DIAGNOSTIC] Resolved native-readable path=$readablePath (exists=${nativeReadableFile.exists()}, length=${nativeReadableFile.length()})")
+
+            // 1. Charger d'abord le nouveau SoundFont via le chemin natif garanti
+            val newSfId = NativeAudioBridge.safeLoadSoundFont(NativeAudioBridge.ENGINE_FADER, readablePath)
+            Log.d("SoundFontLoad", "[DIAGNOSTIC] Native safeLoadSoundFont returned ID=$newSfId for slot=$slotId")
 
             // 2. Décharger l'ancien UNIQUEMENT si le nouveau a réussi et que l'ancien n'est plus utilisé nulle part
             if (newSfId >= 0 && oldSfId > 0 && oldSfId != newSfId) {

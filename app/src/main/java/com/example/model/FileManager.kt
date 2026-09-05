@@ -176,6 +176,51 @@ class FileManager(private val context: Context) {
     }
 
     /**
+     * Resolves and bridges a SoundFont file to an app-private internal path readable by C++ fopen().
+     * If source file is on external shared storage, it is safely cached in context.filesDir/SoundFonts.
+     */
+    suspend fun getNativeReadableSoundFontFile(sourcePath: String): File = withContext(Dispatchers.IO) {
+        val sourceFile = File(sourcePath)
+        if (!sourceFile.exists()) return@withContext sourceFile
+
+        val internalSoundFontDir = File(context.filesDir, "SoundFonts").apply {
+            if (!exists()) mkdirs()
+        }
+
+        // If the file is already inside the internal private directory, return it directly
+        if (sourceFile.canonicalPath.startsWith(context.filesDir.canonicalPath)) {
+            return@withContext sourceFile
+        }
+
+        val cachedFile = File(internalSoundFontDir, sourceFile.name)
+        try {
+            val needsCopy = !cachedFile.exists() || 
+                            cachedFile.length() != sourceFile.length() || 
+                            cachedFile.lastModified() < sourceFile.lastModified()
+
+            if (needsCopy) {
+                android.util.Log.d("FileManager", "Caching SoundFont to internal private storage: ${sourceFile.name} (${sourceFile.length()} bytes)")
+                sourceFile.inputStream().use { input ->
+                    cachedFile.outputStream().use { output ->
+                        input.copyTo(output, bufferSize = 65536)
+                    }
+                }
+                cachedFile.setLastModified(sourceFile.lastModified())
+                android.util.Log.d("FileManager", "Finished caching SoundFont: ${cachedFile.name}")
+            } else {
+                android.util.Log.d("FileManager", "Using existing cached SoundFont (copy skipped): ${cachedFile.name}")
+            }
+
+            if (cachedFile.exists() && cachedFile.length() > 0) {
+                return@withContext cachedFile
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("FileManager", "Error caching SoundFont to internal storage: ${e.message}", e)
+        }
+        return@withContext sourceFile
+    }
+
+    /**
      * Scans the /LiveKeys/Loops directory recursively without heavy buffer allocations.
      */
     suspend fun getLoopFiles(): List<StorageItem> = withContext(Dispatchers.IO) {
