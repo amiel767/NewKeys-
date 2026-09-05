@@ -849,7 +849,7 @@ class AudioEngine(private val context: Context) {
     @Volatile private var activeLoopBeats: Int = 0
     @Volatile private var activeLoopBpm: Int = 120
 
-    fun playLoopFile(filePath: String, volume: Float = 0.75f, beatCount: Int = 0, bpm: Int = 120) {
+    fun playLoopFile(filePath: String, volume: Float = 0.65f, beatCount: Int = 0, bpm: Int = 120) {
         currentLoopVolume = volume.coerceIn(0f, 1f)
         activeLoopBeats = beatCount
         activeLoopBpm = bpm
@@ -868,13 +868,21 @@ class AudioEngine(private val context: Context) {
                             .build()
                     )
                     setDataSource(filePath)
-                    isLooping = (beatCount <= 0)
+                    isLooping = true
                     setVolume(currentLoopVolume, currentLoopVolume)
+                    setOnCompletionListener {
+                        try {
+                            seekTo(0)
+                            start()
+                        } catch (_: Exception) {}
+                    }
                     prepare()
                     start()
                 }
                 loopMediaPlayer = player
-                startBeatLoopMonitor(player, beatCount, bpm)
+                if (beatCount > 0) {
+                    startBeatLoopMonitor(player, beatCount, bpm)
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Error starting loop player: ${e.message}")
             }

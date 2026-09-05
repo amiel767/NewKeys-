@@ -3,11 +3,11 @@ package com.example.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // Base Dark Hardware Surfaces
-val DarkBg = Color(0xFF101922)
-val DarkSurface = Color(0xFF16212D)
-val DarkSurface2 = Color(0xFF1A2634)
-val DarkSurface3 = Color(0xFF202D3C)
-val DarkTrackBg = Color(0xFF202534)
+val DarkBg = Color(0xFF1B1E2B)
+val DarkSurface = Color(0xFF202434)
+val DarkSurface2 = Color(0xFF25293A)
+val DarkSurface3 = Color(0xFF2E3347)
+val DarkTrackBg = Color(0xFF25293A)
 val DarkTrackEnd = Color(0xFF161B28)
 val MasterTrackBg = Color(0xFF281F38)
 val MasterTrackEnd = Color(0xFF161220)

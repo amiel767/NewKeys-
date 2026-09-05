@@ -45,15 +45,18 @@ fun SceneDialog(
     activeSceneId: String,
     onSelectScene: (String) -> Unit,
     onSaveCurrentScene: (String) -> Unit = {},
+    onUpdateActiveScene: () -> Unit = {},
+    onDeleteScene: (String) -> Unit = {},
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var isNamingOpen by remember { mutableStateOf(false) }
     var sceneNameInput by remember { mutableStateOf("") }
+    var pendingDeleteSceneId by remember { mutableStateOf<String?>(null) }
 
     Box(
         modifier = modifier
-            .widthIn(min = 250.dp, max = 310.dp)
+            .widthIn(min = 270.dp, max = 330.dp)
             .shadow(24.dp, RoundedCornerShape(16.dp))
             .clip(RoundedCornerShape(16.dp))
             .background(Color(0xFF181D26))
@@ -104,9 +107,26 @@ fun SceneDialog(
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    // Button "Enregistrer" next to X button
+                    // Green Save Changes Button
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF19EF71))
+                            .clickable { onUpdateActiveScene() }
+                            .padding(horizontal = 7.dp, vertical = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "💾 Modifs",
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF062C12)
+                        )
+                    }
+
+                    // Button "Nouveau" / "Enregistrer"
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
@@ -117,12 +137,12 @@ fun SceneDialog(
                                     sceneNameInput = "Scène ${scenes.size + 1}"
                                 }
                             }
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                            .padding(horizontal = 7.dp, vertical = 4.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "💾 Enregistrer",
-                            fontSize = 10.sp,
+                            text = "+ Nouvelle",
+                            fontSize = 9.5.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF002B33)
                         )
@@ -131,7 +151,7 @@ fun SceneDialog(
                     // Close button
                     Box(
                         modifier = Modifier
-                            .size(26.dp)
+                            .size(24.dp)
                             .clip(CircleShape)
                             .background(Color(0x1FFFFFFF))
                             .clickable { onClose() },
@@ -257,11 +277,13 @@ fun SceneDialog(
                 ) {
                     items(scenes) { scene ->
                         val isSelected = activeSceneId == scene.id
+                        val isDeletePrompt = pendingDeleteSceneId == scene.id
+
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { onSelectScene(scene.id) }
                                 .background(if (isSelected) Color(0x1800E5FF) else Color.Transparent)
+                                .clickable { onSelectScene(scene.id) }
                                 .padding(horizontal = 10.dp, vertical = 7.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -288,6 +310,29 @@ fun SceneDialog(
                                     text = scene.timestamp,
                                     fontSize = 9.sp,
                                     color = Color(0xFF8E9199)
+                                )
+                            }
+
+                            // Minimalist Trash Icon Button for Scene Deletion
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isDeletePrompt) MuteRed else Color(0x12FFFFFF))
+                                    .clickable {
+                                        if (isDeletePrompt) {
+                                            onDeleteScene(scene.id)
+                                            pendingDeleteSceneId = null
+                                        } else {
+                                            pendingDeleteSceneId = scene.id
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = if (isDeletePrompt) "✓" else "🗑",
+                                    fontSize = 10.5.sp,
+                                    color = if (isDeletePrompt) Color.White else Color(0xFFB0B3C0)
                                 )
                             }
 

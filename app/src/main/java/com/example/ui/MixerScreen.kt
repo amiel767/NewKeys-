@@ -63,11 +63,7 @@ fun MixerScreen(
                 .fillMaxSize()
                 .shadow(16.dp, RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomStart = if (animatedKbFraction > 0.05f) 0.dp else 14.dp, bottomEnd = if (animatedKbFraction > 0.05f) 0.dp else 14.dp))
                 .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomStart = if (animatedKbFraction > 0.05f) 0.dp else 14.dp, bottomEnd = if (animatedKbFraction > 0.05f) 0.dp else 14.dp))
-                .background(
-                    Brush.linearGradient(
-                        colors = listOf(Color(0xFF131D28), Color(0xFF101922), Color(0xFF0C131B))
-                    )
-                )
+                .background(Color(0xFF1B1E2B))
                 .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomStart = if (animatedKbFraction > 0.05f) 0.dp else 14.dp, bottomEnd = if (animatedKbFraction > 0.05f) 0.dp else 14.dp))
                 .padding(
                     start = 8.dp,
@@ -149,7 +145,7 @@ fun MixerScreen(
                             )
                         }
 
-                        // Master Channel
+                        // Master Channel (Reduced to 50% width relative to track channel)
                         VerticalTrackChannel(
                             track = uiState.masterTrack,
                             onVolumeChange = { vol -> viewModel.setTrackVolume(0, vol) },
@@ -159,7 +155,7 @@ fun MixerScreen(
                             onTrackNameClick = {},
                             onFxClick = { viewModel.openEffectsForTrack(0) },
                             modifier = Modifier
-                                .weight(1.08f)
+                                .weight(0.5f)
                                 .fillMaxHeight()
                         )
                     }
@@ -332,6 +328,8 @@ fun MixerScreen(
                     activeSceneId = uiState.activeSceneId,
                     onSelectScene = { viewModel.selectScene(it) },
                     onSaveCurrentScene = { viewModel.saveCurrentScene(it) },
+                    onUpdateActiveScene = { viewModel.updateActiveScene() },
+                    onDeleteScene = { viewModel.deleteScene(it) },
                     onClose = { viewModel.closePopup() }
                 )
             }

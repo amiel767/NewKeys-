@@ -126,9 +126,9 @@ fun VerticalTrackChannel(
     // Ultra-slow 10-minute dynamic hue
     val (baseSubtleColor, vibrantLedColor) = rememberDynamicFaderHue(track.id)
 
-    // Base body color: #202534 without any white outlines
-    val faderBodyColor = Color(0xF0202534)
-    val subtleDarkBorder = Color(0x12FFFFFF) // Extremely subtle dark border, no white contour
+    // Base body color: #25293A matching user spec (Slot background)
+    val faderBodyColor = Color(0xFF25293A)
+    val subtleDarkBorder = Color(0x18FFFFFF)
 
     // Sound-reactive audio activity (Peak Meter) with guaranteed base visibility
     val audioActivity = if (isEnabled) maxOf(track.peakMeterL, track.peakMeterR).coerceIn(0f, 1f) else 0f
@@ -138,9 +138,9 @@ fun VerticalTrackChannel(
     Box(
         modifier = modifier
             .fillMaxHeight()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(faderBodyColor)
-            .border(1.dp, subtleDarkBorder, RoundedCornerShape(12.dp))
+            .border(1.dp, subtleDarkBorder, RoundedCornerShape(8.dp))
             .testTag("track_${track.id}")
     ) {
         // 1. Ambient & Reactive Neon Aura at the bottom of the fader (visible from start, pulses with sound)
@@ -488,6 +488,7 @@ fun FaderSliderWithVuMeter(
     ledColor: Color,
     modifier: Modifier = Modifier
 ) {
+    val audioActivity = maxOf(peakMeterL, peakMeterR).coerceIn(0f, 1f)
     Box(
         modifier = modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center
@@ -496,11 +497,12 @@ fun FaderSliderWithVuMeter(
             value = value,
             onValueChange = onValueChange,
             auraColor = ledColor,
+            audioActivity = audioActivity,
             isEnabled = isEnabled,
-            trackWidth = 20.dp,
+            trackWidth = 18.dp,
             trackHeight = 220.dp,
-            thumbWidth = 42.dp,
-            thumbHeight = 48.dp,
+            thumbWidth = 38.dp,
+            thumbHeight = 44.dp,
             modifier = Modifier.fillMaxHeight()
         )
     }

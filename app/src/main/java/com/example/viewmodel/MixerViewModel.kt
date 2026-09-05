@@ -1385,7 +1385,14 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
             val realPresets = if (nativePresets.isNotEmpty()) {
                 nativePresets
-                    .filter { it.preset in 0..127 && it.bank >= 0 }
+                    .filter { info ->
+                        val lower = info.name.trim().lowercase()
+                        info.preset in 0..127 && info.bank >= 0 &&
+                            !lower.contains("unknown") &&
+                            !lower.contains("ghost") &&
+                            !lower.startsWith("unused") &&
+                            !lower.startsWith("null")
+                    }
                     .distinctBy { Pair(it.bank, it.preset) }
                     .sortedWith(compareBy({ it.bank }, { it.preset }))
                     .map { info ->
@@ -1709,6 +1716,45 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 e.printStackTrace()
             }
+        }
+    }
+
+    fun deleteScene(sceneId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                fileManager.deleteSceneFile(sceneId)
+                val sceneFiles = fileManager.getSceneFiles()
+                val updatedScenes = sceneFiles.map { f ->
+                    ScenePreset(
+                        id = f.name,
+                        name = f.name,
+                        timestamp = f.formattedSize,
+                        color = NeonCyan
+                    )
+                }
+                withContext(Dispatchers.Main) {
+                    _uiState.update { state ->
+                        val nextActive = if (state.activeSceneId == sceneId) {
+                            updatedScenes.firstOrNull()?.id ?: ""
+                        } else state.activeSceneId
+                        state.copy(
+                            scenes = updatedScenes,
+                            activeSceneId = nextActive
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun updateActiveScene() {
+        val currentActiveId = _uiState.value.activeSceneId
+        if (currentActiveId.isNotEmpty()) {
+            saveCurrentScene(currentActiveId)
+        } else {
+            saveCurrentScene("Scène ${_uiState.value.scenes.size + 1}")
         }
     }
 
