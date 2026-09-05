@@ -490,6 +490,7 @@ fun LoopsFloatingPanel(
     activeLoopFile: LoopFile?,
     onToggleFolder: (String) -> Unit,
     onSelectFile: (LoopFile) -> Unit,
+    onImportLoop: (() -> Unit)? = null,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -569,23 +570,45 @@ fun LoopsFloatingPanel(
                     }
                 }
 
-                // Volume Slider
                 Row(
-                    modifier = Modifier.width(130.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text(text = "VOL", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = TextDim)
-                    Slider(
-                        value = loopVolume,
-                        onValueChange = onLoopVolumeChange,
-                        colors = SliderDefaults.colors(
-                            thumbColor = NeonPurpleLight,
-                            activeTrackColor = NeonPurpleLight,
-                            inactiveTrackColor = Color(0x1AFFFFFF)
-                        ),
-                        modifier = Modifier.weight(1f)
-                    )
+                    if (onImportLoop != null) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(NeonPurpleLight)
+                                .clickable { onImportLoop() }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "+ Importer",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                    }
+
+                    // Volume Slider
+                    Row(
+                        modifier = Modifier.width(110.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(text = "VOL", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = TextDim)
+                        Slider(
+                            value = loopVolume,
+                            onValueChange = onLoopVolumeChange,
+                            colors = SliderDefaults.colors(
+                                thumbColor = NeonPurpleLight,
+                                activeTrackColor = NeonPurpleLight,
+                                inactiveTrackColor = Color(0x1AFFFFFF)
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                 }
             }
 

@@ -51,6 +51,7 @@ fun SoundfontDialog(
     onSelectSf2File: ((StorageItem) -> Unit)? = null,
     activeTab: String,
     onTabChange: (String) -> Unit,
+    onImportSf2: (() -> Unit)? = null,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -134,21 +135,44 @@ fun SoundfontDialog(
                         }
                     }
 
-                    // Circular Close Pill Button
-                    Box(
-                        modifier = Modifier
-                            .size(34.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF2D333F))
-                            .clickable { onClose() },
-                        contentAlignment = Alignment.Center
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = "✕",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = textPrimaryM3
-                        )
+                        if (onImportSf2 != null) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(primaryPillColor)
+                                    .clickable { onImportSf2() }
+                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text("+", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = primaryTextColor)
+                                    Text("Importer .sf2", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = primaryTextColor)
+                                }
+                            }
+                        }
+
+                        // Circular Close Pill Button
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF2D333F))
+                                .clickable { onClose() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "✕",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = textPrimaryM3
+                            )
+                        }
                     }
                 }
 
@@ -330,11 +354,27 @@ fun SoundfontDialog(
                             ) {
                                 Text(text = "📂", fontSize = 28.sp)
                                 Text(
-                                    text = "Aucun fichier .sf2 détecté dans /LiveKeys/SoundFonts/.\nPlacez vos banques SoundFont (.sf2) dans la mémoire de l'appareil.",
+                                    text = "Aucun fichier .sf2 dans le stockage interne.\nCliquez ci-dessous pour importer un fichier .sf2.",
                                     fontSize = 12.sp,
                                     color = textSecondaryM3,
                                     textAlign = TextAlign.Center
                                 )
+                                if (onImportSf2 != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(20.dp))
+                                            .background(primaryPillColor)
+                                            .clickable { onImportSf2() }
+                                            .padding(horizontal = 16.dp, vertical = 10.dp)
+                                    ) {
+                                        Text(
+                                            text = "+ Importer un fichier .sf2",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = primaryTextColor
+                                        )
+                                    }
+                                }
                             }
                         }
                     } else {

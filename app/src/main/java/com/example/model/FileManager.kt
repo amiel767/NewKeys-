@@ -1,7 +1,9 @@
 package com.example.model
 
 import android.content.Context
-import android.os.Environment
+import android.net.Uri
+import android.provider.OpenableColumns
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
@@ -23,58 +25,25 @@ data class StorageItem(
 )
 
 /**
- * FileManager responsible for:
- * 1. Automatically and silently creating /LiveKeys principal directory & subfolders:
- *    - /LiveKeys/SoundFonts
- *    - /LiveKeys/Loops
- *    - /LiveKeys/Recordings
- *    - /LiveKeys/Styles
- * 2. Scanning real internal & external storage asynchronously on Dispatchers.IO.
- * 3. Extracting minimal metadata without memory overload.
+ * FileManager responsible exclusively for app-private internal storage (context.filesDir/LiveKeys):
+ * - SoundFonts: /context.filesDir/LiveKeys/SoundFonts/
+ * - Loops: /context.filesDir/LiveKeys/Loops/
+ * - DrumPad: /context.filesDir/LiveKeys/DrumPad/
+ * - Scenes: /context.filesDir/LiveKeys/Scenes/
+ * - Recordings: /context.filesDir/LiveKeys/Recordings/
+ * - Midi: /context.filesDir/LiveKeys/Midi/
+ * - Styles: /context.filesDir/LiveKeys/Styles/
+ * - Presets: /context.filesDir/LiveKeys/Presets/
+ * - Logs: /context.filesDir/LiveKeys/Logs/
  */
 class FileManager(private val context: Context) {
 
-    // Resolves primary LiveKeys directory with graceful fallbacks across external and internal storage
     val baseDir: File by lazy {
-        val externalStorage = try {
-            Environment.getExternalStorageDirectory()
-        } catch (e: Exception) {
-            null
+        val internalLiveKeys = File(context.filesDir, "LiveKeys")
+        if (!internalLiveKeys.exists()) {
+            internalLiveKeys.mkdirs()
         }
-        val primaryDir = if (externalStorage != null) File(externalStorage, "LiveKeys") else null
-        
-        var selectedDir: File? = null
-        try {
-            if (primaryDir != null && (primaryDir.exists() || primaryDir.mkdirs())) {
-                selectedDir = primaryDir
-            }
-        } catch (e: Exception) {
-            // Ignore security exception and fallback to app storage
-        }
-
-        if (selectedDir == null) {
-            try {
-                val appExternal = context.getExternalFilesDir(null)
-                if (appExternal != null) {
-                    val appExtLiveKeys = File(appExternal, "LiveKeys")
-                    if (appExtLiveKeys.exists() || appExtLiveKeys.mkdirs()) {
-                        selectedDir = appExtLiveKeys
-                    }
-                }
-            } catch (_: Exception) {}
-        }
-
-        if (selectedDir == null) {
-            val internalLiveKeys = File(context.filesDir, "LiveKeys")
-            try {
-                if (!internalLiveKeys.exists()) {
-                    internalLiveKeys.mkdirs()
-                }
-            } catch (_: Exception) {}
-            selectedDir = internalLiveKeys
-        }
-
-        selectedDir
+        internalLiveKeys
     }
 
     val soundfontsDir: File get() = File(baseDir, "SoundFonts")
@@ -88,7 +57,7 @@ class FileManager(private val context: Context) {
     val logsDir: File get() = File(baseDir, "Logs")
 
     fun writeLog(tag: String, message: String, throwable: Throwable? = null) {
-        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+        GlobalScope.launch(Dispatchers.IO) {
             try {
                 if (!logsDir.exists()) logsDir.mkdirs()
                 val logFile = File(logsDir, "crash_logs.txt")
@@ -96,7 +65,7 @@ class FileManager(private val context: Context) {
                 val logEntry = buildString {
                     append("[$timestamp] [$tag] $message\n")
                     if (throwable != null) {
-                        append(android.util.Log.getStackTraceString(throwable))
+                        append(Log.getStackTraceString(throwable))
                         append("\n")
                     }
                 }
@@ -106,7 +75,7 @@ class FileManager(private val context: Context) {
     }
 
     /**
-     * Ensures all subdirectories exist asynchronously on Dispatchers.IO
+     * Ensures all internal subdirectories exist
      */
     suspend fun ensureDirectoriesExist() = withContext(Dispatchers.IO) {
         try {
@@ -131,42 +100,29 @@ class FileManager(private val context: Context) {
     }
 
     /**
-     * Recursively and safely scans for SoundFont (.sf2, .sfz) files on Dispatchers.IO
+     * Scans for SoundFont (.sf2, .sfz) files EXCLUSIVELY inside context.filesDir/LiveKeys/SoundFonts/
      */
     suspend fun getSoundFontFiles(): List<StorageItem> = withContext(Dispatchers.IO) {
         val result = mutableListOf<StorageItem>()
         try {
-            val directoriesToScan = listOf(
-                soundfontsDir,
-                File(Environment.getExternalStorageDirectory(), "Music/SoundfontsLive"),
-                File(Environment.getExternalStorageDirectory(), "Soundfonts"),
-                File(Environment.getExternalStorageDirectory(), "Music")
-            )
-
-            val visitedPaths = mutableSetOf<String>()
-
-            for (dir in directoriesToScan) {
-                if (!dir.exists() || !dir.canRead()) continue
-                
-                dir.walkTopDown()
+            if (soundfontsDir.exists() && soundfontsDir.canRead()) {
+                soundfontsDir.walkTopDown()
                     .maxDepth(3)
                     .filter { file ->
                         file.isFile && (file.extension.equals("sf2", ignoreCase = true) ||
                                 file.extension.equals("sfz", ignoreCase = true))
                     }
                     .forEach { file ->
-                        if (visitedPaths.add(file.absolutePath)) {
-                            result.add(
-                                StorageItem(
-                                    name = file.name,
-                                    path = file.absolutePath,
-                                    isDirectory = false,
-                                    size = file.length(),
-                                    extension = file.extension.lowercase(),
-                                    formattedSize = formatSize(file.length())
-                                )
+                        result.add(
+                            StorageItem(
+                                name = file.name,
+                                path = file.absolutePath,
+                                isDirectory = false,
+                                size = file.length(),
+                                extension = file.extension.lowercase(),
+                                formattedSize = formatSize(file.length())
                             )
-                        }
+                        )
                     }
             }
         } catch (e: Exception) {
@@ -176,52 +132,15 @@ class FileManager(private val context: Context) {
     }
 
     /**
-     * Resolves and bridges a SoundFont file to an app-private internal path readable by C++ fopen().
-     * If source file is on external shared storage, it is safely cached in context.filesDir/SoundFonts.
+     * Returns a File instance directly for native C++ fopen from internal storage.
      */
     suspend fun getNativeReadableSoundFontFile(sourcePath: String): File = withContext(Dispatchers.IO) {
-        val sourceFile = File(sourcePath)
-        if (!sourceFile.exists()) return@withContext sourceFile
-
-        val internalSoundFontDir = File(context.filesDir, "SoundFonts").apply {
-            if (!exists()) mkdirs()
-        }
-
-        // If the file is already inside the internal private directory, return it directly
-        if (sourceFile.canonicalPath.startsWith(context.filesDir.canonicalPath)) {
-            return@withContext sourceFile
-        }
-
-        val cachedFile = File(internalSoundFontDir, sourceFile.name)
-        try {
-            val needsCopy = !cachedFile.exists() || 
-                            cachedFile.length() != sourceFile.length() || 
-                            cachedFile.lastModified() < sourceFile.lastModified()
-
-            if (needsCopy) {
-                android.util.Log.d("FileManager", "Caching SoundFont to internal private storage: ${sourceFile.name} (${sourceFile.length()} bytes)")
-                sourceFile.inputStream().use { input ->
-                    cachedFile.outputStream().use { output ->
-                        input.copyTo(output, bufferSize = 65536)
-                    }
-                }
-                cachedFile.setLastModified(sourceFile.lastModified())
-                android.util.Log.d("FileManager", "Finished caching SoundFont: ${cachedFile.name}")
-            } else {
-                android.util.Log.d("FileManager", "Using existing cached SoundFont (copy skipped): ${cachedFile.name}")
-            }
-
-            if (cachedFile.exists() && cachedFile.length() > 0) {
-                return@withContext cachedFile
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("FileManager", "Error caching SoundFont to internal storage: ${e.message}", e)
-        }
-        return@withContext sourceFile
+        val file = File(sourcePath)
+        if (file.exists()) file else File(soundfontsDir, file.name)
     }
 
     /**
-     * Scans the /LiveKeys/Loops directory recursively without heavy buffer allocations.
+     * Scans EXCLUSIVELY the internal /LiveKeys/Loops directory.
      */
     suspend fun getLoopFiles(): List<StorageItem> = withContext(Dispatchers.IO) {
         val result = mutableListOf<StorageItem>()
@@ -250,13 +169,12 @@ class FileManager(private val context: Context) {
     }
 
     /**
-     * Returns the dynamic directory tree of /LiveKeys/Loops as LoopFolder models for Material Explorer
+     * Returns the dynamic directory tree of internal /LiveKeys/Loops
      */
     suspend fun getLoopFolderTree(): List<LoopFolder> = withContext(Dispatchers.IO) {
         val folders = mutableListOf<LoopFolder>()
         try {
             if (loopsDir.exists() && loopsDir.canRead()) {
-                // Root files
                 val rootFiles = loopsDir.listFiles { file -> file.isFile && isAudioFile(file) }
                     ?.map { file ->
                         LoopFile(
@@ -278,7 +196,6 @@ class FileManager(private val context: Context) {
                     )
                 }
 
-                // Subdirectories
                 loopsDir.listFiles { file -> file.isDirectory }?.forEach { subDir ->
                     val subFiles = subDir.listFiles { file -> file.isFile && isAudioFile(file) }
                         ?.map { file ->
@@ -315,7 +232,7 @@ class FileManager(private val context: Context) {
     }
 
     /**
-     * Lists items inside a specific directory path for the Material file explorer
+     * Lists items inside a specific directory path inside internal storage
      */
     suspend fun listItemsInDirectory(dirPath: String): List<StorageItem> = withContext(Dispatchers.IO) {
         val dir = File(dirPath)
@@ -355,7 +272,7 @@ class FileManager(private val context: Context) {
     }
 
     /**
-     * Scans the /LiveKeys/DrumPad directory specifically on Dispatchers.IO
+     * Scans EXCLUSIVELY the internal /LiveKeys/DrumPad directory
      */
     suspend fun getDrumPadFiles(): List<StorageItem> = withContext(Dispatchers.IO) {
         val result = mutableListOf<StorageItem>()
@@ -377,74 +294,16 @@ class FileManager(private val context: Context) {
                         )
                     }
             }
-            // Fallback: check secondary external DrumPad directory if primary is empty
-            if (result.isEmpty()) {
-                val extDrumPad = File(Environment.getExternalStorageDirectory(), "DrumPad")
-                if (extDrumPad.exists() && extDrumPad.canRead()) {
-                    extDrumPad.walkTopDown()
-                        .maxDepth(3)
-                        .filter { it.isFile && isAudioFile(it) }
-                        .forEach { file ->
-                            result.add(
-                                StorageItem(
-                                    name = file.name,
-                                    path = file.absolutePath,
-                                    isDirectory = false,
-                                    size = file.length(),
-                                    extension = file.extension.lowercase(),
-                                    formattedSize = formatSize(file.length())
-                                )
-                            )
-                        }
-                }
-            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
         result.sortedBy { it.name.lowercase() }
     }
 
-    /**
-     * Scans for Drum Samples in /LiveKeys/DrumPad and /DrumPad
-     */
-    suspend fun getDrumSampleFiles(): List<StorageItem> = withContext(Dispatchers.IO) {
-        val result = mutableListOf<StorageItem>()
-        try {
-            val dirs = listOf(
-                drumPadDir,
-                File(Environment.getExternalStorageDirectory(), "DrumPad"),
-                File(Environment.getExternalStorageDirectory(), "Music/DrumPad"),
-                loopsDir
-            )
-            val visited = mutableSetOf<String>()
-            for (dir in dirs) {
-                if (!dir.exists() || !dir.canRead()) continue
-                dir.walkTopDown()
-                    .maxDepth(3)
-                    .filter { it.isFile && isAudioFile(it) }
-                    .forEach { file ->
-                        if (visited.add(file.absolutePath)) {
-                            result.add(
-                                StorageItem(
-                                    name = file.name,
-                                    path = file.absolutePath,
-                                    isDirectory = false,
-                                    size = file.length(),
-                                    extension = file.extension.lowercase(),
-                                    formattedSize = formatSize(file.length())
-                                )
-                            )
-                        }
-                    }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        result.sortedBy { it.name.lowercase() }
-    }
+    suspend fun getDrumSampleFiles(): List<StorageItem> = getDrumPadFiles()
 
     /**
-     * Scans for Arranger / Styles (.sty, .prs, .sst, .mid) in /LiveKeys/Styles
+     * Scans EXCLUSIVELY internal /LiveKeys/Styles
      */
     suspend fun getStyleFiles(): List<StorageItem> = withContext(Dispatchers.IO) {
         val result = mutableListOf<StorageItem>()
@@ -473,7 +332,7 @@ class FileManager(private val context: Context) {
     }
 
     /**
-     * Scans for Scene Presets (.scene) in /LiveKeys/scènes
+     * Scans EXCLUSIVELY internal /LiveKeys/Scenes
      */
     suspend fun getSceneFiles(): List<StorageItem> = withContext(Dispatchers.IO) {
         val result = mutableListOf<StorageItem>()
@@ -499,9 +358,6 @@ class FileManager(private val context: Context) {
         result.sortedByDescending { File(it.path).lastModified() }
     }
 
-    /**
-     * Saves a scene JSON configuration directly to a .scene file in /LiveKeys/scènes
-     */
     suspend fun saveSceneFile(sceneName: String, jsonContent: String): File? = withContext(Dispatchers.IO) {
         try {
             if (!scenesDir.exists()) scenesDir.mkdirs()
@@ -515,9 +371,6 @@ class FileManager(private val context: Context) {
         }
     }
 
-    /**
-     * Loads the raw JSON string from a .scene file
-     */
     suspend fun loadSceneFile(filePath: String): String? = withContext(Dispatchers.IO) {
         try {
             val file = File(filePath)
@@ -530,9 +383,6 @@ class FileManager(private val context: Context) {
         }
     }
 
-    /**
-     * Deletes a .scene file
-     */
     suspend fun deleteSceneFile(filePath: String): Boolean = withContext(Dispatchers.IO) {
         try {
             val file = File(filePath)
@@ -544,7 +394,7 @@ class FileManager(private val context: Context) {
     }
 
     /**
-     * Scans for Recordings (.wav, .mp3, .m4a) in /LiveKeys/Recording
+     * Scans EXCLUSIVELY internal /LiveKeys/Recordings
      */
     suspend fun getRecordingFiles(): List<StorageItem> = withContext(Dispatchers.IO) {
         val result = mutableListOf<StorageItem>()
@@ -571,36 +421,26 @@ class FileManager(private val context: Context) {
     }
 
     /**
-     * Scans for MIDI (.mid, .midi) in /LiveKeys/Midi and system Music directories
+     * Scans EXCLUSIVELY internal /LiveKeys/Midi
      */
     suspend fun getMidiFiles(): List<StorageItem> = withContext(Dispatchers.IO) {
         val result = mutableListOf<StorageItem>()
         try {
-            val dirs = listOf(
-                midiDir,
-                File(Environment.getExternalStorageDirectory(), "Music/Midi"),
-                File(Environment.getExternalStorageDirectory(), "Midi"),
-                File(Environment.getExternalStorageDirectory(), "Music")
-            )
-            val visited = mutableSetOf<String>()
-            for (dir in dirs) {
-                if (!dir.exists() || !dir.canRead()) continue
-                dir.walkTopDown()
+            if (midiDir.exists() && midiDir.canRead()) {
+                midiDir.walkTopDown()
                     .maxDepth(3)
                     .filter { it.isFile && isMidiFile(it) }
                     .forEach { file ->
-                        if (visited.add(file.absolutePath)) {
-                            result.add(
-                                StorageItem(
-                                    name = file.name,
-                                    path = file.absolutePath,
-                                    isDirectory = false,
-                                    size = file.length(),
-                                    extension = file.extension.lowercase(),
-                                    formattedSize = formatSize(file.length())
-                                )
+                        result.add(
+                            StorageItem(
+                                name = file.name,
+                                path = file.absolutePath,
+                                isDirectory = false,
+                                size = file.length(),
+                                extension = file.extension.lowercase(),
+                                formattedSize = formatSize(file.length())
                             )
-                        }
+                        )
                     }
             }
         } catch (e: Exception) {
@@ -609,9 +449,6 @@ class FileManager(private val context: Context) {
         result.sortedBy { it.name.lowercase() }
     }
 
-    /**
-     * Returns MIDI directory tree for MIDI browser panel
-     */
     suspend fun getMidiFolderTree(): List<LoopFolder> = withContext(Dispatchers.IO) {
         val folders = mutableListOf<LoopFolder>()
         try {
@@ -662,6 +499,61 @@ class FileManager(private val context: Context) {
             e.printStackTrace()
         }
         folders
+    }
+
+    // ==================== ASYNCHRONOUS URI IMPORT FUNCTIONS ====================
+
+    suspend fun importSoundFontFromUri(uri: Uri): File? = copyUriToDirectory(uri, soundfontsDir)
+
+    suspend fun importDrumPadFromUri(uri: Uri): File? = copyUriToDirectory(uri, drumPadDir)
+
+    suspend fun importLoopFromUri(uri: Uri): File? = copyUriToDirectory(uri, loopsDir)
+
+    suspend fun importMidiFromUri(uri: Uri): File? = copyUriToDirectory(uri, midiDir)
+
+    private suspend fun copyUriToDirectory(uri: Uri, destDir: File): File? = withContext(Dispatchers.IO) {
+        try {
+            if (!destDir.exists()) destDir.mkdirs()
+            var fileName = getFileNameFromUri(uri)
+            if (fileName.isNullOrBlank()) {
+                fileName = "imported_${System.currentTimeMillis()}"
+            }
+            val targetFile = File(destDir, fileName)
+            Log.d("FileManager", "Importing Uri $uri -> ${targetFile.absolutePath}")
+
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                targetFile.outputStream().use { output ->
+                    input.copyTo(output, bufferSize = 65536)
+                }
+            }
+            if (targetFile.exists() && targetFile.length() > 0) {
+                Log.d("FileManager", "Successfully imported file: ${targetFile.name} (${targetFile.length()} bytes)")
+                targetFile
+            } else null
+        } catch (e: Exception) {
+            Log.e("FileManager", "Error importing file from URI $uri: ${e.message}", e)
+            null
+        }
+    }
+
+    private fun getFileNameFromUri(uri: Uri): String? {
+        var name: String? = null
+        if (uri.scheme == "content") {
+            try {
+                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (nameIndex != -1) {
+                            name = cursor.getString(nameIndex)
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+        if (name.isNullOrBlank()) {
+            name = uri.path?.let { File(it).name }
+        }
+        return name
     }
 
     private fun isAudioFile(file: File): Boolean {

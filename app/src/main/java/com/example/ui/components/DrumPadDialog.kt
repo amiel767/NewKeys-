@@ -67,6 +67,7 @@ fun DrumPadDialog(
     onUpdatePadCustomization: (padId: Int, label: String, style: DrumPadStyle) -> Unit,
     onAssignPadSample: (padId: Int, sample: StorageItem) -> Unit,
     onAssignPadNote: (padId: Int, noteStr: String, oct: Int, key: String) -> Unit,
+    onImportAudioFile: (() -> Unit)? = null,
     initialOffsetX: Float = 0f,
     initialOffsetY: Float = 0f,
     initialSizeDp: Float = 440f,
@@ -158,7 +159,8 @@ fun DrumPadDialog(
                             onLongPressPad = { pad -> editingPad = pad },
                             audioFiles = audioFiles,
                             onPlaySample = onPlaySample,
-                            onLongPressSample = { file -> quickAssignSample = file }
+                            onLongPressSample = { file -> quickAssignSample = file },
+                            onImportAudioFile = onImportAudioFile
                         )
                     }
                 }
@@ -219,7 +221,8 @@ private fun MainDrumPadSquareContent(
     onLongPressPad: (DrumPadItem) -> Unit,
     audioFiles: List<StorageItem>,
     onPlaySample: (StorageItem) -> Unit,
-    onLongPressSample: (StorageItem) -> Unit
+    onLongPressSample: (StorageItem) -> Unit,
+    onImportAudioFile: (() -> Unit)? = null
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         // ================= TOP BAR WITH TITLE, SOUNDFONT PICKER & MINIMALIST PIN =================
@@ -424,12 +427,35 @@ private fun MainDrumPadSquareContent(
                         .fillMaxWidth()
                         .weight(1f)
                 ) {
-                    Text(
-                        text = "Éléments du dossier /DrumPad (Appui court = Jouer · Long = Assigner)",
-                        fontSize = 8.5.sp,
-                        color = TextDim2,
-                        modifier = Modifier.padding(bottom = 4.dp)
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Éléments audio /DrumPad (Court = Jouer · Long = Assigner)",
+                            fontSize = 8.5.sp,
+                            color = TextDim2
+                        )
+                        if (onImportAudioFile != null) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(NeonCyan)
+                                    .clickable { onImportAudioFile() }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = "+ Importer (.wav/.mp3)",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF0F2537)
+                                )
+                            }
+                        }
+                    }
 
                     LazyColumn(
                         modifier = Modifier

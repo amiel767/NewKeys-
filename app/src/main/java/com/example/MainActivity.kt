@@ -56,9 +56,8 @@ class MainActivity : ComponentActivity() {
 
     WindowCompat.setDecorFitsSystemWindows(window, false)
 
-    // Ensure storage structure exists immediately
+    // Ensure internal storage structure exists immediately
     setupFileSystem()
-    checkAndRequestPermissions()
 
     setContent {
       val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -77,44 +76,6 @@ class MainActivity : ComponentActivity() {
       insetsController.systemBarsBehavior =
           WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
       insetsController.hide(WindowInsetsCompat.Type.systemBars())
-    }
-  }
-
-  private fun checkAndRequestPermissions() {
-    try {
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-        if (!android.os.Environment.isExternalStorageManager()) {
-          try {
-            val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
-              data = Uri.parse("package:$packageName")
-            }
-            requestManageStorageLauncher.launch(intent)
-          } catch (e: Exception) {
-            try {
-              val fallbackIntent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
-              requestManageStorageLauncher.launch(fallbackIntent)
-            } catch (e2: Exception) {
-              // Ignore if settings screen not available on virtual environment
-            }
-          }
-        }
-      } else {
-        val permissions = mutableListOf(
-          Manifest.permission.READ_EXTERNAL_STORAGE,
-          Manifest.permission.WRITE_EXTERNAL_STORAGE
-        )
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-          permissions.add(Manifest.permission.READ_MEDIA_AUDIO)
-        }
-        val notGranted = permissions.filter {
-          ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }
-        if (notGranted.isNotEmpty()) {
-          requestPermissionLauncher.launch(notGranted.toTypedArray())
-        }
-      }
-    } catch (e: Exception) {
-      // Non-blocking catch
     }
   }
 

@@ -1,5 +1,7 @@
 package com.example.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -31,6 +33,30 @@ fun MixerScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var isSplashFinished by remember { mutableStateOf(false) }
+
+    val sf2PickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.importSoundFontUri(uri)
+        }
+    }
+
+    val drumPadPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.importDrumPadUri(uri)
+        }
+    }
+
+    val loopPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.importLoopUri(uri)
+        }
+    }
 
     // Real-time zero-latency chord analysis from pressed keys
     val detectedChord = remember(uiState.pressedKeys) {
@@ -242,6 +268,7 @@ fun MixerScreen(
                     activeLoopFile = uiState.activeLoopFile,
                     onToggleFolder = { viewModel.toggleLoopFolder(it) },
                     onSelectFile = { viewModel.selectAndToggleLoopFile(it) },
+                    onImportLoop = { loopPickerLauncher.launch(arrayOf("audio/*", "*/*")) },
                     onClose = { viewModel.closeLoopsPanel() }
                 )
             }
@@ -361,7 +388,8 @@ fun MixerScreen(
                     viewModel.updateDrumPadCustomization(padId, label, style)
                 },
                 onAssignPadSample = { padId, sample -> viewModel.assignDrumSample(padId, sample.name, sample.path) },
-                onAssignPadNote = { padId, noteStr, oct, key -> viewModel.assignDrumSf2Note(padId, key, oct) }
+                onAssignPadNote = { padId, noteStr, oct, key -> viewModel.assignDrumSf2Note(padId, key, oct) },
+                onImportAudioFile = { drumPadPickerLauncher.launch(arrayOf("audio/*", "*/*")) }
             )
         }
 
@@ -433,6 +461,7 @@ fun MixerScreen(
                     onSelectSf2File = { viewModel.loadSoundfontFromStorage(it) },
                     activeTab = uiState.activeSf2Tab,
                     onTabChange = { viewModel.setSf2Tab(it) },
+                    onImportSf2 = { sf2PickerLauncher.launch(arrayOf("*/*")) },
                     onClose = { viewModel.closePopup() }
                 )
             }

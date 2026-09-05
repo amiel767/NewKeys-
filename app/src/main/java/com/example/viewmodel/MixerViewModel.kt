@@ -501,6 +501,36 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // ================= URI IMPORT FUNCTIONS =================
+    fun importSoundFontUri(uri: android.net.Uri, targetSlotId: Int? = null) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val importedFile = fileManager.importSoundFontFromUri(uri)
+            if (importedFile != null && importedFile.exists()) {
+                refreshStorageFiles()
+                val slotToLoad = targetSlotId ?: _uiState.value.activeSoundfontSlotId
+                loadSoundFontForSlot(slotToLoad, importedFile.absolutePath)
+            }
+        }
+    }
+
+    fun importDrumPadUri(uri: android.net.Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val importedFile = fileManager.importDrumPadFromUri(uri)
+            if (importedFile != null && importedFile.exists()) {
+                refreshStorageFiles()
+            }
+        }
+    }
+
+    fun importLoopUri(uri: android.net.Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val importedFile = fileManager.importLoopFromUri(uri)
+            if (importedFile != null && importedFile.exists()) {
+                refreshStorageFiles()
+            }
+        }
+    }
+
     // ================= MIDI FILE PLAYER (.MID) =================
     fun toggleMidiPlayPause() {
         val currPlaying = _uiState.value.isMidiPlaying
