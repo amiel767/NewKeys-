@@ -115,7 +115,8 @@ fun MixerScreen(
                         onVolumeChange = { id, vol -> viewModel.setTrackVolume(id, vol) },
                         onPowerToggle = { id -> viewModel.toggleTrackPower(id) },
                         onPanChange = { id, pan -> viewModel.setTrackPan(id, pan) },
-                        onMuteSoloClick = { id -> viewModel.onTrackMuteSoloClick(id) },
+                        onMuteClick = { id -> viewModel.onTrackMuteClick(id) },
+                        onSoloClick = { id -> viewModel.onTrackSoloClick(id) },
                         onTrackNameClick = { id -> viewModel.openSoundfontForSlot(id - 1) },
                         onFxClick = { id -> viewModel.openEffectsForTrack(id) },
                         modifier = Modifier
@@ -136,7 +137,8 @@ fun MixerScreen(
                                 onVolumeChange = { vol -> viewModel.setTrackVolume(track.id, vol) },
                                 onPowerToggle = { viewModel.toggleTrackPower(track.id) },
                                 onPanChange = { pan -> viewModel.setTrackPan(track.id, pan) },
-                                onMuteSoloClick = { viewModel.onTrackMuteSoloClick(track.id) },
+                                onMuteClick = { viewModel.onTrackMuteClick(track.id) },
+                                onSoloClick = { viewModel.onTrackSoloClick(track.id) },
                                 onTrackNameClick = { viewModel.openSoundfontForSlot(track.id - 1) },
                                 onFxClick = { viewModel.openEffectsForTrack(track.id) },
                                 modifier = Modifier
@@ -145,19 +147,6 @@ fun MixerScreen(
                             )
                         }
 
-                        // Master Channel (Reduced to 50% width relative to track channel)
-                        VerticalTrackChannel(
-                            track = uiState.masterTrack,
-                            onVolumeChange = { vol -> viewModel.setTrackVolume(0, vol) },
-                            onPowerToggle = {},
-                            onPanChange = {},
-                            onMuteSoloClick = {},
-                            onTrackNameClick = {},
-                            onFxClick = { viewModel.openEffectsForTrack(0) },
-                            modifier = Modifier
-                                .weight(0.5f)
-                                .fillMaxHeight()
-                        )
                     }
                 }
 
@@ -165,6 +154,9 @@ fun MixerScreen(
 
                 // 3. BOTTOM BAR (With MIDI Player, Real Chord Detector & Piano Toggle)
                 BottomBar(
+                    masterTrack = uiState.masterTrack,
+                    onMasterVolumeChange = { vol -> viewModel.setTrackVolume(0, vol) },
+                    onMasterFxClick = { viewModel.openEffectsForTrack(0) },
                     isRecording = uiState.isRecording,
                     recordingDuration = uiState.recordingDuration,
                     lastRecordedFile = uiState.lastRecordedFile,
@@ -463,10 +455,6 @@ fun MixerScreen(
             onSelectPolyphony = { viewModel.setPolyphony(it) },
             selectedLanguage = uiState.selectedLanguage,
             onSelectLanguage = { viewModel.setSelectedLanguage(it) },
-            soundGoodizer = uiState.soundGoodizer,
-            onSoundGoodizerChange = { viewModel.setSoundGoodizer(it) },
-            soundGoodizerMode = uiState.soundGoodizerMode,
-            onSoundGoodizerModeChange = { viewModel.setSoundGoodizerMode(it) },
             masterPunch = uiState.masterPunch,
             onMasterPunchChange = { viewModel.setMasterPunch(it) },
             spatialWidener = uiState.spatialWidener,

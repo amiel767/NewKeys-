@@ -11,6 +11,7 @@ package com.example.ui.components
 data class DetectedChord(
     val primaryName: String,
     val alternateNames: String,
+    val alternateName2: String = "",
     val formula: String,
     val notesList: List<String>
 )
@@ -175,13 +176,19 @@ object ChordCalculator {
                 val isSlash = rootPc != lowestPitchClass
                 val baseChord = "$rootName$suffix"
                 val finalPrimary = if (isSlash) "$baseChord/$lowestNoteName" else baseChord
-                val finalAlt = if (isSlash) "$rootName $alt / $lowestNoteName" else "$rootName $alt"
+                
+                val altParts = alt.split(" / ")
+                val finalAlt1 = if (isSlash) "${rootName} ${altParts[0]} / $lowestNoteName" else "${rootName} ${altParts[0]}"
+                val finalAlt2 = if (altParts.size > 1) {
+                    if (isSlash) "${rootName} ${altParts[1]} / $lowestNoteName" else "${rootName} ${altParts[1]}"
+                } else ""
 
                 val notesFormatted = uniquePitchClasses.map { NOTE_NAMES[it] }.joinToString(" · ")
 
                 return DetectedChord(
                     primaryName = finalPrimary,
-                    alternateNames = "$finalAlt — [$formula]",
+                    alternateNames = "$finalAlt1 — [$formula]",
+                    alternateName2 = finalAlt2,
                     formula = notesFormatted,
                     notesList = uniquePitchClasses.map { NOTE_NAMES[it] }
                 )

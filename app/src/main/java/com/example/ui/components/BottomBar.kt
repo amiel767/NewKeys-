@@ -40,6 +40,9 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun BottomBar(
+    masterTrack: com.example.model.TrackChannel,
+    onMasterVolumeChange: (Float) -> Unit,
+    onMasterFxClick: () -> Unit,
     isRecording: Boolean,
     recordingDuration: Int = 0,
     lastRecordedFile: String? = null,
@@ -276,7 +279,7 @@ fun BottomBar(
         // ================= 4. AFFICHEUR D'ACCORDS (CHORD DISPLAY BAR) =================
         Box(
             modifier = Modifier
-                .weight(1f)
+                .width(100.dp)
                 .height(barHeight)
                 .clip(RoundedCornerShape(10.dp))
                 .background(
@@ -292,80 +295,28 @@ fun BottomBar(
                     if (isKeyboardActive) NeonCyan.copy(alpha = 0.8f) else Color(0x3300E5FF),
                     RoundedCornerShape(10.dp)
                 )
-                .padding(horizontal = 10.dp, vertical = 3.dp)
+                .padding(horizontal = 6.dp, vertical = 3.dp)
                 .testTag("chord_display_box"),
             contentAlignment = Alignment.CenterStart
         ) {
             if (detectedChord != null) {
                 // Real-time Jazz & Pop Chord Display
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = detectedChord.primaryName,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = NeonCyanLight,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = detectedChord.alternateNames,
-                            fontSize = 8.sp,
-                            color = TextDim,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(Color(0x2200E5FF))
-                                .padding(horizontal = 5.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = detectedChord.formula,
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = NeonCyan
-                            )
-                        }
-
-                        // Pile gris pour contrôle clavier
-                        Box(
-                            modifier = Modifier
-                                .width(32.dp)
-                                .height(16.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF374151))
-                                .border(1.dp, Color(0xFF4B5563), RoundedCornerShape(8.dp))
-                                .clickable { onKeyboardHandleClick() }
-                                .pointerInput(Unit) {
-                                    detectVerticalDragGestures { change, dragAmount ->
-                                        change.consume()
-                                        onKeyboardDrag(dragAmount)
-                                    }
-                                }
-                                .testTag("handle_pile_grey"),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .width(16.dp)
-                                    .height(3.dp)
-                                    .clip(RoundedCornerShape(1.5.dp))
-                                    .background(Color(0xFF9CA3AF))
-                            )
-                        }
-                    }
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = detectedChord.primaryName,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = NeonCyanLight,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = detectedChord.formula,
+                        fontSize = 7.sp,
+                        color = NeonCyan,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             } else {
                 Row(
@@ -373,45 +324,50 @@ fun BottomBar(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                    ) {
-                        Text(
-                            text = if (isKeyboardActive) "CLAVIER ACTIF" else "ACCORDS",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isKeyboardActive) NeonCyan else Color(0x66FFFFFF)
-                        )
-                    }
-
-                    // Pile gris pour contrôle clavier
-                    Box(
-                        modifier = Modifier
-                            .width(36.dp)
-                            .height(18.dp)
-                            .clip(RoundedCornerShape(9.dp))
-                            .background(Color(0xFF374151))
-                            .border(1.dp, Color(0xFF4B5563), RoundedCornerShape(9.dp))
-                            .clickable { onKeyboardHandleClick() }
-                            .pointerInput(Unit) {
-                                detectVerticalDragGestures { change, dragAmount ->
-                                    change.consume()
-                                    onKeyboardDrag(dragAmount)
-                                }
-                            }
-                            .testTag("handle_pile_grey"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .width(18.dp)
-                                .height(3.dp)
-                                .clip(RoundedCornerShape(1.5.dp))
-                                .background(Color(0xFF9CA3AF))
-                        )
-                    }
+                    Text(
+                        text = if (isKeyboardActive) "CLAVIER" else "ACCORDS",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isKeyboardActive) NeonCyan else Color(0x66FFFFFF)
+                    )
                 }
+            }
+        }
+
+        // ================= 5. MASTER FADER =================
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .height(barHeight)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFF0A0E15))
+                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(10.dp))
+                .padding(horizontal = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("M", color = Color(0xFF8E95A5), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.width(4.dp))
+            Slider(
+                value = masterTrack.volume,
+                onValueChange = onMasterVolumeChange,
+                modifier = Modifier.weight(0.25f).height(24.dp),
+                colors = SliderDefaults.colors(
+                    thumbColor = NeonCyan,
+                    activeTrackColor = NeonCyan,
+                    inactiveTrackColor = Color(0xFF1E2238)
+                )
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Box(
+                modifier = Modifier
+                    .size(26.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color(0xFF161C28))
+                    .border(1.dp, Color(0xFF2C3242), RoundedCornerShape(4.dp))
+                    .clickable { onMasterFxClick() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("FX", color = NeonCyan, fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
         }
 

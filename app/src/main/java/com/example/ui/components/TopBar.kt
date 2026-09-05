@@ -169,22 +169,22 @@ fun TopBar(
                 }
             }
 
-            // 2. Octave Stepper (Enlarged Central Block)
-            StepperControl(
-                label = "OCT",
-                value = if (octave > 0) "+$octave" else "$octave",
-                onMinus = { onOctaveChange(-1) },
-                onPlus = { onOctaveChange(1) },
-                modifier = Modifier.testTag("stepper_oct")
-            )
-
-            // 3. Transpose Stepper (Separated with +/- semitones)
+            // 2. Transpose Stepper (Left)
             StepperControl(
                 label = "TRANS",
                 value = if (transpose > 0) "+$transpose" else "$transpose",
                 onMinus = { onTransposeChange(-1) },
                 onPlus = { onTransposeChange(1) },
                 modifier = Modifier.testTag("stepper_trans")
+            )
+
+            // 3. Octave Stepper (Right)
+            StepperControl(
+                label = "OCT",
+                value = if (octave > 0) "+$octave" else "$octave",
+                onMinus = { onOctaveChange(-1) },
+                onPlus = { onOctaveChange(1) },
+                modifier = Modifier.testTag("stepper_oct")
             )
 
             Spacer(modifier = Modifier.weight(1f))

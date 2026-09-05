@@ -64,11 +64,7 @@ fun SettingsDrawer(
     selectedLanguage: String,
     onSelectLanguage: (String) -> Unit,
     
-    // FL SoundGoodizer & Master Processing
-    soundGoodizer: Float,
-    onSoundGoodizerChange: (Float) -> Unit,
-    soundGoodizerMode: SoundGoodizerMode = SoundGoodizerMode.A,
-    onSoundGoodizerModeChange: (SoundGoodizerMode) -> Unit = {},
+    // Master Processing
     masterPunch: Float,
     onMasterPunchChange: (Float) -> Unit,
     spatialWidener: Float,
@@ -138,14 +134,13 @@ fun SettingsDrawer(
                             audioBufferSize = audioBufferSize,
                             polyphony = polyphony,
                             selectedLanguage = selectedLanguage,
-                            soundGoodizer = soundGoodizer,
-                            onSoundGoodizerChange = onSoundGoodizerChange,
-                            soundGoodizerMode = soundGoodizerMode,
-                            onSoundGoodizerModeChange = onSoundGoodizerModeChange,
                             masterPunch = masterPunch,
                             onMasterPunchChange = onMasterPunchChange,
                             spatialWidener = spatialWidener,
-                            onSpatialWidenerChange = onSpatialWidenerChange
+                            onSpatialWidenerChange = onSpatialWidenerChange,
+                            velocityMin = velocityMin,
+                            velocityMax = velocityMax,
+                            onVelocityRangeChange = onVelocityRangeChange
                         )
                     }
                 }
@@ -154,6 +149,7 @@ fun SettingsDrawer(
     }
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun AospMainSettingsPage(
     onClose: () -> Unit,
@@ -162,14 +158,13 @@ private fun AospMainSettingsPage(
     audioBufferSize: Int,
     polyphony: Int,
     selectedLanguage: String,
-    soundGoodizer: Float,
-    onSoundGoodizerChange: (Float) -> Unit,
-    soundGoodizerMode: SoundGoodizerMode,
-    onSoundGoodizerModeChange: (SoundGoodizerMode) -> Unit,
     masterPunch: Float,
     onMasterPunchChange: (Float) -> Unit,
     spatialWidener: Float,
-    onSpatialWidenerChange: (Float) -> Unit
+    onSpatialWidenerChange: (Float) -> Unit,
+    velocityMin: Float,
+    velocityMax: Float,
+    onVelocityRangeChange: (Float, Float) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         // AOSP Header
@@ -261,103 +256,33 @@ private fun AospMainSettingsPage(
                 }
             }
 
-            // CARD 3: SOUNDGOODIZER & MASTER PROCESSING
+            // CARD 3: DYNAMIQUE & MASTER PROCESSING
             item {
-                AospCard(title = "SoundGoodizer") {
+                AospCard(title = "Dynamique & Vélocité") {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // Modes A, B, C, D
+                        // Velocity Min/Max
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(text = "Mode SoundGoodizer", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            SoundGoodizerMode.values().forEach { mode ->
-                                val isSel = (mode == soundGoodizerMode)
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(34.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(
-                                            if (isSel) {
-                                                Brush.verticalGradient(listOf(Color(0xFF38BDF8), Color(0xFF0284C7)))
-                                            } else {
-                                                Brush.verticalGradient(listOf(Color(0x18FFFFFF), Color(0x0CFFFFFF)))
-                                            }
-                                        )
-                                        .border(
-                                            1.dp,
-                                            if (isSel) Color.White else Color(0x18FFFFFF),
-                                            RoundedCornerShape(10.dp)
-                                        )
-                                        .clickable { onSoundGoodizerModeChange(mode) },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = mode.name,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = if (isSel) Color(0xFF002233) else TextPrimary
-                                    )
-                                }
-                            }
-                        }
-
-                        // Knob Slider
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "Intensité ${(soundGoodizer * 100).roundToInt()}%",
-                                fontSize = 10.sp,
-                                color = TextDim,
-                                modifier = Modifier.width(90.dp)
-                            )
-                            Slider(
-                                value = soundGoodizer,
-                                onValueChange = onSoundGoodizerChange,
-                                colors = SliderDefaults.colors(thumbColor = NeonCyan, activeTrackColor = NeonCyan),
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-
-                        // Punch & Widener
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Punch Dynamique: ${(masterPunch * 100).roundToInt()}%",
+                                    text = "Vélocité (Min - Max): ${(velocityMin * 127).roundToInt()} - ${(velocityMax * 127).roundToInt()}",
                                     fontSize = 9.sp,
                                     color = TextDim
                                 )
-                                Slider(
-                                    value = masterPunch,
-                                    onValueChange = onMasterPunchChange,
-                                    colors = SliderDefaults.colors(thumbColor = SoloAmber, activeTrackColor = SoloAmber)
-                                )
-                            }
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Largeur Stéréo: ${(spatialWidener * 100).roundToInt()}%",
-                                    fontSize = 9.sp,
-                                    color = TextDim
-                                )
-                                Slider(
-                                    value = spatialWidener,
-                                    onValueChange = onSpatialWidenerChange,
-                                    colors = SliderDefaults.colors(thumbColor = NeonMagenta, activeTrackColor = NeonMagenta)
+                                val safeMin = minOf(velocityMin, velocityMax).coerceIn(0f, 1f)
+                                val safeMax = maxOf(velocityMin, velocityMax).coerceIn(0f, 1f)
+                                androidx.compose.material3.RangeSlider(
+                                    value = safeMin..safeMax,
+                                    onValueChange = { range -> onVelocityRangeChange(range.start, range.endInclusive) },
+                                    valueRange = 0f..1f,
+                                    colors = SliderDefaults.colors(thumbColor = NeonCyan, activeTrackColor = NeonCyan)
                                 )
                             }
                         }

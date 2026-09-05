@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import kotlin.math.roundToInt
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -47,7 +48,7 @@ fun EffectsDialog(
     val title = if (trackId == 0) "Effets — Master" else "Effets & Réglages — Piste $trackId"
 
     val tabs = if (trackId == 0) {
-        listOf("eq" to "EQ", "reverb" to "Reverb", "comp" to "Comp", "delay" to "Delay")
+        listOf("eq" to "EQ", "reverb" to "Reverb", "comp" to "Comp", "delay" to "Delay", "sg" to "SG")
     } else {
         listOf(
             "reverb" to "Reverb",
@@ -592,6 +593,73 @@ fun EffectsDialog(
                                     valueText = if (fxParameters.delayPingPong > 0.5f) "ON" else "OFF",
                                     size = 46.dp
                                 )
+                            }
+                        }
+                    }
+                    "sg" -> {
+                        val isEnabled = fxParameters.isSgEnabled
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            // Presets Header with ON/OFF Switch
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "SOUNDGOODIZER (A/B/C/D)",
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextDim,
+                                    letterSpacing = 0.6.sp
+                                )
+                                // Simple ON/OFF toggle
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(if (isEnabled) NeonCyan else Color(0x1AFFFFFF))
+                                        .clickable { onUpdateFx { it.copy(isSgEnabled = !isEnabled) } }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = if (isEnabled) "ON" else "OFF",
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isEnabled) Color.Black else TextDim
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                FxUnitCard("Amount") {
+                                    RotaryKnob(
+                                        value = if (isEnabled) fxParameters.sgAmount else 0f,
+                                        onValueChange = { v -> onUpdateFx { it.copy(sgAmount = v) } },
+                                        label = "Amount",
+                                        valueText = if (isEnabled) "${(fxParameters.sgAmount * 100).toInt()}%" else "OFF",
+                                        size = 50.dp
+                                    )
+                                }
+                                FxUnitCard("Mode") {
+                                    val modeValue = (fxParameters.sgMode / 3f)
+                                    RotaryKnob(
+                                        value = if (isEnabled) modeValue else 0f,
+                                        onValueChange = { v -> 
+                                            val mode = (v * 3f).roundToInt().coerceIn(0, 3)
+                                            onUpdateFx { it.copy(sgMode = mode) } 
+                                        },
+                                        label = "Mode",
+                                        valueText = if (isEnabled) listOf("A", "B", "C", "D")[fxParameters.sgMode] else "OFF",
+                                        size = 50.dp
+                                    )
+                                }
                             }
                         }
                     }

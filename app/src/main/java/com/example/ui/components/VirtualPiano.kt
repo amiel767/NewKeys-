@@ -177,48 +177,11 @@ fun VirtualPianoKeyboard(
                 }
             }
 
-            // Right: Octave Jump Buttons, Quick Octave Stepper & Sustain Pedal
+            // Right: Sustain Pedal & Scroll Buttons
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
-                // Quick Octave Selector directly on Virtual Keyboard
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    modifier = Modifier
-                        .height(24.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0x22FFFFFF))
-                        .border(0.8.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp))
-                        .padding(horizontal = 4.dp)
-                ) {
-                    Text(
-                        text = "−",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = NeonCyan,
-                        modifier = Modifier
-                            .clickable { onOctaveChange(-1) }
-                            .padding(horizontal = 4.dp)
-                    )
-                    Text(
-                        text = "OCT ${if (octave > 0) "+$octave" else "$octave"}",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Text(
-                        text = "+",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = NeonCyan,
-                        modifier = Modifier
-                            .clickable { onOctaveChange(1) }
-                            .padding(horizontal = 4.dp)
-                    )
-                }
-
                 // Sustain Button
                 Box(
                     modifier = Modifier
@@ -346,51 +309,56 @@ fun VirtualPianoKeyboard(
                         .fillMaxHeight()
                         .pointerInput(whiteWidthPx, currentScale, baseOctave) {
                             awaitEachGesture {
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    val activePointerIds = event.changes.filter { it.pressed }.map { it.id }.toSet()
+                                try {
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val activePointerIds = event.changes.filter { it.pressed }.map { it.id }.toSet()
 
-                                    // Release keys for pointers that went up
-                                    val releasedPointers = pointerKeyMap.keys.filter { it !in activePointerIds }
-                                    for (pId in releasedPointers) {
-                                        pointerKeyMap[pId]?.let { currentOnKeyUp(it) }
-                                        pointerKeyMap.remove(pId)
-                                    }
+                                        // Release keys for pointers that went up
+                                        val releasedPointers = pointerKeyMap.keys.filter { it !in activePointerIds }
+                                        for (pId in releasedPointers) {
+                                            pointerKeyMap[pId]?.let { currentOnKeyUp(it) }
+                                            pointerKeyMap.remove(pId)
+                                        }
 
-                                    // Process active pointers
-                                    for (change in event.changes) {
-                                        if (change.pressed) {
-                                            val x = change.position.x
-                                            val y = change.position.y
-                                            val height = size.height.toFloat()
+                                        // Process active pointers
+                                        for (change in event.changes) {
+                                            if (change.pressed) {
+                                                val x = change.position.x
+                                                val y = change.position.y
+                                                val height = size.height.toFloat()
 
-                                            val detectedKey = resolveKeyAtPosition(
-                                                x = x,
-                                                y = y,
-                                                totalHeight = height,
-                                                whiteWidthPx = whiteWidthPx,
-                                                blackWidthPx = blackKeyWidthPx,
-                                                baseOctave = baseOctave
-                                            )
+                                                val detectedKey = resolveKeyAtPosition(
+                                                    x = x,
+                                                    y = y,
+                                                    totalHeight = height,
+                                                    whiteWidthPx = whiteWidthPx,
+                                                    blackWidthPx = blackKeyWidthPx,
+                                                    baseOctave = baseOctave
+                                                )
 
-                                            val prevKey = pointerKeyMap[change.id]
-                                            if (detectedKey != null && detectedKey != prevKey) {
-                                                if (prevKey != null) {
-                                                    currentOnKeyUp(prevKey)
+                                                val prevKey = pointerKeyMap[change.id]
+                                                if (detectedKey != null && detectedKey != prevKey) {
+                                                    if (prevKey != null) {
+                                                        currentOnKeyUp(prevKey)
+                                                    }
+                                                    pointerKeyMap[change.id] = detectedKey
+                                                    currentOnKeyDown(detectedKey)
                                                 }
-                                                pointerKeyMap[change.id] = detectedKey
-                                                currentOnKeyDown(detectedKey)
+                                                change.consume()
                                             }
-                                            change.consume()
+                                        }
+
+                                        if (event.changes.none { it.pressed }) {
+                                            // All fingers lifted
+                                            pointerKeyMap.values.forEach { currentOnKeyUp(it) }
+                                            pointerKeyMap.clear()
+                                            break
                                         }
                                     }
-
-                                    if (event.changes.none { it.pressed }) {
-                                        // All fingers lifted
-                                        pointerKeyMap.values.forEach { currentOnKeyUp(it) }
-                                        pointerKeyMap.clear()
-                                        break
-                                    }
+                                } finally {
+                                    pointerKeyMap.values.forEach { currentOnKeyUp(it) }
+                                    pointerKeyMap.clear()
                                 }
                             }
                         },
@@ -410,7 +378,7 @@ fun VirtualPianoKeyboard(
                     val isHighCPressed = pressedKeys.contains(highCKey)
                     val keyBrush = if (isHighCPressed) {
                         Brush.verticalGradient(
-                            listOf(activeAuraColor.copy(alpha = 0.25f), activeAuraColor.copy(alpha = 0.70f), activeAuraColor)
+                            listOf(Color.Red, Color.Black)
                         )
                     } else {
                         Brush.verticalGradient(
@@ -590,7 +558,7 @@ private fun OctaveGroupView(
 
                 val keyBrush = if (isPressed) {
                     Brush.verticalGradient(
-                        listOf(activeAuraColor.copy(alpha = 0.25f), activeAuraColor.copy(alpha = 0.70f), activeAuraColor)
+                        listOf(Color.Red, Color.Black)
                     )
                 } else {
                     Brush.verticalGradient(
@@ -610,7 +578,7 @@ private fun OctaveGroupView(
                         .background(keyBrush)
                         .border(
                             1.dp,
-                            if (isPressed) activeAuraColor else Color(0x33000000),
+                            if (isPressed) Color.Red else Color(0x33000000),
                             RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp)
                         ),
                     contentAlignment = Alignment.BottomCenter
@@ -637,7 +605,7 @@ private fun OctaveGroupView(
 
             val keyBrush = if (isPressed) {
                 Brush.verticalGradient(
-                    listOf(activeAuraColor, activeAuraColor.copy(alpha = 0.60f), Color(0xFF0B0C12))
+                    listOf(Color.Red, Color.Black)
                 )
             } else {
                 Brush.verticalGradient(

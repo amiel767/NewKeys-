@@ -478,7 +478,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         isScanningStorage = false
                     )
                 }
-            } catch (e: Exception) {
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
                 e.printStackTrace()
                 _uiState.update { it.copy(isScanningStorage = false) }
             }
@@ -758,6 +758,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                             masterTrack = state.masterTrack.copy(peakMeterL = masterL, peakMeterR = masterR)
                         )
                     }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Throwable) {
                     Log.e("MixerViewModel", "Error in peak meter calculation: ${e.message}")
                 }
@@ -979,24 +981,30 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         persistCurrentStateDebounced()
     }
 
-    fun onTrackMuteSoloClick(trackId: Int) {
-        val now = System.currentTimeMillis()
-        val lastTap = lastTapTimeMap[trackId] ?: 0L
-        val isDoubleTap = (now - lastTap) < 320L
-        lastTapTimeMap[trackId] = now
-
+    fun onTrackMuteClick(trackId: Int) {
         _uiState.update { state ->
             val updated = state.tracks.map { t ->
                 if (t.id == trackId) {
-                    if (isDoubleTap) {
-                        t.copy(isSolo = !t.isSolo, isMuted = false)
-                    } else {
-                        if (t.isSolo || t.isMuted) {
-                            t.copy(isMuted = false, isSolo = false)
-                        } else {
-                            t.copy(isMuted = true, isSolo = false)
-                        }
-                    }
+                    t.copy(isMuted = !t.isMuted)
+                } else t
+            }
+            val newState = state.copy(tracks = updated)
+            applyTrackVolumes(newState)
+            
+            val isNowMuted = newState.tracks.find { it.id == trackId }?.let { it.isMuted || (newState.tracks.any { t -> t.isSolo } && !it.isSolo) } == true
+            if (isNowMuted && trackId in 1..8) {
+                 NativeAudioBridge.safeAllNotesOff(trackId - 1)
+            }
+            
+            newState
+        }
+    }
+
+    fun onTrackSoloClick(trackId: Int) {
+        _uiState.update { state ->
+            val updated = state.tracks.map { t ->
+                if (t.id == trackId) {
+                    t.copy(isSolo = !t.isSolo)
                 } else t
             }
             val newState = state.copy(tracks = updated)
@@ -1185,11 +1193,15 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setDrumVolume(vol: Float) {
-        _uiState.update { it.copy(drumVolume = vol.coerceIn(0f, 1f)) }
+        val clamped = vol.coerceIn(0f, 1f)
+        _uiState.update { it.copy(drumVolume = clamped) }
+        audioEngine.setChannelVolume(8, clamped) // 8 is DRUM_PAD channel
     }
 
     fun setDrumReverb(rev: Float) {
-        _uiState.update { it.copy(drumReverb = rev.coerceIn(0f, 1f)) }
+        val clamped = rev.coerceIn(0f, 1f)
+        _uiState.update { it.copy(drumReverb = clamped) }
+        audioEngine.setChannelReverb(8, clamped)
     }
 
     fun onDrumPadPressed(padId: Int) {
@@ -1635,7 +1647,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
                 }
-            } catch (e: Exception) {
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
@@ -1713,7 +1725,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     }
                 }
-            } catch (e: Exception) {
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
@@ -1743,7 +1755,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     }
                 }
-            } catch (e: Exception) {
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
                 e.printStackTrace()
             }
         }

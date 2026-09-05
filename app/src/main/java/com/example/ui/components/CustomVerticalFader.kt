@@ -3,6 +3,7 @@ package com.example.ui.components
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -150,63 +151,72 @@ fun CustomVerticalFader(
             )
         }
 
-        // ================= 1. RAIL / TRACK (ic_fader_track.png) =================
+        // ================= 1. RAIL / TRACK AUTHENTIC PNG ELEMENT =================
+        val isAudioSoundActive = isEnabled && audioActivity > 0.015f
+        val neonAlpha = if (isAudioSoundActive) 1.0f else 0.85f
+        val dynamicAura = auraColor.copy(alpha = neonAlpha)
+
         Box(
             modifier = Modifier
                 .width(trackWidth)
                 .fillMaxHeight(),
             contentAlignment = Alignment.Center
         ) {
-            Image(
-                painter = painterResource(id = R.drawable.ic_fader_track),
-                contentDescription = "Fader Track Rail",
-                contentScale = ContentScale.FillBounds,
-                modifier = Modifier.fillMaxSize()
-            )
-
-            // Neon green core line inside rail slot
-            val activeNeonColor = if (isEnabled) auraColor else Color(0xFF3B4256)
+            // Glowing neon line in central slot
             Box(
                 modifier = Modifier
-                    .width(3.5.dp)
-                    .fillMaxHeight(0.88f)
-                    .clip(RoundedCornerShape(2.dp))
+                    .width(3.2.dp)
+                    .fillMaxHeight(0.92f)
+                    .clip(RoundedCornerShape(1.6.dp))
                     .background(
                         Brush.verticalGradient(
-                            colors = listOf(
-                                activeNeonColor.copy(alpha = 0.95f),
-                                activeNeonColor.copy(alpha = 0.75f)
+                            listOf(
+                                dynamicAura.copy(alpha = 0.90f),
+                                Color.White.copy(alpha = 0.95f),
+                                dynamicAura.copy(alpha = 0.90f)
                             )
                         )
                     )
             )
+
+            // Glowing neon crossbar slit near top of rail (matching authentic rail design)
+            Box(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 34.dp)
+                        .width(trackWidth * 0.55f)
+                        .height(2.2.dp)
+                        .clip(RoundedCornerShape(1.1.dp))
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(
+                                    dynamicAura.copy(alpha = 0.70f),
+                                    Color.White.copy(alpha = 0.95f),
+                                    dynamicAura.copy(alpha = 0.70f)
+                                )
+                            )
+                        )
+                )
+            }
+
+            // Authentic Rail PNG element (same colors & composition, zero modifications)
+            Image(
+                painter = painterResource(id = R.drawable.ic_fader_track),
+                contentDescription = "Fader Track Rail",
+                contentScale = ContentScale.FillBounds,
+                modifier = Modifier.fillMaxSize(),
+                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color(0xFF444444), androidx.compose.ui.graphics.BlendMode.SrcIn)
+            )
         }
 
-        // ================= 2. CAP / THUMB WITH REALISTIC DROP SHADOW (Method 2) =================
+        // ================= 2. CAP / THUMB BONNET AUTHENTIC PNG ELEMENT =================
         val usableHeightPx = (containerHeightPx - thumbHeightPx).coerceAtLeast(0f)
         val offsetYPx = ((1f - localValue.coerceIn(0f, 1f)) * usableHeightPx).roundToInt()
 
-        // Soft realistic radial drop shadow giving authentic relief under the cap
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .offset { IntOffset(0, offsetYPx + 5) }
-                .width(thumbWidth + 10.dp)
-                .height(thumbHeight + 8.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            Color.Black.copy(alpha = 0.72f),
-                            Color.Black.copy(alpha = 0.35f),
-                            Color.Black.copy(alpha = 0.10f),
-                            Color.Transparent
-                        )
-                    )
-                )
-        )
-
-        // Fader Thumb Cap
+        // Fader Thumb Bonnet (exact PNG with baked-in drop shadow, bevels & colors)
         Box(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -215,6 +225,7 @@ fun CustomVerticalFader(
                 .height(thumbHeight),
             contentAlignment = Alignment.Center
         ) {
+            // Authentic Bonnet PNG element
             Image(
                 painter = painterResource(id = R.drawable.ic_fader_thumb),
                 contentDescription = "Fader Thumb Cap",
@@ -222,14 +233,21 @@ fun CustomVerticalFader(
                 modifier = Modifier.fillMaxSize()
             )
 
-            // Dynamic neon slot indicator line on thumb cap (glows intensely when playing sound / volume)
-            val thumbGlowAlpha = if (!isEnabled) 0.30f else (0.65f + audioActivity * 0.35f).coerceIn(0.65f, 1.0f)
+            // Central neon indicator slit following dynamic fader aura color
             Box(
                 modifier = Modifier
-                    .width(thumbWidth * 0.52f)
-                    .height(3.dp)
-                    .clip(RoundedCornerShape(1.5.dp))
-                    .background(auraColor.copy(alpha = thumbGlowAlpha))
+                    .width(thumbWidth * 0.44f)
+                    .height(3.2.dp)
+                    .clip(RoundedCornerShape(1.6.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                dynamicAura.copy(alpha = 0.85f),
+                                Color.White.copy(alpha = 0.95f),
+                                dynamicAura.copy(alpha = 0.85f)
+                            )
+                        )
+                    )
             )
         }
     }

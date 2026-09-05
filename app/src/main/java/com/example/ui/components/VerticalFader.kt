@@ -115,7 +115,8 @@ fun VerticalTrackChannel(
     onVolumeChange: (Float) -> Unit,
     onPowerToggle: () -> Unit = {},
     onPanChange: (Float) -> Unit = {},
-    onMuteSoloClick: () -> Unit = {},
+    onMuteClick: () -> Unit = {},
+    onSoloClick: () -> Unit = {},
     onTrackNameClick: () -> Unit = {},
     onFxClick: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -254,42 +255,45 @@ fun VerticalTrackChannel(
 
                 Spacer(modifier = Modifier.width(3.dp))
 
-                // Right: Pure Colored Mute / Solo Button
-                val isSolo = track.isSolo
-                val isMuted = track.isMuted
+                // Right: Mute / Solo Buttons
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    val isSolo = track.isSolo
+                    val soloBg = if (!isEnabled) Color(0x14FFFFFF) else if (isSolo) Color(0xFFFFD600) else Color(0x22FFFFFF)
+                    val soloBorder = if (!isEnabled) Color(0x12FFFFFF) else if (isSolo) Color(0xFFFFF176) else Color(0x12FFFFFF)
+                    
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(22.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(soloBg)
+                            .border(1.dp, soloBorder, RoundedCornerShape(4.dp))
+                            .clickable { onSoloClick() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = "S", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = if (isSolo) Color.Black else Color.White)
+                    }
 
-                val btnBg by animateColorAsState(
-                    targetValue = when {
-                        !isEnabled -> Color(0x14FFFFFF)
-                        isSolo -> Color(0xFFFFD600)
-                        isMuted -> Color(0xFFFF1E40)
-                        else -> Color(0xFF10B981)
-                    },
-                    animationSpec = tween(80),
-                    label = "mute_solo_color"
-                )
+                    val isMuted = track.isMuted
+                    val muteBg = if (!isEnabled) Color(0x14FFFFFF) else if (isMuted) Color(0xFFFF1E40) else Color(0x22FFFFFF)
+                    val muteBorder = if (!isEnabled) Color(0x12FFFFFF) else if (isMuted) Color(0xFFFF8A80) else Color(0x12FFFFFF)
 
-                val btnBorder = when {
-                    !isEnabled -> Color(0x12FFFFFF)
-                    isSolo -> Color(0xFFFFF176)
-                    isMuted -> Color(0xFFFF8A80)
-                    else -> Color(0xFF6EE7B7)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(22.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(muteBg)
+                            .border(1.dp, muteBorder, RoundedCornerShape(4.dp))
+                            .clickable { onMuteClick() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = "M", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
                 }
-
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(22.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(btnBg)
-                        .border(1.dp, btnBorder, RoundedCornerShape(6.dp))
-                        .shadow(
-                            elevation = if (isEnabled && (isSolo || isMuted)) 4.dp else 1.dp,
-                            shape = RoundedCornerShape(6.dp),
-                            spotColor = if (isSolo) Color(0xFFFFD600) else if (isMuted) Color(0xFFFF1E40) else Color(0xFF10B981)
-                        )
-                        .clickable { onMuteSoloClick() }
-                )
             }
         }
 
@@ -499,10 +503,10 @@ fun FaderSliderWithVuMeter(
             auraColor = ledColor,
             audioActivity = audioActivity,
             isEnabled = isEnabled,
-            trackWidth = 18.dp,
+            trackWidth = 22.dp,
             trackHeight = 220.dp,
-            thumbWidth = 38.dp,
-            thumbHeight = 44.dp,
+            thumbWidth = 40.dp,
+            thumbHeight = 45.dp,
             modifier = Modifier.fillMaxHeight()
         )
     }

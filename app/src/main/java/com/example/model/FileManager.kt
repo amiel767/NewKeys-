@@ -4,6 +4,8 @@ import android.content.Context
 import android.os.Environment
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.GlobalScope
 import java.io.File
 
 /**
@@ -41,64 +43,38 @@ class FileManager(private val context: Context) {
             if (!primaryDir.exists()) {
                 primaryDir.mkdirs()
             }
-            if (primaryDir.canWrite()) {
-                primaryDir
-            } else {
-                val appExternal = File(context.getExternalFilesDir(null), "LiveKeys")
-                if (!appExternal.exists()) appExternal.mkdirs()
-                appExternal
-            }
         } catch (e: Exception) {
-            val internalFallback = File(context.filesDir, "LiveKeys")
-            if (!internalFallback.exists()) internalFallback.mkdirs()
-            internalFallback
+            writeLog("FileManager", "Error creating primary LiveKeys directory", e)
         }
+        primaryDir
     }
 
-    val soundfontsDir: File get() {
-        val f1 = File(baseDir, "Soundfonts")
-        val f2 = File(baseDir, "SoundFonts")
-        return if (f2.exists() && !f1.exists()) f2 else f1
-    }
+    val soundfontsDir: File get() = File(baseDir, "SoundFonts")
     val loopsDir: File get() = File(baseDir, "Loops")
     val drumPadDir: File get() = File(baseDir, "DrumPad")
-    val scenesDir: File get() {
-        val f1 = File(baseDir, "scènes")
-        val f2 = File(baseDir, "Scenes")
-        return if (f2.exists() && !f1.exists()) f2 else f1
-    }
-    val recordingsDir: File get() {
-        val f1 = File(baseDir, "Recording")
-        val f2 = File(baseDir, "Recordings")
-        return if (f2.exists() && !f1.exists()) f2 else f1
-    }
+    val scenesDir: File get() = File(baseDir, "Scenes")
+    val recordingsDir: File get() = File(baseDir, "Recordings")
     val midiDir: File get() = File(baseDir, "Midi")
     val stylesDir: File get() = File(baseDir, "Styles")
-
-    val presetsDir: File get() {
-        val p = File(baseDir, "Presets")
-        if (!p.exists()) p.mkdirs()
-        return p
-    }
-    val logsDir: File get() {
-        val l = File(baseDir, "Logs")
-        if (!l.exists()) l.mkdirs()
-        return l
-    }
+    val presetsDir: File get() = File(baseDir, "Presets")
+    val logsDir: File get() = File(baseDir, "Logs")
 
     fun writeLog(tag: String, message: String, throwable: Throwable? = null) {
-        try {
-            val logFile = File(logsDir, "crash_logs.txt")
-            val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())
-            val logEntry = buildString {
-                append("[$timestamp] [$tag] $message\n")
-                if (throwable != null) {
-                    append(android.util.Log.getStackTraceString(throwable))
-                    append("\n")
+        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+            try {
+                if (!logsDir.exists()) logsDir.mkdirs()
+                val logFile = File(logsDir, "crash_logs.txt")
+                val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())
+                val logEntry = buildString {
+                    append("[$timestamp] [$tag] $message\n")
+                    if (throwable != null) {
+                        append(android.util.Log.getStackTraceString(throwable))
+                        append("\n")
+                    }
                 }
-            }
-            logFile.appendText(logEntry)
-        } catch (_: Exception) {}
+                logFile.appendText(logEntry)
+            } catch (_: Exception) {}
+        }
     }
 
     /**

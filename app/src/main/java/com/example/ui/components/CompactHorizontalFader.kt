@@ -36,7 +36,8 @@ fun CompactHorizontalFaderStrip(
     onVolumeChange: (Float) -> Unit,
     onPowerToggle: () -> Unit = {},
     onPanChange: (Float) -> Unit = {},
-    onMuteSoloClick: () -> Unit = {},
+    onMuteClick: () -> Unit = {},
+    onSoloClick: () -> Unit = {},
     onTrackNameClick: () -> Unit = {},
     onFxClick: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -186,32 +187,39 @@ fun CompactHorizontalFaderStrip(
             )
         }
 
-        // Mute / Solo Button
+        // Mute & Solo Buttons
         if (!isMaster) {
-            Box(
-                modifier = Modifier
-                    .size(24.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(
-                        when {
-                            track.isSolo -> SoloAmber
-                            track.isMuted -> MuteRed
-                            else -> Color(0x1AFFFFFF)
-                        }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(if (track.isSolo) SoloAmber else Color(0x1AFFFFFF))
+                        .clickable { onSoloClick() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "S",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (track.isSolo) Color.White else TextDim
                     )
-                    .clickable { onMuteSoloClick() },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = when {
-                        track.isSolo -> "S"
-                        track.isMuted -> "M"
-                        else -> "·"
-                    },
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = if (track.isSolo || track.isMuted) Color.White else TextDim
-                )
+                }
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(if (track.isMuted) MuteRed else Color(0x1AFFFFFF))
+                        .clickable { onMuteClick() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "M",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (track.isMuted) Color.White else TextDim
+                    )
+                }
             }
         }
     }
@@ -227,7 +235,8 @@ fun CompactHorizontalFadersRack(
     onVolumeChange: (Int, Float) -> Unit,
     onPowerToggle: (Int) -> Unit,
     onPanChange: (Int, Float) -> Unit,
-    onMuteSoloClick: (Int) -> Unit,
+    onMuteClick: (Int) -> Unit,
+    onSoloClick: (Int) -> Unit,
     onTrackNameClick: (Int) -> Unit,
     onFxClick: (Int) -> Unit,
     modifier: Modifier = Modifier
@@ -245,7 +254,8 @@ fun CompactHorizontalFadersRack(
                 onVolumeChange = { onVolumeChange(track.id, it) },
                 onPowerToggle = { onPowerToggle(track.id) },
                 onPanChange = { onPanChange(track.id, it) },
-                onMuteSoloClick = { onMuteSoloClick(track.id) },
+                onMuteClick = { onMuteClick(track.id) },
+                onSoloClick = { onSoloClick(track.id) },
                 onTrackNameClick = { onTrackNameClick(track.id) },
                 onFxClick = { onFxClick(track.id) }
             )
@@ -256,7 +266,8 @@ fun CompactHorizontalFadersRack(
                 track = masterTrack,
                 onVolumeChange = { onVolumeChange(0, it) },
                 onTrackNameClick = {},
-                onMuteSoloClick = {}
+                onMuteClick = {},
+                onSoloClick = {}
             )
         }
     }
