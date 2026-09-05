@@ -75,6 +75,32 @@ class FileManager(private val context: Context) {
     val midiDir: File get() = File(baseDir, "Midi")
     val stylesDir: File get() = File(baseDir, "Styles")
 
+    val presetsDir: File get() {
+        val p = File(baseDir, "Presets")
+        if (!p.exists()) p.mkdirs()
+        return p
+    }
+    val logsDir: File get() {
+        val l = File(baseDir, "Logs")
+        if (!l.exists()) l.mkdirs()
+        return l
+    }
+
+    fun writeLog(tag: String, message: String, throwable: Throwable? = null) {
+        try {
+            val logFile = File(logsDir, "crash_logs.txt")
+            val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())
+            val logEntry = buildString {
+                append("[$timestamp] [$tag] $message\n")
+                if (throwable != null) {
+                    append(android.util.Log.getStackTraceString(throwable))
+                    append("\n")
+                }
+            }
+            logFile.appendText(logEntry)
+        } catch (_: Exception) {}
+    }
+
     /**
      * Ensures all subdirectories exist asynchronously on Dispatchers.IO
      */
@@ -84,7 +110,11 @@ class FileManager(private val context: Context) {
             if (!loopsDir.exists()) loopsDir.mkdirs()
             if (!drumPadDir.exists()) drumPadDir.mkdirs()
             if (!scenesDir.exists()) scenesDir.mkdirs()
+            if (!presetsDir.exists()) presetsDir.mkdirs()
+            if (!logsDir.exists()) logsDir.mkdirs()
             if (!recordingsDir.exists()) recordingsDir.mkdirs()
+            if (!midiDir.exists()) midiDir.mkdirs()
+            if (!stylesDir.exists()) stylesDir.mkdirs()
         } catch (_: Exception) { }
     }
 

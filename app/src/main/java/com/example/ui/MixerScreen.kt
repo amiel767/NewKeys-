@@ -193,6 +193,7 @@ fun MixerScreen(
                 )
 
                 // 4. RETRACTABLE MULTI-TOUCH VIRTUAL PIANO KEYBOARD WITH OCTAVE NAV & SCROLL BUTTONS
+                val (_, activeSlotLedColor) = rememberDynamicFaderHue(uiState.activeSoundfontSlotId + 1)
                 VirtualPianoKeyboard(
                     heightFraction = animatedKbFraction,
                     pressedKeys = uiState.pressedKeys,
@@ -207,7 +208,9 @@ fun MixerScreen(
                     isSustainActive = uiState.isSustainActive,
                     onToggleSustain = { viewModel.toggleSustain() },
                     pitchBend = uiState.pitchBend,
-                    onPitchBendChange = { viewModel.setPitchBend(it) }
+                    onPitchBendChange = { viewModel.setPitchBend(it) },
+                    onOctaveChange = { delta -> viewModel.updateOctave(uiState.octave + delta) },
+                    activeAuraColor = activeSlotLedColor
                 )
             }
 

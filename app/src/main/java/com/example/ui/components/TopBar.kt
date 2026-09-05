@@ -77,7 +77,7 @@ fun TopBar(
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val topBarHeight = 34.dp
+    val topBarHeight = 38.dp
     val loopsButtonWidth by animateDpAsState(
         targetValue = if (isLoopsOpen) 160.dp else 138.dp,
         animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
@@ -94,29 +94,11 @@ fun TopBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // 1. Transpose Stepper
-            StepperControl(
-                label = "TRANS",
-                value = if (transpose > 0) "+$transpose" else "$transpose",
-                onMinus = { onTransposeChange(-1) },
-                onPlus = { onTransposeChange(1) },
-                modifier = Modifier.testTag("stepper_trans")
-            )
-
-            // 2. Octave Stepper
-            StepperControl(
-                label = "OCT",
-                value = if (octave > 0) "+$octave" else "$octave",
-                onMinus = { onOctaveChange(-1) },
-                onPlus = { onOctaveChange(1) },
-                modifier = Modifier.testTag("stepper_oct")
-            )
-
-            // 3. Loops Pill with Large Extremity Play/Pause Button
+            // 1. Loops Pill with Direct Extremity Play/Pause Button
             Box(
                 modifier = Modifier
-                    .height(34.dp)
-                    .clip(RoundedCornerShape(17.dp))
+                    .height(38.dp)
+                    .clip(RoundedCornerShape(19.dp))
                     .background(
                         if (isLoopsOpen) {
                             Brush.horizontalGradient(listOf(NeonPurpleLight, NeonPurple, NeonPurpleDark))
@@ -127,9 +109,9 @@ fun TopBar(
                     .border(
                         1.dp,
                         if (isLoopsOpen) NeonPurpleLight else Color(0x4DFFFFFF),
-                        RoundedCornerShape(17.dp)
+                        RoundedCornerShape(19.dp)
                     )
-                    .padding(start = 10.dp, end = 3.dp, top = 2.dp, bottom = 2.dp)
+                    .padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp)
                     .testTag("loops_pill_btn"),
                 contentAlignment = Alignment.Center
             ) {
@@ -145,13 +127,13 @@ fun TopBar(
                     ) {
                         Text(
                             text = "Loops",
-                            fontSize = 11.5.sp,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
                         Text(
                             text = if (isLoopsOpen) "▲" else "▼",
-                            fontSize = 8.5.sp,
+                            fontSize = 9.sp,
                             color = Color(0xCCFFFFFF)
                         )
                     }
@@ -159,7 +141,7 @@ fun TopBar(
                     // Large Prominent Play/Pause Action Button at the Extremity
                     Box(
                         modifier = Modifier
-                            .size(28.dp)
+                            .size(30.dp)
                             .clip(CircleShape)
                             .background(
                                 if (isLoopPlaying) {
@@ -179,7 +161,7 @@ fun TopBar(
                     ) {
                         Text(
                             text = if (isLoopPlaying) "❚❚" else "▶",
-                            fontSize = if (isLoopPlaying) 11.sp else 12.sp,
+                            fontSize = if (isLoopPlaying) 12.sp else 13.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = if (isLoopPlaying) Color(0xFF003844) else Color.White
                         )
@@ -187,13 +169,30 @@ fun TopBar(
                 }
             }
 
+            // 2. Octave Stepper (Enlarged Central Block)
+            StepperControl(
+                label = "OCT",
+                value = if (octave > 0) "+$octave" else "$octave",
+                onMinus = { onOctaveChange(-1) },
+                onPlus = { onOctaveChange(1) },
+                modifier = Modifier.testTag("stepper_oct")
+            )
+
+            // 3. Transpose Stepper (Separated with +/- semitones)
+            StepperControl(
+                label = "TRANS",
+                value = if (transpose > 0) "+$transpose" else "$transpose",
+                onMinus = { onTransposeChange(-1) },
+                onPlus = { onTransposeChange(1) },
+                modifier = Modifier.testTag("stepper_trans")
+            )
+
             Spacer(modifier = Modifier.weight(1f))
 
-            // 4. Global Sustain Button
-            // Spec: "Mode Manuel: Appui court = Bascule On/Off. Mode Pédale (MIDI externe): Clignotement fluide lors de l'appui."
+            // 4. Global Sustain Button with Active Green Halo
             val infiniteTransition = rememberInfiniteTransition(label = "sustain_pedal_blink")
             val pedalBlinkAlpha by infiniteTransition.animateFloat(
-                initialValue = 0.3f,
+                initialValue = 0.35f,
                 targetValue = 1.0f,
                 animationSpec = infiniteRepeatable(
                     animation = tween(durationMillis = 260, easing = FastOutSlowInEasing),
@@ -204,37 +203,38 @@ fun TopBar(
 
             val isSustainLit = isSustainActive || isMidiPedalPressed
             val sustainAlpha = if (isMidiPedalPressed) pedalBlinkAlpha else if (isSustainActive) 1.0f else 0.4f
+            val sustainGreen = Color(0xFF10B981)
 
             Box(
                 modifier = Modifier
-                    .height(34.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(DarkSurface)
+                    .height(38.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (isSustainLit) Color(0x2610B981) else DarkSurface)
                     .border(
                         1.dp,
-                        BorderSubtle,
-                        RoundedCornerShape(10.dp)
+                        if (isSustainLit) sustainGreen.copy(alpha = sustainAlpha) else BorderSubtle,
+                        RoundedCornerShape(12.dp)
                     )
                     .clickable { onToggleSustain() }
-                    .padding(horizontal = 8.dp)
+                    .padding(horizontal = 9.dp)
                     .testTag("btn_global_sustain"),
                 contentAlignment = Alignment.Center
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(6.dp)
+                            .size(7.dp)
                             .clip(CircleShape)
-                            .background(if (isSustainLit) SoloAmber.copy(alpha = sustainAlpha) else TextDim2)
+                            .background(if (isSustainLit) sustainGreen.copy(alpha = sustainAlpha) else TextDim2)
                     )
                     Text(
                         text = "SUSTAIN",
-                        fontSize = 9.sp,
+                        fontSize = 9.5.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = if (isSustainLit) SoloAmber else TextDim
+                        color = if (isSustainLit) sustainGreen else TextDim
                     )
                 }
             }
@@ -242,16 +242,16 @@ fun TopBar(
             // 5. Global Splitter Button (Scissors ✂️)
             Box(
                 modifier = Modifier
-                    .height(34.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .height(38.dp)
+                    .clip(RoundedCornerShape(12.dp))
                     .background(if (isSplitterActive) Color(0x3322D3EE) else DarkSurface)
                     .border(
                         1.dp,
                         if (isSplitterActive) NeonCyan else BorderSubtle,
-                        RoundedCornerShape(10.dp)
+                        RoundedCornerShape(12.dp)
                     )
                     .clickable { onToggleSplitter() }
-                    .padding(horizontal = 8.dp)
+                    .padding(horizontal = 9.dp)
                     .testTag("btn_global_splitter"),
                 contentAlignment = Alignment.Center
             ) {
@@ -259,10 +259,10 @@ fun TopBar(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
-                    Text(text = "✂️", fontSize = 10.sp)
+                    Text(text = "✂️", fontSize = 11.sp)
                     Text(
                         text = "SPLIT",
-                        fontSize = 9.sp,
+                        fontSize = 9.5.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = if (isSplitterActive) NeonCyan else TextDim
                     )
@@ -272,10 +272,10 @@ fun TopBar(
             // 6. Drum Pad Launcher Icon (Neon Pad Matrix)
             Box(
                 modifier = Modifier
-                    .size(34.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(12.dp))
                     .background(DarkSurface)
-                    .border(1.dp, BorderSubtle, RoundedCornerShape(10.dp))
+                    .border(1.dp, BorderSubtle, RoundedCornerShape(12.dp))
                     .clickable { onOpenDrumPad() }
                     .testTag("btn_drum_pad"),
                 contentAlignment = Alignment.Center
@@ -305,19 +305,19 @@ fun TopBar(
             // 7. Tonic Pad Launcher Icon
             Box(
                 modifier = Modifier
-                    .width(38.dp)
-                    .height(34.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .width(42.dp)
+                    .height(38.dp)
+                    .clip(RoundedCornerShape(12.dp))
                     .background(DarkSurface)
-                    .border(1.dp, BorderSubtle, RoundedCornerShape(10.dp))
+                    .border(1.dp, BorderSubtle, RoundedCornerShape(12.dp))
                     .clickable { onOpenTonicPad() }
                     .testTag("btn_tonic_pad"),
                 contentAlignment = Alignment.Center
             ) {
                 Row(
                     modifier = Modifier
-                        .width(18.dp)
-                        .height(16.dp)
+                        .width(20.dp)
+                        .height(18.dp)
                         .border(1.dp, NeonPurple, RoundedCornerShape(2.dp))
                         .padding(1.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly
@@ -328,23 +328,32 @@ fun TopBar(
                 }
             }
 
-            // 8. Panic Button
+            // 8. Panic Button (All Notes Off - Rouge clignotant / vibrant)
+            val panicAlpha by infiniteTransition.animateFloat(
+                initialValue = 0.82f,
+                targetValue = 1.0f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 700, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "panic_pulse"
+            )
             Box(
                 modifier = Modifier
-                    .height(34.dp)
-                    .clip(RoundedCornerShape(17.dp))
+                    .height(38.dp)
+                    .clip(RoundedCornerShape(19.dp))
                     .background(
-                        Brush.verticalGradient(listOf(PanicRed, PanicRedDark))
+                        Brush.verticalGradient(listOf(PanicRed.copy(alpha = panicAlpha), PanicRedDark))
                     )
-                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(17.dp))
+                    .border(1.dp, PanicRed.copy(alpha = panicAlpha), RoundedCornerShape(19.dp))
                     .clickable { onPanic() }
-                    .padding(horizontal = 12.dp)
+                    .padding(horizontal = 14.dp)
                     .testTag("btn_panic"),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = "Panic",
-                    fontSize = 11.5.sp,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
@@ -353,10 +362,10 @@ fun TopBar(
             // 9. Scene Expansion Button
             Box(
                 modifier = Modifier
-                    .size(34.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(12.dp))
                     .background(DarkSurface)
-                    .border(1.dp, BorderSubtle, RoundedCornerShape(10.dp))
+                    .border(1.dp, BorderSubtle, RoundedCornerShape(12.dp))
                     .clickable { onOpenScenes() }
                     .testTag("btn_scene"),
                 contentAlignment = Alignment.Center
@@ -365,17 +374,17 @@ fun TopBar(
                     imageVector = Icons.Default.Menu,
                     contentDescription = "Scenes",
                     tint = NeonCyan,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
 
             // 10. Settings Button
             Box(
                 modifier = Modifier
-                    .size(34.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(12.dp))
                     .background(DarkSurface)
-                    .border(1.dp, BorderSubtle, RoundedCornerShape(10.dp))
+                    .border(1.dp, BorderSubtle, RoundedCornerShape(12.dp))
                     .clickable { onOpenSettings() }
                     .testTag("btn_settings"),
                 contentAlignment = Alignment.Center
@@ -384,7 +393,7 @@ fun TopBar(
                     imageVector = Icons.Default.Settings,
                     contentDescription = "Réglages",
                     tint = TextDim,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }
@@ -401,7 +410,7 @@ fun StepperControl(
 ) {
     Row(
         modifier = modifier
-            .height(34.dp)
+            .height(38.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(DarkSurface)
             .border(1.dp, BorderSubtle, RoundedCornerShape(12.dp)),
@@ -410,7 +419,7 @@ fun StepperControl(
         // Minus Button
         Box(
             modifier = Modifier
-                .width(24.dp)
+                .width(28.dp)
                 .fillMaxHeight()
                 .background(Color(0x1022D3EE))
                 .clickable { onMinus() },
@@ -418,7 +427,7 @@ fun StepperControl(
         ) {
             Text(
                 text = "−",
-                fontSize = 14.sp,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = NeonCyan
             )
@@ -427,32 +436,32 @@ fun StepperControl(
         // Center Value & Label
         Column(
             modifier = Modifier
-                .padding(horizontal = 6.dp)
-                .defaultMinSize(minWidth = 36.dp),
+                .padding(horizontal = 7.dp)
+                .defaultMinSize(minWidth = 40.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
             Text(
                 text = label,
-                fontSize = 7.5.sp,
+                fontSize = 8.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = TextDim2,
                 letterSpacing = 0.5.sp,
-                lineHeight = 8.5.sp
+                lineHeight = 9.sp
             )
             Text(
                 text = value,
-                fontSize = 11.5.sp,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary,
-                lineHeight = 13.sp
+                lineHeight = 14.sp
             )
         }
 
         // Plus Button
         Box(
             modifier = Modifier
-                .width(24.dp)
+                .width(28.dp)
                 .fillMaxHeight()
                 .background(Color(0x1022D3EE))
                 .clickable { onPlus() },
@@ -460,7 +469,7 @@ fun StepperControl(
         ) {
             Text(
                 text = "+",
-                fontSize = 14.sp,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = NeonCyan
             )

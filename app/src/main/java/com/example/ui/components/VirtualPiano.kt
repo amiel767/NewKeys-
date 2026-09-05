@@ -67,6 +67,8 @@ fun VirtualPianoKeyboard(
     onPitchBendChange: (Float) -> Unit = {},
     onKeyScaleChange: (Float) -> Unit = {},
     keyScale: Float = 1.0f,
+    onOctaveChange: (Int) -> Unit = {},
+    activeAuraColor: Color = NeonCyan,
     modifier: Modifier = Modifier
 ) {
     if (heightFraction <= 0.01f) return
@@ -175,18 +177,55 @@ fun VirtualPianoKeyboard(
                 }
             }
 
-            // Right: Octave Jump Buttons & Sustain Pedal
+            // Right: Octave Jump Buttons, Quick Octave Stepper & Sustain Pedal
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
+                // Quick Octave Selector directly on Virtual Keyboard
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    modifier = Modifier
+                        .height(24.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0x22FFFFFF))
+                        .border(0.8.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 4.dp)
+                ) {
+                    Text(
+                        text = "−",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = NeonCyan,
+                        modifier = Modifier
+                            .clickable { onOctaveChange(-1) }
+                            .padding(horizontal = 4.dp)
+                    )
+                    Text(
+                        text = "OCT ${if (octave > 0) "+$octave" else "$octave"}",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = "+",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = NeonCyan,
+                        modifier = Modifier
+                            .clickable { onOctaveChange(1) }
+                            .padding(horizontal = 4.dp)
+                    )
+                }
+
                 // Sustain Button
                 Box(
                     modifier = Modifier
-                        .height(22.dp)
-                        .clip(RoundedCornerShape(5.dp))
+                        .height(24.dp)
+                        .clip(RoundedCornerShape(6.dp))
                         .background(if (isSustainActive) NeonCyan else Color(0x1FFFFFFF))
-                        .border(1.dp, if (isSustainActive) Color.White else Color(0x33FFFFFF), RoundedCornerShape(5.dp))
+                        .border(1.dp, if (isSustainActive) Color.White else Color(0x33FFFFFF), RoundedCornerShape(6.dp))
                         .clickable { onToggleSustain() }
                         .padding(horizontal = 7.dp),
                     contentAlignment = Alignment.Center
@@ -202,7 +241,7 @@ fun VirtualPianoKeyboard(
                 // Scroll Left Octave ◀
                 Box(
                     modifier = Modifier
-                        .size(22.dp)
+                        .size(24.dp)
                         .clip(CircleShape)
                         .background(Color(0x22FFFFFF))
                         .clickable {
@@ -215,13 +254,13 @@ fun VirtualPianoKeyboard(
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = "◀", fontSize = 9.5.sp, color = Color.White)
+                    Text(text = "◀", fontSize = 10.sp, color = Color.White)
                 }
 
                 // Scroll Right Octave ▶
                 Box(
                     modifier = Modifier
-                        .size(22.dp)
+                        .size(24.dp)
                         .clip(CircleShape)
                         .background(Color(0x22FFFFFF))
                         .clickable {
@@ -234,7 +273,7 @@ fun VirtualPianoKeyboard(
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = "▶", fontSize = 9.5.sp, color = Color.White)
+                    Text(text = "▶", fontSize = 10.sp, color = Color.White)
                 }
             }
         }
@@ -361,7 +400,8 @@ fun VirtualPianoKeyboard(
                         OctaveGroupView(
                             octave = oct,
                             whiteWidthDp = baseWhiteWidthDp,
-                            pressedKeys = pressedKeys
+                            pressedKeys = pressedKeys,
+                            activeAuraColor = activeAuraColor
                         )
                     }
 
@@ -370,7 +410,7 @@ fun VirtualPianoKeyboard(
                     val isHighCPressed = pressedKeys.contains(highCKey)
                     val keyBrush = if (isHighCPressed) {
                         Brush.verticalGradient(
-                            listOf(Color(0xFF0F2633), Color(0x9900E5FF), NeonCyan)
+                            listOf(activeAuraColor.copy(alpha = 0.25f), activeAuraColor.copy(alpha = 0.70f), activeAuraColor)
                         )
                     } else {
                         Brush.verticalGradient(
@@ -386,7 +426,7 @@ fun VirtualPianoKeyboard(
                             .background(keyBrush)
                             .border(
                                 1.dp,
-                                if (isHighCPressed) NeonCyan else Color(0x33000000),
+                                if (isHighCPressed) activeAuraColor else Color(0x33000000),
                                 RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp)
                             ),
                         contentAlignment = Alignment.BottomCenter
@@ -519,7 +559,8 @@ private fun PitchBendWheel(
 private fun OctaveGroupView(
     octave: Int,
     whiteWidthDp: Dp,
-    pressedKeys: Set<String>
+    pressedKeys: Set<String>,
+    activeAuraColor: Color = NeonCyan
 ) {
     val whiteNotes = listOf("C", "D", "E", "F", "G", "A", "B")
     val blackKeyWidthDp = whiteWidthDp * 0.60f
@@ -549,7 +590,7 @@ private fun OctaveGroupView(
 
                 val keyBrush = if (isPressed) {
                     Brush.verticalGradient(
-                        listOf(Color(0xFF0F2633), Color(0x9900E5FF), NeonCyan)
+                        listOf(activeAuraColor.copy(alpha = 0.25f), activeAuraColor.copy(alpha = 0.70f), activeAuraColor)
                     )
                 } else {
                     Brush.verticalGradient(
@@ -569,7 +610,7 @@ private fun OctaveGroupView(
                         .background(keyBrush)
                         .border(
                             1.dp,
-                            if (isPressed) NeonCyan else Color(0x33000000),
+                            if (isPressed) activeAuraColor else Color(0x33000000),
                             RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp)
                         ),
                     contentAlignment = Alignment.BottomCenter
@@ -596,7 +637,7 @@ private fun OctaveGroupView(
 
             val keyBrush = if (isPressed) {
                 Brush.verticalGradient(
-                    listOf(NeonCyan, Color(0xFF006B80), Color(0xFF003844))
+                    listOf(activeAuraColor, activeAuraColor.copy(alpha = 0.60f), Color(0xFF0B0C12))
                 )
             } else {
                 Brush.verticalGradient(
@@ -618,7 +659,7 @@ private fun OctaveGroupView(
                     .background(keyBrush)
                     .border(
                         1.dp,
-                        if (isPressed) Color.White else Color(0x44000000),
+                        if (isPressed) activeAuraColor else Color(0x44000000),
                         RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)
                     )
             )

@@ -64,6 +64,8 @@ object NativeAudioBridge {
     external fun pitchBend(engineIndex: Int, channel: Int, bendValue: Int)
     external fun setMasterVolume(volume01: Float)
     external fun setPolyphony(engineIndex: Int, polyphony: Int)
+    external fun setBufferSize(bufferSize: Int)
+    external fun setMasterEq(lowGainDb: Float, midGainDb: Float, highGainDb: Float)
 
     // Safe wrappers to avoid crashes if native library isn't compiled or loaded
     fun safeStartEngine(driverType: Int = 0): Boolean {
@@ -296,6 +298,26 @@ object NativeAudioBridge {
                 setPolyphony(ENGINE_DRUM, polyphony)
             } catch (e: Throwable) {
                 Log.e("NativeAudioBridge", "Error invoking setPolyphony: ${e.message}")
+            }
+        }
+    }
+
+    fun safeSetBufferSize(bufferSize: Int) {
+        if (isLibraryLoaded) {
+            try {
+                setBufferSize(bufferSize)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking setBufferSize: ${e.message}")
+            }
+        }
+    }
+
+    fun safeSetMasterEq(lowGainDb: Float, midGainDb: Float, highGainDb: Float) {
+        if (isLibraryLoaded) {
+            try {
+                setMasterEq(lowGainDb, midGainDb, highGainDb)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking setMasterEq: ${e.message}")
             }
         }
     }

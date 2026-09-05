@@ -94,7 +94,20 @@ class AudioEngine(private val context: Context) {
     var onMidiNoteOffListener: ((noteName: String) -> Unit)? = null
     var onMidiPitchBendListener: ((bendValue: Float) -> Unit)? = null
     var onMidiSustainListener: ((isPressed: Boolean) -> Unit)? = null
+    var onMidiCcListener: ((channel: Int, cc: Int, value: Int) -> Unit)? = null
     var onDeviceListChanged: ((List<MidiDeviceItem>) -> Unit)? = null
+
+    private val disabledMidiDeviceIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    fun setMidiDeviceEnabled(deviceId: String, enabled: Boolean) {
+        if (enabled) {
+            disabledMidiDeviceIds.remove(deviceId)
+        } else {
+            disabledMidiDeviceIds.add(deviceId)
+            allNotesOff()
+        }
+        refreshMidiDevicesList()
+    }
 
     // ================= 3. METRONOME AUDIO GENERATOR (ATOMIC BPM UPDATES) =================
     private var metronomeAudioTrack: AudioTrack? = null
@@ -179,31 +192,12 @@ class AudioEngine(private val context: Context) {
             if (idx >= 0) (baseOctave + 1) * 12 + idx else null
         }.toSet()
 
-        // Turn off notes no longer in set
-        val toTurnOff = activeTonicPitches - newPitches
-        for (pitch in toTurnOff) {
-            NativeAudioBridge.safeNoteOff(
-                channel = NativeAudioBridge.CHANNEL_TONIC_PAD,
-                midiNote = pitch,
-                engineIndex = NativeAudioBridge.ENGINE_FADER
-            )
-        }
-
         // Shimmer: Harmonic upper octave (+12 semitones)
         val newShimmerPitches = if (shimmer > 0.05f) {
             newPitches.map { (it + 12).coerceIn(0, 127) }.toSet()
         } else emptySet()
 
-        val shimmerToTurnOff = activeShimmerPitches - newShimmerPitches
-        for (pitch in shimmerToTurnOff) {
-            NativeAudioBridge.safeNoteOff(
-                channel = NativeAudioBridge.CHANNEL_TONIC_PAD,
-                midiNote = pitch,
-                engineIndex = NativeAudioBridge.ENGINE_FADER
-            )
-        }
-
-        // Turn on new fundamental notes
+        // 1. Turn on new fundamental notes first for seamless crossfade
         val toTurnOn = newPitches - activeTonicPitches
         for (pitch in toTurnOn) {
             NativeAudioBridge.safeNoteOn(
@@ -214,7 +208,7 @@ class AudioEngine(private val context: Context) {
             )
         }
 
-        // Turn on new shimmer harmonic notes
+        // 2. Turn on new shimmer harmonic notes
         val shimmerToTurnOn = newShimmerPitches - activeShimmerPitches
         for (pitch in shimmerToTurnOn) {
             val shimmerVelocity = (shimmer * 80f).toInt().coerceIn(20, 95)
@@ -224,6 +218,29 @@ class AudioEngine(private val context: Context) {
                 velocity = shimmerVelocity,
                 engineIndex = NativeAudioBridge.ENGINE_FADER
             )
+        }
+
+        // 3. Musical crossfade: release outgoing notes after a brief overlap (65ms)
+        val toTurnOff = activeTonicPitches - newPitches
+        val shimmerToTurnOff = activeShimmerPitches - newShimmerPitches
+        if (toTurnOff.isNotEmpty() || shimmerToTurnOff.isNotEmpty()) {
+            coroutineScope.launch {
+                delay(65)
+                for (pitch in toTurnOff) {
+                    NativeAudioBridge.safeNoteOff(
+                        channel = NativeAudioBridge.CHANNEL_TONIC_PAD,
+                        midiNote = pitch,
+                        engineIndex = NativeAudioBridge.ENGINE_FADER
+                    )
+                }
+                for (pitch in shimmerToTurnOff) {
+                    NativeAudioBridge.safeNoteOff(
+                        channel = NativeAudioBridge.CHANNEL_TONIC_PAD,
+                        midiNote = pitch,
+                        engineIndex = NativeAudioBridge.ENGINE_FADER
+                    )
+                }
+            }
         }
 
         activeTonicPitches.clear()
@@ -267,6 +284,11 @@ class AudioEngine(private val context: Context) {
         }
     }
 
+    fun setChannelReverb(channel: Int, reverb: Float) {
+        val ch = channel.coerceIn(0, 11)
+        channelParams[ch].reverb = reverb.coerceIn(0f, 1f)
+    }
+
     fun playDrumPadStrike(padIndex: Int, velocity: Float = 0.90f) {
         val midiDrumNote = when (padIndex) {
             1 -> 36 // Kick
@@ -304,7 +326,7 @@ class AudioEngine(private val context: Context) {
         when (command) {
             0x90 -> { // Note On (velocity == 0 is treated as Note Off)
                 if (data2 > 0) {
-                    val effectiveNote = (data1 + globalOctaveShift * 12 + globalTranspose).coerceIn(0, 127)
+                    val effectiveNote = (data1 + globalOctaveShift * 12).coerceIn(0, 127)
                     activeMidiNoteMap[data1] = effectiveNote
                     activeHeldNotes.add(effectiveNote)
                     sustainedNotesToRelease.remove(effectiveNote)
@@ -315,13 +337,13 @@ class AudioEngine(private val context: Context) {
                         onMidiNoteOnListener?.invoke(midiNumberToNoteName(effectiveNote), data2)
                     }
                 } else {
-                    val effectiveNote = activeMidiNoteMap.remove(data1) ?: (data1 + globalOctaveShift * 12 + globalTranspose).coerceIn(0, 127)
+                    val effectiveNote = activeMidiNoteMap.remove(data1) ?: (data1 + globalOctaveShift * 12).coerceIn(0, 127)
                     handleNoteOffDirect(targetChannels, effectiveNote)
                 }
             }
 
             0x80 -> { // Note Off
-                val effectiveNote = activeMidiNoteMap.remove(data1) ?: (data1 + globalOctaveShift * 12 + globalTranspose).coerceIn(0, 127)
+                val effectiveNote = activeMidiNoteMap.remove(data1) ?: (data1 + globalOctaveShift * 12).coerceIn(0, 127)
                 handleNoteOffDirect(targetChannels, effectiveNote)
             }
 
@@ -337,6 +359,10 @@ class AudioEngine(private val context: Context) {
             }
 
             0xB0 -> { // Control Change (CC)
+                coroutineScope.launch(Dispatchers.Main) {
+                    onMidiCcListener?.invoke(channel, data1, data2)
+                }
+
                 if (data1 == 64) { // Sustain Pedal (CC#64)
                     val pedalPressed = data2 >= 64
                     isSustainPedalDown = pedalPressed
@@ -383,7 +409,7 @@ class AudioEngine(private val context: Context) {
     // Direct Note triggering from Virtual Piano or Pad
     fun noteOn(noteName: String, velocity: Float = 0.85f, channel: Int = activeTargetChannel) {
         val baseMidi = noteNameToMidi(noteName)
-        val midiNote = (baseMidi + globalOctaveShift * 12 + globalTranspose).coerceIn(0, 127)
+        val midiNote = (baseMidi + globalOctaveShift * 12).coerceIn(0, 127)
         val velInt = (velocity * 127f).toInt().coerceIn(1, 127)
         if (channel >= 8) {
             NativeAudioBridge.safeNoteOn(channel.coerceIn(0, 15), midiNote, velInt)
@@ -397,7 +423,7 @@ class AudioEngine(private val context: Context) {
 
     fun noteOff(noteName: String, channel: Int = activeTargetChannel) {
         val baseMidi = noteNameToMidi(noteName)
-        val midiNote = (baseMidi + globalOctaveShift * 12 + globalTranspose).coerceIn(0, 127)
+        val midiNote = (baseMidi + globalOctaveShift * 12).coerceIn(0, 127)
         if (channel >= 8) {
             NativeAudioBridge.safeNoteOff(channel.coerceIn(0, 15), midiNote)
         } else {
@@ -435,7 +461,7 @@ class AudioEngine(private val context: Context) {
     private fun initUsbMidi() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             try {
-                midiHandlerThread = HandlerThread("UsbMidiWorkerThread").apply { start() }
+                midiHandlerThread = HandlerThread("UsbMidiWorkerThread", android.os.Process.THREAD_PRIORITY_URGENT_AUDIO).apply { start() }
                 midiHandler = Handler(midiHandlerThread!!.looper)
 
                 midiManager = context.getSystemService(Context.MIDI_SERVICE) as? MidiManager
@@ -465,12 +491,14 @@ class AudioEngine(private val context: Context) {
     private fun connectMidiDevice(info: MidiDeviceInfo) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             try {
+                val devIdStr = info.id.toString()
                 midiManager?.openDevice(info, { device: MidiDevice? ->
                     if (device != null) {
                         openDevices.add(device)
                         val outputPort = device.openOutputPort(0)
                         outputPort?.connect(object : MidiReceiver() {
                             override fun onSend(msg: ByteArray?, offset: Int, count: Int, timestamp: Long) {
+                                if (disabledMidiDeviceIds.contains(devIdStr)) return
                                 if (msg == null || count < 2) return
                                 val status = (msg[offset].toInt() and 0xFF)
                                 val command = status and 0xF0
@@ -509,15 +537,28 @@ class AudioEngine(private val context: Context) {
             }
 
             val type = if (devInfo.type == MidiDeviceInfo.TYPE_USB) "USB MIDI" else "MIDI"
+            val isEnabled = !disabledMidiDeviceIds.contains(devInfo.id.toString())
 
             MidiDeviceItem(
                 id = "${devInfo.id}",
                 name = displayName,
                 type = type,
                 isConnected = true,
-                isEnabled = true
+                isEnabled = isEnabled
             )
         }
+    }
+
+    fun setMasterEq(lowGainDb: Float, midGainDb: Float, highGainDb: Float) {
+        NativeAudioBridge.safeSetMasterEq(lowGainDb, midGainDb, highGainDb)
+    }
+
+    fun setBufferSize(bufferSize: Int) {
+        NativeAudioBridge.safeSetBufferSize(bufferSize)
+    }
+
+    fun setPolyphony(polyphony: Int) {
+        NativeAudioBridge.safeSetPolyphony(polyphony)
     }
 
     private fun refreshMidiDevicesList() {

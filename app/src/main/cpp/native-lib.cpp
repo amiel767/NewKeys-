@@ -197,7 +197,29 @@ Java_com_example_audio_NativeAudioBridge_setPolyphony(
         jobject /* this */,
         jint engineIndex,
         jint polyphony) {
-    gAudioEngine.getEngine(engineIndex).setPolyphony(polyphony);
+    if (engineIndex < 0) {
+        gAudioEngine.setPolyphony(polyphony);
+    } else {
+        gAudioEngine.getEngine(engineIndex).setPolyphony(polyphony);
+    }
+}
+
+JNIEXPORT void JNICALL
+Java_com_example_audio_NativeAudioBridge_setBufferSize(
+        JNIEnv *env,
+        jobject /* this */,
+        jint bufferSize) {
+    gAudioEngine.setBufferSize(bufferSize);
+}
+
+JNIEXPORT void JNICALL
+Java_com_example_audio_NativeAudioBridge_setMasterEq(
+        JNIEnv *env,
+        jobject /* this */,
+        jfloat lowGainDb,
+        jfloat midGainDb,
+        jfloat highGainDb) {
+    gAudioEngine.setMasterEq(lowGainDb, midGainDb, highGainDb);
 }
 
 } // extern "C"

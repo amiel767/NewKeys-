@@ -1783,10 +1783,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setAudioBufferSize(buffer: Int) {
         _uiState.update { it.copy(audioBufferSize = buffer) }
+        audioEngine.setBufferSize(buffer)
     }
 
     fun setPolyphony(poly: Int) {
         _uiState.update { it.copy(polyphony = poly) }
+        audioEngine.setPolyphony(poly)
     }
 
     fun setSelectedLanguage(lang: String) {
@@ -1822,8 +1824,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleMidiDevice(deviceId: String) {
         _uiState.update { state ->
-            val updated = state.midiDevices.map { dev ->
-                if (dev.id == deviceId) dev.copy(isEnabled = !dev.isEnabled) else dev
+            val dev = state.midiDevices.find { it.id == deviceId }
+            val nextEnabled = dev?.let { !it.isEnabled } ?: true
+            audioEngine.setMidiDeviceEnabled(deviceId, nextEnabled)
+            val updated = state.midiDevices.map { d ->
+                if (d.id == deviceId) d.copy(isEnabled = nextEnabled) else d
             }
             state.copy(midiDevices = updated)
         }
@@ -1837,8 +1842,21 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     fun updateFxParameter(trackId: Int, transform: (FxParameters) -> FxParameters) {
         _uiState.update { state ->
             val current = state.fxParameters[trackId] ?: FxParameters()
+            val newFx = transform(current)
             val updatedMap = state.fxParameters.toMutableMap()
-            updatedMap[trackId] = transform(current)
+            updatedMap[trackId] = newFx
+
+            // If trackId == 0 (Master), update native master EQ 3-band biquad filters in real time
+            if (trackId == 0) {
+                val lowDb = (newFx.eqLow - 0.5f) * 24.0f
+                val midDb = (newFx.eqMid - 0.5f) * 24.0f
+                val highDb = (newFx.eqHigh - 0.5f) * 24.0f
+                audioEngine.setMasterEq(lowDb, midDb, highDb)
+            } else if (trackId in 1..8) {
+                val channel = trackId - 1
+                audioEngine.setChannelReverb(channel, if (newFx.isReverbEnabled) newFx.reverbMix else 0f)
+            }
+
             state.copy(fxParameters = updatedMap)
         }
     }
@@ -1882,6 +1900,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 updatedFxMap[trackId] = currentFx.copy(reverbPreset = "Custom")
             }
 
+            if (trackId in 1..8) {
+                val mix = if (!isCurrentPreset) presetParams.a else currentFx.reverbMix
+                audioEngine.setChannelReverb(trackId - 1, if (currentFx.isReverbEnabled) mix else 0f)
+            }
+
             if (trackId == 0) {
                 state.copy(
                     masterTrack = state.masterTrack.copy(
@@ -1911,8 +1934,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleTrackReverb(trackId: Int) {
         _uiState.update { state ->
             val current = state.fxParameters[trackId] ?: FxParameters()
+            val newEnabled = !current.isReverbEnabled
             val updatedMap = state.fxParameters.toMutableMap()
-            updatedMap[trackId] = current.copy(isReverbEnabled = !current.isReverbEnabled)
+            updatedMap[trackId] = current.copy(isReverbEnabled = newEnabled)
+            if (trackId in 1..8) {
+                audioEngine.setChannelReverb(trackId - 1, if (newEnabled) current.reverbMix else 0f)
+            }
             state.copy(fxParameters = updatedMap)
         }
     }
