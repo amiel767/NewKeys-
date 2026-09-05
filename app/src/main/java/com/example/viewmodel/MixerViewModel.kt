@@ -18,6 +18,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.random.Random
 
@@ -173,6 +175,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     val fileManager = FileManager(application.applicationContext)
     val audioEngine = AudioEngine(application.applicationContext)
     private val appStatePersistence = AppStatePersistence(application.applicationContext)
+    private val soundFontLoadMutex = Mutex()
 
     private val _uiState = MutableStateFlow(createInitialState())
     val uiState: StateFlow<MixerUiState> = _uiState.asStateFlow()
@@ -483,14 +486,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
 
-                // Automatically load default SoundFont for unassigned audio slots if available
+                // Automatically load default SoundFont for slot 0 if completely unassigned
                 val defaultSf = sfs.firstOrNull()
                 if (defaultSf != null && File(defaultSf.path).exists()) {
-                    val slots = _uiState.value.audioSlots
-                    slots.forEach { slot ->
-                        if (slot.soundFontId <= 0 || slot.soundFontPath.isNullOrEmpty() || !File(slot.soundFontPath!!).exists()) {
-                            loadSoundFontForSlot(slot.slotId, defaultSf.path)
-                        }
+                    val slot0 = _uiState.value.audioSlots.firstOrNull()
+                    if (slot0 != null && (slot0.soundFontId <= 0 || slot0.soundFontPath.isNullOrEmpty() || !File(slot0.soundFontPath!!).exists())) {
+                        loadSoundFontForSlot(0, defaultSf.path)
                     }
                 }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
@@ -1404,133 +1405,135 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val targetChannel = AudioSlot.midiChannelForSlot(slotId)
 
         viewModelScope.launch(Dispatchers.IO) {
-            val oldSfId = slot.soundFontId
+            soundFontLoadMutex.withLock {
+                val oldSfId = slot.soundFontId
 
-            Log.d("SoundFontLoad", "[DIAGNOSTIC] Requested load for slot=$slotId, raw sf2Path=$sf2Path")
+                Log.d("SoundFontLoad", "[DIAGNOSTIC] Requested load for slot=$slotId, raw sf2Path=$sf2Path")
 
-            // Ensure file path is accessible by native C++ fopen (bridge external storage files if needed)
-            val nativeReadableFile = fileManager.getNativeReadableSoundFontFile(sf2Path)
-            val readablePath = nativeReadableFile.absolutePath
-            Log.d("SoundFontLoad", "[DIAGNOSTIC] Resolved native-readable path=$readablePath (exists=${nativeReadableFile.exists()}, length=${nativeReadableFile.length()})")
+                // Ensure file path is accessible by native C++ fopen (bridge external storage files if needed)
+                val nativeReadableFile = fileManager.getNativeReadableSoundFontFile(sf2Path)
+                val readablePath = nativeReadableFile.absolutePath
+                Log.d("SoundFontLoad", "[DIAGNOSTIC] Resolved native-readable path=$readablePath (exists=${nativeReadableFile.exists()}, length=${nativeReadableFile.length()})")
 
-            // 1. Charger d'abord le nouveau SoundFont via le chemin natif garanti
-            val newSfId = NativeAudioBridge.safeLoadSoundFont(NativeAudioBridge.ENGINE_FADER, readablePath)
-            Log.d("SoundFontLoad", "[DIAGNOSTIC] Native safeLoadSoundFont returned ID=$newSfId for slot=$slotId")
+                // 1. Charger d'abord le nouveau SoundFont via le chemin natif garanti
+                val newSfId = NativeAudioBridge.safeLoadSoundFont(NativeAudioBridge.ENGINE_FADER, readablePath)
+                Log.d("SoundFontLoad", "[DIAGNOSTIC] Native safeLoadSoundFont returned ID=$newSfId for slot=$slotId")
 
-            // 2. Décharger l'ancien UNIQUEMENT si le nouveau a réussi et que l'ancien n'est plus utilisé nulle part
-            if (newSfId >= 0 && oldSfId > 0 && oldSfId != newSfId) {
-                val inUse = _uiState.value.audioSlots.any { it.slotId != slotId && it.soundFontId == oldSfId }
-                if (!inUse) {
-                    NativeAudioBridge.safeUnloadSoundFont(NativeAudioBridge.ENGINE_FADER, oldSfId)
+                // 2. Décharger l'ancien UNIQUEMENT si le nouveau a réussi et que l'ancien n'est plus utilisé nulle part
+                if (newSfId >= 0 && oldSfId > 0 && oldSfId != newSfId) {
+                    val inUse = _uiState.value.audioSlots.any { it.slotId != slotId && it.soundFontId == oldSfId }
+                    if (!inUse) {
+                        NativeAudioBridge.safeUnloadSoundFont(NativeAudioBridge.ENGINE_FADER, oldSfId)
+                    }
                 }
-            }
 
-            // 3. Récupérer la liste des presets du SoundFont chargé en bornant strictement 0..127 par banque
-            val effectiveSfId = if (newSfId >= 0) newSfId else oldSfId
-            val nativePresets = if (effectiveSfId >= 0 && NativeAudioBridge.isNativeReady()) {
-                NativeAudioBridge.listPresets(effectiveSfId).toList()
-            } else emptyList()
+                // 3. Récupérer la liste des presets du SoundFont chargé en bornant strictly 0..127 par banque
+                val effectiveSfId = if (newSfId >= 0) newSfId else oldSfId
+                val nativePresets = if (effectiveSfId >= 0 && NativeAudioBridge.isNativeReady()) {
+                    NativeAudioBridge.listPresets(effectiveSfId).toList()
+                } else emptyList()
 
-            val realPresets = if (nativePresets.isNotEmpty()) {
-                nativePresets
-                    .filter { info ->
-                        val lower = info.name.trim().lowercase()
-                        info.preset in 0..127 && info.bank >= 0 &&
-                            !lower.contains("unknown") &&
-                            !lower.contains("ghost") &&
-                            !lower.startsWith("unused") &&
-                            !lower.startsWith("null")
-                    }
-                    .distinctBy { Pair(it.bank, it.preset) }
-                    .sortedWith(compareBy({ it.bank }, { it.preset }))
-                    .map { info ->
-                        val cleanName = info.name.trim().ifEmpty { "Preset ${info.preset + 1}" }
-                        SoundfontPreset(
-                            id = info.preset,
-                            name = cleanName,
-                            bankNumber = info.bank
-                        )
-                    }
-            } else {
-                val file = File(sf2Path)
-                if (file.exists() && file.canRead()) {
-                    val parsed = SF2Parser.parsePresets(file)
-                    if (parsed.isNotEmpty()) {
-                        parsed.map { p ->
+                val realPresets = if (nativePresets.isNotEmpty()) {
+                    nativePresets
+                        .filter { info ->
+                            val lower = info.name.trim().lowercase()
+                            info.preset in 0..127 && info.bank >= 0 &&
+                                !lower.contains("unknown") &&
+                                !lower.contains("ghost") &&
+                                !lower.startsWith("unused") &&
+                                !lower.startsWith("null")
+                        }
+                        .distinctBy { Pair(it.bank, it.preset) }
+                        .sortedWith(compareBy({ it.bank }, { it.preset }))
+                        .map { info ->
+                            val cleanName = info.name.trim().ifEmpty { "Preset ${info.preset + 1}" }
                             SoundfontPreset(
-                                id = p.preset,
-                                name = p.displayName,
-                                bankNumber = p.bank
+                                id = info.preset,
+                                name = cleanName,
+                                bankNumber = info.bank
                             )
                         }
+                } else {
+                    val file = File(sf2Path)
+                    if (file.exists() && file.canRead()) {
+                        val parsed = SF2Parser.parsePresets(file)
+                        if (parsed.isNotEmpty()) {
+                            parsed.map { p ->
+                                SoundfontPreset(
+                                    id = p.preset,
+                                    name = p.displayName,
+                                    bankNumber = p.bank
+                                )
+                            }
+                        } else emptyList()
                     } else emptyList()
-                } else emptyList()
-            }
+                }
 
-            val targetPreset = realPresets.find { it.bankNumber == bank && it.id == preset }
-                ?: realPresets.firstOrNull()
-                ?: SoundfontPreset(preset, patchName ?: File(sf2Path).name.removeSuffix(".sf2"), bank)
+                val targetPreset = realPresets.find { it.bankNumber == bank && it.id == preset }
+                    ?: realPresets.firstOrNull()
+                    ?: SoundfontPreset(preset, patchName ?: File(sf2Path).name.removeSuffix(".sf2"), bank)
 
-            // 4. Appeler safeSelectProgram avec le soundFontId obtenu, le bank, et le preset demandés
-            audioEngine.setChannelProgram(targetChannel, targetPreset.id, targetPreset.bankNumber)
-            if (effectiveSfId >= 0) {
-                NativeAudioBridge.safeSelectProgram(
-                    engineIndex = NativeAudioBridge.ENGINE_FADER,
-                    channel = targetChannel,
-                    soundFontId = effectiveSfId,
-                    bank = targetPreset.bankNumber,
-                    preset = targetPreset.id
-                )
-            }
-
-            // Re-validate program selection for all other active audio slots to ensure complete isolation
-            val currentSlots = _uiState.value.audioSlots
-            for (s in currentSlots) {
-                if (s.slotId != slotId && s.soundFontId > 0) {
+                // 4. Appeler safeSelectProgram avec le soundFontId obtenu, le bank, et le preset demandés
+                audioEngine.setChannelProgram(targetChannel, targetPreset.id, targetPreset.bankNumber)
+                if (effectiveSfId >= 0) {
                     NativeAudioBridge.safeSelectProgram(
                         engineIndex = NativeAudioBridge.ENGINE_FADER,
-                        channel = s.midiChannel,
-                        soundFontId = s.soundFontId,
-                        bank = s.bank,
-                        preset = s.preset
+                        channel = targetChannel,
+                        soundFontId = effectiveSfId,
+                        bank = targetPreset.bankNumber,
+                        preset = targetPreset.id
                     )
                 }
-            }
 
-            // 5 & 6. Mettre à jour audioSlots[slotId] et notifier l'UI
-            val sfName = File(sf2Path).name
-            _uiState.update { state ->
-                val updatedSlots = state.audioSlots.map { s ->
-                    if (s.slotId == slotId) {
-                        s.copy(
-                            soundFontId = effectiveSfId,
-                            soundFontPath = sf2Path,
-                            patchName = targetPreset.name,
-                            bank = targetPreset.bankNumber,
-                            preset = targetPreset.id,
-                            presets = realPresets
+                // Re-validate program selection for all other active audio slots to ensure complete isolation
+                val currentSlots = _uiState.value.audioSlots
+                for (s in currentSlots) {
+                    if (s.slotId != slotId && s.soundFontId > 0) {
+                        NativeAudioBridge.safeSelectProgram(
+                            engineIndex = NativeAudioBridge.ENGINE_FADER,
+                            channel = s.midiChannel,
+                            soundFontId = s.soundFontId,
+                            bank = s.bank,
+                            preset = s.preset
                         )
-                    } else s
+                    }
                 }
-                val updatedTracks = if (slotId in 0..7) {
-                    state.tracks.mapIndexed { idx, t ->
-                        if (idx == slotId) {
-                            t.copy(
-                                soundfontName = sfName,
+
+                // 5 & 6. Mettre à jour audioSlots[slotId] et notifier l'UI
+                val sfName = File(sf2Path).name
+                _uiState.update { state ->
+                    val updatedSlots = state.audioSlots.map { s ->
+                        if (s.slotId == slotId) {
+                            s.copy(
+                                soundFontId = effectiveSfId,
+                                soundFontPath = sf2Path,
                                 patchName = targetPreset.name,
                                 bank = targetPreset.bankNumber,
-                                program = targetPreset.id
+                                preset = targetPreset.id,
+                                presets = realPresets
                             )
-                        } else t
+                        } else s
                     }
-                } else state.tracks
+                    val updatedTracks = if (slotId in 0..7) {
+                        state.tracks.mapIndexed { idx, t ->
+                            if (idx == slotId) {
+                                t.copy(
+                                    soundfontName = sfName,
+                                    patchName = targetPreset.name,
+                                    bank = targetPreset.bankNumber,
+                                    program = targetPreset.id
+                                )
+                            } else t
+                        }
+                    } else state.tracks
 
-                state.copy(
-                    audioSlots = updatedSlots,
-                    tracks = updatedTracks
-                )
+                    state.copy(
+                        audioSlots = updatedSlots,
+                        tracks = updatedTracks
+                    )
+                }
+                persistCurrentState()
             }
-            persistCurrentState()
         }
     }
 
