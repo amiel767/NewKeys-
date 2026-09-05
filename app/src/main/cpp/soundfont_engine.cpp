@@ -56,7 +56,26 @@ void SoundfontEngine::destroy() {
 int SoundfontEngine::loadSoundFont(const std::string &absolutePath) {
     std::lock_guard<std::mutex> lock(mMutex);
     if (!mSynth) {
-        LOGE("Cannot load SoundFont: synth instance not initialized");
+        LOGI("Synth instance not initialized yet, auto-initializing in loadSoundFont...");
+        mSettings = new_fluid_settings();
+        if (mSettings) {
+            fluid_settings_setnum(mSettings, "synth.sample-rate", 48000.0);
+            fluid_settings_setnum(mSettings, "synth.gain", 0.90);
+            fluid_settings_setint(mSettings, "synth.polyphony", 128);
+            fluid_settings_setint(mSettings, "synth.midi-channels", kMaxChannels);
+            mSynth = new_fluid_synth(mSettings);
+            if (mSynth) {
+                fluid_synth_set_gain(mSynth, 0.90f);
+                for (int ch = 0; ch < kMaxChannels; ++ch) {
+                    mTransposeSemitones[ch].store(0, std::memory_order_relaxed);
+                    fluid_synth_cc(mSynth, ch, 7, 100);
+                    fluid_synth_cc(mSynth, ch, 10, 64);
+                }
+            }
+        }
+    }
+    if (!mSynth) {
+        LOGE("Cannot load SoundFont: synth instance could not be allocated");
         return -1;
     }
 
@@ -118,9 +137,13 @@ bool SoundfontEngine::selectProgram(int channel, int soundFontId, int bank, int 
 
     int result = FLUID_FAILED;
     if (soundFontId > 0) {
+        fluid_synth_sfont_select(mSynth, channel, soundFontId);
         result = fluid_synth_program_select(mSynth, channel, soundFontId, bank, preset);
     }
     if (result != FLUID_OK) {
+        if (soundFontId > 0) {
+            fluid_synth_sfont_select(mSynth, channel, soundFontId);
+        }
         fluid_synth_bank_select(mSynth, channel, bank);
         result = fluid_synth_program_change(mSynth, channel, preset);
     }

@@ -65,8 +65,14 @@ Java_com_example_audio_NativeAudioBridge_listPresets(
         jobject /* this */,
         jint soundFontId) {
     
-    // We get the presets from ENGINE_FADER (0) since SoundFonts are loaded there
+    // Search all engines (FADER, PAD, DRUM) to find the presets for the given soundFontId
     std::vector<NativePresetInfo> presets = gAudioEngine.getEngine(0).listPresets(soundFontId);
+    if (presets.empty()) {
+        presets = gAudioEngine.getEngine(1).listPresets(soundFontId);
+    }
+    if (presets.empty()) {
+        presets = gAudioEngine.getEngine(2).listPresets(soundFontId);
+    }
     
     jclass presetInfoClass = env->FindClass("com/example/audio/PresetInfo");
     if (presetInfoClass == nullptr) return nullptr;

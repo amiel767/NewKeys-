@@ -482,6 +482,17 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         isScanningStorage = false
                     )
                 }
+
+                // Automatically load default SoundFont for unassigned audio slots if available
+                val defaultSf = sfs.firstOrNull()
+                if (defaultSf != null && File(defaultSf.path).exists()) {
+                    val slots = _uiState.value.audioSlots
+                    slots.forEach { slot ->
+                        if (slot.soundFontId <= 0 || slot.soundFontPath.isNullOrEmpty() || !File(slot.soundFontPath!!).exists()) {
+                            loadSoundFontForSlot(slot.slotId, defaultSf.path)
+                        }
+                    }
+                }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
                 e.printStackTrace()
                 _uiState.update { it.copy(isScanningStorage = false) }
@@ -1432,7 +1443,21 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                             bankNumber = info.bank
                         )
                     }
-            } else emptyList()
+            } else {
+                val file = File(sf2Path)
+                if (file.exists() && file.canRead()) {
+                    val parsed = SF2Parser.parsePresets(file)
+                    if (parsed.isNotEmpty()) {
+                        parsed.map { p ->
+                            SoundfontPreset(
+                                id = p.preset,
+                                name = p.displayName,
+                                bankNumber = p.bank
+                            )
+                        }
+                    } else emptyList()
+                } else emptyList()
+            }
 
             val targetPreset = realPresets.find { it.bankNumber == bank && it.id == preset }
                 ?: realPresets.firstOrNull()
