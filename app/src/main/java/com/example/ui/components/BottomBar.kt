@@ -276,10 +276,10 @@ fun BottomBar(
             }
         }
 
-        // ================= 4. AFFICHEUR D'ACCORDS (CHORD DISPLAY BAR) =================
+        // ================= 4. AFFICHEUR D'ACCORDS (CHORD DISPLAY BAR - EXPANDED SPACE) =================
         Box(
             modifier = Modifier
-                .width(100.dp)
+                .weight(1.25f)
                 .height(barHeight)
                 .clip(RoundedCornerShape(10.dp))
                 .background(
@@ -295,16 +295,19 @@ fun BottomBar(
                     if (isKeyboardActive) NeonCyan.copy(alpha = 0.8f) else Color(0x3300E5FF),
                     RoundedCornerShape(10.dp)
                 )
-                .padding(horizontal = 6.dp, vertical = 3.dp)
+                .padding(horizontal = 8.dp, vertical = 3.dp)
                 .testTag("chord_display_box"),
             contentAlignment = Alignment.CenterStart
         ) {
             if (detectedChord != null) {
                 // Real-time Jazz & Pop Chord Display
-                Column(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.Center
+                ) {
                     Text(
                         text = detectedChord.primaryName,
-                        fontSize = 12.sp,
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = NeonCyanLight,
                         maxLines = 1,
@@ -312,7 +315,7 @@ fun BottomBar(
                     )
                     Text(
                         text = detectedChord.formula,
-                        fontSize = 7.sp,
+                        fontSize = 8.sp,
                         color = NeonCyan,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -325,19 +328,19 @@ fun BottomBar(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = if (isKeyboardActive) "CLAVIER" else "ACCORDS",
-                        fontSize = 8.sp,
+                        text = if (isKeyboardActive) "CLAVIER ACTIF" else "ACCORDS / HARMONIE",
+                        fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isKeyboardActive) NeonCyan else Color(0x66FFFFFF)
+                        color = if (isKeyboardActive) NeonCyan else Color(0x77FFFFFF)
                     )
                 }
             }
         }
 
-        // ================= 5. MASTER FADER =================
+        // ================= 5. MASTER FADER (REDUCED TO 75% COMPACT PROPORTION) =================
         Row(
             modifier = Modifier
-                .weight(1f)
+                .weight(0.75f)
                 .height(barHeight)
                 .clip(RoundedCornerShape(10.dp))
                 .background(Color(0xFF0A0E15))
@@ -346,28 +349,30 @@ fun BottomBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("M", color = Color(0xFF8E95A5), fontSize = 9.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.width(4.dp))
+            Spacer(modifier = Modifier.width(3.dp))
             Slider(
                 value = masterTrack.volume,
                 onValueChange = onMasterVolumeChange,
-                modifier = Modifier.weight(0.25f).height(24.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(24.dp),
                 colors = SliderDefaults.colors(
                     thumbColor = NeonCyan,
                     activeTrackColor = NeonCyan,
                     inactiveTrackColor = Color(0xFF1E2238)
                 )
             )
-            Spacer(modifier = Modifier.width(4.dp))
+            Spacer(modifier = Modifier.width(3.dp))
             Box(
                 modifier = Modifier
-                    .size(26.dp)
+                    .size(24.dp)
                     .clip(RoundedCornerShape(4.dp))
                     .background(Color(0xFF161C28))
                     .border(1.dp, Color(0xFF2C3242), RoundedCornerShape(4.dp))
                     .clickable { onMasterFxClick() },
                 contentAlignment = Alignment.Center
             ) {
-                Text("FX", color = NeonCyan, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Text("FX", color = NeonCyan, fontSize = 8.5.sp, fontWeight = FontWeight.Bold)
             }
         }
 

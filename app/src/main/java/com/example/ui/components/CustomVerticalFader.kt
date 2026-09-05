@@ -202,13 +202,13 @@ fun CustomVerticalFader(
                 )
             }
 
-            // Authentic Rail PNG element (same colors & composition, zero modifications)
+            // Authentic Rail PNG element (sleeker, slightly darker metallic rail)
             Image(
                 painter = painterResource(id = R.drawable.ic_fader_track),
                 contentDescription = "Fader Track Rail",
                 contentScale = ContentScale.FillBounds,
                 modifier = Modifier.fillMaxSize(),
-                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color(0xFF444444), androidx.compose.ui.graphics.BlendMode.SrcIn)
+                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color(0xFF262934), androidx.compose.ui.graphics.BlendMode.SrcIn)
             )
         }
 

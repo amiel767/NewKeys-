@@ -217,30 +217,18 @@ void SoundfontEngine::setChannelChorus(int channel, float chorus01) {
 
 void SoundfontEngine::setGain(float gain) {
     if (!mSynth) return;
-    float clampedGain = std::clamp(gain, 0.0f, 1.2f);
-    std::lock_guard<std::mutex> lock(mMutex);
+    float clampedGain = std::clamp(gain, 0.0f, 1.5f);
     fluid_synth_set_gain(mSynth, clampedGain);
 }
 
 void SoundfontEngine::setPolyphony(int polyphony) {
     if (!mSynth) return;
     int clamped = std::clamp(polyphony, 16, 512);
-    std::lock_guard<std::mutex> lock(mMutex);
     fluid_synth_set_polyphony(mSynth, clamped);
 }
 
 void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool accumulate) {
     if (!mSynth) {
-        if (!accumulate) {
-            std::fill(outputBuffer, outputBuffer + (numFrames * 2), 0.0f);
-        }
-        return;
-    }
-
-    // NON-BLOCKING LOCK: If a SoundFont is loading or program is changing,
-    // immediately fill with silence (or keep buffer) instead of blocking the real-time audio thread!
-    std::unique_lock<std::mutex> lock(mMutex, std::try_to_lock);
-    if (!lock.owns_lock()) {
         if (!accumulate) {
             std::fill(outputBuffer, outputBuffer + (numFrames * 2), 0.0f);
         }

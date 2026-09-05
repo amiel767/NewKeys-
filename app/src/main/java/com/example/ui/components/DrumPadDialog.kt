@@ -8,6 +8,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -531,13 +532,18 @@ private fun FluidSquareDrumPadCell(
                 if (pad.isPressed) Color.White else style.primaryColor.copy(alpha = 0.65f),
                 RoundedCornerShape(12.dp)
             )
-            .combinedClickable(
-                onClick = {
-                    onPress()
-                    onRelease()
-                },
-                onLongClick = onLongPress
-            )
+            .pointerInput(pad.id) {
+                detectTapGestures(
+                    onPress = {
+                        onPress()
+                        tryAwaitRelease()
+                        onRelease()
+                    },
+                    onLongPress = {
+                        onLongPress()
+                    }
+                )
+            }
             .padding(4.dp),
         contentAlignment = Alignment.Center
     ) {

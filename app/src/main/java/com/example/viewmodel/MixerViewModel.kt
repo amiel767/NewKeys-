@@ -919,19 +919,32 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setTrackVolume(trackId: Int, volume: Float) {
         val clampedVol = volume.coerceIn(0f, 1f)
-        _uiState.update { state ->
-            val newState = if (trackId == 0) {
-                audioEngine.masterVolume = clampedVol
-                NativeAudioBridge.safeSetMasterVolume(clampedVol)
+        if (trackId == 0) {
+            audioEngine.masterVolume = clampedVol
+            NativeAudioBridge.safeSetMasterVolume(clampedVol)
+            _uiState.update { state ->
                 state.copy(masterTrack = state.masterTrack.copy(volume = clampedVol))
-            } else {
+            }
+        } else if (trackId in 1..8) {
+            val ch = trackId - 1
+            val currentState = _uiState.value
+            val targetTrack = currentState.tracks.getOrNull(ch)
+            val anySolo = currentState.tracks.any { it.isSolo }
+            val effectiveVol = when {
+                targetTrack == null || !targetTrack.isEnabled -> 0f
+                anySolo && !targetTrack.isSolo -> 0f
+                targetTrack.isMuted -> 0f
+                else -> clampedVol
+            }
+            audioEngine.setChannelVolume(ch, effectiveVol)
+            NativeAudioBridge.safeSetTrackVolume(ch, effectiveVol)
+
+            _uiState.update { state ->
                 val updated = state.tracks.map { track ->
                     if (track.id == trackId) track.copy(volume = clampedVol) else track
                 }
                 state.copy(tracks = updated)
             }
-            applyTrackVolumes(newState)
-            newState
         }
         persistCurrentStateDebounced()
     }
