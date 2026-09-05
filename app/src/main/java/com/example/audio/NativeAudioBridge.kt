@@ -66,6 +66,13 @@ object NativeAudioBridge {
     external fun setPolyphony(engineIndex: Int, polyphony: Int)
     external fun setBufferSize(bufferSize: Int)
     external fun setMasterEq(lowGainDb: Float, midGainDb: Float, highGainDb: Float)
+    external fun setSoundGoodizer(enabled: Boolean, mode: Int, amount: Float)
+    external fun setMasterReverb(enabled: Boolean, size: Float, decay: Float, damp: Float, mix: Float)
+    external fun setMasterDelay(enabled: Boolean, timeSec: Float, feedback: Float, mix: Float, pingPong: Boolean)
+    external fun setSpatialWidener(amount: Float)
+    external fun setMasterPunch(amount: Float)
+    external fun setChannelReverb(engineIndex: Int, channel: Int, reverb: Float)
+    external fun setChannelChorus(engineIndex: Int, channel: Int, chorus: Float)
 
     // Safe wrappers to avoid crashes if native library isn't compiled or loaded
     fun safeStartEngine(driverType: Int = 0): Boolean {
@@ -318,6 +325,76 @@ object NativeAudioBridge {
                 setMasterEq(lowGainDb, midGainDb, highGainDb)
             } catch (e: Throwable) {
                 Log.e("NativeAudioBridge", "Error invoking setMasterEq: ${e.message}")
+            }
+        }
+    }
+
+    fun safeSetSoundGoodizer(enabled: Boolean, mode: Int, amount: Float) {
+        if (isLibraryLoaded) {
+            try {
+                setSoundGoodizer(enabled, mode, amount)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking setSoundGoodizer: ${e.message}")
+            }
+        }
+    }
+
+    fun safeSetMasterReverb(enabled: Boolean, size: Float, decay: Float, damp: Float, mix: Float) {
+        if (isLibraryLoaded) {
+            try {
+                setMasterReverb(enabled, size, decay, damp, mix)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking setMasterReverb: ${e.message}")
+            }
+        }
+    }
+
+    fun safeSetMasterDelay(enabled: Boolean, timeSec: Float, feedback: Float, mix: Float, pingPong: Boolean = false) {
+        if (isLibraryLoaded) {
+            try {
+                setMasterDelay(enabled, timeSec, feedback, mix, pingPong)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking setMasterDelay: ${e.message}")
+            }
+        }
+    }
+
+    fun safeSetSpatialWidener(amount: Float) {
+        if (isLibraryLoaded) {
+            try {
+                setSpatialWidener(amount)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking setSpatialWidener: ${e.message}")
+            }
+        }
+    }
+
+    fun safeSetMasterPunch(amount: Float) {
+        if (isLibraryLoaded) {
+            try {
+                setMasterPunch(amount)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking setMasterPunch: ${e.message}")
+            }
+        }
+    }
+
+    fun safeSetChannelReverb(channel: Int, reverb: Float, engineIndex: Int = ENGINE_FADER) {
+        if (isLibraryLoaded) {
+            try {
+                setChannelReverb(engineIndex, channel, reverb)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking setChannelReverb: ${e.message}")
+            }
+        }
+    }
+
+    fun safeSetChannelChorus(channel: Int, chorus: Float, engineIndex: Int = ENGINE_FADER) {
+        if (isLibraryLoaded) {
+            try {
+                setChannelChorus(engineIndex, channel, chorus)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking setChannelChorus: ${e.message}")
             }
         }
     }

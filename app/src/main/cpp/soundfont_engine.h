@@ -76,6 +76,8 @@ public:
     void setChannelVolume(int channel, float volume01);
     void setChannelPan(int channel, float pan);
     void setChannelTransposeSemitones(int channel, int semitones);
+    void setChannelReverb(int channel, float reverb01);
+    void setChannelChorus(int channel, float chorus01);
     void setGain(float gain);
     void setPolyphony(int polyphony);
 

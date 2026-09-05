@@ -34,19 +34,47 @@ data class StorageItem(
  */
 class FileManager(private val context: Context) {
 
-    // Resolves primary LiveKeys directory with graceful fallbacks
+    // Resolves primary LiveKeys directory with graceful fallbacks across external and internal storage
     val baseDir: File by lazy {
-        val externalStorage = Environment.getExternalStorageDirectory()
-        val primaryDir = File(externalStorage, "LiveKeys")
+        val externalStorage = try {
+            Environment.getExternalStorageDirectory()
+        } catch (e: Exception) {
+            null
+        }
+        val primaryDir = if (externalStorage != null) File(externalStorage, "LiveKeys") else null
         
+        var selectedDir: File? = null
         try {
-            if (!primaryDir.exists()) {
-                primaryDir.mkdirs()
+            if (primaryDir != null && (primaryDir.exists() || primaryDir.mkdirs())) {
+                selectedDir = primaryDir
             }
         } catch (e: Exception) {
-            writeLog("FileManager", "Error creating primary LiveKeys directory", e)
+            // Ignore security exception and fallback to app storage
         }
-        primaryDir
+
+        if (selectedDir == null) {
+            try {
+                val appExternal = context.getExternalFilesDir(null)
+                if (appExternal != null) {
+                    val appExtLiveKeys = File(appExternal, "LiveKeys")
+                    if (appExtLiveKeys.exists() || appExtLiveKeys.mkdirs()) {
+                        selectedDir = appExtLiveKeys
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
+        if (selectedDir == null) {
+            val internalLiveKeys = File(context.filesDir, "LiveKeys")
+            try {
+                if (!internalLiveKeys.exists()) {
+                    internalLiveKeys.mkdirs()
+                }
+            } catch (_: Exception) {}
+            selectedDir = internalLiveKeys
+        }
+
+        selectedDir
     }
 
     val soundfontsDir: File get() = File(baseDir, "SoundFonts")

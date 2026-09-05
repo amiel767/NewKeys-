@@ -34,7 +34,7 @@ class ExampleRobolectricTest {
     assertEquals(0.9f, vm.uiState.value.tracks.first { it.id == 1 }.volume, 0.001f)
 
     // Toggle mute
-    vm.onTrackMuteSoloClick(1)
+    vm.onTrackMuteClick(1)
     assertTrue(vm.uiState.value.tracks.first { it.id == 1 }.isMuted)
   }
 

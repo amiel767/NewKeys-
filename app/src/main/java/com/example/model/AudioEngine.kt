@@ -62,11 +62,60 @@ class AudioEngine(private val context: Context) {
 
     // Master DSP Parameters
     var masterVolume: Float = 0.80f
+        set(value) {
+            field = value
+            NativeAudioBridge.safeSetMasterVolume(value)
+        }
     var pitchBendFactor: Float = 1.0f
     var soundGoodizerMode: String = "A"
+        set(value) {
+            field = value
+            val modeInt = when (value) {
+                "A" -> 0
+                "B" -> 1
+                "C" -> 2
+                "D" -> 3
+                else -> 0
+            }
+            NativeAudioBridge.safeSetSoundGoodizer(isSoundGoodizerEnabled, modeInt, soundGoodizerAmount)
+        }
+    var isSoundGoodizerEnabled: Boolean = false
+        set(value) {
+            field = value
+            val modeInt = when (soundGoodizerMode) {
+                "A" -> 0
+                "B" -> 1
+                "C" -> 2
+                "D" -> 3
+                else -> 0
+            }
+            NativeAudioBridge.safeSetSoundGoodizer(value, modeInt, soundGoodizerAmount)
+        }
     var soundGoodizerAmount: Float = 0.42f
+        set(value) {
+            field = value
+            val modeInt = when (soundGoodizerMode) {
+                "A" -> 0
+                "B" -> 1
+                "C" -> 2
+                "D" -> 3
+                else -> 0
+            }
+            NativeAudioBridge.safeSetSoundGoodizer(isSoundGoodizerEnabled, modeInt, value)
+        }
     var spatialWidener: Float = 0.35f
+        set(value) {
+            field = value
+            NativeAudioBridge.safeSetSpatialWidener(value)
+        }
     var masterPunch: Float = 0.50f
+        set(value) {
+            field = value
+            NativeAudioBridge.safeSetMasterPunch(value)
+        }
+
+    var globalVelocityMin: Float = 0.10f
+    var globalVelocityMax: Float = 1.0f
 
     // External MIDI Keyboard Octave & Transpose
     @Volatile var globalOctaveShift: Int = 0
@@ -286,7 +335,23 @@ class AudioEngine(private val context: Context) {
 
     fun setChannelReverb(channel: Int, reverb: Float) {
         val ch = channel.coerceIn(0, 11)
-        channelParams[ch].reverb = reverb.coerceIn(0f, 1f)
+        val clamped = reverb.coerceIn(0f, 1f)
+        channelParams[ch].reverb = clamped
+        if (ch in 0..7) {
+            NativeAudioBridge.safeSetChannelReverb(ch, clamped, NativeAudioBridge.ENGINE_FADER)
+        } else if (ch == 8) {
+            NativeAudioBridge.safeSetChannelReverb(0, clamped, NativeAudioBridge.ENGINE_DRUM)
+        } else if (ch == 9) {
+            NativeAudioBridge.safeSetChannelReverb(0, clamped, NativeAudioBridge.ENGINE_PAD)
+        }
+    }
+
+    fun setMasterReverb(enabled: Boolean, size: Float, decay: Float, damp: Float, mix: Float) {
+        NativeAudioBridge.safeSetMasterReverb(enabled, size, decay, damp, mix)
+    }
+
+    fun setMasterDelay(enabled: Boolean, timeSec: Float, feedback: Float, mix: Float, pingPong: Boolean = false) {
+        NativeAudioBridge.safeSetMasterDelay(enabled, timeSec, feedback, mix, pingPong)
     }
 
     fun playDrumPadStrike(padIndex: Int, velocity: Float = 0.90f) {
@@ -410,7 +475,8 @@ class AudioEngine(private val context: Context) {
     fun noteOn(noteName: String, velocity: Float = 0.85f, channel: Int = activeTargetChannel) {
         val baseMidi = noteNameToMidi(noteName)
         val midiNote = (baseMidi + globalOctaveShift * 12).coerceIn(0, 127)
-        val velInt = (velocity * 127f).toInt().coerceIn(1, 127)
+        val scaledVel = globalVelocityMin + velocity.coerceIn(0f, 1f) * (globalVelocityMax - globalVelocityMin)
+        val velInt = (scaledVel * 127f).toInt().coerceIn(1, 127)
         if (channel >= 8) {
             NativeAudioBridge.safeNoteOn(channel.coerceIn(0, 15), midiNote, velInt)
         } else {

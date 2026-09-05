@@ -188,6 +188,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         // Start Native FluidSynth engine if available
         NativeAudioBridge.safeStartEngine()
 
+        // Apply initial buffer size and polyphony to native engine
+        audioEngine.setBufferSize(_uiState.value.audioBufferSize)
+        audioEngine.setPolyphony(_uiState.value.polyphony)
+
         // Sync initial track volumes and pans to NativeAudioBridge (channels 0 to 7)
         _uiState.value.tracks.forEachIndexed { index, track ->
             NativeAudioBridge.safeSetTrackVolume(index, track.volume)
@@ -1808,7 +1812,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setGlobalVelocityRange(min: Float, max: Float) {
-        _uiState.update { it.copy(globalVelocityMin = min.coerceIn(0f, 1f), globalVelocityMax = max.coerceIn(0f, 1f)) }
+        val safeMin = min.coerceIn(0f, 1f)
+        val safeMax = max.coerceIn(0f, 1f)
+        _uiState.update { it.copy(globalVelocityMin = safeMin, globalVelocityMax = safeMax) }
+        audioEngine.globalVelocityMin = safeMin
+        audioEngine.globalVelocityMax = safeMax
     }
 
     fun setSoundGoodizer(v: Float) {
@@ -1858,17 +1866,40 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             val updatedMap = state.fxParameters.toMutableMap()
             updatedMap[trackId] = newFx
 
-            // If trackId == 0 (Master), update native master EQ 3-band biquad filters in real time
+            // If trackId == 0 (Master), update native master EQ, Reverb, Delay, SoundGoodizer
             if (trackId == 0) {
                 val lowDb = (newFx.eqLow - 0.5f) * 24.0f
                 val midDb = (newFx.eqMid - 0.5f) * 24.0f
                 val highDb = (newFx.eqHigh - 0.5f) * 24.0f
                 audioEngine.setMasterEq(lowDb, midDb, highDb)
+                audioEngine.setMasterReverb(
+                    enabled = newFx.isReverbEnabled,
+                    size = newFx.reverbSize,
+                    decay = newFx.reverbDecay,
+                    damp = newFx.reverbDamp,
+                    mix = newFx.reverbMix
+                )
+                audioEngine.setMasterDelay(
+                    enabled = newFx.delayMix > 0.005f,
+                    timeSec = 0.05f + newFx.delayTime * 0.95f,
+                    feedback = newFx.delayFeedback,
+                    mix = newFx.delayMix,
+                    pingPong = newFx.delayPingPong > 0.5f
+                )
+                val modeStr = when (newFx.sgMode) {
+                    0 -> "A"
+                    1 -> "B"
+                    2 -> "C"
+                    3 -> "D"
+                    else -> "A"
+                }
+                audioEngine.soundGoodizerMode = modeStr
+                audioEngine.isSoundGoodizerEnabled = newFx.isSgEnabled
+                audioEngine.soundGoodizerAmount = newFx.sgAmount
             } else if (trackId in 1..8) {
                 val channel = trackId - 1
                 audioEngine.setChannelReverb(channel, if (newFx.isReverbEnabled) newFx.reverbMix else 0f)
             }
-
             state.copy(fxParameters = updatedMap)
         }
     }
@@ -1888,7 +1919,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             "Studio Room" -> Quad(0.25f, 0.30f, 0.20f, 0.50f)
             else -> Quad(0.24f, 0.60f, 0.45f, 0.30f)
         }
-
         _uiState.update { state ->
             val currentFx = state.fxParameters[trackId] ?: FxParameters()
             val isCurrentPreset = if (trackId == 0) {
@@ -1896,10 +1926,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 state.tracks.find { it.id == trackId }?.reverbPreset == preset
             }
-
             val nextPreset = if (isCurrentPreset) "Custom" else preset
             val updatedFxMap = state.fxParameters.toMutableMap()
-
             if (!isCurrentPreset) {
                 updatedFxMap[trackId] = currentFx.copy(
                     reverbPreset = nextPreset,
@@ -1911,12 +1939,16 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 updatedFxMap[trackId] = currentFx.copy(reverbPreset = "Custom")
             }
-
             if (trackId in 1..8) {
                 val mix = if (!isCurrentPreset) presetParams.a else currentFx.reverbMix
                 audioEngine.setChannelReverb(trackId - 1, if (currentFx.isReverbEnabled) mix else 0f)
+            } else if (trackId == 0) {
+                val mix = if (!isCurrentPreset) presetParams.a else currentFx.reverbMix
+                val size = if (!isCurrentPreset) presetParams.b else currentFx.reverbSize
+                val decay = if (!isCurrentPreset) presetParams.c else currentFx.reverbDecay
+                val damp = if (!isCurrentPreset) presetParams.d else currentFx.reverbDamp
+                audioEngine.setMasterReverb(currentFx.isReverbEnabled, size, decay, damp, mix)
             }
-
             if (trackId == 0) {
                 state.copy(
                     masterTrack = state.masterTrack.copy(
@@ -1951,6 +1983,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             updatedMap[trackId] = current.copy(isReverbEnabled = newEnabled)
             if (trackId in 1..8) {
                 audioEngine.setChannelReverb(trackId - 1, if (newEnabled) current.reverbMix else 0f)
+            } else if (trackId == 0) {
+                audioEngine.setMasterReverb(newEnabled, current.reverbSize, current.reverbDecay, current.reverbDamp, current.reverbMix)
             }
             state.copy(fxParameters = updatedMap)
         }

@@ -203,6 +203,18 @@ void SoundfontEngine::setChannelTransposeSemitones(int channel, int semitones) {
     }
 }
 
+void SoundfontEngine::setChannelReverb(int channel, float reverb01) {
+    if (!mSynth || channel < 0 || channel >= kMaxChannels) return;
+    int ccVal = static_cast<int>(std::clamp(reverb01, 0.0f, 1.0f) * 127.0f);
+    fluid_synth_cc(mSynth, channel, 91, ccVal); // MIDI CC 91 = Reverb Send
+}
+
+void SoundfontEngine::setChannelChorus(int channel, float chorus01) {
+    if (!mSynth || channel < 0 || channel >= kMaxChannels) return;
+    int ccVal = static_cast<int>(std::clamp(chorus01, 0.0f, 1.0f) * 127.0f);
+    fluid_synth_cc(mSynth, channel, 93, ccVal); // MIDI CC 93 = Chorus Send
+}
+
 void SoundfontEngine::setGain(float gain) {
     if (!mSynth) return;
     float clampedGain = std::clamp(gain, 0.0f, 1.2f);

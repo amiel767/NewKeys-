@@ -21,7 +21,6 @@ bool AudioEngine::start(int driverType) {
 
 bool AudioEngine::openAndStartStream() {
     std::lock_guard<std::mutex> lock(mStreamMutex);
-
     if (mStream) {
         mStream->stop();
         mStream->close();
@@ -31,7 +30,7 @@ bool AudioEngine::openAndStartStream() {
     oboe::AudioStreamBuilder builder;
     builder.setDirection(oboe::Direction::Output)
         ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
-        ->setSharingMode(oboe::SharingMode::Exclusive)
+        ->setSharingMode(oboe::SharingMode::Shared)
         ->setFormat(oboe::AudioFormat::Float)
         ->setChannelCount(oboe::ChannelCount::Stereo)
         ->setSampleRate(48000)
@@ -49,24 +48,35 @@ bool AudioEngine::openAndStartStream() {
 
     oboe::Result result = builder.openStream(mStream);
     if (result != oboe::Result::OK) {
-        LOGW("Failed to open preferred audio stream (%s). Retrying with Unspecified API...", oboe::convertToText(result));
-        builder.setAudioApi(oboe::AudioApi::Unspecified);
+        LOGW("Failed to open preferred audio stream (%s). Retrying with OpenSL ES...", oboe::convertToText(result));
+        builder.setAudioApi(oboe::AudioApi::OpenSLES);
         result = builder.openStream(mStream);
         if (result != oboe::Result::OK) {
-            LOGE("Failed to open audio stream fallback: %s", oboe::convertToText(result));
-            return false;
+            LOGW("Retrying with Unspecified API and None performance mode...");
+            builder.setAudioApi(oboe::AudioApi::Unspecified);
+            builder.setPerformanceMode(oboe::PerformanceMode::None);
+            result = builder.openStream(mStream);
+            if (result != oboe::Result::OK) {
+                LOGE("Failed to open audio stream fallback: %s", oboe::convertToText(result));
+                return false;
+            }
         }
     }
 
     mStream->setBufferSizeInFrames(mStream->getFramesPerBurst() * 2);
-
     int sampleRate = mStream->getSampleRate();
     mSampleRate = sampleRate;
-    LOGI("Audio stream opened: %d Hz, %d frames/burst.",
-         sampleRate, mStream->getFramesPerBurst());
 
-    // Only initialize engines if they are not already initialized.
-    // This preserves all loaded SoundFonts, banks, presets, programs, and volumes across device changes (headphones / USB-C DAC)
+    LOGI("Audio stream opened: %d Hz, %d frames/burst.", 
+        sampleRate, mStream->getFramesPerBurst());
+
+    // Initialize all DSP blocks with active sample rate
+    mMasterDelay.init(sampleRate);
+    mMasterReverb.init(sampleRate);
+    mSoundGoodizer.init(sampleRate);
+    mMasterPunch.init(sampleRate);
+
+    // Initialize FluidSynth engines
     for (int i = 0; i < 3; ++i) {
         if (!mEngines[i].isInitialized()) {
             mEngines[i].init(sampleRate);
@@ -79,7 +89,7 @@ bool AudioEngine::openAndStartStream() {
         return false;
     }
 
-    LOGI("Oboe audio engine running with driver mode: %d", mDriverType);
+    LOGI("Oboe audio engine running with driver mode: %d and realtime DSP active", mDriverType);
     return true;
 }
 
@@ -88,8 +98,8 @@ void AudioEngine::onErrorBeforeClose(oboe::AudioStream *audioStream, oboe::Resul
 }
 
 void AudioEngine::onErrorAfterClose(oboe::AudioStream *audioStream, oboe::Result error) {
-    LOGI("Oboe stream error/disconnected: %s (Audio route/device changed). Automatically reopening stream...",
-         oboe::convertToText(error));
+    LOGI("Oboe stream error/disconnected: %s. Automatically reopening stream...", 
+        oboe::convertToText(error));
     openAndStartStream();
 }
 
@@ -136,6 +146,26 @@ void AudioEngine::setMasterEq(float lowGainDb, float midGainDb, float highGainDb
     mEqHigh.setHighShelf(sr, 6000.0f, highGainDb);
 }
 
+void AudioEngine::setSoundGoodizer(bool enabled, int mode, float amount) {
+    mSoundGoodizer.setParams(enabled, mode, amount);
+}
+
+void AudioEngine::setMasterReverb(bool enabled, float size, float decay, float damp, float mix) {
+    mMasterReverb.setParams(enabled, size, decay, damp, mix);
+}
+
+void AudioEngine::setMasterDelay(bool enabled, float timeSec, float feedback, float mix, bool pingPong) {
+    mMasterDelay.setParams(enabled, timeSec, feedback, mix, pingPong);
+}
+
+void AudioEngine::setSpatialWidener(float amount) {
+    mSpatialWidener.setAmount(amount);
+}
+
+void AudioEngine::setMasterPunch(float amount) {
+    mMasterPunch.setAmount(amount);
+}
+
 oboe::DataCallbackResult AudioEngine::onAudioReady(
     oboe::AudioStream *audioStream,
     void *audioData,
@@ -143,7 +173,7 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
 
     auto *outputBuffer = static_cast<float *>(audioData);
 
-    // 1. Render FaderEngine (mixer channels)
+    // 1. Render FaderEngine (mixer channels 0..7)
     mEngines[0].renderStereo(outputBuffer, numFrames, false);
 
     // 2. Mix PadEngine (Tonic Pad)
@@ -152,7 +182,22 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
     // 3. Mix DrumEngine (Drum Pad)
     mEngines[2].renderStereo(outputBuffer, numFrames, true);
 
-    // 4. Apply Master 3-Band Biquad EQ (Low Shelf, Mid Peaking, High Shelf)
+    // 4. Apply Master Delay
+    mMasterDelay.process(outputBuffer, numFrames);
+
+    // 5. Apply Master Reverb
+    mMasterReverb.process(outputBuffer, numFrames);
+
+    // 6. Apply SoundGoodizer Multiband/Tube DSP
+    mSoundGoodizer.process(outputBuffer, numFrames);
+
+    // 7. Apply Transient Punch
+    mMasterPunch.process(outputBuffer, numFrames);
+
+    // 8. Apply Spatial Stereo Widener
+    mSpatialWidener.process(outputBuffer, numFrames);
+
+    // 9. Apply Master 3-Band Biquad EQ (Low Shelf, Mid Peaking, High Shelf)
     mEqLow.process(outputBuffer, numFrames);
     mEqMid.process(outputBuffer, numFrames);
     mEqHigh.process(outputBuffer, numFrames);
@@ -161,10 +206,8 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
 }
 
 #else
-
 AudioEngine::AudioEngine() = default;
 AudioEngine::~AudioEngine() = default;
 bool AudioEngine::start(int driverType) { return true; }
 void AudioEngine::stop() {}
-
 #endif

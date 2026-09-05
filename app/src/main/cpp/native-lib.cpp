@@ -222,4 +222,74 @@ Java_com_example_audio_NativeAudioBridge_setMasterEq(
     gAudioEngine.setMasterEq(lowGainDb, midGainDb, highGainDb);
 }
 
+JNIEXPORT void JNICALL
+Java_com_example_audio_NativeAudioBridge_setSoundGoodizer(
+        JNIEnv *env,
+        jobject /* this */,
+        jboolean enabled,
+        jint mode,
+        jfloat amount) {
+    gAudioEngine.setSoundGoodizer(enabled, mode, amount);
+}
+
+JNIEXPORT void JNICALL
+Java_com_example_audio_NativeAudioBridge_setMasterReverb(
+        JNIEnv *env,
+        jobject /* this */,
+        jboolean enabled,
+        jfloat size,
+        jfloat decay,
+        jfloat damp,
+        jfloat mix) {
+    gAudioEngine.setMasterReverb(enabled, size, decay, damp, mix);
+}
+
+JNIEXPORT void JNICALL
+Java_com_example_audio_NativeAudioBridge_setMasterDelay(
+        JNIEnv *env,
+        jobject /* this */,
+        jboolean enabled,
+        jfloat timeSec,
+        jfloat feedback,
+        jfloat mix,
+        jboolean pingPong) {
+    gAudioEngine.setMasterDelay(enabled, timeSec, feedback, mix, pingPong);
+}
+
+JNIEXPORT void JNICALL
+Java_com_example_audio_NativeAudioBridge_setSpatialWidener(
+        JNIEnv *env,
+        jobject /* this */,
+        jfloat amount) {
+    gAudioEngine.setSpatialWidener(amount);
+}
+
+JNIEXPORT void JNICALL
+Java_com_example_audio_NativeAudioBridge_setMasterPunch(
+        JNIEnv *env,
+        jobject /* this */,
+        jfloat amount) {
+    gAudioEngine.setMasterPunch(amount);
+}
+
+JNIEXPORT void JNICALL
+Java_com_example_audio_NativeAudioBridge_setChannelReverb(
+        JNIEnv *env,
+        jobject /* this */,
+        jint engineIndex,
+        jint channel,
+        jfloat reverb) {
+    gAudioEngine.getEngine(engineIndex).setChannelReverb(channel, reverb);
+}
+
+JNIEXPORT void JNICALL
+Java_com_example_audio_NativeAudioBridge_setChannelChorus(
+        JNIEnv *env,
+        jobject /* this */,
+        jint engineIndex,
+        jint channel,
+        jfloat chorus) {
+    gAudioEngine.getEngine(engineIndex).setChannelChorus(channel, chorus);
+}
+
 } // extern "C"
