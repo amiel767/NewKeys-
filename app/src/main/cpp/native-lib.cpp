@@ -298,4 +298,27 @@ Java_com_example_audio_NativeAudioBridge_setChannelChorus(
     gAudioEngine.getEngine(engineIndex).setChannelChorus(channel, chorus);
 }
 
+JNIEXPORT jint JNICALL
+Java_com_example_audio_NativeAudioBridge_renderNativeAudio(
+        JNIEnv *env,
+        jobject /* this */,
+        jshortArray audioBuffer,
+        jint numFrames) {
+    if (!audioBuffer || numFrames <= 0) return 0;
+    jshort *buf = env->GetShortArrayElements(audioBuffer, nullptr);
+    if (!buf) return 0;
+
+    int rendered = gAudioEngine.renderDirect(reinterpret_cast<int16_t *>(buf), numFrames);
+
+    env->ReleaseShortArrayElements(audioBuffer, buf, 0);
+    return rendered;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_example_audio_NativeAudioBridge_hasActiveSoundFonts(
+        JNIEnv *env,
+        jobject /* this */) {
+    return static_cast<jboolean>(gAudioEngine.hasActiveSoundFonts());
+}
+
 } // extern "C"

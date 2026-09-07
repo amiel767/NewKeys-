@@ -71,7 +71,7 @@ class AudioEngine(private val context: Context) {
     }
 
     fun setHasActiveSoundFont(hasSoundFont: Boolean) {
-        fallbackSynth.isBypassed = hasSoundFont
+        fallbackSynth.isBypassed = false
     }
 
     // Master DSP Parameters
@@ -440,6 +440,8 @@ class AudioEngine(private val context: Context) {
                     sustainedNotesToRelease.remove(effectiveNote)
                     
                     playMidiNote(effectiveNote, data2, targetChannel)
+                    val scaledVel = globalVelocityMin + (data2 / 127f).coerceIn(0f, 1f) * (globalVelocityMax - globalVelocityMin)
+                    fallbackSynth.noteOn(effectiveNote, scaledVel)
 
                     coroutineScope.launch(Dispatchers.Main) {
                         onMidiNoteOnListener?.invoke(midiNumberToNoteName(effectiveNote), data2)
@@ -481,6 +483,7 @@ class AudioEngine(private val context: Context) {
                         for (note in notesToRelease) {
                             if (!activeHeldNotes.contains(note)) {
                                 stopMidiNote(note, targetChannel)
+                                fallbackSynth.noteOff(note)
                                 coroutineScope.launch(Dispatchers.Main) {
                                     onMidiNoteOffListener?.invoke(midiNumberToNoteName(note))
                                 }
@@ -502,6 +505,7 @@ class AudioEngine(private val context: Context) {
             sustainedNotesToRelease.add(note)
         } else {
             stopMidiNote(note, targetChannel)
+            fallbackSynth.noteOff(note)
             coroutineScope.launch(Dispatchers.Main) {
                 onMidiNoteOffListener?.invoke(midiNumberToNoteName(note))
             }

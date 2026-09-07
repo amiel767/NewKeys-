@@ -48,12 +48,14 @@ bool AudioEngine::openAndStartStream() {
 
     oboe::Result result = builder.openStream(mStream);
     if (result != oboe::Result::OK) {
-        LOGW("Failed to open preferred audio stream (%s). Retrying with OpenSL ES...", oboe::convertToText(result));
+        LOGW("Failed to open Float audio stream (%s). Retrying with I16 format...", oboe::convertToText(result));
+        builder.setFormat(oboe::AudioFormat::I16);
         builder.setAudioApi(oboe::AudioApi::OpenSLES);
         result = builder.openStream(mStream);
         if (result != oboe::Result::OK) {
-            LOGW("Retrying with Unspecified API and None performance mode...");
+            LOGW("Retrying with Unspecified API and Unspecified format...");
             builder.setAudioApi(oboe::AudioApi::Unspecified);
+            builder.setFormat(oboe::AudioFormat::Unspecified);
             builder.setPerformanceMode(oboe::PerformanceMode::None);
             result = builder.openStream(mStream);
             if (result != oboe::Result::OK) {
@@ -166,41 +168,150 @@ void AudioEngine::setMasterPunch(float amount) {
     mMasterPunch.setAmount(amount);
 }
 
+bool AudioEngine::hasActiveSoundFonts() const {
+    for (int i = 0; i < 3; ++i) {
+        if (mEngines[i].isInitialized()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int AudioEngine::renderDirect(int16_t *outputBuffer16, int32_t numFrames) {
+    if (!outputBuffer16 || numFrames <= 0) return 0;
+
+    // Ensure sample rate and DSP are initialized
+    int sampleRate = mSampleRate > 0 ? mSampleRate : 48000;
+    for (int i = 0; i < 3; ++i) {
+        if (!mEngines[i].isInitialized()) {
+            mEngines[i].init(sampleRate);
+        }
+    }
+
+    size_t totalSamples = static_cast<size_t>(numFrames * 2);
+    if (mFloatRenderBuffer.size() < totalSamples) {
+        mFloatRenderBuffer.resize(totalSamples, 0.0f);
+    }
+    float *floatBuf = mFloatRenderBuffer.data();
+
+    // 1. Render FaderEngine (mixer channels 0..7)
+    mEngines[0].renderStereo(floatBuf, numFrames, false);
+
+    // 2. Mix PadEngine (Tonic Pad)
+    mEngines[1].renderStereo(floatBuf, numFrames, true);
+
+    // 3. Mix DrumEngine (Drum Pad)
+    mEngines[2].renderStereo(floatBuf, numFrames, true);
+
+    // 4. Apply Master Delay
+    mMasterDelay.process(floatBuf, numFrames);
+
+    // 5. Apply Master Reverb
+    mMasterReverb.process(floatBuf, numFrames);
+
+    // 6. Apply SoundGoodizer Multiband/Tube DSP
+    mSoundGoodizer.process(floatBuf, numFrames);
+
+    // 7. Apply Transient Punch
+    mMasterPunch.process(floatBuf, numFrames);
+
+    // 8. Apply Spatial Stereo Widener
+    mSpatialWidener.process(floatBuf, numFrames);
+
+    // 9. Apply Master 3-Band Biquad EQ
+    mEqLow.process(floatBuf, numFrames);
+    mEqMid.process(floatBuf, numFrames);
+    mEqHigh.process(floatBuf, numFrames);
+
+    // Convert Float to PCM 16-bit
+    for (size_t i = 0; i < totalSamples; ++i) {
+        float s = std::clamp(floatBuf[i], -1.0f, 1.0f);
+        outputBuffer16[i] = static_cast<int16_t>(s * 32767.0f);
+    }
+
+    return numFrames;
+}
+
 oboe::DataCallbackResult AudioEngine::onAudioReady(
     oboe::AudioStream *audioStream,
     void *audioData,
     int32_t numFrames) {
 
-    auto *outputBuffer = static_cast<float *>(audioData);
+    oboe::AudioFormat format = audioStream->getFormat();
+    if (format == oboe::AudioFormat::I16) {
+        auto *outputBuffer16 = static_cast<int16_t *>(audioData);
+        size_t totalSamples = static_cast<size_t>(numFrames * 2);
+        if (mFloatRenderBuffer.size() < totalSamples) {
+            mFloatRenderBuffer.resize(totalSamples, 0.0f);
+        }
+        float *floatBuf = mFloatRenderBuffer.data();
 
-    // 1. Render FaderEngine (mixer channels 0..7)
-    mEngines[0].renderStereo(outputBuffer, numFrames, false);
+        // 1. Render FaderEngine (mixer channels 0..7)
+        mEngines[0].renderStereo(floatBuf, numFrames, false);
 
-    // 2. Mix PadEngine (Tonic Pad)
-    mEngines[1].renderStereo(outputBuffer, numFrames, true);
+        // 2. Mix PadEngine (Tonic Pad)
+        mEngines[1].renderStereo(floatBuf, numFrames, true);
 
-    // 3. Mix DrumEngine (Drum Pad)
-    mEngines[2].renderStereo(outputBuffer, numFrames, true);
+        // 3. Mix DrumEngine (Drum Pad)
+        mEngines[2].renderStereo(floatBuf, numFrames, true);
 
-    // 4. Apply Master Delay
-    mMasterDelay.process(outputBuffer, numFrames);
+        // 4. Apply Master Delay
+        mMasterDelay.process(floatBuf, numFrames);
 
-    // 5. Apply Master Reverb
-    mMasterReverb.process(outputBuffer, numFrames);
+        // 5. Apply Master Reverb
+        mMasterReverb.process(floatBuf, numFrames);
 
-    // 6. Apply SoundGoodizer Multiband/Tube DSP
-    mSoundGoodizer.process(outputBuffer, numFrames);
+        // 6. Apply SoundGoodizer Multiband/Tube DSP
+        mSoundGoodizer.process(floatBuf, numFrames);
 
-    // 7. Apply Transient Punch
-    mMasterPunch.process(outputBuffer, numFrames);
+        // 7. Apply Transient Punch
+        mMasterPunch.process(floatBuf, numFrames);
 
-    // 8. Apply Spatial Stereo Widener
-    mSpatialWidener.process(outputBuffer, numFrames);
+        // 8. Apply Spatial Stereo Widener
+        mSpatialWidener.process(floatBuf, numFrames);
 
-    // 9. Apply Master 3-Band Biquad EQ (Low Shelf, Mid Peaking, High Shelf)
-    mEqLow.process(outputBuffer, numFrames);
-    mEqMid.process(outputBuffer, numFrames);
-    mEqHigh.process(outputBuffer, numFrames);
+        // 9. Apply Master 3-Band Biquad EQ
+        mEqLow.process(floatBuf, numFrames);
+        mEqMid.process(floatBuf, numFrames);
+        mEqHigh.process(floatBuf, numFrames);
+
+        // Convert Float to PCM 16-bit
+        for (size_t i = 0; i < totalSamples; ++i) {
+            float s = std::clamp(floatBuf[i], -1.0f, 1.0f);
+            outputBuffer16[i] = static_cast<int16_t>(s * 32767.0f);
+        }
+    } else {
+        auto *outputBuffer = static_cast<float *>(audioData);
+
+        // 1. Render FaderEngine (mixer channels 0..7)
+        mEngines[0].renderStereo(outputBuffer, numFrames, false);
+
+        // 2. Mix PadEngine (Tonic Pad)
+        mEngines[1].renderStereo(outputBuffer, numFrames, true);
+
+        // 3. Mix DrumEngine (Drum Pad)
+        mEngines[2].renderStereo(outputBuffer, numFrames, true);
+
+        // 4. Apply Master Delay
+        mMasterDelay.process(outputBuffer, numFrames);
+
+        // 5. Apply Master Reverb
+        mMasterReverb.process(outputBuffer, numFrames);
+
+        // 6. Apply SoundGoodizer Multiband/Tube DSP
+        mSoundGoodizer.process(outputBuffer, numFrames);
+
+        // 7. Apply Transient Punch
+        mMasterPunch.process(outputBuffer, numFrames);
+
+        // 8. Apply Spatial Stereo Widener
+        mSpatialWidener.process(outputBuffer, numFrames);
+
+        // 9. Apply Master 3-Band Biquad EQ (Low Shelf, Mid Peaking, High Shelf)
+        mEqLow.process(outputBuffer, numFrames);
+        mEqMid.process(outputBuffer, numFrames);
+        mEqHigh.process(outputBuffer, numFrames);
+    }
 
     return oboe::DataCallbackResult::Continue;
 }

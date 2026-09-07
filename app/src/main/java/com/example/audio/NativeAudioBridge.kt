@@ -73,6 +73,8 @@ object NativeAudioBridge {
     external fun setMasterPunch(amount: Float)
     external fun setChannelReverb(engineIndex: Int, channel: Int, reverb: Float)
     external fun setChannelChorus(engineIndex: Int, channel: Int, chorus: Float)
+    external fun renderNativeAudio(audioBuffer: ShortArray, numFrames: Int): Int
+    external fun hasActiveSoundFonts(): Boolean
 
     // Safe wrappers to avoid crashes if native library isn't compiled or loaded
     fun safeStartEngine(driverType: Int = 0): Boolean {
@@ -401,5 +403,26 @@ object NativeAudioBridge {
                 Log.e("NativeAudioBridge", "Error invoking setChannelChorus: ${e.message}")
             }
         }
+    }
+
+    fun safeRenderNativeAudio(audioBuffer: ShortArray, numFrames: Int): Int {
+        return if (isLibraryLoaded) {
+            try {
+                renderNativeAudio(audioBuffer, numFrames)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking renderNativeAudio: ${e.message}")
+                0
+            }
+        } else 0
+    }
+
+    fun safeHasActiveSoundFonts(): Boolean {
+        return if (isLibraryLoaded) {
+            try {
+                hasActiveSoundFonts()
+            } catch (e: Throwable) {
+                false
+            }
+        } else false
     }
 }

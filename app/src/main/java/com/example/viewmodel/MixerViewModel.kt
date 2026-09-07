@@ -510,29 +510,56 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     // ================= URI IMPORT FUNCTIONS =================
     fun importSoundFontUri(uri: android.net.Uri, targetSlotId: Int? = null) {
+        importSoundFontUris(listOf(uri), targetSlotId)
+    }
+
+    fun importSoundFontUris(uris: List<android.net.Uri>, targetSlotId: Int? = null) {
+        if (uris.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
-            val importedFile = fileManager.importSoundFontFromUri(uri)
-            if (importedFile != null && importedFile.exists()) {
+            val importedFiles = fileManager.importMultipleSoundFonts(uris)
+            if (importedFiles.isNotEmpty()) {
                 refreshStorageFiles()
                 val slotToLoad = targetSlotId ?: _uiState.value.activeSoundfontSlotId
-                loadSoundFontForSlot(slotToLoad, importedFile.absolutePath)
+                importedFiles.firstOrNull()?.let { firstFile ->
+                    loadSoundFontForSlot(slotToLoad, firstFile.absolutePath)
+                }
             }
         }
     }
 
     fun importDrumPadUri(uri: android.net.Uri) {
+        importDrumPadUris(listOf(uri))
+    }
+
+    fun importDrumPadUris(uris: List<android.net.Uri>) {
+        if (uris.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
-            val importedFile = fileManager.importDrumPadFromUri(uri)
-            if (importedFile != null && importedFile.exists()) {
+            val importedFiles = fileManager.importMultipleDrumPads(uris)
+            if (importedFiles.isNotEmpty()) {
                 refreshStorageFiles()
             }
         }
     }
 
     fun importLoopUri(uri: android.net.Uri) {
+        importLoopUris(listOf(uri))
+    }
+
+    fun importLoopUris(uris: List<android.net.Uri>) {
+        if (uris.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
-            val importedFile = fileManager.importLoopFromUri(uri)
-            if (importedFile != null && importedFile.exists()) {
+            val importedFiles = fileManager.importMultipleLoops(uris)
+            if (importedFiles.isNotEmpty()) {
+                refreshStorageFiles()
+            }
+        }
+    }
+
+    fun importMidiUris(uris: List<android.net.Uri>) {
+        if (uris.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val importedFiles = fileManager.importMultipleMidis(uris)
+            if (importedFiles.isNotEmpty()) {
                 refreshStorageFiles()
             }
         }

@@ -502,6 +502,9 @@ public:
         return mEngines[engineIndex];
     }
 
+    bool hasActiveSoundFonts() const;
+    int renderDirect(int16_t *outputBuffer16, int32_t numFrames);
+
     oboe::DataCallbackResult onAudioReady(
         oboe::AudioStream *audioStream,
         void *audioData,
@@ -529,6 +532,7 @@ private:
     MasterPunchDsp mMasterPunch;
 
     int mSampleRate = 48000;
+    std::vector<float> mFloatRenderBuffer;
 };
 #else
 class AudioEngine {

@@ -693,6 +693,50 @@ class FileManager(private val context: Context) {
 
     suspend fun importMidiFromUri(uri: Uri): File? = copyUriToDirectory(uri, midiDir)
 
+    suspend fun importMultipleSoundFonts(uris: List<Uri>): List<File> = withContext(Dispatchers.IO) {
+        val result = mutableListOf<File>()
+        for (uri in uris) {
+            val file = copyUriToDirectory(uri, soundfontsDir)
+            if (file != null && file.exists()) {
+                result.add(file)
+            }
+        }
+        result
+    }
+
+    suspend fun importMultipleDrumPads(uris: List<Uri>): List<File> = withContext(Dispatchers.IO) {
+        val result = mutableListOf<File>()
+        for (uri in uris) {
+            val file = copyUriToDirectory(uri, drumPadDir)
+            if (file != null && file.exists()) {
+                result.add(file)
+            }
+        }
+        result
+    }
+
+    suspend fun importMultipleLoops(uris: List<Uri>): List<File> = withContext(Dispatchers.IO) {
+        val result = mutableListOf<File>()
+        for (uri in uris) {
+            val file = copyUriToDirectory(uri, loopsDir)
+            if (file != null && file.exists()) {
+                result.add(file)
+            }
+        }
+        result
+    }
+
+    suspend fun importMultipleMidis(uris: List<Uri>): List<File> = withContext(Dispatchers.IO) {
+        val result = mutableListOf<File>()
+        for (uri in uris) {
+            val file = copyUriToDirectory(uri, midiDir)
+            if (file != null && file.exists()) {
+                result.add(file)
+            }
+        }
+        result
+    }
+
     private suspend fun copyUriToDirectory(uri: Uri, destDir: File): File? = withContext(Dispatchers.IO) {
         try {
             if (!destDir.exists()) destDir.mkdirs()
