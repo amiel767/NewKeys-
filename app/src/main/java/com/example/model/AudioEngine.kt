@@ -361,7 +361,6 @@ class AudioEngine(private val context: Context) {
     }
 
     fun playDrumPadStrike(padIndex: Int, velocity: Float = 0.90f) {
-        fallbackSynth.playDrumHit(padIndex, velocity)
         val midiDrumNote = when (padIndex) {
             1 -> 36 // Kick
             2 -> 38 // Snare
@@ -440,8 +439,6 @@ class AudioEngine(private val context: Context) {
                     sustainedNotesToRelease.remove(effectiveNote)
                     
                     playMidiNote(effectiveNote, data2, targetChannel)
-                    val scaledVel = globalVelocityMin + (data2 / 127f).coerceIn(0f, 1f) * (globalVelocityMax - globalVelocityMin)
-                    fallbackSynth.noteOn(effectiveNote, scaledVel)
 
                     coroutineScope.launch(Dispatchers.Main) {
                         onMidiNoteOnListener?.invoke(midiNumberToNoteName(effectiveNote), data2)
@@ -483,7 +480,6 @@ class AudioEngine(private val context: Context) {
                         for (note in notesToRelease) {
                             if (!activeHeldNotes.contains(note)) {
                                 stopMidiNote(note, targetChannel)
-                                fallbackSynth.noteOff(note)
                                 coroutineScope.launch(Dispatchers.Main) {
                                     onMidiNoteOffListener?.invoke(midiNumberToNoteName(note))
                                 }
@@ -505,7 +501,6 @@ class AudioEngine(private val context: Context) {
             sustainedNotesToRelease.add(note)
         } else {
             stopMidiNote(note, targetChannel)
-            fallbackSynth.noteOff(note)
             coroutineScope.launch(Dispatchers.Main) {
                 onMidiNoteOffListener?.invoke(midiNumberToNoteName(note))
             }
@@ -519,14 +514,12 @@ class AudioEngine(private val context: Context) {
         val scaledVel = globalVelocityMin + velocity.coerceIn(0f, 1f) * (globalVelocityMax - globalVelocityMin)
         val velInt = (scaledVel * 127f).toInt().coerceIn(1, 127)
         playMidiNote(midiNote, velInt, channel)
-        fallbackSynth.noteOn(midiNote, scaledVel)
     }
 
     fun noteOff(noteName: String, channel: Int = activeTargetChannel) {
         val baseMidi = noteNameToMidi(noteName)
         val midiNote = (baseMidi + globalOctaveShift * 12).coerceIn(0, 127)
         stopMidiNote(midiNote, channel)
-        fallbackSynth.noteOff(midiNote)
     }
 
     fun setPitchBend(bend: Float, channel: Int = activeTargetChannel) {

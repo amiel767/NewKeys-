@@ -180,6 +180,13 @@ bool AudioEngine::hasActiveSoundFonts() const {
 int AudioEngine::renderDirect(int16_t *outputBuffer16, int32_t numFrames) {
     if (!outputBuffer16 || numFrames <= 0) return 0;
 
+    // If Oboe is actively running, let Oboe handle audio to avoid dual-stream conflict/stutter
+    if (mOboeActive.load(std::memory_order_relaxed)) {
+        return 0;
+    }
+
+    std::lock_guard<std::mutex> lock(mRenderMutex);
+
     // Ensure sample rate and DSP are initialized
     int sampleRate = mSampleRate > 0 ? mSampleRate : 48000;
     for (int i = 0; i < 3; ++i) {
@@ -236,6 +243,9 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
     oboe::AudioStream *audioStream,
     void *audioData,
     int32_t numFrames) {
+
+    mOboeActive.store(true, std::memory_order_relaxed);
+    std::lock_guard<std::mutex> lock(mRenderMutex);
 
     oboe::AudioFormat format = audioStream->getFormat();
     if (format == oboe::AudioFormat::I16) {

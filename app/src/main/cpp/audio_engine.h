@@ -504,6 +504,7 @@ public:
 
     bool hasActiveSoundFonts() const;
     int renderDirect(int16_t *outputBuffer16, int32_t numFrames);
+    bool isOboeActive() const { return mOboeActive.load(std::memory_order_relaxed); }
 
     oboe::DataCallbackResult onAudioReady(
         oboe::AudioStream *audioStream,
@@ -518,6 +519,8 @@ private:
 
     std::shared_ptr<oboe::AudioStream> mStream;
     std::mutex mStreamMutex;
+    std::mutex mRenderMutex;
+    std::atomic<bool> mOboeActive{false};
     int mDriverType = 0;
     std::array<SoundfontEngine, 3> mEngines; // 0 = Fader, 1 = Pad, 2 = Drum
     
