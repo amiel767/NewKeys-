@@ -456,6 +456,7 @@ fun MixerScreen(
                     editingLoopFile = uiState.editingLoopFile,
                     onOpenEditFile = { viewModel.openLoopEditor(it) },
                     onCloseEditFile = { viewModel.closeLoopEditor() },
+                    onToggleEditorPlay = { viewModel.toggleLoopEditorPlayback() },
                     editorBeats = uiState.loopEditorBeats,
                     onUpdateEditorBeats = { viewModel.updateLoopEditorBeats(it) },
                     editorStartMs = uiState.loopEditorStartMs,

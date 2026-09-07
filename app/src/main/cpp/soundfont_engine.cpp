@@ -29,12 +29,13 @@ bool SoundfontEngine::init(int sampleRate) {
         return false;
     }
 
-    fluid_synth_set_gain(mSynth, 0.90f);
+    fluid_synth_set_gain(mSynth, 1.0f);
 
     for (int ch = 0; ch < kMaxChannels; ++ch) {
         mTransposeSemitones[ch].store(0, std::memory_order_relaxed);
-        fluid_synth_cc(mSynth, ch, 7, 100);
-        fluid_synth_cc(mSynth, ch, 10, 64);
+        fluid_synth_cc(mSynth, ch, 7, 100);  // Volume
+        fluid_synth_cc(mSynth, ch, 10, 64);  // Pan Center
+        fluid_synth_cc(mSynth, ch, 11, 127); // Expression Full
     }
 
     LOGI("SoundfontEngine instance initialized (sample rate: %d)", sampleRate);
@@ -65,11 +66,12 @@ int SoundfontEngine::loadSoundFont(const std::string &absolutePath) {
             fluid_settings_setint(mSettings, "synth.midi-channels", kMaxChannels);
             mSynth = new_fluid_synth(mSettings);
             if (mSynth) {
-                fluid_synth_set_gain(mSynth, 0.90f);
+                fluid_synth_set_gain(mSynth, 1.0f);
                 for (int ch = 0; ch < kMaxChannels; ++ch) {
                     mTransposeSemitones[ch].store(0, std::memory_order_relaxed);
                     fluid_synth_cc(mSynth, ch, 7, 100);
                     fluid_synth_cc(mSynth, ch, 10, 64);
+                    fluid_synth_cc(mSynth, ch, 11, 127);
                 }
             }
         }

@@ -10,6 +10,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -73,6 +74,7 @@ fun LoopsDialog(
     editingLoopFile: LoopFile?,
     onOpenEditFile: (LoopFile) -> Unit,
     onCloseEditFile: () -> Unit,
+    onToggleEditorPlay: () -> Unit = {},
     editorBeats: Int,
     onUpdateEditorBeats: (Int) -> Unit,
     editorStartMs: Int,
@@ -149,6 +151,8 @@ fun LoopsDialog(
                             onSaveCopy = {
                                 onSaveCopyEditChanges(editorBeats, editorStartMs, editorEndMs, editorStartStep, editorEndStep)
                             },
+                            isLoopPlaying = isLoopPlaying,
+                            onTogglePlay = onToggleEditorPlay,
                             onBack = onCloseEditFile
                         )
                     } else {
@@ -347,13 +351,16 @@ private fun LoopListContent(
                     }
                 }
 
-                // Bouton + (Importer) en plus compact (28dp)
-                IconButton(
-                    onClick = onImportLoop,
+                // Bouton + (Importer) en carré bordure néon petit et adapté
+                Box(
                     modifier = Modifier
+                        .padding(horizontal = 2.dp)
                         .size(28.dp)
-                        .clip(CircleShape)
-                        .background(Color(0x2622D3EE))
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0x2222D3EE))
+                        .border(1.dp, NeonCyan.copy(alpha = 0.8f), RoundedCornerShape(8.dp))
+                        .clickable(onClick = onImportLoop),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
@@ -363,13 +370,16 @@ private fun LoopListContent(
                     )
                 }
 
-                // Bouton x (Fermer) en plus compact (28dp)
-                IconButton(
-                    onClick = onClose,
+                // Bouton x (Fermer) en carré bordure néon petit et adapté
+                Box(
                     modifier = Modifier
+                        .padding(horizontal = 2.dp)
                         .size(28.dp)
-                        .clip(CircleShape)
-                        .background(Color(0x20FFFFFF))
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0x22FFFFFF))
+                        .border(1.dp, Color(0x66FFFFFF), RoundedCornerShape(8.dp))
+                        .clickable(onClick = onClose),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
@@ -562,35 +572,41 @@ private fun LoopListContent(
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
-                                            // Edit Button (Pen)
-                                            IconButton(
-                                                onClick = { onOpenEdit(file) },
+                                            // Edit Button (Pen) en carré bordure néon petit et adapté
+                                            Box(
                                                 modifier = Modifier
-                                                    .size(32.dp)
-                                                    .clip(CircleShape)
-                                                    .background(Color(0x2822D3EE))
+                                                    .padding(horizontal = 2.dp)
+                                                    .size(28.dp)
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(Color(0x2222D3EE))
+                                                    .border(1.dp, NeonCyan.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
+                                                    .clickable { onOpenEdit(file) },
+                                                contentAlignment = Alignment.Center
                                             ) {
                                                 Icon(
                                                     imageVector = Icons.Default.Edit,
                                                     contentDescription = "Éditer",
-                                                    tint = NeonCyan,
-                                                    modifier = Modifier.size(17.dp)
+                                                    tint = NeonCyanLight,
+                                                    modifier = Modifier.size(15.dp)
                                                 )
                                             }
 
-                                            // Delete Button (Trash)
-                                            IconButton(
-                                                onClick = { onConfirmDelete(file) },
+                                            // Delete Button (Trash) en carré bordure néon petit et adapté
+                                            Box(
                                                 modifier = Modifier
-                                                    .size(32.dp)
-                                                    .clip(CircleShape)
-                                                    .background(Color(0x28FB4570))
+                                                    .padding(horizontal = 2.dp)
+                                                    .size(28.dp)
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(Color(0x22FB4570))
+                                                    .border(1.dp, MuteRed.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
+                                                    .clickable { onConfirmDelete(file) },
+                                                contentAlignment = Alignment.Center
                                             ) {
                                                 Icon(
                                                     imageVector = Icons.Default.Delete,
                                                     contentDescription = "Supprimer",
                                                     tint = MuteRed,
-                                                    modifier = Modifier.size(17.dp)
+                                                    modifier = Modifier.size(15.dp)
                                                 )
                                             }
                                         }
@@ -625,23 +641,56 @@ private fun LoopEditorContent(
     onUpdateSteps: (Int, Int) -> Unit,
     onOverwrite: () -> Unit,
     onSaveCopy: () -> Unit,
+    isLoopPlaying: Boolean = false,
+    onTogglePlay: () -> Unit = {},
     onBack: () -> Unit
 ) {
     val totalSteps = (beats * 4).coerceIn(8, 256)
-    val currentStartStep = startStep.coerceIn(1, totalSteps - 1)
-    val currentEndStep = endStep.coerceIn(currentStartStep + 1, totalSteps)
+    val safeBpm = if (file.bpm > 20) file.bpm else 120
+    val totalDurationMs = remember(beats, file.bpm) {
+        ((beats * 60_000L) / safeBpm).toInt().coerceAtLeast(400)
+    }
 
-    var localStartFrac by remember(file.name, currentStartStep, totalSteps) {
-        mutableFloatStateOf((currentStartStep - 1).toFloat() / totalSteps.toFloat())
+    var localStartFrac by remember(file.name) {
+        val frac = if (startMs > 0 && totalDurationMs > 0) {
+            (startMs.toFloat() / totalDurationMs.toFloat()).coerceIn(0f, 0.95f)
+        } else {
+            0f
+        }
+        mutableFloatStateOf(frac)
     }
-    var localEndFrac by remember(file.name, currentEndStep, totalSteps) {
-        mutableFloatStateOf(currentEndStep.toFloat() / totalSteps.toFloat())
+
+    var localEndFrac by remember(file.name) {
+        val frac = if (endMs > 0 && totalDurationMs > 0 && endMs > startMs) {
+            (endMs.toFloat() / totalDurationMs.toFloat()).coerceIn(0.05f, 1f)
+        } else {
+            1f
+        }
+        mutableFloatStateOf(frac)
     }
+
+    // Helper to commit trims smoothly in real-time
+    val updateTrimsSmooth = { sFrac: Float, eFrac: Float ->
+        val clampedS = sFrac.coerceIn(0f, 0.98f)
+        val clampedE = eFrac.coerceIn(clampedS + 0.015f, 1.0f)
+        localStartFrac = clampedS
+        localEndFrac = clampedE
+        val newStartMs = (clampedS * totalDurationMs).toInt()
+        val newEndMs = (clampedE * totalDurationMs).toInt()
+        val nominalStartStep = (1 + (clampedS * totalSteps)).toInt().coerceIn(1, totalSteps - 1)
+        val nominalEndStep = (clampedE * totalSteps).toInt().coerceIn(nominalStartStep + 1, totalSteps)
+        onUpdateTrims(newStartMs, newEndMs)
+        onUpdateSteps(nominalStartStep, nominalEndStep)
+    }
+
+    val currentStartSec = (localStartFrac * totalDurationMs) / 1000f
+    val currentEndSec = (localEndFrac * totalDurationMs) / 1000f
+    val currentLoopDurationSec = (currentEndSec - currentStartSec).coerceAtLeast(0.01f)
 
     Column(
         modifier = Modifier.fillMaxSize()
     ) {
-        // Editor Top Bar with Compact Back, Overwrite, Copy, and Close buttons
+        // ================= DJ EDITOR TOP BAR =================
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -652,30 +701,35 @@ private fun LoopEditorContent(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.weight(1f, fill = false)
             ) {
-                IconButton(
-                    onClick = onBack,
+                // Bouton retour en carré bordure néon petit et adapté
+                Box(
                     modifier = Modifier
+                        .padding(end = 2.dp)
                         .size(28.dp)
-                        .clip(CircleShape)
-                        .background(Color(0x20FFFFFF))
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0x22FFFFFF))
+                        .border(1.dp, Color(0x66FFFFFF), RoundedCornerShape(8.dp))
+                        .clickable(onClick = onBack),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Retour",
                         tint = Color.White,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(15.dp)
                     )
                 }
+
                 Column {
                     Text(
-                        text = "Édition de Boucle",
-                        fontSize = 15.sp,
+                        text = "Édition de Boucle DJ",
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
                     Text(
-                        text = file.name,
-                        fontSize = 10.5.sp,
+                        text = "${file.name} · $safeBpm BPM",
+                        fontSize = 10.sp,
                         color = NeonCyanLight,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -683,17 +737,48 @@ private fun LoopEditorContent(
                 }
             }
 
-            // Action Buttons: [ Écraser ] [ Copie ] [ x compact ]
+            // Right Actions: [ Play/Pause ] [ Écraser ] [ Copie ] [ x carré néon ]
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // Button Écraser le fichier
+                // Bouton Play / Pause DJ
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 2.dp)
+                        .height(28.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (isLoopPlaying) Color(0x3322D3EE) else Color(0x22FFFFFF))
+                        .border(1.dp, if (isLoopPlaying) NeonCyan else Color(0x66FFFFFF), RoundedCornerShape(8.dp))
+                        .clickable(onClick = onTogglePlay)
+                        .padding(horizontal = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isLoopPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (isLoopPlaying) "Pause" else "Play",
+                            tint = if (isLoopPlaying) NeonCyanLight else Color.White,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Text(
+                            text = if (isLoopPlaying) "Pause" else "Play",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isLoopPlaying) NeonCyanLight else Color.White
+                        )
+                    }
+                }
+
+                // Bouton Écraser le fichier
                 Button(
                     onClick = onOverwrite,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9333EA)),
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                     modifier = Modifier.height(28.dp)
                 ) {
                     Icon(
@@ -702,45 +787,48 @@ private fun LoopEditorContent(
                         tint = Color.White,
                         modifier = Modifier.size(13.dp)
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
                     Text(
                         text = "Écraser",
-                        fontSize = 11.sp,
+                        fontSize = 10.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
                 }
 
-                // Button Enregistrer une copie
+                // Bouton Enregistrer une copie
                 Button(
                     onClick = onSaveCopy,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                     modifier = Modifier.height(28.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.ContentCopy,
-                        contentDescription = "Enregistrer une copie",
+                        contentDescription = "Copie",
                         tint = Color.White,
                         modifier = Modifier.size(13.dp)
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
                     Text(
                         text = "Copie",
-                        fontSize = 11.sp,
+                        fontSize = 10.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
                 }
 
-                // Compact Close Button (28dp)
-                IconButton(
-                    onClick = onBack,
+                // Bouton X en carré bordure néon petit et adapté
+                Box(
                     modifier = Modifier
+                        .padding(start = 2.dp)
                         .size(28.dp)
-                        .clip(CircleShape)
-                        .background(Color(0x20FFFFFF))
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0x22FFFFFF))
+                        .border(1.dp, Color(0x66FFFFFF), RoundedCornerShape(8.dp))
+                        .clickable(onClick = onBack),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
@@ -752,273 +840,300 @@ private fun LoopEditorContent(
             }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
-        // Time / Beat Stepper: 2 to 64 with odd numbers
+        // ================= TEMPO & ROLLS DJ BAR =================
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(12.dp))
                 .background(Color(0x14FFFFFF))
-                .border(1.dp, Color(0x1EFFFFFF), RoundedCornerShape(14.dp))
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .border(1.dp, Color(0x1EFFFFFF), RoundedCornerShape(12.dp))
+                .padding(horizontal = 10.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column {
+            // Stepper Temps / Beats
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 Text(
-                    text = "RÉGLAGE DE TEMPS (TEMPS / BEATS)",
+                    text = "TEMPS:",
                     fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.ExtraBold,
                     color = NeonCyan,
                     letterSpacing = 0.5.sp
                 )
-                Text(
-                    text = "De 2 à 64 (impairs inclus) • $totalSteps steps totaux",
-                    fontSize = 10.sp,
-                    color = TextDim
-                )
-            }
-
-            // Compact Stepper: [ - ] [ nombre ] [ + ]
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
                 Box(
                     modifier = Modifier
-                        .size(28.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (beats > 2) Color(0x288B5CF6) else Color(0x10FFFFFF))
-                        .border(1.dp, if (beats > 2) NeonPurpleLight else Color(0x1AFFFFFF), RoundedCornerShape(8.dp))
+                        .size(24.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0x18FFFFFF))
                         .clickable(enabled = beats > 2) {
-                            val next = (beats - 1).coerceIn(2, 64)
-                            onUpdateBeats(next)
+                            onUpdateBeats((beats - 1).coerceIn(2, 64))
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Remove,
-                        contentDescription = "Diminuer",
-                        tint = if (beats > 2) NeonPurpleLight else TextDim2,
-                        modifier = Modifier.size(16.dp)
-                    )
+                    Icon(Icons.Default.Remove, contentDescription = "Moins", tint = NeonPurpleLight, modifier = Modifier.size(13.dp))
+                }
+                Text(
+                    text = "$beats T",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White,
+                    modifier = Modifier.padding(horizontal = 3.dp)
+                )
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0x18FFFFFF))
+                        .clickable(enabled = beats < 64) {
+                            onUpdateBeats((beats + 1).coerceIn(2, 64))
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Plus", tint = NeonPurpleLight, modifier = Modifier.size(13.dp))
+                }
+            }
+
+            // DJ Quick Loop Roll buttons: [ 1/4 ] [ 1/2 ] [ 1T ] [ 2T ] [ 4T ] [ /2 ] [ x2 ] [ TOUT ]
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                // Half / Double loop
+                Box(
+                    modifier = Modifier
+                        .height(24.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0x20A78BFA))
+                        .border(1.dp, NeonPurpleLight.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                        .clickable {
+                            val currentLen = localEndFrac - localStartFrac
+                            updateTrimsSmooth(localStartFrac, localStartFrac + (currentLen / 2f).coerceAtLeast(0.015f))
+                        }
+                        .padding(horizontal = 5.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("/2", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = NeonPurpleLight)
                 }
 
                 Box(
                     modifier = Modifier
-                        .widthIn(min = 38.dp)
-                        .height(28.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0x22000000))
-                        .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(8.dp))
+                        .height(24.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0x20A78BFA))
+                        .border(1.dp, NeonPurpleLight.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                        .clickable {
+                            val currentLen = localEndFrac - localStartFrac
+                            updateTrimsSmooth(localStartFrac, (localStartFrac + (currentLen * 2f)).coerceAtMost(1f))
+                        }
+                        .padding(horizontal = 5.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("x2", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = NeonPurpleLight)
+                }
+
+                // 1 Beat Loop
+                Box(
+                    modifier = Modifier
+                        .height(24.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0x2022D3EE))
+                        .border(1.dp, NeonCyan.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                        .clickable {
+                            val oneBeatFrac = 1f / beats.toFloat()
+                            updateTrimsSmooth(localStartFrac, (localStartFrac + oneBeatFrac).coerceAtMost(1f))
+                        }
+                        .padding(horizontal = 5.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("1T", fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, color = NeonCyanLight)
+                }
+
+                // 2 Beats Loop
+                Box(
+                    modifier = Modifier
+                        .height(24.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0x2022D3EE))
+                        .border(1.dp, NeonCyan.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                        .clickable {
+                            val twoBeatsFrac = 2f / beats.toFloat()
+                            updateTrimsSmooth(localStartFrac, (localStartFrac + twoBeatsFrac).coerceAtMost(1f))
+                        }
+                        .padding(horizontal = 5.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("2T", fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, color = NeonCyanLight)
+                }
+
+                // 4 Beats Loop
+                Box(
+                    modifier = Modifier
+                        .height(24.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0x2022D3EE))
+                        .border(1.dp, NeonCyan.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                        .clickable {
+                            val fourBeatsFrac = 4f / beats.toFloat()
+                            updateTrimsSmooth(localStartFrac, (localStartFrac + fourBeatsFrac).coerceAtMost(1f))
+                        }
+                        .padding(horizontal = 5.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("4T", fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, color = NeonCyanLight)
+                }
+
+                // Reset Tout
+                Box(
+                    modifier = Modifier
+                        .height(24.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0x20FFFFFF))
+                        .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp))
+                        .clickable {
+                            updateTrimsSmooth(0f, 1f)
+                        }
                         .padding(horizontal = 6.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = "$beats",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color.White
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (beats < 64) Color(0x288B5CF6) else Color(0x10FFFFFF))
-                        .border(1.dp, if (beats < 64) NeonPurpleLight else Color(0x1AFFFFFF), RoundedCornerShape(8.dp))
-                        .clickable(enabled = beats < 64) {
-                            val next = (beats + 1).coerceIn(2, 64)
-                            onUpdateBeats(next)
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Augmenter",
-                        tint = if (beats < 64) NeonPurpleLight else TextDim2,
-                        modifier = Modifier.size(16.dp)
-                    )
+                    Text("TOUT", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(6.dp))
 
-        // Step Start / End Selection Panel
+        // ================= DJ LOOP MONITOR (IN / LONGUEUR / OUT) =================
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(Color(0x14FFFFFF))
-                .border(1.dp, Color(0x1EFFFFFF), RoundedCornerShape(14.dp))
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0x10FFFFFF))
+                .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(10.dp))
+                .padding(horizontal = 10.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Step Début
+            // IN (Début) + micro boutons
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
-                    text = "DÉBUT :",
-                    fontSize = 9.5.sp,
-                    fontWeight = FontWeight.Bold,
+                    text = "IN :",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.ExtraBold,
                     color = NeonCyanLight
                 )
                 Box(
                     modifier = Modifier
-                        .size(26.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0x18FFFFFF))
-                        .clickable(enabled = currentStartStep > 1) {
-                            val next = (currentStartStep - 1).coerceAtLeast(1)
-                            onUpdateSteps(next, currentEndStep)
+                        .size(20.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0x2222D3EE))
+                        .clickable {
+                            updateTrimsSmooth(localStartFrac - 0.01f, localEndFrac)
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Remove, contentDescription = "Moins", tint = NeonCyanLight, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.Remove, contentDescription = "Moins", tint = NeonCyanLight, modifier = Modifier.size(12.dp))
                 }
+                Text(
+                    text = String.format(java.util.Locale.US, "%.2fs (%d%%)", currentStartSec, (localStartFrac * 100).toInt()),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = NeonCyan
+                )
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0x26000000))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        text = "Step $currentStartStep",
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = NeonCyanLight
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .size(26.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0x18FFFFFF))
-                        .clickable(enabled = currentStartStep < currentEndStep - 1) {
-                            val next = (currentStartStep + 1).coerceAtMost(currentEndStep - 1)
-                            onUpdateSteps(next, currentEndStep)
+                        .size(20.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0x2222D3EE))
+                        .clickable {
+                            updateTrimsSmooth(localStartFrac + 0.01f, localEndFrac)
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = "Plus", tint = NeonCyanLight, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.Add, contentDescription = "Plus", tint = NeonCyanLight, modifier = Modifier.size(12.dp))
                 }
             }
 
-            // Step Fin
+            // Centre: Durée de Boucle (0ms coupure DJ)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Repeat,
+                    contentDescription = "Boucle",
+                    tint = NeonPurpleLight,
+                    modifier = Modifier.size(13.dp)
+                )
+                Text(
+                    text = String.format(java.util.Locale.US, "%.2fs (DJ 0ms)", currentLoopDurationSec),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White
+                )
+            }
+
+            // OUT (Fin) + micro boutons
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
-                    text = "FIN :",
-                    fontSize = 9.5.sp,
+                    text = "OUT :",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = NeonPink
+                )
+                Box(
+                    modifier = Modifier
+                        .size(20.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0x22FB4570))
+                        .clickable {
+                            updateTrimsSmooth(localStartFrac, localEndFrac - 0.01f)
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Remove, contentDescription = "Moins", tint = NeonPink, modifier = Modifier.size(12.dp))
+                }
+                Text(
+                    text = String.format(java.util.Locale.US, "%.2fs (%d%%)", currentEndSec, (localEndFrac * 100).toInt()),
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = NeonPink
                 )
                 Box(
                     modifier = Modifier
-                        .size(26.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0x18FFFFFF))
-                        .clickable(enabled = currentEndStep > currentStartStep + 1) {
-                            val next = (currentEndStep - 1).coerceAtLeast(currentStartStep + 1)
-                            onUpdateSteps(currentStartStep, next)
+                        .size(20.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0x22FB4570))
+                        .clickable {
+                            updateTrimsSmooth(localStartFrac, localEndFrac + 0.01f)
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Remove, contentDescription = "Moins", tint = NeonPink, modifier = Modifier.size(14.dp))
-                }
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0x26000000))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        text = "Step $currentEndStep",
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = NeonPink
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .size(26.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0x18FFFFFF))
-                        .clickable(enabled = currentEndStep < totalSteps) {
-                            val next = (currentEndStep + 1).coerceAtMost(totalSteps)
-                            onUpdateSteps(currentStartStep, next)
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Plus", tint = NeonPink, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.Add, contentDescription = "Plus", tint = NeonPink, modifier = Modifier.size(12.dp))
                 }
             }
         }
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        // Interactive Step Sequencer Strip (1 .. totalSteps)
-        StepSequencerStrip(
-            totalSteps = totalSteps,
-            startStep = currentStartStep,
-            endStep = currentEndStep,
-            onSelectStep = { step ->
-                if (step < currentStartStep) {
-                    onUpdateSteps(step, currentEndStep)
-                } else if (step > currentEndStep) {
-                    onUpdateSteps(currentStartStep, step)
-                } else {
-                    val distToStart = kotlin.math.abs(step - currentStartStep)
-                    val distToEnd = kotlin.math.abs(step - currentEndStep)
-                    if (distToStart <= distToEnd && step < currentEndStep) {
-                        onUpdateSteps(step, currentEndStep)
-                    } else if (step > currentStartStep) {
-                        onUpdateSteps(currentStartStep, step)
-                    }
-                }
-            }
-        )
-
-        Spacer(modifier = Modifier.height(6.dp))
-
-        // Waveform Display Section Header
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = "FORME D'ONDE & REPÈRES TEMPORELS",
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextDim,
-                letterSpacing = 0.5.sp
-            )
-            Text(
-                text = "Glisser les repères cyan et rose",
-                fontSize = 9.sp,
-                color = NeonCyanLight
-            )
-        }
-
-        Spacer(modifier = Modifier.height(6.dp))
-
-        // Waveform Display with start/end trim drag handles
+        // ================= FORME D'ONDE DJ TACTILE LIBRE =================
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
                 .clip(RoundedCornerShape(14.dp))
-                .background(Color(0xFF0F121C))
-                .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(14.dp))
+                .background(Color(0xFF0C0F17))
+                .border(1.dp, Color(0x33A78BFA), RoundedCornerShape(14.dp))
         ) {
             WaveformDisplay(
                 modifier = Modifier.fillMaxSize(),
@@ -1026,50 +1141,47 @@ private fun LoopEditorContent(
                 startFraction = localStartFrac,
                 endFraction = localEndFrac,
                 onStartDrag = { frac ->
-                    localStartFrac = frac.coerceIn(0f, localEndFrac - 0.05f)
-                    val calculatedStep = (1 + (localStartFrac * totalSteps)).toInt().coerceIn(1, currentEndStep - 1)
-                    onUpdateSteps(calculatedStep, currentEndStep)
+                    updateTrimsSmooth(frac, localEndFrac)
                 },
                 onEndDrag = { frac ->
-                    localEndFrac = frac.coerceIn(localStartFrac + 0.05f, 1.0f)
-                    val calculatedStep = (localEndFrac * totalSteps).toInt().coerceIn(currentStartStep + 1, totalSteps)
-                    onUpdateSteps(currentStartStep, calculatedStep)
+                    updateTrimsSmooth(localStartFrac, frac)
+                },
+                onTapPoint = { touchFrac ->
+                    val distToStart = kotlin.math.abs(touchFrac - localStartFrac)
+                    val distToEnd = kotlin.math.abs(touchFrac - localEndFrac)
+                    if (distToStart < distToEnd) {
+                        updateTrimsSmooth(touchFrac, localEndFrac)
+                    } else {
+                        updateTrimsSmooth(localStartFrac, touchFrac)
+                    }
                 }
             )
         }
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        // Trim positions summary indicator
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = "Début : Step $currentStartStep (${(localStartFrac * 100).toInt()}%)",
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                color = NeonCyan
-            )
-            Text(
-                text = "Boucle : ${currentEndStep - currentStartStep + 1} steps",
-                fontSize = 10.sp,
-                color = TextDim
-            )
-            Text(
-                text = "Fin : Step $currentEndStep (${(localEndFrac * 100).toInt()}%)",
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                color = NeonPink
-            )
-        }
+        // ================= GRILLE BEAT GRID DJ =================
+        StepSequencerStrip(
+            totalSteps = totalSteps,
+            startStep = (1 + (localStartFrac * totalSteps)).toInt().coerceIn(1, totalSteps - 1),
+            endStep = (localEndFrac * totalSteps).toInt().coerceIn(2, totalSteps),
+            onSelectStep = { step ->
+                val frac = (step.toFloat() / totalSteps.toFloat()).coerceIn(0f, 1f)
+                val distToStart = kotlin.math.abs(frac - localStartFrac)
+                val distToEnd = kotlin.math.abs(frac - localEndFrac)
+                if (distToStart <= distToEnd) {
+                    updateTrimsSmooth(frac, localEndFrac)
+                } else {
+                    updateTrimsSmooth(localStartFrac, frac)
+                }
+            }
+        )
     }
 }
 
 /**
  * StepSequencerStrip:
- * Horizontal scrollable step buttons (1 .. totalSteps).
- * Highlights selected loop segment from startStep to endStep.
+ * Horizontal scrollable beat grid helper (1 .. totalSteps).
  */
 @Composable
 private fun StepSequencerStrip(
@@ -1098,7 +1210,7 @@ private fun StepSequencerStrip(
             Box(
                 modifier = Modifier
                     .width(26.dp)
-                    .height(30.dp)
+                    .height(26.dp)
                     .clip(RoundedCornerShape(6.dp))
                     .background(
                         when {
@@ -1122,32 +1234,12 @@ private fun StepSequencerStrip(
                     .clickable { onSelectStep(stepNumber) },
                 contentAlignment = Alignment.Center
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        text = "$stepNumber",
-                        fontSize = 9.sp,
-                        fontWeight = if (isInside) FontWeight.Bold else FontWeight.Normal,
-                        color = if (isStart || isEnd) Color.Black else if (isInside) Color.White else TextDim2
-                    )
-                    if (isStart) {
-                        Text(
-                            text = "IN",
-                            fontSize = 6.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.Black
-                        )
-                    } else if (isEnd) {
-                        Text(
-                            text = "OUT",
-                            fontSize = 6.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White
-                        )
-                    }
-                }
+                Text(
+                    text = "$stepNumber",
+                    fontSize = 9.sp,
+                    fontWeight = if (isInside) FontWeight.Bold else FontWeight.Normal,
+                    color = if (isStart || isEnd) Color.Black else if (isInside) Color.White else TextDim2
+                )
             }
         }
     }
@@ -1155,7 +1247,8 @@ private fun StepSequencerStrip(
 
 /**
  * WaveformDisplay:
- * Draws procedural audio waveforms and provides draggable Start & End handles.
+ * Draws DJ waveform with free touchable placement, smooth dragging without steps,
+ * neon-bordered square IN/OUT flags, and instant sample-accurate visual feedback.
  */
 @Composable
 private fun WaveformDisplay(
@@ -1164,16 +1257,41 @@ private fun WaveformDisplay(
     startFraction: Float,
     endFraction: Float,
     onStartDrag: (Float) -> Unit,
-    onEndDrag: (Float) -> Unit
+    onEndDrag: (Float) -> Unit,
+    onTapPoint: (Float) -> Unit
 ) {
     BoxWithConstraints(modifier = modifier) {
         val widthPx = constraints.maxWidth.toFloat()
         val heightPx = constraints.maxHeight.toFloat()
         val density = androidx.compose.ui.platform.LocalDensity.current
 
-        // Background Waveform Bars
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val barCount = 70
+        // Background Waveform & Touch Surface
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(startFraction, endFraction, widthPx) {
+                    detectTapGestures { offset ->
+                        val touchFrac = (offset.x / widthPx).coerceIn(0f, 1f)
+                        onTapPoint(touchFrac)
+                    }
+                }
+                .pointerInput(startFraction, endFraction, widthPx) {
+                    detectDragGestures { change, dragAmount ->
+                        change.consume()
+                        val currentTouchFrac = (change.position.x / widthPx).coerceIn(0f, 1f)
+                        val distToStart = kotlin.math.abs(currentTouchFrac - startFraction)
+                        val distToEnd = kotlin.math.abs(currentTouchFrac - endFraction)
+                        if (distToStart < distToEnd) {
+                            val newStart = (startFraction + dragAmount.x / widthPx).coerceIn(0f, 0.98f)
+                            onStartDrag(newStart)
+                        } else {
+                            val newEnd = (endFraction + dragAmount.x / widthPx).coerceIn(0.02f, 1.0f)
+                            onEndDrag(newEnd)
+                        }
+                    }
+                }
+        ) {
+            val barCount = 80
             val barWidth = size.width / barCount
             val centerY = size.height / 2f
 
@@ -1181,57 +1299,73 @@ private fun WaveformDisplay(
                 val progress = i.toFloat() / barCount.toFloat()
                 val isInsideLoop = progress in startFraction..endFraction
 
-                // Synthetic harmonic waveform height
-                val h1 = kotlin.math.abs(sin((i * 0.35f + (seed % 10))))
-                val h2 = kotlin.math.abs(sin(i * 0.85f + 1.2f))
-                val barHeight = ((h1 * 0.6f + h2 * 0.4f) * (size.height * 0.76f)).coerceAtLeast(4f)
+                // Dynamic DJ waveform amplitude
+                val h1 = kotlin.math.abs(sin(i * 0.38f + (seed % 7)))
+                val h2 = kotlin.math.abs(sin(i * 0.92f + 1.4f))
+                val barHeight = ((h1 * 0.65f + h2 * 0.35f) * (size.height * 0.74f)).coerceAtLeast(4f)
 
                 val barColor = if (isInsideLoop) {
-                    NeonCyanLight.copy(alpha = 0.85f)
+                    NeonCyanLight.copy(alpha = 0.9f)
                 } else {
                     Color(0x28FFFFFF)
                 }
 
                 drawRect(
                     color = barColor,
-                    topLeft = Offset(i * barWidth + barWidth * 0.2f, centerY - barHeight / 2f),
-                    size = Size(barWidth * 0.6f, barHeight)
+                    topLeft = Offset(i * barWidth + barWidth * 0.15f, centerY - barHeight / 2f),
+                    size = Size(barWidth * 0.7f, barHeight)
                 )
             }
 
-            // Darken outside regions
+            // Darken outside loop regions
             if (startFraction > 0f) {
                 drawRect(
-                    color = Color(0x66000000),
+                    color = Color(0x77000000),
                     topLeft = Offset(0f, 0f),
                     size = Size(size.width * startFraction, size.height)
                 )
             }
             if (endFraction < 1f) {
                 drawRect(
-                    color = Color(0x66000000),
+                    color = Color(0x77000000),
                     topLeft = Offset(size.width * endFraction, 0f),
                     size = Size(size.width * (1f - endFraction), size.height)
                 )
             }
+
+            // Loop active window highlight tint
+            val loopWidth = size.width * (endFraction - startFraction).coerceAtLeast(0f)
+            drawRect(
+                brush = Brush.horizontalGradient(
+                    colors = listOf(
+                        Color(0x2222D3EE),
+                        Color(0x22A78BFA),
+                        Color(0x22FB4570)
+                    ),
+                    startX = size.width * startFraction,
+                    endX = size.width * endFraction
+                ),
+                topLeft = Offset(size.width * startFraction, 0f),
+                size = Size(loopWidth, size.height)
+            )
         }
 
-        // Start Trim Handle (Draggable)
+        // ================= START TRIM HANDLE (IN) =================
         Box(
             modifier = Modifier
                 .offset {
-                    val handleHalfWidthPx = with(density) { 14.dp.toPx() }
+                    val handleHalfWidthPx = with(density) { 16.dp.toPx() }
                     androidx.compose.ui.unit.IntOffset(
                         (widthPx * startFraction - handleHalfWidthPx).toInt(),
                         0
                     )
                 }
                 .fillMaxHeight()
-                .width(28.dp)
-                .pointerInput(Unit) {
+                .width(32.dp)
+                .pointerInput(startFraction, widthPx) {
                     detectDragGestures { change, dragAmount ->
                         change.consume()
-                        val newFrac = (startFraction + dragAmount.x / widthPx).coerceIn(0f, 0.95f)
+                        val newFrac = (startFraction + dragAmount.x / widthPx).coerceIn(0f, 0.98f)
                         onStartDrag(newFrac)
                     }
                 },
@@ -1241,45 +1375,56 @@ private fun WaveformDisplay(
                 modifier = Modifier.fillMaxHeight(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                // Top IN Flag: Carré bordure néon petit et adapté
                 Box(
                     modifier = Modifier
-                        .size(16.dp)
-                        .clip(CircleShape)
-                        .background(NeonCyan)
-                        .border(1.5.dp, Color.White, CircleShape)
-                )
+                        .size(20.dp, 16.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xFF083344))
+                        .border(1.2.dp, NeonCyan, RoundedCornerShape(4.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("IN", fontSize = 8.sp, fontWeight = FontWeight.ExtraBold, color = NeonCyanLight)
+                }
+
+                // Vertical line
                 Box(
                     modifier = Modifier
-                        .width(3.dp)
+                        .width(2.5.dp)
                         .weight(1f)
                         .background(NeonCyan)
                 )
+
+                // Bottom IN Flag: Carré bordure néon petit et adapté
                 Box(
                     modifier = Modifier
-                        .size(16.dp)
-                        .clip(CircleShape)
-                        .background(NeonCyan)
-                        .border(1.5.dp, Color.White, CircleShape)
-                )
+                        .size(20.dp, 16.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xFF083344))
+                        .border(1.2.dp, NeonCyan, RoundedCornerShape(4.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("IN", fontSize = 8.sp, fontWeight = FontWeight.ExtraBold, color = NeonCyanLight)
+                }
             }
         }
 
-        // End Trim Handle (Draggable)
+        // ================= END TRIM HANDLE (OUT) =================
         Box(
             modifier = Modifier
                 .offset {
-                    val handleHalfWidthPx = with(density) { 14.dp.toPx() }
+                    val handleHalfWidthPx = with(density) { 16.dp.toPx() }
                     androidx.compose.ui.unit.IntOffset(
                         (widthPx * endFraction - handleHalfWidthPx).toInt(),
                         0
                     )
                 }
                 .fillMaxHeight()
-                .width(28.dp)
-                .pointerInput(Unit) {
+                .width(32.dp)
+                .pointerInput(endFraction, widthPx) {
                     detectDragGestures { change, dragAmount ->
                         change.consume()
-                        val newFrac = (endFraction + dragAmount.x / widthPx).coerceIn(0.05f, 1.0f)
+                        val newFrac = (endFraction + dragAmount.x / widthPx).coerceIn(0.02f, 1.0f)
                         onEndDrag(newFrac)
                     }
                 },
@@ -1289,26 +1434,37 @@ private fun WaveformDisplay(
                 modifier = Modifier.fillMaxHeight(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                // Top OUT Flag: Carré bordure néon petit et adapté
                 Box(
                     modifier = Modifier
-                        .size(16.dp)
-                        .clip(CircleShape)
-                        .background(NeonPink)
-                        .border(1.5.dp, Color.White, CircleShape)
-                )
+                        .size(22.dp, 16.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xFF4C0519))
+                        .border(1.2.dp, NeonPink, RoundedCornerShape(4.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("OUT", fontSize = 8.sp, fontWeight = FontWeight.ExtraBold, color = NeonPink)
+                }
+
+                // Vertical line
                 Box(
                     modifier = Modifier
-                        .width(3.dp)
+                        .width(2.5.dp)
                         .weight(1f)
                         .background(NeonPink)
                 )
+
+                // Bottom OUT Flag: Carré bordure néon petit et adapté
                 Box(
                     modifier = Modifier
-                        .size(16.dp)
-                        .clip(CircleShape)
-                        .background(NeonPink)
-                        .border(1.5.dp, Color.White, CircleShape)
-                )
+                        .size(22.dp, 16.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xFF4C0519))
+                        .border(1.2.dp, NeonPink, RoundedCornerShape(4.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("OUT", fontSize = 8.sp, fontWeight = FontWeight.ExtraBold, color = NeonPink)
+                }
             }
         }
     }

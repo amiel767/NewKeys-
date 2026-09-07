@@ -493,12 +493,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
 
-                // Automatically load default SoundFont for slot 0 if completely unassigned
+                // Automatically load default SoundFont for all slots if completely unassigned
                 val defaultSf = sfs.firstOrNull()
                 if (defaultSf != null && File(defaultSf.path).exists()) {
-                    val slot0 = _uiState.value.audioSlots.firstOrNull()
-                    if (slot0 != null && (slot0.soundFontId <= 0 || slot0.soundFontPath.isNullOrEmpty() || !File(slot0.soundFontPath!!).exists())) {
-                        loadSoundFontForSlot(0, defaultSf.path)
+                    _uiState.value.audioSlots.forEach { slot ->
+                        if (slot.presets.isEmpty() || slot.soundFontId <= 0 || slot.soundFontPath.isNullOrEmpty() || !File(slot.soundFontPath).exists()) {
+                            loadSoundFontForSlot(slot.slotId, defaultSf.path, preset = if (slot.slotId == 8) 0 else slot.slotId)
+                        }
                     }
                 }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
@@ -783,6 +784,33 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun closeLoopEditor() {
         _uiState.update { it.copy(editingLoopFile = null) }
+    }
+
+    fun toggleLoopEditorPlayback() {
+        val editing = _uiState.value.editingLoopFile ?: return
+        val isSamePlaying = _uiState.value.isLoopPlaying && (_uiState.value.activeLoopFile?.name == editing.name)
+        if (isSamePlaying) {
+            audioEngine.stopLoopPlayer()
+            _uiState.update { it.copy(isLoopPlaying = false) }
+        } else {
+            val f = java.io.File(fileManager.loopsDir, "${editing.folder}/${editing.name}".replace("Racine /Loops/", "").replace("Loops/", ""))
+            val path = if (f.exists()) f.absolutePath else java.io.File(fileManager.loopsDir, editing.name).absolutePath
+            audioEngine.playLoopFile(
+                filePath = path,
+                volume = _uiState.value.loopVolume,
+                beatCount = _uiState.value.loopEditorBeats,
+                bpm = _uiState.value.bpm,
+                startMs = _uiState.value.loopEditorStartMs,
+                endMs = _uiState.value.loopEditorEndMs
+            )
+            _uiState.update {
+                it.copy(
+                    activeLoopFile = editing,
+                    lastSelectedLoopFile = editing,
+                    isLoopPlaying = true
+                )
+            }
+        }
     }
 
     fun updateLoopEditorBeats(beats: Int) {
@@ -1651,8 +1679,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 val readablePath = nativeReadableFile.absolutePath
                 Log.d("SoundFontLoad", "[DIAGNOSTIC] Resolved native-readable path=$readablePath (exists=${nativeReadableFile.exists()}, length=${nativeReadableFile.length()})")
 
-                // 1. Charger d'abord le nouveau SoundFont via le chemin natif garanti
+                // 1. Charger d'abord le nouveau SoundFont via le chemin natif garanti sur TOUS les moteurs (Fader, Pad, Drum)
                 val newSfId = NativeAudioBridge.safeLoadSoundFont(NativeAudioBridge.ENGINE_FADER, readablePath)
+                NativeAudioBridge.safeLoadSoundFont(NativeAudioBridge.ENGINE_PAD, readablePath)
+                NativeAudioBridge.safeLoadSoundFont(NativeAudioBridge.ENGINE_DRUM, readablePath)
                 Log.d("SoundFontLoad", "[DIAGNOSTIC] Native safeLoadSoundFont returned ID=$newSfId for slot=$slotId")
 
                 // 2. Décharger l'ancien UNIQUEMENT si le nouveau a réussi et que l'ancien n'est plus utilisé nulle part
@@ -1660,6 +1690,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     val inUse = _uiState.value.audioSlots.any { it.slotId != slotId && it.soundFontId == oldSfId }
                     if (!inUse) {
                         NativeAudioBridge.safeUnloadSoundFont(NativeAudioBridge.ENGINE_FADER, oldSfId)
+                        NativeAudioBridge.safeUnloadSoundFont(NativeAudioBridge.ENGINE_PAD, oldSfId)
+                        NativeAudioBridge.safeUnloadSoundFont(NativeAudioBridge.ENGINE_DRUM, oldSfId)
                     }
                 }
 
@@ -1719,6 +1751,23 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         bank = targetPreset.bankNumber,
                         preset = targetPreset.id
                     )
+                    if (slotId == 8) {
+                        NativeAudioBridge.safeSelectProgram(
+                            engineIndex = NativeAudioBridge.ENGINE_DRUM,
+                            channel = 9,
+                            soundFontId = effectiveSfId,
+                            bank = targetPreset.bankNumber,
+                            preset = targetPreset.id
+                        )
+                    } else if (slotId == 9) {
+                        NativeAudioBridge.safeSelectProgram(
+                            engineIndex = NativeAudioBridge.ENGINE_PAD,
+                            channel = 0,
+                            soundFontId = effectiveSfId,
+                            bank = targetPreset.bankNumber,
+                            preset = targetPreset.id
+                        )
+                    }
                 }
 
                 // Re-validate program selection for all other active audio slots to ensure complete isolation
@@ -1798,6 +1847,23 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 preset.bankNumber,
                 preset.id
             )
+            if (slotId == 8) {
+                NativeAudioBridge.safeSelectProgram(
+                    NativeAudioBridge.ENGINE_DRUM,
+                    9,
+                    slot.soundFontId,
+                    preset.bankNumber,
+                    preset.id
+                )
+            } else if (slotId == 9) {
+                NativeAudioBridge.safeSelectProgram(
+                    NativeAudioBridge.ENGINE_PAD,
+                    0,
+                    slot.soundFontId,
+                    preset.bankNumber,
+                    preset.id
+                )
+            }
         }
 
         _uiState.update { state ->

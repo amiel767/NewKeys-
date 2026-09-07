@@ -60,11 +60,26 @@ class AudioEngine(private val context: Context) {
     private val coroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private val TAG = "AudioEngine"
 
+    // DJ-Style Gapless Looping Engine (sample-accurate 0ms restart)
+    private val djLoopEngine = DjLoopEngine(context)
+
+    // Fallback Polyphonic Synthesizer (ensures sound is ALWAYS heard immediately)
+    private val fallbackSynth = FallbackSynth()
+
+    init {
+        fallbackSynth.start()
+    }
+
+    fun setHasActiveSoundFont(hasSoundFont: Boolean) {
+        fallbackSynth.isBypassed = hasSoundFont
+    }
+
     // Master DSP Parameters
     var masterVolume: Float = 0.80f
         set(value) {
             field = value
             NativeAudioBridge.safeSetMasterVolume(value)
+            fallbackSynth.setMasterGain(value)
         }
     var pitchBendFactor: Float = 1.0f
     var soundGoodizerMode: String = "A"
@@ -358,6 +373,7 @@ class AudioEngine(private val context: Context) {
     }
 
     fun playDrumPadStrike(padIndex: Int, velocity: Float = 0.90f) {
+        fallbackSynth.playDrumHit(padIndex, velocity)
         val midiDrumNote = when (padIndex) {
             1 -> 36 // Kick
             2 -> 38 // Snare
@@ -480,27 +496,37 @@ class AudioEngine(private val context: Context) {
         val midiNote = (baseMidi + globalOctaveShift * 12).coerceIn(0, 127)
         val scaledVel = globalVelocityMin + velocity.coerceIn(0f, 1f) * (globalVelocityMax - globalVelocityMin)
         val velInt = (scaledVel * 127f).toInt().coerceIn(1, 127)
-        if (channel >= 8) {
-            NativeAudioBridge.safeNoteOn(channel.coerceIn(0, 15), midiNote, velInt)
+        if (channel == 8) {
+            NativeAudioBridge.safeNoteOn(9, midiNote, velInt, engineIndex = NativeAudioBridge.ENGINE_DRUM)
+            NativeAudioBridge.safeNoteOn(8, midiNote, velInt, engineIndex = NativeAudioBridge.ENGINE_FADER)
+        } else if (channel == 9) {
+            NativeAudioBridge.safeNoteOn(0, midiNote, velInt, engineIndex = NativeAudioBridge.ENGINE_PAD)
+            NativeAudioBridge.safeNoteOn(9, midiNote, velInt, engineIndex = NativeAudioBridge.ENGINE_FADER)
         } else {
             val channels = getActivePerformanceChannels(channel)
             for (ch in channels) {
-                NativeAudioBridge.safeNoteOn(ch, midiNote, velInt)
+                NativeAudioBridge.safeNoteOn(ch, midiNote, velInt, engineIndex = NativeAudioBridge.ENGINE_FADER)
             }
         }
+        fallbackSynth.noteOn(midiNote, scaledVel)
     }
 
     fun noteOff(noteName: String, channel: Int = activeTargetChannel) {
         val baseMidi = noteNameToMidi(noteName)
         val midiNote = (baseMidi + globalOctaveShift * 12).coerceIn(0, 127)
-        if (channel >= 8) {
-            NativeAudioBridge.safeNoteOff(channel.coerceIn(0, 15), midiNote)
+        if (channel == 8) {
+            NativeAudioBridge.safeNoteOff(9, midiNote, engineIndex = NativeAudioBridge.ENGINE_DRUM)
+            NativeAudioBridge.safeNoteOff(8, midiNote, engineIndex = NativeAudioBridge.ENGINE_FADER)
+        } else if (channel == 9) {
+            NativeAudioBridge.safeNoteOff(0, midiNote, engineIndex = NativeAudioBridge.ENGINE_PAD)
+            NativeAudioBridge.safeNoteOff(9, midiNote, engineIndex = NativeAudioBridge.ENGINE_FADER)
         } else {
             val channels = getActivePerformanceChannels(channel)
             for (ch in channels) {
-                NativeAudioBridge.safeNoteOff(ch, midiNote)
+                NativeAudioBridge.safeNoteOff(ch, midiNote, engineIndex = NativeAudioBridge.ENGINE_FADER)
             }
         }
+        fallbackSynth.noteOff(midiNote)
     }
 
     fun setPitchBend(bend: Float, channel: Int = activeTargetChannel) {
@@ -522,6 +548,7 @@ class AudioEngine(private val context: Context) {
         for (ch in 0..15) {
             NativeAudioBridge.safeAllNotesOff(ch)
         }
+        fallbackSynth.allNotesOff()
     }
 
     // -------------------------------------------------------------
@@ -955,7 +982,6 @@ class AudioEngine(private val context: Context) {
     // -------------------------------------------------------------
     // AUDIO LOOPS PLAYER (.wav, .mp3) - DJ-STYLE GAPLESS & BEAT-SYNCED LOOPING
     // -------------------------------------------------------------
-    private var loopBeatJob: Job? = null
     @Volatile private var activeLoopBeats: Int = 0
     @Volatile private var activeLoopBpm: Int = 120
 
@@ -968,147 +994,37 @@ class AudioEngine(private val context: Context) {
         endMs: Int = 0
     ) {
         currentLoopVolume = volume.coerceIn(0f, 1f)
+        currentLoopFilePath = filePath
         activeLoopBeats = beatCount
         activeLoopBpm = bpm
         loopTrimStartMs = startMs
         loopTrimEndMs = endMs
-        coroutineScope.launch(Dispatchers.IO) {
-            try {
-                stopLoopPlayer()
-                val file = File(filePath)
-                if (!file.exists()) return@launch
-
-                currentLoopFilePath = filePath
-                val player = MediaPlayer().apply {
-                    setAudioAttributes(
-                        AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_MEDIA)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                            .build()
-                    )
-                    setDataSource(filePath)
-                    // If no beat duration limit and no trim, hardware looping is 100% gapless native
-                    isLooping = (beatCount <= 0 && startMs <= 0 && endMs <= 0)
-                    setVolume(currentLoopVolume, currentLoopVolume)
-                    setOnCompletionListener {
-                        try {
-                            seekTo(loopTrimStartMs.coerceAtLeast(0))
-                            start()
-                        } catch (_: Exception) {}
-                    }
-                    prepare()
-                    if (loopTrimStartMs > 0) {
-                        seekTo(loopTrimStartMs)
-                    }
-                    start()
-                }
-                loopMediaPlayer = player
-
-                // Monitor loop restart immediately without cut when beats or trims are active
-                startLoopPlaybackMonitor(player, beatCount, bpm, startMs, endMs)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error starting loop player: ${e.message}")
-            }
-        }
+        djLoopEngine.playLoop(filePath, currentLoopVolume, beatCount, bpm, startMs, endMs)
     }
 
     fun setLoopBeats(beatCount: Int, bpm: Int) {
         activeLoopBeats = beatCount
         activeLoopBpm = bpm
-        val player = loopMediaPlayer ?: return
-        if (beatCount <= 0 && loopTrimStartMs <= 0 && loopTrimEndMs <= 0) {
-            loopBeatJob?.cancel()
-            try { player.isLooping = true } catch (_: Exception) {}
-        } else {
-            try { player.isLooping = false } catch (_: Exception) {}
-            startLoopPlaybackMonitor(player, beatCount, bpm, loopTrimStartMs, loopTrimEndMs)
-        }
+        djLoopEngine.setBeats(beatCount, bpm)
     }
 
     fun updateLoopTrims(startMs: Int, endMs: Int) {
         loopTrimStartMs = startMs
         loopTrimEndMs = endMs
-        val player = loopMediaPlayer ?: return
-        startLoopPlaybackMonitor(player, activeLoopBeats, activeLoopBpm, startMs, endMs)
-    }
-
-    private fun startLoopPlaybackMonitor(
-        player: MediaPlayer,
-        beatCount: Int,
-        bpm: Int,
-        startMs: Int,
-        endMs: Int
-    ) {
-        loopBeatJob?.cancel()
-        // If pure native looping is possible, let the MediaPlayer hardware handle it
-        if (beatCount <= 0 && startMs <= 0 && endMs <= 0) {
-            try { player.isLooping = true } catch (_: Exception) {}
-            return
-        }
-
-        try { player.isLooping = false } catch (_: Exception) {}
-
-        loopBeatJob = coroutineScope.launch(Dispatchers.Default) {
-            val totalDurationMs = try { player.duration } catch (_: Exception) { 0 }
-            val beatDurationMs = if (beatCount > 0) ((beatCount * 60_000L) / bpm.coerceAtLeast(30)).toInt() else 0
-
-            val effectiveEndMs = when {
-                endMs > 0 && endMs > startMs -> endMs.coerceAtMost(if (totalDurationMs > 0) totalDurationMs else endMs)
-                beatDurationMs > 0 -> {
-                    val candidate = startMs + beatDurationMs
-                    if (totalDurationMs > 0) candidate.coerceAtMost(totalDurationMs) else candidate
-                }
-                totalDurationMs > 0 -> totalDurationMs
-                else -> 4000
-            }
-
-            val restartStartMs = startMs.coerceAtLeast(0)
-
-            while (isActive && loopMediaPlayer == player) {
-                try {
-                    val currentPos = player.currentPosition
-                    if (currentPos >= effectiveEndMs - 20) {
-                        player.seekTo(restartStartMs)
-                        if (!player.isPlaying) player.start()
-                        delay(25)
-                    } else {
-                        val waitTime = (effectiveEndMs - currentPos - 15).coerceIn(8, 60)
-                        delay(waitTime.toLong())
-                    }
-                } catch (_: Exception) {
-                    break
-                }
-            }
-        }
+        djLoopEngine.updateTrims(startMs, endMs)
     }
 
     fun stopLoopPlayer() {
-        loopBeatJob?.cancel()
-        loopBeatJob = null
-        try {
-            loopMediaPlayer?.stop()
-            loopMediaPlayer?.release()
-        } catch (_: Exception) {}
-        try {
-            nextLoopMediaPlayer?.stop()
-            nextLoopMediaPlayer?.release()
-        } catch (_: Exception) {}
-        loopMediaPlayer = null
-        nextLoopMediaPlayer = null
+        djLoopEngine.stop()
         currentLoopFilePath = ""
     }
 
     fun setLoopVolume(volume: Float) {
         currentLoopVolume = volume.coerceIn(0f, 1f)
-        try {
-            loopMediaPlayer?.setVolume(currentLoopVolume, currentLoopVolume)
-        } catch (_: Exception) {}
-        try {
-            nextLoopMediaPlayer?.setVolume(currentLoopVolume, currentLoopVolume)
-        } catch (_: Exception) {}
+        djLoopEngine.setVolume(currentLoopVolume)
     }
 
-    fun isLoopPlaying(): Boolean = loopMediaPlayer?.isPlaying == true
+    fun isLoopPlaying(): Boolean = djLoopEngine.isPlaying()
 
     // -------------------------------------------------------------
     // HELPERS

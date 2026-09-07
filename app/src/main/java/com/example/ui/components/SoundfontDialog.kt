@@ -235,15 +235,35 @@ fun SoundfontDialog(
                         ) {
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 Text(text = "🎵", fontSize = 28.sp)
                                 Text(
-                                    text = "Aucun preset disponible dans la banque actuelle.\nVeuillez choisir une banque dans l'onglet 'Fichiers .SF2'.",
-                                    fontSize = 12.sp,
-                                    color = textSecondaryM3,
+                                    text = "Aucun preset sélectionné pour ce slot.",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = textPrimaryM3,
                                     textAlign = TextAlign.Center
                                 )
+                                val firstSf = soundfontStorageFiles.firstOrNull() ?: bankFiles.firstOrNull()?.let {
+                                    StorageItem(name = it.name, path = it.path, isDirectory = false, formattedSize = it.size)
+                                }
+                                if (firstSf != null && onSelectSf2File != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(primaryPillColor)
+                                            .clickable { onSelectSf2File(firstSf) }
+                                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                                    ) {
+                                        Text(
+                                            text = "⚡ Charger la Banque Vintage Waves (136 Presets)",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = primaryTextColor
+                                        )
+                                    }
+                                }
                             }
                         }
                     } else {

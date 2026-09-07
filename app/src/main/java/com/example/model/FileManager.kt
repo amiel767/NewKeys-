@@ -75,7 +75,7 @@ class FileManager(private val context: Context) {
     }
 
     /**
-     * Ensures all internal subdirectories exist
+     * Ensures all internal subdirectories exist and seeds default assets
      */
     suspend fun ensureDirectoriesExist() = withContext(Dispatchers.IO) {
         try {
@@ -88,7 +88,151 @@ class FileManager(private val context: Context) {
             if (!recordingsDir.exists()) recordingsDir.mkdirs()
             if (!midiDir.exists()) midiDir.mkdirs()
             if (!stylesDir.exists()) stylesDir.mkdirs()
+
+            // 1. Seed bundled SoundFonts from assets
+            copyAssetSoundFonts()
+
+            // 2. Seed a default 120BPM DJ loop if Loops directory is empty
+            seedDefaultDemoLoopIfEmpty()
         } catch (_: Exception) { }
+    }
+
+    private fun copyAssetSoundFonts() {
+        try {
+            val assetList = context.assets.list("soundfonts") ?: emptyArray()
+            for (sfName in assetList) {
+                val target = File(soundfontsDir, sfName)
+                if (!target.exists() || target.length() == 0L) {
+                    context.assets.open("soundfonts/$sfName").use { input ->
+                        target.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    Log.i("FileManager", "Extracted asset soundfont to internal storage: $sfName (${target.length()} bytes)")
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("FileManager", "Error extracting asset soundfonts: ${e.message}")
+        }
+    }
+
+    private fun seedDefaultDemoLoopIfEmpty() {
+        try {
+            val existing = loopsDir.listFiles { f -> f.isFile && isAudioFile(f) }
+            if (existing.isNullOrEmpty()) {
+                val demoFile = File(loopsDir, "Demo_Club_Groove_120BPM.wav")
+                if (!demoFile.exists()) {
+                    createWavBeatLoop(demoFile, bpm = 120, beats = 4)
+                    Log.i("FileManager", "Created default demo DJ loop: ${demoFile.name}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("FileManager", "Could not seed default demo loop: ${e.message}")
+        }
+    }
+
+    private fun createWavBeatLoop(file: File, bpm: Int = 120, beats: Int = 4) {
+        val sampleRate = 44100
+        val durationSec = (beats * 60.0) / bpm
+        val totalFrames = (durationSec * sampleRate).toInt()
+        val pcm = ShortArray(totalFrames * 2) // Stereo
+
+        val beatFrames = (60.0 * sampleRate / bpm).toInt()
+        val random = java.util.Random(42)
+
+        for (frame in 0 until totalFrames) {
+            val beatIndex = frame / beatFrames
+            val frameInBeat = frame % beatFrames
+            val tInBeat = frameInBeat.toDouble() / sampleRate
+
+            var sampleL = 0.0
+            var sampleR = 0.0
+
+            // 1. Four-on-the-floor Kick drum
+            val kickEnv = kotlin.math.exp(-tInBeat * 14.0)
+            val kickFreq = 140.0 * kotlin.math.exp(-tInBeat * 30.0) + 48.0
+            val kick = kotlin.math.sin(2.0 * Math.PI * kickFreq * tInBeat) * kickEnv * 0.75
+            sampleL += kick
+            sampleR += kick
+
+            // 2. Snare / Clap on beats 2 and 4 (indices 1 and 3)
+            if (beatIndex == 1 || beatIndex == 3) {
+                val snareEnv = kotlin.math.exp(-tInBeat * 18.0)
+                val noise = (random.nextDouble() * 2.0 - 1.0) * snareEnv * 0.45
+                val body = kotlin.math.sin(2.0 * Math.PI * 195.0 * tInBeat) * snareEnv * 0.35
+                sampleL += (noise + body)
+                sampleR += (noise + body)
+            }
+
+            // 3. Hi-hats on 8th notes
+            val eighthFrames = beatFrames / 2
+            val frameInEighth = frame % eighthFrames
+            val tInEighth = frameInEighth.toDouble() / sampleRate
+            val isOffbeat = (frame / eighthFrames) % 2 == 1
+            val hatEnv = kotlin.math.exp(-tInEighth * if (isOffbeat) 35.0 else 55.0)
+            val hatNoise = (random.nextDouble() * 2.0 - 1.0) * hatEnv * (if (isOffbeat) 0.32 else 0.15)
+            sampleL += hatNoise * 0.8
+            sampleR += hatNoise * 1.2 // Slight stereo spread
+
+            // 4. Bass synth stab
+            val bassEnv = kotlin.math.exp(-tInBeat * 6.0)
+            val bassNote = if (beatIndex < 2) 55.0 else 65.41 // A1 / C2
+            val bass = kotlin.math.sin(2.0 * Math.PI * bassNote * tInBeat) * bassEnv * 0.30
+            sampleL += bass
+            sampleR += bass
+
+            val clampedL = (sampleL.coerceIn(-0.95, 0.95) * 32767.0).toInt().toShort()
+            val clampedR = (sampleR.coerceIn(-0.95, 0.95) * 32767.0).toInt().toShort()
+
+            pcm[frame * 2] = clampedL
+            pcm[frame * 2 + 1] = clampedR
+        }
+
+        // Write WAV header and PCM data
+        val byteDataSize = pcm.size * 2
+        val totalDataLen = byteDataSize + 36
+        val header = ByteArray(44)
+        val channels = 2
+        val byteRate = sampleRate * channels * 2
+
+        // RIFF chunk descriptor
+        header[0] = 'R'.code.toByte(); header[1] = 'I'.code.toByte(); header[2] = 'F'.code.toByte(); header[3] = 'F'.code.toByte()
+        header[4] = (totalDataLen and 0xff).toByte()
+        header[5] = ((totalDataLen shr 8) and 0xff).toByte()
+        header[6] = ((totalDataLen shr 16) and 0xff).toByte()
+        header[7] = ((totalDataLen shr 24) and 0xff).toByte()
+        header[8] = 'W'.code.toByte(); header[9] = 'A'.code.toByte(); header[10] = 'V'.code.toByte(); header[11] = 'E'.code.toByte()
+
+        // 'fmt ' sub-chunk
+        header[12] = 'f'.code.toByte(); header[13] = 'm'.code.toByte(); header[14] = 't'.code.toByte(); header[15] = ' '.code.toByte()
+        header[16] = 16; header[17] = 0; header[18] = 0; header[19] = 0 // Subchunk1Size (16 for PCM)
+        header[20] = 1; header[21] = 0 // AudioFormat (1 for PCM)
+        header[22] = channels.toByte(); header[23] = 0 // NumChannels
+        header[24] = (sampleRate and 0xff).toByte()
+        header[25] = ((sampleRate shr 8) and 0xff).toByte()
+        header[26] = ((sampleRate shr 16) and 0xff).toByte()
+        header[27] = ((sampleRate shr 24) and 0xff).toByte()
+        header[28] = (byteRate and 0xff).toByte()
+        header[29] = ((byteRate shr 8) and 0xff).toByte()
+        header[30] = ((byteRate shr 16) and 0xff).toByte()
+        header[31] = ((byteRate shr 24) and 0xff).toByte()
+        header[32] = (channels * 2).toByte(); header[33] = 0 // BlockAlign
+        header[34] = 16; header[35] = 0 // BitsPerSample
+
+        // 'data' sub-chunk
+        header[36] = 'd'.code.toByte(); header[37] = 'a'.code.toByte(); header[38] = 't'.code.toByte(); header[39] = 'a'.code.toByte()
+        header[40] = (byteDataSize and 0xff).toByte()
+        header[41] = ((byteDataSize shr 8) and 0xff).toByte()
+        header[42] = ((byteDataSize shr 16) and 0xff).toByte()
+        header[43] = ((byteDataSize shr 24) and 0xff).toByte()
+
+        file.outputStream().use { os ->
+            os.write(header)
+            val byteBuf = java.nio.ByteBuffer.allocate(pcm.size * 2).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+            val shortBuf = byteBuf.asShortBuffer()
+            shortBuf.put(pcm)
+            os.write(byteBuf.array())
+        }
     }
 
     private fun formatSize(bytes: Long): String {
