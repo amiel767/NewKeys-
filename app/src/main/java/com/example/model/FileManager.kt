@@ -383,6 +383,44 @@ class FileManager(private val context: Context) {
         }
     }
 
+    suspend fun deleteLoopFile(fileName: String, folderName: String = ""): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val file = when {
+                folderName.isNotEmpty() && folderName != "Loops" && folderName != "Racine /Loops" -> {
+                    val sub = File(loopsDir, folderName)
+                    val candidate = File(sub, fileName)
+                    if (candidate.exists()) candidate else File(loopsDir, fileName)
+                }
+                else -> File(loopsDir, fileName)
+            }
+            if (file.exists()) file.delete() else false
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun copyLoopFile(fileName: String, folderName: String = "", newFileName: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val src = when {
+                folderName.isNotEmpty() && folderName != "Loops" && folderName != "Racine /Loops" -> {
+                    val sub = File(loopsDir, folderName)
+                    val candidate = File(sub, fileName)
+                    if (candidate.exists()) candidate else File(loopsDir, fileName)
+                }
+                else -> File(loopsDir, fileName)
+            }
+            if (!src.exists()) return@withContext false
+            val destDir = src.parentFile ?: loopsDir
+            val dest = File(destDir, newFileName)
+            src.copyTo(dest, overwrite = true)
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
     suspend fun deleteSceneFile(filePath: String): Boolean = withContext(Dispatchers.IO) {
         try {
             val file = File(filePath)

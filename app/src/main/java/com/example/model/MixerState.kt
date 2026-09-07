@@ -7,7 +7,7 @@ import com.example.ui.theme.MuteRed
 import com.example.ui.theme.SoloAmber
 
 enum class ActivePopup {
-    NONE, DRUM_PAD, TONIC_PAD, SCENE, EFFECTS, SOUNDFONT, STYLE, MIDI
+    NONE, DRUM_PAD, TONIC_PAD, SCENE, EFFECTS, SOUNDFONT, STYLE, MIDI, LOOPS
 }
 
 enum class SoundGoodizerMode(val label: String, val description: String) {
@@ -141,7 +141,12 @@ data class LoopFile(
     val name: String,
     val duration: String,
     val folder: String,
-    val bpm: Int = 120
+    val bpm: Int = 120,
+    val startMs: Int = 0,
+    val endMs: Int = 0,
+    val beats: Int = 4,
+    val startStep: Int = 1,
+    val endStep: Int = 16
 )
 
 data class LoopFolder(

@@ -84,6 +84,25 @@ fun TopBar(
         label = "loopsBtnWidth"
     )
 
+    val neonPulseTransition = rememberInfiniteTransition(label = "loops_neon_pulse")
+    val neonGlowAlpha by neonPulseTransition.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "neon_glow_alpha"
+    )
+
+    val neonLedColor = if (isLoopPlaying) {
+        NeonCyan.copy(alpha = neonGlowAlpha)
+    } else if (isLoopsOpen) {
+        NeonPurpleLight
+    } else {
+        NeonPurple.copy(alpha = 0.6f)
+    }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -94,22 +113,47 @@ fun TopBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // 1. Loops Pill with Direct Extremity Play/Pause Button
+            // 1. Loops Neon Pill with LED Border Glow and Extremity Play/Pause Button
             Box(
                 modifier = Modifier
                     .height(38.dp)
                     .clip(RoundedCornerShape(19.dp))
                     .background(
-                        if (isLoopsOpen) {
-                            Brush.horizontalGradient(listOf(NeonPurpleLight, NeonPurple, NeonPurpleDark))
+                        if (isLoopPlaying) {
+                            Brush.horizontalGradient(
+                                listOf(
+                                    Color(0xFF0F172A),
+                                    Color(0xFF162544),
+                                    Color(0xFF0D2538)
+                                )
+                            )
                         } else {
-                            Brush.verticalGradient(listOf(NeonPurple, NeonPurpleDark))
+                            Brush.verticalGradient(
+                                listOf(
+                                    Color(0xFF1E1435),
+                                    Color(0xFF140D24)
+                                )
+                            )
                         }
                     )
                     .border(
-                        1.dp,
-                        if (isLoopsOpen) NeonPurpleLight else Color(0x4DFFFFFF),
-                        RoundedCornerShape(19.dp)
+                        width = if (isLoopPlaying) 2.dp else 1.5.dp,
+                        brush = Brush.horizontalGradient(
+                            if (isLoopPlaying) {
+                                listOf(
+                                    NeonCyan.copy(alpha = neonGlowAlpha),
+                                    NeonCyanLight,
+                                    NeonPink.copy(alpha = neonGlowAlpha)
+                                )
+                            } else {
+                                listOf(
+                                    NeonPurpleLight.copy(alpha = 0.8f),
+                                    NeonPurple.copy(alpha = 0.5f),
+                                    NeonPurpleDark
+                                )
+                            }
+                        ),
+                        shape = RoundedCornerShape(19.dp)
                     )
                     .padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp)
                     .testTag("loops_pill_btn"),
@@ -119,22 +163,27 @@ fun TopBar(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // Clickable Text Label to expand dropdown
+                    // Clickable Text Label to open Dialog Pop up
                     Row(
-                        modifier = Modifier.clickable { onToggleLoops() },
+                        modifier = Modifier
+                            .clickable { onToggleLoops() }
+                            .padding(vertical = 4.dp, horizontal = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
+                        // LED indicator dot
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(if (isLoopPlaying) NeonCyan else Color(0x66FFFFFF))
+                                .border(1.dp, if (isLoopPlaying) NeonCyanLight else Color.Transparent, CircleShape)
+                        )
                         Text(
                             text = "Loops",
                             fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                        Text(
-                            text = if (isLoopsOpen) "▲" else "▼",
-                            fontSize = 9.sp,
-                            color = Color(0xCCFFFFFF)
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isLoopPlaying) NeonCyanLight else Color.White
                         )
                     }
 

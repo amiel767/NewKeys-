@@ -57,7 +57,14 @@ data class MixerUiState(
     val selectedBeatCount: Int = 4,
     val loopFolders: List<LoopFolder> = emptyList(),
     val activeLoopFile: LoopFile? = null,
+    val lastSelectedLoopFile: LoopFile? = null,
     val activeStorageLoopItem: StorageItem? = null,
+    val editingLoopFile: LoopFile? = null,
+    val loopEditorStartMs: Int = 0,
+    val loopEditorEndMs: Int = 0,
+    val loopEditorBeats: Int = 4,
+    val loopEditorStartStep: Int = 1,
+    val loopEditorEndStep: Int = 16,
     
     // MIDI Player Module (.mid) - Replaces .sty per user instructions
     val isMidiPlaying: Boolean = false,
@@ -624,26 +631,59 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun openLoopsDialog() {
+        openPopup(ActivePopup.LOOPS)
+    }
+
+    fun closeLoopsDialog() {
+        closePopup()
+        _uiState.update { it.copy(editingLoopFile = null) }
+    }
+
     fun toggleLoopsPanel() {
-        _uiState.update { it.copy(isLoopsPanelOpen = !it.isLoopsPanelOpen, isMetroPanelOpen = false, isMidiPanelOpen = false) }
+        // Open the full modal popup for LOOPS
+        openPopup(ActivePopup.LOOPS)
     }
 
     fun closeLoopsPanel() {
-        _uiState.update { it.copy(isLoopsPanelOpen = false) }
+        if (_uiState.value.activePopup == ActivePopup.LOOPS) {
+            closePopup()
+        }
+        _uiState.update { it.copy(isLoopsPanelOpen = false, editingLoopFile = null) }
     }
 
     fun toggleLoopPlayPause() {
         val next = !_uiState.value.isLoopPlaying
         if (next) {
-            _uiState.value.activeLoopFile?.let {
-                val f = java.io.File(fileManager.loopsDir, "${it.folder}/${it.name}".replace("Racine /Loops/", "").replace("Loops/", ""))
-                val path = if (f.exists()) f.absolutePath else java.io.File(fileManager.loopsDir, it.name).absolutePath
-                audioEngine.playLoopFile(path, _uiState.value.loopVolume, _uiState.value.selectedBeatCount, _uiState.value.bpm)
+            val target = _uiState.value.activeLoopFile
+                ?: _uiState.value.lastSelectedLoopFile
+                ?: _uiState.value.loopFolders.firstNotNullOfOrNull { folder -> folder.files.firstOrNull() }
+
+            if (target != null) {
+                val f = java.io.File(fileManager.loopsDir, "${target.folder}/${target.name}".replace("Racine /Loops/", "").replace("Loops/", ""))
+                val path = if (f.exists()) f.absolutePath else java.io.File(fileManager.loopsDir, target.name).absolutePath
+                audioEngine.playLoopFile(
+                    filePath = path,
+                    volume = _uiState.value.loopVolume,
+                    beatCount = target.beats.takeIf { b -> b > 0 } ?: _uiState.value.selectedBeatCount,
+                    bpm = _uiState.value.bpm,
+                    startMs = target.startMs,
+                    endMs = target.endMs
+                )
+                _uiState.update {
+                    it.copy(
+                        isLoopPlaying = true,
+                        activeLoopFile = target,
+                        lastSelectedLoopFile = target
+                    )
+                }
+            } else {
+                _uiState.update { it.copy(isLoopPlaying = false) }
             }
         } else {
             audioEngine.stopLoopPlayer()
+            _uiState.update { it.copy(isLoopPlaying = false) }
         }
-        _uiState.update { it.copy(isLoopPlaying = next) }
     }
 
     fun setLoopVolume(vol: Float) {
@@ -652,8 +692,21 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectBeatCount(beats: Int) {
-        _uiState.update { it.copy(selectedBeatCount = beats) }
-        audioEngine.setLoopBeats(beats, _uiState.value.bpm)
+        val clamped = beats.coerceIn(2, 64)
+        _uiState.update { it.copy(selectedBeatCount = clamped) }
+        audioEngine.setLoopBeats(clamped, _uiState.value.bpm)
+        _uiState.value.activeLoopFile?.let { current ->
+            val updated = current.copy(beats = clamped)
+            _uiState.update { state ->
+                state.copy(
+                    activeLoopFile = updated,
+                    lastSelectedLoopFile = updated,
+                    loopFolders = state.loopFolders.map { folder ->
+                        folder.copy(files = folder.files.map { if (it.name == current.name) updated else it })
+                    }
+                )
+            }
+        }
     }
 
     fun toggleLoopFolder(folderName: String) {
@@ -678,15 +731,168 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val isSame = (_uiState.value.activeLoopFile?.name == file.name)
         if (isSame && _uiState.value.isLoopPlaying) {
             audioEngine.stopLoopPlayer()
-            _uiState.update { it.copy(isLoopPlaying = false) }
+            _uiState.update { it.copy(isLoopPlaying = false, lastSelectedLoopFile = file) }
         } else {
             val f = java.io.File(fileManager.loopsDir, "${file.folder}/${file.name}".replace("Racine /Loops/", "").replace("Loops/", ""))
             val path = if (f.exists()) f.absolutePath else java.io.File(fileManager.loopsDir, file.name).absolutePath
-            audioEngine.playLoopFile(path, _uiState.value.loopVolume, _uiState.value.selectedBeatCount, _uiState.value.bpm)
+            audioEngine.playLoopFile(
+                filePath = path,
+                volume = _uiState.value.loopVolume,
+                beatCount = file.beats.takeIf { b -> b > 0 } ?: _uiState.value.selectedBeatCount,
+                bpm = _uiState.value.bpm,
+                startMs = file.startMs,
+                endMs = file.endMs
+            )
             _uiState.update {
                 it.copy(
                     activeLoopFile = file,
+                    lastSelectedLoopFile = file,
                     isLoopPlaying = true
+                )
+            }
+        }
+    }
+
+    fun deleteLoopFile(file: LoopFile) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (_uiState.value.activeLoopFile?.name == file.name) {
+                audioEngine.stopLoopPlayer()
+                _uiState.update { it.copy(isLoopPlaying = false, activeLoopFile = null) }
+            }
+            fileManager.deleteLoopFile(file.name, file.folder)
+            refreshStorageFiles()
+        }
+    }
+
+    fun openLoopEditor(file: LoopFile) {
+        val beats = if (file.beats in 2..64) file.beats else 4
+        val totalSteps = (beats * 4).coerceIn(8, 256)
+        val sStep = if (file.startStep in 1..totalSteps) file.startStep else 1
+        val eStep = if (file.endStep in sStep..totalSteps) file.endStep else totalSteps
+        _uiState.update {
+            it.copy(
+                editingLoopFile = file,
+                loopEditorStartMs = file.startMs,
+                loopEditorEndMs = file.endMs,
+                loopEditorBeats = beats,
+                loopEditorStartStep = sStep,
+                loopEditorEndStep = eStep
+            )
+        }
+    }
+
+    fun closeLoopEditor() {
+        _uiState.update { it.copy(editingLoopFile = null) }
+    }
+
+    fun updateLoopEditorBeats(beats: Int) {
+        val clamped = beats.coerceIn(2, 64)
+        val totalSteps = clamped * 4
+        val currentStartStep = _uiState.value.loopEditorStartStep.coerceIn(1, totalSteps - 1)
+        val currentEndStep = _uiState.value.loopEditorEndStep.coerceIn(currentStartStep + 1, totalSteps)
+
+        _uiState.update {
+            it.copy(
+                loopEditorBeats = clamped,
+                loopEditorStartStep = currentStartStep,
+                loopEditorEndStep = currentEndStep
+            )
+        }
+        audioEngine.setLoopBeats(clamped, _uiState.value.bpm)
+    }
+
+    fun updateLoopEditorTrims(startMs: Int, endMs: Int) {
+        _uiState.update { it.copy(loopEditorStartMs = startMs, loopEditorEndMs = endMs) }
+        audioEngine.updateLoopTrims(startMs, endMs)
+    }
+
+    fun updateLoopEditorSteps(startStep: Int, endStep: Int) {
+        val beats = _uiState.value.loopEditorBeats.coerceIn(2, 64)
+        val totalSteps = beats * 4
+        val clampedStart = startStep.coerceIn(1, totalSteps - 1)
+        val clampedEnd = endStep.coerceIn(clampedStart + 1, totalSteps)
+
+        val startFraction = (clampedStart - 1).toFloat() / totalSteps.toFloat()
+        val endFraction = clampedEnd.toFloat() / totalSteps.toFloat()
+
+        val startMs = (startFraction * 10000).toInt()
+        val endMs = (endFraction * 10000).toInt()
+
+        _uiState.update {
+            it.copy(
+                loopEditorStartStep = clampedStart,
+                loopEditorEndStep = clampedEnd,
+                loopEditorStartMs = startMs,
+                loopEditorEndMs = endMs
+            )
+        }
+        audioEngine.updateLoopTrims(startMs, endMs)
+    }
+
+    /**
+     * Overwrites current loop settings in place
+     */
+    fun overwriteLoopFile(beats: Int, startMs: Int, endMs: Int, startStep: Int, endStep: Int) {
+        val editing = _uiState.value.editingLoopFile ?: return
+        val updatedFile = editing.copy(
+            beats = beats.coerceIn(2, 64),
+            startMs = startMs.coerceAtLeast(0),
+            endMs = endMs.coerceAtLeast(0),
+            startStep = startStep,
+            endStep = endStep
+        )
+        _uiState.update { state ->
+            val updatedFolders = state.loopFolders.map { folder ->
+                folder.copy(files = folder.files.map { f -> if (f.name == editing.name) updatedFile else f })
+            }
+            state.copy(
+                loopFolders = updatedFolders,
+                activeLoopFile = if (state.activeLoopFile?.name == editing.name) updatedFile else state.activeLoopFile,
+                lastSelectedLoopFile = updatedFile,
+                editingLoopFile = null
+            )
+        }
+        if (_uiState.value.activeLoopFile?.name == editing.name && _uiState.value.isLoopPlaying) {
+            val f = java.io.File(fileManager.loopsDir, "${updatedFile.folder}/${updatedFile.name}".replace("Racine /Loops/", "").replace("Loops/", ""))
+            val path = if (f.exists()) f.absolutePath else java.io.File(fileManager.loopsDir, updatedFile.name).absolutePath
+            audioEngine.playLoopFile(path, _uiState.value.loopVolume, updatedFile.beats, _uiState.value.bpm, updatedFile.startMs, updatedFile.endMs)
+        }
+    }
+
+    /**
+     * Saves changes as a new copy of the file
+     */
+    fun saveCopyLoopFile(beats: Int, startMs: Int, endMs: Int, startStep: Int, endStep: Int) {
+        val editing = _uiState.value.editingLoopFile ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val ext = if (editing.name.contains(".")) ".${editing.name.substringAfterLast('.')}" else ".wav"
+            val base = editing.name.substringBeforeLast('.')
+            val newName = "${base}_edit$ext"
+
+            fileManager.copyLoopFile(editing.name, editing.folder, newName)
+            val newFile = LoopFile(
+                name = newName,
+                duration = editing.duration,
+                folder = editing.folder,
+                bpm = editing.bpm,
+                startMs = startMs.coerceAtLeast(0),
+                endMs = endMs.coerceAtLeast(0),
+                beats = beats.coerceIn(2, 64),
+                startStep = startStep,
+                endStep = endStep
+            )
+            refreshStorageFiles()
+            _uiState.update { state ->
+                val updatedFolders = state.loopFolders.map { folder ->
+                    if (folder.name == editing.folder || (folder.name.contains("Racine") && editing.folder.isEmpty())) {
+                        folder.copy(files = folder.files + newFile)
+                    } else folder
+                }
+                state.copy(
+                    loopFolders = updatedFolders,
+                    activeLoopFile = newFile,
+                    lastSelectedLoopFile = newFile,
+                    editingLoopFile = null
                 )
             }
         }

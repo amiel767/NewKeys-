@@ -105,7 +105,7 @@ fun MixerScreen(
                     octave = uiState.octave,
                     onTransposeChange = { viewModel.updateTranspose(it) },
                     onOctaveChange = { viewModel.updateOctave(it) },
-                    isLoopsOpen = uiState.isLoopsPanelOpen,
+                    isLoopsOpen = uiState.activePopup == ActivePopup.LOOPS,
                     onToggleLoops = { viewModel.toggleLoopsPanel() },
                     isLoopPlaying = uiState.isLoopPlaying,
                     onToggleLoopPlayPause = { viewModel.toggleLoopPlayPause() },
@@ -244,32 +244,6 @@ fun MixerScreen(
                             if (uiState.isMidiPanelOpen) viewModel.closeMidiPanel()
                             if (uiState.activePopup == ActivePopup.SCENE) viewModel.closePopup()
                         }
-                )
-            }
-
-            // Floating Loops Dropdown Panel
-            AnimatedVisibility(
-                visible = uiState.isLoopsPanelOpen,
-                enter = fadeIn(tween(180)) + slideInVertically(initialOffsetY = { -20 }, animationSpec = tween(200)),
-                exit = fadeOut(tween(150)) + slideOutVertically(targetOffsetY = { -20 }, animationSpec = tween(150)),
-                modifier = Modifier
-                    .padding(top = 38.dp, start = 120.dp)
-                    .align(Alignment.TopStart)
-            ) {
-                LoopsFloatingPanel(
-                    isOpen = uiState.isLoopsPanelOpen,
-                    isLoopPlaying = uiState.isLoopPlaying,
-                    onToggleLoopPlayPause = { viewModel.toggleLoopPlayPause() },
-                    loopVolume = uiState.loopVolume,
-                    onLoopVolumeChange = { viewModel.setLoopVolume(it) },
-                    selectedBeats = uiState.selectedBeatCount,
-                    onSelectBeats = { viewModel.selectBeatCount(it) },
-                    loopFolders = uiState.loopFolders,
-                    activeLoopFile = uiState.activeLoopFile,
-                    onToggleFolder = { viewModel.toggleLoopFolder(it) },
-                    onSelectFile = { viewModel.selectAndToggleLoopFile(it) },
-                    onImportLoop = { loopPickerLauncher.launch(arrayOf("audio/*", "*/*")) },
-                    onClose = { viewModel.closeLoopsPanel() }
                 )
             }
 
@@ -463,6 +437,40 @@ fun MixerScreen(
                     onTabChange = { viewModel.setSf2Tab(it) },
                     onImportSf2 = { sf2PickerLauncher.launch(arrayOf("*/*")) },
                     onClose = { viewModel.closePopup() }
+                )
+            }
+            ActivePopup.LOOPS -> {
+                LoopsDialog(
+                    isOpen = true,
+                    onClose = { viewModel.closeLoopsDialog() },
+                    loopFolders = uiState.loopFolders,
+                    activeLoopFile = uiState.activeLoopFile,
+                    isLoopPlaying = uiState.isLoopPlaying,
+                    loopVolume = uiState.loopVolume,
+                    onLoopVolumeChange = { viewModel.setLoopVolume(it) },
+                    selectedBeats = uiState.selectedBeatCount,
+                    onSelectBeats = { viewModel.selectBeatCount(it) },
+                    onToggleFolder = { viewModel.toggleLoopFolder(it) },
+                    onSelectFile = { viewModel.selectAndToggleLoopFile(it) },
+                    onDeleteFile = { viewModel.deleteLoopFile(it) },
+                    editingLoopFile = uiState.editingLoopFile,
+                    onOpenEditFile = { viewModel.openLoopEditor(it) },
+                    onCloseEditFile = { viewModel.closeLoopEditor() },
+                    editorBeats = uiState.loopEditorBeats,
+                    onUpdateEditorBeats = { viewModel.updateLoopEditorBeats(it) },
+                    editorStartMs = uiState.loopEditorStartMs,
+                    editorEndMs = uiState.loopEditorEndMs,
+                    onUpdateEditorTrims = { start, end -> viewModel.updateLoopEditorTrims(start, end) },
+                    editorStartStep = uiState.loopEditorStartStep,
+                    editorEndStep = uiState.loopEditorEndStep,
+                    onUpdateEditorSteps = { start, end -> viewModel.updateLoopEditorSteps(start, end) },
+                    onOverwriteEditChanges = { beats, start, end, sStep, eStep ->
+                        viewModel.overwriteLoopFile(beats, start, end, sStep, eStep)
+                    },
+                    onSaveCopyEditChanges = { beats, start, end, sStep, eStep ->
+                        viewModel.saveCopyLoopFile(beats, start, end, sStep, eStep)
+                    },
+                    onImportLoop = { loopPickerLauncher.launch(arrayOf("audio/*", "*/*")) }
                 )
             }
             else -> {}

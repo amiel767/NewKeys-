@@ -170,8 +170,11 @@ class AudioEngine(private val context: Context) {
 
     // ================= 4. AUDIO / LOOP / SAMPLE PLAYBACK =================
     private var loopMediaPlayer: MediaPlayer? = null
+    private var nextLoopMediaPlayer: MediaPlayer? = null
     private var currentLoopFilePath: String = ""
     @Volatile private var currentLoopVolume: Float = 0.75f
+    @Volatile private var loopTrimStartMs: Int = 0
+    @Volatile private var loopTrimEndMs: Int = 0
     private var soundPool: SoundPool? = null
     private val loadedSampleIds = java.util.concurrent.ConcurrentHashMap<String, Int>()
     private val pendingSamplePlays = java.util.concurrent.ConcurrentHashMap<Int, Float>()
@@ -956,10 +959,19 @@ class AudioEngine(private val context: Context) {
     @Volatile private var activeLoopBeats: Int = 0
     @Volatile private var activeLoopBpm: Int = 120
 
-    fun playLoopFile(filePath: String, volume: Float = 0.65f, beatCount: Int = 0, bpm: Int = 120) {
+    fun playLoopFile(
+        filePath: String,
+        volume: Float = 0.65f,
+        beatCount: Int = 0,
+        bpm: Int = 120,
+        startMs: Int = 0,
+        endMs: Int = 0
+    ) {
         currentLoopVolume = volume.coerceIn(0f, 1f)
         activeLoopBeats = beatCount
         activeLoopBpm = bpm
+        loopTrimStartMs = startMs
+        loopTrimEndMs = endMs
         coroutineScope.launch(Dispatchers.IO) {
             try {
                 stopLoopPlayer()
@@ -975,21 +987,25 @@ class AudioEngine(private val context: Context) {
                             .build()
                     )
                     setDataSource(filePath)
-                    isLooping = true
+                    // If no beat duration limit and no trim, hardware looping is 100% gapless native
+                    isLooping = (beatCount <= 0 && startMs <= 0 && endMs <= 0)
                     setVolume(currentLoopVolume, currentLoopVolume)
                     setOnCompletionListener {
                         try {
-                            seekTo(0)
+                            seekTo(loopTrimStartMs.coerceAtLeast(0))
                             start()
                         } catch (_: Exception) {}
                     }
                     prepare()
+                    if (loopTrimStartMs > 0) {
+                        seekTo(loopTrimStartMs)
+                    }
                     start()
                 }
                 loopMediaPlayer = player
-                if (beatCount > 0) {
-                    startBeatLoopMonitor(player, beatCount, bpm)
-                }
+
+                // Monitor loop restart immediately without cut when beats or trims are active
+                startLoopPlaybackMonitor(player, beatCount, bpm, startMs, endMs)
             } catch (e: Exception) {
                 Log.e(TAG, "Error starting loop player: ${e.message}")
             }
@@ -1000,33 +1016,63 @@ class AudioEngine(private val context: Context) {
         activeLoopBeats = beatCount
         activeLoopBpm = bpm
         val player = loopMediaPlayer ?: return
-        if (beatCount <= 0) {
+        if (beatCount <= 0 && loopTrimStartMs <= 0 && loopTrimEndMs <= 0) {
             loopBeatJob?.cancel()
-            player.isLooping = true
+            try { player.isLooping = true } catch (_: Exception) {}
         } else {
-            player.isLooping = false
-            startBeatLoopMonitor(player, beatCount, bpm)
+            try { player.isLooping = false } catch (_: Exception) {}
+            startLoopPlaybackMonitor(player, beatCount, bpm, loopTrimStartMs, loopTrimEndMs)
         }
     }
 
-    private fun startBeatLoopMonitor(player: MediaPlayer, beatCount: Int, bpm: Int) {
+    fun updateLoopTrims(startMs: Int, endMs: Int) {
+        loopTrimStartMs = startMs
+        loopTrimEndMs = endMs
+        val player = loopMediaPlayer ?: return
+        startLoopPlaybackMonitor(player, activeLoopBeats, activeLoopBpm, startMs, endMs)
+    }
+
+    private fun startLoopPlaybackMonitor(
+        player: MediaPlayer,
+        beatCount: Int,
+        bpm: Int,
+        startMs: Int,
+        endMs: Int
+    ) {
         loopBeatJob?.cancel()
-        if (beatCount <= 0) return
+        // If pure native looping is possible, let the MediaPlayer hardware handle it
+        if (beatCount <= 0 && startMs <= 0 && endMs <= 0) {
+            try { player.isLooping = true } catch (_: Exception) {}
+            return
+        }
+
+        try { player.isLooping = false } catch (_: Exception) {}
 
         loopBeatJob = coroutineScope.launch(Dispatchers.Default) {
             val totalDurationMs = try { player.duration } catch (_: Exception) { 0 }
-            val beatDurationMs = ((beatCount * 60_000L) / bpm.coerceAtLeast(30)).toInt()
-            val effectiveDurationMs = if (totalDurationMs > 0) beatDurationMs.coerceAtMost(totalDurationMs) else beatDurationMs
+            val beatDurationMs = if (beatCount > 0) ((beatCount * 60_000L) / bpm.coerceAtLeast(30)).toInt() else 0
+
+            val effectiveEndMs = when {
+                endMs > 0 && endMs > startMs -> endMs.coerceAtMost(if (totalDurationMs > 0) totalDurationMs else endMs)
+                beatDurationMs > 0 -> {
+                    val candidate = startMs + beatDurationMs
+                    if (totalDurationMs > 0) candidate.coerceAtMost(totalDurationMs) else candidate
+                }
+                totalDurationMs > 0 -> totalDurationMs
+                else -> 4000
+            }
+
+            val restartStartMs = startMs.coerceAtLeast(0)
 
             while (isActive && loopMediaPlayer == player) {
                 try {
                     val currentPos = player.currentPosition
-                    if (currentPos >= effectiveDurationMs - 25) {
-                        player.seekTo(0)
+                    if (currentPos >= effectiveEndMs - 20) {
+                        player.seekTo(restartStartMs)
                         if (!player.isPlaying) player.start()
-                        delay(40)
+                        delay(25)
                     } else {
-                        val waitTime = (effectiveDurationMs - currentPos - 20).coerceIn(10, 80)
+                        val waitTime = (effectiveEndMs - currentPos - 15).coerceIn(8, 60)
                         delay(waitTime.toLong())
                     }
                 } catch (_: Exception) {
@@ -1043,7 +1089,12 @@ class AudioEngine(private val context: Context) {
             loopMediaPlayer?.stop()
             loopMediaPlayer?.release()
         } catch (_: Exception) {}
+        try {
+            nextLoopMediaPlayer?.stop()
+            nextLoopMediaPlayer?.release()
+        } catch (_: Exception) {}
         loopMediaPlayer = null
+        nextLoopMediaPlayer = null
         currentLoopFilePath = ""
     }
 
@@ -1051,6 +1102,9 @@ class AudioEngine(private val context: Context) {
         currentLoopVolume = volume.coerceIn(0f, 1f)
         try {
             loopMediaPlayer?.setVolume(currentLoopVolume, currentLoopVolume)
+        } catch (_: Exception) {}
+        try {
+            nextLoopMediaPlayer?.setVolume(currentLoopVolume, currentLoopVolume)
         } catch (_: Exception) {}
     }
 
