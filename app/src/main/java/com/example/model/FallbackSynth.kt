@@ -12,9 +12,8 @@ import kotlin.math.max
 /**
  * Direct Audio Output Pump for Native FluidSynth SoundFonts.
  *
- * Pulls and streams native C++ FluidSynth audio into Android AudioTrack
- * whenever hardware Oboe is inactive, guaranteeing pristine soundfont playback
- * with zero synthetic superposition and zero thread collisions.
+ * Runs only when hardware Oboe/AAudio is unavailable or inactive,
+ * streaming pure SoundFont audio with rock-solid blocking stream writes (zero stutter, zero saccade).
  */
 class FallbackSynth {
 
@@ -38,7 +37,7 @@ class FallbackSynth {
                 AudioFormat.CHANNEL_OUT_STEREO,
                 AudioFormat.ENCODING_PCM_16BIT
             )
-            val bufSize = max(minBuf * 2, 4096)
+            val bufSize = max(minBuf * 4, 8192)
 
             audioTrack = AudioTrack(
                 AudioAttributes.Builder()
@@ -60,14 +59,14 @@ class FallbackSynth {
 
             audioThread = Thread({
                 Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
-                val bufferFrames = 256
+                val bufferFrames = 512
                 val totalStereoSamples = bufferFrames * 2
                 val pcmBuffer = ShortArray(totalStereoSamples)
 
                 while (isRunning) {
-                    if (isBypassed) {
+                    if (isBypassed || NativeAudioBridge.safeIsOboeActive()) {
                         try {
-                            Thread.sleep(20)
+                            Thread.sleep(100)
                         } catch (_: InterruptedException) {
                             break
                         }
@@ -80,9 +79,8 @@ class FallbackSynth {
                     if (renderedFrames > 0) {
                         audioTrack?.write(pcmBuffer, 0, totalStereoSamples)
                     } else {
-                        // Oboe is active or no frames rendered -> sleep briefly to prevent CPU spinning
                         try {
-                            Thread.sleep(15)
+                            Thread.sleep(50)
                         } catch (_: InterruptedException) {
                             break
                         }
@@ -106,22 +104,10 @@ class FallbackSynth {
         audioTrack = null
     }
 
-    fun noteOn(midiNote: Int, velocity: Float) {
-        // Synthetic oscillator removed: SoundFonts only
-    }
-
-    fun noteOff(midiNote: Int) {
-        // Synthetic oscillator removed: SoundFonts only
-    }
-
-    fun allNotesOff() {
-        // Synthetic oscillator removed: SoundFonts only
-    }
-
-    fun playDrumHit(padIndex: Int, velocity: Float) {
-        // Synthetic drum hit removed: SoundFonts only
-    }
-
+    fun noteOn(midiNote: Int, velocity: Float) {}
+    fun noteOff(midiNote: Int) {}
+    fun allNotesOff() {}
+    fun playDrumHit(padIndex: Int, velocity: Float) {}
     fun setMasterGain(gain: Float) {
         masterGain = gain.coerceIn(0f, 1f)
     }

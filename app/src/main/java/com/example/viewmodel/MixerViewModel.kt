@@ -229,6 +229,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.update { it.copy(isMidiPedalPressed = isPressed) }
         }
 
+        // Connect multi-channel layer performance routing for USB MIDI
+        audioEngine.activeLayerChannelsProvider = { midiNote ->
+            getActivePerformanceChannels(midiNote)
+        }
+
         // Restore persisted state from previous session
         restoreSavedAppState()
     }
@@ -331,11 +336,21 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             NativeAudioBridge.safeSetTrackPan(ch, t.pan)
         }
 
+        var hasLoadedAnySlot = false
         if (saved.audioSlots.isNotEmpty()) {
             saved.audioSlots.forEach { savedSlot ->
                 if (!savedSlot.soundFontPath.isNullOrEmpty() && File(savedSlot.soundFontPath).exists()) {
                     loadSoundFontForSlot(savedSlot.slotId, savedSlot.soundFontPath, savedSlot.bank, savedSlot.preset, savedSlot.patchName)
+                    hasLoadedAnySlot = true
                 }
+            }
+        }
+
+        // If no slot had a valid SoundFont restored, load the default soundfont on Slot 0
+        if (!hasLoadedAnySlot) {
+            val defaultSf = File(getApplication<Application>().filesDir, "LiveKeys/SoundFonts/VintageDreamsWaves-v2.sf2")
+            if (defaultSf.exists()) {
+                loadSoundFontForSlot(0, defaultSf.absolutePath, bank = 0, preset = 0)
             }
         }
     }
@@ -1378,30 +1393,74 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun getActivePerformanceChannels(midiNote: Int? = null): List<Int> {
+        val state = _uiState.value
+        val anySolo = state.tracks.any { it.isSolo }
+
+        // If keyboard splitter is active (Split point at C4 = 60)
+        if (state.isSplitterActive && midiNote != null) {
+            val splitNote = 60
+            return if (midiNote < splitNote) {
+                // Lower hand (Bass / Track 1)
+                listOf(0)
+            } else {
+                // Upper hand (Layered active tracks 2..8)
+                val upperChannels = state.tracks.mapIndexedNotNull { idx, track ->
+                    if (idx > 0 && track.isEnabled && !track.isMuted && (!anySolo || track.isSolo)) {
+                        val slot = state.audioSlots.getOrNull(idx)
+                        if (slot != null && slot.soundFontId > 0) idx else null
+                    } else null
+                }
+                if (upperChannels.isNotEmpty()) upperChannels else listOf(midiChannelForSlot(state.activeSoundfontSlotId))
+            }
+        }
+
+        // Standard Full Performance Layering:
+        // Play on ALL enabled & unmuted tracks (1..8) that have a loaded SoundFont
+        val activeChannels = state.tracks.mapIndexedNotNull { idx, track ->
+            val isAllowed = track.isEnabled && !track.isMuted && (!anySolo || track.isSolo)
+            if (isAllowed) {
+                val slot = state.audioSlots.getOrNull(idx)
+                if (slot != null && slot.soundFontId > 0) idx else null
+            } else null
+        }
+
+        return if (activeChannels.isNotEmpty()) {
+            activeChannels
+        } else {
+            listOf(midiChannelForSlot(state.activeSoundfontSlotId))
+        }
+    }
+
     fun setPitchBend(bend: Float) {
         val clamped = bend.coerceIn(-1.0f, 1.0f)
-        val slotId = _uiState.value.activeSoundfontSlotId
-        val channel = midiChannelForSlot(slotId)
         val midiBend = ((clamped + 1.0f) * 8191.5f).toInt().coerceIn(0, 16383)
-        NativeAudioBridge.safePitchBend(channel, midiBend)
+        val channels = getActivePerformanceChannels()
+        channels.forEach { channel ->
+            NativeAudioBridge.safePitchBend(channel, midiBend)
+        }
         audioEngine.setPitchBend(clamped)
         _uiState.update { it.copy(pitchBend = clamped) }
     }
 
     fun onKeyDown(key: String) {
-        val slotId = _uiState.value.activeSoundfontSlotId
-        val channel = midiChannelForSlot(slotId)
-        audioEngine.noteOn(key, 0.85f, channel)
+        val midiNote = noteNameToMidi(key)
+        val channels = getActivePerformanceChannels(midiNote)
+        channels.forEach { channel ->
+            audioEngine.noteOn(key, 0.85f, channel)
+        }
         _uiState.update { state ->
             state.copy(pressedKeys = state.pressedKeys + key)
         }
     }
 
     fun onKeyUp(key: String) {
-        val slotId = _uiState.value.activeSoundfontSlotId
-        val channel = midiChannelForSlot(slotId)
+        val midiNote = noteNameToMidi(key)
+        val channels = getActivePerformanceChannels(midiNote)
         if (!_uiState.value.isSustainActive && !_uiState.value.isMidiPedalPressed) {
-            audioEngine.noteOff(key, channel)
+            channels.forEach { channel ->
+                audioEngine.noteOff(key, channel)
+            }
         }
         _uiState.update { state ->
             if (!state.isSustainActive && !state.isMidiPedalPressed) {

@@ -321,4 +321,11 @@ Java_com_example_audio_NativeAudioBridge_hasActiveSoundFonts(
     return static_cast<jboolean>(gAudioEngine.hasActiveSoundFonts());
 }
 
+JNIEXPORT jboolean JNICALL
+Java_com_example_audio_NativeAudioBridge_isOboeActive(
+        JNIEnv *env,
+        jobject /* this */) {
+    return static_cast<jboolean>(gAudioEngine.isOboeActive());
+}
+
 } // extern "C"

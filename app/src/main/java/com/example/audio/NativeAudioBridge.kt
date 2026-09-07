@@ -75,8 +75,19 @@ object NativeAudioBridge {
     external fun setChannelChorus(engineIndex: Int, channel: Int, chorus: Float)
     external fun renderNativeAudio(audioBuffer: ShortArray, numFrames: Int): Int
     external fun hasActiveSoundFonts(): Boolean
+    external fun isOboeActive(): Boolean
 
     // Safe wrappers to avoid crashes if native library isn't compiled or loaded
+    fun safeIsOboeActive(): Boolean {
+        return if (isLibraryLoaded) {
+            try {
+                isOboeActive()
+            } catch (e: Throwable) {
+                false
+            }
+        } else false
+    }
+
     fun safeStartEngine(driverType: Int = 0): Boolean {
         return if (isLibraryLoaded) {
             try {

@@ -66,8 +66,38 @@ class AudioEngine(private val context: Context) {
     // Fallback Polyphonic Synthesizer (ensures sound is ALWAYS heard immediately)
     private val fallbackSynth = FallbackSynth()
 
+    private var audioManager: AudioManager? = null
+    var activeLayerChannelsProvider: ((midiNote: Int) -> List<Int>)? = null
+
+    private val audioDeviceCallback = object : android.media.AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(addedDevices: Array<out android.media.AudioDeviceInfo>?) {
+            super.onAudioDevicesAdded(addedDevices)
+            Log.i(TAG, "Audio output device attached (headphones/BT). Restoring audio stream...")
+            reconnectAudioStream()
+        }
+
+        override fun onAudioDevicesRemoved(removedDevices: Array<out android.media.AudioDeviceInfo>?) {
+            super.onAudioDevicesRemoved(removedDevices)
+            Log.i(TAG, "Audio output device removed. Restoring audio stream...")
+            reconnectAudioStream()
+        }
+    }
+
     init {
         fallbackSynth.start()
+        try {
+            audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            audioManager?.registerAudioDeviceCallback(audioDeviceCallback, null)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not register AudioDeviceCallback: ${e.message}")
+        }
+    }
+
+    fun reconnectAudioStream() {
+        coroutineScope.launch {
+            kotlinx.coroutines.delay(200)
+            NativeAudioBridge.safeStartEngine(0)
+        }
     }
 
     fun setHasActiveSoundFont(hasSoundFont: Boolean) {
@@ -424,39 +454,47 @@ class AudioEngine(private val context: Context) {
     // DIRECT ZERO-LATENCY MIDI PROCESSOR (RUNS ON MIDI IO THREAD)
     // -------------------------------------------------------------
     fun handleIncomingMidi(channel: Int, command: Int, data1: Int, data2: Int) {
-        val targetChannel = if (usbMidiRouteToActiveSlot) {
-            activeTargetChannel
+        val effectiveNote = (data1 + globalOctaveShift * 12).coerceIn(0, 127)
+        val targetChannels = if (usbMidiRouteToActiveSlot) {
+            activeLayerChannelsProvider?.invoke(effectiveNote) ?: listOf(activeTargetChannel)
         } else {
-            midiChannelForSlot(channel)
+            listOf(midiChannelForSlot(channel))
         }
 
         when (command) {
             0x90 -> { // Note On (velocity == 0 is treated as Note Off)
                 if (data2 > 0) {
-                    val effectiveNote = (data1 + globalOctaveShift * 12).coerceIn(0, 127)
                     activeMidiNoteMap[data1] = effectiveNote
                     activeHeldNotes.add(effectiveNote)
                     sustainedNotesToRelease.remove(effectiveNote)
                     
-                    playMidiNote(effectiveNote, data2, targetChannel)
+                    targetChannels.forEach { ch ->
+                        playMidiNote(effectiveNote, data2, ch)
+                    }
 
                     coroutineScope.launch(Dispatchers.Main) {
                         onMidiNoteOnListener?.invoke(midiNumberToNoteName(effectiveNote), data2)
                     }
                 } else {
-                    val effectiveNote = activeMidiNoteMap.remove(data1) ?: (data1 + globalOctaveShift * 12).coerceIn(0, 127)
-                    handleNoteOffDirect(targetChannel, effectiveNote)
+                    val releasedNote = activeMidiNoteMap.remove(data1) ?: effectiveNote
+                    targetChannels.forEach { ch ->
+                        handleNoteOffDirect(ch, releasedNote)
+                    }
                 }
             }
 
             0x80 -> { // Note Off
-                val effectiveNote = activeMidiNoteMap.remove(data1) ?: (data1 + globalOctaveShift * 12).coerceIn(0, 127)
-                handleNoteOffDirect(targetChannel, effectiveNote)
+                val releasedNote = activeMidiNoteMap.remove(data1) ?: effectiveNote
+                targetChannels.forEach { ch ->
+                    handleNoteOffDirect(ch, releasedNote)
+                }
             }
 
             0xE0 -> { // Pitch Bend
                 val bendVal = ((data2 shl 7) or data1)
-                bendMidiPitch(bendVal, targetChannel)
+                targetChannels.forEach { ch ->
+                    bendMidiPitch(bendVal, ch)
+                }
                 val normalized = (bendVal - 8192) / 8192f
                 coroutineScope.launch(Dispatchers.Main) {
                     onMidiPitchBendListener?.invoke(normalized)
@@ -479,7 +517,9 @@ class AudioEngine(private val context: Context) {
 
                         for (note in notesToRelease) {
                             if (!activeHeldNotes.contains(note)) {
-                                stopMidiNote(note, targetChannel)
+                                targetChannels.forEach { ch ->
+                                    stopMidiNote(note, ch)
+                                }
                                 coroutineScope.launch(Dispatchers.Main) {
                                     onMidiNoteOffListener?.invoke(midiNumberToNoteName(note))
                                 }

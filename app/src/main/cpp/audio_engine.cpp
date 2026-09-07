@@ -1,5 +1,7 @@
 #include "audio_engine.h"
 #include <android/log.h>
+#include <thread>
+#include <chrono>
 
 #define TAG "AudioEngine"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
@@ -100,9 +102,12 @@ void AudioEngine::onErrorBeforeClose(oboe::AudioStream *audioStream, oboe::Resul
 }
 
 void AudioEngine::onErrorAfterClose(oboe::AudioStream *audioStream, oboe::Result error) {
-    LOGI("Oboe stream error/disconnected: %s. Automatically reopening stream...", 
+    LOGI("Oboe stream error/disconnected: %s. Reopening stream asynchronously...", 
         oboe::convertToText(error));
-    openAndStartStream();
+    std::thread([this]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        openAndStartStream();
+    }).detach();
 }
 
 void AudioEngine::stop() {
@@ -180,8 +185,8 @@ bool AudioEngine::hasActiveSoundFonts() const {
 int AudioEngine::renderDirect(int16_t *outputBuffer16, int32_t numFrames) {
     if (!outputBuffer16 || numFrames <= 0) return 0;
 
-    // If Oboe is actively running, let Oboe handle audio to avoid dual-stream conflict/stutter
-    if (mOboeActive.load(std::memory_order_relaxed)) {
+    // If Oboe is actively running, let Oboe handle audio directly to hardware
+    if (isOboeActive()) {
         return 0;
     }
 
