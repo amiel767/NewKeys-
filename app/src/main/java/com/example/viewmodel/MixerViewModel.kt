@@ -493,13 +493,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
 
-                // Automatically load default SoundFont for all slots if completely unassigned
+                // Automatically load default SoundFont ONLY on Slot 0 (Track 1) at initial launch if completely unassigned
                 val defaultSf = sfs.firstOrNull()
                 if (defaultSf != null && File(defaultSf.path).exists()) {
-                    _uiState.value.audioSlots.forEach { slot ->
-                        if (slot.presets.isEmpty() || slot.soundFontId <= 0 || slot.soundFontPath.isNullOrEmpty() || !File(slot.soundFontPath).exists()) {
-                            loadSoundFontForSlot(slot.slotId, defaultSf.path, preset = if (slot.slotId == 8) 0 else slot.slotId)
-                        }
+                    val slot0 = _uiState.value.audioSlots.getOrNull(0)
+                    if (slot0 != null && (slot0.presets.isEmpty() || slot0.soundFontId <= 0 || slot0.soundFontPath.isNullOrEmpty() || !File(slot0.soundFontPath).exists())) {
+                        loadSoundFontForSlot(0, defaultSf.path, bank = 0, preset = 0)
                     }
                 }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {

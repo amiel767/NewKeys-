@@ -141,6 +141,22 @@ bool SoundfontEngine::selectProgram(int channel, int soundFontId, int bank, int 
     if (soundFontId > 0) {
         fluid_synth_sfont_select(mSynth, channel, soundFontId);
         result = fluid_synth_program_select(mSynth, channel, soundFontId, bank, preset);
+        if (result != FLUID_OK) {
+            LOGW("program_select failed for ch=%d, sfId=%d, bank=%d, preset=%d. Retrying with first available preset...",
+                 channel, soundFontId, bank, preset);
+            fluid_sfont_t* sfont = fluid_synth_get_sfont_by_id(mSynth, soundFontId);
+            if (sfont) {
+                fluid_sfont_iteration_start(sfont);
+                fluid_preset_t* firstPreset = fluid_sfont_iteration_next(sfont);
+                if (firstPreset) {
+                    int fbBank = fluid_preset_get_banknum(firstPreset);
+                    int fbProg = fluid_preset_get_num(firstPreset);
+                    LOGI("Found fallback preset: bank=%d, prog=%d (%s) for ch=%d",
+                         fbBank, fbProg, fluid_preset_get_name(firstPreset), channel);
+                    result = fluid_synth_program_select(mSynth, channel, soundFontId, fbBank, fbProg);
+                }
+            }
+        }
     }
     if (result != FLUID_OK) {
         if (soundFontId > 0) {
@@ -149,6 +165,8 @@ bool SoundfontEngine::selectProgram(int channel, int soundFontId, int bank, int 
         fluid_synth_bank_select(mSynth, channel, bank);
         result = fluid_synth_program_change(mSynth, channel, preset);
     }
+    LOGI("selectProgram completed for ch=%d, sfId=%d, bank=%d, preset=%d -> %s",
+         channel, soundFontId, bank, preset, (result == FLUID_OK ? "SUCCESS" : "FAILED"));
     return (result == FLUID_OK);
 }
 
