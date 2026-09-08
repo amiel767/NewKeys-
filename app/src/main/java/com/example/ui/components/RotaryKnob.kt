@@ -2,6 +2,7 @@ package com.example.ui.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -35,7 +36,8 @@ fun RotaryKnob(
     modifier: Modifier = Modifier,
     size: Dp = 60.dp,
     activeColor: Color = NeonCyan,
-    glowColor: Color = NeonCyanGlow
+    glowColor: Color = NeonCyanGlow,
+    defaultValue: Float = 0.5f
 ) {
     var currentValue by remember(value) { mutableFloatStateOf(value) }
 
@@ -46,6 +48,14 @@ fun RotaryKnob(
         Box(
             modifier = Modifier
                 .size(size)
+                .pointerInput(defaultValue) {
+                    detectTapGestures(
+                        onDoubleTap = {
+                            currentValue = defaultValue
+                            onValueChange(defaultValue)
+                        }
+                    )
+                }
                 .pointerInput(Unit) {
                     detectVerticalDragGestures { _, dragAmount ->
                         // dragging up increases value, down decreases

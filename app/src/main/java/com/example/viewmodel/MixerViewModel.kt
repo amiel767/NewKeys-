@@ -2411,15 +2411,16 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
         _uiState.update { state ->
             val currentFx = state.fxParameters[trackId] ?: FxParameters()
-            val isCurrentPreset = if (trackId == 0) {
-                state.masterTrack.reverbPreset == preset
-            } else {
-                state.tracks.find { it.id == trackId }?.reverbPreset == preset
-            }
-            val nextPreset = if (isCurrentPreset) "Custom" else preset
+            val isCurrentPreset = (currentFx.reverbPreset == preset && currentFx.isReverbEnabled)
+            val isDeselecting = isCurrentPreset
+            val nextPreset = if (isDeselecting) "None" else preset
+            val nextEnabled = !isDeselecting
+            val nextMix = if (isDeselecting) 0f else presetParams.a
+
             val updatedFxMap = state.fxParameters.toMutableMap()
-            if (!isCurrentPreset) {
+            if (!isDeselecting) {
                 updatedFxMap[trackId] = currentFx.copy(
+                    isReverbEnabled = true,
                     reverbPreset = nextPreset,
                     reverbMix = presetParams.a,
                     reverbSize = presetParams.b,
@@ -2427,25 +2428,29 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     reverbDamp = presetParams.d
                 )
             } else {
-                updatedFxMap[trackId] = currentFx.copy(reverbPreset = "Custom")
+                updatedFxMap[trackId] = currentFx.copy(
+                    isReverbEnabled = false,
+                    reverbPreset = "None",
+                    reverbMix = 0f
+                )
             }
+
             if (trackId in 1..8) {
-                val mix = if (!isCurrentPreset) presetParams.a else currentFx.reverbMix
-                audioEngine.setChannelReverb(trackId - 1, if (currentFx.isReverbEnabled) mix else 0f)
+                audioEngine.setChannelReverb(trackId - 1, if (nextEnabled) nextMix else 0f)
             } else if (trackId == 0) {
-                val mix = if (!isCurrentPreset) presetParams.a else currentFx.reverbMix
-                val size = if (!isCurrentPreset) presetParams.b else currentFx.reverbSize
-                val decay = if (!isCurrentPreset) presetParams.c else currentFx.reverbDecay
-                val damp = if (!isCurrentPreset) presetParams.d else currentFx.reverbDamp
-                audioEngine.setMasterReverb(currentFx.isReverbEnabled, size, decay, damp, mix)
+                val size = if (!isDeselecting) presetParams.b else currentFx.reverbSize
+                val decay = if (!isDeselecting) presetParams.c else currentFx.reverbDecay
+                val damp = if (!isDeselecting) presetParams.d else currentFx.reverbDamp
+                audioEngine.setMasterReverb(nextEnabled, size, decay, damp, if (nextEnabled) nextMix else 0f)
             }
+
             if (trackId == 0) {
                 state.copy(
                     masterTrack = state.masterTrack.copy(
                         reverbPreset = nextPreset,
-                        reverbMix = if (!isCurrentPreset) presetParams.a else state.masterTrack.reverbMix,
-                        reverbSize = if (!isCurrentPreset) presetParams.b else state.masterTrack.reverbSize,
-                        reverbDecay = if (!isCurrentPreset) presetParams.c else state.masterTrack.reverbDecay
+                        reverbMix = nextMix,
+                        reverbSize = if (!isDeselecting) presetParams.b else state.masterTrack.reverbSize,
+                        reverbDecay = if (!isDeselecting) presetParams.c else state.masterTrack.reverbDecay
                     ),
                     fxParameters = updatedFxMap
                 )
@@ -2454,9 +2459,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     if (track.id == trackId) {
                         track.copy(
                             reverbPreset = nextPreset,
-                            reverbMix = if (!isCurrentPreset) presetParams.a else track.reverbMix,
-                            reverbSize = if (!isCurrentPreset) presetParams.b else track.reverbSize,
-                            reverbDecay = if (!isCurrentPreset) presetParams.c else track.reverbDecay
+                            reverbMix = nextMix,
+                            reverbSize = if (!isDeselecting) presetParams.b else track.reverbSize,
+                            reverbDecay = if (!isDeselecting) presetParams.c else track.reverbDecay
                         )
                     } else track
                 }
@@ -2470,13 +2475,24 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             val current = state.fxParameters[trackId] ?: FxParameters()
             val newEnabled = !current.isReverbEnabled
             val updatedMap = state.fxParameters.toMutableMap()
-            updatedMap[trackId] = current.copy(isReverbEnabled = newEnabled)
+            val newMix = if (newEnabled) (if (current.reverbMix <= 0.01f) 0.35f else current.reverbMix) else 0f
+            updatedMap[trackId] = current.copy(isReverbEnabled = newEnabled, reverbMix = newMix)
             if (trackId in 1..8) {
-                audioEngine.setChannelReverb(trackId - 1, if (newEnabled) current.reverbMix else 0f)
+                audioEngine.setChannelReverb(trackId - 1, if (newEnabled) newMix else 0f)
             } else if (trackId == 0) {
-                audioEngine.setMasterReverb(newEnabled, current.reverbSize, current.reverbDecay, current.reverbDamp, current.reverbMix)
+                audioEngine.setMasterReverb(newEnabled, current.reverbSize, current.reverbDecay, current.reverbDamp, if (newEnabled) newMix else 0f)
             }
-            state.copy(fxParameters = updatedMap)
+            if (trackId == 0) {
+                state.copy(
+                    masterTrack = state.masterTrack.copy(reverbMix = newMix),
+                    fxParameters = updatedMap
+                )
+            } else {
+                val updated = state.tracks.map { track ->
+                    if (track.id == trackId) track.copy(reverbMix = newMix) else track
+                }
+                state.copy(tracks = updated, fxParameters = updatedMap)
+            }
         }
     }
 

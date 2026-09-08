@@ -56,8 +56,9 @@ class MainActivity : ComponentActivity() {
 
     WindowCompat.setDecorFitsSystemWindows(window, false)
 
-    // Ensure internal storage structure exists immediately
+    // Ensure storage structure exists immediately and check permissions
     setupFileSystem()
+    checkStoragePermissions()
 
     setContent {
       val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -81,7 +82,7 @@ class MainActivity : ComponentActivity() {
 
   private fun setupFileSystem() {
     val fileManager = com.example.model.FileManager(this)
-    // Ensures primary LiveKeys directory and all subfolders exist
+    // Ensures primary SoundStage directory and all subfolders exist
     kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
       try {
         fileManager.ensureDirectoriesExist()
@@ -90,6 +91,35 @@ class MainActivity : ComponentActivity() {
         e.printStackTrace()
       }
     }
+  }
+
+  private fun checkStoragePermissions() {
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        if (!android.os.Environment.isExternalStorageManager()) {
+          try {
+            val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+              data = Uri.parse("package:$packageName")
+            }
+            requestManageStorageLauncher.launch(intent)
+          } catch (_: Exception) {
+            val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+            requestManageStorageLauncher.launch(intent)
+          }
+        }
+      } else {
+        val permissionsToRequest = mutableListOf<String>()
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+          permissionsToRequest.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+          permissionsToRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
+        if (permissionsToRequest.isNotEmpty()) {
+          requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
+        }
+      }
+    } catch (_: Exception) {}
   }
 
   override fun onWindowFocusChanged(hasFocus: Boolean) {

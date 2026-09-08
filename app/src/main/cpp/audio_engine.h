@@ -139,7 +139,7 @@ public:
     void setParams(bool enabled, float timeSec, float feedback, float mix, bool pingPong) {
         mEnabled = enabled;
         mDelayTimeSec = std::clamp(timeSec, 0.02f, 1.8f);
-        mFeedback = std::clamp(feedback, 0.0f, 0.88f);
+        mFeedback = std::clamp(feedback, 0.0f, 0.85f);
         mMix = std::clamp(mix, 0.0f, 1.0f);
         mPingPong = pingPong;
         if (!enabled || mix <= 0.001f) {
@@ -166,9 +166,15 @@ public:
             float delL = mBufferL[readIdx];
             float delR = mBufferR[readIdx];
 
+            // Anti-denormal protection
+            if (std::abs(delL) < 1e-15f) delL = 0.0f;
+            if (std::abs(delR) < 1e-15f) delR = 0.0f;
+
             // 1-pole damping filter
             mFilterStateL = mFilterStateL * damp + delL * (1.0f - damp);
             mFilterStateR = mFilterStateR * damp + delR * (1.0f - damp);
+            if (std::abs(mFilterStateL) < 1e-15f) mFilterStateL = 0.0f;
+            if (std::abs(mFilterStateR) < 1e-15f) mFilterStateR = 0.0f;
 
             float fbL = mFilterStateL * mFeedback;
             float fbR = mFilterStateR * mFeedback;
@@ -214,7 +220,11 @@ public:
     }
     inline float process(float input, float feedback, float damp) {
         float output = mBuffer[mIndex];
+        if (std::abs(output) < 1e-15f) output = 0.0f;
+
         mFilterState = (output * (1.0f - damp)) + (mFilterState * damp);
+        if (std::abs(mFilterState) < 1e-15f) mFilterState = 0.0f;
+
         mBuffer[mIndex] = input + (mFilterState * feedback);
         if (++mIndex >= mSize) mIndex = 0;
         return output;
@@ -222,6 +232,7 @@ public:
     void clear() {
         std::fill(mBuffer.begin(), mBuffer.end(), 0.0f);
         mFilterState = 0.0f;
+        mIndex = 0;
     }
 private:
     std::vector<float> mBuffer;
@@ -239,6 +250,8 @@ public:
     }
     inline float process(float input) {
         float bufOut = mBuffer[mIndex];
+        if (std::abs(bufOut) < 1e-15f) bufOut = 0.0f;
+
         float output = -input + bufOut;
         mBuffer[mIndex] = input + (bufOut * 0.5f);
         if (++mIndex >= mSize) mIndex = 0;
@@ -246,6 +259,7 @@ public:
     }
     void clear() {
         std::fill(mBuffer.begin(), mBuffer.end(), 0.0f);
+        mIndex = 0;
     }
 private:
     std::vector<float> mBuffer;
@@ -280,9 +294,9 @@ public:
 
     void setParams(bool enabled, float size, float decay, float damp, float mix) {
         mEnabled = enabled;
-        mRoomSize = std::clamp(size, 0.1f, 0.98f);
-        mDecay = std::clamp(decay, 0.1f, 0.98f);
-        mDamp = std::clamp(damp, 0.0f, 0.8f);
+        mRoomSize = std::clamp(size, 0.1f, 0.95f);
+        mDecay = std::clamp(decay, 0.1f, 0.95f);
+        mDamp = std::clamp(damp, 0.05f, 0.85f);
         mMix = std::clamp(mix, 0.0f, 1.0f);
         if (!enabled || mix <= 0.001f) {
             clear();
@@ -292,7 +306,7 @@ public:
     void process(float *buffer, int32_t numFrames) {
         if (!mEnabled || mMix <= 0.001f) return;
 
-        float feedback = 0.7f + mRoomSize * 0.28f;
+        float feedback = std::clamp(0.40f + mRoomSize * 0.44f, 0.20f, 0.86f);
 
         for (int32_t i = 0; i < numFrames; ++i) {
             float inL = buffer[2 * i];

@@ -290,7 +290,7 @@ void SoundfontEngine::setPolyphony(int polyphony) {
 }
 
 void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool accumulate) {
-    if (!mSynth) {
+    if (!mSynth || fluid_synth_sfcount(mSynth) == 0) {
         if (!accumulate) {
             std::fill(outputBuffer, outputBuffer + (numFrames * 2), 0.0f);
         }
