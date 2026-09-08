@@ -59,6 +59,7 @@ fun VirtualPianoKeyboard(
     octave: Int = 0,
     onKeyDown: (String) -> Unit,
     onKeyUp: (String) -> Unit,
+    onKeyDownWithVelocity: ((String, Float) -> Unit)? = null,
     onGrabberDrag: ((Float) -> Unit)? = null,
     onGrabberClick: (() -> Unit)? = null,
     isSustainActive: Boolean = false,
@@ -277,6 +278,7 @@ fun VirtualPianoKeyboard(
             val pointerKeyMap = remember { mutableStateMapOf<PointerId, String>() }
             val currentOnKeyDown by rememberUpdatedState(onKeyDown)
             val currentOnKeyUp by rememberUpdatedState(onKeyUp)
+            val currentOnKeyDownWithVel by rememberUpdatedState(onKeyDownWithVelocity)
 
             // Auto-center initially around C3/C4 so 3 full octaves (C3 to B5) are immediately in view
             LaunchedEffect(whiteWidthPx) {
@@ -343,7 +345,12 @@ fun VirtualPianoKeyboard(
                                                         currentOnKeyUp(prevKey)
                                                     }
                                                     pointerKeyMap[change.id] = detectedKey
-                                                    currentOnKeyDown(detectedKey)
+                                                    val touchVel = if (height > 0f) (y / height).coerceIn(0.15f, 1.0f) else 0.85f
+                                                    if (currentOnKeyDownWithVel != null) {
+                                                        currentOnKeyDownWithVel?.invoke(detectedKey, touchVel)
+                                                    } else {
+                                                        currentOnKeyDown(detectedKey)
+                                                    }
                                                 }
                                                 change.consume()
                                             }

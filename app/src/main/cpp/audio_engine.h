@@ -128,12 +128,23 @@ public:
         mFilterStateR = 0.0f;
     }
 
+    void clear() {
+        if (!mBufferL.empty()) std::fill(mBufferL.begin(), mBufferL.end(), 0.0f);
+        if (!mBufferR.empty()) std::fill(mBufferR.begin(), mBufferR.end(), 0.0f);
+        mFilterStateL = 0.0f;
+        mFilterStateR = 0.0f;
+        mWriteIndex = 0;
+    }
+
     void setParams(bool enabled, float timeSec, float feedback, float mix, bool pingPong) {
         mEnabled = enabled;
         mDelayTimeSec = std::clamp(timeSec, 0.02f, 1.8f);
-        mFeedback = std::clamp(feedback, 0.0f, 0.92f);
+        mFeedback = std::clamp(feedback, 0.0f, 0.88f);
         mMix = std::clamp(mix, 0.0f, 1.0f);
         mPingPong = pingPong;
+        if (!enabled || mix <= 0.001f) {
+            clear();
+        }
     }
 
     void process(float *buffer, int32_t numFrames) {
@@ -260,12 +271,22 @@ public:
         }
     }
 
+    void clear() {
+        for (auto &c : mCombsL) c.clear();
+        for (auto &c : mCombsR) c.clear();
+        for (auto &a : mAllpassL) a.clear();
+        for (auto &a : mAllpassR) a.clear();
+    }
+
     void setParams(bool enabled, float size, float decay, float damp, float mix) {
         mEnabled = enabled;
         mRoomSize = std::clamp(size, 0.1f, 0.98f);
         mDecay = std::clamp(decay, 0.1f, 0.98f);
         mDamp = std::clamp(damp, 0.0f, 0.8f);
         mMix = std::clamp(mix, 0.0f, 1.0f);
+        if (!enabled || mix <= 0.001f) {
+            clear();
+        }
     }
 
     void process(float *buffer, int32_t numFrames) {
@@ -322,6 +343,11 @@ public:
         mEnabled = enabled;
         mMode = std::clamp(mode, 0, 3);
         mAmount = std::clamp(amount, 0.0f, 1.0f);
+        if (!enabled || amount <= 0.001f) {
+            mAirShelf.reset();
+            mWarmShelf.reset();
+            mPeakEnv = 0.0f;
+        }
     }
 
     void process(float *buffer, int32_t numFrames) {

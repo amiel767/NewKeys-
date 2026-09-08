@@ -165,7 +165,8 @@ class AudioEngine(private val context: Context) {
     // External MIDI Keyboard Octave & Transpose
     @Volatile var globalOctaveShift: Int = 0
     @Volatile var globalTranspose: Int = 0
-    private val activeMidiNoteMap = java.util.concurrent.ConcurrentHashMap<Int, Int>()
+    private data class ActiveMidiNote(val effectiveNote: Int, val targetChannels: List<Int>)
+    private val activeMidiNoteMap = java.util.concurrent.ConcurrentHashMap<Int, ActiveMidiNote>()
 
     // Active track target for global keyboard notes (0..7, 8, 9)
     @Volatile var activeTargetChannel: Int = 0
@@ -464,28 +465,37 @@ class AudioEngine(private val context: Context) {
         when (command) {
             0x90 -> { // Note On (velocity == 0 is treated as Note Off)
                 if (data2 > 0) {
-                    activeMidiNoteMap[data1] = effectiveNote
+                    val rawVel = (data2 / 127f).coerceIn(0.01f, 1.0f)
+                    val scaledVel = globalVelocityMin + rawVel * (globalVelocityMax - globalVelocityMin)
+                    val finalVelInt = (scaledVel * 127f).toInt().coerceIn(1, 127)
+
+                    val activeChannels = targetChannels.toList()
+                    activeMidiNoteMap[data1] = ActiveMidiNote(effectiveNote, activeChannels)
                     activeHeldNotes.add(effectiveNote)
                     sustainedNotesToRelease.remove(effectiveNote)
                     
-                    targetChannels.forEach { ch ->
-                        playMidiNote(effectiveNote, data2, ch)
+                    activeChannels.forEach { ch ->
+                        playMidiNote(effectiveNote, finalVelInt, ch)
                     }
 
                     coroutineScope.launch(Dispatchers.Main) {
-                        onMidiNoteOnListener?.invoke(midiNumberToNoteName(effectiveNote), data2)
+                        onMidiNoteOnListener?.invoke(midiNumberToNoteName(effectiveNote), finalVelInt)
                     }
                 } else {
-                    val releasedNote = activeMidiNoteMap.remove(data1) ?: effectiveNote
-                    targetChannels.forEach { ch ->
+                    val active = activeMidiNoteMap.remove(data1)
+                    val releasedNote = active?.effectiveNote ?: effectiveNote
+                    val channelsToStop = active?.targetChannels ?: targetChannels
+                    channelsToStop.forEach { ch ->
                         handleNoteOffDirect(ch, releasedNote)
                     }
                 }
             }
 
             0x80 -> { // Note Off
-                val releasedNote = activeMidiNoteMap.remove(data1) ?: effectiveNote
-                targetChannels.forEach { ch ->
+                val active = activeMidiNoteMap.remove(data1)
+                val releasedNote = active?.effectiveNote ?: effectiveNote
+                val channelsToStop = active?.targetChannels ?: targetChannels
+                channelsToStop.forEach { ch ->
                     handleNoteOffDirect(ch, releasedNote)
                 }
             }
@@ -511,13 +521,13 @@ class AudioEngine(private val context: Context) {
                     isSustainPedalDown = pedalPressed
 
                     if (!pedalPressed) {
-                        // Sustain pedal released: immediately flush and send NoteOff for all sustained notes!
+                        // Sustain pedal released: immediately flush and send NoteOff for all sustained notes across all channels!
                         val notesToRelease = ArrayList(sustainedNotesToRelease)
                         sustainedNotesToRelease.clear()
 
                         for (note in notesToRelease) {
                             if (!activeHeldNotes.contains(note)) {
-                                targetChannels.forEach { ch ->
+                                for (ch in 0..9) {
                                     stopMidiNote(note, ch)
                                 }
                                 coroutineScope.launch(Dispatchers.Main) {
@@ -532,6 +542,17 @@ class AudioEngine(private val context: Context) {
                     }
                 }
             }
+        }
+    }
+
+    fun allNotesOff() {
+        activeMidiNoteMap.clear()
+        activeHeldNotes.clear()
+        sustainedNotesToRelease.clear()
+        for (ch in 0..15) {
+            NativeAudioBridge.safeAllNotesOff(ch, NativeAudioBridge.ENGINE_FADER)
+            NativeAudioBridge.safeAllNotesOff(ch, NativeAudioBridge.ENGINE_PAD)
+            NativeAudioBridge.safeAllNotesOff(ch, NativeAudioBridge.ENGINE_DRUM)
         }
     }
 
@@ -566,15 +587,6 @@ class AudioEngine(private val context: Context) {
         pitchBendFactor = (2.0.pow((bend.coerceIn(-1f, 1f) * 2.0) / 12.0)).toFloat()
         val midiBend = ((bend + 1.0f) * 8191.5f).toInt().coerceIn(0, 16383)
         bendMidiPitch(midiBend, channel)
-    }
-
-    fun allNotesOff() {
-        activeHeldNotes.clear()
-        sustainedNotesToRelease.clear()
-        for (ch in 0..15) {
-            NativeAudioBridge.safeAllNotesOff(ch)
-        }
-        fallbackSynth.allNotesOff()
     }
 
     // -------------------------------------------------------------

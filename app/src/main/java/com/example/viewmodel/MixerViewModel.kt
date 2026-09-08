@@ -235,123 +235,154 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         // Restore persisted state from previous session
-        restoreSavedAppState()
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                fileManager.ensureDirectoriesExist()
+            } catch (e: Exception) {
+                Log.w("MixerViewModel", "ensureDirectoriesExist warning: ${e.message}")
+            }
+            restoreSavedAppState()
+        }
     }
 
     private fun restoreSavedAppState() {
-        val saved = appStatePersistence.loadAppState() ?: return
-        _uiState.update { state ->
-            val restoredTheme = saved.themeName?.let { name ->
-                try { AppTheme.valueOf(name) } catch (_: Exception) { null }
-            } ?: state.currentTheme
+        try {
+            val saved = appStatePersistence.loadAppState()
+            if (saved != null) {
+                val drumPreloadList = mutableListOf<String>()
 
-            val restoredMode = saved.soundGoodizerMode?.let { name ->
-                try { SoundGoodizerMode.valueOf(name) } catch (_: Exception) { null }
-            } ?: state.soundGoodizerMode
+                _uiState.update { state ->
+                    val restoredTheme = saved.themeName?.let { name ->
+                        try { AppTheme.valueOf(name) } catch (_: Exception) { null }
+                    } ?: state.currentTheme
 
-            val restoredTracks = if (saved.tracks.isNotEmpty()) {
-                state.tracks.map { currentTrack ->
-                    val savedT = saved.tracks.find { it.id == currentTrack.id }
-                    if (savedT != null) {
-                        currentTrack.copy(
-                            isEnabled = savedT.isEnabled,
-                            volume = savedT.volume,
-                            pan = savedT.pan,
-                            soundfontName = savedT.soundfontName,
-                            patchName = savedT.patchName,
-                            bank = savedT.bank,
-                            program = savedT.program,
-                            reverbPreset = savedT.reverbPreset,
-                            reverbMix = savedT.reverbMix
-                        )
-                    } else currentTrack
-                }
-            } else state.tracks
+                    val restoredMode = saved.soundGoodizerMode?.let { name ->
+                        try { SoundGoodizerMode.valueOf(name) } catch (_: Exception) { null }
+                    } ?: state.soundGoodizerMode
 
-            val restoredDrums = if (saved.drumPads.isNotEmpty()) {
-                state.drumPads.map { currentPad ->
-                    val savedD = saved.drumPads.find { it.id == currentPad.id }
-                    if (savedD != null) {
-                        val style = try { DrumPadStyle.valueOf(savedD.styleName) } catch (_: Exception) { currentPad.colorStyle }
-                        val soundType = try { DrumSoundType.valueOf(savedD.soundType) } catch (_: Exception) { currentPad.soundType }
-                        val filePath = if (savedD.sampleFilePath.isNotEmpty()) savedD.sampleFilePath else {
-                            val f = File(getApplication<Application>().filesDir, "LiveKeys/DrumPad/${savedD.sampleFileName}")
-                            if (f.exists()) f.absolutePath else ""
+                    val restoredTracks = if (saved.tracks.isNotEmpty()) {
+                        state.tracks.map { currentTrack ->
+                            val savedT = saved.tracks.find { it.id == currentTrack.id }
+                            if (savedT != null) {
+                                currentTrack.copy(
+                                    isEnabled = savedT.isEnabled,
+                                    volume = savedT.volume,
+                                    pan = savedT.pan,
+                                    soundfontName = savedT.soundfontName,
+                                    patchName = savedT.patchName,
+                                    bank = savedT.bank,
+                                    program = savedT.program,
+                                    reverbPreset = savedT.reverbPreset,
+                                    reverbMix = savedT.reverbMix
+                                )
+                            } else currentTrack
                         }
-                        if (filePath.isNotEmpty()) {
-                            audioEngine.preloadDrumSample(filePath)
+                    } else state.tracks
+
+                    val restoredDrums = if (saved.drumPads.isNotEmpty()) {
+                        state.drumPads.map { currentPad ->
+                            val savedD = saved.drumPads.find { it.id == currentPad.id }
+                            if (savedD != null) {
+                                val style = try { DrumPadStyle.valueOf(savedD.styleName) } catch (_: Exception) { currentPad.colorStyle }
+                                val soundType = try { DrumSoundType.valueOf(savedD.soundType) } catch (_: Exception) { currentPad.soundType }
+                                val filePath = if (savedD.sampleFilePath.isNotEmpty()) savedD.sampleFilePath else {
+                                    val f = File(getApplication<Application>().filesDir, "LiveKeys/DrumPad/${savedD.sampleFileName}")
+                                    if (f.exists()) f.absolutePath else ""
+                                }
+                                if (filePath.isNotEmpty()) {
+                                    drumPreloadList.add(filePath)
+                                }
+                                currentPad.copy(
+                                    label = savedD.label,
+                                    soundType = soundType,
+                                    sampleFileName = savedD.sampleFileName,
+                                    sampleFilePath = filePath,
+                                    sf2Note = savedD.sf2Note,
+                                    colorStyle = style
+                                )
+                            } else currentPad
                         }
-                        currentPad.copy(
-                            label = savedD.label,
-                            soundType = soundType,
-                            sampleFileName = savedD.sampleFileName,
-                            sampleFilePath = filePath,
-                            sf2Note = savedD.sf2Note,
-                            colorStyle = style
-                        )
-                    } else currentPad
+                    } else state.drumPads
+
+                    val restoredSlots = state.audioSlots.map { slot ->
+                        if (slot.slotId in 0..7) {
+                            val savedT = saved.tracks.find { it.id == (slot.slotId + 1) }
+                            if (savedT != null) {
+                                slot.copy(
+                                    patchName = savedT.patchName,
+                                    bank = savedT.bank,
+                                    preset = savedT.program,
+                                    volume = savedT.volume,
+                                    pan = savedT.pan
+                                )
+                            } else slot
+                        } else slot
+                    }
+
+                    state.copy(
+                        currentTheme = restoredTheme,
+                        bpm = saved.bpm ?: state.bpm,
+                        transpose = saved.transpose ?: state.transpose,
+                        octave = saved.octave ?: state.octave,
+                        activeSceneId = saved.activeSceneId ?: state.activeSceneId,
+                        soundGoodizer = saved.soundGoodizerAmount ?: state.soundGoodizer,
+                        soundGoodizerMode = restoredMode,
+                        masterPunch = saved.masterPunch ?: state.masterPunch,
+                        spatialWidener = saved.spatialWidener ?: state.spatialWidener,
+                        masterTrack = state.masterTrack.copy(volume = saved.masterVolume ?: state.masterTrack.volume),
+                        tracks = restoredTracks,
+                        audioSlots = restoredSlots,
+                        drumPads = restoredDrums
+                    )
                 }
-            } else state.drumPads
 
-            val restoredSlots = state.audioSlots.map { slot ->
-                if (slot.slotId in 0..7) {
-                    val savedT = saved.tracks.find { it.id == (slot.slotId + 1) }
-                    if (savedT != null) {
-                        slot.copy(
-                            patchName = savedT.patchName,
-                            bank = savedT.bank,
-                            preset = savedT.program,
-                            volume = savedT.volume,
-                            pan = savedT.pan
-                        )
-                    } else slot
-                } else slot
-            }
+                // Preload drums safely outside state update
+                drumPreloadList.forEach { path ->
+                    try { audioEngine.preloadDrumSample(path) } catch (_: Exception) {}
+                }
 
-            state.copy(
-                currentTheme = restoredTheme,
-                bpm = saved.bpm ?: state.bpm,
-                transpose = saved.transpose ?: state.transpose,
-                octave = saved.octave ?: state.octave,
-                activeSceneId = saved.activeSceneId ?: state.activeSceneId,
-                soundGoodizer = saved.soundGoodizerAmount ?: state.soundGoodizer,
-                soundGoodizerMode = restoredMode,
-                masterPunch = saved.masterPunch ?: state.masterPunch,
-                spatialWidener = saved.spatialWidener ?: state.spatialWidener,
-                masterTrack = state.masterTrack.copy(volume = saved.masterVolume ?: state.masterTrack.volume),
-                tracks = restoredTracks,
-                audioSlots = restoredSlots,
-                drumPads = restoredDrums
-            )
-        }
+                // Apply restored parameters to native DSP
+                val effectiveMasterVol = saved.masterVolume ?: _uiState.value.masterTrack.volume
+                audioEngine.masterVolume = effectiveMasterVol
+                NativeAudioBridge.safeSetMasterVolume(effectiveMasterVol)
 
-        // Apply restored parameters to native DSP
-        val effectiveMasterVol = saved.masterVolume ?: _uiState.value.masterTrack.volume
-        audioEngine.masterVolume = effectiveMasterVol
-        NativeAudioBridge.safeSetMasterVolume(effectiveMasterVol)
+                saved.tracks.forEach { t ->
+                    val ch = (t.id - 1).coerceIn(0, 7)
+                    NativeAudioBridge.safeSetTrackVolume(ch, t.volume)
+                    NativeAudioBridge.safeSetTrackPan(ch, t.pan)
+                    audioEngine.setChannelReverb(ch, t.reverbMix)
+                }
 
-        saved.tracks.forEach { t ->
-            val ch = (t.id - 1).coerceIn(0, 7)
-            NativeAudioBridge.safeSetTrackVolume(ch, t.volume)
-            NativeAudioBridge.safeSetTrackPan(ch, t.pan)
-        }
+                var hasLoadedAnySlot = false
+                if (saved.audioSlots.isNotEmpty()) {
+                    saved.audioSlots.forEach { savedSlot ->
+                        if (!savedSlot.soundFontPath.isNullOrEmpty() && File(savedSlot.soundFontPath).exists()) {
+                            loadSoundFontForSlot(savedSlot.slotId, savedSlot.soundFontPath, savedSlot.bank, savedSlot.preset, savedSlot.patchName)
+                            hasLoadedAnySlot = true
+                        }
+                    }
+                }
 
-        var hasLoadedAnySlot = false
-        if (saved.audioSlots.isNotEmpty()) {
-            saved.audioSlots.forEach { savedSlot ->
-                if (!savedSlot.soundFontPath.isNullOrEmpty() && File(savedSlot.soundFontPath).exists()) {
-                    loadSoundFontForSlot(savedSlot.slotId, savedSlot.soundFontPath, savedSlot.bank, savedSlot.preset, savedSlot.patchName)
-                    hasLoadedAnySlot = true
+                // If no slot had a valid SoundFont restored, load the default soundfont on Slot 0
+                if (!hasLoadedAnySlot) {
+                    val defaultSf = File(fileManager.soundfontsDir, "VintageDreamsWaves-v2.sf2")
+                    val fallbackSf = File(getApplication<Application>().filesDir, "LiveKeys/SoundFonts/VintageDreamsWaves-v2.sf2")
+                    val sfToLoad = if (defaultSf.exists()) defaultSf else if (fallbackSf.exists()) fallbackSf else null
+                    if (sfToLoad != null) {
+                        loadSoundFontForSlot(0, sfToLoad.absolutePath, bank = 0, preset = 0)
+                    }
+                }
+            } else {
+                // First run / no saved state: load default soundfont on Slot 0
+                val defaultSf = File(fileManager.soundfontsDir, "VintageDreamsWaves-v2.sf2")
+                val fallbackSf = File(getApplication<Application>().filesDir, "LiveKeys/SoundFonts/VintageDreamsWaves-v2.sf2")
+                val sfToLoad = if (defaultSf.exists()) defaultSf else if (fallbackSf.exists()) fallbackSf else null
+                if (sfToLoad != null) {
+                    loadSoundFontForSlot(0, sfToLoad.absolutePath, bank = 0, preset = 0)
                 }
             }
-        }
-
-        // If no slot had a valid SoundFont restored, load the default soundfont on Slot 0
-        if (!hasLoadedAnySlot) {
-            val defaultSf = File(getApplication<Application>().filesDir, "LiveKeys/SoundFonts/VintageDreamsWaves-v2.sf2")
-            if (defaultSf.exists()) {
-                loadSoundFontForSlot(0, defaultSf.absolutePath, bank = 0, preset = 0)
-            }
+        } catch (e: Exception) {
+            Log.e("MixerViewModel", "Error restoring saved app state: ${e.message}", e)
         }
     }
 
@@ -1443,11 +1474,34 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(pitchBend = clamped) }
     }
 
-    fun onKeyDown(key: String) {
+    private fun applyVelocityCurve(velocity: Float, curve: Float): Float {
+        val v = velocity.coerceIn(0.01f, 1.0f)
+        return when {
+            curve < 0.48f -> {
+                val factor = (0.5f - curve) * 2f
+                (Math.pow(v.toDouble(), (1.0 - factor * 0.6).coerceAtLeast(0.3))).toFloat()
+            }
+            curve > 0.52f -> {
+                val factor = (curve - 0.5f) * 2f
+                (Math.pow(v.toDouble(), (1.0 + factor * 1.5))).toFloat()
+            }
+            else -> v
+        }.coerceIn(0.05f, 1.0f)
+    }
+
+    fun onKeyDown(key: String, velocity: Float = 0.85f) {
         val midiNote = noteNameToMidi(key)
         val channels = getActivePerformanceChannels(midiNote)
+        val state = _uiState.value
+
+        val baseVel = state.globalVelocityMin + velocity.coerceIn(0f, 1f) * (state.globalVelocityMax - state.globalVelocityMin)
+
         channels.forEach { channel ->
-            audioEngine.noteOn(key, 0.85f, channel)
+            val track = state.tracks.getOrNull(channel)
+            val finalVel = if (track != null) {
+                applyVelocityCurve(baseVel, track.velocityCurve)
+            } else baseVel
+            audioEngine.noteOn(key, finalVel, channel)
         }
         _uiState.update { state ->
             state.copy(pressedKeys = state.pressedKeys + key)

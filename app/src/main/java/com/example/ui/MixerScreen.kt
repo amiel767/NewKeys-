@@ -218,6 +218,7 @@ fun MixerScreen(
                     octave = uiState.octave,
                     onKeyDown = { viewModel.onKeyDown(it) },
                     onKeyUp = { viewModel.onKeyUp(it) },
+                    onKeyDownWithVelocity = { key, vel -> viewModel.onKeyDown(key, vel) },
                     onGrabberDrag = { deltaY ->
                         val fractionDelta = -deltaY / 200f
                         viewModel.setKeyboardHeightFraction(uiState.keyboardHeightFraction + fractionDelta)

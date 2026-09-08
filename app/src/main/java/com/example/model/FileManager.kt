@@ -25,26 +25,46 @@ data class StorageItem(
 )
 
 /**
- * FileManager responsible exclusively for app-private internal storage (context.filesDir/LiveKeys):
- * - SoundFonts: /context.filesDir/LiveKeys/SoundFonts/
- * - Loops: /context.filesDir/LiveKeys/Loops/
- * - DrumPad: /context.filesDir/LiveKeys/DrumPad/
- * - Scenes: /context.filesDir/LiveKeys/Scenes/
- * - Recordings: /context.filesDir/LiveKeys/Recordings/
- * - Midi: /context.filesDir/LiveKeys/Midi/
- * - Styles: /context.filesDir/LiveKeys/Styles/
- * - Presets: /context.filesDir/LiveKeys/Presets/
- * - Logs: /context.filesDir/LiveKeys/Logs/
+ * FileManager responsible for LiveKeys public storage (/storage/emulated/0/LiveKeys/)
+ * with automatic fallback to internal storage.
+ *
+ * Dedicated subfolders:
+ * - SoundFonts: /LiveKeys/SoundFonts/
+ * - Loops: /LiveKeys/Loops/
+ * - DrumPad: /LiveKeys/DrumPad/
+ * - Scenes: /LiveKeys/Scenes/
+ * - Recordings: /LiveKeys/Recordings/
+ * - Presets: /LiveKeys/Presets/
+ * - Logs: /LiveKeys/Logs/
  */
 class FileManager(private val context: Context) {
 
-    val baseDir: File by lazy {
-        val internalLiveKeys = File(context.filesDir, "LiveKeys")
-        if (!internalLiveKeys.exists()) {
-            internalLiveKeys.mkdirs()
+    val baseDir: File
+        get() {
+            return try {
+                val extDir = File(android.os.Environment.getExternalStorageDirectory(), "LiveKeys")
+                if (android.os.Environment.getExternalStorageState() == android.os.Environment.MEDIA_MOUNTED) {
+                    if (!extDir.exists()) {
+                        extDir.mkdirs()
+                    }
+                    if (extDir.exists() && extDir.canWrite()) {
+                        extDir
+                    } else {
+                        val internalLiveKeys = File(context.filesDir, "LiveKeys")
+                        if (!internalLiveKeys.exists()) internalLiveKeys.mkdirs()
+                        internalLiveKeys
+                    }
+                } else {
+                    val internalLiveKeys = File(context.filesDir, "LiveKeys")
+                    if (!internalLiveKeys.exists()) internalLiveKeys.mkdirs()
+                    internalLiveKeys
+                }
+            } catch (_: Exception) {
+                val internalLiveKeys = File(context.filesDir, "LiveKeys")
+                if (!internalLiveKeys.exists()) internalLiveKeys.mkdirs()
+                internalLiveKeys
+            }
         }
-        internalLiveKeys
-    }
 
     val soundfontsDir: File get() = File(baseDir, "SoundFonts")
     val loopsDir: File get() = File(baseDir, "Loops")
@@ -75,7 +95,7 @@ class FileManager(private val context: Context) {
     }
 
     /**
-     * Ensures all internal subdirectories exist and seeds default assets
+     * Ensures all subdirectories exist and seeds default assets
      */
     suspend fun ensureDirectoriesExist() = withContext(Dispatchers.IO) {
         try {
@@ -86,8 +106,14 @@ class FileManager(private val context: Context) {
             if (!presetsDir.exists()) presetsDir.mkdirs()
             if (!logsDir.exists()) logsDir.mkdirs()
             if (!recordingsDir.exists()) recordingsDir.mkdirs()
-            if (!midiDir.exists()) midiDir.mkdirs()
-            if (!stylesDir.exists()) stylesDir.mkdirs()
+
+            // Remove deprecated midi and styles subfolders if they are empty
+            try {
+                val oldMidi = File(baseDir, "Midi")
+                if (oldMidi.exists() && oldMidi.listFiles()?.isEmpty() == true) oldMidi.delete()
+                val oldStyles = File(baseDir, "Styles")
+                if (oldStyles.exists() && oldStyles.listFiles()?.isEmpty() == true) oldStyles.delete()
+            } catch (_: Exception) {}
 
             // 1. Seed bundled SoundFonts from assets
             copyAssetSoundFonts()
@@ -108,7 +134,20 @@ class FileManager(private val context: Context) {
                             input.copyTo(output)
                         }
                     }
-                    Log.i("FileManager", "Extracted asset soundfont to internal storage: $sfName (${target.length()} bytes)")
+                    Log.i("FileManager", "Extracted asset soundfont to: ${target.absolutePath} (${target.length()} bytes)")
+                }
+            }
+
+            // Also copy from internal if existing
+            val internalSfDir = File(context.filesDir, "LiveKeys/SoundFonts")
+            if (internalSfDir.exists() && internalSfDir.absolutePath != soundfontsDir.absolutePath) {
+                internalSfDir.listFiles()?.forEach { internalSf ->
+                    val extTarget = File(soundfontsDir, internalSf.name)
+                    if (!extTarget.exists() || extTarget.length() == 0L) {
+                        try {
+                            internalSf.copyTo(extTarget, overwrite = true)
+                        } catch (_: Exception) {}
+                    }
                 }
             }
         } catch (e: Exception) {

@@ -67,12 +67,14 @@ bool AudioEngine::openAndStartStream() {
         }
     }
 
-    mStream->setBufferSizeInFrames(mStream->getFramesPerBurst() * 2);
+    int burst = mStream->getFramesPerBurst();
+    int targetBuffer = std::max(512, burst * 3);
+    mStream->setBufferSizeInFrames(targetBuffer);
     int sampleRate = mStream->getSampleRate();
     mSampleRate = sampleRate;
 
-    LOGI("Audio stream opened: %d Hz, %d frames/burst.", 
-        sampleRate, mStream->getFramesPerBurst());
+    LOGI("Audio stream opened: %d Hz, %d frames/burst, buffer set to %d frames.", 
+        sampleRate, burst, targetBuffer);
 
     // Initialize all DSP blocks with active sample rate
     mMasterDelay.init(sampleRate);
