@@ -12,7 +12,7 @@ static AudioEngine gAudioEngine;
 extern "C" {
 
 JNIEXPORT jboolean JNICALL
-Java_com_example_audio_NativeAudioBridge_startEngine(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_startEngine(
         JNIEnv *env,
         jobject /* this */,
         jint driverType) {
@@ -20,14 +20,14 @@ Java_com_example_audio_NativeAudioBridge_startEngine(
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_audio_NativeAudioBridge_stopEngine(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_stopEngine(
         JNIEnv *env,
         jobject /* this */) {
     gAudioEngine.stop();
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_audio_NativeAudioBridge_setAudioDriver(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setAudioDriver(
         JNIEnv *env,
         jobject /* this */,
         jint driverType) {
@@ -35,7 +35,7 @@ Java_com_example_audio_NativeAudioBridge_setAudioDriver(
 }
 
 JNIEXPORT jint JNICALL
-Java_com_example_audio_NativeAudioBridge_loadSoundFont(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_loadSoundFont(
         JNIEnv *env,
         jobject /* this */,
         jint engineIndex,
@@ -51,7 +51,7 @@ Java_com_example_audio_NativeAudioBridge_loadSoundFont(
 }
 
 JNIEXPORT jint JNICALL
-Java_com_example_audio_NativeAudioBridge_unloadSoundFont(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_unloadSoundFont(
         JNIEnv *env,
         jobject /* this */,
         jint engineIndex,
@@ -60,7 +60,7 @@ Java_com_example_audio_NativeAudioBridge_unloadSoundFont(
 }
 
 JNIEXPORT jobjectArray JNICALL
-Java_com_example_audio_NativeAudioBridge_listPresets(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_listPresets(
         JNIEnv *env,
         jobject /* this */,
         jint soundFontId) {
@@ -95,7 +95,7 @@ Java_com_example_audio_NativeAudioBridge_listPresets(
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_example_audio_NativeAudioBridge_selectProgram(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_selectProgram(
         JNIEnv *env,
         jobject /* this */,
         jint engineIndex,
@@ -108,7 +108,7 @@ Java_com_example_audio_NativeAudioBridge_selectProgram(
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_example_audio_NativeAudioBridge_programChange(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_programChange(
         JNIEnv *env,
         jobject /* this */,
         jint engineIndex,
@@ -119,7 +119,7 @@ Java_com_example_audio_NativeAudioBridge_programChange(
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_audio_NativeAudioBridge_noteOn(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_noteOn(
         JNIEnv *env,
         jobject /* this */,
         jint engineIndex,
@@ -130,7 +130,7 @@ Java_com_example_audio_NativeAudioBridge_noteOn(
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_audio_NativeAudioBridge_noteOff(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_noteOff(
         JNIEnv *env,
         jobject /* this */,
         jint engineIndex,
@@ -140,7 +140,7 @@ Java_com_example_audio_NativeAudioBridge_noteOff(
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_audio_NativeAudioBridge_allNotesOff(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_allNotesOff(
         JNIEnv *env,
         jobject /* this */,
         jint engineIndex,
@@ -149,7 +149,7 @@ Java_com_example_audio_NativeAudioBridge_allNotesOff(
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_audio_NativeAudioBridge_setTrackVolume(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setTrackVolume(
         JNIEnv *env,
         jobject /* this */,
         jint engineIndex,
@@ -159,7 +159,7 @@ Java_com_example_audio_NativeAudioBridge_setTrackVolume(
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_audio_NativeAudioBridge_setTrackPan(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setTrackPan(
         JNIEnv *env,
         jobject /* this */,
         jint engineIndex,
@@ -169,7 +169,7 @@ Java_com_example_audio_NativeAudioBridge_setTrackPan(
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_audio_NativeAudioBridge_setTrackTranspose(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setTrackTranspose(
         JNIEnv *env,
         jobject /* this */,
         jint engineIndex,
@@ -179,7 +179,7 @@ Java_com_example_audio_NativeAudioBridge_setTrackTranspose(
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_audio_NativeAudioBridge_pitchBend(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_pitchBend(
         JNIEnv *env,
         jobject /* this */,
         jint engineIndex,
@@ -189,7 +189,7 @@ Java_com_example_audio_NativeAudioBridge_pitchBend(
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_audio_NativeAudioBridge_setMasterVolume(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setMasterVolume(
         JNIEnv *env,
         jobject /* this */,
         jfloat volume) {
@@ -198,7 +198,7 @@ Java_com_example_audio_NativeAudioBridge_setMasterVolume(
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_audio_NativeAudioBridge_setPolyphony(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setPolyphony(
         JNIEnv *env,
         jobject /* this */,
         jint engineIndex,
@@ -211,7 +211,7 @@ Java_com_example_audio_NativeAudioBridge_setPolyphony(
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_audio_NativeAudioBridge_setBufferSize(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setBufferSize(
         JNIEnv *env,
         jobject /* this */,
         jint bufferSize) {
@@ -219,7 +219,7 @@ Java_com_example_audio_NativeAudioBridge_setBufferSize(
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_audio_NativeAudioBridge_setMasterEq(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setMasterEq(
         JNIEnv *env,
         jobject /* this */,
         jfloat lowGainDb,
@@ -229,7 +229,7 @@ Java_com_example_audio_NativeAudioBridge_setMasterEq(
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_audio_NativeAudioBridge_setSoundGoodizer(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setSoundGoodizer(
         JNIEnv *env,
         jobject /* this */,
         jboolean enabled,
@@ -239,7 +239,7 @@ Java_com_example_audio_NativeAudioBridge_setSoundGoodizer(
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_audio_NativeAudioBridge_setMasterReverb(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setMasterReverb(
         JNIEnv *env,
         jobject /* this */,
         jboolean enabled,
@@ -251,7 +251,7 @@ Java_com_example_audio_NativeAudioBridge_setMasterReverb(
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_audio_NativeAudioBridge_setMasterDelay(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setMasterDelay(
         JNIEnv *env,
         jobject /* this */,
         jboolean enabled,
@@ -263,7 +263,7 @@ Java_com_example_audio_NativeAudioBridge_setMasterDelay(
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_audio_NativeAudioBridge_setSpatialWidener(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setSpatialWidener(
         JNIEnv *env,
         jobject /* this */,
         jfloat amount) {
@@ -271,7 +271,7 @@ Java_com_example_audio_NativeAudioBridge_setSpatialWidener(
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_audio_NativeAudioBridge_setMasterPunch(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setMasterPunch(
         JNIEnv *env,
         jobject /* this */,
         jfloat amount) {
@@ -279,7 +279,15 @@ Java_com_example_audio_NativeAudioBridge_setMasterPunch(
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_audio_NativeAudioBridge_setChannelReverb(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setPadBrightness(
+        JNIEnv *env,
+        jobject /* this */,
+        jfloat brightness) {
+    gAudioEngine.setPadBrightness(brightness);
+}
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setChannelReverb(
         JNIEnv *env,
         jobject /* this */,
         jint engineIndex,
@@ -289,7 +297,7 @@ Java_com_example_audio_NativeAudioBridge_setChannelReverb(
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_audio_NativeAudioBridge_setChannelChorus(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setChannelChorus(
         JNIEnv *env,
         jobject /* this */,
         jint engineIndex,
@@ -299,7 +307,7 @@ Java_com_example_audio_NativeAudioBridge_setChannelChorus(
 }
 
 JNIEXPORT jint JNICALL
-Java_com_example_audio_NativeAudioBridge_renderNativeAudio(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_renderNativeAudio(
         JNIEnv *env,
         jobject /* this */,
         jshortArray audioBuffer,
@@ -315,14 +323,14 @@ Java_com_example_audio_NativeAudioBridge_renderNativeAudio(
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_example_audio_NativeAudioBridge_hasActiveSoundFonts(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_hasActiveSoundFonts(
         JNIEnv *env,
         jobject /* this */) {
     return static_cast<jboolean>(gAudioEngine.hasActiveSoundFonts());
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_example_audio_NativeAudioBridge_isOboeActive(
+Java_com_soundstage_mixer_audio_NativeAudioBridge_isOboeActive(
         JNIEnv *env,
         jobject /* this */) {
     return static_cast<jboolean>(gAudioEngine.isOboeActive());

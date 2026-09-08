@@ -81,6 +81,7 @@ bool AudioEngine::openAndStartStream() {
     mMasterReverb.init(sampleRate);
     mSoundGoodizer.init(sampleRate);
     mMasterPunch.init(sampleRate);
+    mPadFilter.setLowPass(static_cast<float>(sampleRate), 400.0f * std::pow(45.0f, mPadBrightness), 0.707f);
 
     // Initialize FluidSynth engines
     for (int i = 0; i < 3; ++i) {
@@ -136,12 +137,19 @@ void AudioEngine::setDriver(int driverType) {
 }
 
 void AudioEngine::setBufferSize(int bufferSizeInFrames) {
-    std::lock_guard<std::mutex> lock(mStreamMutex);
+    std::lock_guard<std::mutex> streamLock(mStreamMutex);
+    std::lock_guard<std::mutex> renderLock(mRenderMutex);
     if (mStream) {
-        int clamped = std::clamp(bufferSizeInFrames, 64, 4096);
+        int32_t burst = mStream->getFramesPerBurst();
+        int32_t targetFrames = bufferSizeInFrames;
+        if (burst > 0) {
+            int32_t numBursts = std::max(2, (targetFrames + burst - 1) / burst);
+            targetFrames = numBursts * burst;
+        }
+        int clamped = std::clamp(targetFrames, 64, 4096);
         auto res = mStream->setBufferSizeInFrames(clamped);
         if (res) {
-            LOGI("Oboe buffer size set to %d frames (actual: %d)", clamped, res.value());
+            LOGI("Oboe buffer size set to %d frames (burst: %d, actual: %d)", clamped, burst, res.value());
         } else {
             LOGE("Failed to set Oboe buffer size: %s", oboe::convertToText(res.error()));
         }
@@ -156,14 +164,17 @@ void AudioEngine::setMasterEq(float lowGainDb, float midGainDb, float highGainDb
 }
 
 void AudioEngine::setSoundGoodizer(bool enabled, int mode, float amount) {
+    std::lock_guard<std::mutex> lock(mRenderMutex);
     mSoundGoodizer.setParams(enabled, mode, amount);
 }
 
 void AudioEngine::setMasterReverb(bool enabled, float size, float decay, float damp, float mix) {
+    std::lock_guard<std::mutex> lock(mRenderMutex);
     mMasterReverb.setParams(enabled, size, decay, damp, mix);
 }
 
 void AudioEngine::setMasterDelay(bool enabled, float timeSec, float feedback, float mix, bool pingPong) {
+    std::lock_guard<std::mutex> lock(mRenderMutex);
     mMasterDelay.setParams(enabled, timeSec, feedback, mix, pingPong);
 }
 
@@ -173,6 +184,14 @@ void AudioEngine::setSpatialWidener(float amount) {
 
 void AudioEngine::setMasterPunch(float amount) {
     mMasterPunch.setAmount(amount);
+}
+
+void AudioEngine::setPadBrightness(float brightness) {
+    std::lock_guard<std::mutex> lock(mRenderMutex);
+    mPadBrightness = std::clamp(brightness, 0.0f, 1.0f);
+    float sr = static_cast<float>(mSampleRate > 0 ? mSampleRate : 48000);
+    float f0 = 400.0f * std::pow(45.0f, mPadBrightness);
+    mPadFilter.setLowPass(sr, f0, 0.707f);
 }
 
 bool AudioEngine::hasActiveSoundFonts() const {
@@ -211,8 +230,15 @@ int AudioEngine::renderDirect(int16_t *outputBuffer16, int32_t numFrames) {
     // 1. Render FaderEngine (mixer channels 0..7)
     mEngines[0].renderStereo(floatBuf, numFrames, false);
 
-    // 2. Mix PadEngine (Tonic Pad)
-    mEngines[1].renderStereo(floatBuf, numFrames, true);
+    // 2. Mix PadEngine (Tonic Pad) through Brightness Filter
+    if (mPadRenderBuffer.size() < totalSamples) {
+        mPadRenderBuffer.resize(totalSamples, 0.0f);
+    }
+    mEngines[1].renderStereo(mPadRenderBuffer.data(), numFrames, false);
+    mPadFilter.process(mPadRenderBuffer.data(), numFrames);
+    for (size_t i = 0; i < totalSamples; ++i) {
+        floatBuf[i] += mPadRenderBuffer[i];
+    }
 
     // 3. Mix DrumEngine (Drum Pad)
     mEngines[2].renderStereo(floatBuf, numFrames, true);
@@ -266,8 +292,15 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
         // 1. Render FaderEngine (mixer channels 0..7)
         mEngines[0].renderStereo(floatBuf, numFrames, false);
 
-        // 2. Mix PadEngine (Tonic Pad)
-        mEngines[1].renderStereo(floatBuf, numFrames, true);
+        // 2. Mix PadEngine (Tonic Pad) through Brightness Filter
+        if (mPadRenderBuffer.size() < totalSamples) {
+            mPadRenderBuffer.resize(totalSamples, 0.0f);
+        }
+        mEngines[1].renderStereo(mPadRenderBuffer.data(), numFrames, false);
+        mPadFilter.process(mPadRenderBuffer.data(), numFrames);
+        for (size_t i = 0; i < totalSamples; ++i) {
+            floatBuf[i] += mPadRenderBuffer[i];
+        }
 
         // 3. Mix DrumEngine (Drum Pad)
         mEngines[2].renderStereo(floatBuf, numFrames, true);
@@ -303,8 +336,16 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
         // 1. Render FaderEngine (mixer channels 0..7)
         mEngines[0].renderStereo(outputBuffer, numFrames, false);
 
-        // 2. Mix PadEngine (Tonic Pad)
-        mEngines[1].renderStereo(outputBuffer, numFrames, true);
+        // 2. Mix PadEngine (Tonic Pad) through Brightness Filter
+        size_t totalSamples = static_cast<size_t>(numFrames * 2);
+        if (mPadRenderBuffer.size() < totalSamples) {
+            mPadRenderBuffer.resize(totalSamples, 0.0f);
+        }
+        mEngines[1].renderStereo(mPadRenderBuffer.data(), numFrames, false);
+        mPadFilter.process(mPadRenderBuffer.data(), numFrames);
+        for (size_t i = 0; i < totalSamples; ++i) {
+            outputBuffer[i] += mPadRenderBuffer[i];
+        }
 
         // 3. Mix DrumEngine (Drum Pad)
         mEngines[2].renderStereo(outputBuffer, numFrames, true);

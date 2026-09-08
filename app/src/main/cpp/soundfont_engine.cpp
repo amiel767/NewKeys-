@@ -17,8 +17,8 @@ bool SoundfontEngine::init(int sampleRate) {
     }
 
     fluid_settings_setnum(mSettings, "synth.sample-rate", static_cast<double>(sampleRate));
-    fluid_settings_setnum(mSettings, "synth.gain", 0.90);
-    fluid_settings_setint(mSettings, "synth.polyphony", 128);
+    fluid_settings_setnum(mSettings, "synth.gain", 1.0);
+    fluid_settings_setint(mSettings, "synth.polyphony", 64);
     fluid_settings_setint(mSettings, "synth.midi-channels", kMaxChannels);
     fluid_settings_setint(mSettings, "synth.reverb.active", 1);
     fluid_settings_setint(mSettings, "synth.chorus.active", 1);
@@ -31,13 +31,15 @@ bool SoundfontEngine::init(int sampleRate) {
         return false;
     }
 
-    fluid_synth_set_gain(mSynth, 1.0f);
-    fluid_synth_set_reverb_on(mSynth, 1);
-    fluid_synth_set_chorus_on(mSynth, 1);
+    fluid_synth_set_gain(mSynth, 1.2f);
+    fluid_synth_set_interp_method(mSynth, -1, FLUID_INTERP_LINEAR);
+    fluid_synth_reverb_on(mSynth, -1, 1);
+    // fluid_synth_set_reverb_group_roomsize(mSynth, -1, 0.7); // etc. defaults are fine
+    fluid_synth_chorus_on(mSynth, -1, 1);
 
     for (int ch = 0; ch < kMaxChannels; ++ch) {
         mTransposeSemitones[ch].store(0, std::memory_order_relaxed);
-        fluid_synth_cc(mSynth, ch, 7, 100);  // Volume
+        fluid_synth_cc(mSynth, ch, 7, 110);  // Volume
         fluid_synth_cc(mSynth, ch, 10, 64);  // Pan Center
         fluid_synth_cc(mSynth, ch, 11, 127); // Expression Full
     }
@@ -73,8 +75,8 @@ int SoundfontEngine::loadSoundFont(const std::string &absolutePath) {
             mSynth = new_fluid_synth(mSettings);
             if (mSynth) {
                 fluid_synth_set_gain(mSynth, 1.0f);
-                fluid_synth_set_reverb_on(mSynth, 1);
-                fluid_synth_set_chorus_on(mSynth, 1);
+                fluid_synth_reverb_on(mSynth, -1, 1);
+                fluid_synth_chorus_on(mSynth, -1, 1);
                 for (int ch = 0; ch < kMaxChannels; ++ch) {
                     mTransposeSemitones[ch].store(0, std::memory_order_relaxed);
                     fluid_synth_cc(mSynth, ch, 7, 100);
@@ -246,7 +248,10 @@ void SoundfontEngine::pitchBend(int channel, int bendValue) {
 void SoundfontEngine::setChannelVolume(int channel, float volume01) {
     if (!mSynth || channel < 0 || channel >= kMaxChannels) return;
 
-    int ccVal = static_cast<int>(std::clamp(volume01, 0.0f, 1.0f) * 127.0f);
+    // Perceptual mapping: sqrt(vol) compensates for FluidSynth's internal quadratic (cc7/127)^2 attenuation
+    float clampedVol = std::clamp(volume01, 0.0f, 1.0f);
+    float perceptualVol = std::sqrt(clampedVol);
+    int ccVal = static_cast<int>(perceptualVol * 127.0f);
     fluid_synth_cc(mSynth, channel, 7, ccVal);
 }
 
@@ -279,13 +284,13 @@ void SoundfontEngine::setChannelChorus(int channel, float chorus01) {
 
 void SoundfontEngine::setGain(float gain) {
     if (!mSynth) return;
-    float clampedGain = std::clamp(gain, 0.0f, 1.5f);
+    float clampedGain = std::clamp(gain, 0.0f, 2.5f);
     fluid_synth_set_gain(mSynth, clampedGain);
 }
 
 void SoundfontEngine::setPolyphony(int polyphony) {
     if (!mSynth) return;
-    int clamped = std::clamp(polyphony, 16, 512);
+    int clamped = std::clamp(polyphony, 16, 256);
     fluid_synth_set_polyphony(mSynth, clamped);
 }
 
@@ -296,6 +301,8 @@ void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool 
         }
         return;
     }
+
+    // We removed the aggressive active voice count check here to prevent reverb tail freezing.
 
     if (!accumulate) {
         fluid_synth_write_float(mSynth, numFrames, outputBuffer, 0, 2, outputBuffer, 1, 2);

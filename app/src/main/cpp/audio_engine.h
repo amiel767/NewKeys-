@@ -88,6 +88,24 @@ public:
         coeffs.a2 = ((A + 1.0f) - (A - 1.0f) * cos_w0 - sqrtA2alpha) / a0;
     }
 
+    void setLowPass(float sampleRate, float f0, float Q = 0.707f) {
+        if (f0 >= sampleRate * 0.48f) {
+            bypass = true;
+            return;
+        }
+        bypass = false;
+        float clampedF0 = std::clamp(f0, 20.0f, sampleRate * 0.48f);
+        float w0 = 2.0f * 3.14159265f * clampedF0 / sampleRate;
+        float cos_w0 = std::cos(w0);
+        float alpha = std::sin(w0) / (2.0f * Q);
+        float a0 = 1.0f + alpha;
+        coeffs.b0 = ((1.0f - cos_w0) * 0.5f) / a0;
+        coeffs.b1 = (1.0f - cos_w0) / a0;
+        coeffs.b2 = ((1.0f - cos_w0) * 0.5f) / a0;
+        coeffs.a1 = (-2.0f * cos_w0) / a0;
+        coeffs.a2 = (1.0f - alpha) / a0;
+    }
+
     inline void processSample(float &xL, float &xR) {
         if (bypass) return;
         float yL = coeffs.b0 * xL + coeffs.b1 * x1_L + coeffs.b2 * x2_L - coeffs.a1 * y1_L - coeffs.a2 * y2_L;
@@ -536,6 +554,7 @@ public:
     void setMasterDelay(bool enabled, float timeSec, float feedback, float mix, bool pingPong);
     void setSpatialWidener(float amount);
     void setMasterPunch(float amount);
+    void setPadBrightness(float brightness);
 
     SoundfontEngine &getEngine(int engineIndex) {
         if (engineIndex < 0 || engineIndex >= 3) return mEngines[0];
@@ -575,9 +594,12 @@ private:
     SoundGoodizerDsp mSoundGoodizer;
     SpatialWidenerDsp mSpatialWidener;
     MasterPunchDsp mMasterPunch;
+    StereoBiquad mPadFilter;
+    float mPadBrightness = 0.75f;
 
     int mSampleRate = 48000;
     std::vector<float> mFloatRenderBuffer;
+    std::vector<float> mPadRenderBuffer;
 };
 #else
 class AudioEngine {
@@ -604,6 +626,7 @@ public:
     void setMasterDelay(bool enabled, float timeSec, float feedback, float mix, bool pingPong) {}
     void setSpatialWidener(float amount) {}
     void setMasterPunch(float amount) {}
+    void setPadBrightness(float brightness) {}
 
     SoundfontEngine &getEngine(int engineIndex) {
         if (engineIndex < 0 || engineIndex >= 3) return mEngines[0];
