@@ -119,6 +119,7 @@ fun VerticalTrackChannel(
     onSoloClick: () -> Unit = {},
     onTrackNameClick: () -> Unit = {},
     onFxClick: () -> Unit = {},
+    showTicks: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val isMaster = track.isMaster
@@ -308,6 +309,7 @@ fun VerticalTrackChannel(
             isMaster = isMaster,
             isEnabled = isEnabled,
             ledColor = vibrantLedColor,
+            showTicks = showTicks,
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
@@ -490,6 +492,7 @@ fun FaderSliderWithVuMeter(
     isMaster: Boolean,
     isEnabled: Boolean,
     ledColor: Color,
+    showTicks: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val audioActivity = maxOf(peakMeterL, peakMeterR).coerceIn(0f, 1f)
@@ -503,6 +506,7 @@ fun FaderSliderWithVuMeter(
             auraColor = ledColor,
             audioActivity = audioActivity,
             isEnabled = isEnabled,
+            showTicks = showTicks,
             trackWidth = 22.dp,
             trackHeight = 220.dp,
             thumbWidth = 40.dp,

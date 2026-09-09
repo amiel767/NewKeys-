@@ -206,8 +206,9 @@ data class FxParameters(
     val compAttack: Float = 0.2f,
     val compRelease: Float = 0.35f,
     // Delay
+    val isDelayEnabled: Boolean = false,
     val delayTime: Float = 0.35f,
     val delayFeedback: Float = 0.4f,
-    val delayMix: Float = 0.2f,
+    val delayMix: Float = 0.0f,
     val delayPingPong: Float = 0.0f
 )

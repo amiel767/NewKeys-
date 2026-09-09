@@ -44,6 +44,7 @@ fun CustomVerticalFader(
     auraColor: Color = Color(0xFF19EF71), // Ultra-bright neon green by default
     audioActivity: Float = 0f,
     isEnabled: Boolean = true,
+    showTicks: Boolean = true,
     trackWidth: Dp = 16.dp,
     trackHeight: Dp = 220.dp,
     thumbWidth: Dp = 38.dp,
@@ -98,57 +99,59 @@ fun CustomVerticalFader(
         contentAlignment = Alignment.Center
     ) {
         // ================= 0. dB REFERENCE TICKS AND TEXT (0 dB, -inf) =================
-        val tickColor = Color(0xFF4E556A)
-        val tickPositions = listOf(0.12f, 0.32f, 0.52f, 0.72f, 0.90f)
+        if (showTicks) {
+            val tickColor = Color(0xFF4E556A)
+            val tickPositions = listOf(0.12f, 0.32f, 0.52f, 0.72f, 0.90f)
 
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val w = size.width
-            val h = size.height
-            val usableH = h - thumbHeightPx
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val w = size.width
+                val h = size.height
+                val usableH = h - thumbHeightPx
 
-            tickPositions.forEach { frac ->
-                val y = thumbHeightPx / 2f + (1f - frac) * usableH
-                // Left tick line
-                drawLine(
-                    color = tickColor,
-                    start = Offset(4.dp.toPx(), y),
-                    end = Offset(w * 0.30f, y),
-                    strokeWidth = 1.2.dp.toPx(),
-                    cap = StrokeCap.Round
+                tickPositions.forEach { frac ->
+                    val y = thumbHeightPx / 2f + (1f - frac) * usableH
+                    // Left tick line
+                    drawLine(
+                        color = tickColor,
+                        start = Offset(4.dp.toPx(), y),
+                        end = Offset(w * 0.30f, y),
+                        strokeWidth = 1.2.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                    // Right tick line
+                    drawLine(
+                        color = tickColor,
+                        start = Offset(w * 0.70f, y),
+                        end = Offset(w - 4.dp.toPx(), y),
+                        strokeWidth = 1.2.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
+            }
+
+            // dB Text labels
+            Box(modifier = Modifier.fillMaxSize()) {
+                // "0 dB" label
+                Text(
+                    text = "0 dB",
+                    color = Color(0xFF6B7280),
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 18.dp, end = 2.dp)
                 )
-                // Right tick line
-                drawLine(
-                    color = tickColor,
-                    start = Offset(w * 0.70f, y),
-                    end = Offset(w - 4.dp.toPx(), y),
-                    strokeWidth = 1.2.dp.toPx(),
-                    cap = StrokeCap.Round
+                // "-∞" label
+                Text(
+                    text = "-∞",
+                    color = Color(0xFF6B7280),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(bottom = 12.dp, end = 4.dp)
                 )
             }
-        }
-
-        // dB Text labels
-        Box(modifier = Modifier.fillMaxSize()) {
-            // "0 dB" label
-            Text(
-                text = "0 dB",
-                color = Color(0xFF6B7280),
-                fontSize = 8.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 18.dp, end = 2.dp)
-            )
-            // "-∞" label
-            Text(
-                text = "-∞",
-                color = Color(0xFF6B7280),
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(bottom = 12.dp, end = 4.dp)
-            )
         }
 
         // ================= 1. RAIL / TRACK AUTHENTIC PNG ELEMENT =================

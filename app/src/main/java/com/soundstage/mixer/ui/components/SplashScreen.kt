@@ -96,20 +96,20 @@ fun LiveKeysSplashScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                // Glowing LK Logo with White Keyboard Emblem on Pure Black
+                // Glowing Minimalist SoundWave / Piano Keys Logo on Pure Black
                 Box(
                     modifier = Modifier
-                        .size(120.dp)
-                        .shadow(32.dp, CircleShape, spotColor = Color.White)
+                        .size(136.dp)
+                        .shadow(36.dp, CircleShape, spotColor = Color(0x66FFFFFF))
                         .clip(CircleShape)
                         .background(Color(0xFF000000))
-                        .border(2.dp, Color.White.copy(alpha = glowAlpha), CircleShape)
+                        .border(1.5.dp, Brush.linearGradient(listOf(Color.White.copy(alpha = glowAlpha), Color(0x66FFFFFF).copy(alpha = glowAlpha * 0.6f))), CircleShape)
                         .padding(6.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Image(
-                        painter = painterResource(id = R.drawable.livekeys_sound_logo_1788292570407),
-                        contentDescription = "LiveKeys Sound Logo",
+                        painter = painterResource(id = R.drawable.soundstage_minimalist_logo_1788942728746),
+                        contentDescription = "SoundStage Minimalist Logo",
                         modifier = Modifier
                             .fillMaxSize()
                             .clip(CircleShape)
@@ -123,17 +123,17 @@ fun LiveKeysSplashScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "LIVEKEYS",
-                        fontSize = 26.sp,
+                        text = "SOUND",
+                        fontSize = 28.sp,
                         fontWeight = FontWeight.Black,
-                        letterSpacing = 5.sp,
+                        letterSpacing = 6.sp,
                         color = Color.White
                     )
                     Text(
-                        text = "SOUND",
-                        fontSize = 26.sp,
+                        text = "STAGE",
+                        fontSize = 28.sp,
                         fontWeight = FontWeight.Light,
-                        letterSpacing = 4.sp,
+                        letterSpacing = 5.sp,
                         color = NeonCyan
                     )
                 }
@@ -141,10 +141,10 @@ fun LiveKeysSplashScreen(
                 Spacer(modifier = Modifier.height(6.dp))
 
                 Text(
-                    text = "PROFESSIONAL LIVE SOUND ENGINE",
-                    fontSize = 9.sp,
+                    text = "PROFESSIONAL LIVE AUDIO ENGINE",
+                    fontSize = 9.5.sp,
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = 2.sp,
+                    letterSpacing = 2.5.sp,
                     color = Color(0x99FFFFFF),
                     textAlign = TextAlign.Center
                 )

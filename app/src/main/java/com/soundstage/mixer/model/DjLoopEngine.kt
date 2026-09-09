@@ -109,7 +109,14 @@ class DjLoopEngine(private val context: Context) {
         val tf = totalFrames
         if (tf <= 0) return
 
-        val sF = if (startMs > 0) ((startMs.toLong() * sr) / 1000L).toInt().coerceIn(0, tf - 100) else 0
+        val sF = if (startMs > 0) {
+            ((startMs.toLong() * sr) / 1000L).toInt().coerceIn(0, tf - 100)
+        } else {
+            val pcm = currentPcm
+            if (pcm != null && beatCount <= 0 && endMs <= 0) {
+                com.soundstage.mixer.audio.SeamlessLoopTrimmer.autoTrimSilenceShorts(pcm, currentChannels).startIndex
+            } else 0
+        }
 
         val beatDurationFrames = if (beatCount > 0 && bpm > 0) {
             ((beatCount.toLong() * 60L * sr) / bpm.toLong()).toInt()
@@ -118,7 +125,12 @@ class DjLoopEngine(private val context: Context) {
         val eF = when {
             endMs > startMs -> ((endMs.toLong() * sr) / 1000L).toInt().coerceIn(sF + 100, tf)
             beatDurationFrames > 0 -> (sF + beatDurationFrames).coerceIn(sF + 100, tf)
-            else -> tf
+            else -> {
+                val pcm = currentPcm
+                if (pcm != null && startMs <= 0) {
+                    com.soundstage.mixer.audio.SeamlessLoopTrimmer.autoTrimSilenceShorts(pcm, currentChannels).endIndex.coerceIn(sF + 100, tf)
+                } else tf
+            }
         }
 
         startFrame = sF
@@ -211,21 +223,24 @@ class DjLoopEngine(private val context: Context) {
                     continue
                 }
 
-                val srcOffset = playhead * ch
+                // Use SeamlessLoopTrimmer for zero-click 10ms micro-crossfade playback
+                val playheadRef = intArrayOf(playhead)
+                com.soundstage.mixer.audio.SeamlessLoopTrimmer.renderSeamlessStereoShorts(
+                    output = outShorts,
+                    pcm = pcm,
+                    startFrame = curStart,
+                    endFrame = curEnd,
+                    channels = ch,
+                    sampleRate = sr,
+                    playheadRef = playheadRef,
+                    framesToRender = framesToWrite
+                )
+                playhead = playheadRef[0]
+
                 val samplesToWrite = framesToWrite * ch
-
-                System.arraycopy(pcm, srcOffset, outShorts, 0, samplesToWrite)
-
                 val written = track.write(outShorts, 0, samplesToWrite)
                 if (written < 0) {
                     break
-                }
-
-                playhead += framesToWrite
-
-                // DJ SAMPLE-ACCURATE GAPLESS RESTART (0ms delay!)
-                if (playhead >= curEnd) {
-                    playhead = curStart
                 }
             }
         }, "DjLoopAudioStreamThread").apply { start() }

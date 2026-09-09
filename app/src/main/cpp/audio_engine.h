@@ -9,6 +9,7 @@
 #endif
 
 #include "soundfont_engine.h"
+#include "seamless_loop.h"
 #include <memory>
 #include <array>
 #include <vector>

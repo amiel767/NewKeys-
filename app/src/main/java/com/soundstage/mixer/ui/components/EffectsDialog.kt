@@ -548,48 +548,94 @@ fun EffectsDialog(
                         }
                     }
                     "delay" -> {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f),
-                            horizontalArrangement = Arrangement.SpaceEvenly,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            FxUnitCard("Time") {
-                                RotaryKnob(
-                                    value = fxParameters.delayTime,
-                                    onValueChange = { v -> onUpdateFx { it.copy(delayTime = v) } },
-                                    label = "Time",
-                                    valueText = "${(fxParameters.delayTime * 1000).toInt()}ms",
-                                    size = 46.dp
+                        val isDelayOn = fxParameters.isDelayEnabled
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "STEREO DELAY / ECHO",
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextDim,
+                                    letterSpacing = 0.6.sp
                                 )
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(if (isDelayOn) NeonCyan else Color(0x1AFFFFFF))
+                                        .clickable {
+                                            val nextOn = !isDelayOn
+                                            onUpdateFx {
+                                                it.copy(
+                                                    isDelayEnabled = nextOn,
+                                                    delayMix = if (nextOn && it.delayMix < 0.05f) 0.25f else it.delayMix
+                                                )
+                                            }
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = if (isDelayOn) "DELAY ON" else "DELAY OFF",
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isDelayOn) Color.Black else TextDim
+                                    )
+                                }
                             }
-                            FxUnitCard("Feedback") {
-                                RotaryKnob(
-                                    value = fxParameters.delayFeedback,
-                                    onValueChange = { v -> onUpdateFx { it.copy(delayFeedback = v) } },
-                                    label = "Feedback",
-                                    valueText = "${(fxParameters.delayFeedback * 100).toInt()}%",
-                                    size = 46.dp
-                                )
-                            }
-                            FxUnitCard("Mix") {
-                                RotaryKnob(
-                                    value = fxParameters.delayMix,
-                                    onValueChange = { v -> onUpdateFx { it.copy(delayMix = v) } },
-                                    label = "Mix",
-                                    valueText = "${(fxParameters.delayMix * 100).toInt()}%",
-                                    size = 46.dp
-                                )
-                            }
-                            FxUnitCard("Ping-Pong") {
-                                RotaryKnob(
-                                    value = fxParameters.delayPingPong,
-                                    onValueChange = { v -> onUpdateFx { it.copy(delayPingPong = v) } },
-                                    label = "Ping-Pong",
-                                    valueText = if (fxParameters.delayPingPong > 0.5f) "ON" else "OFF",
-                                    size = 46.dp
-                                )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                FxUnitCard("Time") {
+                                    RotaryKnob(
+                                        value = fxParameters.delayTime,
+                                        onValueChange = { v -> onUpdateFx { it.copy(delayTime = v) } },
+                                        label = "Time",
+                                        valueText = "${(fxParameters.delayTime * 1000).toInt()}ms",
+                                        size = 46.dp
+                                    )
+                                }
+                                FxUnitCard("Feedback") {
+                                    RotaryKnob(
+                                        value = fxParameters.delayFeedback,
+                                        onValueChange = { v -> onUpdateFx { it.copy(delayFeedback = v) } },
+                                        label = "Feedback",
+                                        valueText = "${(fxParameters.delayFeedback * 100).toInt()}%",
+                                        size = 46.dp
+                                    )
+                                }
+                                FxUnitCard("Mix") {
+                                    RotaryKnob(
+                                        value = fxParameters.delayMix,
+                                        onValueChange = { v ->
+                                            onUpdateFx {
+                                                it.copy(
+                                                    delayMix = v,
+                                                    isDelayEnabled = v > 0.01f
+                                                )
+                                            }
+                                        },
+                                        label = "Mix",
+                                        valueText = "${(fxParameters.delayMix * 100).toInt()}%",
+                                        size = 46.dp
+                                    )
+                                }
+                                FxUnitCard("Ping-Pong") {
+                                    RotaryKnob(
+                                        value = fxParameters.delayPingPong,
+                                        onValueChange = { v -> onUpdateFx { it.copy(delayPingPong = v) } },
+                                        label = "Ping-Pong",
+                                        valueText = if (fxParameters.delayPingPong > 0.5f) "ON" else "OFF",
+                                        size = 46.dp
+                                    )
+                                }
                             }
                         }
                     }

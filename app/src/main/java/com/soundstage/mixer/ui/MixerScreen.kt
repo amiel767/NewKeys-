@@ -141,45 +141,65 @@ fun MixerScreen(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 // 2. MIXER TRACKS SECTION (8 Tracks + 1 Master)
-                if (animatedKbFraction >= 0.50f) {
-                    CompactHorizontalFadersRack(
-                        tracks = uiState.tracks,
-                        masterTrack = uiState.masterTrack,
-                        onVolumeChange = { id, vol -> viewModel.setTrackVolume(id, vol) },
-                        onPowerToggle = { id -> viewModel.toggleTrackPower(id) },
-                        onPanChange = { id, pan -> viewModel.setTrackPan(id, pan) },
-                        onMuteClick = { id -> viewModel.onTrackMuteClick(id) },
-                        onSoloClick = { id -> viewModel.onTrackSoloClick(id) },
-                        onTrackNameClick = { id -> viewModel.openSoundfontForSlot(id - 1) },
-                        onFxClick = { id -> viewModel.openEffectsForTrack(id) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(68.dp)
-                    )
-                } else {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        // Regular Tracks 1..8
-                        uiState.tracks.forEach { track ->
-                            VerticalTrackChannel(
-                                track = track,
-                                onVolumeChange = { vol -> viewModel.setTrackVolume(track.id, vol) },
-                                onPowerToggle = { viewModel.toggleTrackPower(track.id) },
-                                onPanChange = { pan -> viewModel.setTrackPan(track.id, pan) },
-                                onMuteClick = { viewModel.onTrackMuteClick(track.id) },
-                                onSoloClick = { viewModel.onTrackSoloClick(track.id) },
-                                onTrackNameClick = { viewModel.openSoundfontForSlot(track.id - 1) },
-                                onFxClick = { viewModel.openEffectsForTrack(track.id) },
+                BoxWithConstraints(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                ) {
+                    val availableH = maxHeight
+                    // When the virtual keyboard deploys, the faders adapt fluidly in height.
+                    // When height drops below 145.dp or keyboard expands significantly, switch cleanly to horizontal sliders.
+                    val isVerticalMode = availableH >= 145.dp && animatedKbFraction < 0.40f
+                    // Immediately hide grey volume graduation ticks as soon as the virtual keyboard appears
+                    val showTicks = animatedKbFraction <= 0.04f
+
+                    AnimatedContent(
+                        targetState = isVerticalMode,
+                        transitionSpec = {
+                            fadeIn(animationSpec = tween(220)) togetherWith
+                                fadeOut(animationSpec = tween(180))
+                        },
+                        label = "fader_mode_transition"
+                    ) { verticalMode ->
+                        if (verticalMode) {
+                            Row(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                // Regular Tracks 1..8
+                                uiState.tracks.forEach { track ->
+                                    VerticalTrackChannel(
+                                        track = track,
+                                        onVolumeChange = { vol -> viewModel.setTrackVolume(track.id, vol) },
+                                        onPowerToggle = { viewModel.toggleTrackPower(track.id) },
+                                        onPanChange = { pan -> viewModel.setTrackPan(track.id, pan) },
+                                        onMuteClick = { viewModel.onTrackMuteClick(track.id) },
+                                        onSoloClick = { viewModel.onTrackSoloClick(track.id) },
+                                        onTrackNameClick = { viewModel.openSoundfontForSlot(track.id - 1) },
+                                        onFxClick = { viewModel.openEffectsForTrack(track.id) },
+                                        showTicks = showTicks,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                    )
+                                }
+                            }
+                        } else {
+                            CompactHorizontalFadersRack(
+                                tracks = uiState.tracks,
+                                masterTrack = uiState.masterTrack,
+                                onVolumeChange = { id, vol -> viewModel.setTrackVolume(id, vol) },
+                                onPowerToggle = { id -> viewModel.toggleTrackPower(id) },
+                                onPanChange = { id, pan -> viewModel.setTrackPan(id, pan) },
+                                onMuteClick = { id -> viewModel.onTrackMuteClick(id) },
+                                onSoloClick = { id -> viewModel.onTrackSoloClick(id) },
+                                onTrackNameClick = { id -> viewModel.openSoundfontForSlot(id - 1) },
+                                onFxClick = { id -> viewModel.openEffectsForTrack(id) },
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
+                                    .fillMaxWidth()
+                                    .align(Alignment.Center)
                             )
                         }
-
                     }
                 }
 

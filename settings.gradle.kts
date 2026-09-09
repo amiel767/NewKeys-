@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "LiveKeys Sound"
+rootProject.name = "SoundStage"
 
 include(":app")

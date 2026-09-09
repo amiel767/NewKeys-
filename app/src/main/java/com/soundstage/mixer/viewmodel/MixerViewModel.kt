@@ -2372,11 +2372,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     damp = newFx.reverbDamp,
                     mix = newFx.reverbMix
                 )
+                val isDelayActive = newFx.isDelayEnabled && newFx.delayMix > 0.005f
                 audioEngine.setMasterDelay(
-                    enabled = newFx.delayMix > 0.005f,
+                    enabled = isDelayActive,
                     timeSec = 0.05f + newFx.delayTime * 0.95f,
-                    feedback = newFx.delayFeedback,
-                    mix = newFx.delayMix,
+                    feedback = if (isDelayActive) newFx.delayFeedback else 0f,
+                    mix = if (isDelayActive) newFx.delayMix else 0f,
                     pingPong = newFx.delayPingPong > 0.5f
                 )
                 val modeStr = when (newFx.sgMode) {

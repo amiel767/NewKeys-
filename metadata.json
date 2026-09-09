@@ -1,5 +1,5 @@
 {
-  "name": "LiveKeys Sound",
+  "name": "SoundStage",
   "description": "Live Soundfont player with real-time effects, dual-layering, SoundFont preset manager, multitrack mixing, collapsible virtual keyboard, drum pads, and tonic pad.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
