@@ -1,10 +1,10 @@
-package com.example
+package com.soundstage.mixer
 
 import android.app.Application
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.example.model.DrumSoundType
-import com.example.viewmodel.MixerViewModel
+import com.soundstage.mixer.model.DrumSoundType
+import com.soundstage.mixer.viewmodel.MixerViewModel
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith

@@ -1,4 +1,4 @@
-package com.example
+package com.soundstage.mixer
 
 import org.junit.Assert.*
 import org.junit.Test

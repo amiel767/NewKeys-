@@ -74,7 +74,7 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_listPresets(
         presets = gAudioEngine.getEngine(2).listPresets(soundFontId);
     }
     
-    jclass presetInfoClass = env->FindClass("com/example/audio/PresetInfo");
+    jclass presetInfoClass = env->FindClass("com/soundstage/mixer/audio/PresetInfo");
     if (presetInfoClass == nullptr) return nullptr;
     
     jmethodID constructor = env->GetMethodID(presetInfoClass, "<init>", "(IILjava/lang/String;)V");

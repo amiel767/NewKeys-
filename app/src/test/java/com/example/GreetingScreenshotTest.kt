@@ -1,4 +1,4 @@
-package com.example
+package com.soundstage.mixer
 
 import android.app.Application
 import androidx.compose.foundation.layout.fillMaxSize
@@ -7,10 +7,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.test.core.app.ApplicationProvider
-import com.example.ui.MixerScreen
-import com.example.ui.theme.DarkBg
-import com.example.ui.theme.SoundfontLiveMixerTheme
-import com.example.viewmodel.MixerViewModel
+import com.soundstage.mixer.ui.MixerScreen
+import com.soundstage.mixer.ui.theme.DarkBg
+import com.soundstage.mixer.ui.theme.SoundfontLiveMixerTheme
+import com.soundstage.mixer.viewmodel.MixerViewModel
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Rule
