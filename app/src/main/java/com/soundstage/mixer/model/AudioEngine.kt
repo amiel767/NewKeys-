@@ -366,8 +366,21 @@ class AudioEngine(private val context: Context) {
 
     fun setChannelVolume(channel: Int, volume: Float) {
         val ch = channel.coerceIn(0, 11)
-        channelParams[ch].volume = volume.coerceIn(0f, 1f)
-        NativeAudioBridge.safeSetTrackVolume(ch, volume)
+        val clamped = volume.coerceIn(0f, 1f)
+        channelParams[ch].volume = clamped
+        if (ch in 0..7) {
+            NativeAudioBridge.safeSetTrackVolume(ch, clamped, NativeAudioBridge.ENGINE_FADER)
+        } else if (ch == 8) {
+            NativeAudioBridge.safeSetTrackVolume(8, clamped, NativeAudioBridge.ENGINE_FADER)
+            NativeAudioBridge.safeSetTrackVolume(0, clamped, NativeAudioBridge.ENGINE_DRUM)
+            NativeAudioBridge.safeSetTrackVolume(9, clamped, NativeAudioBridge.ENGINE_DRUM)
+        } else if (ch == 9) {
+            NativeAudioBridge.safeSetTrackVolume(9, clamped, NativeAudioBridge.ENGINE_FADER)
+            NativeAudioBridge.safeSetTrackVolume(0, clamped, NativeAudioBridge.ENGINE_PAD)
+            NativeAudioBridge.safeSetTrackVolume(9, clamped, NativeAudioBridge.ENGINE_PAD)
+        } else {
+            NativeAudioBridge.safeSetTrackVolume(ch, clamped)
+        }
     }
 
     fun setChannelPan(channel: Int, pan: Float) {

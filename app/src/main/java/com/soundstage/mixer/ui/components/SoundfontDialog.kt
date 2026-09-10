@@ -553,43 +553,7 @@ fun SoundfontDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f)
-                                .clip(RoundedCornerShape(18.dp))
-                                .background(Color(0x14FFFFFF))
-                                .border(0.8.dp, Color(0x18FFFFFF), RoundedCornerShape(18.dp))
-                                .padding(24.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(text = "📂", fontSize = 28.sp)
-                                Text(
-                                    text = if (searchQuery.isNotEmpty()) "Aucun fichier correspondant à \"$searchQuery\""
-                                    else "Aucun fichier .sf2 dans le stockage interne.\nCliquez ci-dessous pour importer un fichier .sf2.",
-                                    fontSize = 12.sp,
-                                    color = Color(0xAAFFFFFF),
-                                    textAlign = TextAlign.Center
-                                )
-                                if (onImportSf2 != null) {
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(18.dp))
-                                            .background(Color(0x2200E5FF))
-                                            .border(1.dp, Color(0x8800E5FF), RoundedCornerShape(18.dp))
-                                            .clickable { onImportSf2() }
-                                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                                    ) {
-                                        Text(
-                                            text = "+ Importer un fichier .sf2",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF00E5FF)
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                        )
                     } else {
                         LazyColumn(
                             state = fileListState,

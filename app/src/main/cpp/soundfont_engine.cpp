@@ -206,70 +206,80 @@ void SoundfontEngine::noteOn(int channel, int midiNote, int velocity) {
         return;
     }
 
-    std::lock_guard<std::mutex> lock(mMutex);
-    if (!mSynth) return;
-
     int transposedNote = midiNote + mTransposeSemitones[channel].load(std::memory_order_relaxed);
     int clampedNote = std::clamp(transposedNote, 0, 127);
     int clampedVelocity = std::clamp(velocity, 0, 127);
 
-    fluid_synth_noteon(mSynth, channel, clampedNote, clampedVelocity);
+    EngineMidiEvent ev;
+    ev.type = EngineMidiEvent::NOTE_ON;
+    ev.channel = channel;
+    ev.note = clampedNote;
+    ev.velocity = clampedVelocity;
+    mEventQueue.push(ev);
 }
 
 void SoundfontEngine::noteOff(int channel, int midiNote) {
     if (channel < 0 || channel >= kMaxChannels) return;
 
-    std::lock_guard<std::mutex> lock(mMutex);
-    if (!mSynth) return;
-
     int transposedNote = midiNote + mTransposeSemitones[channel].load(std::memory_order_relaxed);
     int clampedNote = std::clamp(transposedNote, 0, 127);
 
-    fluid_synth_noteoff(mSynth, channel, clampedNote);
+    EngineMidiEvent ev;
+    ev.type = EngineMidiEvent::NOTE_OFF;
+    ev.channel = channel;
+    ev.note = clampedNote;
+    ev.velocity = 0;
+    mEventQueue.push(ev);
 }
 
 void SoundfontEngine::allNotesOff(int channel) {
-    std::lock_guard<std::mutex> lock(mMutex);
-    if (!mSynth) return;
-
-    if (channel >= 0 && channel < kMaxChannels) {
-        fluid_synth_all_notes_off(mSynth, channel);
-        fluid_synth_cc(mSynth, channel, 123, 0); // All Notes Off CC
-        fluid_synth_cc(mSynth, channel, 120, 0); // All Sound Off CC
-    } else {
-        for (int ch = 0; ch < kMaxChannels; ++ch) {
-            fluid_synth_all_notes_off(mSynth, ch);
-            fluid_synth_cc(mSynth, ch, 123, 0);
-            fluid_synth_cc(mSynth, ch, 120, 0);
-        }
-    }
+    EngineMidiEvent ev;
+    ev.type = EngineMidiEvent::ALL_NOTES_OFF;
+    ev.channel = channel;
+    ev.note = 0;
+    ev.velocity = 0;
+    mEventQueue.push(ev);
 }
 
 void SoundfontEngine::pitchBend(int channel, int bendValue) {
     if (channel < 0 || channel >= kMaxChannels) return;
-    std::lock_guard<std::mutex> lock(mMutex);
-    if (!mSynth) return;
     int clampedBend = std::clamp(bendValue, 0, 16383);
-    fluid_synth_pitch_bend(mSynth, channel, clampedBend);
+
+    EngineMidiEvent ev;
+    ev.type = EngineMidiEvent::PITCH_BEND;
+    ev.channel = channel;
+    ev.param1 = clampedBend;
+    mEventQueue.push(ev);
 }
 
 void SoundfontEngine::setChannelVolume(int channel, float volume01) {
-    if (!mSynth || channel < 0 || channel >= kMaxChannels) return;
+    if (channel < 0 || channel >= kMaxChannels) return;
 
     // Perceptual mapping: sqrt(vol) compensates for FluidSynth's internal quadratic (cc7/127)^2 attenuation
     float clampedVol = std::clamp(volume01, 0.0f, 1.0f);
     float perceptualVol = std::sqrt(clampedVol);
     int ccVal = static_cast<int>(perceptualVol * 127.0f);
-    fluid_synth_cc(mSynth, channel, 7, ccVal);
+
+    EngineMidiEvent ev;
+    ev.type = EngineMidiEvent::CC;
+    ev.channel = channel;
+    ev.param1 = 7; // Volume CC
+    ev.param2 = ccVal;
+    mEventQueue.push(ev);
 }
 
 void SoundfontEngine::setChannelPan(int channel, float pan) {
-    if (!mSynth || channel < 0 || channel >= kMaxChannels) return;
+    if (channel < 0 || channel >= kMaxChannels) return;
 
-    // pan: -1.0f (left = 0) to +1.0f (right = 127), center (0.0f) = 64
     float normalized = (std::clamp(pan, -1.0f, 1.0f) + 1.0f) * 0.5f;
     int ccVal = static_cast<int>(normalized * 127.0f);
-    fluid_synth_cc(mSynth, channel, 10, ccVal);
+
+    EngineMidiEvent ev;
+    ev.type = EngineMidiEvent::CC;
+    ev.channel = channel;
+    ev.param1 = 10; // Pan CC
+    ev.param2 = ccVal;
+    mEventQueue.push(ev);
 }
 
 void SoundfontEngine::setChannelTransposeSemitones(int channel, int semitones) {
@@ -279,15 +289,27 @@ void SoundfontEngine::setChannelTransposeSemitones(int channel, int semitones) {
 }
 
 void SoundfontEngine::setChannelReverb(int channel, float reverb01) {
-    if (!mSynth || channel < 0 || channel >= kMaxChannels) return;
+    if (channel < 0 || channel >= kMaxChannels) return;
     int ccVal = static_cast<int>(std::clamp(reverb01, 0.0f, 1.0f) * 127.0f);
-    fluid_synth_cc(mSynth, channel, 91, ccVal); // MIDI CC 91 = Reverb Send
+
+    EngineMidiEvent ev;
+    ev.type = EngineMidiEvent::CC;
+    ev.channel = channel;
+    ev.param1 = 91; // Reverb CC
+    ev.param2 = ccVal;
+    mEventQueue.push(ev);
 }
 
 void SoundfontEngine::setChannelChorus(int channel, float chorus01) {
-    if (!mSynth || channel < 0 || channel >= kMaxChannels) return;
+    if (channel < 0 || channel >= kMaxChannels) return;
     int ccVal = static_cast<int>(std::clamp(chorus01, 0.0f, 1.0f) * 127.0f);
-    fluid_synth_cc(mSynth, channel, 93, ccVal); // MIDI CC 93 = Chorus Send
+
+    EngineMidiEvent ev;
+    ev.type = EngineMidiEvent::CC;
+    ev.channel = channel;
+    ev.param1 = 93; // Chorus CC
+    ev.param2 = ccVal;
+    mEventQueue.push(ev);
 }
 
 void SoundfontEngine::setGain(float gain) {
@@ -303,7 +325,6 @@ void SoundfontEngine::setPolyphony(int polyphony) {
 }
 
 void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool accumulate) {
-    std::lock_guard<std::mutex> lock(mMutex);
     if (!mSynth || fluid_synth_sfcount(mSynth) == 0) {
         if (!accumulate) {
             std::fill(outputBuffer, outputBuffer + (numFrames * 2), 0.0f);
@@ -311,7 +332,43 @@ void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool 
         return;
     }
 
-    // We removed the aggressive active voice count check here to prevent reverb tail freezing.
+    // Lock-free drain of all pending MIDI events directly on the audio thread
+    EngineMidiEvent ev;
+    while (mEventQueue.pop(ev)) {
+        switch (ev.type) {
+            case EngineMidiEvent::NOTE_ON:
+                fluid_synth_noteon(mSynth, ev.channel, ev.note, ev.velocity);
+                break;
+            case EngineMidiEvent::NOTE_OFF:
+                fluid_synth_noteoff(mSynth, ev.channel, ev.note);
+                break;
+            case EngineMidiEvent::ALL_NOTES_OFF:
+                if (ev.channel >= 0 && ev.channel < kMaxChannels) {
+                    fluid_synth_all_notes_off(mSynth, ev.channel);
+                    fluid_synth_cc(mSynth, ev.channel, 123, 0);
+                    fluid_synth_cc(mSynth, ev.channel, 120, 0);
+                } else {
+                    for (int ch = 0; ch < kMaxChannels; ++ch) {
+                        fluid_synth_all_notes_off(mSynth, ch);
+                        fluid_synth_cc(mSynth, ch, 123, 0);
+                        fluid_synth_cc(mSynth, ch, 120, 0);
+                    }
+                }
+                break;
+            case EngineMidiEvent::PITCH_BEND:
+                fluid_synth_pitch_bend(mSynth, ev.channel, ev.param1);
+                break;
+            case EngineMidiEvent::CC:
+                fluid_synth_cc(mSynth, ev.channel, ev.param1, ev.param2);
+                break;
+            case EngineMidiEvent::PROGRAM_CHANGE:
+                fluid_synth_program_change(mSynth, ev.channel, ev.param1);
+                break;
+            case EngineMidiEvent::PROGRAM_SELECT:
+                fluid_synth_program_select(mSynth, ev.channel, ev.param1, ev.param2, ev.note);
+                break;
+        }
+    }
 
     if (!accumulate) {
         fluid_synth_write_float(mSynth, numFrames, outputBuffer, 0, 2, outputBuffer, 1, 2);

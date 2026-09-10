@@ -117,8 +117,8 @@ data class TrackChannel(
     val reverbSize: Float = 0.60f,
     val reverbDecay: Float = 0.45f,
     val velocityCurve: Float = 0.5f, // 0 = Soft, 0.5 = Linear, 1 = Hard
-    val splitNoteMin: Int = 36, // C2
-    val splitNoteMax: Int = 84, // C6
+    val splitNoteMin: Int = 24, // C1
+    val splitNoteMax: Int = 108, // C7
     // Peak meters (0f..1f)
     val peakMeterL: Float = 0.0f,
     val peakMeterR: Float = 0.0f

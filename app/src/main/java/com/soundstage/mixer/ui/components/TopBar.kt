@@ -62,12 +62,10 @@ fun TopBar(
     onToggleLoopFolder: (String) -> Unit,
     onSelectLoopFile: (LoopFile) -> Unit,
     
-    // Sustain & Splitter
+    // Sustain
     isSustainActive: Boolean,
     isMidiPedalPressed: Boolean,
     onToggleSustain: () -> Unit,
-    isSplitterActive: Boolean,
-    onToggleSplitter: () -> Unit,
     
     // Launchers
     onOpenDrumPad: () -> Unit,
@@ -288,37 +286,7 @@ fun TopBar(
                 }
             }
 
-            // 5. Global Splitter Button (Scissors ✂️)
-            Box(
-                modifier = Modifier
-                    .height(38.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(if (isSplitterActive) Color(0x3322D3EE) else DarkSurface)
-                    .border(
-                        1.dp,
-                        if (isSplitterActive) NeonCyan else BorderSubtle,
-                        RoundedCornerShape(12.dp)
-                    )
-                    .clickable { onToggleSplitter() }
-                    .padding(horizontal = 9.dp)
-                    .testTag("btn_global_splitter"),
-                contentAlignment = Alignment.Center
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(3.dp)
-                ) {
-                    Text(text = "✂️", fontSize = 11.sp)
-                    Text(
-                        text = "SPLIT",
-                        fontSize = 9.5.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (isSplitterActive) NeonCyan else TextDim
-                    )
-                }
-            }
-
-            // 6. Drum Pad Launcher Icon (Neon Pad Matrix)
+            // 5. Drum Pad Launcher Icon (Neon Pad Matrix)
             Box(
                 modifier = Modifier
                     .size(38.dp)

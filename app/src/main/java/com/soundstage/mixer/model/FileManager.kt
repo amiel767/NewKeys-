@@ -159,18 +159,29 @@ class FileManager(private val context: Context) {
         }
     }
 
+    @Synchronized
     private fun copyAssetSoundFonts() {
         try {
             val assetList = context.assets.list("soundfonts") ?: emptyArray()
             for (sfName in assetList) {
                 val target = File(soundfontsDir, sfName)
                 if (!target.exists() || target.length() == 0L) {
-                    context.assets.open("soundfonts/$sfName").use { input ->
-                        target.outputStream().use { output ->
-                            input.copyTo(output)
+                    val tmpFile = File(soundfontsDir, "$sfName.tmp")
+                    try {
+                        context.assets.open("soundfonts/$sfName").use { input ->
+                            tmpFile.outputStream().use { output ->
+                                input.copyTo(output)
+                            }
                         }
+                        if (tmpFile.exists() && tmpFile.length() > 0L) {
+                            if (target.exists()) target.delete()
+                            tmpFile.renameTo(target)
+                            Log.i("FileManager", "Extracted asset soundfont to: ${target.absolutePath} (${target.length()} bytes)")
+                        }
+                    } catch (e: Exception) {
+                        tmpFile.delete()
+                        Log.w("FileManager", "Error writing soundfont $sfName: ${e.message}")
                     }
-                    Log.i("FileManager", "Extracted asset soundfont to: ${target.absolutePath} (${target.length()} bytes)")
                 }
             }
 

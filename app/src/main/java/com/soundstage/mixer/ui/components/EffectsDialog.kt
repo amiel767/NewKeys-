@@ -35,11 +35,9 @@ fun EffectsDialog(
     trackId: Int,
     track: TrackChannel? = null,
     fxParameters: FxParameters,
-    isGlobalSplitterActive: Boolean = false,
     onUpdateFx: ((FxParameters) -> FxParameters) -> Unit,
     onSetReverbPreset: (String) -> Unit = {},
     onSetVelocityCurve: (Float) -> Unit = {},
-    onSetSplitRange: (Int, Int) -> Unit = { _, _ -> },
     activeTab: String,
     onTabChange: (String) -> Unit,
     onClose: () -> Unit,
@@ -52,8 +50,7 @@ fun EffectsDialog(
     } else {
         listOf(
             "reverb" to "Reverb",
-            "velocity" to "Vélocité",
-            "splitter" to "Splitter"
+            "velocity" to "Vélocité"
         )
     }
 
@@ -353,56 +350,6 @@ fun EffectsDialog(
                                     modifier = Modifier.fillMaxWidth()
                                 )
                             }
-                        }
-                    }
-                    "splitter" -> {
-                        val minNote = track?.splitNoteMin ?: 36
-                        val maxNote = track?.splitNoteMax ?: 84
-
-                        Column(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column {
-                                    Text(
-                                        text = "KEYBOARD SPLITTER — CLAVIER VIRTUEL CLASSIQUE",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = TextPrimary
-                                    )
-                                    Text(
-                                        text = "Touchez les touches blanches ou noires pour assigner la zone du split.",
-                                        fontSize = 9.sp,
-                                        color = TextDim
-                                    )
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(if (isGlobalSplitterActive) Color(0x3322D3EE) else Color(0x1AFFFFFF))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = if (isGlobalSplitterActive) "SPLITTER GLOBAL: ACTIF ✂️" else "SPLITTER INACTIF",
-                                        fontSize = 8.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isGlobalSplitterActive) NeonCyan else TextDim
-                                    )
-                                }
-                            }
-
-                            // Classical Virtual Keyboard with white & black keys
-                            SplitterKeyboard(
-                                minNote = minNote,
-                                maxNote = maxNote,
-                                onSetSplitRange = onSetSplitRange,
-                                modifier = Modifier.fillMaxWidth()
-                            )
                         }
                     }
                     "eq" -> {

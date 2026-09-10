@@ -83,12 +83,18 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_listPresets(
     jobjectArray result = env->NewObjectArray(presets.size(), presetInfoClass, nullptr);
     if (result == nullptr) return nullptr;
     
+    if (env->EnsureLocalCapacity(16) < 0) return result;
+
     for (size_t i = 0; i < presets.size(); ++i) {
         jstring nameStr = env->NewStringUTF(presets[i].name.c_str());
-        jobject presetObj = env->NewObject(presetInfoClass, constructor, presets[i].bank, presets[i].preset, nameStr);
-        env->SetObjectArrayElement(result, i, presetObj);
-        env->DeleteLocalRef(nameStr);
-        env->DeleteLocalRef(presetObj);
+        jobject presetObj = env->NewObject(presetInfoClass, constructor, presets[i].bank, presets[i].preset, nameStr ? nameStr : env->NewStringUTF(""));
+        if (presetObj) {
+            env->SetObjectArrayElement(result, i, presetObj);
+            env->DeleteLocalRef(presetObj);
+        }
+        if (nameStr) {
+            env->DeleteLocalRef(nameStr);
+        }
     }
     
     return result;

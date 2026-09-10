@@ -2,7 +2,9 @@ package com.soundstage.mixer.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -22,6 +24,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -40,23 +45,27 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.soundstage.mixer.model.TrackChannel
 import com.soundstage.mixer.ui.theme.*
 import kotlinx.coroutines.launch
 
 /**
  * Virtual Piano Keyboard with:
- * - 3 Full Octaves clearly visible on screen by default.
+ * - Visual Keyboard Layer Mapper (Key Range Bars) with Low/High Note drag handles.
+ * - Dynamic Octaves Selector Stepper [ - | N Oct | + ].
  * - Multi-touch polyphonic input with glissando.
  * - Perfectly synchronized scroll without any octave offset bugs.
  * - Retractable drag grabber bar.
  * - Pitch Bend Wheel & Sustain pedal button.
- * - Live Chord Name & Harmony Analyzer (11th, 13th, Altered, Shells).
+ * - Live Chord Name & Harmony Analyzer.
  */
 @Composable
 fun VirtualPianoKeyboard(
     heightFraction: Float = 0.55f,
     pressedKeys: Set<String>,
     octave: Int = 0,
+    tracks: List<TrackChannel> = emptyList(),
+    onRangeChanged: (trackId: Int, minNote: Int, maxNote: Int) -> Unit = { _, _, _ -> },
     onKeyDown: (String) -> Unit,
     onKeyUp: (String) -> Unit,
     onKeyDownWithVelocity: ((String, Float) -> Unit)? = null,
@@ -75,20 +84,30 @@ fun VirtualPianoKeyboard(
     if (heightFraction <= 0.01f) return
 
     val scrollState = rememberScrollState()
-    val coroutineScope = rememberCoroutineScope()
     var currentScale by remember(keyScale) { mutableFloatStateOf(keyScale) }
+    var isLayerMapperExpanded by remember { mutableStateOf(false) }
 
-    val detectedChord = remember(pressedKeys) {
-        ChordCalculator.detect(pressedKeys)
+    val activeTracksCount = remember(tracks) { tracks.count { it.isEnabled } }
+    val compactMapperHeight = if (tracks.isNotEmpty()) 16.dp else 0.dp
+    val expandedMapperHeight = if (tracks.isNotEmpty()) {
+        (32.dp * activeTracksCount.coerceAtMost(4) + 8.dp).coerceAtLeast(40.dp)
+    } else {
+        0.dp
     }
+    val currentMapperHeight = if (isLayerMapperExpanded) expandedMapperHeight else compactMapperHeight
+    val keysHeight = if (isLayerMapperExpanded) 90.dp else (120.dp - compactMapperHeight)
+    val totalTargetHeight = if (isLayerMapperExpanded) (keysHeight + expandedMapperHeight + 2.dp) else 120.dp
 
-    // Precise fixed deployed height strictly set to 120dp
-    val keyboardHeightDp = 120.dp
+    val animatedKeyboardHeight by animateDpAsState(
+        targetValue = totalTargetHeight,
+        animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
+        label = "kbHeight"
+    )
 
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .height(keyboardHeightDp)
+            .height(animatedKeyboardHeight)
             .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
             .background(
                 Brush.verticalGradient(
@@ -98,181 +117,23 @@ fun VirtualPianoKeyboard(
             .border(1.dp, Color(0x3322D3EE), RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
             .testTag("virtual_piano_keyboard")
     ) {
-        // Grabber bar to resize / collapse keyboard with prominent touch area
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(18.dp)
-                .background(Color(0xFF181F2C))
-                .clickable { onGrabberClick?.invoke() }
-                .pointerInput(Unit) {
-                    if (onGrabberDrag != null) {
-                        detectVerticalDragGestures { change, dragAmount ->
-                            change.consume()
-                            onGrabberDrag(dragAmount)
-                        }
-                    }
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .width(48.dp)
-                    .height(4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(Color(0x88FFFFFF))
-            )
-        }
+        // ================= KEYBOARD BODY (LAYER MAPPER + PITCH BEND & C1-C8 KEYS) =================
+        val baseOctave = 1
+        val octaves = (0..6).map { baseOctave + it } // C1..C7
+        val highestOctave = baseOctave + 7 // C8
+        val totalWhiteKeys = 50 // 7 octaves * 7 + 1 High C (C1 to C8)
+        val density = LocalDensity.current
 
-        // ================= 1. CHORD ANALYZER & SCROLL CONTROLS TOP BAR =================
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(32.dp)
-                .background(Color(0xFF161C28))
-                .border(0.8.dp, Color(0x22FFFFFF))
-                .padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            // Left: Real-time Dynamic Chord & Inversion Formula Display
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                Text(
-                    text = "CHORD:",
-                    fontSize = 8.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF8E95A5)
-                )
-
-                if (detectedChord != null) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(5.dp))
-                            .background(Color(0x3322D3EE))
-                            .border(1.dp, NeonCyan, RoundedCornerShape(5.dp))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = detectedChord.primaryName,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = NeonCyanLight
-                        )
-                    }
-
-                    Text(
-                        text = detectedChord.alternateNames,
-                        fontSize = 9.5.sp,
-                        color = Color(0xFFE2E8F0),
-                        maxLines = 1
-                    )
-                } else {
-                    Text(
-                        text = "Jouez un accord...",
-                        fontSize = 9.5.sp,
-                        color = Color(0x55FFFFFF)
-                    )
-                }
-            }
-
-            // Right: Sustain Pedal & Scroll Buttons
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp)
-            ) {
-                // Sustain Button
-                Box(
-                    modifier = Modifier
-                        .height(24.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(if (isSustainActive) NeonCyan else Color(0x1FFFFFFF))
-                        .border(1.dp, if (isSustainActive) Color.White else Color(0x33FFFFFF), RoundedCornerShape(6.dp))
-                        .clickable { onToggleSustain() }
-                        .padding(horizontal = 7.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "SUSTAIN",
-                        fontSize = 8.5.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (isSustainActive) Color(0xFF002E38) else Color(0xFFC4C7D5)
-                    )
-                }
-
-                // Scroll Left Octave ◀
-                Box(
-                    modifier = Modifier
-                        .size(24.dp)
-                        .clip(CircleShape)
-                        .background(Color(0x22FFFFFF))
-                        .clickable {
-                            coroutineScope.launch {
-                                scrollState.animateScrollTo(
-                                    (scrollState.value - 200).coerceAtLeast(0),
-                                    tween(250)
-                                )
-                            }
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(text = "◀", fontSize = 10.sp, color = Color.White)
-                }
-
-                // Scroll Right Octave ▶
-                Box(
-                    modifier = Modifier
-                        .size(24.dp)
-                        .clip(CircleShape)
-                        .background(Color(0x22FFFFFF))
-                        .clickable {
-                            coroutineScope.launch {
-                                scrollState.animateScrollTo(
-                                    (scrollState.value + 200).coerceAtMost(scrollState.maxValue),
-                                    tween(250)
-                                )
-                            }
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(text = "▶", fontSize = 10.sp, color = Color.White)
-                }
-            }
-        }
-
-        // ================= 2. KEYBOARD BODY (PITCH BEND + SCROLLABLE 3-OCTAVE KEYS) =================
-        Row(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .padding(top = 2.dp, bottom = 2.dp, start = 4.dp, end = 4.dp)
+                .padding(horizontal = 4.dp, vertical = 2.dp)
         ) {
-            // Pitch Bend Wheel
-            PitchBendWheel(
-                currentBend = pitchBend,
-                onBendChange = onPitchBendChange,
-                modifier = Modifier
-                    .width(42.dp)
-                    .fillMaxHeight()
-                    .padding(end = 4.dp, bottom = 2.dp)
-            )
-
-            // Keys Container (5 full octaves C2..C7, global octave shift is applied at the audio engine level for exact transposition)
-            val baseOctave = 2
-            val octaves = (0..4).map { baseOctave + it }
-            val highestOctave = baseOctave + 5
-            val density = LocalDensity.current
-
-            // 27.5.dp per white key allows 3 full octaves (21 white keys ≈ 577dp) to be fully visible simultaneously
-            val baseWhiteWidthDp = 27.5.dp * currentScale.coerceIn(0.55f, 2.2f)
+            val availableWidthDp = (maxWidth - 46.dp).coerceAtLeast(100.dp)
+            val baseWhiteWidthDp = (availableWidthDp / totalWhiteKeys.toFloat()) * currentScale.coerceIn(0.7f, 3.0f)
             val whiteWidthPx = with(density) { baseWhiteWidthDp.toPx() }
             val blackKeyWidthPx = whiteWidthPx * 0.60f
-
-            // Total 35 white keys (5 octaves * 7) + 1 C7 = 36 white keys
-            val totalWhiteKeys = 36
             val totalKeyboardWidthDp = baseWhiteWidthDp * totalWhiteKeys
 
             // Multi-touch Pointer-to-Key mapping tracker for smooth glissando
@@ -281,148 +142,204 @@ fun VirtualPianoKeyboard(
             val currentOnKeyUp by rememberUpdatedState(onKeyUp)
             val currentOnKeyDownWithVel by rememberUpdatedState(onKeyDownWithVelocity)
 
-            // Auto-center initially around C3/C4 so 3 full octaves (C3 to B5) are immediately in view
-            LaunchedEffect(whiteWidthPx) {
-                if (scrollState.value == 0 && whiteWidthPx > 0) {
-                    val initialScrollPx = (whiteWidthPx * 7f).toInt()
-                    scrollState.scrollTo(initialScrollPx)
-                }
-            }
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(0.dp)
+            ) {
+                // Layer Mapper Row (Synchronized with keys scroll, toggle handle above Pitch Bend)
+                if (tracks.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(currentMapperHeight)
+                    ) {
+                        // Small handle box positioned directly above Pitch Bend
+                        Box(
+                            modifier = Modifier
+                                .width(42.dp)
+                                .fillMaxHeight()
+                                .padding(end = 4.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color(0xFF1B2230))
+                                .border(0.8.dp, Color(0x4422D3EE), RoundedCornerShape(4.dp))
+                                .clickable { isLayerMapperExpanded = !isLayerMapperExpanded },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Layers,
+                                contentDescription = "Toggle Layers",
+                                tint = if (isLayerMapperExpanded) NeonCyan else Color(0xAA94A3B8),
+                                modifier = Modifier.size(11.dp)
+                            )
+                        }
 
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .padding(bottom = 2.dp)
-                    .horizontalScroll(scrollState)
-                    .pointerInput(Unit) {
-                        detectTransformGestures { _, _, zoom, _ ->
-                            if (zoom != 1.0f) {
-                                currentScale = (currentScale * zoom).coerceIn(0.55f, 2.2f)
-                                onKeyScaleChange(currentScale)
-                            }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .horizontalScroll(scrollState)
+                        ) {
+                            KeyboardLayerMapper(
+                                tracks = tracks,
+                                whiteWidthDp = baseWhiteWidthDp,
+                                totalWhiteKeys = totalWhiteKeys,
+                                isExpanded = isLayerMapperExpanded,
+                                onToggleExpanded = { isLayerMapperExpanded = !isLayerMapperExpanded },
+                                onRangeChanged = onRangeChanged
+                            )
                         }
                     }
-            ) {
-                // Placing pointerInput directly on full-width Row ensures change.position.x
-                // maps precisely to absolute key coordinates from 0 to totalKeyboardWidthPx with ZERO octave drift!
+                }
+
+                // Main Keys Section: Pitch Bend (Fixed 120.dp) + Virtual Piano Keys (Fixed 120.dp)
                 Row(
                     modifier = Modifier
-                        .width(totalKeyboardWidthDp)
-                        .fillMaxHeight()
-                        .pointerInput(whiteWidthPx, currentScale, baseOctave) {
-                            awaitEachGesture {
-                                try {
-                                    while (true) {
-                                        val event = awaitPointerEvent()
-
-                                        // 1. Release keys for pointers that explicitly ended (lifted)
-                                        for (change in event.changes) {
-                                            if (!change.pressed) {
-                                                pointerKeyMap.remove(change.id)?.let { releasedKey ->
-                                                    // Only fire onKeyUp if no other active finger is still holding this exact key
-                                                    if (!pointerKeyMap.values.contains(releasedKey)) {
-                                                        currentOnKeyUp(releasedKey)
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        // 2. Process currently pressed pointers
-                                        for (change in event.changes) {
-                                            if (change.pressed) {
-                                                val x = change.position.x
-                                                val y = change.position.y
-                                                val height = size.height.toFloat()
-
-                                                val detectedKey = resolveKeyAtPosition(
-                                                    x = x,
-                                                    y = y,
-                                                    totalHeight = height,
-                                                    whiteWidthPx = whiteWidthPx,
-                                                    blackWidthPx = blackKeyWidthPx,
-                                                    baseOctave = baseOctave
-                                                )
-                                                val prevKey = pointerKeyMap[change.id]
-
-                                                if (detectedKey != prevKey) {
-                                                    if (prevKey != null) {
-                                                        pointerKeyMap.remove(change.id)
-                                                        if (!pointerKeyMap.values.contains(prevKey)) {
-                                                            currentOnKeyUp(prevKey)
-                                                        }
-                                                    }
-                                                    if (detectedKey != null) {
-                                                        pointerKeyMap[change.id] = detectedKey
-                                                        val touchVel = if (height > 0f) (y / height).coerceIn(0.15f, 1.0f) else 0.85f
-                                                        if (currentOnKeyDownWithVel != null) {
-                                                            currentOnKeyDownWithVel?.invoke(detectedKey, touchVel)
-                                                        } else {
-                                                            currentOnKeyDown(detectedKey)
-                                                        }
-                                                    }
-                                                }
-                                                change.consume()
-                                            }
-                                        }
-
-                                        if (event.changes.none { it.pressed }) {
-                                            // All fingers lifted
-                                            pointerKeyMap.values.toSet().forEach { currentOnKeyUp(it) }
-                                            pointerKeyMap.clear()
-                                            break
-                                        }
-                                    }
-                                } finally {
-                                    pointerKeyMap.values.forEach { currentOnKeyUp(it) }
-                                    pointerKeyMap.clear()
-                                }
-                            }
-                        },
-                    horizontalArrangement = Arrangement.Start
+                        .fillMaxWidth()
+                        .height(keysHeight)
                 ) {
-                    octaves.forEach { oct ->
-                        OctaveGroupView(
-                            octave = oct,
-                            whiteWidthDp = baseWhiteWidthDp,
-                            pressedKeys = pressedKeys,
-                            activeAuraColor = activeAuraColor
-                        )
-                    }
+                    // Pitch Bend Wheel: strictly fixed to 120.dp height, does NOT expand with the layers
+                    PitchBendWheel(
+                        currentBend = pitchBend,
+                        onBendChange = onPitchBendChange,
+                        modifier = Modifier
+                            .width(42.dp)
+                            .height(keysHeight)
+                            .padding(end = 4.dp, bottom = 2.dp)
+                    )
 
-                    // Final High C Key
-                    val highCKey = "C$highestOctave"
-                    val isHighCPressed = pressedKeys.contains(highCKey)
-                    val keyBrush = if (isHighCPressed) {
-                        Brush.verticalGradient(
-                            listOf(Color.Red, Color.Black)
-                        )
-                    } else {
-                        Brush.verticalGradient(
-                            listOf(Color(0xFFFFFFFF), Color(0xFFF0F1F7), Color(0xFFD6D9E6))
-                        )
-                    }
-
+                    // Piano Keys Scrollable Container (Fixed 120.dp)
                     Box(
                         modifier = Modifier
-                            .width(baseWhiteWidthDp)
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp))
-                            .background(keyBrush)
-                            .border(
-                                1.dp,
-                                if (isHighCPressed) activeAuraColor else Color(0x33000000),
-                                RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp)
-                            ),
-                        contentAlignment = Alignment.BottomCenter
+                            .weight(1f)
+                            .height(keysHeight)
+                            .horizontalScroll(scrollState)
+                            .pointerInput(Unit) {
+                                detectTransformGestures { _, _, zoom, _ ->
+                                    if (zoom != 1.0f) {
+                                        currentScale = (currentScale * zoom).coerceIn(0.7f, 3.0f)
+                                        onKeyScaleChange(currentScale)
+                                    }
+                                }
+                            }
                     ) {
-                        Text(
-                            text = highCKey,
-                            fontSize = 8.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (isHighCPressed) Color(0xFF002E38) else Color(0xFF1E2238),
-                            modifier = Modifier.padding(bottom = 3.dp)
-                        )
+                        Row(
+                            modifier = Modifier
+                                .width(totalKeyboardWidthDp)
+                                .height(keysHeight)
+                                .pointerInput(whiteWidthPx, currentScale, baseOctave) {
+                                    awaitEachGesture {
+                                        try {
+                                            while (true) {
+                                                val event = awaitPointerEvent()
+
+                                                // 1. Release keys for pointers that explicitly ended (lifted)
+                                                for (change in event.changes) {
+                                                    if (!change.pressed) {
+                                                        pointerKeyMap.remove(change.id)?.let { releasedKey ->
+                                                            if (!pointerKeyMap.values.contains(releasedKey)) {
+                                                                currentOnKeyUp(releasedKey)
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                // 2. Process currently pressed pointers
+                                                for (change in event.changes) {
+                                                    if (change.pressed) {
+                                                        val x = change.position.x
+                                                        val y = change.position.y
+                                                        val height = size.height.toFloat()
+
+                                                        val detectedKey = resolveKeyAtPosition(
+                                                            x = x,
+                                                            y = y,
+                                                            totalHeight = height,
+                                                            whiteWidthPx = whiteWidthPx,
+                                                            blackWidthPx = blackKeyWidthPx,
+                                                            baseOctave = baseOctave,
+                                                            totalOctaves = 7
+                                                        )
+                                                        val prevKey = pointerKeyMap[change.id]
+
+                                                        if (detectedKey != prevKey) {
+                                                            if (prevKey != null) {
+                                                                pointerKeyMap.remove(change.id)
+                                                                if (!pointerKeyMap.values.contains(prevKey)) {
+                                                                    currentOnKeyUp(prevKey)
+                                                                }
+                                                            }
+                                                            if (detectedKey != null) {
+                                                                pointerKeyMap[change.id] = detectedKey
+                                                                val touchVel = if (height > 0f) (y / height).coerceIn(0.15f, 1.0f) else 0.85f
+                                                                if (currentOnKeyDownWithVel != null) {
+                                                                    currentOnKeyDownWithVel?.invoke(detectedKey, touchVel)
+                                                                } else {
+                                                                    currentOnKeyDown(detectedKey)
+                                                                }
+                                                            }
+                                                        }
+                                                        change.consume()
+                                                    }
+                                                }
+
+                                                if (event.changes.none { it.pressed }) {
+                                                    pointerKeyMap.values.toSet().forEach { currentOnKeyUp(it) }
+                                                    pointerKeyMap.clear()
+                                                    break
+                                                }
+                                            }
+                                        } finally {
+                                            pointerKeyMap.values.forEach { currentOnKeyUp(it) }
+                                            pointerKeyMap.clear()
+                                        }
+                                    }
+                                },
+                            horizontalArrangement = Arrangement.Start
+                        ) {
+                            octaves.forEach { oct ->
+                                OctaveGroupView(
+                                    octave = oct,
+                                    whiteWidthDp = baseWhiteWidthDp,
+                                    pressedKeys = pressedKeys,
+                                    activeAuraColor = activeAuraColor
+                                )
+                            }
+
+                            // Final High C Key (C8)
+                            val highCKey = "C$highestOctave"
+                            val isHighCPressed = pressedKeys.contains(highCKey)
+                            val keyBrush = if (isHighCPressed) {
+                                Brush.verticalGradient(
+                                    listOf(Color.Red, Color.Black)
+                                )
+                            } else {
+                                Brush.verticalGradient(
+                                    listOf(Color(0xFFFFFFFF), Color(0xFFF0F1F7), Color(0xFFD6D9E6))
+                                )
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .width(baseWhiteWidthDp)
+                                    .fillMaxHeight()
+                                    .clip(RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp))
+                                    .background(keyBrush)
+                                    .border(
+                                        1.dp,
+                                        if (isHighCPressed) activeAuraColor else Color(0x33000000),
+                                        RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp)
+                                    ),
+                                contentAlignment = Alignment.BottomCenter
+                            ) {
+                                Text(
+                                    text = highCKey,
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isHighCPressed) Color(0xFF002E38) else Color(0xFF1E2238),
+                                    modifier = Modifier.padding(bottom = 3.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -661,19 +578,20 @@ private fun resolveKeyAtPosition(
     totalHeight: Float,
     whiteWidthPx: Float,
     blackWidthPx: Float,
-    baseOctave: Int = 2
+    baseOctave: Int = 1,
+    totalOctaves: Int = 7
 ): String? {
     if (x < 0 || y < 0 || y > totalHeight) return null
 
     val octaveWidth = whiteWidthPx * 7
     val octaveIndex = (x / octaveWidth).toInt()
-    val currentOctave = (baseOctave + octaveIndex).coerceIn(baseOctave, baseOctave + 4)
 
     // Handle high C
-    if (octaveIndex >= 5) {
-        return "C${baseOctave + 5}"
+    if (octaveIndex >= totalOctaves) {
+        return "C${baseOctave + totalOctaves}"
     }
 
+    val currentOctave = (baseOctave + octaveIndex).coerceIn(baseOctave, baseOctave + totalOctaves - 1)
     val xWithinOctave = x - (octaveIndex * octaveWidth)
     val isUpperHalf = y <= (totalHeight * 0.60f)
 

@@ -163,6 +163,16 @@ object NativeAudioBridge {
         } else false
     }
 
+    fun safeListPresets(soundFontId: Int): List<PresetInfo> {
+        if (!isLibraryLoaded || soundFontId <= 0) return emptyList()
+        return try {
+            listPresets(soundFontId)?.toList() ?: emptyList()
+        } catch (e: Throwable) {
+            Log.e("NativeAudioBridge", "Error listing presets for SF $soundFontId: ${e.message}")
+            emptyList()
+        }
+    }
+
     fun safeProgramChange(
         engineIndex: Int = ENGINE_FADER,
         channel: Int,

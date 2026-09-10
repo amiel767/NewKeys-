@@ -50,6 +50,60 @@ struct NativePresetInfo {
     std::string name;
 };
 
+struct EngineMidiEvent {
+    enum Type {
+        NOTE_ON,
+        NOTE_OFF,
+        ALL_NOTES_OFF,
+        PITCH_BEND,
+        CC,
+        PROGRAM_CHANGE,
+        PROGRAM_SELECT
+    } type;
+    int channel;
+    int note;
+    int velocity;
+    int param1;
+    int param2;
+};
+
+template <typename T, size_t Capacity>
+class LockFreeRingBuffer {
+public:
+    LockFreeRingBuffer() : mHead(0), mTail(0) {}
+
+    bool push(const T& item) {
+        size_t currentTail = mTail.load(std::memory_order_relaxed);
+        size_t nextTail = (currentTail + 1) % Capacity;
+        if (nextTail == mHead.load(std::memory_order_acquire)) {
+            return false; // Full
+        }
+        mBuffer[currentTail] = item;
+        mTail.store(nextTail, std::memory_order_release);
+        return true;
+    }
+
+    bool pop(T& item) {
+        size_t currentHead = mHead.load(std::memory_order_relaxed);
+        if (currentHead == mTail.load(std::memory_order_acquire)) {
+            return false; // Empty
+        }
+        item = mBuffer[currentHead];
+        mHead.store((currentHead + 1) % Capacity, std::memory_order_release);
+        return true;
+    }
+
+    void clear() {
+        mHead.store(0, std::memory_order_relaxed);
+        mTail.store(0, std::memory_order_relaxed);
+    }
+
+private:
+    std::array<T, Capacity> mBuffer;
+    std::atomic<size_t> mHead;
+    std::atomic<size_t> mTail;
+};
+
 /**
  * Autonomous FluidSynth instance. Multiple instances can co-exist
  * (e.g. FaderEngine, PadEngine, DrumEngine) with independent SoundFont banks and MIDI channels.
@@ -89,6 +143,7 @@ private:
     std::mutex mMutex;
     std::array<std::atomic<int>, kMaxChannels> mTransposeSemitones{};
     std::vector<float> mTempRenderBuffer;
+    LockFreeRingBuffer<EngineMidiEvent, 2048> mEventQueue;
 };
 
 #endif //DAWSTUDIO_SOUNDFONT_ENGINE_H

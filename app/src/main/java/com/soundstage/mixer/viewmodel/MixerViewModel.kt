@@ -385,22 +385,28 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                // If no slot had a valid SoundFont restored, load the default soundfont on Slot 0
-                if (!hasLoadedAnySlot) {
-                    val defaultSf = File(fileManager.soundfontsDir, "VintageDreamsWaves-v2.sf2")
-                    val fallbackSf = File(getApplication<Application>().filesDir, "LiveKeys/SoundFonts/VintageDreamsWaves-v2.sf2")
-                    val sfToLoad = if (defaultSf.exists()) defaultSf else if (fallbackSf.exists()) fallbackSf else null
-                    if (sfToLoad != null) {
+                // Ensure default native SoundFont is loaded on Slot 0 (Track 1) and Slot 9 (PAD) if empty
+                val defaultSf = File(fileManager.soundfontsDir, "VintageDreamsWaves-v2.sf2")
+                val fallbackSf = File(getApplication<Application>().filesDir, "LiveKeys/SoundFonts/VintageDreamsWaves-v2.sf2")
+                val sfToLoad = if (defaultSf.exists()) defaultSf else if (fallbackSf.exists()) fallbackSf else null
+                if (sfToLoad != null) {
+                    val slot0Path = _uiState.value.audioSlots.getOrNull(0)?.soundFontPath
+                    if (slot0Path.isNullOrEmpty() || !File(slot0Path).exists()) {
                         loadSoundFontForSlot(0, sfToLoad.absolutePath, bank = 0, preset = 0)
+                    }
+                    val slot9Path = _uiState.value.audioSlots.getOrNull(9)?.soundFontPath
+                    if (slot9Path.isNullOrEmpty() || !File(slot9Path).exists()) {
+                        loadSoundFontForSlot(9, sfToLoad.absolutePath, bank = 0, preset = 0)
                     }
                 }
             } else {
-                // First run / no saved state: load default soundfont on Slot 0
+                // First run / no saved state: load default soundfont on Slot 0 & Slot 9 (PAD)
                 val defaultSf = File(fileManager.soundfontsDir, "VintageDreamsWaves-v2.sf2")
                 val fallbackSf = File(getApplication<Application>().filesDir, "LiveKeys/SoundFonts/VintageDreamsWaves-v2.sf2")
                 val sfToLoad = if (defaultSf.exists()) defaultSf else if (fallbackSf.exists()) fallbackSf else null
                 if (sfToLoad != null) {
                     loadSoundFontForSlot(0, sfToLoad.absolutePath, bank = 0, preset = 0)
+                    loadSoundFontForSlot(9, sfToLoad.absolutePath, bank = 0, preset = 0)
                 }
             }
         } catch (e: Exception) {
@@ -466,8 +472,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 reverbSize = 0.50f,
                 reverbDecay = 0.40f,
                 velocityCurve = 0.50f,
-                splitNoteMin = 36,
-                splitNoteMax = 84,
+                splitNoteMin = 24, // C1
+                splitNoteMax = 108, // C7
                 peakMeterL = 0.0f,
                 peakMeterR = 0.0f
             )
@@ -1077,10 +1083,19 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         peakMeterJob = viewModelScope.launch(Dispatchers.Default) {
             while (isActive) {
                 try {
-                    delay(40)
                     val curr = _uiState.value
-                    val anySolo = curr.tracks.any { it.isSolo }
                     val pressedMidiNotes = curr.pressedKeys.map { noteNameToMidi(it) }
+                    val isAnyMeterActive = curr.tracks.any { it.peakMeterL > 0.005f || it.peakMeterR > 0.005f } ||
+                            curr.masterTrack.peakMeterL > 0.005f || curr.masterTrack.peakMeterR > 0.005f
+
+                    // If idle (no keys pressed and all meters already decayed to 0), throttle loop and avoid State updates
+                    if (pressedMidiNotes.isEmpty() && !isAnyMeterActive) {
+                        delay(120)
+                        continue
+                    }
+
+                    delay(40)
+                    val anySolo = curr.tracks.any { it.isSolo }
 
                     _uiState.update { state ->
                         var maxPlayingLevelL = 0f
@@ -1092,10 +1107,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
                             val isPlayingSound = if (!isTrackActive || pressedMidiNotes.isEmpty() || track.soundfontName.isEmpty()) {
                                 false
-                            } else if (state.isSplitterActive) {
-                                pressedMidiNotes.any { midi -> midi in track.splitNoteMin..track.splitNoteMax }
                             } else {
-                                true
+                                pressedMidiNotes.any { midi -> midi in track.splitNoteMin..track.splitNoteMax }
                             }
 
                             val targetAmp = if (isPlayingSound) {
@@ -1126,10 +1139,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                                 (prevR * 0.75f - 0.015f).coerceIn(0f, 1f)
                             }
 
-                            if (newL > maxPlayingLevelL) maxPlayingLevelL = newL
-                            if (newR > maxPlayingLevelR) maxPlayingLevelR = newR
+                            val finalL = if (newL < 0.005f) 0f else newL
+                            val finalR = if (newR < 0.005f) 0f else newR
 
-                            track.copy(peakMeterL = newL, peakMeterR = newR)
+                            if (finalL > maxPlayingLevelL) maxPlayingLevelL = finalL
+                            if (finalR > maxPlayingLevelR) maxPlayingLevelR = finalR
+
+                            track.copy(peakMeterL = finalL, peakMeterR = finalR)
                         }
 
                         val masterTargetL = if (state.masterTrack.isEnabled && !state.masterTrack.isMuted) {
@@ -1155,15 +1171,18 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                             (masterPrevR * 0.75f - 0.015f).coerceIn(0f, 1f)
                         }
 
+                        val finalMasterL = if (masterL < 0.005f) 0f else masterL
+                        val finalMasterR = if (masterR < 0.005f) 0f else masterR
+
                         state.copy(
                             tracks = updatedTracks,
-                            masterTrack = state.masterTrack.copy(peakMeterL = masterL, peakMeterR = masterR)
+                            masterTrack = state.masterTrack.copy(peakMeterL = finalMasterL, peakMeterR = finalMasterR)
                         )
                     }
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
-                } catch (e: Throwable) {
-                    Log.e("MixerViewModel", "Error in peak meter calculation: ${e.message}")
+                } catch (_: Throwable) {
+                    // Suppress excessive log spam in high frequency loops
                 }
             }
         }
@@ -1478,31 +1497,15 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val state = _uiState.value
         val anySolo = state.tracks.any { it.isSolo }
 
-        // If keyboard splitter is active (Split point at C4 = 60)
-        if (state.isSplitterActive && midiNote != null) {
-            val splitNote = 60
-            return if (midiNote < splitNote) {
-                // Lower hand (Bass / Track 1)
-                listOf(0)
-            } else {
-                // Upper hand (Layered active tracks 2..8)
-                val upperChannels = state.tracks.mapIndexedNotNull { idx, track ->
-                    if (idx > 0 && track.isEnabled && !track.isMuted && (!anySolo || track.isSolo)) {
-                        val slot = state.audioSlots.getOrNull(idx)
-                        if (slot != null && slot.soundFontId > 0) idx else null
-                    } else null
-                }
-                if (upperChannels.isNotEmpty()) upperChannels else listOf(midiChannelForSlot(state.activeSoundfontSlotId))
-            }
-        }
-
-        // Standard Full Performance Layering:
-        // Play on ALL enabled & unmuted tracks (1..8) that have a loaded SoundFont
+        // Dynamic Keyboard Layer Mapper: route notes strictly within each active track's assigned key range (splitNoteMin..splitNoteMax)
         val activeChannels = state.tracks.mapIndexedNotNull { idx, track ->
             val isAllowed = track.isEnabled && !track.isMuted && (!anySolo || track.isSolo)
             if (isAllowed) {
-                val slot = state.audioSlots.getOrNull(idx)
-                if (slot != null && slot.soundFontId > 0) idx else null
+                val isWithinRange = (midiNote == null) || (midiNote in track.splitNoteMin..track.splitNoteMax)
+                if (isWithinRange) {
+                    val slot = state.audioSlots.getOrNull(idx)
+                    if (slot != null && slot.soundFontId > 0) idx else null
+                } else null
             } else null
         }
 
@@ -1887,7 +1890,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 // 3. Récupérer la liste des presets du SoundFont chargé en bornant strictly 0..127 par banque
                 val effectiveSfId = if (newSfId >= 0) newSfId else oldSfId
                 val nativePresets = if (effectiveSfId >= 0 && NativeAudioBridge.isNativeReady()) {
-                    NativeAudioBridge.listPresets(effectiveSfId).toList()
+                    NativeAudioBridge.safeListPresets(effectiveSfId)
                 } else emptyList()
 
                 val realPresets = if (nativePresets.isNotEmpty()) {
@@ -2565,5 +2568,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             }
             state.copy(tracks = updated)
         }
+    }
+
+    fun updateTrackKeyRange(trackId: Int, minNote: Int, maxNote: Int) {
+        setTrackSplitRange(trackId, minNote, maxNote)
     }
 }

@@ -36,18 +36,10 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
   private val viewModel: MixerViewModel by viewModels()
 
-  private var showPermissionInfoSnackbar by mutableStateOf(false)
-
   private val requestPermissionLauncher = registerForActivityResult(
     ActivityResultContracts.RequestMultiplePermissions()
   ) { _ ->
-    setupFileSystem()
-  }
-
-  private val requestManageStorageLauncher = registerForActivityResult(
-    ActivityResultContracts.StartActivityForResult()
-  ) {
-    setupFileSystem()
+    viewModel.refreshStorageFiles()
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,9 +48,7 @@ class MainActivity : ComponentActivity() {
 
     WindowCompat.setDecorFitsSystemWindows(window, false)
 
-    // Ensure storage structure exists immediately and check permissions
-    setupFileSystem()
-    checkStoragePermissions()
+    checkOptionalPermissions()
 
     setContent {
       val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -80,44 +70,20 @@ class MainActivity : ComponentActivity() {
     }
   }
 
-  private fun setupFileSystem() {
-    val fileManager = com.soundstage.mixer.model.FileManager(this)
-    // Ensures primary SoundStage directory and all subfolders exist
-    kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-      try {
-        fileManager.ensureDirectoriesExist()
-        viewModel.refreshStorageFiles()
-      } catch (e: Exception) {
-        e.printStackTrace()
-      }
-    }
-  }
-
-  private fun checkStoragePermissions() {
+  private fun checkOptionalPermissions() {
     try {
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-        if (!android.os.Environment.isExternalStorageManager()) {
-          try {
-            val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
-              data = Uri.parse("package:$packageName")
-            }
-            requestManageStorageLauncher.launch(intent)
-          } catch (_: Exception) {
-            val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
-            requestManageStorageLauncher.launch(intent)
-          }
+      val permissionsToRequest = mutableListOf<String>()
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+          permissionsToRequest.add(Manifest.permission.READ_MEDIA_AUDIO)
         }
-      } else {
-        val permissionsToRequest = mutableListOf<String>()
+      } else if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
           permissionsToRequest.add(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-          permissionsToRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-        }
-        if (permissionsToRequest.isNotEmpty()) {
-          requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
-        }
+      }
+      if (permissionsToRequest.isNotEmpty()) {
+        requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
       }
     } catch (_: Exception) {}
   }
