@@ -294,8 +294,10 @@ private fun TrackRangeBarRow(
     val endXDp = (rightFrac * whiteWidthDp.value).dp
     val barWidthDp = (endXDp - startXDp).coerceAtLeast(60.dp)
 
-    var dragMinOffsetPx by remember(minNote) { mutableFloatStateOf(0f) }
-    var dragMaxOffsetPx by remember(maxNote) { mutableFloatStateOf(0f) }
+    var dragMinOffsetPx by remember { mutableFloatStateOf(0f) }
+    var dragMaxOffsetPx by remember { mutableFloatStateOf(0f) }
+    var initialMinFrac by remember { mutableFloatStateOf(0f) }
+    var initialMaxFrac by remember { mutableFloatStateOf(0f) }
     var isDraggingMin by remember { mutableStateOf(false) }
     var isDraggingMax by remember { mutableStateOf(false) }
 
@@ -370,10 +372,11 @@ private fun TrackRangeBarRow(
             modifier = Modifier
                 .offset(x = (startXDp - 10.dp).coerceAtLeast(0.dp))
                 .height(28.dp)
-                .pointerInput(track.id, minNote, maxNote, whiteWidthPx) {
+                .pointerInput(track.id, whiteWidthPx) {
                     detectHorizontalDragGestures(
                         onDragStart = {
                             dragMinOffsetPx = 0f
+                            initialMinFrac = leftFrac
                             isDraggingMin = true
                         },
                         onDragEnd = { isDraggingMin = false },
@@ -381,10 +384,9 @@ private fun TrackRangeBarRow(
                         onHorizontalDrag = { change, dragAmount ->
                             change.consume()
                             dragMinOffsetPx += dragAmount
-                            val totalDeltaFrac = dragMinOffsetPx / whiteWidthPx
-                            val targetFrac = leftFrac + totalDeltaFrac
+                            val currentFrac = initialMinFrac + (dragMinOffsetPx / whiteWidthPx)
                             val newMidi = KeyPositionMapper.xFractionToNearestMidi(
-                                xFraction = targetFrac,
+                                xFraction = currentFrac,
                                 minAllowedMidi = KeyPositionMapper.MIN_MIDI,
                                 maxAllowedMidi = maxNote
                             )
@@ -438,10 +440,11 @@ private fun TrackRangeBarRow(
             modifier = Modifier
                 .offset(x = (endXDp - 32.dp).coerceAtLeast(startXDp + 30.dp))
                 .height(28.dp)
-                .pointerInput(track.id, minNote, maxNote, whiteWidthPx) {
+                .pointerInput(track.id, whiteWidthPx) {
                     detectHorizontalDragGestures(
                         onDragStart = {
                             dragMaxOffsetPx = 0f
+                            initialMaxFrac = rightFrac
                             isDraggingMax = true
                         },
                         onDragEnd = { isDraggingMax = false },
@@ -449,10 +452,9 @@ private fun TrackRangeBarRow(
                         onHorizontalDrag = { change, dragAmount ->
                             change.consume()
                             dragMaxOffsetPx += dragAmount
-                            val totalDeltaFrac = dragMaxOffsetPx / whiteWidthPx
-                            val targetFrac = rightFrac + totalDeltaFrac
+                            val currentFrac = initialMaxFrac + (dragMaxOffsetPx / whiteWidthPx)
                             val newMidi = KeyPositionMapper.xFractionToNearestMidi(
-                                xFraction = targetFrac,
+                                xFraction = currentFrac,
                                 minAllowedMidi = minNote,
                                 maxAllowedMidi = KeyPositionMapper.MAX_MIDI
                             )

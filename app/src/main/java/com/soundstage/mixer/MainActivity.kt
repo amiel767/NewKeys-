@@ -2,6 +2,7 @@ package com.soundstage.mixer
 
 import android.os.Bundle
 import android.os.Build
+import android.os.Environment
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
@@ -72,20 +73,45 @@ class MainActivity : ComponentActivity() {
 
   private fun checkOptionalPermissions() {
     try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        if (!Environment.isExternalStorageManager()) {
+          try {
+            val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+              data = Uri.parse("package:$packageName")
+            }
+            startActivity(intent)
+          } catch (_: Exception) {
+            try {
+              val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+              startActivity(intent)
+            } catch (_: Exception) {}
+          }
+        }
+      }
+
       val permissionsToRequest = mutableListOf<String>()
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_AUDIO) != PackageManager.PERMISSION_GRANTED) {
           permissionsToRequest.add(Manifest.permission.READ_MEDIA_AUDIO)
         }
-      } else if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
+      } else {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
           permissionsToRequest.add(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+          permissionsToRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
       }
+
       if (permissionsToRequest.isNotEmpty()) {
         requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
       }
     } catch (_: Exception) {}
+  }
+
+  override fun onResume() {
+    super.onResume()
+    viewModel.refreshStorageFiles()
   }
 
   override fun onWindowFocusChanged(hasFocus: Boolean) {

@@ -141,6 +141,13 @@ fun SoundfontDialog(
         }
     }
 
+    // Auto-switch to SF2 files tab if no presets are loaded yet
+    LaunchedEffect(presets) {
+        if (presets.isEmpty() && activeTab == "bank") {
+            onTabChange("other")
+        }
+    }
+
     // Modal Background overlay
     Box(
         modifier = modifier
@@ -455,12 +462,27 @@ fun SoundfontDialog(
                                 Text(text = "🎵", fontSize = 28.sp)
                                 Text(
                                     text = if (searchQuery.isNotEmpty()) "Aucun preset correspondant à \"$searchQuery\""
-                                    else "Aucun preset sélectionné pour ce slot.",
+                                    else "Aucun preset chargé pour cette piste.",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = Color(0xAAFFFFFF),
                                     textAlign = TextAlign.Center
                                 )
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color(0x3300E5FF))
+                                        .border(1.dp, Color(0xFF00E5FF), RoundedCornerShape(12.dp))
+                                        .clickable { onTabChange("other") }
+                                        .padding(horizontal = 14.dp, vertical = 7.dp)
+                                ) {
+                                    Text(
+                                        text = "📁 Choisir un fichier .sf2",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF00E5FF)
+                                    )
+                                }
                             }
                         }
                     } else {
@@ -553,7 +575,44 @@ fun SoundfontDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f)
-                        )
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(Color(0x14FFFFFF))
+                                .border(0.8.dp, Color(0x18FFFFFF), RoundedCornerShape(18.dp))
+                                .padding(24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text(text = "📦", fontSize = 32.sp)
+                                Text(
+                                    text = if (searchQuery.isNotEmpty()) "Aucun fichier .sf2 correspondant à \"$searchQuery\""
+                                    else "Aucun fichier SoundFont (.sf2) détecté.",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color(0xAAFFFFFF),
+                                    textAlign = TextAlign.Center
+                                )
+                                if (onImportSf2 != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(Color(0x3300E5FF))
+                                            .border(1.dp, Color(0xFF00E5FF), RoundedCornerShape(12.dp))
+                                            .clickable { onImportSf2() }
+                                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                                    ) {
+                                        Text(
+                                            text = "+ Importer un fichier .sf2",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF00E5FF)
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     } else {
                         LazyColumn(
                             state = fileListState,

@@ -335,30 +335,57 @@ class FileManager(private val context: Context) {
     }
 
     /**
-     * Scans for SoundFont (.sf2, .sfz) files EXCLUSIVELY inside context.filesDir/LiveKeys/SoundFonts/
+     * Scans for SoundFont (.sf2, .sfz) files across external /SoundStage/SoundFonts/, Downloads, and internal storage.
      */
     suspend fun getSoundFontFiles(): List<StorageItem> = withContext(Dispatchers.IO) {
         val result = mutableListOf<StorageItem>()
+        val seenPaths = HashSet<String>()
         try {
-            if (soundfontsDir.exists() && soundfontsDir.canRead()) {
-                soundfontsDir.walkTopDown()
-                    .maxDepth(3)
-                    .filter { file ->
-                        file.isFile && (file.extension.equals("sf2", ignoreCase = true) ||
-                                file.extension.equals("sfz", ignoreCase = true))
-                    }
-                    .forEach { file ->
-                        result.add(
-                            StorageItem(
-                                name = file.name,
-                                path = file.absolutePath,
-                                isDirectory = false,
-                                size = file.length(),
-                                extension = file.extension.lowercase(),
-                                formattedSize = formatSize(file.length())
-                            )
-                        )
-                    }
+            val dirsToScan = mutableListOf<File>()
+            
+            // 1. External /storage/emulated/0/SoundStage/SoundFonts/
+            if (soundfontsDir.exists()) dirsToScan.add(soundfontsDir)
+            
+            val extSdSoundstage = File(Environment.getExternalStorageDirectory(), "SoundStage/SoundFonts")
+            if (extSdSoundstage.exists()) dirsToScan.add(extSdSoundstage)
+
+            val extSdLiveKeys = File(Environment.getExternalStorageDirectory(), "LiveKeys/SoundFonts")
+            if (extSdLiveKeys.exists()) dirsToScan.add(extSdLiveKeys)
+
+            // 2. Downloads folder
+            val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (downloadDir.exists()) dirsToScan.add(downloadDir)
+
+            // 3. Internal fallback folders
+            val internalDir = File(context.filesDir, "LiveKeys/SoundFonts")
+            if (internalDir.exists()) dirsToScan.add(internalDir)
+
+            val internalSoundstageDir = File(context.filesDir, "SoundStage/SoundFonts")
+            if (internalSoundstageDir.exists()) dirsToScan.add(internalSoundstageDir)
+
+            for (dir in dirsToScan) {
+                if (dir.exists() && dir.canRead()) {
+                    dir.walkTopDown()
+                        .maxDepth(3)
+                        .filter { file ->
+                            file.isFile && (file.extension.equals("sf2", ignoreCase = true) ||
+                                    file.extension.equals("sfz", ignoreCase = true))
+                        }
+                        .forEach { file ->
+                            if (seenPaths.add(file.absolutePath)) {
+                                result.add(
+                                    StorageItem(
+                                        name = file.name,
+                                        path = file.absolutePath,
+                                        isDirectory = false,
+                                        size = file.length(),
+                                        extension = file.extension.lowercase(),
+                                        formattedSize = formatSize(file.length())
+                                    )
+                                )
+                            }
+                        }
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()

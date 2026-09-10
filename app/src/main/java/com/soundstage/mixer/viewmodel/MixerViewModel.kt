@@ -385,7 +385,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                // Ensure default native SoundFont is loaded on Slot 0 (Track 1) and Slot 9 (PAD) if empty
+                // Ensure default native SoundFont is loaded ONLY on Slot 0 (Track 1) if empty
                 val defaultSf = File(fileManager.soundfontsDir, "VintageDreamsWaves-v2.sf2")
                 val fallbackSf = File(getApplication<Application>().filesDir, "LiveKeys/SoundFonts/VintageDreamsWaves-v2.sf2")
                 val sfToLoad = if (defaultSf.exists()) defaultSf else if (fallbackSf.exists()) fallbackSf else null
@@ -394,19 +394,14 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     if (slot0Path.isNullOrEmpty() || !File(slot0Path).exists()) {
                         loadSoundFontForSlot(0, sfToLoad.absolutePath, bank = 0, preset = 0)
                     }
-                    val slot9Path = _uiState.value.audioSlots.getOrNull(9)?.soundFontPath
-                    if (slot9Path.isNullOrEmpty() || !File(slot9Path).exists()) {
-                        loadSoundFontForSlot(9, sfToLoad.absolutePath, bank = 0, preset = 0)
-                    }
                 }
             } else {
-                // First run / no saved state: load default soundfont on Slot 0 & Slot 9 (PAD)
+                // First run / no saved state: load default soundfont on Slot 0 (Track 1) ONLY
                 val defaultSf = File(fileManager.soundfontsDir, "VintageDreamsWaves-v2.sf2")
                 val fallbackSf = File(getApplication<Application>().filesDir, "LiveKeys/SoundFonts/VintageDreamsWaves-v2.sf2")
                 val sfToLoad = if (defaultSf.exists()) defaultSf else if (fallbackSf.exists()) fallbackSf else null
                 if (sfToLoad != null) {
                     loadSoundFontForSlot(0, sfToLoad.absolutePath, bank = 0, preset = 0)
-                    loadSoundFontForSlot(9, sfToLoad.absolutePath, bank = 0, preset = 0)
                 }
             }
         } catch (e: Exception) {
