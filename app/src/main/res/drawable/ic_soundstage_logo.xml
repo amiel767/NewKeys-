@@ -1,0 +1,125 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="512dp"
+    android:height="512dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+
+    <!-- Dark sleek studio background shape -->
+    <path
+        android:fillColor="#FF080A10"
+        android:pathData="M80,0 L432,0 A80,80 0 0 1 512,80 L512,432 A80,80 0 0 1 432,512 L80,512 A80,80 0 0 1 0,432 L0,80 A80,80 0 0 1 80,0 Z" />
+
+    <!-- Mirror / Glow Reflection at bottom -->
+    <path
+        android:pathData="M136,380 C190,430 322,430 376,380 C340,400 172,400 136,380 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="136"
+                android:startY="380"
+                android:endX="376"
+                android:endY="430"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#33FF2A6D" />
+                <item android:offset="0.5" android:color="#339D00FF" />
+                <item android:offset="1.0" android:color="#3300E5FF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Glowing Delta Loop Base and Arms (SoundStage Main Brand Motif) -->
+    <!-- Left Arm: Glowing Red to Pink to Magenta -->
+    <path
+        android:pathData="M256,128 C238,150 176,260 126,334 C100,372 130,378 180,378 L256,378 C256,378 200,378 174,378 C144,378 132,352 152,324 C192,268 240,172 256,128 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="110"
+                android:startY="380"
+                android:endX="256"
+                android:endY="128"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FFFF2A55" />
+                <item android:offset="0.5" android:color="#FFFF007F" />
+                <item android:offset="1.0" android:color="#FF00E5FF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Right Arm: Glowing Cyan to Blue to Purple to Magenta -->
+    <path
+        android:pathData="M256,128 C274,150 336,260 386,334 C412,372 382,378 332,378 L256,378 C256,378 312,378 338,378 C368,378 380,352 360,324 C320,268 272,172 256,128 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="386"
+                android:startY="380"
+                android:endX="256"
+                android:endY="128"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FF8A2BE2" />
+                <item android:offset="0.5" android:color="#FFD000FF" />
+                <item android:offset="1.0" android:color="#FF00E5FF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Continuous Neon Triangle Loop with Rounded Soft Corners -->
+    <path
+        android:pathData="M256,134 C244,148 138,312 122,342 C110,364 126,378 156,378 L356,378 C386,378 402,364 390,342 C374,312 268,148 256,134 Z"
+        android:strokeWidth="32"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:startX="110"
+                android:startY="378"
+                android:endX="402"
+                android:endY="134"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FFFF2D55" />
+                <item android:offset="0.3" android:color="#FFFF007A" />
+                <item android:offset="0.6" android:color="#FF9B51E0" />
+                <item android:offset="0.85" android:color="#FF00D2FF" />
+                <item android:offset="1.0" android:color="#FF00FFF0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Top Heart-Tip Knot Connector -->
+    <path
+        android:pathData="M256,120 C248,110 236,114 234,124 C232,132 242,142 256,152 C270,142 280,132 278,124 C276,114 264,110 256,120 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="234"
+                android:startY="110"
+                android:endX="278"
+                android:endY="152"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FF00FFFF" />
+                <item android:offset="1.0" android:color="#FF00BFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Inner Core Cutout for Solid Triangle Ribbon -->
+    <path
+        android:fillColor="#FF080A10"
+        android:pathData="M256,182 L344,332 C352,346 342,352 328,352 L184,352 C170,352 160,346 168,332 Z" />
+
+    <!-- Bottom Center Oval Stage Light Accent -->
+    <path
+        android:pathData="M214,364 C214,358 232,354 256,354 C280,354 298,358 298,364 C298,370 280,374 256,374 C232,374 214,370 214,364 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="214"
+                android:startY="364"
+                android:endX="298"
+                android:endY="364"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#80FF2A55" />
+                <item android:offset="0.5" android:color="#FFFFFFFF" />
+                <item android:offset="1.0" android:color="#80B026FF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+</vector>

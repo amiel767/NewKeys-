@@ -461,26 +461,6 @@ fun SoundfontDialog(
                                     color = Color(0xAAFFFFFF),
                                     textAlign = TextAlign.Center
                                 )
-                                val firstSf = soundfontStorageFiles.firstOrNull() ?: bankFiles.firstOrNull()?.let {
-                                    StorageItem(name = it.name, path = it.path, isDirectory = false, formattedSize = it.size)
-                                }
-                                if (firstSf != null && onSelectSf2File != null) {
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(14.dp))
-                                            .background(Color(0x2200E5FF))
-                                            .border(1.dp, Color(0x8800E5FF), RoundedCornerShape(14.dp))
-                                            .clickable { onSelectSf2File(firstSf) }
-                                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                                    ) {
-                                        Text(
-                                            text = "⚡ Charger la Banque ${firstSf.name}",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF00E5FF)
-                                        )
-                                    }
-                                }
                             }
                         }
                     } else {

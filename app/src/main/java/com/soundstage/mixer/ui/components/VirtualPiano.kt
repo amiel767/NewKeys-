@@ -82,8 +82,8 @@ fun VirtualPianoKeyboard(
         ChordCalculator.detect(pressedKeys)
     }
 
-    // Precise fixed deployed height matching the master reference design (154dp)
-    val keyboardHeightDp = (heightFraction * 550f).coerceIn(60f, 154f).dp
+    // Precise fixed deployed height strictly set to 120dp
+    val keyboardHeightDp = 120.dp
 
     Column(
         modifier = modifier

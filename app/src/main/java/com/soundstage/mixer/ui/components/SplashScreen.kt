@@ -38,17 +38,17 @@ fun LiveKeysSplashScreen(
     var startFadeIn by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        delay(100)
+        delay(80)
         startFadeIn = true
-        delay(1900)
+        delay(2100)
         isVisible = false
-        delay(400)
+        delay(350)
         onFinished()
     }
 
     val animatedFade by animateFloatAsState(
         targetValue = if (startFadeIn && isVisible) 1f else 0f,
-        animationSpec = tween(650, easing = FastOutSlowInEasing),
+        animationSpec = tween(700, easing = FastOutSlowInEasing),
         label = "splash_fade"
     )
 
@@ -60,19 +60,19 @@ fun LiveKeysSplashScreen(
     ) {
         val infiniteTransition = rememberInfiniteTransition(label = "splash_pulse")
         val scale by infiniteTransition.animateFloat(
-            initialValue = 0.97f,
-            targetValue = 1.03f,
+            initialValue = 0.96f,
+            targetValue = 1.04f,
             animationSpec = infiniteRepeatable(
-                animation = tween(1000, easing = FastOutSlowInEasing),
+                animation = tween(1200, easing = FastOutSlowInEasing),
                 repeatMode = RepeatMode.Reverse
             ),
             label = "scale"
         )
         val glowAlpha by infiniteTransition.animateFloat(
-            initialValue = 0.4f,
-            targetValue = 0.95f,
+            initialValue = 0.5f,
+            targetValue = 1.0f,
             animationSpec = infiniteRepeatable(
-                animation = tween(800, easing = LinearEasing),
+                animation = tween(900, easing = LinearEasing),
                 repeatMode = RepeatMode.Reverse
             ),
             label = "glowAlpha"
@@ -81,7 +81,7 @@ fun LiveKeysSplashScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF070709))
+                .background(Color(0xFF06070B))
                 .clickable {
                     isVisible = false
                     onFinished()
@@ -96,27 +96,36 @@ fun LiveKeysSplashScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                // Glowing Minimalist SoundWave / Piano Keys Logo on Pure Black
+                // Glowing SoundStage Delta Loop Logo
                 Box(
                     modifier = Modifier
-                        .size(136.dp)
-                        .shadow(36.dp, CircleShape, spotColor = Color(0x66FFFFFF))
-                        .clip(CircleShape)
-                        .background(Color(0xFF000000))
-                        .border(1.5.dp, Brush.linearGradient(listOf(Color.White.copy(alpha = glowAlpha), Color(0x66FFFFFF).copy(alpha = glowAlpha * 0.6f))), CircleShape)
-                        .padding(6.dp),
+                        .size(150.dp)
+                        .shadow(40.dp, RoundedCornerShape(32.dp), spotColor = Color(0x9900E5FF))
+                        .clip(RoundedCornerShape(32.dp))
+                        .background(Color(0xFF080A10))
+                        .border(
+                            1.8.dp,
+                            Brush.linearGradient(
+                                listOf(
+                                    Color(0xFFFF2A55).copy(alpha = glowAlpha),
+                                    Color(0xFF9D00FF).copy(alpha = glowAlpha),
+                                    Color(0xFF00E5FF).copy(alpha = glowAlpha)
+                                )
+                            ),
+                            RoundedCornerShape(32.dp)
+                        )
+                        .padding(12.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Image(
-                        painter = painterResource(id = R.drawable.soundstage_minimalist_logo_1788942728746),
-                        contentDescription = "SoundStage Minimalist Logo",
+                        painter = painterResource(id = R.drawable.ic_soundstage_logo),
+                        contentDescription = "SoundStage Final Logo",
                         modifier = Modifier
                             .fillMaxSize()
-                            .clip(CircleShape)
                     )
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(22.dp))
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -124,14 +133,14 @@ fun LiveKeysSplashScreen(
                 ) {
                     Text(
                         text = "SOUND",
-                        fontSize = 28.sp,
+                        fontSize = 30.sp,
                         fontWeight = FontWeight.Black,
                         letterSpacing = 6.sp,
                         color = Color.White
                     )
                     Text(
                         text = "STAGE",
-                        fontSize = 28.sp,
+                        fontSize = 30.sp,
                         fontWeight = FontWeight.Light,
                         letterSpacing = 5.sp,
                         color = NeonCyan
@@ -151,20 +160,29 @@ fun LiveKeysSplashScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Equalizer Bar Animation
+                // Glowing Neon Equalizer Waves Animation
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf(18.dp, 28.dp, 38.dp, 22.dp, 32.dp, 16.dp, 24.dp).forEach { h ->
+                    listOf(18.dp, 30.dp, 42.dp, 24.dp, 36.dp, 18.dp, 28.dp).forEachIndexed { idx, h ->
+                        val barScale by infiniteTransition.animateFloat(
+                            initialValue = 0.4f,
+                            targetValue = 1.0f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(400 + idx * 90, easing = FastOutSlowInEasing),
+                                repeatMode = RepeatMode.Reverse
+                            ),
+                            label = "eq_bar_$idx"
+                        )
                         Box(
                             modifier = Modifier
-                                .width(3.dp)
-                                .height(h)
+                                .width(3.5.dp)
+                                .height(h * barScale)
                                 .clip(RoundedCornerShape(2.dp))
                                 .background(
                                     Brush.verticalGradient(
-                                        listOf(Color.White, NeonCyan)
+                                        listOf(Color(0xFF00E5FF), Color(0xFF9D00FF), Color(0xFFFF2A55))
                                     )
                                 )
                         )

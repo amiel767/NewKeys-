@@ -12,6 +12,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material3.Icon
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
@@ -84,10 +92,11 @@ fun SceneDialog(
                             .background(NeonCyan.copy(alpha = 0.15f)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "⚙",
-                            fontSize = 13.sp,
-                            color = NeonCyan
+                        Icon(
+                            imageVector = Icons.Default.Layers,
+                            contentDescription = "Scènes",
+                            tint = NeonCyan,
+                            modifier = Modifier.size(15.dp)
                         )
                     }
                     Column {
@@ -110,16 +119,23 @@ fun SceneDialog(
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     // Green Save Changes Button
-                    Box(
+                    Row(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
                             .background(Color(0xFF19EF71))
                             .clickable { onUpdateActiveScene() }
                             .padding(horizontal = 7.dp, vertical = 4.dp),
-                        contentAlignment = Alignment.Center
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
+                        Icon(
+                            imageVector = Icons.Default.Save,
+                            contentDescription = "Sauvegarder",
+                            tint = Color(0xFF062C12),
+                            modifier = Modifier.size(11.dp)
+                        )
                         Text(
-                            text = "💾 Modifs",
+                            text = "Modifs",
                             fontSize = 9.5.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color(0xFF062C12)
@@ -127,7 +143,7 @@ fun SceneDialog(
                     }
 
                     // Button "Nouveau" / "Enregistrer"
-                    Box(
+                    Row(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
                             .background(NeonCyan)
@@ -138,10 +154,17 @@ fun SceneDialog(
                                 }
                             }
                             .padding(horizontal = 7.dp, vertical = 4.dp),
-                        contentAlignment = Alignment.Center
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Nouvelle",
+                            tint = Color(0xFF002B33),
+                            modifier = Modifier.size(11.dp)
+                        )
                         Text(
-                            text = "+ Nouvelle",
+                            text = "Nouvelle",
                             fontSize = 9.5.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF002B33)
@@ -157,7 +180,12 @@ fun SceneDialog(
                             .clickable { onClose() },
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(text = "✕", fontSize = 11.sp, color = Color(0xFFC4C6D0))
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Fermer",
+                            tint = Color(0xFFC4C6D0),
+                            modifier = Modifier.size(12.dp)
+                        )
                     }
                 }
             }
@@ -329,10 +357,11 @@ fun SceneDialog(
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = if (isDeletePrompt) "✓" else "🗑",
-                                    fontSize = 10.5.sp,
-                                    color = if (isDeletePrompt) Color.White else Color(0xFFB0B3C0)
+                                Icon(
+                                    imageVector = if (isDeletePrompt) Icons.Default.Check else Icons.Default.Delete,
+                                    contentDescription = if (isDeletePrompt) "Confirmer" else "Supprimer",
+                                    tint = if (isDeletePrompt) Color.White else Color(0xFFB0B3C0),
+                                    modifier = Modifier.size(12.dp)
                                 )
                             }
 

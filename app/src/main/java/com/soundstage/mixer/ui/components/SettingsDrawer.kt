@@ -10,6 +10,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Usb
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
@@ -22,6 +31,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -183,10 +193,15 @@ private fun AospMainSettingsPage(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFF22D3EE).copy(alpha = 0.2f)),
+                        .background(Color(0x1800E5FF)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = "⚙️", fontSize = 16.sp)
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "Paramètres",
+                        tint = NeonCyan,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
                 Column {
                     Text(
@@ -206,7 +221,12 @@ private fun AospMainSettingsPage(
                     .clickable { onClose() },
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = "✕", fontSize = 12.sp, color = TextPrimary)
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Fermer",
+                    tint = TextPrimary,
+                    modifier = Modifier.size(16.dp)
+                )
             }
         }
 
@@ -221,8 +241,9 @@ private fun AospMainSettingsPage(
                 AospCard(title = "Périphériques & Audio") {
                     Column {
                         AospSettingItem(
-                            iconText = "🎹",
-                            iconBg = Color(0xFF10B981),
+                            icon = Icons.Default.Usb,
+                            iconTint = Color(0xFF10B981),
+                            iconBg = Color(0x1810B981),
                             title = "USB MIDI",
                             subtitle = "Détection matérielle (${midiDevices.count { it.isConnected }} connectés)",
                             onClick = { onNavigateSubPage("midi") }
@@ -231,8 +252,9 @@ private fun AospMainSettingsPage(
                         AospDivider()
 
                         AospSettingItem(
-                            iconText = "⚡",
-                            iconBg = Color(0xFF06B6D4),
+                            icon = Icons.Default.Tune,
+                            iconTint = NeonCyan,
+                            iconBg = Color(0x1800E5FF),
                             title = "Buffer & Polyphonie",
                             subtitle = "Tampon $audioBufferSize frames · Polyphonie $polyphony voix",
                             onClick = { onNavigateSubPage("buffer_polyphony") }
@@ -246,8 +268,9 @@ private fun AospMainSettingsPage(
                 AospCard(title = "Langue & Système") {
                     Column {
                         AospSettingItem(
-                            iconText = "🌐",
-                            iconBg = Color(0xFFEC4899),
+                            icon = Icons.Default.Language,
+                            iconTint = Color(0xFFEC4899),
+                            iconBg = Color(0x18EC4899),
                             title = "Langue / Language",
                             subtitle = selectedLanguage,
                             onClick = { onNavigateSubPage("language") }
@@ -322,8 +345,9 @@ private fun AospCard(
 
 @Composable
 private fun AospSettingItem(
-    iconText: String,
-    iconBg: Color,
+    icon: ImageVector,
+    iconTint: Color,
+    iconBg: Color = Color(0x18FFFFFF),
     title: String,
     subtitle: String,
     onClick: () -> Unit
@@ -336,15 +360,20 @@ private fun AospSettingItem(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Material You Squircle Icon Container
+        // Material You Simple Clean Squircle Container
         Box(
             modifier = Modifier
                 .size(36.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(iconBg.copy(alpha = 0.22f)),
+                .background(iconBg),
             contentAlignment = Alignment.Center
         ) {
-            Text(text = iconText, fontSize = 15.sp)
+            Icon(
+                imageVector = icon,
+                contentDescription = title,
+                tint = iconTint,
+                modifier = Modifier.size(18.dp)
+            )
         }
 
         Column(modifier = Modifier.weight(1f)) {
@@ -389,14 +418,22 @@ private fun MidiDevicesSubPage(
                 .padding(bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
+            Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color(0x14FFFFFF))
                     .clickable { onBack() }
-                    .padding(horizontal = 10.dp, vertical = 5.dp)
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(text = "← Retour", fontSize = 10.sp, color = NeonCyan)
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Retour",
+                    tint = NeonCyan,
+                    modifier = Modifier.size(14.dp)
+                )
+                Text(text = "Retour", fontSize = 10.sp, color = NeonCyan)
             }
             Spacer(modifier = Modifier.width(12.dp))
             Text(text = "Périphériques USB MIDI", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
@@ -405,8 +442,21 @@ private fun MidiDevicesSubPage(
         if (midiDevices.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(text = "🔌", fontSize = 28.sp)
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(54.dp)
+                            .clip(CircleShape)
+                            .background(Color(0x14FFFFFF)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Usb,
+                            contentDescription = null,
+                            tint = Color(0x66FFFFFF),
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
                     Text(
                         text = "Aucun clavier USB MIDI branché.\nBranchez un contrôleur MIDI en USB-OTG pour jouer directement.",
                         fontSize = 10.sp,
@@ -476,14 +526,22 @@ private fun BufferPolyphonySubPage(
                 .padding(bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
+            Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color(0x14FFFFFF))
                     .clickable { onBack() }
-                    .padding(horizontal = 10.dp, vertical = 5.dp)
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(text = "← Retour", fontSize = 10.sp, color = NeonCyan)
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Retour",
+                    tint = NeonCyan,
+                    modifier = Modifier.size(14.dp)
+                )
+                Text(text = "Retour", fontSize = 10.sp, color = NeonCyan)
             }
             Spacer(modifier = Modifier.width(12.dp))
             Text(text = "Buffer & Polyphonie", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
@@ -600,14 +658,22 @@ private fun LanguageSelectorSubPage(
                 .padding(bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
+            Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color(0x14FFFFFF))
                     .clickable { onBack() }
-                    .padding(horizontal = 10.dp, vertical = 5.dp)
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(text = "← Retour", fontSize = 10.sp, color = NeonCyan)
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Retour",
+                    tint = NeonCyan,
+                    modifier = Modifier.size(14.dp)
+                )
+                Text(text = "Retour", fontSize = 10.sp, color = NeonCyan)
             }
             Spacer(modifier = Modifier.width(12.dp))
             Text(text = "Langue / Language", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)

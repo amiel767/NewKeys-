@@ -193,7 +193,7 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_setMasterVolume(
         JNIEnv *env,
         jobject /* this */,
         jfloat volume) {
-    float gain = std::clamp(volume, 0.0f, 1.0f) * 1.0f;
+    float gain = std::clamp(volume, 0.0f, 1.0f) * 2.5f;
     gAudioEngine.setMasterGain(gain);
 }
 

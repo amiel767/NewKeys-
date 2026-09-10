@@ -252,6 +252,9 @@ private fun LoopListContent(
     onImportLoop: () -> Unit,
     onClose: () -> Unit
 ) {
+    var isTempsActive by remember { mutableStateOf(false) }
+    val evenBeats = if (selectedBeats % 2 != 0) (selectedBeats + 1).coerceIn(2, 64) else selectedBeats
+
     Column(modifier = Modifier.fillMaxSize()) {
         // Header
         Row(
@@ -278,19 +281,12 @@ private fun LoopListContent(
                         modifier = Modifier.size(17.dp)
                     )
                 }
-                Column {
-                    Text(
-                        text = "Boucles Audio",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Text(
-                        text = "Lecture DJ gapless",
-                        fontSize = 10.sp,
-                        color = TextDim
-                    )
-                }
+                Text(
+                    text = "Loops",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
             }
 
             // Right Actions: [ Case Réglage Temps ] [ + compact ] [ x compact ]
@@ -298,12 +294,16 @@ private fun LoopListContent(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // Case de réglage de temps (Temps / Beats) positionnée à côté de +
+                // Case de réglage de temps (Temps / Beats) strictement pair, activation au toucher au milieu
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0x1CFFFFFF))
-                        .border(1.dp, Color(0x33A78BFA), RoundedCornerShape(10.dp))
+                        .background(if (isTempsActive) Color(0x2800E5FF) else Color(0x10FFFFFF))
+                        .border(
+                            1.dp,
+                            if (isTempsActive) Color(0x6600E5FF) else Color(0x1AFFFFFF),
+                            RoundedCornerShape(10.dp)
+                        )
                         .padding(horizontal = 4.dp, vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(2.dp)
@@ -312,42 +312,52 @@ private fun LoopListContent(
                         modifier = Modifier
                             .size(24.dp)
                             .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0x18FFFFFF))
-                            .clickable(enabled = selectedBeats > 2) {
-                                onSelectBeats((selectedBeats - 1).coerceIn(2, 64))
+                            .background(if (isTempsActive) Color(0x18FFFFFF) else Color(0x08FFFFFF))
+                            .clickable(enabled = isTempsActive && evenBeats > 2) {
+                                val prevEven = if (selectedBeats % 2 != 0) selectedBeats - 1 else selectedBeats - 2
+                                onSelectBeats(prevEven.coerceIn(2, 64))
                             },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Remove,
                             contentDescription = "Diminuer temps",
-                            tint = if (selectedBeats > 2) NeonPurpleLight else TextDim2,
+                            tint = if (isTempsActive && evenBeats > 2) NeonCyanLight else Color(0x33FFFFFF),
                             modifier = Modifier.size(13.dp)
                         )
                     }
 
-                    Text(
-                        text = "${selectedBeats}T",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = NeonCyanLight,
-                        modifier = Modifier.padding(horizontal = 3.dp)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (isTempsActive) Color(0x3300E5FF) else Color(0x0CFFFFFF))
+                            .clickable { isTempsActive = !isTempsActive }
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "${evenBeats}T",
+                            fontSize = 11.5.sp,
+                            fontWeight = if (isTempsActive) FontWeight.ExtraBold else FontWeight.Medium,
+                            color = if (isTempsActive) Color.White else Color(0x55FFFFFF)
+                        )
+                    }
 
                     Box(
                         modifier = Modifier
                             .size(24.dp)
                             .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0x18FFFFFF))
-                            .clickable(enabled = selectedBeats < 64) {
-                                onSelectBeats((selectedBeats + 1).coerceIn(2, 64))
+                            .background(if (isTempsActive) Color(0x18FFFFFF) else Color(0x08FFFFFF))
+                            .clickable(enabled = isTempsActive && evenBeats < 64) {
+                                val nextEven = if (selectedBeats % 2 != 0) selectedBeats + 1 else selectedBeats + 2
+                                onSelectBeats(nextEven.coerceIn(2, 64))
                             },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Add,
                             contentDescription = "Augmenter temps",
-                            tint = if (selectedBeats < 64) NeonPurpleLight else TextDim2,
+                            tint = if (isTempsActive && evenBeats < 64) NeonCyanLight else Color(0x33FFFFFF),
                             modifier = Modifier.size(13.dp)
                         )
                     }
@@ -652,6 +662,7 @@ private fun LoopEditorContent(
     var renameInput by remember(file.name) { mutableStateOf(file.name.substringBeforeLast('.')) }
 
     var isMagnetMode by remember { mutableStateOf(false) }
+    var isTempsEnabled by remember { mutableStateOf(false) }
 
     val safeBpm = if (file.bpm > 20) file.bpm else 120
     val totalDurationMs = remember(beats, file.bpm) {
@@ -889,7 +900,7 @@ private fun LoopEditorContent(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Stepper Temps / Beats
+            // Stepper Temps / Beats (Strictement pair, activable/désactivable au touché de la case)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -898,41 +909,68 @@ private fun LoopEditorContent(
                     text = "TEMPS:",
                     fontSize = 9.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    color = NeonCyan,
+                    color = if (isTempsEnabled) NeonCyan else Color(0x77FFFFFF),
                     letterSpacing = 0.5.sp
                 )
                 Box(
                     modifier = Modifier
                         .size(24.dp)
                         .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0x18FFFFFF))
-                        .clickable(enabled = beats > 2) {
+                        .background(if (isTempsEnabled) Color(0x18FFFFFF) else Color(0x0AFFFFFF))
+                        .clickable(enabled = isTempsEnabled && beats > 2) {
                             val prevEven = if (beats % 2 != 0) beats - 1 else beats - 2
                             onUpdateBeats(prevEven.coerceIn(2, 64))
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Remove, contentDescription = "Moins", tint = NeonPurpleLight, modifier = Modifier.size(13.dp))
+                    Icon(
+                        Icons.Default.Remove,
+                        contentDescription = "Moins",
+                        tint = if (isTempsEnabled) NeonPurpleLight else Color(0x44FFFFFF),
+                        modifier = Modifier.size(13.dp)
+                    )
                 }
-                Text(
-                    text = "$beats T",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color.White,
-                    modifier = Modifier.padding(horizontal = 3.dp)
-                )
+
+                // Case Chiffre Temps: activé/désactivé au touché, couleur fade si inactive
+                val displayBeats = if (beats % 2 != 0) (beats + 1).coerceIn(2, 64) else beats
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(if (isTempsEnabled) Color(0x3300E5FF) else Color(0x12FFFFFF))
+                        .border(
+                            width = 1.dp,
+                            color = if (isTempsEnabled) NeonCyan else Color(0x22FFFFFF),
+                            shape = RoundedCornerShape(6.dp)
+                        )
+                        .clickable { isTempsEnabled = !isTempsEnabled }
+                        .padding(horizontal = 7.dp, vertical = 2.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "$displayBeats T",
+                        fontSize = 11.5.sp,
+                        fontWeight = if (isTempsEnabled) FontWeight.ExtraBold else FontWeight.Medium,
+                        color = if (isTempsEnabled) Color.White else Color(0x55FFFFFF)
+                    )
+                }
+
                 Box(
                     modifier = Modifier
                         .size(24.dp)
                         .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0x18FFFFFF))
-                        .clickable(enabled = beats < 64) {
+                        .background(if (isTempsEnabled) Color(0x18FFFFFF) else Color(0x0AFFFFFF))
+                        .clickable(enabled = isTempsEnabled && beats < 64) {
                             val nextEven = if (beats % 2 != 0) beats + 1 else beats + 2
                             onUpdateBeats(nextEven.coerceIn(2, 64))
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = "Plus", tint = NeonPurpleLight, modifier = Modifier.size(13.dp))
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = "Plus",
+                        tint = if (isTempsEnabled) NeonPurpleLight else Color(0x44FFFFFF),
+                        modifier = Modifier.size(13.dp)
+                    )
                 }
 
                 // Bouton AUTOMATIQUE
@@ -940,9 +978,13 @@ private fun LoopEditorContent(
                     modifier = Modifier
                         .height(24.dp)
                         .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0x2200E5FF))
-                        .border(1.dp, NeonCyan.copy(alpha = 0.7f), RoundedCornerShape(6.dp))
-                        .clickable {
+                        .background(if (isTempsEnabled) Color(0x2200E5FF) else Color(0x10FFFFFF))
+                        .border(
+                            1.dp,
+                            if (isTempsEnabled) NeonCyan.copy(alpha = 0.7f) else Color(0x1AFFFFFF),
+                            RoundedCornerShape(6.dp)
+                        )
+                        .clickable(enabled = isTempsEnabled) {
                             val durSec = try {
                                 if (file.duration.contains(':')) {
                                     val parts = file.duration.split(':')
@@ -951,7 +993,7 @@ private fun LoopEditorContent(
                                     file.duration.replace("s", "").trim().toFloat()
                                 }
                             } catch (_: Exception) {
-                                (beats * 60f / safeBpm)
+                                (displayBeats * 60f / safeBpm)
                             }
                             val rawBeats = ((durSec * safeBpm) / 60f).toInt()
                             val calculatedEven = (((rawBeats + 1) / 2) * 2).coerceIn(2, 64)
@@ -965,7 +1007,7 @@ private fun LoopEditorContent(
                         text = "AUTO",
                         fontSize = 9.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = NeonCyan
+                        color = if (isTempsEnabled) NeonCyan else Color(0x55FFFFFF)
                     )
                 }
             }
