@@ -76,7 +76,8 @@ object SF2Parser {
                 raf.readFully(chunkIdBytes)
                 val chunkId = String(chunkIdBytes, Charsets.US_ASCII)
                 val chunkSize = readUInt32(raf)
-                val chunkEnd = (raf.filePointer + chunkSize).coerceAtMost(fileLength)
+                val paddedChunkSize = if (chunkSize % 2L != 0L) chunkSize + 1L else chunkSize
+                val chunkEnd = (raf.filePointer + paddedChunkSize).coerceAtMost(fileLength)
 
                 if (chunkId == "LIST") {
                     val listTypeBytes = ByteArray(4)
@@ -90,13 +91,14 @@ object SF2Parser {
                             raf.readFully(subIdBytes)
                             val subId = String(subIdBytes, Charsets.US_ASCII)
                             val subSize = readUInt32(raf)
+                            val paddedSubSize = if (subSize % 2L != 0L) subSize + 1L else subSize
 
                             if (subId == "phdr") {
                                 phdrOffset = raf.filePointer
                                 phdrSize = subSize
                                 break
                             } else {
-                                raf.seek(raf.filePointer + subSize)
+                                raf.seek((raf.filePointer + paddedSubSize).coerceAtMost(chunkEnd))
                             }
                         }
                         break

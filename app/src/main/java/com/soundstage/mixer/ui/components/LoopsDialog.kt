@@ -85,6 +85,7 @@ fun LoopsDialog(
     onUpdateEditorSteps: (Int, Int) -> Unit,
     onOverwriteEditChanges: (Int, Int, Int, Int, Int) -> Unit,
     onSaveCopyEditChanges: (Int, Int, Int, Int, Int) -> Unit,
+    onRenameFile: (LoopFile, String) -> Unit = { _, _ -> },
     onImportLoop: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -153,6 +154,7 @@ fun LoopsDialog(
                             },
                             isLoopPlaying = isLoopPlaying,
                             onTogglePlay = onToggleEditorPlay,
+                            onRenameFile = onRenameFile,
                             onBack = onCloseEditFile
                         )
                     } else {
@@ -643,9 +645,14 @@ private fun LoopEditorContent(
     onSaveCopy: () -> Unit,
     isLoopPlaying: Boolean = false,
     onTogglePlay: () -> Unit = {},
+    onRenameFile: (LoopFile, String) -> Unit = { _, _ -> },
     onBack: () -> Unit
 ) {
-    val totalSteps = (beats * 4).coerceIn(8, 256)
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var renameInput by remember(file.name) { mutableStateOf(file.name.substringBeforeLast('.')) }
+
+    var isMagnetMode by remember { mutableStateOf(false) }
+
     val safeBpm = if (file.bpm > 20) file.bpm else 120
     val totalDurationMs = remember(beats, file.bpm) {
         ((beats * 60_000L) / safeBpm).toInt().coerceAtLeast(400)
@@ -669,16 +676,28 @@ private fun LoopEditorContent(
         mutableFloatStateOf(frac)
     }
 
+    // Snapping helper when in Magnet (Aimant) mode
+    val snapFrac = { rawFrac: Float ->
+        if (isMagnetMode) {
+            val sliceCount = (beats * 2).coerceIn(4, 64)
+            val step = 1f / sliceCount.toFloat()
+            (kotlin.math.round(rawFrac / step) * step).coerceIn(0f, 1f)
+        } else {
+            rawFrac
+        }
+    }
+
     // Helper to commit trims smoothly in real-time
     val updateTrimsSmooth = { sFrac: Float, eFrac: Float ->
-        val clampedS = sFrac.coerceIn(0f, 0.98f)
-        val clampedE = eFrac.coerceIn(clampedS + 0.015f, 1.0f)
-        localStartFrac = clampedS
-        localEndFrac = clampedE
-        val newStartMs = (clampedS * totalDurationMs).toInt()
-        val newEndMs = (clampedE * totalDurationMs).toInt()
-        val nominalStartStep = (1 + (clampedS * totalSteps)).toInt().coerceIn(1, totalSteps - 1)
-        val nominalEndStep = (clampedE * totalSteps).toInt().coerceIn(nominalStartStep + 1, totalSteps)
+        val snappedS = snapFrac(sFrac).coerceIn(0f, 0.98f)
+        val snappedE = snapFrac(eFrac).coerceIn(snappedS + 0.015f, 1.0f)
+        localStartFrac = snappedS
+        localEndFrac = snappedE
+        val newStartMs = (snappedS * totalDurationMs).toInt()
+        val newEndMs = (snappedE * totalDurationMs).toInt()
+        val totalSteps = (beats * 4).coerceIn(8, 256)
+        val nominalStartStep = (1 + (snappedS * totalSteps)).toInt().coerceIn(1, totalSteps - 1)
+        val nominalEndStep = (snappedE * totalSteps).toInt().coerceIn(nominalStartStep + 1, totalSteps)
         onUpdateTrims(newStartMs, newEndMs)
         onUpdateSteps(nominalStartStep, nominalEndStep)
     }
@@ -701,7 +720,7 @@ private fun LoopEditorContent(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.weight(1f, fill = false)
             ) {
-                // Bouton retour en carré bordure néon petit et adapté
+                // Bouton retour
                 Box(
                     modifier = Modifier
                         .padding(end = 2.dp)
@@ -727,17 +746,34 @@ private fun LoopEditorContent(
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
-                    Text(
-                        text = "${file.name} · $safeBpm BPM",
-                        fontSize = 10.sp,
-                        color = NeonCyanLight,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .clickable {
+                                renameInput = file.name.substringBeforeLast('.')
+                                showRenameDialog = true
+                            }
+                    ) {
+                        Text(
+                            text = "${file.name} · $safeBpm BPM",
+                            fontSize = 10.sp,
+                            color = NeonCyanLight,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Renommer le fichier",
+                            tint = NeonCyan,
+                            modifier = Modifier.size(11.dp)
+                        )
+                    }
                 }
             }
 
-            // Right Actions: [ Play/Pause ] [ Écraser ] [ Copie ] [ x carré néon ]
+            // Right Actions: [ Play/Pause ] [ Écraser ] [ Copie ] [ Fermer ]
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -819,7 +855,7 @@ private fun LoopEditorContent(
                     )
                 }
 
-                // Bouton X en carré bordure néon petit et adapté
+                // Bouton X
                 Box(
                     modifier = Modifier
                         .padding(start = 2.dp)
@@ -871,7 +907,8 @@ private fun LoopEditorContent(
                         .clip(RoundedCornerShape(6.dp))
                         .background(Color(0x18FFFFFF))
                         .clickable(enabled = beats > 2) {
-                            onUpdateBeats((beats - 1).coerceIn(2, 64))
+                            val prevEven = if (beats % 2 != 0) beats - 1 else beats - 2
+                            onUpdateBeats(prevEven.coerceIn(2, 64))
                         },
                     contentAlignment = Alignment.Center
                 ) {
@@ -890,11 +927,103 @@ private fun LoopEditorContent(
                         .clip(RoundedCornerShape(6.dp))
                         .background(Color(0x18FFFFFF))
                         .clickable(enabled = beats < 64) {
-                            onUpdateBeats((beats + 1).coerceIn(2, 64))
+                            val nextEven = if (beats % 2 != 0) beats + 1 else beats + 2
+                            onUpdateBeats(nextEven.coerceIn(2, 64))
                         },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(Icons.Default.Add, contentDescription = "Plus", tint = NeonPurpleLight, modifier = Modifier.size(13.dp))
+                }
+
+                // Bouton AUTOMATIQUE
+                Box(
+                    modifier = Modifier
+                        .height(24.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0x2200E5FF))
+                        .border(1.dp, NeonCyan.copy(alpha = 0.7f), RoundedCornerShape(6.dp))
+                        .clickable {
+                            val durSec = try {
+                                if (file.duration.contains(':')) {
+                                    val parts = file.duration.split(':')
+                                    parts[0].trim().toFloat() * 60f + parts[1].trim().toFloat()
+                                } else {
+                                    file.duration.replace("s", "").trim().toFloat()
+                                }
+                            } catch (_: Exception) {
+                                (beats * 60f / safeBpm)
+                            }
+                            val rawBeats = ((durSec * safeBpm) / 60f).toInt()
+                            val calculatedEven = (((rawBeats + 1) / 2) * 2).coerceIn(2, 64)
+                            onUpdateBeats(calculatedEven)
+                            updateTrimsSmooth(0f, 1f)
+                        }
+                        .padding(horizontal = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "AUTO",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = NeonCyan
+                    )
+                }
+            }
+
+            // Mode Sélection: [ 🔓 Libre ] [ 🧲 Aimant ]
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0x18000000))
+                    .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(8.dp))
+                    .padding(2.dp)
+            ) {
+                // Libre
+                Box(
+                    modifier = Modifier
+                        .height(22.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(if (!isMagnetMode) Color(0x3300E5FF) else Color.Transparent)
+                        .border(
+                            width = if (!isMagnetMode) 1.dp else 0.dp,
+                            color = if (!isMagnetMode) NeonCyan else Color.Transparent,
+                            shape = RoundedCornerShape(6.dp)
+                        )
+                        .clickable { isMagnetMode = false }
+                        .padding(horizontal = 7.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "🔓 Libre",
+                        fontSize = 9.5.sp,
+                        fontWeight = if (!isMagnetMode) FontWeight.ExtraBold else FontWeight.Medium,
+                        color = if (!isMagnetMode) Color.White else Color(0x88FFFFFF)
+                    )
+                }
+
+                // Aimant
+                Box(
+                    modifier = Modifier
+                        .height(22.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(if (isMagnetMode) Color(0x338B5CF6) else Color.Transparent)
+                        .border(
+                            width = if (isMagnetMode) 1.dp else 0.dp,
+                            color = if (isMagnetMode) NeonPurpleLight else Color.Transparent,
+                            shape = RoundedCornerShape(6.dp)
+                        )
+                        .clickable { isMagnetMode = true }
+                        .padding(horizontal = 7.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "🧲 Aimant",
+                        fontSize = 9.5.sp,
+                        fontWeight = if (isMagnetMode) FontWeight.ExtraBold else FontWeight.Medium,
+                        color = if (isMagnetMode) Color.White else Color(0x88FFFFFF)
+                    )
                 }
             }
 
@@ -968,23 +1097,6 @@ private fun LoopEditorContent(
                     contentAlignment = Alignment.Center
                 ) {
                     Text("2T", fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, color = NeonCyanLight)
-                }
-
-                // 4 Beats Loop
-                Box(
-                    modifier = Modifier
-                        .height(24.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0x2022D3EE))
-                        .border(1.dp, NeonCyan.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
-                        .clickable {
-                            val fourBeatsFrac = 4f / beats.toFloat()
-                            updateTrimsSmooth(localStartFrac, (localStartFrac + fourBeatsFrac).coerceAtMost(1f))
-                        }
-                        .padding(horizontal = 5.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("4T", fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, color = NeonCyanLight)
                 }
 
                 // Reset Tout
@@ -1124,20 +1236,21 @@ private fun LoopEditorContent(
             }
         }
 
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
-        // ================= FORME D'ONDE DJ TACTILE LIBRE =================
+        // ================= FORME D'ONDE DJ TACTILE LIBRE / AIMANT =================
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .clip(RoundedCornerShape(14.dp))
-                .background(Color(0xFF0C0F17))
-                .border(1.dp, Color(0x33A78BFA), RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xFF090C14))
+                .border(1.dp, Color(0x33A78BFA), RoundedCornerShape(16.dp))
         ) {
             WaveformDisplay(
                 modifier = Modifier.fillMaxSize(),
                 seed = file.name.hashCode(),
+                beats = beats,
                 startFraction = localStartFrac,
                 endFraction = localEndFrac,
                 onStartDrag = { frac ->
@@ -1158,102 +1271,73 @@ private fun LoopEditorContent(
             )
         }
 
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(4.dp))
 
-        // ================= GRILLE BEAT GRID DJ =================
-        StepSequencerStrip(
-            totalSteps = totalSteps,
-            startStep = (1 + (localStartFrac * totalSteps)).toInt().coerceIn(1, totalSteps - 1),
-            endStep = (localEndFrac * totalSteps).toInt().coerceIn(2, totalSteps),
-            onSelectStep = { step ->
-                val frac = (step.toFloat() / totalSteps.toFloat()).coerceIn(0f, 1f)
-                val distToStart = kotlin.math.abs(frac - localStartFrac)
-                val distToEnd = kotlin.math.abs(frac - localEndFrac)
-                if (distToStart <= distToEnd) {
-                    updateTrimsSmooth(frac, localEndFrac)
-                } else {
-                    updateTrimsSmooth(localStartFrac, frac)
-                }
-            }
-        )
-    }
-}
-
-/**
- * StepSequencerStrip:
- * Horizontal scrollable beat grid helper (1 .. totalSteps).
- */
-@Composable
-private fun StepSequencerStrip(
-    totalSteps: Int,
-    startStep: Int,
-    endStep: Int,
-    onSelectStep: (Int) -> Unit
-) {
-    androidx.compose.foundation.lazy.LazyRow(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(Color(0x18000000))
-            .border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(10.dp))
-            .padding(horizontal = 6.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        items(totalSteps) { index ->
-            val stepNumber = index + 1
-            val isInside = stepNumber in startStep..endStep
-            val isStart = stepNumber == startStep
-            val isEnd = stepNumber == endStep
-            val isBeatAccent = (index % 4 == 0)
-
-            Box(
-                modifier = Modifier
-                    .width(26.dp)
-                    .height(26.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(
-                        when {
-                            isStart -> NeonCyan
-                            isEnd -> NeonPink
-                            isInside -> Color(0x558B5CF6)
-                            isBeatAccent -> Color(0x20FFFFFF)
-                            else -> Color(0x0EFFFFFF)
+        if (showRenameDialog) {
+            AlertDialog(
+                onDismissRequest = { showRenameDialog = false },
+                containerColor = Color(0xFF161A26),
+                title = {
+                    Text(
+                        text = "Renommer la boucle",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "Entrez le nouveau nom pour le fichier :",
+                            color = Color(0xBBFFFFFF),
+                            fontSize = 12.sp
+                        )
+                        OutlinedTextField(
+                            value = renameInput,
+                            onValueChange = { renameInput = it },
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = NeonCyan,
+                                unfocusedBorderColor = Color(0x44FFFFFF),
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            if (renameInput.isNotBlank()) {
+                                onRenameFile(file, renameInput.trim())
+                                showRenameDialog = false
+                            }
                         }
-                    )
-                    .border(
-                        width = if (isStart || isEnd) 1.5.dp else 1.dp,
-                        color = when {
-                            isStart -> Color.White
-                            isEnd -> Color.White
-                            isInside -> NeonPurpleLight.copy(alpha = 0.6f)
-                            else -> Color(0x12FFFFFF)
-                        },
-                        shape = RoundedCornerShape(6.dp)
-                    )
-                    .clickable { onSelectStep(stepNumber) },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "$stepNumber",
-                    fontSize = 9.sp,
-                    fontWeight = if (isInside) FontWeight.Bold else FontWeight.Normal,
-                    color = if (isStart || isEnd) Color.Black else if (isInside) Color.White else TextDim2
-                )
-            }
+                    ) {
+                        Text("Renommer", color = NeonCyan, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showRenameDialog = false }) {
+                        Text("Annuler", color = Color(0x88FFFFFF))
+                    }
+                }
+            )
         }
     }
 }
 
 /**
  * WaveformDisplay:
- * Draws DJ waveform with free touchable placement, smooth dragging without steps,
- * neon-bordered square IN/OUT flags, and instant sample-accurate visual feedback.
+ * Ultra-sleek DAW-grade waveform renderer with natural audio transient envelopes,
+ * beat divisions, zero-crossing line, and tactile IN/OUT cursors supporting free/magnet positioning.
  */
 @Composable
 private fun WaveformDisplay(
     modifier: Modifier = Modifier,
     seed: Int,
+    beats: Int,
     startFraction: Float,
     endFraction: Float,
     onStartDrag: (Float) -> Unit,
@@ -1291,62 +1375,135 @@ private fun WaveformDisplay(
                     }
                 }
         ) {
-            val barCount = 80
-            val barWidth = size.width / barCount
+            val totalBars = 120
+            val barGap = 1.5f
+            val barWidth = (size.width / totalBars) - barGap
             val centerY = size.height / 2f
 
-            for (i in 0 until barCount) {
-                val progress = i.toFloat() / barCount.toFloat()
-                val isInsideLoop = progress in startFraction..endFraction
-
-                // Dynamic DJ waveform amplitude
-                val h1 = kotlin.math.abs(sin(i * 0.38f + (seed % 7)))
-                val h2 = kotlin.math.abs(sin(i * 0.92f + 1.4f))
-                val barHeight = ((h1 * 0.65f + h2 * 0.35f) * (size.height * 0.74f)).coerceAtLeast(4f)
-
-                val barColor = if (isInsideLoop) {
-                    NeonCyanLight.copy(alpha = 0.9f)
-                } else {
-                    Color(0x28FFFFFF)
-                }
-
-                drawRect(
-                    color = barColor,
-                    topLeft = Offset(i * barWidth + barWidth * 0.15f, centerY - barHeight / 2f),
-                    size = Size(barWidth * 0.7f, barHeight)
+            // 1. Draw subtle background beat grid divisions
+            val numBeats = beats.coerceIn(2, 64)
+            for (b in 0..numBeats) {
+                val beatX = (b.toFloat() / numBeats.toFloat()) * size.width
+                val isMajor = (b % 4 == 0)
+                drawLine(
+                    color = if (isMajor) Color(0x28FFFFFF) else Color(0x12FFFFFF),
+                    start = Offset(beatX, 0f),
+                    end = Offset(beatX, size.height),
+                    strokeWidth = if (isMajor) 1.5f else 1.0f
                 )
             }
 
-            // Darken outside loop regions
+            // 2. Center zero-crossing line
+            drawLine(
+                color = Color(0x20FFFFFF),
+                start = Offset(0f, centerY),
+                end = Offset(size.width, centerY),
+                strokeWidth = 1f
+            )
+
+            // 3. Audio Waveform Bars (Dual Envelope: Peak + RMS body with organic audio transients)
+            val seedOffset = kotlin.math.abs(seed % 1000)
+            for (i in 0 until totalBars) {
+                val progress = i.toFloat() / totalBars.toFloat()
+                val isInsideLoop = progress in startFraction..endFraction
+
+                // Synthesize natural rhythmic audio transient profile
+                val beatPhase = (progress * beats) % 1.0f
+                val transientImpact = (1.0f - beatPhase * 0.75f).coerceIn(0.25f, 1.0f)
+                val fundamental = kotlin.math.sin(progress * 18.0 + seedOffset * 0.1).toFloat()
+                val harmonic = kotlin.math.cos(progress * 42.0 + seedOffset * 0.3).toFloat()
+                val noise = kotlin.math.sin(progress * 130.0 + seedOffset * 0.7).toFloat()
+
+                val rawAmp = (kotlin.math.abs(fundamental) * 0.45f + kotlin.math.abs(harmonic) * 0.35f + kotlin.math.abs(noise) * 0.20f) * transientImpact
+                val peakHeight = (rawAmp * (size.height * 0.82f)).coerceIn(6f, size.height * 0.88f)
+                val rmsHeight = peakHeight * 0.52f
+                val barX = i * (barWidth + barGap)
+
+                // Selected vs unselected colors
+                if (isInsideLoop) {
+                    // Loop region gradient
+                    val loopProgress = if (endFraction > startFraction) {
+                        ((progress - startFraction) / (endFraction - startFraction)).coerceIn(0f, 1f)
+                    } else 0.5f
+
+                    val activeBarColor = when {
+                        loopProgress < 0.4f -> NeonCyan
+                        loopProgress < 0.75f -> NeonPurpleLight
+                        else -> NeonPink
+                    }
+
+                    // Peak bar
+                    drawRoundRect(
+                        color = activeBarColor.copy(alpha = 0.92f),
+                        topLeft = Offset(barX, centerY - peakHeight / 2f),
+                        size = Size(barWidth, peakHeight),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f, 2f)
+                    )
+
+                    // RMS core density
+                    drawRoundRect(
+                        color = Color.White.copy(alpha = 0.7f),
+                        topLeft = Offset(barX, centerY - rmsHeight / 2f),
+                        size = Size(barWidth, rmsHeight),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(1.5f, 1.5f)
+                    )
+                } else {
+                    // Dimmed inactive region
+                    drawRoundRect(
+                        color = Color(0x35FFFFFF),
+                        topLeft = Offset(barX, centerY - peakHeight / 2f),
+                        size = Size(barWidth, peakHeight),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f, 2f)
+                    )
+                }
+            }
+
+            // 4. Darken outside loop regions
             if (startFraction > 0f) {
                 drawRect(
-                    color = Color(0x77000000),
+                    color = Color(0x88000000),
                     topLeft = Offset(0f, 0f),
                     size = Size(size.width * startFraction, size.height)
                 )
             }
             if (endFraction < 1f) {
                 drawRect(
-                    color = Color(0x77000000),
+                    color = Color(0x88000000),
                     topLeft = Offset(size.width * endFraction, 0f),
                     size = Size(size.width * (1f - endFraction), size.height)
                 )
             }
 
-            // Loop active window highlight tint
-            val loopWidth = size.width * (endFraction - startFraction).coerceAtLeast(0f)
+            // 5. Active loop window luminous glow & frame
+            val loopStartX = size.width * startFraction
+            val loopWidth = (size.width * (endFraction - startFraction)).coerceAtLeast(0f)
+
             drawRect(
                 brush = Brush.horizontalGradient(
                     colors = listOf(
-                        Color(0x2222D3EE),
-                        Color(0x22A78BFA),
-                        Color(0x22FB4570)
+                        Color(0x1800E5FF),
+                        Color(0x18A78BFA),
+                        Color(0x18FB4570)
                     ),
-                    startX = size.width * startFraction,
-                    endX = size.width * endFraction
+                    startX = loopStartX,
+                    endX = loopStartX + loopWidth
                 ),
-                topLeft = Offset(size.width * startFraction, 0f),
+                topLeft = Offset(loopStartX, 0f),
                 size = Size(loopWidth, size.height)
+            )
+
+            // Top & bottom glowing border lines of the active loop
+            drawLine(
+                color = Color(0x4000E5FF),
+                start = Offset(loopStartX, 0f),
+                end = Offset(loopStartX + loopWidth, 0f),
+                strokeWidth = 2f
+            )
+            drawLine(
+                color = Color(0x40FB4570),
+                start = Offset(loopStartX, size.height),
+                end = Offset(loopStartX + loopWidth, size.height),
+                strokeWidth = 2f
             )
         }
 
@@ -1354,14 +1511,14 @@ private fun WaveformDisplay(
         Box(
             modifier = Modifier
                 .offset {
-                    val handleHalfWidthPx = with(density) { 16.dp.toPx() }
+                    val handleHalfWidthPx = with(density) { 18.dp.toPx() }
                     androidx.compose.ui.unit.IntOffset(
                         (widthPx * startFraction - handleHalfWidthPx).toInt(),
                         0
                     )
                 }
                 .fillMaxHeight()
-                .width(32.dp)
+                .width(36.dp)
                 .pointerInput(startFraction, widthPx) {
                     detectDragGestures { change, dragAmount ->
                         change.consume()
@@ -1375,36 +1532,40 @@ private fun WaveformDisplay(
                 modifier = Modifier.fillMaxHeight(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Top IN Flag: Carré bordure néon petit et adapté
+                // Top IN Flag
                 Box(
                     modifier = Modifier
-                        .size(20.dp, 16.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0xFF083344))
-                        .border(1.2.dp, NeonCyan, RoundedCornerShape(4.dp)),
+                        .size(24.dp, 18.dp)
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(Color(0xFF042F38))
+                        .border(1.5.dp, NeonCyan, RoundedCornerShape(5.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("IN", fontSize = 8.sp, fontWeight = FontWeight.ExtraBold, color = NeonCyanLight)
+                    Text("IN", fontSize = 8.5.sp, fontWeight = FontWeight.ExtraBold, color = NeonCyanLight)
                 }
 
-                // Vertical line
+                // Vertical Laser line
                 Box(
                     modifier = Modifier
-                        .width(2.5.dp)
+                        .width(3.dp)
                         .weight(1f)
-                        .background(NeonCyan)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(NeonCyan, NeonCyanLight, NeonCyan)
+                            )
+                        )
                 )
 
-                // Bottom IN Flag: Carré bordure néon petit et adapté
+                // Bottom IN Flag
                 Box(
                     modifier = Modifier
-                        .size(20.dp, 16.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0xFF083344))
-                        .border(1.2.dp, NeonCyan, RoundedCornerShape(4.dp)),
+                        .size(24.dp, 18.dp)
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(Color(0xFF042F38))
+                        .border(1.5.dp, NeonCyan, RoundedCornerShape(5.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("IN", fontSize = 8.sp, fontWeight = FontWeight.ExtraBold, color = NeonCyanLight)
+                    Text("IN", fontSize = 8.5.sp, fontWeight = FontWeight.ExtraBold, color = NeonCyanLight)
                 }
             }
         }
@@ -1413,14 +1574,14 @@ private fun WaveformDisplay(
         Box(
             modifier = Modifier
                 .offset {
-                    val handleHalfWidthPx = with(density) { 16.dp.toPx() }
+                    val handleHalfWidthPx = with(density) { 18.dp.toPx() }
                     androidx.compose.ui.unit.IntOffset(
                         (widthPx * endFraction - handleHalfWidthPx).toInt(),
                         0
                     )
                 }
                 .fillMaxHeight()
-                .width(32.dp)
+                .width(36.dp)
                 .pointerInput(endFraction, widthPx) {
                     detectDragGestures { change, dragAmount ->
                         change.consume()
@@ -1434,36 +1595,40 @@ private fun WaveformDisplay(
                 modifier = Modifier.fillMaxHeight(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Top OUT Flag: Carré bordure néon petit et adapté
+                // Top OUT Flag
                 Box(
                     modifier = Modifier
-                        .size(22.dp, 16.dp)
-                        .clip(RoundedCornerShape(4.dp))
+                        .size(26.dp, 18.dp)
+                        .clip(RoundedCornerShape(5.dp))
                         .background(Color(0xFF4C0519))
-                        .border(1.2.dp, NeonPink, RoundedCornerShape(4.dp)),
+                        .border(1.5.dp, NeonPink, RoundedCornerShape(5.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("OUT", fontSize = 8.sp, fontWeight = FontWeight.ExtraBold, color = NeonPink)
+                    Text("OUT", fontSize = 8.5.sp, fontWeight = FontWeight.ExtraBold, color = NeonPink)
                 }
 
-                // Vertical line
+                // Vertical Laser line
                 Box(
                     modifier = Modifier
-                        .width(2.5.dp)
+                        .width(3.dp)
                         .weight(1f)
-                        .background(NeonPink)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(NeonPink, Color(0xFFFF7E98), NeonPink)
+                            )
+                        )
                 )
 
-                // Bottom OUT Flag: Carré bordure néon petit et adapté
+                // Bottom OUT Flag
                 Box(
                     modifier = Modifier
-                        .size(22.dp, 16.dp)
-                        .clip(RoundedCornerShape(4.dp))
+                        .size(26.dp, 18.dp)
+                        .clip(RoundedCornerShape(5.dp))
                         .background(Color(0xFF4C0519))
-                        .border(1.2.dp, NeonPink, RoundedCornerShape(4.dp)),
+                        .border(1.5.dp, NeonPink, RoundedCornerShape(5.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("OUT", fontSize = 8.sp, fontWeight = FontWeight.ExtraBold, color = NeonPink)
+                    Text("OUT", fontSize = 8.5.sp, fontWeight = FontWeight.ExtraBold, color = NeonPink)
                 }
             }
         }

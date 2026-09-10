@@ -147,10 +147,9 @@ fun MixerScreen(
                         .weight(1f)
                 ) {
                     val availableH = maxHeight
-                    // When the virtual keyboard deploys, the faders adapt fluidly in height.
-                    // When height drops below 145.dp or keyboard expands significantly, switch cleanly to horizontal sliders.
-                    val isVerticalMode = availableH >= 145.dp && animatedKbFraction < 0.40f
-                    // Immediately hide grey volume graduation ticks as soon as the virtual keyboard appears
+                    // When the virtual keyboard deploys, keep the 8 vertical tracks cleanly displayed
+                    val isVerticalMode = availableH >= 85.dp
+                    // Hide volume graduation ticks when keyboard is active to maximize vertical track space
                     val showTicks = animatedKbFraction <= 0.04f
 
                     AnimatedContent(
@@ -255,7 +254,7 @@ fun MixerScreen(
                     onToggleSustain = { viewModel.toggleSustain() },
                     pitchBend = uiState.pitchBend,
                     onPitchBendChange = { viewModel.setPitchBend(it) },
-                    onOctaveChange = { delta -> viewModel.updateOctave(uiState.octave + delta) },
+                    onOctaveChange = { delta -> viewModel.updateOctave(delta) },
                     activeAuraColor = activeSlotLedColor
                 )
             }
@@ -451,6 +450,8 @@ fun MixerScreen(
                 val slot = uiState.audioSlots.getOrNull(uiState.activeSoundfontSlotId)
                 val activePresets = slot?.presets ?: emptyList()
                 val activePresetId = slot?.preset ?: 0
+                val activeTrack = uiState.tracks.getOrNull(uiState.activeSoundfontSlotId)
+                val activeSfName = activeTrack?.soundfontName.orEmpty()
 
                 SoundfontDialog(
                     trackId = uiState.activeSoundfontSlotId,
@@ -459,6 +460,7 @@ fun MixerScreen(
                     bankFiles = uiState.soundfontBankFiles,
                     soundfontStorageFiles = uiState.realSoundfonts,
                     selectedPresetId = activePresetId,
+                    selectedSoundfontName = activeSfName,
                     onSelectPreset = { viewModel.selectSf2Preset(it) },
                     onSelectSf2File = { viewModel.loadSoundfontFromStorage(it) },
                     activeTab = uiState.activeSf2Tab,
@@ -498,6 +500,9 @@ fun MixerScreen(
                     },
                     onSaveCopyEditChanges = { beats, start, end, sStep, eStep ->
                         viewModel.saveCopyLoopFile(beats, start, end, sStep, eStep)
+                    },
+                    onRenameFile = { file, newName ->
+                        viewModel.renameLoopFile(file, newName)
                     },
                     onImportLoop = { loopPickerLauncher.launch(arrayOf("audio/*", "*/*")) }
                 )

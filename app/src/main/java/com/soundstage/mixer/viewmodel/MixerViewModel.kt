@@ -244,6 +244,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 Log.w("MixerViewModel", "ensureDirectoriesExist warning: ${e.message}")
             }
+            refreshStorageFiles()
             restoreSavedAppState()
         }
     }
@@ -359,9 +360,27 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 var hasLoadedAnySlot = false
                 if (saved.audioSlots.isNotEmpty()) {
                     saved.audioSlots.forEach { savedSlot ->
-                        if (!savedSlot.soundFontPath.isNullOrEmpty() && File(savedSlot.soundFontPath).exists()) {
-                            loadSoundFontForSlot(savedSlot.slotId, savedSlot.soundFontPath, savedSlot.bank, savedSlot.preset, savedSlot.patchName)
+                        val candidatePath = when {
+                            !savedSlot.soundFontPath.isNullOrEmpty() && File(savedSlot.soundFontPath).exists() -> savedSlot.soundFontPath
+                            !savedSlot.patchName.isNullOrEmpty() && File(fileManager.soundfontsDir, savedSlot.patchName).exists() -> File(fileManager.soundfontsDir, savedSlot.patchName).absolutePath
+                            else -> null
+                        }
+                        if (candidatePath != null) {
+                            loadSoundFontForSlot(savedSlot.slotId, candidatePath, savedSlot.bank, savedSlot.preset, savedSlot.patchName)
                             hasLoadedAnySlot = true
+                        }
+                    }
+                }
+
+                // If audioSlots were empty or missing paths, check saved tracks for soundfont names
+                if (!hasLoadedAnySlot && saved.tracks.isNotEmpty()) {
+                    saved.tracks.forEachIndexed { index, track ->
+                        if (track.soundfontName.isNotEmpty()) {
+                            val candidate = File(fileManager.soundfontsDir, track.soundfontName)
+                            if (candidate.exists()) {
+                                loadSoundFontForSlot(index, candidate.absolutePath, bank = track.bank, preset = track.program, patchName = track.patchName)
+                                hasLoadedAnySlot = true
+                            }
                         }
                     }
                 }
@@ -1001,6 +1020,34 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun renameLoopFile(file: LoopFile, newName: String) {
+        val trimmed = newName.trim()
+        if (trimmed.isEmpty() || trimmed == file.name) return
+        val finalName = if (!trimmed.contains(".")) {
+            val ext = if (file.name.contains(".")) ".${file.name.substringAfterLast('.')}" else ".wav"
+            "$trimmed$ext"
+        } else trimmed
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val success = fileManager.renameLoopFile(file.name, file.folder, finalName)
+            if (success) {
+                val updatedFile = file.copy(name = finalName)
+                refreshStorageFiles()
+                _uiState.update { state ->
+                    val updatedFolders = state.loopFolders.map { folder ->
+                        folder.copy(files = folder.files.map { f -> if (f.name == file.name) updatedFile else f })
+                    }
+                    state.copy(
+                        loopFolders = updatedFolders,
+                        activeLoopFile = if (state.activeLoopFile?.name == file.name) updatedFile else state.activeLoopFile,
+                        lastSelectedLoopFile = if (state.lastSelectedLoopFile?.name == file.name) updatedFile else state.lastSelectedLoopFile,
+                        editingLoopFile = if (state.editingLoopFile?.name == file.name) updatedFile else state.editingLoopFile
+                    )
+                }
+            }
+        }
+    }
+
     // ================= THEME SELECTION =================
     fun setAppTheme(theme: AppTheme) {
         _uiState.update { it.copy(currentTheme = theme) }
@@ -1137,11 +1184,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     fun updateOctave(delta: Int) {
         val newOctave = (_uiState.value.octave + delta).coerceIn(-3, 3)
         if (newOctave != _uiState.value.octave) {
-            val slotId = _uiState.value.activeSoundfontSlotId
-            val channel = midiChannelForSlot(slotId)
-            _uiState.value.pressedKeys.forEach { key ->
-                audioEngine.noteOff(key, channel)
-            }
+            audioEngine.allNotesOff()
             audioEngine.globalOctaveShift = newOctave
             _uiState.update { it.copy(octave = newOctave, pressedKeys = emptySet()) }
             persistCurrentStateDebounced()
@@ -1219,8 +1262,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     // ================= SUSTAIN, PANIC & SPLITTER =================
     fun toggleSustain() {
+        val nextSustain = !_uiState.value.isSustainActive
+        audioEngine.setSustainPedal(nextSustain || _uiState.value.isMidiPedalPressed)
         _uiState.update { state ->
-            val nextSustain = !state.isSustainActive
             val updatedKeys = if (!nextSustain && !state.isMidiPedalPressed) emptySet() else state.pressedKeys
             state.copy(
                 isSustainActive = nextSustain,
@@ -1234,6 +1278,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun triggerPanic() {
+        audioEngine.setSustainPedal(false)
         audioEngine.allNotesOff()
         audioEngine.stopMetronome()
         audioEngine.stopLoopPlayer()
@@ -1388,13 +1433,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // ================= VIRTUAL KEYBOARD & MULTI-TOUCH =================
+    companion object {
+        const val FIXED_DEPLOYED_KEYBOARD_FRACTION = 0.28f
+    }
+
     fun cycleKeyboardExpansion() {
         _uiState.update { state ->
-            val nextFraction = when {
-                state.keyboardHeightFraction <= 0.05f -> 0.42f
-                state.keyboardHeightFraction < 0.65f -> 0.70f
-                else -> 0f
-            }
+            val nextFraction = if (state.keyboardHeightFraction > 0.05f) 0f else FIXED_DEPLOYED_KEYBOARD_FRACTION
             state.copy(keyboardHeightFraction = nextFraction)
         }
     }
@@ -1404,14 +1449,16 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             val newLocked = !state.isKeyboardLocked
             state.copy(
                 isKeyboardLocked = newLocked,
-                keyboardHeightFraction = if (newLocked) 0f else 0.55f
+                keyboardHeightFraction = if (newLocked) 0f else FIXED_DEPLOYED_KEYBOARD_FRACTION
             )
         }
     }
 
     fun setKeyboardHeightFraction(fraction: Float) {
         _uiState.update { state ->
-            state.copy(keyboardHeightFraction = fraction.coerceIn(0f, 1f))
+            // Virtual keyboard is exclusively locked to fixed deployed height or collapsed
+            val target = if (fraction > 0.10f) FIXED_DEPLOYED_KEYBOARD_FRACTION else 0f
+            state.copy(keyboardHeightFraction = target)
         }
     }
 
@@ -1481,12 +1528,14 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val v = velocity.coerceIn(0.01f, 1.0f)
         return when {
             curve < 0.48f -> {
+                // Soft (vers la gauche) : atténue la vélocité pour un jeu doux et expressif
                 val factor = (0.5f - curve) * 2f
-                (Math.pow(v.toDouble(), (1.0 - factor * 0.6).coerceAtLeast(0.3))).toFloat()
+                (Math.pow(v.toDouble(), 1.0 + factor * 1.5)).toFloat()
             }
             curve > 0.52f -> {
+                // Hard (vers la droite) : booste la vélocité pour une frappe percutante et forte
                 val factor = (curve - 0.5f) * 2f
-                (Math.pow(v.toDouble(), (1.0 + factor * 1.5))).toFloat()
+                (Math.pow(v.toDouble(), (1.0 - factor * 0.6).coerceAtLeast(0.3))).toFloat()
             }
             else -> v
         }.coerceIn(0.05f, 1.0f)
@@ -1514,10 +1563,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     fun onKeyUp(key: String) {
         val midiNote = noteNameToMidi(key)
         val channels = getActivePerformanceChannels(midiNote)
-        if (!_uiState.value.isSustainActive && !_uiState.value.isMidiPedalPressed) {
-            channels.forEach { channel ->
-                audioEngine.noteOff(key, channel)
-            }
+        channels.forEach { channel ->
+            audioEngine.noteOff(key, channel)
         }
         _uiState.update { state ->
             if (!state.isSustainActive && !state.isMidiPedalPressed) {

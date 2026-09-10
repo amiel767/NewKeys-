@@ -82,7 +82,8 @@ fun VirtualPianoKeyboard(
         ChordCalculator.detect(pressedKeys)
     }
 
-    val keyboardHeightDp = (heightFraction * 340f).coerceIn(60f, 360f).dp
+    // Precise fixed deployed height matching the master reference design (154dp)
+    val keyboardHeightDp = (heightFraction * 550f).coerceIn(60f, 154f).dp
 
     Column(
         modifier = modifier
@@ -259,8 +260,8 @@ fun VirtualPianoKeyboard(
                     .padding(end = 4.dp, bottom = 2.dp)
             )
 
-            // Keys Container (5 full octaves shifted by global octave, styled to display 3 full octaves in default view)
-            val baseOctave = (2 + octave).coerceIn(0, 4)
+            // Keys Container (5 full octaves C2..C7, global octave shift is applied at the audio engine level for exact transposition)
+            val baseOctave = 2
             val octaves = (0..4).map { baseOctave + it }
             val highestOctave = baseOctave + 5
             val density = LocalDensity.current
@@ -314,16 +315,20 @@ fun VirtualPianoKeyboard(
                                 try {
                                     while (true) {
                                         val event = awaitPointerEvent()
-                                        val activePointerIds = event.changes.filter { it.pressed }.map { it.id }.toSet()
 
-                                        // Release keys for pointers that went up
-                                        val releasedPointers = pointerKeyMap.keys.filter { it !in activePointerIds }
-                                        for (pId in releasedPointers) {
-                                            pointerKeyMap[pId]?.let { currentOnKeyUp(it) }
-                                            pointerKeyMap.remove(pId)
+                                        // 1. Release keys for pointers that explicitly ended (lifted)
+                                        for (change in event.changes) {
+                                            if (!change.pressed) {
+                                                pointerKeyMap.remove(change.id)?.let { releasedKey ->
+                                                    // Only fire onKeyUp if no other active finger is still holding this exact key
+                                                    if (!pointerKeyMap.values.contains(releasedKey)) {
+                                                        currentOnKeyUp(releasedKey)
+                                                    }
+                                                }
+                                            }
                                         }
 
-                                        // Process active pointers
+                                        // 2. Process currently pressed pointers
                                         for (change in event.changes) {
                                             if (change.pressed) {
                                                 val x = change.position.x
@@ -339,11 +344,13 @@ fun VirtualPianoKeyboard(
                                                     baseOctave = baseOctave
                                                 )
                                                 val prevKey = pointerKeyMap[change.id]
-                                                
+
                                                 if (detectedKey != prevKey) {
                                                     if (prevKey != null) {
-                                                        currentOnKeyUp(prevKey)
                                                         pointerKeyMap.remove(change.id)
+                                                        if (!pointerKeyMap.values.contains(prevKey)) {
+                                                            currentOnKeyUp(prevKey)
+                                                        }
                                                     }
                                                     if (detectedKey != null) {
                                                         pointerKeyMap[change.id] = detectedKey
@@ -361,7 +368,7 @@ fun VirtualPianoKeyboard(
 
                                         if (event.changes.none { it.pressed }) {
                                             // All fingers lifted
-                                            pointerKeyMap.values.forEach { currentOnKeyUp(it) }
+                                            pointerKeyMap.values.toSet().forEach { currentOnKeyUp(it) }
                                             pointerKeyMap.clear()
                                             break
                                         }

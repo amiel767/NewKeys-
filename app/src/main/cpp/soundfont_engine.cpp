@@ -17,8 +17,8 @@ bool SoundfontEngine::init(int sampleRate) {
     }
 
     fluid_settings_setnum(mSettings, "synth.sample-rate", static_cast<double>(sampleRate));
-    fluid_settings_setnum(mSettings, "synth.gain", 1.0);
-    fluid_settings_setint(mSettings, "synth.polyphony", 64);
+    fluid_settings_setnum(mSettings, "synth.gain", 1.2);
+    fluid_settings_setint(mSettings, "synth.polyphony", 128);
     fluid_settings_setint(mSettings, "synth.midi-channels", kMaxChannels);
     fluid_settings_setint(mSettings, "synth.reverb.active", 1);
     fluid_settings_setint(mSettings, "synth.chorus.active", 1);
@@ -31,14 +31,14 @@ bool SoundfontEngine::init(int sampleRate) {
         return false;
     }
 
-    fluid_synth_set_gain(mSynth, 1.2f);
-    fluid_synth_set_interp_method(mSynth, -1, FLUID_INTERP_LINEAR);
+    fluid_synth_set_gain(mSynth, 1.8f);
+    fluid_synth_set_interp_method(mSynth, -1, FLUID_INTERP_4THORDER);
     fluid_synth_reverb_on(mSynth, -1, 0);
     fluid_synth_chorus_on(mSynth, -1, 0);
 
     for (int ch = 0; ch < kMaxChannels; ++ch) {
         mTransposeSemitones[ch].store(0, std::memory_order_relaxed);
-        fluid_synth_cc(mSynth, ch, 7, 110);  // Volume
+        fluid_synth_cc(mSynth, ch, 7, 120);  // Volume
         fluid_synth_cc(mSynth, ch, 10, 64);  // Pan Center
         fluid_synth_cc(mSynth, ch, 11, 127); // Expression Full
     }
@@ -199,12 +199,15 @@ bool SoundfontEngine::programChange(int channel, int program) {
 }
 
 void SoundfontEngine::noteOn(int channel, int midiNote, int velocity) {
-    if (!mSynth || channel < 0 || channel >= kMaxChannels) return;
+    if (channel < 0 || channel >= kMaxChannels) return;
 
     if (velocity <= 0) {
         noteOff(channel, midiNote);
         return;
     }
+
+    std::lock_guard<std::mutex> lock(mMutex);
+    if (!mSynth) return;
 
     int transposedNote = midiNote + mTransposeSemitones[channel].load(std::memory_order_relaxed);
     int clampedNote = std::clamp(transposedNote, 0, 127);
@@ -214,7 +217,10 @@ void SoundfontEngine::noteOn(int channel, int midiNote, int velocity) {
 }
 
 void SoundfontEngine::noteOff(int channel, int midiNote) {
-    if (!mSynth || channel < 0 || channel >= kMaxChannels) return;
+    if (channel < 0 || channel >= kMaxChannels) return;
+
+    std::lock_guard<std::mutex> lock(mMutex);
+    if (!mSynth) return;
 
     int transposedNote = midiNote + mTransposeSemitones[channel].load(std::memory_order_relaxed);
     int clampedNote = std::clamp(transposedNote, 0, 127);
@@ -223,6 +229,7 @@ void SoundfontEngine::noteOff(int channel, int midiNote) {
 }
 
 void SoundfontEngine::allNotesOff(int channel) {
+    std::lock_guard<std::mutex> lock(mMutex);
     if (!mSynth) return;
 
     if (channel >= 0 && channel < kMaxChannels) {
@@ -239,7 +246,9 @@ void SoundfontEngine::allNotesOff(int channel) {
 }
 
 void SoundfontEngine::pitchBend(int channel, int bendValue) {
-    if (!mSynth || channel < 0 || channel >= kMaxChannels) return;
+    if (channel < 0 || channel >= kMaxChannels) return;
+    std::lock_guard<std::mutex> lock(mMutex);
+    if (!mSynth) return;
     int clampedBend = std::clamp(bendValue, 0, 16383);
     fluid_synth_pitch_bend(mSynth, channel, clampedBend);
 }
@@ -294,6 +303,7 @@ void SoundfontEngine::setPolyphony(int polyphony) {
 }
 
 void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool accumulate) {
+    std::lock_guard<std::mutex> lock(mMutex);
     if (!mSynth || fluid_synth_sfcount(mSynth) == 0) {
         if (!accumulate) {
             std::fill(outputBuffer, outputBuffer + (numFrames * 2), 0.0f);

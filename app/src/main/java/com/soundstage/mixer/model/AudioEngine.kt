@@ -578,6 +578,27 @@ class AudioEngine(private val context: Context) {
         }
     }
 
+    fun setSustainPedal(pedalPressed: Boolean) {
+        isSustainPedalDown = pedalPressed
+        if (!pedalPressed) {
+            val notesToRelease = ArrayList(sustainedNotesToRelease)
+            sustainedNotesToRelease.clear()
+            for (note in notesToRelease) {
+                if (!activeHeldNotes.contains(note)) {
+                    for (ch in 0..9) {
+                        stopMidiNote(note, ch)
+                    }
+                    coroutineScope.launch(Dispatchers.Main) {
+                        onMidiNoteOffListener?.invoke(midiNumberToNoteName(note))
+                    }
+                }
+            }
+        }
+        coroutineScope.launch(Dispatchers.Main) {
+            onMidiSustainListener?.invoke(pedalPressed)
+        }
+    }
+
     fun allNotesOff() {
         activeMidiNoteMap.clear()
         activeHeldNotes.clear()
@@ -586,6 +607,11 @@ class AudioEngine(private val context: Context) {
             NativeAudioBridge.safeAllNotesOff(ch, NativeAudioBridge.ENGINE_FADER)
             NativeAudioBridge.safeAllNotesOff(ch, NativeAudioBridge.ENGINE_PAD)
             NativeAudioBridge.safeAllNotesOff(ch, NativeAudioBridge.ENGINE_DRUM)
+        }
+        for (ch in 0..9) {
+            for (note in 0..127) {
+                stopMidiNote(note, ch)
+            }
         }
     }
 
@@ -606,13 +632,15 @@ class AudioEngine(private val context: Context) {
         val baseMidi = noteNameToMidi(noteName)
         val midiNote = (baseMidi + globalOctaveShift * 12).coerceIn(0, 127)
         val velInt = (velocity.coerceIn(0.01f, 1f) * 127f).toInt().coerceIn(1, 127)
+        activeHeldNotes.add(midiNote)
+        sustainedNotesToRelease.remove(midiNote)
         playMidiNote(midiNote, velInt, channel)
     }
 
     fun noteOff(noteName: String, channel: Int = activeTargetChannel) {
         val baseMidi = noteNameToMidi(noteName)
         val midiNote = (baseMidi + globalOctaveShift * 12).coerceIn(0, 127)
-        stopMidiNote(midiNote, channel)
+        handleNoteOffDirect(channel, midiNote)
     }
 
     fun setPitchBend(bend: Float, channel: Int = activeTargetChannel) {
