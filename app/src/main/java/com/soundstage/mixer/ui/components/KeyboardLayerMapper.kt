@@ -366,17 +366,25 @@ private fun TrackRangeBarRow(
             )
         }
 
+        // Smooth Updated State References to prevent gesture reset/glue during recomposition
+        val currentMinNote by rememberUpdatedState(minNote)
+        val currentMaxNote by rememberUpdatedState(maxNote)
+        val currentLeftFrac by rememberUpdatedState(leftFrac)
+        val currentRightFrac by rememberUpdatedState(rightFrac)
+        val currentOnRangeChanged by rememberUpdatedState(onRangeChanged)
+        val currentWhiteWidthPx by rememberUpdatedState(whiteWidthPx)
+
         // ================= LEFT DRAG HANDLE (Low Note) =================
         val minNoteName = KeyPositionMapper.midiToNoteName(minNote)
         Row(
             modifier = Modifier
                 .offset(x = (startXDp - 10.dp).coerceAtLeast(0.dp))
                 .height(28.dp)
-                .pointerInput(track.id, whiteWidthPx) {
+                .pointerInput(track.id) {
                     detectHorizontalDragGestures(
                         onDragStart = {
                             dragMinOffsetPx = 0f
-                            initialMinFrac = leftFrac
+                            initialMinFrac = currentLeftFrac
                             isDraggingMin = true
                         },
                         onDragEnd = { isDraggingMin = false },
@@ -384,14 +392,15 @@ private fun TrackRangeBarRow(
                         onHorizontalDrag = { change, dragAmount ->
                             change.consume()
                             dragMinOffsetPx += dragAmount
-                            val currentFrac = initialMinFrac + (dragMinOffsetPx / whiteWidthPx)
+                            val wPx = if (currentWhiteWidthPx > 0f) currentWhiteWidthPx else 10f
+                            val currentFrac = initialMinFrac + (dragMinOffsetPx / wPx)
                             val newMidi = KeyPositionMapper.xFractionToNearestMidi(
                                 xFraction = currentFrac,
                                 minAllowedMidi = KeyPositionMapper.MIN_MIDI,
-                                maxAllowedMidi = maxNote
+                                maxAllowedMidi = currentMaxNote
                             )
-                            if (newMidi != minNote) {
-                                onRangeChanged(track.id, newMidi, maxNote)
+                            if (newMidi != currentMinNote) {
+                                currentOnRangeChanged(track.id, newMidi, currentMaxNote)
                             }
                         }
                     )
@@ -440,11 +449,11 @@ private fun TrackRangeBarRow(
             modifier = Modifier
                 .offset(x = (endXDp - 32.dp).coerceAtLeast(startXDp + 30.dp))
                 .height(28.dp)
-                .pointerInput(track.id, whiteWidthPx) {
+                .pointerInput(track.id) {
                     detectHorizontalDragGestures(
                         onDragStart = {
                             dragMaxOffsetPx = 0f
-                            initialMaxFrac = rightFrac
+                            initialMaxFrac = currentRightFrac
                             isDraggingMax = true
                         },
                         onDragEnd = { isDraggingMax = false },
@@ -452,14 +461,15 @@ private fun TrackRangeBarRow(
                         onHorizontalDrag = { change, dragAmount ->
                             change.consume()
                             dragMaxOffsetPx += dragAmount
-                            val currentFrac = initialMaxFrac + (dragMaxOffsetPx / whiteWidthPx)
+                            val wPx = if (currentWhiteWidthPx > 0f) currentWhiteWidthPx else 10f
+                            val currentFrac = initialMaxFrac + (dragMaxOffsetPx / wPx)
                             val newMidi = KeyPositionMapper.xFractionToNearestMidi(
                                 xFraction = currentFrac,
-                                minAllowedMidi = minNote,
+                                minAllowedMidi = currentMinNote,
                                 maxAllowedMidi = KeyPositionMapper.MAX_MIDI
                             )
-                            if (newMidi != maxNote) {
-                                onRangeChanged(track.id, minNote, newMidi)
+                            if (newMidi != currentMaxNote) {
+                                currentOnRangeChanged(track.id, currentMinNote, newMidi)
                             }
                         }
                     )

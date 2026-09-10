@@ -369,6 +369,18 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
         mEqLow.process(outputBuffer, numFrames);
         mEqMid.process(outputBuffer, numFrames);
         mEqHigh.process(outputBuffer, numFrames);
+
+        // 10. Master Soft-Clipping Maximizer / Limiter (Boosts low Soundfont volume cleanly without clipping)
+        for (size_t i = 0; i < totalSamples; ++i) {
+            float x = outputBuffer[i] * 1.8f; // Clean 1.8x volume boost
+            if (x > 0.95f) {
+                outputBuffer[i] = 0.95f + 0.05f * tanhf((x - 0.95f) / 0.05f);
+            } else if (x < -0.95f) {
+                outputBuffer[i] = -0.95f + 0.05f * tanhf((x + 0.95f) / 0.05f);
+            } else {
+                outputBuffer[i] = x;
+            }
+        }
     }
 
     return oboe::DataCallbackResult::Continue;

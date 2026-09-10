@@ -141,6 +141,9 @@ fun VirtualPianoKeyboard(
             val currentOnKeyDown by rememberUpdatedState(onKeyDown)
             val currentOnKeyUp by rememberUpdatedState(onKeyUp)
             val currentOnKeyDownWithVel by rememberUpdatedState(onKeyDownWithVelocity)
+            val currentWhiteWidthPx by rememberUpdatedState(whiteWidthPx)
+            val currentBlackKeyWidthPx by rememberUpdatedState(blackKeyWidthPx)
+            val currentBaseOctave by rememberUpdatedState(baseOctave)
 
             Column(
                 modifier = Modifier.fillMaxSize(),
@@ -226,7 +229,7 @@ fun VirtualPianoKeyboard(
                             modifier = Modifier
                                 .width(totalKeyboardWidthDp)
                                 .height(keysHeight)
-                                .pointerInput(whiteWidthPx, currentScale, baseOctave) {
+                                .pointerInput(Unit) {
                                     awaitEachGesture {
                                         try {
                                             while (true) {
@@ -254,9 +257,9 @@ fun VirtualPianoKeyboard(
                                                             x = x,
                                                             y = y,
                                                             totalHeight = height,
-                                                            whiteWidthPx = whiteWidthPx,
-                                                            blackWidthPx = blackKeyWidthPx,
-                                                            baseOctave = baseOctave,
+                                                            whiteWidthPx = currentWhiteWidthPx,
+                                                            blackWidthPx = currentBlackKeyWidthPx,
+                                                            baseOctave = currentBaseOctave,
                                                             totalOctaves = 7
                                                         )
                                                         val prevKey = pointerKeyMap[change.id]

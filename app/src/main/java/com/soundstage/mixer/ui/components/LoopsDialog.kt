@@ -66,6 +66,8 @@ fun LoopsDialog(
     isLoopPlaying: Boolean,
     loopVolume: Float,
     onLoopVolumeChange: (Float) -> Unit,
+    bpm: Int = 120,
+    onUpdateBpm: (Int) -> Unit = {},
     selectedBeats: Int,
     onSelectBeats: (Int) -> Unit,
     onToggleFolder: (String) -> Unit,
@@ -165,6 +167,8 @@ fun LoopsDialog(
                             isLoopPlaying = isLoopPlaying,
                             loopVolume = loopVolume,
                             onLoopVolumeChange = onLoopVolumeChange,
+                            bpm = bpm,
+                            onUpdateBpm = onUpdateBpm,
                             selectedBeats = selectedBeats,
                             onSelectBeats = onSelectBeats,
                             onToggleFolder = onToggleFolder,
@@ -241,6 +245,8 @@ private fun LoopListContent(
     isLoopPlaying: Boolean,
     loopVolume: Float,
     onLoopVolumeChange: (Float) -> Unit,
+    bpm: Int = 120,
+    onUpdateBpm: (Int) -> Unit = {},
     selectedBeats: Int,
     onSelectBeats: (Int) -> Unit,
     onToggleFolder: (String) -> Unit,
@@ -252,8 +258,10 @@ private fun LoopListContent(
     onImportLoop: () -> Unit,
     onClose: () -> Unit
 ) {
-    var isTempsActive by remember { mutableStateOf(false) }
-    val evenBeats = if (selectedBeats % 2 != 0) (selectedBeats + 1).coerceIn(2, 64) else selectedBeats
+    var isTempsActive by remember(selectedBeats) { mutableStateOf(selectedBeats > 0) }
+    val evenBeats = if (selectedBeats > 0) {
+        if (selectedBeats % 2 != 0) (selectedBeats + 1).coerceIn(2, 64) else selectedBeats
+    } else 4
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Header
@@ -289,12 +297,63 @@ private fun LoopListContent(
                 )
             }
 
-            // Right Actions: [ Case Réglage Temps ] [ + compact ] [ x compact ]
+            // Right Actions: [ BPM Stepper ] [ Case Réglage Temps ] [ + compact ] [ x compact ]
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // Case de réglage de temps (Temps / Beats) strictement pair, activation au toucher au milieu
+                // BPM Control Stepper
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0x18FFFFFF))
+                        .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(10.dp))
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0x12FFFFFF))
+                            .clickable { onUpdateBpm(-1) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Remove,
+                            contentDescription = "Minus BPM",
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+
+                    Text(
+                        text = "$bpm BPM",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0x12FFFFFF))
+                            .clickable { onUpdateBpm(1) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Plus BPM",
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                }
+
+                // Case de réglage de temps (Temps / Beats)
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
@@ -314,7 +373,7 @@ private fun LoopListContent(
                             .clip(RoundedCornerShape(6.dp))
                             .background(if (isTempsActive) Color(0x18FFFFFF) else Color(0x08FFFFFF))
                             .clickable(enabled = isTempsActive && evenBeats > 2) {
-                                val prevEven = if (selectedBeats % 2 != 0) selectedBeats - 1 else selectedBeats - 2
+                                val prevEven = evenBeats - 2
                                 onSelectBeats(prevEven.coerceIn(2, 64))
                             },
                         contentAlignment = Alignment.Center
@@ -331,12 +390,20 @@ private fun LoopListContent(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
                             .background(if (isTempsActive) Color(0x3300E5FF) else Color(0x0CFFFFFF))
-                            .clickable { isTempsActive = !isTempsActive }
+                            .clickable {
+                                if (isTempsActive) {
+                                    isTempsActive = false
+                                    onSelectBeats(0)
+                                } else {
+                                    isTempsActive = true
+                                    onSelectBeats(evenBeats)
+                                }
+                            }
                             .padding(horizontal = 6.dp, vertical = 2.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "${evenBeats}T",
+                            text = if (isTempsActive) "${evenBeats}T" else "OFF",
                             fontSize = 11.5.sp,
                             fontWeight = if (isTempsActive) FontWeight.ExtraBold else FontWeight.Medium,
                             color = if (isTempsActive) Color.White else Color(0x55FFFFFF)
@@ -349,7 +416,7 @@ private fun LoopListContent(
                             .clip(RoundedCornerShape(6.dp))
                             .background(if (isTempsActive) Color(0x18FFFFFF) else Color(0x08FFFFFF))
                             .clickable(enabled = isTempsActive && evenBeats < 64) {
-                                val nextEven = if (selectedBeats % 2 != 0) selectedBeats + 1 else selectedBeats + 2
+                                val nextEven = evenBeats + 2
                                 onSelectBeats(nextEven.coerceIn(2, 64))
                             },
                         contentAlignment = Alignment.Center

@@ -1198,9 +1198,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     fun updateOctave(delta: Int) {
         val newOctave = (_uiState.value.octave + delta).coerceIn(-3, 3)
         if (newOctave != _uiState.value.octave) {
-            audioEngine.allNotesOff()
             audioEngine.globalOctaveShift = newOctave
-            _uiState.update { it.copy(octave = newOctave, pressedKeys = emptySet()) }
+            _uiState.update { it.copy(octave = newOctave) }
             persistCurrentStateDebounced()
         }
     }

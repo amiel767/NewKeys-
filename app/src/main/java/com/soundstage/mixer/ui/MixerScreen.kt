@@ -476,6 +476,8 @@ fun MixerScreen(
                     isLoopPlaying = uiState.isLoopPlaying,
                     loopVolume = uiState.loopVolume,
                     onLoopVolumeChange = { viewModel.setLoopVolume(it) },
+                    bpm = uiState.bpm,
+                    onUpdateBpm = { viewModel.updateBpm(it) },
                     selectedBeats = uiState.selectedBeatCount,
                     onSelectBeats = { viewModel.selectBeatCount(it) },
                     onToggleFolder = { viewModel.toggleLoopFolder(it) },
