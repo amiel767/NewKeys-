@@ -397,11 +397,11 @@ void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool 
         mWasHighLoad = false;
     }
 
-    // Lock-free drain of pending MIDI events directly on the audio thread with voice spawning throttle
-    // NoteOffs, PitchBends, CCs and AllNotesOffs are never throttled.
-    // NoteOns are capped to max 10 per audio frame (~4-16ms) to prevent CPU starvation on heavy glissandos.
+    // Lock-free drain of pending MIDI events directly on the audio thread
+    // NoteOns, NoteOffs, PitchBends, CCs and AllNotesOffs are processed with high throughput.
+    // Allow up to 48 NoteOns per buffer so multi-layer 8-track chords trigger simultaneously with zero latency.
     int noteOnsProcessed = 0;
-    const int kMaxNoteOnPerFrame = 10;
+    const int kMaxNoteOnPerFrame = 48;
     EngineMidiEvent ev;
 
     while (mEventQueue.peek(ev)) {
@@ -418,37 +418,11 @@ void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool 
 
         switch (ev.type) {
             case EngineMidiEvent::NOTE_ON: {
-                int vBefore = fluid_synth_get_active_voice_count(mSynth);
                 fluid_synth_noteon(mSynth, ev.channel, ev.note, ev.velocity);
-                int vAfter = fluid_synth_get_active_voice_count(mSynth);
-                int delta = vAfter - vBefore;
-                if (delta > 0) {
-                    mAuditVoicesCreatedTotal.fetch_add(delta, std::memory_order_relaxed);
-                }
-                NoteOnAuditRecord rec;
-                rec.timestampNs = static_cast<uint64_t>(
-                    std::chrono::duration_cast<std::chrono::nanoseconds>(
-                        std::chrono::steady_clock::now().time_since_epoch()).count());
-                rec.channel = ev.channel;
-                rec.note = ev.note;
-                rec.velocity = ev.velocity;
-                rec.voicesBefore = vBefore;
-                rec.voicesAfter = vAfter;
-                rec.deltaVoices = delta;
-                mNoteOnRecords.push(rec);
                 break;
             }
             case EngineMidiEvent::NOTE_OFF: {
-                int vBefore = fluid_synth_get_active_voice_count(mSynth);
                 fluid_synth_noteoff(mSynth, ev.channel, ev.note);
-                NoteOffAuditRecord rec;
-                rec.timestampNs = static_cast<uint64_t>(
-                    std::chrono::duration_cast<std::chrono::nanoseconds>(
-                        std::chrono::steady_clock::now().time_since_epoch()).count());
-                rec.channel = ev.channel;
-                rec.note = ev.note;
-                rec.voicesBefore = vBefore;
-                mNoteOffRecords.push(rec);
                 break;
             }
             case EngineMidiEvent::ALL_NOTES_OFF:
@@ -504,52 +478,16 @@ void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool 
     int renderUs = static_cast<int>(std::chrono::duration_cast<std::chrono::microseconds>(tEnd - tStart).count());
     mAuditLastRenderDurationUs.store(renderUs, std::memory_order_relaxed);
 
-    fluid_voice_t* voiceList[128];
-    fluid_synth_get_voicelist(mSynth, voiceList, 128, -1);
-    int totalCount = 0;
-    int heldCount = 0;
-    int sustainedCount = 0;
-    int releaseCount = 0;
-    int audibleCount = 0;
-    int silentCount = 0;
-
-    for (int i = 0; i < 128 && voiceList[i] != nullptr; ++i) {
-        totalCount++;
-        if (fluid_voice_is_on(voiceList[i])) {
-            heldCount++;
-        } else if (fluid_voice_is_sustained(voiceList[i])) {
-            sustainedCount++;
-        } else {
-            releaseCount++;
-        }
-        audibleCount++;
-    }
-
-    mAuditTotalVoices.store(totalCount, std::memory_order_relaxed);
-    mAuditActiveHeldVoices.store(heldCount, std::memory_order_relaxed);
-    mAuditSustainedVoices.store(sustainedCount, std::memory_order_relaxed);
-    mAuditReleaseVoices.store(releaseCount, std::memory_order_relaxed);
-    mAuditAudibleVoices.store(audibleCount, std::memory_order_relaxed);
-    mAuditSilentVoices.store(silentCount, std::memory_order_relaxed);
+    // Update voice count via lightweight O(1) getter - never traverse voice list in audio loop
+    int activeCount = fluid_synth_get_active_voice_count(mSynth);
+    mAuditTotalVoices.store(activeCount, std::memory_order_relaxed);
+    mAuditAudibleVoices.store(activeCount, std::memory_order_relaxed);
 
     int prevMax = mAuditMaxVoicesObserved.load(std::memory_order_relaxed);
-    if (totalCount > prevMax) {
-        mAuditMaxVoicesObserved.store(totalCount, std::memory_order_relaxed);
+    if (activeCount > prevMax) {
+        mAuditMaxVoicesObserved.store(activeCount, std::memory_order_relaxed);
     }
-    if (totalCount >= 128) {
+    if (activeCount >= mConfiguredPolyphony) {
         mAuditVoiceSteals.fetch_add(1, std::memory_order_relaxed);
     }
-
-    VoiceAuditSnapshot snap;
-    snap.totalVoices = totalCount;
-    snap.activeHeldVoices = heldCount;
-    snap.sustainedVoices = sustainedCount;
-    snap.releaseVoices = releaseCount;
-    snap.audibleVoices = audibleCount;
-    snap.silentVoices = silentCount;
-    snap.voiceSteals = mAuditVoiceSteals.load(std::memory_order_relaxed);
-    snap.voicesCreatedTotal = mAuditVoicesCreatedTotal.load(std::memory_order_relaxed);
-    snap.maxVoicesObserved = mAuditMaxVoicesObserved.load(std::memory_order_relaxed);
-    snap.renderDurationUs = renderUs;
-    mAuditSnapshots.push(snap);
 }

@@ -538,14 +538,10 @@ public:
     void stop();
     void setDriver(int driverType);
     void setMasterGain(float gain) {
-        for (auto &engine : mEngines) {
-            engine.setGain(gain);
-        }
+        mSynthEngine.setGain(gain);
     }
     void setPolyphony(int polyphony) {
-        for (auto &engine : mEngines) {
-            engine.setPolyphony(polyphony);
-        }
+        mSynthEngine.setPolyphony(polyphony);
     }
     void setBufferSize(int bufferSizeInFrames);
 
@@ -564,9 +560,8 @@ public:
         return mBypassMasterFX.load(std::memory_order_relaxed);
     }
 
-    SoundfontEngine &getEngine(int engineIndex) {
-        if (engineIndex < 0 || engineIndex >= 2) return mEngines[0];
-        return mEngines[engineIndex];
+    SoundfontEngine &getEngine(int engineIndex = 0) {
+        return mSynthEngine;
     }
 
     SamplePlaybackEngine &getDrumSampler() {
@@ -595,7 +590,7 @@ private:
     std::mutex mRenderMutex;
     std::atomic<bool> mOboeActive{false};
     int mDriverType = 0;
-    std::array<SoundfontEngine, 2> mEngines; // 0 = Fader (tracks 1..8), 1 = Pad (TonicPad)
+    SoundfontEngine mSynthEngine; // Unified 16-channel Soundfont engine (tracks 1..8, Drum 8, TonicPad 9)
     SamplePlaybackEngine mDrumSampler;
     
     // DSP Modules
@@ -611,9 +606,9 @@ private:
     float mPadBrightness = 0.75f;
 
     int mSampleRate = 48000;
+    std::atomic<int> mConfiguredBufferSize{512};
     std::atomic<bool> mBypassMasterFX{false};
     std::vector<float> mFloatRenderBuffer;
-    std::vector<float> mPadRenderBuffer;
 };
 #else
 class AudioEngine {
@@ -624,14 +619,10 @@ public:
     void stop();
     void setDriver(int driverType) {}
     void setMasterGain(float gain) {
-        for (auto &engine : mEngines) {
-            engine.setGain(gain);
-        }
+        mSynthEngine.setGain(gain);
     }
     void setPolyphony(int polyphony) {
-        for (auto &engine : mEngines) {
-            engine.setPolyphony(polyphony);
-        }
+        mSynthEngine.setPolyphony(polyphony);
     }
     void setBufferSize(int bufferSizeInFrames) {}
     void setMasterEq(float lowGainDb, float midGainDb, float highGainDb) {}
@@ -648,13 +639,12 @@ public:
         return mBypassMasterFX.load(std::memory_order_relaxed);
     }
 
-    SoundfontEngine &getEngine(int engineIndex) {
-        if (engineIndex < 0 || engineIndex >= 3) return mEngines[0];
-        return mEngines[engineIndex];
+    SoundfontEngine &getEngine(int engineIndex = 0) {
+        return mSynthEngine;
     }
 
 private:
-    std::array<SoundfontEngine, 3> mEngines;
+    SoundfontEngine mSynthEngine;
 };
 #endif
 

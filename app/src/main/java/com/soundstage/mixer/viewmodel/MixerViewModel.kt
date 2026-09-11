@@ -157,7 +157,7 @@ data class MixerUiState(
     
     // System & Audio Engine Settings
     val audioEngine: String = "Oboe (C++)",
-    val audioBufferSize: Int = 128,
+    val audioBufferSize: Int = 256,
     val polyphony: Int = 128,
     val selectedLanguage: String = "Français",
     val globalVelocityMin: Float = 0.10f,
@@ -1862,9 +1862,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 val readablePath = nativeReadableFile.absolutePath
                 Log.d("SoundFontLoad", "[DIAGNOSTIC] Resolved native-readable path=$readablePath (exists=${nativeReadableFile.exists()}, length=${nativeReadableFile.length()})")
 
-                // 1. Charger d'abord le nouveau SoundFont via le chemin natif garanti sur les moteurs (Fader, Pad)
+                // 1. Charger d'abord le nouveau SoundFont via le chemin natif garanti sur le moteur unifié
                 val newSfId = NativeAudioBridge.safeLoadSoundFont(NativeAudioBridge.ENGINE_FADER, readablePath)
-                NativeAudioBridge.safeLoadSoundFont(NativeAudioBridge.ENGINE_PAD, readablePath)
                 Log.d("SoundFontLoad", "[DIAGNOSTIC] Native safeLoadSoundFont returned ID=$newSfId for slot=$slotId")
 
                 // 2. Décharger l'ancien UNIQUEMENT si le nouveau a réussi et que l'ancien n'est plus utilisé nulle part
@@ -1872,7 +1871,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     val inUse = _uiState.value.audioSlots.any { it.slotId != slotId && it.soundFontId == oldSfId }
                     if (!inUse) {
                         NativeAudioBridge.safeUnloadSoundFont(NativeAudioBridge.ENGINE_FADER, oldSfId)
-                        NativeAudioBridge.safeUnloadSoundFont(NativeAudioBridge.ENGINE_PAD, oldSfId)
                     }
                 }
 
@@ -1932,15 +1930,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         bank = targetPreset.bankNumber,
                         preset = targetPreset.id
                     )
-                    if (slotId == 9) {
-                        NativeAudioBridge.safeSelectProgram(
-                            engineIndex = NativeAudioBridge.ENGINE_PAD,
-                            channel = 0,
-                            soundFontId = effectiveSfId,
-                            bank = targetPreset.bankNumber,
-                            preset = targetPreset.id
-                        )
-                    }
                 }
 
                 // Re-validate program selection for all other active audio slots to ensure complete isolation
@@ -2020,15 +2009,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 preset.bankNumber,
                 preset.id
             )
-            if (slotId == 9) {
-                NativeAudioBridge.safeSelectProgram(
-                    NativeAudioBridge.ENGINE_PAD,
-                    0,
-                    slot.soundFontId,
-                    preset.bankNumber,
-                    preset.id
-                )
-            }
         }
 
         _uiState.update { state ->

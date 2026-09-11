@@ -306,10 +306,10 @@ class AudioEngine(private val context: Context) {
         val toTurnOn = newPitches - activeTonicPitches
         for (pitch in toTurnOn) {
             NativeAudioBridge.safeNoteOn(
-                channel = 0,
+                channel = NativeAudioBridge.CHANNEL_TONIC_PAD,
                 midiNote = pitch,
                 velocity = 85,
-                engineIndex = NativeAudioBridge.ENGINE_PAD
+                engineIndex = NativeAudioBridge.ENGINE_FADER
             )
         }
 
@@ -318,10 +318,10 @@ class AudioEngine(private val context: Context) {
         for (pitch in shimmerToTurnOn) {
             val shimmerVelocity = (shimmer * 80f).toInt().coerceIn(20, 95)
             NativeAudioBridge.safeNoteOn(
-                channel = 0,
+                channel = NativeAudioBridge.CHANNEL_TONIC_PAD,
                 midiNote = pitch,
                 velocity = shimmerVelocity,
-                engineIndex = NativeAudioBridge.ENGINE_PAD
+                engineIndex = NativeAudioBridge.ENGINE_FADER
             )
         }
 
@@ -333,22 +333,12 @@ class AudioEngine(private val context: Context) {
                 delay(65)
                 for (pitch in toTurnOff) {
                     NativeAudioBridge.safeNoteOff(
-                        channel = 0,
-                        midiNote = pitch,
-                        engineIndex = NativeAudioBridge.ENGINE_PAD
-                    )
-                    NativeAudioBridge.safeNoteOff(
                         channel = NativeAudioBridge.CHANNEL_TONIC_PAD,
                         midiNote = pitch,
                         engineIndex = NativeAudioBridge.ENGINE_FADER
                     )
                 }
                 for (pitch in shimmerToTurnOff) {
-                    NativeAudioBridge.safeNoteOff(
-                        channel = 0,
-                        midiNote = pitch,
-                        engineIndex = NativeAudioBridge.ENGINE_PAD
-                    )
                     NativeAudioBridge.safeNoteOff(
                         channel = NativeAudioBridge.CHANNEL_TONIC_PAD,
                         midiNote = pitch,
@@ -375,8 +365,6 @@ class AudioEngine(private val context: Context) {
             NativeAudioBridge.safeSetDrumMasterVolume(clamped)
         } else if (ch == 9) {
             NativeAudioBridge.safeSetTrackVolume(9, clamped, NativeAudioBridge.ENGINE_FADER)
-            NativeAudioBridge.safeSetTrackVolume(0, clamped, NativeAudioBridge.ENGINE_PAD)
-            NativeAudioBridge.safeSetTrackVolume(9, clamped, NativeAudioBridge.ENGINE_PAD)
         } else {
             NativeAudioBridge.safeSetTrackVolume(ch, clamped)
         }
@@ -421,7 +409,7 @@ class AudioEngine(private val context: Context) {
         if (ch in 0..7) {
             NativeAudioBridge.safeSetChannelReverb(ch, clamped, NativeAudioBridge.ENGINE_FADER)
         } else if (ch == 9) {
-            NativeAudioBridge.safeSetChannelReverb(0, clamped, NativeAudioBridge.ENGINE_PAD)
+            NativeAudioBridge.safeSetChannelReverb(9, clamped, NativeAudioBridge.ENGINE_FADER)
         }
     }
 
@@ -439,30 +427,18 @@ class AudioEngine(private val context: Context) {
     }
 
     private fun playMidiNote(midiNote: Int, velocity: Int, targetChannel: Int) {
-        if (targetChannel == 9) {
-            NativeAudioBridge.safeNoteOn(0, midiNote, velocity, engineIndex = NativeAudioBridge.ENGINE_PAD)
-            NativeAudioBridge.safeNoteOn(9, midiNote, velocity, engineIndex = NativeAudioBridge.ENGINE_FADER)
-        } else {
-            NativeAudioBridge.safeNoteOn(targetChannel.coerceIn(0, 8), midiNote, velocity, engineIndex = NativeAudioBridge.ENGINE_FADER)
-        }
+        val ch = if (targetChannel == 9) NativeAudioBridge.CHANNEL_TONIC_PAD else targetChannel.coerceIn(0, 8)
+        NativeAudioBridge.safeNoteOn(ch, midiNote, velocity, engineIndex = NativeAudioBridge.ENGINE_FADER)
     }
 
     private fun stopMidiNote(midiNote: Int, targetChannel: Int) {
-        if (targetChannel == 9) {
-            NativeAudioBridge.safeNoteOff(0, midiNote, engineIndex = NativeAudioBridge.ENGINE_PAD)
-            NativeAudioBridge.safeNoteOff(9, midiNote, engineIndex = NativeAudioBridge.ENGINE_FADER)
-        } else {
-            NativeAudioBridge.safeNoteOff(targetChannel.coerceIn(0, 8), midiNote, engineIndex = NativeAudioBridge.ENGINE_FADER)
-        }
+        val ch = if (targetChannel == 9) NativeAudioBridge.CHANNEL_TONIC_PAD else targetChannel.coerceIn(0, 8)
+        NativeAudioBridge.safeNoteOff(ch, midiNote, engineIndex = NativeAudioBridge.ENGINE_FADER)
     }
 
     private fun bendMidiPitch(midiBend: Int, targetChannel: Int) {
-        if (targetChannel == 9) {
-            NativeAudioBridge.safePitchBend(0, midiBend, engineIndex = NativeAudioBridge.ENGINE_PAD)
-            NativeAudioBridge.safePitchBend(9, midiBend, engineIndex = NativeAudioBridge.ENGINE_FADER)
-        } else {
-            NativeAudioBridge.safePitchBend(targetChannel.coerceIn(0, 8), midiBend, engineIndex = NativeAudioBridge.ENGINE_FADER)
-        }
+        val ch = if (targetChannel == 9) NativeAudioBridge.CHANNEL_TONIC_PAD else targetChannel.coerceIn(0, 8)
+        NativeAudioBridge.safePitchBend(ch, midiBend, engineIndex = NativeAudioBridge.ENGINE_FADER)
     }
 
     // -------------------------------------------------------------
@@ -589,7 +565,6 @@ class AudioEngine(private val context: Context) {
         sustainedNotesToRelease.clear()
         for (ch in 0..15) {
             NativeAudioBridge.safeAllNotesOff(ch, NativeAudioBridge.ENGINE_FADER)
-            NativeAudioBridge.safeAllNotesOff(ch, NativeAudioBridge.ENGINE_PAD)
         }
         NativeAudioBridge.safeStopAllDrumSamples()
         for (ch in 0..9) {

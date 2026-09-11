@@ -65,11 +65,8 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_listPresets(
         jobject /* this */,
         jint soundFontId) {
     
-    // Search all engines (FADER, PAD) to find the presets for the given soundFontId
+    // Search unified engine to find the presets for the given soundFontId
     std::vector<NativePresetInfo> presets = gAudioEngine.getEngine(0).listPresets(soundFontId);
-    if (presets.empty()) {
-        presets = gAudioEngine.getEngine(1).listPresets(soundFontId);
-    }
     
     jclass presetInfoClass = env->FindClass("com/soundstage/mixer/audio/PresetInfo");
     if (presetInfoClass == nullptr) return nullptr;

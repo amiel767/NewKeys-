@@ -45,8 +45,8 @@ inline int fluid_synth_get_polyphony(fluid_synth_t*) { return 0; }
 #include <string>
 #include <vector>
 
-constexpr int kFaderPolyphony = 64;
-constexpr int kPadPolyphony = 128;
+constexpr int kFaderPolyphony = 128;
+constexpr int kPadPolyphony = 64;
 
 struct NativePresetInfo {
     int bank;

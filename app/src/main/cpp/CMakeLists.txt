@@ -2,6 +2,15 @@ cmake_minimum_required(VERSION 3.22.1)
 
 project("dawstudio")
 
+# Maximum performance flags: -O3, vectorization, loop unrolling
+add_compile_options(-O3 -funroll-loops)
+if(ANDROID_ABI STREQUAL "armeabi-v7a")
+    add_compile_options(-mfpu=neon -mfloat-abi=softfp)
+elseif(ANDROID_ABI STREQUAL "arm64-v8a")
+    # ARMv8 includes NEON SIMD by default; enable fp-armv8
+    add_compile_options(-march=armv8-a+simd)
+endif()
+
 # FluidSynth compilé depuis les sources (submodule git à ajouter séparément,
 # voir section "Étape manuelle requise" plus bas). Toutes les fonctionnalités
 # non nécessaires sont désactivées pour minimiser la mémoire utilisée.

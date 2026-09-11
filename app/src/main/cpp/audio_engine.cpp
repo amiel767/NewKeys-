@@ -78,13 +78,14 @@ bool AudioEngine::openAndStartStream() {
     }
 
     int burst = mStream->getFramesPerBurst();
-    int targetBuffer = std::max(512, burst * 4);
+    int reqBuffer = mConfiguredBufferSize.load(std::memory_order_relaxed);
+    int targetBuffer = (burst > 0) ? std::max(reqBuffer, burst * 2) : reqBuffer;
     mStream->setBufferSizeInFrames(targetBuffer);
     int sampleRate = mStream->getSampleRate();
     mSampleRate = sampleRate;
 
-    LOGI("Audio stream opened: %d Hz, %d frames/burst, buffer set to %d frames.", 
-        sampleRate, burst, targetBuffer);
+    LOGI("Audio stream opened: %d Hz, %d frames/burst, buffer set to %d frames (requested: %d).", 
+        sampleRate, burst, targetBuffer, reqBuffer);
 
     // Initialize all DSP blocks with active sample rate
     mMasterDelay.init(sampleRate);
@@ -94,12 +95,9 @@ bool AudioEngine::openAndStartStream() {
     mPadFilter.setLowPass(static_cast<float>(sampleRate), 400.0f * std::pow(45.0f, mPadBrightness), 0.707f);
     mDrumSampler.init(sampleRate);
 
-    // Initialize FluidSynth engines (0 = Fader with kFaderPolyphony=64, 1 = Pad with kPadPolyphony=128)
-    if (!mEngines[0].isInitialized()) {
-        mEngines[0].init(sampleRate, kFaderPolyphony, "FaderEngine");
-    }
-    if (!mEngines[1].isInitialized()) {
-        mEngines[1].init(sampleRate, kPadPolyphony, "PadEngine");
+    // Initialize unified FluidSynth engine (16 MIDI channels covering Tracks 1..8, Drum 8, TonicPad 9)
+    if (!mSynthEngine.isInitialized()) {
+        mSynthEngine.init(sampleRate, kFaderPolyphony, "UnifiedSynthEngine");
     }
 
     result = mStream->requestStart();
@@ -134,10 +132,8 @@ void AudioEngine::stop() {
             mStream.reset();
         }
     }
-    for (int i = 0; i < 2; ++i) {
-        mEngines[i].destroy();
-    }
-    LOGI("Audio engine stopped and all synth instances destroyed");
+    mSynthEngine.destroy();
+    LOGI("Audio engine stopped and unified synth instance destroyed");
 }
 
 void AudioEngine::setDriver(int driverType) {
@@ -149,18 +145,20 @@ void AudioEngine::setDriver(int driverType) {
 }
 
 void AudioEngine::setBufferSize(int bufferSizeInFrames) {
+    int clampedReq = std::clamp(bufferSizeInFrames, 64, 4096);
+    mConfiguredBufferSize.store(clampedReq, std::memory_order_relaxed);
     std::lock_guard<std::mutex> streamLock(mStreamMutex);
     if (mStream) {
         int32_t burst = mStream->getFramesPerBurst();
-        int32_t targetFrames = bufferSizeInFrames;
+        int32_t targetFrames = clampedReq;
         if (burst > 0) {
-            int32_t numBursts = std::max(4, (targetFrames + burst - 1) / burst);
+            int32_t numBursts = std::max(2, (targetFrames + burst - 1) / burst);
             targetFrames = numBursts * burst;
         }
         int clamped = std::clamp(targetFrames, 64, 4096);
         auto res = mStream->setBufferSizeInFrames(clamped);
         if (res) {
-            LOGI("Oboe buffer size set to %d frames (burst: %d, actual: %d)", clamped, burst, res.value());
+            LOGI("Oboe buffer size set to %d frames (burst: %d, actual: %d, requested: %d)", clamped, burst, res.value(), clampedReq);
         } else {
             LOGE("Failed to set Oboe buffer size: %s", oboe::convertToText(res.error()));
         }
@@ -202,12 +200,7 @@ void AudioEngine::setPadBrightness(float brightness) {
 }
 
 bool AudioEngine::hasActiveSoundFonts() const {
-    for (int i = 0; i < 2; ++i) {
-        if (mEngines[i].isInitialized()) {
-            return true;
-        }
-    }
-    return false;
+    return mSynthEngine.isInitialized();
 }
 
 int AudioEngine::renderDirect(int16_t *outputBuffer16, int32_t numFrames) {
@@ -222,10 +215,8 @@ int AudioEngine::renderDirect(int16_t *outputBuffer16, int32_t numFrames) {
 
     // Ensure sample rate and DSP are initialized
     int sampleRate = mSampleRate > 0 ? mSampleRate : 48000;
-    for (int i = 0; i < 2; ++i) {
-        if (!mEngines[i].isInitialized()) {
-            mEngines[i].init(sampleRate);
-        }
+    if (!mSynthEngine.isInitialized()) {
+        mSynthEngine.init(sampleRate);
     }
 
     size_t totalSamples = static_cast<size_t>(numFrames * 2);
@@ -234,20 +225,10 @@ int AudioEngine::renderDirect(int16_t *outputBuffer16, int32_t numFrames) {
     }
     float *floatBuf = mFloatRenderBuffer.data();
 
-    // 1. Render FaderEngine (mixer channels 0..7)
-    mEngines[0].renderStereo(floatBuf, numFrames, false);
+    // 1. Render unified 16-channel SoundFont engine (Faders 0..7, Drum 8, TonicPad 9)
+    mSynthEngine.renderStereo(floatBuf, numFrames, false);
 
-    // 2. Mix PadEngine (Tonic Pad) through Brightness Filter
-    if (mPadRenderBuffer.size() < totalSamples) {
-        mPadRenderBuffer.resize(totalSamples, 0.0f);
-    }
-    mEngines[1].renderStereo(mPadRenderBuffer.data(), numFrames, false);
-    mPadFilter.process(mPadRenderBuffer.data(), numFrames);
-    for (size_t i = 0; i < totalSamples; ++i) {
-        floatBuf[i] += mPadRenderBuffer[i];
-    }
-
-    // 3. Mix Dedicated SamplePlaybackEngine (DrumPad)
+    // 2. Mix Dedicated SamplePlaybackEngine (DrumPad PCM WAVs)
     mDrumSampler.renderStereo(floatBuf, numFrames, true);
 
     if (!mBypassMasterFX.load(std::memory_order_relaxed)) {
@@ -257,25 +238,25 @@ int AudioEngine::renderDirect(int16_t *outputBuffer16, int32_t numFrames) {
             if (absVal > maxAbs) maxAbs = absVal;
         }
 
-        // 4. Apply Master Delay
+        // 3. Apply Master Delay
         mMasterDelay.process(floatBuf, numFrames);
 
-        // 5. Apply Master Reverb, SoundGoodizer & Punch (bypassed if silent to save CPU)
+        // 4. Apply Master Reverb, SoundGoodizer & Punch (bypassed if silent to save CPU)
         if (maxAbs > 0.0001f) {
             mMasterReverb.process(floatBuf, numFrames);
             mSoundGoodizer.process(floatBuf, numFrames);
             mMasterPunch.process(floatBuf, numFrames);
         }
 
-        // 8. Apply Spatial Stereo Widener
+        // 5. Apply Spatial Stereo Widener
         mSpatialWidener.process(floatBuf, numFrames);
 
-        // 9. Apply Master 3-Band Biquad EQ
+        // 6. Apply Master 3-Band Biquad EQ
         mEqLow.process(floatBuf, numFrames);
         mEqMid.process(floatBuf, numFrames);
         mEqHigh.process(floatBuf, numFrames);
 
-        // 10. Master Soft-Clipping Maximizer / Limiter
+        // 7. Master Soft-Clipping Maximizer / Limiter
         for (size_t i = 0; i < totalSamples; ++i) {
             float x = floatBuf[i] * 1.8f;
             if (x > 0.95f) {
@@ -330,20 +311,10 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
         }
         float *floatBuf = mFloatRenderBuffer.data();
 
-        // 1. Render FaderEngine (mixer channels 0..7)
-        mEngines[0].renderStereo(floatBuf, numFrames, false);
+        // 1. Render unified 16-channel Soundfont engine (tracks 0..7, Drum 8, TonicPad 9)
+        mSynthEngine.renderStereo(floatBuf, numFrames, false);
 
-        // 2. Mix PadEngine (Tonic Pad) through Brightness Filter
-        if (mPadRenderBuffer.size() < totalSamples) {
-            mPadRenderBuffer.resize(totalSamples, 0.0f);
-        }
-        mEngines[1].renderStereo(mPadRenderBuffer.data(), numFrames, false);
-        mPadFilter.process(mPadRenderBuffer.data(), numFrames);
-        for (size_t i = 0; i < totalSamples; ++i) {
-            floatBuf[i] += mPadRenderBuffer[i];
-        }
-
-        // 3. Mix Dedicated SamplePlaybackEngine (DrumPad)
+        // 2. Mix Dedicated SamplePlaybackEngine (DrumPad PCM WAVs)
         mDrumSampler.renderStereo(floatBuf, numFrames, true);
 
         if (!mBypassMasterFX.load(std::memory_order_relaxed)) {
@@ -353,25 +324,25 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
                 if (absVal > maxAbs) maxAbs = absVal;
             }
 
-            // 4. Apply Master Delay
+            // 3. Apply Master Delay
             mMasterDelay.process(floatBuf, numFrames);
 
-            // 5. Apply Master Reverb, SoundGoodizer & Punch (bypassed if silent)
+            // 4. Apply Master Reverb, SoundGoodizer & Punch (bypassed if silent)
             if (maxAbs > 0.0001f) {
                 mMasterReverb.process(floatBuf, numFrames);
                 mSoundGoodizer.process(floatBuf, numFrames);
                 mMasterPunch.process(floatBuf, numFrames);
             }
 
-            // 8. Apply Spatial Stereo Widener
+            // 5. Apply Spatial Stereo Widener
             mSpatialWidener.process(floatBuf, numFrames);
 
-            // 9. Apply Master 3-Band Biquad EQ
+            // 6. Apply Master 3-Band Biquad EQ
             mEqLow.process(floatBuf, numFrames);
             mEqMid.process(floatBuf, numFrames);
             mEqHigh.process(floatBuf, numFrames);
 
-            // 10. Master Soft-Clipping Maximizer / Limiter
+            // 7. Master Soft-Clipping Maximizer / Limiter
             for (size_t i = 0; i < totalSamples; ++i) {
                 float x = floatBuf[i] * 1.8f;
                 if (x > 0.95f) {
@@ -391,22 +362,12 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
         }
     } else {
         auto *outputBuffer = static_cast<float *>(audioData);
-
-        // 1. Render FaderEngine (mixer channels 0..7)
-        mEngines[0].renderStereo(outputBuffer, numFrames, false);
-
-        // 2. Mix PadEngine (Tonic Pad) through Brightness Filter
         size_t totalSamples = static_cast<size_t>(numFrames * 2);
-        if (mPadRenderBuffer.size() < totalSamples) {
-            mPadRenderBuffer.resize(totalSamples, 0.0f);
-        }
-        mEngines[1].renderStereo(mPadRenderBuffer.data(), numFrames, false);
-        mPadFilter.process(mPadRenderBuffer.data(), numFrames);
-        for (size_t i = 0; i < totalSamples; ++i) {
-            outputBuffer[i] += mPadRenderBuffer[i];
-        }
 
-        // 3. Mix Dedicated SamplePlaybackEngine (DrumPad)
+        // 1. Render unified 16-channel Soundfont engine (tracks 0..7, Drum 8, TonicPad 9)
+        mSynthEngine.renderStereo(outputBuffer, numFrames, false);
+
+        // 2. Mix Dedicated SamplePlaybackEngine (DrumPad PCM WAVs)
         mDrumSampler.renderStereo(outputBuffer, numFrames, true);
 
         if (!mBypassMasterFX.load(std::memory_order_relaxed)) {
@@ -416,25 +377,25 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
                 if (absVal > maxAbs) maxAbs = absVal;
             }
 
-            // 4. Apply Master Delay
+            // 3. Apply Master Delay
             mMasterDelay.process(outputBuffer, numFrames);
 
-            // 5. Apply Master Reverb, SoundGoodizer & Punch (bypassed if silent)
+            // 4. Apply Master Reverb, SoundGoodizer & Punch (bypassed if silent)
             if (maxAbs > 0.0001f) {
                 mMasterReverb.process(outputBuffer, numFrames);
                 mSoundGoodizer.process(outputBuffer, numFrames);
                 mMasterPunch.process(outputBuffer, numFrames);
             }
 
-            // 8. Apply Spatial Stereo Widener
+            // 5. Apply Spatial Stereo Widener
             mSpatialWidener.process(outputBuffer, numFrames);
 
-            // 9. Apply Master 3-Band Biquad EQ (Low Shelf, Mid Peaking, High Shelf)
+            // 6. Apply Master 3-Band Biquad EQ (Low Shelf, Mid Peaking, High Shelf)
             mEqLow.process(outputBuffer, numFrames);
             mEqMid.process(outputBuffer, numFrames);
             mEqHigh.process(outputBuffer, numFrames);
 
-            // 10. Master Soft-Clipping Maximizer / Limiter (Boosts low Soundfont volume cleanly without clipping)
+            // 7. Master Soft-Clipping Maximizer / Limiter (Boosts low Soundfont volume cleanly without clipping)
             for (size_t i = 0; i < totalSamples; ++i) {
                 float x = outputBuffer[i] * 1.8f; // Clean 1.8x volume boost
                 if (x > 0.95f) {
@@ -453,12 +414,7 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
 
     static int sLogCounter = 0;
     if (++sLogCounter % 500 == 0 || durationUs > 3500) {
-        int totalActiveVoices = 0;
-        for (int i = 0; i < 2; ++i) {
-            if (mEngines[i].isInitialized()) {
-                totalActiveVoices += mEngines[i].getActiveVoiceCount();
-            }
-        }
+        int totalActiveVoices = mSynthEngine.getActiveVoiceCount();
         int sr = mSampleRate > 0 ? mSampleRate : 48000;
         LOGI("AudioCallback render duration: %ld us (budget: %d us, active voices: %d, frames: %d)",
              (long)durationUs, (numFrames * 1000000 / sr), totalActiveVoices, numFrames);

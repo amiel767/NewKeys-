@@ -516,7 +516,7 @@ private fun BufferPolyphonySubPage(
     onSelectPolyphony: (Int) -> Unit,
     onBack: () -> Unit
 ) {
-    val bufferSizes = listOf(64, 128, 256, 512)
+    val bufferSizes = listOf(64, 128, 256, 512, 1024)
     val polyphonyValues = listOf(64, 128, 256, 512)
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -566,7 +566,8 @@ private fun BufferPolyphonySubPage(
                                     64 -> "~1.4 ms"
                                     128 -> "~2.9 ms"
                                     256 -> "~5.8 ms"
-                                    else -> "~11.6 ms"
+                                    512 -> "~11.6 ms"
+                                    else -> "~23.2 ms"
                                 }
                                 Box(
                                     modifier = Modifier
