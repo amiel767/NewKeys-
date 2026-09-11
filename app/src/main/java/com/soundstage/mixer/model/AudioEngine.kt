@@ -514,13 +514,13 @@ class AudioEngine(private val context: Context) {
                     isSustainPedalDown = pedalPressed
 
                     if (!pedalPressed) {
-                        // Sustain pedal released: immediately flush and send NoteOff for all sustained notes across all channels!
+                        // Sustain pedal released: immediately flush and send NoteOff for all sustained notes across channels (excluding channel 9 Tonic Pad)
                         val notesToRelease = ArrayList(sustainedNotesToRelease)
                         sustainedNotesToRelease.clear()
 
                         for (note in notesToRelease) {
                             if (!activeHeldNotes.contains(note)) {
-                                for (ch in 0..9) {
+                                for (ch in 0..8) { // Channels 0..8 (Instruments & Drums), Tonic Pad 9 is independent
                                     stopMidiNote(note, ch)
                                 }
                                 coroutineScope.launch(Dispatchers.Main) {
@@ -545,7 +545,7 @@ class AudioEngine(private val context: Context) {
             sustainedNotesToRelease.clear()
             for (note in notesToRelease) {
                 if (!activeHeldNotes.contains(note)) {
-                    for (ch in 0..9) {
+                    for (ch in 0..8) { // Exclude Tonic Pad 9
                         stopMidiNote(note, ch)
                     }
                     coroutineScope.launch(Dispatchers.Main) {
@@ -576,7 +576,8 @@ class AudioEngine(private val context: Context) {
 
     private fun handleNoteOffDirect(targetChannel: Int, note: Int) {
         activeHeldNotes.remove(note)
-        if (isSustainPedalDown) {
+        // Tonic Pad (channel 9) is explicitly immune to sustain pedal holding
+        if (isSustainPedalDown && targetChannel != NativeAudioBridge.CHANNEL_TONIC_PAD && targetChannel != 9) {
             sustainedNotesToRelease.add(note)
         } else {
             stopMidiNote(note, targetChannel)
@@ -654,14 +655,36 @@ class AudioEngine(private val context: Context) {
                             outputPort?.connect(object : MidiReceiver() {
                                 override fun onSend(msg: ByteArray?, offset: Int, count: Int, timestamp: Long) {
                                     if (disabledMidiDeviceIds.contains(devIdStr)) return
-                                    if (msg == null || count < 2) return
-                                    val status = (msg[offset].toInt() and 0xFF)
-                                    val command = status and 0xF0
-                                    val channel = status and 0x0F
-                                    val data1 = if (count > 1) (msg[offset + 1].toInt() and 0x7F) else 0
-                                    val data2 = if (count > 2) (msg[offset + 2].toInt() and 0x7F) else 0
-
-                                    handleIncomingMidi(channel, command, data1, data2)
+                                    if (msg == null || count == 0) return
+                                    
+                                    var i = offset
+                                    val end = offset + count
+                                    while (i < end) {
+                                        val status = msg[i].toInt() and 0xFF
+                                        if (status >= 0xF8) {
+                                            i++
+                                            continue
+                                        }
+                                        
+                                        if (status >= 0x80 && status < 0xF0) {
+                                            var command = status and 0xF0
+                                            val channel = status and 0x0F
+                                            val hasTwoDataBytes = (command != 0xC0 && command != 0xD0)
+                                            
+                                            val data1 = if (i + 1 < end) (msg[i + 1].toInt() and 0x7F) else 0
+                                            val data2 = if (hasTwoDataBytes && i + 2 < end) (msg[i + 2].toInt() and 0x7F) else 0
+                                            
+                                            // Core fix: explicitly convert Note On with velocity 0 to Note Off
+                                            if (command == 0x90 && data2 == 0) {
+                                                command = 0x80
+                                            }
+                                            
+                                            handleIncomingMidi(channel, command, data1, data2)
+                                            i += if (hasTwoDataBytes) 3 else 2
+                                        } else {
+                                            i++
+                                        }
+                                    }
                                 }
                             })
                         }

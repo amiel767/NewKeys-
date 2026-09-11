@@ -102,17 +102,20 @@ fun VirtualPianoKeyboard(
     } else {
         0.dp
     }
-    val currentMapperHeight = if (isLayerMapperExpanded) expandedMapperHeight else compactMapperHeight
-    // Height reduced by 25%: Base keys height is 90.dp (was 120.dp)
-    val keysHeight = if (isLayerMapperExpanded) 68.dp else (90.dp - compactMapperHeight)
-    val totalTargetHeight = if (isLayerMapperExpanded) (keysHeight + expandedMapperHeight + 2.dp) else 90.dp
+    
+    // Constant key height ensures keys don't jitter or compress when expanding layers
+    val keysHeight = 90.dp
+    val targetMapperHeight = if (isLayerMapperExpanded) expandedMapperHeight else compactMapperHeight
+    val animatedMapperHeight by animateDpAsState(
+        targetValue = targetMapperHeight,
+        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+        label = "mapperHeight"
+    )
+    val totalTargetHeight = keysHeight + targetMapperHeight + 2.dp
 
     val animatedKeyboardHeight by animateDpAsState(
         targetValue = totalTargetHeight,
-        animationSpec = spring(
-            dampingRatio = 0.84f,
-            stiffness = Spring.StiffnessMediumLow
-        ),
+        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
         label = "kbHeight"
     )
 
@@ -169,7 +172,7 @@ fun VirtualPianoKeyboard(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(currentMapperHeight)
+                            .height(animatedMapperHeight)
                     ) {
                         Spacer(modifier = Modifier.width(46.dp))
 

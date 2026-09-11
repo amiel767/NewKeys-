@@ -1,9 +1,11 @@
 package com.soundstage.mixer.ui.components
 
 import androidx.compose.animation.*
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -46,6 +48,7 @@ import com.soundstage.mixer.ui.theme.*
  * - Ultra-compact AOSP preference rows with title, date and radio selector.
  * - Saves scenes to app scene storage.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SceneDialog(
     isOpen: Boolean,
@@ -311,7 +314,10 @@ fun SceneDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(if (isSelected) Color(0x1800E5FF) else Color.Transparent)
-                                .clickable { onSelectScene(scene.id) }
+                                .combinedClickable(
+                                    onClick = { onSelectScene(scene.id) },
+                                    onLongClick = { pendingDeleteSceneId = scene.id }
+                                )
                                 .padding(horizontal = 10.dp, vertical = 7.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -342,39 +348,43 @@ fun SceneDialog(
                             }
 
                             // Minimalist Trash Icon Button for Scene Deletion
-                            Box(
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isDeletePrompt) MuteRed else Color(0x12FFFFFF))
-                                    .clickable {
-                                        if (isDeletePrompt) {
+                            AnimatedVisibility(
+                                visible = isDeletePrompt,
+                                enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
+                                exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .clip(CircleShape)
+                                        .background(MuteRed)
+                                        .clickable {
                                             onDeleteScene(scene.id)
                                             pendingDeleteSceneId = null
-                                        } else {
-                                            pendingDeleteSceneId = scene.id
-                                        }
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = if (isDeletePrompt) Icons.Default.Check else Icons.Default.Delete,
-                                    contentDescription = if (isDeletePrompt) "Confirmer" else "Supprimer",
-                                    tint = if (isDeletePrompt) Color.White else Color(0xFFB0B3C0),
-                                    modifier = Modifier.size(12.dp)
-                                )
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "Supprimer",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                }
                             }
 
                             // AOSP Radio Button
-                            RadioButton(
-                                selected = isSelected,
-                                onClick = { onSelectScene(scene.id) },
-                                colors = RadioButtonDefaults.colors(
-                                    selectedColor = NeonCyan,
-                                    unselectedColor = Color(0xFF6E7179)
-                                ),
-                                modifier = Modifier.size(18.dp)
-                            )
+                            if (!isDeletePrompt) {
+                                RadioButton(
+                                    selected = isSelected,
+                                    onClick = { onSelectScene(scene.id) },
+                                    colors = RadioButtonDefaults.colors(
+                                        selectedColor = NeonCyan,
+                                        unselectedColor = Color(0xFF6E7179)
+                                    ),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     }
                 }

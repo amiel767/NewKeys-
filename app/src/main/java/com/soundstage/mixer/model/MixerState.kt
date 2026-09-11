@@ -144,7 +144,7 @@ data class LoopFile(
     val bpm: Int = 120,
     val startMs: Int = 0,
     val endMs: Int = 0,
-    val beats: Int = 4,
+    val beats: Int = 0,
     val startStep: Int = 1,
     val endStep: Int = 16
 )

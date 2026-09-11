@@ -17,6 +17,8 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -442,16 +444,17 @@ private fun MainDrumPadSquareContent(
                         if (onImportAudioFile != null) {
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
+                                    .size(24.dp)
+                                    .clip(CircleShape)
                                     .background(NeonCyan)
-                                    .clickable { onImportAudioFile() }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    .clickable { onImportAudioFile() },
+                                contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = "+ Importer (.wav/.mp3)",
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF0F2537)
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "Importer (.wav/.mp3)",
+                                    tint = Color(0xFF0F2537),
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
                         }
@@ -736,41 +739,51 @@ private fun DrumSoundfontPickerSubView(
         Spacer(modifier = Modifier.height(6.dp))
 
         if (soundTab == "presets") {
-            val presetsList = if (loadedSf2Presets.isNotEmpty()) loadedSf2Presets else listOf(
-                SoundfontPreset(0, "Standard Drum Kit", 128),
-                SoundfontPreset(1, "Electronic Drum Kit", 128),
-                SoundfontPreset(2, "Power Drum Kit", 128),
-                SoundfontPreset(3, "Synth Bass & Kick", 0),
-                SoundfontPreset(4, "Percussion Set", 128)
-            )
-
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                items(presetsList) { preset ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0x0EFFFFFF))
-                            .border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(8.dp))
-                            .clickable { onSelectPreset(preset) }
-                            .padding(horizontal = 10.dp, vertical = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column {
-                            Text(text = preset.name, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                            Text(text = "Bank: ${preset.bankNumber} · Preset: ${preset.id}", fontSize = 8.5.sp, color = TextDim2)
-                        }
-                        Box(
+            if (loadedSf2Presets.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0x08FFFFFF)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Aucun preset disponible.\nSélectionnez un fichier dans l'onglet Soundfonts (.sf2)",
+                        fontSize = 10.sp,
+                        color = TextDim,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    items(loadedSf2Presets) { preset ->
+                        Row(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(Color(0x2200E5FF))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0x0EFFFFFF))
+                                .border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(8.dp))
+                                .clickable { onSelectPreset(preset) }
+                                .padding(horizontal = 10.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text(text = "Charger", fontSize = 8.5.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
+                            Column {
+                                Text(text = preset.name, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                                Text(text = "Bank: ${preset.bankNumber} · Preset: ${preset.id}", fontSize = 8.5.sp, color = TextDim2)
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(Color(0x2200E5FF))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(text = "Charger", fontSize = 8.5.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }

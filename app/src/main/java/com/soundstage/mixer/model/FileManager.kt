@@ -703,10 +703,16 @@ class FileManager(private val context: Context) {
         }
     }
 
-    suspend fun deleteSceneFile(filePath: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun deleteSceneFile(sceneIdentifier: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            val file = File(filePath)
-            if (file.exists()) file.delete() else false
+            val file = File(sceneIdentifier)
+            if (file.exists()) {
+                file.delete()
+            } else {
+                val cleanName = sceneIdentifier.replace(Regex("[^a-zA-Z0-9.\\-_\\s]"), "").trim()
+                val namedFile = File(scenesDir, "$cleanName.scene")
+                if (namedFile.exists()) namedFile.delete() else false
+            }
         } catch (e: Exception) {
             e.printStackTrace()
             false

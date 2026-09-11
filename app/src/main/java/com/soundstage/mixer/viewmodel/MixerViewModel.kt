@@ -62,7 +62,7 @@ data class MixerUiState(
     val editingLoopFile: LoopFile? = null,
     val loopEditorStartMs: Int = 0,
     val loopEditorEndMs: Int = 0,
-    val loopEditorBeats: Int = 4,
+    val loopEditorBeats: Int = 0,
     val loopEditorStartStep: Int = 1,
     val loopEditorEndStep: Int = 16,
     

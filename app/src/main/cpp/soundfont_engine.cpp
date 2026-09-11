@@ -141,8 +141,20 @@ std::vector<NativePresetInfo> SoundfontEngine::listPresets(int soundFontId) {
         int bankNum = fluid_preset_get_banknum(preset);
         const char* name = fluid_preset_get_name(preset);
         if (presetNum >= 0 && presetNum <= 127 && bankNum >= 0 && name != nullptr) {
+            std::string nameStr(name);
+            // Trim leading/trailing whitespace and control chars
+            size_t start = nameStr.find_first_not_of(" \t\r\n\0");
+            size_t end = nameStr.find_last_not_of(" \t\r\n\0");
+            if (start == std::string::npos) continue;
+            std::string trimmed = nameStr.substr(start, end - start + 1);
+            if (trimmed.empty() || trimmed == "EOP" || trimmed == "EOS" || trimmed == "End of Presets") continue;
+            
+            std::string lowerTrimmed = trimmed;
+            std::transform(lowerTrimmed.begin(), lowerTrimmed.end(), lowerTrimmed.begin(), ::tolower);
+            if (lowerTrimmed == "unused" || lowerTrimmed == "empty" || lowerTrimmed == "blank" || lowerTrimmed == "null") continue;
+
             NativePresetInfo info;
-            info.name = name;
+            info.name = trimmed;
             info.bank = bankNum;
             info.preset = presetNum;
             result.push_back(info);
@@ -249,6 +261,15 @@ void SoundfontEngine::allNotesOff(int channel) {
     ev.channel = channel;
     ev.note = 0;
     ev.velocity = 0;
+    mEventQueue.push(ev);
+}
+
+void SoundfontEngine::sendCC(int channel, int cc, int value) {
+    EngineMidiEvent ev;
+    ev.type = EngineMidiEvent::CC;
+    ev.channel = channel;
+    ev.param1 = cc;
+    ev.param2 = value;
     mEventQueue.push(ev);
 }
 

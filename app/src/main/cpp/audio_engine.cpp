@@ -197,6 +197,10 @@ void AudioEngine::setPadBrightness(float brightness) {
     float sr = static_cast<float>(mSampleRate > 0 ? mSampleRate : 48000);
     float f0 = 400.0f * std::pow(45.0f, mPadBrightness);
     mPadFilter.setLowPass(sr, f0, 0.707f);
+    
+    // MIDI CC 74 (Sound Timbre / Filter Cutoff) directly sent to Tonic Pad channel 9
+    int cc74Val = static_cast<int>(mPadBrightness * 127.0f);
+    mSynthEngine.sendCC(9, 74, cc74Val);
 }
 
 bool AudioEngine::hasActiveSoundFonts() const {
@@ -256,15 +260,15 @@ int AudioEngine::renderDirect(int16_t *outputBuffer16, int32_t numFrames) {
         mEqMid.process(floatBuf, numFrames);
         mEqHigh.process(floatBuf, numFrames);
 
-        // 7. Master Soft-Clipping Maximizer / Limiter
+        // 7. Master Studio Peak Limiter / Ceiling (-0.3 dBFS = 0.965 max amplitude)
+        // Provides clean, massive headroom without harsh clipping or harmonic distortion
         for (size_t i = 0; i < totalSamples; ++i) {
-            float x = floatBuf[i] * 1.8f;
-            if (x > 0.95f) {
-                floatBuf[i] = 0.95f + 0.05f * tanhf((x - 0.95f) / 0.05f);
-            } else if (x < -0.95f) {
-                floatBuf[i] = -0.95f + 0.05f * tanhf((x + 0.95f) / 0.05f);
-            } else {
-                floatBuf[i] = x;
+            float s = floatBuf[i];
+            float absVal = std::abs(s);
+            if (absVal > 0.96f) {
+                float excess = absVal - 0.96f;
+                float compressed = 0.96f + 0.035f * (1.0f - std::exp(-excess / 0.04f));
+                floatBuf[i] = (s >= 0.0f) ? compressed : -compressed;
             }
         }
     }
@@ -395,15 +399,15 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
             mEqMid.process(outputBuffer, numFrames);
             mEqHigh.process(outputBuffer, numFrames);
 
-            // 7. Master Soft-Clipping Maximizer / Limiter (Boosts low Soundfont volume cleanly without clipping)
+            // 7. Master Studio Peak Limiter / Ceiling (-0.3 dBFS = 0.965 max amplitude)
+            // Provides clean, massive headroom without harsh clipping or harmonic distortion
             for (size_t i = 0; i < totalSamples; ++i) {
-                float x = outputBuffer[i] * 1.8f; // Clean 1.8x volume boost
-                if (x > 0.95f) {
-                    outputBuffer[i] = 0.95f + 0.05f * tanhf((x - 0.95f) / 0.05f);
-                } else if (x < -0.95f) {
-                    outputBuffer[i] = -0.95f + 0.05f * tanhf((x + 0.95f) / 0.05f);
-                } else {
-                    outputBuffer[i] = x;
+                float s = outputBuffer[i];
+                float absVal = std::abs(s);
+                if (absVal > 0.96f) {
+                    float excess = absVal - 0.96f;
+                    float compressed = 0.96f + 0.035f * (1.0f - std::exp(-excess / 0.04f));
+                    outputBuffer[i] = (s >= 0.0f) ? compressed : -compressed;
                 }
             }
         }

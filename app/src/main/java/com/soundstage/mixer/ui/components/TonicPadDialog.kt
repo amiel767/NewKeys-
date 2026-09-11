@@ -364,39 +364,49 @@ private fun TonicPadContent(
                 Spacer(modifier = Modifier.height(6.dp))
 
                 if (soundTab == "presets") {
-                    // Instruments list in current .sf2
-                    val presetsList = if (loadedSf2Presets.isNotEmpty()) loadedSf2Presets else listOf(
-                        SoundfontPreset(0, "Worship Warm Pad", 0),
-                        SoundfontPreset(1, "Deep Shimmer Drone", 0),
-                        SoundfontPreset(2, "Celestial Choir Pad", 0),
-                        SoundfontPreset(3, "Soft Analog Strings", 0),
-                        SoundfontPreset(4, "Glass Bell Ambience", 0)
-                    )
-
-                    LazyColumn(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        items(presetsList) { preset ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color(0x0EFFFFFF))
-                                    .border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(8.dp))
-                                    .clickable {
-                                        onSelectPreset(preset)
-                                        onToggleSoundPicker(false)
+                    // Real instruments list in current loaded .sf2
+                    if (loadedSf2Presets.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0x08FFFFFF)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Aucun preset disponible.\nSélectionnez un fichier dans l'onglet Soundfonts (.sf2)",
+                                fontSize = 10.sp,
+                                color = TextDim,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            items(loadedSf2Presets) { preset ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color(0x0EFFFFFF))
+                                        .border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            onSelectPreset(preset)
+                                            onToggleSoundPicker(false)
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column {
+                                        Text(text = preset.name, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                                        Text(text = "Bank: ${preset.bankNumber} · Preset: ${preset.id}", fontSize = 8.5.sp, color = TextDim2)
                                     }
-                                    .padding(horizontal = 10.dp, vertical = 7.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column {
-                                    Text(text = preset.name, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                                    Text(text = "Bank: ${preset.bankNumber} · Preset: ${preset.id}", fontSize = 8.5.sp, color = TextDim2)
+                                    Text(text = "Charger", fontSize = 9.sp, color = NeonPurpleLight, fontWeight = FontWeight.Bold)
                                 }
-                                Text(text = "Charger", fontSize = 9.sp, color = NeonPurpleLight, fontWeight = FontWeight.Bold)
                             }
                         }
                     }

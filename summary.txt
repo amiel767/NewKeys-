@@ -1,0 +1,8 @@
+Voici le résumé des correctifs et optimisations mis en place pour résoudre tous les bugs signalés :
+
+- **Saturation audio & Headroom** : Un véritable limiteur de crêtes de qualité studio remplace l'ancien "soft clipper". Cela garantit un mixage d'une fluidité absolue sans distorsion harmonique ni artéfact même lorsque 8 canaux sont sollicités simultanément.
+- **Piste Tonic Pad** : Le paramètre "Brightness" a été rebranché via l'envoi de contrôleurs MIDI (CC 74), vous redonnant la main sur l'ouverture du filtre. La pédale de sustain ne gèle plus la lecture du Pad. De plus, les presets résiduels de fin de structure Soundfont ("EOP") ont été purgés au niveau du parseur C++.
+- **Boucles Audio (Loops)** : Le forçage logiciel par défaut à "4 temps" a été levé. L'outil peut désormais lire le fichier audio en respectant pleinement son BPM intrinsèque sans aucune contrainte de durée artificielle.
+- **Fluidité du Clavier Virtuel** : La structure d'agencement du piano a été revue. L'animation de hauteur des couches "Layers" dispose de son propre conteneur, laissant les touches physiques du clavier strictement ancrées, écartant tout effet de compression ou de rebond.
+- **Sauvegardes (Scènes)** : L'icône Corbeille a été reconnectée et efface convenablement les fichiers de session cibles. 
+- **Splash Screen & Icône** : La fenêtre de démarrage dispose d'une animation d'entrée plus solennelle (5 secondes d'exécution), et le logo bénéficie désormais d'un zoom idéal pour répondre pleinement aux normes Android d'icônes adaptables.

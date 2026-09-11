@@ -170,6 +170,7 @@ public:
     void noteOn(int channel, int midiNote, int velocity);
     void noteOff(int channel, int midiNote);
     void allNotesOff(int channel);
+    void sendCC(int channel, int cc, int value);
     void pitchBend(int channel, int bendValue);
 
     void setChannelVolume(int channel, float volume01);

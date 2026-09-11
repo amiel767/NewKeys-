@@ -38,11 +38,11 @@ fun LiveKeysSplashScreen(
     var startFadeIn by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        delay(80)
+        delay(100)
         startFadeIn = true
-        delay(2100)
+        delay(4000)
         isVisible = false
-        delay(350)
+        delay(900)
         onFinished()
     }
 

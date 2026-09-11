@@ -635,7 +635,7 @@ private fun LoopListContent(
                                             overflow = TextOverflow.Ellipsis
                                         )
                                         Text(
-                                            text = "${file.beats}T · ${file.bpm} BPM · ${file.duration}",
+                                            text = if (file.beats > 0) "${file.beats}T · ${file.bpm} BPM · ${file.duration}" else "${file.bpm} BPM · ${file.duration}",
                                             fontSize = 9.5.sp,
                                             color = if (isSelected) NeonCyanLight else TextDim
                                         )

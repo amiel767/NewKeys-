@@ -34,9 +34,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.soundstage.mixer.R
 import com.soundstage.mixer.model.LoopFile
 import com.soundstage.mixer.model.LoopFolder
 import com.soundstage.mixer.ui.theme.*
@@ -357,22 +359,21 @@ fun TopBar(
             )
             Box(
                 modifier = Modifier
-                    .height(38.dp)
+                    .size(38.dp)
                     .clip(RoundedCornerShape(19.dp))
                     .background(
                         Brush.verticalGradient(listOf(PanicRed.copy(alpha = panicAlpha), PanicRedDark))
                     )
                     .border(1.dp, PanicRed.copy(alpha = panicAlpha), RoundedCornerShape(19.dp))
                     .clickable { onPanic() }
-                    .padding(horizontal = 14.dp)
                     .testTag("btn_panic"),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "Panic",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_midi_panic),
+                    contentDescription = "MIDI Panic",
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
                 )
             }
 

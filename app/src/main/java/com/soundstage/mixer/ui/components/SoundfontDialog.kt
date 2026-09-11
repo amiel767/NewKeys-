@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
@@ -288,7 +289,7 @@ fun SoundfontDialog(
                         )
                     }
 
-                    // Actions: [ + Importer .sf2 ] [ ✕ ]
+                    // Actions: [ + ] [ ✕ ]
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -296,19 +297,18 @@ fun SoundfontDialog(
                         if (onImportSf2 != null) {
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(Color(0x2500E5FF))
-                                    .border(1.dp, Color(0x6600E5FF), RoundedCornerShape(16.dp))
-                                    .clickable { onImportSf2() }
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF00E5FF))
+                                    .clickable { onImportSf2() },
+                                contentAlignment = Alignment.Center
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Text("+", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF00E5FF))
-                                    Text("Importer .sf2", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00E5FF))
-                                }
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "Importer .sf2",
+                                    tint = Color(0xFF002B33),
+                                    modifier = Modifier.size(18.dp)
+                                )
                             }
                         }
 
@@ -597,17 +597,17 @@ fun SoundfontDialog(
                                 if (onImportSf2 != null) {
                                     Box(
                                         modifier = Modifier
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(Color(0x3300E5FF))
-                                            .border(1.dp, Color(0xFF00E5FF), RoundedCornerShape(12.dp))
-                                            .clickable { onImportSf2() }
-                                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                                            .size(56.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFF00E5FF))
+                                            .clickable { onImportSf2() },
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        Text(
-                                            text = "+ Importer un fichier .sf2",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF00E5FF)
+                                        Icon(
+                                            imageVector = Icons.Default.Add,
+                                            contentDescription = "Importer un fichier .sf2",
+                                            tint = Color(0xFF002B33),
+                                            modifier = Modifier.size(28.dp)
                                         )
                                     }
                                 }
