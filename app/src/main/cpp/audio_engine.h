@@ -9,6 +9,7 @@
 #endif
 
 #include "soundfont_engine.h"
+#include "sample_playback_engine.h"
 #include "seamless_loop.h"
 #include <memory>
 #include <array>
@@ -564,8 +565,12 @@ public:
     }
 
     SoundfontEngine &getEngine(int engineIndex) {
-        if (engineIndex < 0 || engineIndex >= 3) return mEngines[0];
+        if (engineIndex < 0 || engineIndex >= 2) return mEngines[0];
         return mEngines[engineIndex];
+    }
+
+    SamplePlaybackEngine &getDrumSampler() {
+        return mDrumSampler;
     }
 
     bool hasActiveSoundFonts() const;
@@ -590,7 +595,8 @@ private:
     std::mutex mRenderMutex;
     std::atomic<bool> mOboeActive{false};
     int mDriverType = 0;
-    std::array<SoundfontEngine, 3> mEngines; // 0 = Fader, 1 = Pad, 2 = Drum
+    std::array<SoundfontEngine, 2> mEngines; // 0 = Fader (tracks 1..8), 1 = Pad (TonicPad)
+    SamplePlaybackEngine mDrumSampler;
     
     // DSP Modules
     StereoBiquad mEqLow;

@@ -65,13 +65,10 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_listPresets(
         jobject /* this */,
         jint soundFontId) {
     
-    // Search all engines (FADER, PAD, DRUM) to find the presets for the given soundFontId
+    // Search all engines (FADER, PAD) to find the presets for the given soundFontId
     std::vector<NativePresetInfo> presets = gAudioEngine.getEngine(0).listPresets(soundFontId);
     if (presets.empty()) {
         presets = gAudioEngine.getEngine(1).listPresets(soundFontId);
-    }
-    if (presets.empty()) {
-        presets = gAudioEngine.getEngine(2).listPresets(soundFontId);
     }
     
     jclass presetInfoClass = env->FindClass("com/soundstage/mixer/audio/PresetInfo");
@@ -355,6 +352,109 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_isMasterFxBypassed(
         JNIEnv *env,
         jobject /* this */) {
     return static_cast<jboolean>(gAudioEngine.isMasterFxBypassed());
+}
+
+// -------------------------------------------------------------
+// Dedicated Lock-Free SamplePlaybackEngine (DrumPad) JNI API
+// -------------------------------------------------------------
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_triggerDrumSample(
+        JNIEnv *env,
+        jobject /* this */,
+        jint sampleId,
+        jfloat velocity,
+        jfloat pan) {
+    gAudioEngine.getDrumSampler().triggerSample(sampleId, velocity, pan);
+}
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_stopDrumSample(
+        JNIEnv *env,
+        jobject /* this */,
+        jint sampleId) {
+    gAudioEngine.getDrumSampler().stopSample(sampleId);
+}
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_stopAllDrumSamples(
+        JNIEnv *env,
+        jobject /* this */) {
+    gAudioEngine.getDrumSampler().stopAll();
+}
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setDrumMasterVolume(
+        JNIEnv *env,
+        jobject /* this */,
+        jfloat volume) {
+    gAudioEngine.getDrumSampler().setMasterVolume(volume);
+}
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setDrumMasterPan(
+        JNIEnv *env,
+        jobject /* this */,
+        jfloat pan) {
+    gAudioEngine.getDrumSampler().setMasterPan(pan);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_loadDrumWavFile(
+        JNIEnv *env,
+        jobject /* this */,
+        jint sampleId,
+        jstring filePath) {
+    if (!filePath) return -1;
+    const char *path = env->GetStringUTFChars(filePath, nullptr);
+    if (!path) return -1;
+    int res = gAudioEngine.getDrumSampler().loadWavFile(sampleId, std::string(path));
+    env->ReleaseStringUTFChars(filePath, path);
+    return res;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_loadDrumSamplePcm(
+        JNIEnv *env,
+        jobject /* this */,
+        jint sampleId,
+        jstring sampleName,
+        jfloatArray pcmData,
+        jint totalFrames,
+        jint sampleRate) {
+    if (!pcmData || totalFrames <= 0) return -1;
+    std::string name = "Sample";
+    if (sampleName) {
+        const char *nameStr = env->GetStringUTFChars(sampleName, nullptr);
+        if (nameStr) {
+            name = nameStr;
+            env->ReleaseStringUTFChars(sampleName, nameStr);
+        }
+    }
+
+    jfloat *rawPcm = env->GetFloatArrayElements(pcmData, nullptr);
+    if (!rawPcm) return -1;
+
+    int res = gAudioEngine.getDrumSampler().registerSamplePcm(
+        sampleId, name, rawPcm, static_cast<size_t>(totalFrames), sampleRate);
+
+    env->ReleaseFloatArrayElements(pcmData, rawPcm, JNI_ABORT);
+    return res;
+}
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_unloadDrumSample(
+        JNIEnv *env,
+        jobject /* this */,
+        jint sampleId) {
+    gAudioEngine.getDrumSampler().unloadSample(sampleId);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_getDrumActiveVoices(
+        JNIEnv *env,
+        jobject /* this */) {
+    return gAudioEngine.getDrumSampler().getActiveVoiceCount();
 }
 
 } // extern "C"

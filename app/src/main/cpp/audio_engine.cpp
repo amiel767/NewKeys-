@@ -92,12 +92,14 @@ bool AudioEngine::openAndStartStream() {
     mSoundGoodizer.init(sampleRate);
     mMasterPunch.init(sampleRate);
     mPadFilter.setLowPass(static_cast<float>(sampleRate), 400.0f * std::pow(45.0f, mPadBrightness), 0.707f);
+    mDrumSampler.init(sampleRate);
 
-    // Initialize FluidSynth engines
-    for (int i = 0; i < 3; ++i) {
-        if (!mEngines[i].isInitialized()) {
-            mEngines[i].init(sampleRate);
-        }
+    // Initialize FluidSynth engines (0 = Fader with kFaderPolyphony=64, 1 = Pad with kPadPolyphony=128)
+    if (!mEngines[0].isInitialized()) {
+        mEngines[0].init(sampleRate, kFaderPolyphony, "FaderEngine");
+    }
+    if (!mEngines[1].isInitialized()) {
+        mEngines[1].init(sampleRate, kPadPolyphony, "PadEngine");
     }
 
     result = mStream->requestStart();
@@ -132,7 +134,7 @@ void AudioEngine::stop() {
             mStream.reset();
         }
     }
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < 2; ++i) {
         mEngines[i].destroy();
     }
     LOGI("Audio engine stopped and all synth instances destroyed");
@@ -200,7 +202,7 @@ void AudioEngine::setPadBrightness(float brightness) {
 }
 
 bool AudioEngine::hasActiveSoundFonts() const {
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < 2; ++i) {
         if (mEngines[i].isInitialized()) {
             return true;
         }
@@ -220,7 +222,7 @@ int AudioEngine::renderDirect(int16_t *outputBuffer16, int32_t numFrames) {
 
     // Ensure sample rate and DSP are initialized
     int sampleRate = mSampleRate > 0 ? mSampleRate : 48000;
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < 2; ++i) {
         if (!mEngines[i].isInitialized()) {
             mEngines[i].init(sampleRate);
         }
@@ -245,8 +247,8 @@ int AudioEngine::renderDirect(int16_t *outputBuffer16, int32_t numFrames) {
         floatBuf[i] += mPadRenderBuffer[i];
     }
 
-    // 3. Mix DrumEngine (Drum Pad)
-    mEngines[2].renderStereo(floatBuf, numFrames, true);
+    // 3. Mix Dedicated SamplePlaybackEngine (DrumPad)
+    mDrumSampler.renderStereo(floatBuf, numFrames, true);
 
     if (!mBypassMasterFX.load(std::memory_order_relaxed)) {
         float maxAbs = 0.0f;
@@ -341,8 +343,8 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
             floatBuf[i] += mPadRenderBuffer[i];
         }
 
-        // 3. Mix DrumEngine (Drum Pad)
-        mEngines[2].renderStereo(floatBuf, numFrames, true);
+        // 3. Mix Dedicated SamplePlaybackEngine (DrumPad)
+        mDrumSampler.renderStereo(floatBuf, numFrames, true);
 
         if (!mBypassMasterFX.load(std::memory_order_relaxed)) {
             float maxAbs = 0.0f;
@@ -404,8 +406,8 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
             outputBuffer[i] += mPadRenderBuffer[i];
         }
 
-        // 3. Mix DrumEngine (Drum Pad)
-        mEngines[2].renderStereo(outputBuffer, numFrames, true);
+        // 3. Mix Dedicated SamplePlaybackEngine (DrumPad)
+        mDrumSampler.renderStereo(outputBuffer, numFrames, true);
 
         if (!mBypassMasterFX.load(std::memory_order_relaxed)) {
             float maxAbs = 0.0f;
@@ -452,7 +454,7 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
     static int sLogCounter = 0;
     if (++sLogCounter % 500 == 0 || durationUs > 3500) {
         int totalActiveVoices = 0;
-        for (int i = 0; i < 3; ++i) {
+        for (int i = 0; i < 2; ++i) {
             if (mEngines[i].isInitialized()) {
                 totalActiveVoices += mEngines[i].getActiveVoiceCount();
             }

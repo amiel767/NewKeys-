@@ -174,6 +174,7 @@ fun KeyboardLayerMapper(
     isExpanded: Boolean,
     onToggleExpanded: () -> Unit,
     onRangeChanged: (trackId: Int, minNote: Int, maxNote: Int) -> Unit,
+    onDragSelectionChange: ((range: Pair<Float, Float>?) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val visibleTracks = remember(tracks) {
@@ -185,7 +186,7 @@ fun KeyboardLayerMapper(
     val totalWidthDp = whiteWidthDp * totalWhiteKeys
     val visibleCount = visibleTracks.size.coerceAtMost(4)
     val targetHeight = if (isExpanded) {
-        (32.dp * visibleCount + 8.dp).coerceAtLeast(40.dp)
+        (30.dp * visibleCount + 8.dp).coerceAtLeast(38.dp)
     } else {
         (3.dp * visibleTracks.size.coerceAtMost(6) + 6.dp).coerceIn(10.dp, 22.dp)
     }
@@ -204,7 +205,7 @@ fun KeyboardLayerMapper(
             .height(animatedHeight)
             .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
             .background(Color(0xFF10141D))
-            .padding(horizontal = 4.dp, vertical = 1.dp)
+            .padding(horizontal = 0.dp, vertical = 1.dp)
             .testTag("keyboard_layer_mapper")
     ) {
         if (!isExpanded) {
@@ -222,7 +223,7 @@ fun KeyboardLayerMapper(
 
                     val startXDp = (leftFrac * whiteWidthDp.value).dp
                     val endXDp = (rightFrac * whiteWidthDp.value).dp
-                    val barWidthDp = (endXDp - startXDp).coerceAtLeast(6.dp)
+                    val barWidthDp = (endXDp - startXDp).coerceAtLeast(4.dp)
 
                     Box(
                         modifier = Modifier
@@ -262,7 +263,8 @@ fun KeyboardLayerMapper(
                         patchTitle = patchTitle,
                         whiteWidthDp = whiteWidthDp,
                         onToggleExpanded = onToggleExpanded,
-                        onRangeChanged = onRangeChanged
+                        onRangeChanged = onRangeChanged,
+                        onDragSelectionChange = onDragSelectionChange
                     )
                 }
             }
@@ -277,7 +279,8 @@ private fun TrackRangeBarRow(
     patchTitle: String,
     whiteWidthDp: Dp,
     onToggleExpanded: () -> Unit,
-    onRangeChanged: (trackId: Int, minNote: Int, maxNote: Int) -> Unit
+    onRangeChanged: (trackId: Int, minNote: Int, maxNote: Int) -> Unit,
+    onDragSelectionChange: ((range: Pair<Float, Float>?) -> Unit)? = null
 ) {
     val density = LocalDensity.current
     val whiteWidthPx = with(density) { whiteWidthDp.toPx() }
@@ -291,7 +294,13 @@ private fun TrackRangeBarRow(
 
     val startXDp = (leftFrac * whiteWidthDp.value).dp
     val endXDp = (rightFrac * whiteWidthDp.value).dp
-    val barWidthDp = (endXDp - startXDp).coerceAtLeast(60.dp)
+    val barWidthDp = (endXDp - startXDp).coerceAtLeast(18.dp)
+
+    val dotSize = 7.dp
+    val dotInset = 5.dp
+    val leftDotX = startXDp + dotInset
+    val rightDotX = (endXDp - dotInset - dotSize).coerceAtLeast(leftDotX + dotSize + 2.dp)
+    val touchHitboxWidth = 36.dp
 
     var dragMinOffsetPx by remember { mutableFloatStateOf(0f) }
     var dragMaxOffsetPx by remember { mutableFloatStateOf(0f) }
@@ -302,29 +311,20 @@ private fun TrackRangeBarRow(
 
     val isActivelyDragging = isDraggingMin || isDraggingMax
 
+    // Smooth Updated State References to prevent gesture reset/glue during recomposition
+    val currentMinNote by rememberUpdatedState(minNote)
+    val currentMaxNote by rememberUpdatedState(maxNote)
+    val currentLeftFrac by rememberUpdatedState(leftFrac)
+    val currentRightFrac by rememberUpdatedState(rightFrac)
+    val currentOnRangeChanged by rememberUpdatedState(onRangeChanged)
+    val currentOnDragSelectionChange by rememberUpdatedState(onDragSelectionChange)
+    val currentWhiteWidthPx by rememberUpdatedState(whiteWidthPx)
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(28.dp)
+            .height(26.dp)
     ) {
-        // ================= SELECTION BACKGROUND LAYER (Border-less) =================
-        Box(
-            modifier = Modifier
-                .offset(x = startXDp)
-                .width(barWidthDp)
-                .height(26.dp)
-                .clip(RoundedCornerShape(13.dp))
-                .background(
-                    Brush.horizontalGradient(
-                        listOf(
-                            trackColor.copy(alpha = 0.25f),
-                            trackColor.copy(alpha = if (isActivelyDragging) 0.45f else 0.30f),
-                            trackColor.copy(alpha = 0.25f)
-                        )
-                    )
-                )
-        )
-
         // Main Colored Capsule Bar (Border-less, MaterialYou Expressive)
         val minNoteName = KeyPositionMapper.midiToNoteName(minNote)
         val maxNoteName = KeyPositionMapper.midiToNoteName(maxNote)
@@ -333,94 +333,112 @@ private fun TrackRangeBarRow(
             modifier = Modifier
                 .offset(x = startXDp)
                 .width(barWidthDp)
-                .height(26.dp)
-                .shadow(if (isActivelyDragging) 4.dp else 2.dp, RoundedCornerShape(13.dp))
-                .clip(RoundedCornerShape(13.dp))
-                .background(trackColor.copy(alpha = if (isActivelyDragging) 0.94f else 0.88f))
+                .height(24.dp)
+                .shadow(if (isActivelyDragging) 4.dp else 1.5.dp, RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(12.dp))
+                .background(trackColor.copy(alpha = if (isActivelyDragging) 0.96f else 0.88f))
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onDoubleTap = { onToggleExpanded() }
                     )
                 }
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = 14.dp),
             contentAlignment = Alignment.Center
         ) {
-            // Grouped in the CENTER: [ C1 ]  Piste  [ C8 ]
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-                modifier = Modifier.wrapContentWidth()
-            ) {
-                // Low Note Indicator Badge (Left of Piste name)
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0x40000000))
-                        .padding(horizontal = 4.dp, vertical = 1.dp)
+            if (barWidthDp >= 64.dp) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier.wrapContentWidth()
                 ) {
+                    // Low Note Indicator Badge
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(Color(0x40000000))
+                            .padding(horizontal = 3.dp, vertical = 0.5.dp)
+                    ) {
+                        Text(
+                            text = minNoteName,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
+                    // Track / Patch Name centered in the middle
                     Text(
-                        text = minNoteName,
+                        text = patchTitle,
                         fontSize = 8.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .padding(horizontal = 2.dp)
                     )
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
+                    // High Note Indicator Badge
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(Color(0x40000000))
+                            .padding(horizontal = 3.dp, vertical = 0.5.dp)
+                    ) {
+                        Text(
+                            text = maxNoteName,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
                 }
-
-                Spacer(modifier = Modifier.width(6.dp))
-
-                // Track / Patch Name centered in the middle
+            } else if (barWidthDp >= 38.dp) {
                 Text(
-                    text = patchTitle,
-                    fontSize = 9.5.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    text = "$minNoteName-$maxNoteName",
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold,
                     color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 2.dp)
+                    maxLines = 1
                 )
-
-                Spacer(modifier = Modifier.width(6.dp))
-
-                // High Note Indicator Badge (Right of Piste name)
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0x40000000))
-                        .padding(horizontal = 4.dp, vertical = 1.dp)
-                ) {
-                    Text(
-                        text = maxNoteName,
-                        fontSize = 8.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                }
+            } else {
+                Text(
+                    text = minNoteName,
+                    fontSize = 7.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 1
+                )
             }
         }
 
-        // Smooth Updated State References to prevent gesture reset/glue during recomposition
-        val currentMinNote by rememberUpdatedState(minNote)
-        val currentMaxNote by rememberUpdatedState(maxNote)
-        val currentLeftFrac by rememberUpdatedState(leftFrac)
-        val currentRightFrac by rememberUpdatedState(rightFrac)
-        val currentOnRangeChanged by rememberUpdatedState(onRangeChanged)
-        val currentWhiteWidthPx by rememberUpdatedState(whiteWidthPx)
-
-        // ================= LEFT DRAG HANDLE (Solid Grey Circular Knob) =================
+        // ================= LEFT DRAG HANDLE: Small White Dot inside line with ergonomic hitbox =================
         Box(
             modifier = Modifier
-                .offset(x = (startXDp - 10.dp).coerceAtLeast(0.dp))
-                .size(28.dp)
+                .offset(x = (leftDotX + (dotSize / 2f)) - (touchHitboxWidth / 2f))
+                .size(touchHitboxWidth, 26.dp)
                 .pointerInput(track.id) {
                     detectHorizontalDragGestures(
                         onDragStart = {
                             dragMinOffsetPx = 0f
                             initialMinFrac = currentLeftFrac
                             isDraggingMin = true
+                            currentOnDragSelectionChange?.invoke(currentLeftFrac to currentRightFrac)
                         },
-                        onDragEnd = { isDraggingMin = false },
-                        onDragCancel = { isDraggingMin = false },
+                        onDragEnd = {
+                            isDraggingMin = false
+                            currentOnDragSelectionChange?.invoke(null)
+                        },
+                        onDragCancel = {
+                            isDraggingMin = false
+                            currentOnDragSelectionChange?.invoke(null)
+                        },
                         onHorizontalDrag = { change, dragAmount ->
                             change.consume()
                             dragMinOffsetPx += dragAmount
@@ -434,43 +452,45 @@ private fun TrackRangeBarRow(
                             if (newMidi != currentMinNote) {
                                 currentOnRangeChanged(track.id, newMidi, currentMaxNote)
                             }
+                            val updatedLeft = KeyPositionMapper.midiToKeyLeftEdgeFraction(newMidi)
+                            val updatedRight = KeyPositionMapper.midiToKeyRightEdgeFraction(currentMaxNote)
+                            currentOnDragSelectionChange?.invoke(updatedLeft to updatedRight)
                         }
                     )
                 },
             contentAlignment = Alignment.Center
         ) {
+            // Pure small white dot cleanly nestled inside the line extremity
             Box(
                 modifier = Modifier
-                    .size(20.dp)
-                    .shadow(if (isDraggingMin) 4.dp else 2.dp, CircleShape)
+                    .size(dotSize)
+                    .shadow(1.dp, CircleShape)
                     .clip(CircleShape)
-                    .background(if (isDraggingMin) Color(0xFFCBD5E1) else Color(0xFF94A3B8))
-                    .border(1.5.dp, Color(0xFF1E293B), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF334155))
-                )
-            }
+                    .background(Color.White)
+            )
         }
 
-        // ================= RIGHT DRAG HANDLE (Solid Grey Circular Knob) =================
+        // ================= RIGHT DRAG HANDLE: Small White Dot inside line with ergonomic hitbox =================
         Box(
             modifier = Modifier
-                .offset(x = (endXDp - 10.dp).coerceAtLeast(startXDp + 10.dp))
-                .size(28.dp)
+                .offset(x = (rightDotX + (dotSize / 2f)) - (touchHitboxWidth / 2f))
+                .size(touchHitboxWidth, 26.dp)
                 .pointerInput(track.id) {
                     detectHorizontalDragGestures(
                         onDragStart = {
                             dragMaxOffsetPx = 0f
                             initialMaxFrac = currentRightFrac
                             isDraggingMax = true
+                            currentOnDragSelectionChange?.invoke(currentLeftFrac to currentRightFrac)
                         },
-                        onDragEnd = { isDraggingMax = false },
-                        onDragCancel = { isDraggingMax = false },
+                        onDragEnd = {
+                            isDraggingMax = false
+                            currentOnDragSelectionChange?.invoke(null)
+                        },
+                        onDragCancel = {
+                            isDraggingMax = false
+                            currentOnDragSelectionChange?.invoke(null)
+                        },
                         onHorizontalDrag = { change, dragAmount ->
                             change.consume()
                             dragMaxOffsetPx += dragAmount
@@ -484,27 +504,22 @@ private fun TrackRangeBarRow(
                             if (newMidi != currentMaxNote) {
                                 currentOnRangeChanged(track.id, currentMinNote, newMidi)
                             }
+                            val updatedLeft = KeyPositionMapper.midiToKeyLeftEdgeFraction(currentMinNote)
+                            val updatedRight = KeyPositionMapper.midiToKeyRightEdgeFraction(newMidi)
+                            currentOnDragSelectionChange?.invoke(updatedLeft to updatedRight)
                         }
                     )
                 },
             contentAlignment = Alignment.Center
         ) {
+            // Pure small white dot cleanly nestled inside the line extremity
             Box(
                 modifier = Modifier
-                    .size(20.dp)
-                    .shadow(if (isDraggingMax) 4.dp else 2.dp, CircleShape)
+                    .size(dotSize)
+                    .shadow(1.dp, CircleShape)
                     .clip(CircleShape)
-                    .background(if (isDraggingMax) Color(0xFFCBD5E1) else Color(0xFF94A3B8))
-                    .border(1.5.dp, Color(0xFF1E293B), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF334155))
-                )
-            }
+                    .background(Color.White)
+            )
         }
     }
 }

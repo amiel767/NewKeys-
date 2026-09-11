@@ -36,6 +36,7 @@ inline int fluid_preset_get_banknum(fluid_preset_t*) { return 0; }
 inline int fluid_preset_get_num(fluid_preset_t*) { return 0; }
 inline void fluid_synth_set_gain(fluid_synth_t*, float) {}
 inline int fluid_synth_set_polyphony(fluid_synth_t*, int) { return 0; }
+inline int fluid_synth_get_polyphony(fluid_synth_t*) { return 0; }
 #endif
 
 #include <atomic>
@@ -43,6 +44,9 @@ inline int fluid_synth_set_polyphony(fluid_synth_t*, int) { return 0; }
 #include <mutex>
 #include <string>
 #include <vector>
+
+constexpr int kFaderPolyphony = 64;
+constexpr int kPadPolyphony = 128;
 
 struct NativePresetInfo {
     int bank;
@@ -113,6 +117,38 @@ private:
     std::atomic<size_t> mTail;
 };
 
+struct VoiceAuditSnapshot {
+    int totalVoices = 0;
+    int activeHeldVoices = 0;
+    int sustainedVoices = 0;
+    int releaseVoices = 0;
+    int audibleVoices = 0;
+    int silentVoices = 0;
+    int voiceSteals = 0;
+    int voicesCreatedTotal = 0;
+    int voicesFinishedTotal = 0;
+    int maxVoicesObserved = 0;
+    int renderDurationUs = 0;
+};
+
+struct NoteOnAuditRecord {
+    uint64_t timestampNs = 0;
+    int channel = 0;
+    int note = 0;
+    int velocity = 0;
+    int voicesBefore = 0;
+    int voicesAfter = 0;
+    int deltaVoices = 0;
+};
+
+struct NoteOffAuditRecord {
+    uint64_t timestampNs = 0;
+    int channel = 0;
+    int note = 0;
+    int voicesBefore = 0;
+    int releaseVoicesAfter = 0;
+};
+
 /**
  * Autonomous FluidSynth instance. Multiple instances can co-exist
  * (e.g. FaderEngine, PadEngine, DrumEngine) with independent SoundFont banks and MIDI channels.
@@ -121,7 +157,7 @@ class SoundfontEngine {
 public:
     static constexpr int kMaxChannels = 16;
 
-    bool init(int sampleRate);
+    bool init(int sampleRate, int polyphony = kFaderPolyphony, const char* instanceName = "FaderEngine");
     void destroy();
     bool isInitialized() const { return mSynth != nullptr; }
 
@@ -147,7 +183,13 @@ public:
 
     void renderStereo(float *outputBuffer, int32_t numFrames, bool accumulate = false);
 
+    // FaderEngine Voice Audit
+    VoiceAuditSnapshot getLatestAuditSnapshot() const;
+    void resetAuditCounters();
+
 private:
+    std::string mInstanceName = "FaderEngine";
+    int mConfiguredPolyphony = kFaderPolyphony;
     fluid_settings_t *mSettings = nullptr;
     fluid_synth_t *mSynth = nullptr;
     std::mutex mMutex;
@@ -155,6 +197,23 @@ private:
     std::vector<float> mTempRenderBuffer;
     LockFreeRingBuffer<EngineMidiEvent, 2048> mEventQueue;
     bool mWasHighLoad = false;
+
+    // Temporary non-audio intrusive instrumentation
+    std::atomic<int> mAuditTotalVoices{0};
+    std::atomic<int> mAuditActiveHeldVoices{0};
+    std::atomic<int> mAuditSustainedVoices{0};
+    std::atomic<int> mAuditReleaseVoices{0};
+    std::atomic<int> mAuditAudibleVoices{0};
+    std::atomic<int> mAuditSilentVoices{0};
+    std::atomic<int> mAuditVoiceSteals{0};
+    std::atomic<int> mAuditVoicesCreatedTotal{0};
+    std::atomic<int> mAuditVoicesFinishedTotal{0};
+    std::atomic<int> mAuditMaxVoicesObserved{0};
+    std::atomic<int> mAuditLastRenderDurationUs{0};
+
+    LockFreeRingBuffer<VoiceAuditSnapshot, 1024> mAuditSnapshots;
+    LockFreeRingBuffer<NoteOnAuditRecord, 512> mNoteOnRecords;
+    LockFreeRingBuffer<NoteOffAuditRecord, 512> mNoteOffRecords;
 };
 
 #endif //DAWSTUDIO_SOUNDFONT_ENGINE_H

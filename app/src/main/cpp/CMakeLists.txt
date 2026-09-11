@@ -30,6 +30,7 @@ add_library(
     native-lib.cpp
     audio_engine.cpp
     soundfont_engine.cpp
+    sample_playback_engine.cpp
 )
 
 find_package(oboe REQUIRED CONFIG)

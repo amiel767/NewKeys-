@@ -372,8 +372,7 @@ class AudioEngine(private val context: Context) {
             NativeAudioBridge.safeSetTrackVolume(ch, clamped, NativeAudioBridge.ENGINE_FADER)
         } else if (ch == 8) {
             NativeAudioBridge.safeSetTrackVolume(8, clamped, NativeAudioBridge.ENGINE_FADER)
-            NativeAudioBridge.safeSetTrackVolume(0, clamped, NativeAudioBridge.ENGINE_DRUM)
-            NativeAudioBridge.safeSetTrackVolume(9, clamped, NativeAudioBridge.ENGINE_DRUM)
+            NativeAudioBridge.safeSetDrumMasterVolume(clamped)
         } else if (ch == 9) {
             NativeAudioBridge.safeSetTrackVolume(9, clamped, NativeAudioBridge.ENGINE_FADER)
             NativeAudioBridge.safeSetTrackVolume(0, clamped, NativeAudioBridge.ENGINE_PAD)
@@ -387,6 +386,9 @@ class AudioEngine(private val context: Context) {
         val ch = channel.coerceIn(0, 11)
         channelParams[ch].pan = pan.coerceIn(-1f, 1f)
         NativeAudioBridge.safeSetTrackPan(ch, pan)
+        if (ch == 8) {
+            NativeAudioBridge.safeSetDrumMasterPan(pan)
+        }
     }
 
     fun setChannelInstrument(channel: Int, instrumentIndex: Int) {
@@ -418,9 +420,6 @@ class AudioEngine(private val context: Context) {
         channelParams[ch].reverb = clamped
         if (ch in 0..7) {
             NativeAudioBridge.safeSetChannelReverb(ch, clamped, NativeAudioBridge.ENGINE_FADER)
-        } else if (ch == 8) {
-            NativeAudioBridge.safeSetChannelReverb(0, clamped, NativeAudioBridge.ENGINE_DRUM)
-            NativeAudioBridge.safeSetChannelReverb(9, clamped, NativeAudioBridge.ENGINE_DRUM)
         } else if (ch == 9) {
             NativeAudioBridge.safeSetChannelReverb(0, clamped, NativeAudioBridge.ENGINE_PAD)
         }
@@ -435,62 +434,34 @@ class AudioEngine(private val context: Context) {
     }
 
     fun playDrumPadStrike(padIndex: Int, velocity: Float = 0.90f) {
-        val midiDrumNote = when (padIndex) {
-            1 -> 36 // Kick
-            2 -> 38 // Snare
-            3 -> 42 // Closed Hat
-            4 -> 46 // Open Hat
-            5 -> 35 // 808 Sub Kick
-            6 -> 40 // Snare Rim
-            7 -> 39 // Clap
-            8 -> 49 // Crash Cymbal
-            9 -> 41 // Low Floor Tom
-            10 -> 45 // Mid Tom
-            11 -> 48 // High Tom
-            12 -> 51 // Ride Cymbal
-            else -> 36 + (padIndex % 16)
-        }
-        val velInt = (velocity * 127f).toInt().coerceIn(1, 127)
-        NativeAudioBridge.safeNoteOn(NativeAudioBridge.CHANNEL_DRUMPAD, midiDrumNote, velInt)
-        coroutineScope.launch {
-            delay(150)
-            NativeAudioBridge.safeNoteOff(NativeAudioBridge.CHANNEL_DRUMPAD, midiDrumNote)
-        }
+        val sampleId = ((padIndex - 1) % 8) + 1
+        NativeAudioBridge.safeTriggerDrumSample(sampleId, velocity)
     }
 
     private fun playMidiNote(midiNote: Int, velocity: Int, targetChannel: Int) {
-        if (targetChannel == 8) {
-            NativeAudioBridge.safeNoteOn(9, midiNote, velocity, engineIndex = NativeAudioBridge.ENGINE_DRUM)
-            NativeAudioBridge.safeNoteOn(8, midiNote, velocity, engineIndex = NativeAudioBridge.ENGINE_FADER)
-        } else if (targetChannel == 9) {
+        if (targetChannel == 9) {
             NativeAudioBridge.safeNoteOn(0, midiNote, velocity, engineIndex = NativeAudioBridge.ENGINE_PAD)
             NativeAudioBridge.safeNoteOn(9, midiNote, velocity, engineIndex = NativeAudioBridge.ENGINE_FADER)
         } else {
-            NativeAudioBridge.safeNoteOn(targetChannel.coerceIn(0, 7), midiNote, velocity, engineIndex = NativeAudioBridge.ENGINE_FADER)
+            NativeAudioBridge.safeNoteOn(targetChannel.coerceIn(0, 8), midiNote, velocity, engineIndex = NativeAudioBridge.ENGINE_FADER)
         }
     }
 
     private fun stopMidiNote(midiNote: Int, targetChannel: Int) {
-        if (targetChannel == 8) {
-            NativeAudioBridge.safeNoteOff(9, midiNote, engineIndex = NativeAudioBridge.ENGINE_DRUM)
-            NativeAudioBridge.safeNoteOff(8, midiNote, engineIndex = NativeAudioBridge.ENGINE_FADER)
-        } else if (targetChannel == 9) {
+        if (targetChannel == 9) {
             NativeAudioBridge.safeNoteOff(0, midiNote, engineIndex = NativeAudioBridge.ENGINE_PAD)
             NativeAudioBridge.safeNoteOff(9, midiNote, engineIndex = NativeAudioBridge.ENGINE_FADER)
         } else {
-            NativeAudioBridge.safeNoteOff(targetChannel.coerceIn(0, 7), midiNote, engineIndex = NativeAudioBridge.ENGINE_FADER)
+            NativeAudioBridge.safeNoteOff(targetChannel.coerceIn(0, 8), midiNote, engineIndex = NativeAudioBridge.ENGINE_FADER)
         }
     }
 
     private fun bendMidiPitch(midiBend: Int, targetChannel: Int) {
-        if (targetChannel == 8) {
-            NativeAudioBridge.safePitchBend(9, midiBend, engineIndex = NativeAudioBridge.ENGINE_DRUM)
-            NativeAudioBridge.safePitchBend(8, midiBend, engineIndex = NativeAudioBridge.ENGINE_FADER)
-        } else if (targetChannel == 9) {
+        if (targetChannel == 9) {
             NativeAudioBridge.safePitchBend(0, midiBend, engineIndex = NativeAudioBridge.ENGINE_PAD)
             NativeAudioBridge.safePitchBend(9, midiBend, engineIndex = NativeAudioBridge.ENGINE_FADER)
         } else {
-            NativeAudioBridge.safePitchBend(targetChannel.coerceIn(0, 7), midiBend, engineIndex = NativeAudioBridge.ENGINE_FADER)
+            NativeAudioBridge.safePitchBend(targetChannel.coerceIn(0, 8), midiBend, engineIndex = NativeAudioBridge.ENGINE_FADER)
         }
     }
 
@@ -619,8 +590,8 @@ class AudioEngine(private val context: Context) {
         for (ch in 0..15) {
             NativeAudioBridge.safeAllNotesOff(ch, NativeAudioBridge.ENGINE_FADER)
             NativeAudioBridge.safeAllNotesOff(ch, NativeAudioBridge.ENGINE_PAD)
-            NativeAudioBridge.safeAllNotesOff(ch, NativeAudioBridge.ENGINE_DRUM)
         }
+        NativeAudioBridge.safeStopAllDrumSamples()
         for (ch in 0..9) {
             for (note in 0..127) {
                 stopMidiNote(note, ch)
@@ -917,14 +888,33 @@ class AudioEngine(private val context: Context) {
         }
     }
 
+    private val nativeDrumSampleIds = java.util.concurrent.ConcurrentHashMap<String, Int>()
+    private val nextNativeSampleId = java.util.concurrent.atomic.AtomicInteger(20)
+
     fun preloadDrumSample(samplePath: String) {
         if (samplePath.isEmpty()) return
         try {
             val sampleFile = File(samplePath)
-            if (sampleFile.exists() && !loadedSampleIds.containsKey(sampleFile.absolutePath)) {
-                val soundId = soundPool?.load(sampleFile.absolutePath, 1) ?: 0
-                if (soundId > 0) {
-                    loadedSampleIds[sampleFile.absolutePath] = soundId
+            if (sampleFile.exists() && !nativeDrumSampleIds.containsKey(sampleFile.absolutePath)) {
+                val assignedId = nextNativeSampleId.getAndIncrement()
+                nativeDrumSampleIds[sampleFile.absolutePath] = assignedId
+                coroutineScope.launch(Dispatchers.IO) {
+                    try {
+                        val decoded = com.soundstage.mixer.audio.AudioDecoder.decodeAudioFile(sampleFile)
+                        if (decoded != null) {
+                            NativeAudioBridge.safeLoadDrumSamplePcm(
+                                sampleId = assignedId,
+                                sampleName = sampleFile.name,
+                                pcmData = decoded.pcmData,
+                                totalFrames = decoded.totalFrames,
+                                sampleRate = decoded.sampleRate
+                            )
+                        } else if (sampleFile.extension.equals("wav", ignoreCase = true)) {
+                            NativeAudioBridge.safeLoadDrumWavFile(assignedId, sampleFile.absolutePath)
+                        }
+                    } catch (e: Throwable) {
+                        Log.e(TAG, "Error decoding sample for native engine: ${e.message}")
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -933,7 +923,7 @@ class AudioEngine(private val context: Context) {
     }
 
     fun playDrumPadSound(drumPad: DrumPadItem, volume: Float = 0.75f) {
-        // Resolve sample file
+        // Resolve sample file if custom
         val sampleFile = when {
             drumPad.sampleFilePath.isNotEmpty() && File(drumPad.sampleFilePath).exists() -> File(drumPad.sampleFilePath)
             File(context.filesDir, "LiveKeys/DrumPad/${drumPad.sampleFileName}").exists() -> File(context.filesDir, "LiveKeys/DrumPad/${drumPad.sampleFileName}")
@@ -941,36 +931,33 @@ class AudioEngine(private val context: Context) {
             else -> null
         }
 
-        var soundPlayed = false
         if (sampleFile != null && sampleFile.exists()) {
-            val existingId = loadedSampleIds[sampleFile.absolutePath]
-            if (existingId != null && existingId > 0) {
-                val streamId = soundPool?.play(existingId, volume, volume, 1, 0, 1.0f) ?: 0
-                if (streamId > 0) {
-                    soundPlayed = true
-                } else {
-                    // In case it's still finishing decode: queue pending play
-                    pendingSamplePlays[existingId] = volume
-                    soundPlayed = true
-                }
+            val cachedId = nativeDrumSampleIds[sampleFile.absolutePath]
+            if (cachedId != null) {
+                NativeAudioBridge.safeTriggerDrumSample(cachedId, volume, 0.0f)
             } else {
-                val newId = soundPool?.load(sampleFile.absolutePath, 1) ?: 0
-                if (newId > 0) {
-                    loadedSampleIds[sampleFile.absolutePath] = newId
-                    pendingSamplePlays[newId] = volume
-                    soundPlayed = true
+                val newId = nextNativeSampleId.getAndIncrement()
+                nativeDrumSampleIds[sampleFile.absolutePath] = newId
+                coroutineScope.launch(Dispatchers.IO) {
+                    val decoded = com.soundstage.mixer.audio.AudioDecoder.decodeAudioFile(sampleFile)
+                    if (decoded != null) {
+                        NativeAudioBridge.safeLoadDrumSamplePcm(
+                            sampleId = newId,
+                            sampleName = sampleFile.name,
+                            pcmData = decoded.pcmData,
+                            totalFrames = decoded.totalFrames,
+                            sampleRate = decoded.sampleRate
+                        )
+                    } else if (sampleFile.extension.equals("wav", ignoreCase = true)) {
+                        NativeAudioBridge.safeLoadDrumWavFile(newId, sampleFile.absolutePath)
+                    }
+                    NativeAudioBridge.safeTriggerDrumSample(newId, volume, 0.0f)
                 }
             }
-        }
-
-        if (!soundPlayed) {
-            val midiNote = mapSampleNameToDrumNote(drumPad.sampleFileName, drumPad.id)
-            val velInt = (volume * 127f).toInt().coerceIn(1, 127)
-            NativeAudioBridge.safeNoteOn(NativeAudioBridge.CHANNEL_DRUMPAD, midiNote, velInt)
-            coroutineScope.launch {
-                delay(150)
-                NativeAudioBridge.safeNoteOff(NativeAudioBridge.CHANNEL_DRUMPAD, midiNote)
-            }
+        } else {
+            // Built-in studio drum kit (1 = Kick, 2 = Snare, 3 = Hat, 4 = OpenHat, 5 = Clap, 6 = LowTom, 7 = MidTom, 8 = Crash...)
+            val defaultId = ((drumPad.id - 1) % 8) + 1
+            NativeAudioBridge.safeTriggerDrumSample(defaultId, volume, 0.0f)
         }
     }
 
@@ -982,35 +969,31 @@ class AudioEngine(private val context: Context) {
             else -> null
         }
 
-        var soundPlayed = false
         if (sampleFile != null && sampleFile.exists()) {
-            val existingId = loadedSampleIds[sampleFile.absolutePath]
-            if (existingId != null && existingId > 0) {
-                val streamId = soundPool?.play(existingId, volume, volume, 1, 0, 1.0f) ?: 0
-                if (streamId > 0) {
-                    soundPlayed = true
-                } else {
-                    pendingSamplePlays[existingId] = volume
-                    soundPlayed = true
-                }
+            val cachedId = nativeDrumSampleIds[sampleFile.absolutePath]
+            if (cachedId != null) {
+                NativeAudioBridge.safeTriggerDrumSample(cachedId, volume, 0.0f)
             } else {
-                val newId = soundPool?.load(sampleFile.absolutePath, 1) ?: 0
-                if (newId > 0) {
-                    loadedSampleIds[sampleFile.absolutePath] = newId
-                    pendingSamplePlays[newId] = volume
-                    soundPlayed = true
+                val newId = nextNativeSampleId.getAndIncrement()
+                nativeDrumSampleIds[sampleFile.absolutePath] = newId
+                coroutineScope.launch(Dispatchers.IO) {
+                    val decoded = com.soundstage.mixer.audio.AudioDecoder.decodeAudioFile(sampleFile)
+                    if (decoded != null) {
+                        NativeAudioBridge.safeLoadDrumSamplePcm(
+                            sampleId = newId,
+                            sampleName = sampleFile.name,
+                            pcmData = decoded.pcmData,
+                            totalFrames = decoded.totalFrames,
+                            sampleRate = decoded.sampleRate
+                        )
+                    } else if (sampleFile.extension.equals("wav", ignoreCase = true)) {
+                        NativeAudioBridge.safeLoadDrumWavFile(newId, sampleFile.absolutePath)
+                    }
+                    NativeAudioBridge.safeTriggerDrumSample(newId, volume, 0.0f)
                 }
             }
-        }
-
-        if (!soundPlayed) {
-            val midiNote = mapSampleNameToDrumNote(sampleName, 1)
-            val velInt = (volume * 127f).toInt().coerceIn(1, 127)
-            NativeAudioBridge.safeNoteOn(NativeAudioBridge.CHANNEL_DRUMPAD, midiNote, velInt)
-            coroutineScope.launch {
-                delay(150)
-                NativeAudioBridge.safeNoteOff(NativeAudioBridge.CHANNEL_DRUMPAD, midiNote)
-            }
+        } else {
+            NativeAudioBridge.safeTriggerDrumSample(1, volume, 0.0f)
         }
     }
 

@@ -1,31 +1,39 @@
 #include "soundfont_engine.h"
 #include <android/log.h>
 #include <algorithm>
+#include <chrono>
+
+#if __has_include(<fluidsynth/voice.h>)
+#include <fluidsynth/voice.h>
+#endif
 
 #define TAG "SoundfontEngine"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
-bool SoundfontEngine::init(int sampleRate) {
+bool SoundfontEngine::init(int sampleRate, int polyphony, const char* instanceName) {
     destroy();
+
+    mInstanceName = instanceName ? instanceName : "FaderEngine";
+    mConfiguredPolyphony = std::clamp(polyphony, 16, 256);
 
     mSettings = new_fluid_settings();
     if (!mSettings) {
-        LOGE("Failed to allocate fluid_settings");
+        LOGE("[%s] Failed to allocate fluid_settings", mInstanceName.c_str());
         return false;
     }
 
     fluid_settings_setnum(mSettings, "synth.sample-rate", static_cast<double>(sampleRate));
     fluid_settings_setnum(mSettings, "synth.gain", 0.7);
-    fluid_settings_setint(mSettings, "synth.polyphony", 128);
+    fluid_settings_setint(mSettings, "synth.polyphony", mConfiguredPolyphony);
     fluid_settings_setint(mSettings, "synth.midi-channels", kMaxChannels);
     fluid_settings_setint(mSettings, "synth.reverb.active", 0);
     fluid_settings_setint(mSettings, "synth.chorus.active", 0);
 
     mSynth = new_fluid_synth(mSettings);
     if (!mSynth) {
-        LOGE("Failed to allocate fluid_synth");
+        LOGE("[%s] Failed to allocate fluid_synth", mInstanceName.c_str());
         delete_fluid_settings(mSettings);
         mSettings = nullptr;
         return false;
@@ -43,7 +51,9 @@ bool SoundfontEngine::init(int sampleRate) {
         fluid_synth_cc(mSynth, ch, 11, 127); // Expression Full
     }
 
-    LOGI("SoundfontEngine instance initialized (sample rate: %d)", sampleRate);
+    int effectivePoly = fluid_synth_get_polyphony(mSynth);
+    LOGI("[%s] Startup Verification: Requested Polyphony=%d, Effective Polyphony=%d, Interpolation=LINEAR(1), SampleRate=%d",
+         mInstanceName.c_str(), mConfiguredPolyphony, effectivePoly, sampleRate);
     return true;
 }
 
@@ -62,12 +72,12 @@ void SoundfontEngine::destroy() {
 int SoundfontEngine::loadSoundFont(const std::string &absolutePath) {
     std::lock_guard<std::mutex> lock(mMutex);
     if (!mSynth) {
-        LOGI("Synth instance not initialized yet, auto-initializing in loadSoundFont...");
+        LOGI("[%s] Synth instance not initialized yet, auto-initializing in loadSoundFont...", mInstanceName.c_str());
         mSettings = new_fluid_settings();
         if (mSettings) {
             fluid_settings_setnum(mSettings, "synth.sample-rate", 48000.0);
             fluid_settings_setnum(mSettings, "synth.gain", 0.7);
-            fluid_settings_setint(mSettings, "synth.polyphony", 128);
+            fluid_settings_setint(mSettings, "synth.polyphony", mConfiguredPolyphony);
             fluid_settings_setint(mSettings, "synth.midi-channels", kMaxChannels);
             fluid_settings_setint(mSettings, "synth.reverb.active", 0);
             fluid_settings_setint(mSettings, "synth.chorus.active", 0);
@@ -320,14 +330,46 @@ void SoundfontEngine::setGain(float gain) {
 }
 
 void SoundfontEngine::setPolyphony(int polyphony) {
+    mConfiguredPolyphony = std::clamp(polyphony, 16, 256);
     if (!mSynth) return;
-    int clamped = std::clamp(polyphony, 16, 256);
-    fluid_synth_set_polyphony(mSynth, clamped);
+    fluid_synth_set_polyphony(mSynth, mConfiguredPolyphony);
+    int effective = fluid_synth_get_polyphony(mSynth);
+    LOGI("[%s] Polyphony updated: requested=%d, effective=%d", mInstanceName.c_str(), mConfiguredPolyphony, effective);
 }
 
 int SoundfontEngine::getActiveVoiceCount() const {
     if (!mSynth) return 0;
     return fluid_synth_get_active_voice_count(mSynth);
+}
+
+VoiceAuditSnapshot SoundfontEngine::getLatestAuditSnapshot() const {
+    VoiceAuditSnapshot snap;
+    snap.totalVoices = mAuditTotalVoices.load(std::memory_order_relaxed);
+    snap.activeHeldVoices = mAuditActiveHeldVoices.load(std::memory_order_relaxed);
+    snap.sustainedVoices = mAuditSustainedVoices.load(std::memory_order_relaxed);
+    snap.releaseVoices = mAuditReleaseVoices.load(std::memory_order_relaxed);
+    snap.audibleVoices = mAuditAudibleVoices.load(std::memory_order_relaxed);
+    snap.silentVoices = mAuditSilentVoices.load(std::memory_order_relaxed);
+    snap.voiceSteals = mAuditVoiceSteals.load(std::memory_order_relaxed);
+    snap.voicesCreatedTotal = mAuditVoicesCreatedTotal.load(std::memory_order_relaxed);
+    snap.voicesFinishedTotal = mAuditVoicesFinishedTotal.load(std::memory_order_relaxed);
+    snap.maxVoicesObserved = mAuditMaxVoicesObserved.load(std::memory_order_relaxed);
+    snap.renderDurationUs = mAuditLastRenderDurationUs.load(std::memory_order_relaxed);
+    return snap;
+}
+
+void SoundfontEngine::resetAuditCounters() {
+    mAuditTotalVoices.store(0, std::memory_order_relaxed);
+    mAuditActiveHeldVoices.store(0, std::memory_order_relaxed);
+    mAuditSustainedVoices.store(0, std::memory_order_relaxed);
+    mAuditReleaseVoices.store(0, std::memory_order_relaxed);
+    mAuditAudibleVoices.store(0, std::memory_order_relaxed);
+    mAuditSilentVoices.store(0, std::memory_order_relaxed);
+    mAuditVoiceSteals.store(0, std::memory_order_relaxed);
+    mAuditVoicesCreatedTotal.store(0, std::memory_order_relaxed);
+    mAuditVoicesFinishedTotal.store(0, std::memory_order_relaxed);
+    mAuditMaxVoicesObserved.store(0, std::memory_order_relaxed);
+    mAuditLastRenderDurationUs.store(0, std::memory_order_relaxed);
 }
 
 void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool accumulate) {
@@ -337,6 +379,8 @@ void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool 
         }
         return;
     }
+
+    auto tStart = std::chrono::steady_clock::now();
 
     // Dynamic release time management: gently accelerate voice decay when load > 40 voices
     int activeVoices = fluid_synth_get_active_voice_count(mSynth);
@@ -373,12 +417,40 @@ void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool 
         mEventQueue.pop(ev);
 
         switch (ev.type) {
-            case EngineMidiEvent::NOTE_ON:
+            case EngineMidiEvent::NOTE_ON: {
+                int vBefore = fluid_synth_get_active_voice_count(mSynth);
                 fluid_synth_noteon(mSynth, ev.channel, ev.note, ev.velocity);
+                int vAfter = fluid_synth_get_active_voice_count(mSynth);
+                int delta = vAfter - vBefore;
+                if (delta > 0) {
+                    mAuditVoicesCreatedTotal.fetch_add(delta, std::memory_order_relaxed);
+                }
+                NoteOnAuditRecord rec;
+                rec.timestampNs = static_cast<uint64_t>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::steady_clock::now().time_since_epoch()).count());
+                rec.channel = ev.channel;
+                rec.note = ev.note;
+                rec.velocity = ev.velocity;
+                rec.voicesBefore = vBefore;
+                rec.voicesAfter = vAfter;
+                rec.deltaVoices = delta;
+                mNoteOnRecords.push(rec);
                 break;
-            case EngineMidiEvent::NOTE_OFF:
+            }
+            case EngineMidiEvent::NOTE_OFF: {
+                int vBefore = fluid_synth_get_active_voice_count(mSynth);
                 fluid_synth_noteoff(mSynth, ev.channel, ev.note);
+                NoteOffAuditRecord rec;
+                rec.timestampNs = static_cast<uint64_t>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::steady_clock::now().time_since_epoch()).count());
+                rec.channel = ev.channel;
+                rec.note = ev.note;
+                rec.voicesBefore = vBefore;
+                mNoteOffRecords.push(rec);
                 break;
+            }
             case EngineMidiEvent::ALL_NOTES_OFF:
                 if (ev.channel >= 0 && ev.channel < kMaxChannels) {
                     fluid_synth_all_notes_off(mSynth, ev.channel);
@@ -427,4 +499,57 @@ void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool 
             outputBuffer[i] += mTempRenderBuffer[i];
         }
     }
+
+    auto tEnd = std::chrono::steady_clock::now();
+    int renderUs = static_cast<int>(std::chrono::duration_cast<std::chrono::microseconds>(tEnd - tStart).count());
+    mAuditLastRenderDurationUs.store(renderUs, std::memory_order_relaxed);
+
+    fluid_voice_t* voiceList[128];
+    fluid_synth_get_voicelist(mSynth, voiceList, 128, -1);
+    int totalCount = 0;
+    int heldCount = 0;
+    int sustainedCount = 0;
+    int releaseCount = 0;
+    int audibleCount = 0;
+    int silentCount = 0;
+
+    for (int i = 0; i < 128 && voiceList[i] != nullptr; ++i) {
+        totalCount++;
+        if (fluid_voice_is_on(voiceList[i])) {
+            heldCount++;
+        } else if (fluid_voice_is_sustained(voiceList[i])) {
+            sustainedCount++;
+        } else {
+            releaseCount++;
+        }
+        audibleCount++;
+    }
+
+    mAuditTotalVoices.store(totalCount, std::memory_order_relaxed);
+    mAuditActiveHeldVoices.store(heldCount, std::memory_order_relaxed);
+    mAuditSustainedVoices.store(sustainedCount, std::memory_order_relaxed);
+    mAuditReleaseVoices.store(releaseCount, std::memory_order_relaxed);
+    mAuditAudibleVoices.store(audibleCount, std::memory_order_relaxed);
+    mAuditSilentVoices.store(silentCount, std::memory_order_relaxed);
+
+    int prevMax = mAuditMaxVoicesObserved.load(std::memory_order_relaxed);
+    if (totalCount > prevMax) {
+        mAuditMaxVoicesObserved.store(totalCount, std::memory_order_relaxed);
+    }
+    if (totalCount >= 128) {
+        mAuditVoiceSteals.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    VoiceAuditSnapshot snap;
+    snap.totalVoices = totalCount;
+    snap.activeHeldVoices = heldCount;
+    snap.sustainedVoices = sustainedCount;
+    snap.releaseVoices = releaseCount;
+    snap.audibleVoices = audibleCount;
+    snap.silentVoices = silentCount;
+    snap.voiceSteals = mAuditVoiceSteals.load(std::memory_order_relaxed);
+    snap.voicesCreatedTotal = mAuditVoicesCreatedTotal.load(std::memory_order_relaxed);
+    snap.maxVoicesObserved = mAuditMaxVoicesObserved.load(std::memory_order_relaxed);
+    snap.renderDurationUs = renderUs;
+    mAuditSnapshots.push(snap);
 }

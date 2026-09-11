@@ -80,6 +80,17 @@ object NativeAudioBridge {
     external fun setBypassMasterFX(bypass: Boolean)
     external fun isMasterFxBypassed(): Boolean
 
+    // Dedicated SamplePlaybackEngine external functions
+    external fun triggerDrumSample(sampleId: Int, velocity: Float, pan: Float)
+    external fun stopDrumSample(sampleId: Int)
+    external fun stopAllDrumSamples()
+    external fun setDrumMasterVolume(volume: Float)
+    external fun setDrumMasterPan(pan: Float)
+    external fun loadDrumWavFile(sampleId: Int, filePath: String): Int
+    external fun loadDrumSamplePcm(sampleId: Int, sampleName: String, pcmData: FloatArray, totalFrames: Int, sampleRate: Int): Int
+    external fun unloadDrumSample(sampleId: Int)
+    external fun getDrumActiveVoices(): Int
+
     // Safe wrappers to avoid crashes if native library isn't compiled or loaded
     fun safeIsOboeActive(): Boolean {
         return if (isLibraryLoaded) {
@@ -478,5 +489,97 @@ object NativeAudioBridge {
                 false
             }
         } else false
+    }
+
+    fun safeTriggerDrumSample(sampleId: Int, velocity: Float = 0.9f, pan: Float = 0.0f) {
+        if (isLibraryLoaded) {
+            try {
+                triggerDrumSample(sampleId, velocity.coerceIn(0.01f, 1.0f), pan.coerceIn(-1.0f, 1.0f))
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking triggerDrumSample: ${e.message}")
+            }
+        }
+    }
+
+    fun safeStopDrumSample(sampleId: Int) {
+        if (isLibraryLoaded) {
+            try {
+                stopDrumSample(sampleId)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking stopDrumSample: ${e.message}")
+            }
+        }
+    }
+
+    fun safeStopAllDrumSamples() {
+        if (isLibraryLoaded) {
+            try {
+                stopAllDrumSamples()
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking stopAllDrumSamples: ${e.message}")
+            }
+        }
+    }
+
+    fun safeSetDrumMasterVolume(volume: Float) {
+        if (isLibraryLoaded) {
+            try {
+                setDrumMasterVolume(volume.coerceIn(0.0f, 2.0f))
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking setDrumMasterVolume: ${e.message}")
+            }
+        }
+    }
+
+    fun safeSetDrumMasterPan(pan: Float) {
+        if (isLibraryLoaded) {
+            try {
+                setDrumMasterPan(pan.coerceIn(-1.0f, 1.0f))
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking setDrumMasterPan: ${e.message}")
+            }
+        }
+    }
+
+    fun safeLoadDrumWavFile(sampleId: Int, filePath: String): Int {
+        return if (isLibraryLoaded) {
+            try {
+                loadDrumWavFile(sampleId, filePath)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking loadDrumWavFile: ${e.message}")
+                -1
+            }
+        } else -1
+    }
+
+    fun safeLoadDrumSamplePcm(sampleId: Int, sampleName: String, pcmData: FloatArray, totalFrames: Int, sampleRate: Int = 48000): Int {
+        return if (isLibraryLoaded) {
+            try {
+                loadDrumSamplePcm(sampleId, sampleName, pcmData, totalFrames, sampleRate)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking loadDrumSamplePcm: ${e.message}")
+                -1
+            }
+        } else -1
+    }
+
+    fun safeUnloadDrumSample(sampleId: Int) {
+        if (isLibraryLoaded) {
+            try {
+                unloadDrumSample(sampleId)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking unloadDrumSample: ${e.message}")
+            }
+        }
+    }
+
+    fun safeGetDrumActiveVoices(): Int {
+        return if (isLibraryLoaded) {
+            try {
+                getDrumActiveVoices()
+            } catch (e: Throwable) {
+                0
+            }
+        } else 0
     }
 }

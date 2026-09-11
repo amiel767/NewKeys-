@@ -245,8 +245,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 Log.w("MixerViewModel", "ensureDirectoriesExist warning: ${e.message}")
             }
-            refreshStorageFiles()
             restoreSavedAppState()
+            refreshStorageFiles()
         }
     }
 
@@ -361,8 +361,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 var hasLoadedAnySlot = false
                 if (saved.audioSlots.isNotEmpty()) {
                     saved.audioSlots.forEach { savedSlot ->
+                        val savedTrack = saved.tracks.find { it.id == (savedSlot.slotId + 1) }
                         val candidatePath = when {
                             !savedSlot.soundFontPath.isNullOrEmpty() && File(savedSlot.soundFontPath).exists() -> savedSlot.soundFontPath
+                            savedTrack != null && savedTrack.soundfontName.isNotEmpty() && File(fileManager.soundfontsDir, savedTrack.soundfontName).exists() -> File(fileManager.soundfontsDir, savedTrack.soundfontName).absolutePath
+                            !savedSlot.soundFontPath.isNullOrEmpty() && File(fileManager.soundfontsDir, File(savedSlot.soundFontPath).name).exists() -> File(fileManager.soundfontsDir, File(savedSlot.soundFontPath).name).absolutePath
                             !savedSlot.patchName.isNullOrEmpty() && File(fileManager.soundfontsDir, savedSlot.patchName).exists() -> File(fileManager.soundfontsDir, savedSlot.patchName).absolutePath
                             else -> null
                         }
@@ -386,14 +389,16 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                // Ensure default native SoundFont is loaded ONLY on Slot 0 (Track 1) if empty
-                val defaultSf = File(fileManager.soundfontsDir, "VintageDreamsWaves-v2.sf2")
-                val fallbackSf = File(getApplication<Application>().filesDir, "LiveKeys/SoundFonts/VintageDreamsWaves-v2.sf2")
-                val sfToLoad = if (defaultSf.exists()) defaultSf else if (fallbackSf.exists()) fallbackSf else null
-                if (sfToLoad != null) {
-                    val slot0Path = _uiState.value.audioSlots.getOrNull(0)?.soundFontPath
-                    if (slot0Path.isNullOrEmpty() || !File(slot0Path).exists()) {
-                        loadSoundFontForSlot(0, sfToLoad.absolutePath, bank = 0, preset = 0)
+                // If nothing was loaded at all and Slot 0 is empty, load default SoundFont ONLY on Slot 0
+                if (!hasLoadedAnySlot) {
+                    val defaultSf = File(fileManager.soundfontsDir, "VintageDreamsWaves-v2.sf2")
+                    val fallbackSf = File(getApplication<Application>().filesDir, "LiveKeys/SoundFonts/VintageDreamsWaves-v2.sf2")
+                    val sfToLoad = if (defaultSf.exists()) defaultSf else if (fallbackSf.exists()) fallbackSf else null
+                    if (sfToLoad != null) {
+                        val slot0Path = _uiState.value.audioSlots.getOrNull(0)?.soundFontPath
+                        if (slot0Path.isNullOrEmpty() || !File(slot0Path).exists()) {
+                            loadSoundFontForSlot(0, sfToLoad.absolutePath, bank = 0, preset = 0)
+                        }
                     }
                 }
             } else {
@@ -561,15 +566,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         scenes = realScenes,
                         isScanningStorage = false
                     )
-                }
-
-                // Automatically load default SoundFont ONLY on Slot 0 (Track 1) at initial launch if completely unassigned
-                val defaultSf = sfs.firstOrNull()
-                if (defaultSf != null && File(defaultSf.path).exists()) {
-                    val slot0 = _uiState.value.audioSlots.getOrNull(0)
-                    if (slot0 != null && (slot0.presets.isEmpty() || slot0.soundFontId <= 0 || slot0.soundFontPath.isNullOrEmpty() || !File(slot0.soundFontPath).exists())) {
-                        loadSoundFontForSlot(0, defaultSf.path, bank = 0, preset = 0)
-                    }
                 }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
                 e.printStackTrace()
@@ -1866,10 +1862,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 val readablePath = nativeReadableFile.absolutePath
                 Log.d("SoundFontLoad", "[DIAGNOSTIC] Resolved native-readable path=$readablePath (exists=${nativeReadableFile.exists()}, length=${nativeReadableFile.length()})")
 
-                // 1. Charger d'abord le nouveau SoundFont via le chemin natif garanti sur TOUS les moteurs (Fader, Pad, Drum)
+                // 1. Charger d'abord le nouveau SoundFont via le chemin natif garanti sur les moteurs (Fader, Pad)
                 val newSfId = NativeAudioBridge.safeLoadSoundFont(NativeAudioBridge.ENGINE_FADER, readablePath)
                 NativeAudioBridge.safeLoadSoundFont(NativeAudioBridge.ENGINE_PAD, readablePath)
-                NativeAudioBridge.safeLoadSoundFont(NativeAudioBridge.ENGINE_DRUM, readablePath)
                 Log.d("SoundFontLoad", "[DIAGNOSTIC] Native safeLoadSoundFont returned ID=$newSfId for slot=$slotId")
 
                 // 2. Décharger l'ancien UNIQUEMENT si le nouveau a réussi et que l'ancien n'est plus utilisé nulle part
@@ -1878,7 +1873,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     if (!inUse) {
                         NativeAudioBridge.safeUnloadSoundFont(NativeAudioBridge.ENGINE_FADER, oldSfId)
                         NativeAudioBridge.safeUnloadSoundFont(NativeAudioBridge.ENGINE_PAD, oldSfId)
-                        NativeAudioBridge.safeUnloadSoundFont(NativeAudioBridge.ENGINE_DRUM, oldSfId)
                     }
                 }
 
@@ -1938,15 +1932,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         bank = targetPreset.bankNumber,
                         preset = targetPreset.id
                     )
-                    if (slotId == 8) {
-                        NativeAudioBridge.safeSelectProgram(
-                            engineIndex = NativeAudioBridge.ENGINE_DRUM,
-                            channel = 9,
-                            soundFontId = effectiveSfId,
-                            bank = targetPreset.bankNumber,
-                            preset = targetPreset.id
-                        )
-                    } else if (slotId == 9) {
+                    if (slotId == 9) {
                         NativeAudioBridge.safeSelectProgram(
                             engineIndex = NativeAudioBridge.ENGINE_PAD,
                             channel = 0,
@@ -2034,15 +2020,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 preset.bankNumber,
                 preset.id
             )
-            if (slotId == 8) {
-                NativeAudioBridge.safeSelectProgram(
-                    NativeAudioBridge.ENGINE_DRUM,
-                    9,
-                    slot.soundFontId,
-                    preset.bankNumber,
-                    preset.id
-                )
-            } else if (slotId == 9) {
+            if (slotId == 9) {
                 NativeAudioBridge.safeSelectProgram(
                     NativeAudioBridge.ENGINE_PAD,
                     0,

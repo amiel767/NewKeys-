@@ -157,6 +157,9 @@ fun VirtualPianoKeyboard(
             val currentBlackKeyWidthPx by rememberUpdatedState(blackKeyWidthPx)
             val currentBaseOctave by rememberUpdatedState(baseOctave)
 
+            // Computer mouse style live blue translucent selection overlay range over the keyboard
+            var activeDragSelectionRange by remember { mutableStateOf<Pair<Float, Float>?>(null) }
+
             Column(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(0.dp)
@@ -182,7 +185,8 @@ fun VirtualPianoKeyboard(
                                 totalWhiteKeys = totalWhiteKeys,
                                 isExpanded = isLayerMapperExpanded,
                                 onToggleExpanded = { toggleMapperExpanded() },
-                                onRangeChanged = onRangeChanged
+                                onRangeChanged = onRangeChanged,
+                                onDragSelectionChange = { activeDragSelectionRange = it }
                             )
                         }
                     }
@@ -336,6 +340,27 @@ fun VirtualPianoKeyboard(
                                     modifier = Modifier.padding(bottom = 3.dp)
                                 )
                             }
+                        }
+
+                        // Computer mouse-style live blue translucent selection overlay over the Virtual Keyboard
+                        activeDragSelectionRange?.let { (startFrac, endFrac) ->
+                            val overlayStartXDp = (startFrac * baseWhiteWidthDp.value).dp
+                            val overlayEndXDp = (endFrac * baseWhiteWidthDp.value).dp
+                            val overlayWidthDp = (overlayEndXDp - overlayStartXDp).coerceAtLeast(1.dp)
+
+                            Box(
+                                modifier = Modifier
+                                    .offset(x = overlayStartXDp)
+                                    .width(overlayWidthDp)
+                                    .height(keysHeight)
+                                    .clip(RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp))
+                                    .background(Color(0x353B82F6)) // Esthetic translucent blue (mouse selection)
+                                    .border(
+                                        width = 1.2.dp,
+                                        color = Color(0x9960A5FA), // Crisp translucent border
+                                        shape = RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp)
+                                    )
+                            )
                         }
                     }
                 }
