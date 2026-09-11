@@ -342,4 +342,19 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_isOboeActive(
     return static_cast<jboolean>(gAudioEngine.isOboeActive());
 }
 
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setBypassMasterFX(
+        JNIEnv *env,
+        jobject /* this */,
+        jboolean bypass) {
+    gAudioEngine.setBypassMasterFX(bypass);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_isMasterFxBypassed(
+        JNIEnv *env,
+        jobject /* this */) {
+    return static_cast<jboolean>(gAudioEngine.isMasterFxBypassed());
+}
+
 } // extern "C"

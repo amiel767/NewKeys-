@@ -556,6 +556,12 @@ public:
     void setSpatialWidener(float amount);
     void setMasterPunch(float amount);
     void setPadBrightness(float brightness);
+    void setBypassMasterFX(bool bypass) {
+        mBypassMasterFX.store(bypass, std::memory_order_relaxed);
+    }
+    bool isMasterFxBypassed() const {
+        return mBypassMasterFX.load(std::memory_order_relaxed);
+    }
 
     SoundfontEngine &getEngine(int engineIndex) {
         if (engineIndex < 0 || engineIndex >= 3) return mEngines[0];
@@ -599,6 +605,7 @@ private:
     float mPadBrightness = 0.75f;
 
     int mSampleRate = 48000;
+    std::atomic<bool> mBypassMasterFX{false};
     std::vector<float> mFloatRenderBuffer;
     std::vector<float> mPadRenderBuffer;
 };
@@ -628,6 +635,12 @@ public:
     void setSpatialWidener(float amount) {}
     void setMasterPunch(float amount) {}
     void setPadBrightness(float brightness) {}
+    void setBypassMasterFX(bool bypass) {
+        mBypassMasterFX.store(bypass, std::memory_order_relaxed);
+    }
+    bool isMasterFxBypassed() const {
+        return mBypassMasterFX.load(std::memory_order_relaxed);
+    }
 
     SoundfontEngine &getEngine(int engineIndex) {
         if (engineIndex < 0 || engineIndex >= 3) return mEngines[0];

@@ -93,6 +93,15 @@ public:
         return true;
     }
 
+    bool peek(T& item) const {
+        size_t currentHead = mHead.load(std::memory_order_relaxed);
+        if (currentHead == mTail.load(std::memory_order_acquire)) {
+            return false; // Empty
+        }
+        item = mBuffer[currentHead];
+        return true;
+    }
+
     void clear() {
         mHead.store(0, std::memory_order_relaxed);
         mTail.store(0, std::memory_order_relaxed);

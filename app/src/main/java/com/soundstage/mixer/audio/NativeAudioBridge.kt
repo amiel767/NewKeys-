@@ -77,6 +77,8 @@ object NativeAudioBridge {
     external fun renderNativeAudio(audioBuffer: ShortArray, numFrames: Int): Int
     external fun hasActiveSoundFonts(): Boolean
     external fun isOboeActive(): Boolean
+    external fun setBypassMasterFX(bypass: Boolean)
+    external fun isMasterFxBypassed(): Boolean
 
     // Safe wrappers to avoid crashes if native library isn't compiled or loaded
     fun safeIsOboeActive(): Boolean {
@@ -452,6 +454,26 @@ object NativeAudioBridge {
         return if (isLibraryLoaded) {
             try {
                 hasActiveSoundFonts()
+            } catch (e: Throwable) {
+                false
+            }
+        } else false
+    }
+
+    fun safeSetBypassMasterFX(bypass: Boolean) {
+        if (isLibraryLoaded) {
+            try {
+                setBypassMasterFX(bypass)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking setBypassMasterFX: ${e.message}")
+            }
+        }
+    }
+
+    fun safeIsMasterFxBypassed(): Boolean {
+        return if (isLibraryLoaded) {
+            try {
+                isMasterFxBypassed()
             } catch (e: Throwable) {
                 false
             }

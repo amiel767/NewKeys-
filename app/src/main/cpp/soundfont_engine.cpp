@@ -353,9 +353,25 @@ void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool 
         mWasHighLoad = false;
     }
 
-    // Lock-free drain of all pending MIDI events directly on the audio thread
+    // Lock-free drain of pending MIDI events directly on the audio thread with voice spawning throttle
+    // NoteOffs, PitchBends, CCs and AllNotesOffs are never throttled.
+    // NoteOns are capped to max 10 per audio frame (~4-16ms) to prevent CPU starvation on heavy glissandos.
+    int noteOnsProcessed = 0;
+    const int kMaxNoteOnPerFrame = 10;
     EngineMidiEvent ev;
-    while (mEventQueue.pop(ev)) {
+
+    while (mEventQueue.peek(ev)) {
+        if (ev.type == EngineMidiEvent::NOTE_ON) {
+            if (noteOnsProcessed >= kMaxNoteOnPerFrame) {
+                // Leave excess NoteOns in the lock-free ring buffer for the next audio frame
+                break;
+            }
+            noteOnsProcessed++;
+        }
+
+        // Pop the event from the ring buffer
+        mEventQueue.pop(ev);
+
         switch (ev.type) {
             case EngineMidiEvent::NOTE_ON:
                 fluid_synth_noteon(mSynth, ev.channel, ev.note, ev.velocity);

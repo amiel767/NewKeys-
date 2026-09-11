@@ -2,6 +2,9 @@
 #include <android/log.h>
 #include <thread>
 #include <chrono>
+#include <pthread.h>
+#include <sched.h>
+#include <cmath>
 
 #define TAG "AudioEngine"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
@@ -32,7 +35,7 @@ bool AudioEngine::openAndStartStream() {
     oboe::AudioStreamBuilder builder;
     builder.setDirection(oboe::Direction::Output)
         ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
-        ->setSharingMode(oboe::SharingMode::Shared)
+        ->setSharingMode(oboe::SharingMode::Exclusive)
         ->setFormat(oboe::AudioFormat::Float)
         ->setChannelCount(oboe::ChannelCount::Stereo)
         ->setSampleRate(48000)
@@ -44,15 +47,22 @@ bool AudioEngine::openAndStartStream() {
         LOGI("Requesting OpenSL ES audio backend...");
         builder.setAudioApi(oboe::AudioApi::OpenSLES);
     } else {
-        LOGI("Requesting Oboe High-Performance (AAudio) backend...");
+        LOGI("Requesting Oboe High-Performance (AAudio Exclusive) backend...");
         builder.setAudioApi(oboe::AudioApi::AAudio);
     }
 
     oboe::Result result = builder.openStream(mStream);
     if (result != oboe::Result::OK) {
+        LOGW("Failed to open Exclusive Float audio stream (%s). Retrying with SharingMode::Shared...", oboe::convertToText(result));
+        builder.setSharingMode(oboe::SharingMode::Shared);
+        result = builder.openStream(mStream);
+    }
+
+    if (result != oboe::Result::OK) {
         LOGW("Failed to open Float audio stream (%s). Retrying with I16 format...", oboe::convertToText(result));
         builder.setFormat(oboe::AudioFormat::I16);
         builder.setAudioApi(oboe::AudioApi::OpenSLES);
+        builder.setSharingMode(oboe::SharingMode::Shared);
         result = builder.openStream(mStream);
         if (result != oboe::Result::OK) {
             LOGW("Retrying with Unspecified API and Unspecified format...");
@@ -238,25 +248,43 @@ int AudioEngine::renderDirect(int16_t *outputBuffer16, int32_t numFrames) {
     // 3. Mix DrumEngine (Drum Pad)
     mEngines[2].renderStereo(floatBuf, numFrames, true);
 
-    // 4. Apply Master Delay
-    mMasterDelay.process(floatBuf, numFrames);
+    if (!mBypassMasterFX.load(std::memory_order_relaxed)) {
+        float maxAbs = 0.0f;
+        for (size_t i = 0; i < totalSamples; ++i) {
+            float absVal = std::abs(floatBuf[i]);
+            if (absVal > maxAbs) maxAbs = absVal;
+        }
 
-    // 5. Apply Master Reverb
-    mMasterReverb.process(floatBuf, numFrames);
+        // 4. Apply Master Delay
+        mMasterDelay.process(floatBuf, numFrames);
 
-    // 6. Apply SoundGoodizer Multiband/Tube DSP
-    mSoundGoodizer.process(floatBuf, numFrames);
+        // 5. Apply Master Reverb, SoundGoodizer & Punch (bypassed if silent to save CPU)
+        if (maxAbs > 0.0001f) {
+            mMasterReverb.process(floatBuf, numFrames);
+            mSoundGoodizer.process(floatBuf, numFrames);
+            mMasterPunch.process(floatBuf, numFrames);
+        }
 
-    // 7. Apply Transient Punch
-    mMasterPunch.process(floatBuf, numFrames);
+        // 8. Apply Spatial Stereo Widener
+        mSpatialWidener.process(floatBuf, numFrames);
 
-    // 8. Apply Spatial Stereo Widener
-    mSpatialWidener.process(floatBuf, numFrames);
+        // 9. Apply Master 3-Band Biquad EQ
+        mEqLow.process(floatBuf, numFrames);
+        mEqMid.process(floatBuf, numFrames);
+        mEqHigh.process(floatBuf, numFrames);
 
-    // 9. Apply Master 3-Band Biquad EQ
-    mEqLow.process(floatBuf, numFrames);
-    mEqMid.process(floatBuf, numFrames);
-    mEqHigh.process(floatBuf, numFrames);
+        // 10. Master Soft-Clipping Maximizer / Limiter
+        for (size_t i = 0; i < totalSamples; ++i) {
+            float x = floatBuf[i] * 1.8f;
+            if (x > 0.95f) {
+                floatBuf[i] = 0.95f + 0.05f * tanhf((x - 0.95f) / 0.05f);
+            } else if (x < -0.95f) {
+                floatBuf[i] = -0.95f + 0.05f * tanhf((x + 0.95f) / 0.05f);
+            } else {
+                floatBuf[i] = x;
+            }
+        }
+    }
 
     // Convert Float to PCM 16-bit
     for (size_t i = 0; i < totalSamples; ++i) {
@@ -271,6 +299,20 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
     oboe::AudioStream *audioStream,
     void *audioData,
     int32_t numFrames) {
+
+    // Set real-time thread priority on first callback frame to prevent Android Linux kernel from parking on LITTLE cores
+    static std::atomic<bool> sPriorityConfigured{false};
+    if (!sPriorityConfigured.exchange(true, std::memory_order_relaxed)) {
+        struct sched_param param{};
+        param.sched_priority = 90;
+        if (pthread_setschedparam(pthread_self(), SCHED_FIFO, &param) != 0) {
+            param.sched_priority = sched_get_priority_max(SCHED_RR);
+            pthread_setschedparam(pthread_self(), SCHED_RR, &param);
+            LOGI("Oboe audio thread realtime priority configured with policy SCHED_RR");
+        } else {
+            LOGI("Oboe audio thread realtime priority configured with policy SCHED_FIFO");
+        }
+    }
 
     auto startTime = std::chrono::high_resolution_clock::now();
 
@@ -302,25 +344,43 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
         // 3. Mix DrumEngine (Drum Pad)
         mEngines[2].renderStereo(floatBuf, numFrames, true);
 
-        // 4. Apply Master Delay
-        mMasterDelay.process(floatBuf, numFrames);
+        if (!mBypassMasterFX.load(std::memory_order_relaxed)) {
+            float maxAbs = 0.0f;
+            for (size_t i = 0; i < totalSamples; ++i) {
+                float absVal = std::abs(floatBuf[i]);
+                if (absVal > maxAbs) maxAbs = absVal;
+            }
 
-        // 5. Apply Master Reverb
-        mMasterReverb.process(floatBuf, numFrames);
+            // 4. Apply Master Delay
+            mMasterDelay.process(floatBuf, numFrames);
 
-        // 6. Apply SoundGoodizer Multiband/Tube DSP
-        mSoundGoodizer.process(floatBuf, numFrames);
+            // 5. Apply Master Reverb, SoundGoodizer & Punch (bypassed if silent)
+            if (maxAbs > 0.0001f) {
+                mMasterReverb.process(floatBuf, numFrames);
+                mSoundGoodizer.process(floatBuf, numFrames);
+                mMasterPunch.process(floatBuf, numFrames);
+            }
 
-        // 7. Apply Transient Punch
-        mMasterPunch.process(floatBuf, numFrames);
+            // 8. Apply Spatial Stereo Widener
+            mSpatialWidener.process(floatBuf, numFrames);
 
-        // 8. Apply Spatial Stereo Widener
-        mSpatialWidener.process(floatBuf, numFrames);
+            // 9. Apply Master 3-Band Biquad EQ
+            mEqLow.process(floatBuf, numFrames);
+            mEqMid.process(floatBuf, numFrames);
+            mEqHigh.process(floatBuf, numFrames);
 
-        // 9. Apply Master 3-Band Biquad EQ
-        mEqLow.process(floatBuf, numFrames);
-        mEqMid.process(floatBuf, numFrames);
-        mEqHigh.process(floatBuf, numFrames);
+            // 10. Master Soft-Clipping Maximizer / Limiter
+            for (size_t i = 0; i < totalSamples; ++i) {
+                float x = floatBuf[i] * 1.8f;
+                if (x > 0.95f) {
+                    floatBuf[i] = 0.95f + 0.05f * tanhf((x - 0.95f) / 0.05f);
+                } else if (x < -0.95f) {
+                    floatBuf[i] = -0.95f + 0.05f * tanhf((x + 0.95f) / 0.05f);
+                } else {
+                    floatBuf[i] = x;
+                }
+            }
+        }
 
         // Convert Float to PCM 16-bit
         for (size_t i = 0; i < totalSamples; ++i) {
@@ -347,35 +407,41 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
         // 3. Mix DrumEngine (Drum Pad)
         mEngines[2].renderStereo(outputBuffer, numFrames, true);
 
-        // 4. Apply Master Delay
-        mMasterDelay.process(outputBuffer, numFrames);
+        if (!mBypassMasterFX.load(std::memory_order_relaxed)) {
+            float maxAbs = 0.0f;
+            for (size_t i = 0; i < totalSamples; ++i) {
+                float absVal = std::abs(outputBuffer[i]);
+                if (absVal > maxAbs) maxAbs = absVal;
+            }
 
-        // 5. Apply Master Reverb
-        mMasterReverb.process(outputBuffer, numFrames);
+            // 4. Apply Master Delay
+            mMasterDelay.process(outputBuffer, numFrames);
 
-        // 6. Apply SoundGoodizer Multiband/Tube DSP
-        mSoundGoodizer.process(outputBuffer, numFrames);
+            // 5. Apply Master Reverb, SoundGoodizer & Punch (bypassed if silent)
+            if (maxAbs > 0.0001f) {
+                mMasterReverb.process(outputBuffer, numFrames);
+                mSoundGoodizer.process(outputBuffer, numFrames);
+                mMasterPunch.process(outputBuffer, numFrames);
+            }
 
-        // 7. Apply Transient Punch
-        mMasterPunch.process(outputBuffer, numFrames);
+            // 8. Apply Spatial Stereo Widener
+            mSpatialWidener.process(outputBuffer, numFrames);
 
-        // 8. Apply Spatial Stereo Widener
-        mSpatialWidener.process(outputBuffer, numFrames);
+            // 9. Apply Master 3-Band Biquad EQ (Low Shelf, Mid Peaking, High Shelf)
+            mEqLow.process(outputBuffer, numFrames);
+            mEqMid.process(outputBuffer, numFrames);
+            mEqHigh.process(outputBuffer, numFrames);
 
-        // 9. Apply Master 3-Band Biquad EQ (Low Shelf, Mid Peaking, High Shelf)
-        mEqLow.process(outputBuffer, numFrames);
-        mEqMid.process(outputBuffer, numFrames);
-        mEqHigh.process(outputBuffer, numFrames);
-
-        // 10. Master Soft-Clipping Maximizer / Limiter (Boosts low Soundfont volume cleanly without clipping)
-        for (size_t i = 0; i < totalSamples; ++i) {
-            float x = outputBuffer[i] * 1.8f; // Clean 1.8x volume boost
-            if (x > 0.95f) {
-                outputBuffer[i] = 0.95f + 0.05f * tanhf((x - 0.95f) / 0.05f);
-            } else if (x < -0.95f) {
-                outputBuffer[i] = -0.95f + 0.05f * tanhf((x + 0.95f) / 0.05f);
-            } else {
-                outputBuffer[i] = x;
+            // 10. Master Soft-Clipping Maximizer / Limiter (Boosts low Soundfont volume cleanly without clipping)
+            for (size_t i = 0; i < totalSamples; ++i) {
+                float x = outputBuffer[i] * 1.8f; // Clean 1.8x volume boost
+                if (x > 0.95f) {
+                    outputBuffer[i] = 0.95f + 0.05f * tanhf((x - 0.95f) / 0.05f);
+                } else if (x < -0.95f) {
+                    outputBuffer[i] = -0.95f + 0.05f * tanhf((x + 0.95f) / 0.05f);
+                } else {
+                    outputBuffer[i] = x;
+                }
             }
         }
     }
