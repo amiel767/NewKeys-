@@ -134,6 +134,7 @@ public:
     void setChannelChorus(int channel, float chorus01);
     void setGain(float gain);
     void setPolyphony(int polyphony);
+    int getActiveVoiceCount() const;
 
     void renderStereo(float *outputBuffer, int32_t numFrames, bool accumulate = false);
 
@@ -144,6 +145,7 @@ private:
     std::array<std::atomic<int>, kMaxChannels> mTransposeSemitones{};
     std::vector<float> mTempRenderBuffer;
     LockFreeRingBuffer<EngineMidiEvent, 2048> mEventQueue;
+    bool mWasHighLoad = false;
 };
 
 #endif //DAWSTUDIO_SOUNDFONT_ENGINE_H

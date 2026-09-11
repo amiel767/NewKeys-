@@ -68,7 +68,7 @@ bool AudioEngine::openAndStartStream() {
     }
 
     int burst = mStream->getFramesPerBurst();
-    int targetBuffer = std::max(512, burst * 3);
+    int targetBuffer = std::max(512, burst * 4);
     mStream->setBufferSizeInFrames(targetBuffer);
     int sampleRate = mStream->getSampleRate();
     mSampleRate = sampleRate;
@@ -138,12 +138,11 @@ void AudioEngine::setDriver(int driverType) {
 
 void AudioEngine::setBufferSize(int bufferSizeInFrames) {
     std::lock_guard<std::mutex> streamLock(mStreamMutex);
-    std::lock_guard<std::mutex> renderLock(mRenderMutex);
     if (mStream) {
         int32_t burst = mStream->getFramesPerBurst();
         int32_t targetFrames = bufferSizeInFrames;
         if (burst > 0) {
-            int32_t numBursts = std::max(2, (targetFrames + burst - 1) / burst);
+            int32_t numBursts = std::max(4, (targetFrames + burst - 1) / burst);
             targetFrames = numBursts * burst;
         }
         int clamped = std::clamp(targetFrames, 64, 4096);
@@ -164,17 +163,14 @@ void AudioEngine::setMasterEq(float lowGainDb, float midGainDb, float highGainDb
 }
 
 void AudioEngine::setSoundGoodizer(bool enabled, int mode, float amount) {
-    std::lock_guard<std::mutex> lock(mRenderMutex);
     mSoundGoodizer.setParams(enabled, mode, amount);
 }
 
 void AudioEngine::setMasterReverb(bool enabled, float size, float decay, float damp, float mix) {
-    std::lock_guard<std::mutex> lock(mRenderMutex);
     mMasterReverb.setParams(enabled, size, decay, damp, mix);
 }
 
 void AudioEngine::setMasterDelay(bool enabled, float timeSec, float feedback, float mix, bool pingPong) {
-    std::lock_guard<std::mutex> lock(mRenderMutex);
     mMasterDelay.setParams(enabled, timeSec, feedback, mix, pingPong);
 }
 
@@ -187,7 +183,6 @@ void AudioEngine::setMasterPunch(float amount) {
 }
 
 void AudioEngine::setPadBrightness(float brightness) {
-    std::lock_guard<std::mutex> lock(mRenderMutex);
     mPadBrightness = std::clamp(brightness, 0.0f, 1.0f);
     float sr = static_cast<float>(mSampleRate > 0 ? mSampleRate : 48000);
     float f0 = 400.0f * std::pow(45.0f, mPadBrightness);
@@ -276,6 +271,8 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
     oboe::AudioStream *audioStream,
     void *audioData,
     int32_t numFrames) {
+
+    auto startTime = std::chrono::high_resolution_clock::now();
 
     mOboeActive.store(true, std::memory_order_relaxed);
     std::lock_guard<std::mutex> lock(mRenderMutex);
@@ -381,6 +378,22 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
                 outputBuffer[i] = x;
             }
         }
+    }
+
+    auto endTime = std::chrono::high_resolution_clock::now();
+    auto durationUs = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
+
+    static int sLogCounter = 0;
+    if (++sLogCounter % 500 == 0 || durationUs > 3500) {
+        int totalActiveVoices = 0;
+        for (int i = 0; i < 3; ++i) {
+            if (mEngines[i].isInitialized()) {
+                totalActiveVoices += mEngines[i].getActiveVoiceCount();
+            }
+        }
+        int sr = mSampleRate > 0 ? mSampleRate : 48000;
+        LOGI("AudioCallback render duration: %ld us (budget: %d us, active voices: %d, frames: %d)",
+             (long)durationUs, (numFrames * 1000000 / sr), totalActiveVoices, numFrames);
     }
 
     return oboe::DataCallbackResult::Continue;

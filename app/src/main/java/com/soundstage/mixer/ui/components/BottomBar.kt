@@ -64,6 +64,8 @@ fun BottomBar(
     // Virtual Keyboard
     isKeyboardActive: Boolean,
     onToggleKeyboard: () -> Unit,
+    isLayerActive: Boolean = false,
+    onToggleLayer: () -> Unit = {},
     onKeyboardHandleClick: () -> Unit,
     onKeyboardDrag: (Float) -> Unit,
     modifier: Modifier = Modifier
@@ -279,7 +281,7 @@ fun BottomBar(
         // ================= 4. AFFICHEUR D'ACCORDS (CHORD DISPLAY BAR - EXPANDED SPACE) =================
         Box(
             modifier = Modifier
-                .weight(1.25f)
+                .weight(1.05f)
                 .height(barHeight)
                 .clip(RoundedCornerShape(10.dp))
                 .background(
@@ -337,10 +339,10 @@ fun BottomBar(
             }
         }
 
-        // ================= 5. MASTER FADER (REDUCED TO 75% COMPACT PROPORTION) =================
+        // ================= 5. MASTER FADER (REDUCED TO COMPACT PROPORTION) =================
         Row(
             modifier = Modifier
-                .weight(0.75f)
+                .weight(0.70f)
                 .height(barHeight)
                 .clip(RoundedCornerShape(10.dp))
                 .background(Color(0xFF0A0E15))
@@ -376,66 +378,132 @@ fun BottomBar(
             }
         }
 
-        // ================= 6. KEYBOARD TOGGLE BUTTON =================
-        val keyboardBg by animateColorAsState(
-            targetValue = if (isKeyboardActive) Color(0xFF0F394A) else DarkSurface,
-            label = "kb_bg"
-        )
-        val keyboardBorder by animateColorAsState(
-            targetValue = if (isKeyboardActive) NeonCyan else BorderSubtle,
-            label = "kb_border"
-        )
-
-        Box(
-            modifier = Modifier
-                .width(44.dp)
-                .height(barHeight)
-                .clip(RoundedCornerShape(9.dp))
-                .background(keyboardBg)
-                .border(1.dp, keyboardBorder, RoundedCornerShape(9.dp))
-                .clickable { onToggleKeyboard() }
-                .testTag("btn_toggle_keyboard"),
-            contentAlignment = Alignment.Center
+        // ================= 6. KEYBOARD & LAYER TOGGLE BUTTONS =================
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Canvas(modifier = Modifier.size(24.dp, 18.dp)) {
-                val w = size.width
-                val h = size.height
-
-                val keyOutlineColor = if (isKeyboardActive) NeonCyan else TextDim
-                drawRoundRect(
-                    color = keyOutlineColor,
-                    topLeft = Offset(1f, 2f),
-                    size = Size(w - 2f, h - 4f),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.dp.toPx()),
-                    style = Stroke(width = 1.4f)
+            // Layer Toggle Button (Appears next to keyboard icon when keyboard is active)
+            androidx.compose.animation.AnimatedVisibility(
+                visible = isKeyboardActive,
+                enter = fadeIn(tween(220)) + expandHorizontally(tween(220)) + scaleIn(),
+                exit = fadeOut(tween(180)) + shrinkHorizontally(tween(180)) + scaleOut()
+            ) {
+                val layerBg by animateColorAsState(
+                    targetValue = if (isLayerActive) Color(0xFF0F394A) else DarkSurface,
+                    label = "layer_bg"
+                )
+                val layerBorder by animateColorAsState(
+                    targetValue = if (isLayerActive) NeonCyan else BorderSubtle,
+                    label = "layer_border"
                 )
 
-                val keySpacing = (w - 2f) / 4f
-                for (i in 1..3) {
-                    drawLine(
-                        color = keyOutlineColor.copy(alpha = 0.7f),
-                        start = Offset(1f + i * keySpacing, 2f),
-                        end = Offset(1f + i * keySpacing, h - 2f),
-                        strokeWidth = 1f
+                Box(
+                    modifier = Modifier
+                        .width(42.dp)
+                        .height(barHeight)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(layerBg)
+                        .border(1.dp, layerBorder, RoundedCornerShape(9.dp))
+                        .clickable { onToggleLayer() }
+                        .testTag("btn_toggle_layer"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(modifier = Modifier.size(20.dp, 16.dp)) {
+                        val w = size.width
+                        val h = size.height
+                        val strokeCol = if (isLayerActive) NeonCyan else TextDim
+
+                        // Top Layer
+                        val p1 = Path().apply {
+                            moveTo(w * 0.5f, h * 0.10f)
+                            lineTo(w * 0.90f, h * 0.32f)
+                            lineTo(w * 0.5f, h * 0.54f)
+                            lineTo(w * 0.10f, h * 0.32f)
+                            close()
+                        }
+                        drawPath(p1, color = strokeCol, style = Stroke(width = 1.4f))
+
+                        // Middle Layer Curve
+                        val p2 = Path().apply {
+                            moveTo(w * 0.12f, h * 0.52f)
+                            lineTo(w * 0.5f, h * 0.74f)
+                            lineTo(w * 0.88f, h * 0.52f)
+                        }
+                        drawPath(p2, color = strokeCol, style = Stroke(width = 1.4f))
+
+                        // Bottom Layer Curve
+                        val p3 = Path().apply {
+                            moveTo(w * 0.12f, h * 0.72f)
+                            lineTo(w * 0.5f, h * 0.94f)
+                            lineTo(w * 0.88f, h * 0.72f)
+                        }
+                        drawPath(p3, color = strokeCol, style = Stroke(width = 1.4f))
+                    }
+                }
+            }
+
+            // Keyboard Toggle Button
+            val keyboardBg by animateColorAsState(
+                targetValue = if (isKeyboardActive) Color(0xFF0F394A) else DarkSurface,
+                label = "kb_bg"
+            )
+            val keyboardBorder by animateColorAsState(
+                targetValue = if (isKeyboardActive) NeonCyan else BorderSubtle,
+                label = "kb_border"
+            )
+
+            Box(
+                modifier = Modifier
+                    .width(44.dp)
+                    .height(barHeight)
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(keyboardBg)
+                    .border(1.dp, keyboardBorder, RoundedCornerShape(9.dp))
+                    .clickable { onToggleKeyboard() }
+                    .testTag("btn_toggle_keyboard"),
+                contentAlignment = Alignment.Center
+            ) {
+                Canvas(modifier = Modifier.size(24.dp, 18.dp)) {
+                    val w = size.width
+                    val h = size.height
+
+                    val keyOutlineColor = if (isKeyboardActive) NeonCyan else TextDim
+                    drawRoundRect(
+                        color = keyOutlineColor,
+                        topLeft = Offset(1f, 2f),
+                        size = Size(w - 2f, h - 4f),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.dp.toPx()),
+                        style = Stroke(width = 1.4f)
+                    )
+
+                    val keySpacing = (w - 2f) / 4f
+                    for (i in 1..3) {
+                        drawLine(
+                            color = keyOutlineColor.copy(alpha = 0.7f),
+                            start = Offset(1f + i * keySpacing, 2f),
+                            end = Offset(1f + i * keySpacing, h - 2f),
+                            strokeWidth = 1f
+                        )
+                    }
+
+                    val blackKeyColor = if (isKeyboardActive) NeonCyan else Color.White
+                    drawRect(
+                        color = blackKeyColor,
+                        topLeft = Offset(1f + keySpacing * 0.7f, 2f),
+                        size = Size(keySpacing * 0.6f, (h - 4f) * 0.55f)
+                    )
+                    drawRect(
+                        color = blackKeyColor,
+                        topLeft = Offset(1f + keySpacing * 1.7f, 2f),
+                        size = Size(keySpacing * 0.6f, (h - 4f) * 0.55f)
+                    )
+                    drawRect(
+                        color = blackKeyColor,
+                        topLeft = Offset(1f + keySpacing * 2.7f, 2f),
+                        size = Size(keySpacing * 0.6f, (h - 4f) * 0.55f)
                     )
                 }
-
-                val blackKeyColor = if (isKeyboardActive) NeonCyan else Color.White
-                drawRect(
-                    color = blackKeyColor,
-                    topLeft = Offset(1f + keySpacing * 0.7f, 2f),
-                    size = Size(keySpacing * 0.6f, (h - 4f) * 0.55f)
-                )
-                drawRect(
-                    color = blackKeyColor,
-                    topLeft = Offset(1f + keySpacing * 1.7f, 2f),
-                    size = Size(keySpacing * 0.6f, (h - 4f) * 0.55f)
-                )
-                drawRect(
-                    color = blackKeyColor,
-                    topLeft = Offset(1f + keySpacing * 2.7f, 2f),
-                    size = Size(keySpacing * 0.6f, (h - 4f) * 0.55f)
-                )
             }
         }
     }

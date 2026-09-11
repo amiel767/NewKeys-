@@ -150,14 +150,14 @@ object KeyPositionMapper {
     }
 
     val TRACK_PALETTE = listOf(
-        Color(0xFFF97316), // T1: Vibrant Amber Orange
-        Color(0xFF22C55E), // T2: Emerald Green
-        Color(0xFF3B82F6), // T3: Royal Blue
-        Color(0xFFA855F7), // T4: Neon Purple
-        Color(0xFFEC4899), // T5: Vibrant Magenta Pink
-        Color(0xFF06B6D4), // T6: Electric Cyan
-        Color(0xFFEAB308), // T7: Gold Yellow
-        Color(0xFFEF4444)  // T8: Crimson Red
+        Color(0xFFF27D52), // T1: Expressive Terracotta / Coral
+        Color(0xFF38D9A9), // T2: Expressive Mint Green
+        Color(0xFFB197FC), // T3: Expressive Lavender Violet
+        Color(0xFFFFB703), // T4: Expressive Warm Amber
+        Color(0xFFFF6584), // T5: Expressive Rose Coral
+        Color(0xFF4EA8DE), // T6: Expressive Sky Azure
+        Color(0xFF94D82D), // T7: Expressive Lime
+        Color(0xFFE056FD)  // T8: Expressive Orchid
     )
 }
 
@@ -204,7 +204,6 @@ fun KeyboardLayerMapper(
             .height(animatedHeight)
             .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
             .background(Color(0xFF10141D))
-            .border(0.8.dp, Color(0x2222D3EE), RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
             .padding(horizontal = 4.dp, vertical = 1.dp)
             .testTag("keyboard_layer_mapper")
     ) {
@@ -308,7 +307,7 @@ private fun TrackRangeBarRow(
             .fillMaxWidth()
             .height(28.dp)
     ) {
-        // ================= TRANSPARENT BLUE SELECTION LAYER (Across both extremities) =================
+        // ================= SELECTION BACKGROUND LAYER (Border-less) =================
         Box(
             modifier = Modifier
                 .offset(x = startXDp)
@@ -318,52 +317,86 @@ private fun TrackRangeBarRow(
                 .background(
                     Brush.horizontalGradient(
                         listOf(
-                            Color(0x4000E5FF),
-                            if (isActivelyDragging) Color(0x6500E5FF) else Color(0x2800E5FF),
-                            Color(0x4000E5FF)
+                            trackColor.copy(alpha = 0.25f),
+                            trackColor.copy(alpha = if (isActivelyDragging) 0.45f else 0.30f),
+                            trackColor.copy(alpha = 0.25f)
                         )
                     )
                 )
-                .border(
-                    width = if (isActivelyDragging) 1.5.dp else 1.dp,
-                    color = if (isActivelyDragging) Color(0xFF00E5FF) else Color(0x6600E5FF),
-                    shape = RoundedCornerShape(13.dp)
-                )
         )
 
-        // Main Colored Capsule Bar
+        // Main Colored Capsule Bar (Border-less, MaterialYou Expressive)
+        val minNoteName = KeyPositionMapper.midiToNoteName(minNote)
+        val maxNoteName = KeyPositionMapper.midiToNoteName(maxNote)
+
         Box(
             modifier = Modifier
                 .offset(x = startXDp)
                 .width(barWidthDp)
                 .height(26.dp)
-                .shadow(if (isActivelyDragging) 6.dp else 3.dp, RoundedCornerShape(13.dp))
+                .shadow(if (isActivelyDragging) 4.dp else 2.dp, RoundedCornerShape(13.dp))
                 .clip(RoundedCornerShape(13.dp))
-                .background(trackColor.copy(alpha = if (isActivelyDragging) 0.92f else 0.82f))
-                .border(1.dp, Color(0x44FFFFFF), RoundedCornerShape(13.dp))
+                .background(trackColor.copy(alpha = if (isActivelyDragging) 0.94f else 0.88f))
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onDoubleTap = { onToggleExpanded() }
                     )
                 }
-                .padding(horizontal = 4.dp),
+                .padding(horizontal = 8.dp),
             contentAlignment = Alignment.Center
         ) {
-            // Patch / SoundFont Name centered
-            Text(
-                text = patchTitle,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .padding(horizontal = 24.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0x35000000))
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
-            )
+            // Grouped in the CENTER: [ C1 ]  Piste  [ C8 ]
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.wrapContentWidth()
+            ) {
+                // Low Note Indicator Badge (Left of Piste name)
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0x40000000))
+                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                ) {
+                    Text(
+                        text = minNoteName,
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(6.dp))
+
+                // Track / Patch Name centered in the middle
+                Text(
+                    text = patchTitle,
+                    fontSize = 9.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 2.dp)
+                )
+
+                Spacer(modifier = Modifier.width(6.dp))
+
+                // High Note Indicator Badge (Right of Piste name)
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0x40000000))
+                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                ) {
+                    Text(
+                        text = maxNoteName,
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            }
         }
 
         // Smooth Updated State References to prevent gesture reset/glue during recomposition
@@ -374,12 +407,11 @@ private fun TrackRangeBarRow(
         val currentOnRangeChanged by rememberUpdatedState(onRangeChanged)
         val currentWhiteWidthPx by rememberUpdatedState(whiteWidthPx)
 
-        // ================= LEFT DRAG HANDLE (Low Note) =================
-        val minNoteName = KeyPositionMapper.midiToNoteName(minNote)
-        Row(
+        // ================= LEFT DRAG HANDLE (Solid Grey Circular Knob) =================
+        Box(
             modifier = Modifier
                 .offset(x = (startXDp - 10.dp).coerceAtLeast(0.dp))
-                .height(28.dp)
+                .size(28.dp)
                 .pointerInput(track.id) {
                     detectHorizontalDragGestures(
                         onDragStart = {
@@ -405,50 +437,31 @@ private fun TrackRangeBarRow(
                         }
                     )
                 },
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(2.dp)
+            contentAlignment = Alignment.Center
         ) {
-            // Circular Knob
             Box(
                 modifier = Modifier
                     .size(20.dp)
-                    .shadow(if (isDraggingMin) 5.dp else 3.dp, CircleShape)
+                    .shadow(if (isDraggingMin) 4.dp else 2.dp, CircleShape)
                     .clip(CircleShape)
-                    .background(if (isDraggingMin) Color(0xFF00E5FF) else Color.White)
-                    .border(2.dp, Color(0xFF141923), CircleShape),
+                    .background(if (isDraggingMin) Color(0xFFCBD5E1) else Color(0xFF94A3B8))
+                    .border(1.5.dp, Color(0xFF1E293B), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Box(
                     modifier = Modifier
                         .size(6.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF141923))
-                )
-            }
-
-            // Note Badge Pill
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(if (isDraggingMin) Color(0xFF0F394A) else Color(0xE60D1117))
-                    .border(0.8.dp, if (isDraggingMin) Color(0xFF00E5FF) else Color(0x44FFFFFF), RoundedCornerShape(4.dp))
-                    .padding(horizontal = 4.dp, vertical = 1.dp)
-            ) {
-                Text(
-                    text = minNoteName,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = if (isDraggingMin) Color(0xFF00E5FF) else Color.White
+                        .background(Color(0xFF334155))
                 )
             }
         }
 
-        // ================= RIGHT DRAG HANDLE (High Note) =================
-        val maxNoteName = KeyPositionMapper.midiToNoteName(maxNote)
-        Row(
+        // ================= RIGHT DRAG HANDLE (Solid Grey Circular Knob) =================
+        Box(
             modifier = Modifier
-                .offset(x = (endXDp - 32.dp).coerceAtLeast(startXDp + 30.dp))
-                .height(28.dp)
+                .offset(x = (endXDp - 10.dp).coerceAtLeast(startXDp + 10.dp))
+                .size(28.dp)
                 .pointerInput(track.id) {
                     detectHorizontalDragGestures(
                         onDragStart = {
@@ -474,40 +487,22 @@ private fun TrackRangeBarRow(
                         }
                     )
                 },
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(2.dp)
+            contentAlignment = Alignment.Center
         ) {
-            // Note Badge Pill
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(if (isDraggingMax) Color(0xFF0F394A) else Color(0xE60D1117))
-                    .border(0.8.dp, if (isDraggingMax) Color(0xFF00E5FF) else Color(0x44FFFFFF), RoundedCornerShape(4.dp))
-                    .padding(horizontal = 4.dp, vertical = 1.dp)
-            ) {
-                Text(
-                    text = maxNoteName,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = if (isDraggingMax) Color(0xFF00E5FF) else Color.White
-                )
-            }
-
-            // Circular Knob
             Box(
                 modifier = Modifier
                     .size(20.dp)
-                    .shadow(if (isDraggingMax) 5.dp else 3.dp, CircleShape)
+                    .shadow(if (isDraggingMax) 4.dp else 2.dp, CircleShape)
                     .clip(CircleShape)
-                    .background(if (isDraggingMax) Color(0xFF00E5FF) else Color.White)
-                    .border(2.dp, Color(0xFF141923), CircleShape),
+                    .background(if (isDraggingMax) Color(0xFFCBD5E1) else Color(0xFF94A3B8))
+                    .border(1.5.dp, Color(0xFF1E293B), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Box(
                     modifier = Modifier
                         .size(6.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF141923))
+                        .background(Color(0xFF334155))
                 )
             }
         }

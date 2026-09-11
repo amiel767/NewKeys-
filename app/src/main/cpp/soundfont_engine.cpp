@@ -18,7 +18,7 @@ bool SoundfontEngine::init(int sampleRate) {
 
     fluid_settings_setnum(mSettings, "synth.sample-rate", static_cast<double>(sampleRate));
     fluid_settings_setnum(mSettings, "synth.gain", 0.7);
-    fluid_settings_setint(mSettings, "synth.polyphony", 48);
+    fluid_settings_setint(mSettings, "synth.polyphony", 128);
     fluid_settings_setint(mSettings, "synth.midi-channels", kMaxChannels);
     fluid_settings_setint(mSettings, "synth.reverb.active", 0);
     fluid_settings_setint(mSettings, "synth.chorus.active", 0);
@@ -67,7 +67,7 @@ int SoundfontEngine::loadSoundFont(const std::string &absolutePath) {
         if (mSettings) {
             fluid_settings_setnum(mSettings, "synth.sample-rate", 48000.0);
             fluid_settings_setnum(mSettings, "synth.gain", 0.7);
-            fluid_settings_setint(mSettings, "synth.polyphony", 48);
+            fluid_settings_setint(mSettings, "synth.polyphony", 128);
             fluid_settings_setint(mSettings, "synth.midi-channels", kMaxChannels);
             fluid_settings_setint(mSettings, "synth.reverb.active", 0);
             fluid_settings_setint(mSettings, "synth.chorus.active", 0);
@@ -325,12 +325,32 @@ void SoundfontEngine::setPolyphony(int polyphony) {
     fluid_synth_set_polyphony(mSynth, clamped);
 }
 
+int SoundfontEngine::getActiveVoiceCount() const {
+    if (!mSynth) return 0;
+    return fluid_synth_get_active_voice_count(mSynth);
+}
+
 void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool accumulate) {
     if (!mSynth || fluid_synth_sfcount(mSynth) == 0) {
         if (!accumulate) {
             std::fill(outputBuffer, outputBuffer + (numFrames * 2), 0.0f);
         }
         return;
+    }
+
+    // Dynamic release time management: gently accelerate voice decay when load > 40 voices
+    int activeVoices = fluid_synth_get_active_voice_count(mSynth);
+    if (activeVoices > 40) {
+        int relVal = std::max(15, 64 - (activeVoices - 40) * 1);
+        for (int ch = 0; ch < kMaxChannels; ++ch) {
+            fluid_synth_cc(mSynth, ch, 72, relVal);
+        }
+        mWasHighLoad = true;
+    } else if (mWasHighLoad) {
+        for (int ch = 0; ch < kMaxChannels; ++ch) {
+            fluid_synth_cc(mSynth, ch, 72, 64);
+        }
+        mWasHighLoad = false;
     }
 
     // Lock-free drain of all pending MIDI events directly on the audio thread

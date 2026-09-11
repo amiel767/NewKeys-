@@ -96,6 +96,7 @@ data class MixerUiState(
     // Virtual Keyboard & Multi-Touch
     val isKeyboardLocked: Boolean = false,
     val keyboardHeightFraction: Float = 0f,
+    val isKeyboardLayerExpanded: Boolean = false,
     val pressedKeys: Set<String> = emptySet(),
     val keyboardKeyScale: Float = 1.0f,
     val keyboardScrollOffset: Float = 0f,
@@ -2566,5 +2567,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateTrackKeyRange(trackId: Int, minNote: Int, maxNote: Int) {
         setTrackSplitRange(trackId, minNote, maxNote)
+    }
+
+    fun toggleKeyboardLayer() {
+        _uiState.update { it.copy(isKeyboardLayerExpanded = !it.isKeyboardLayerExpanded) }
     }
 }

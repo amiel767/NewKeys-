@@ -3,8 +3,7 @@ package com.soundstage.mixer.ui
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -69,12 +68,17 @@ fun MixerScreen(
         ChordCalculator.detect(uiState.pressedKeys)
     }
 
-    // Smooth animation for keyboard retraction & tracks compression
-    val animatedKbFraction by animateFloatAsState(
-        targetValue = uiState.keyboardHeightFraction,
-        animationSpec = tween(280),
-        label = "kb_fraction_anim"
+    val isKeyboardVisible = uiState.keyboardHeightFraction > 0f
+
+    val animatedBottomPadding by animateDpAsState(
+        targetValue = if (isKeyboardVisible) 0.dp else 6.dp,
+        animationSpec = tween(
+            durationMillis = 260,
+            easing = FastOutSlowInEasing
+        ),
+        label = "bottomPaddingAnim"
     )
+    val safeBottomPadding = animatedBottomPadding.coerceAtLeast(0.dp)
 
     // Fullscreen Stage Container
     Box(
@@ -85,7 +89,7 @@ fun MixerScreen(
                 start = 6.dp,
                 end = 6.dp,
                 top = 6.dp,
-                bottom = if (animatedKbFraction > 0.05f) 0.dp else 6.dp
+                bottom = safeBottomPadding
             )
             .testTag("mixer_screen_root")
     ) {
@@ -94,15 +98,15 @@ fun MixerScreen(
             Box(
             modifier = Modifier
                 .fillMaxSize()
-                .shadow(16.dp, RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomStart = if (animatedKbFraction > 0.05f) 0.dp else 14.dp, bottomEnd = if (animatedKbFraction > 0.05f) 0.dp else 14.dp))
-                .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomStart = if (animatedKbFraction > 0.05f) 0.dp else 14.dp, bottomEnd = if (animatedKbFraction > 0.05f) 0.dp else 14.dp))
+                .shadow(16.dp, RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomStart = if (isKeyboardVisible) 0.dp else 14.dp, bottomEnd = if (isKeyboardVisible) 0.dp else 14.dp))
+                .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomStart = if (isKeyboardVisible) 0.dp else 14.dp, bottomEnd = if (isKeyboardVisible) 0.dp else 14.dp))
                 .background(Color(0xFF1B1E2B))
-                .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomStart = if (animatedKbFraction > 0.05f) 0.dp else 14.dp, bottomEnd = if (animatedKbFraction > 0.05f) 0.dp else 14.dp))
+                .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomStart = if (isKeyboardVisible) 0.dp else 14.dp, bottomEnd = if (isKeyboardVisible) 0.dp else 14.dp))
                 .padding(
                     start = 8.dp,
                     end = 8.dp,
                     top = 6.dp,
-                    bottom = if (animatedKbFraction > 0.05f) 0.dp else 6.dp
+                    bottom = safeBottomPadding
                 )
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
@@ -148,7 +152,7 @@ fun MixerScreen(
                     // When the virtual keyboard deploys, keep the 8 vertical tracks cleanly displayed
                     val isVerticalMode = availableH >= 85.dp
                     // Hide volume graduation ticks when keyboard is active to maximize vertical track space
-                    val showTicks = animatedKbFraction <= 0.04f
+                    val showTicks = !isKeyboardVisible
 
                     AnimatedContent(
                         targetState = isVerticalMode,
@@ -225,8 +229,10 @@ fun MixerScreen(
                     // Real-time Detected Chord
                     detectedChord = detectedChord,
                     
-                    isKeyboardActive = uiState.keyboardHeightFraction > 0f,
+                    isKeyboardActive = isKeyboardVisible,
                     onToggleKeyboard = { viewModel.cycleKeyboardExpansion() },
+                    isLayerActive = uiState.isKeyboardLayerExpanded,
+                    onToggleLayer = { viewModel.toggleKeyboardLayer() },
                     onKeyboardHandleClick = { viewModel.cycleKeyboardExpansion() },
                     onKeyboardDrag = { deltaY ->
                         val fractionDelta = -deltaY / 200f
@@ -234,29 +240,60 @@ fun MixerScreen(
                     }
                 )
 
-                // 4. RETRACTABLE MULTI-TOUCH VIRTUAL PIANO KEYBOARD WITH OCTAVE NAV & SCROLL BUTTONS
+                // 4. RETRACTABLE MULTI-TOUCH VIRTUAL PIANO KEYBOARD (IOS-Style Fluid Bottom Expand Animation)
                 val (_, activeSlotLedColor) = rememberDynamicFaderHue(uiState.activeSoundfontSlotId + 1)
-                VirtualPianoKeyboard(
-                    heightFraction = animatedKbFraction,
-                    pressedKeys = uiState.pressedKeys,
-                    octave = uiState.octave,
-                    tracks = uiState.tracks,
-                    onRangeChanged = { trackId, minN, maxN -> viewModel.updateTrackKeyRange(trackId, minN, maxN) },
-                    onKeyDown = { viewModel.onKeyDown(it) },
-                    onKeyUp = { viewModel.onKeyUp(it) },
-                    onKeyDownWithVelocity = { key, vel -> viewModel.onKeyDown(key, vel) },
-                    onGrabberDrag = { deltaY ->
-                        val fractionDelta = -deltaY / 200f
-                        viewModel.setKeyboardHeightFraction(uiState.keyboardHeightFraction + fractionDelta)
-                    },
-                    onGrabberClick = { viewModel.cycleKeyboardExpansion() },
-                    isSustainActive = uiState.isSustainActive,
-                    onToggleSustain = { viewModel.toggleSustain() },
-                    pitchBend = uiState.pitchBend,
-                    onPitchBendChange = { viewModel.setPitchBend(it) },
-                    onOctaveChange = { delta -> viewModel.updateOctave(delta) },
-                    activeAuraColor = activeSlotLedColor
-                )
+
+                AnimatedVisibility(
+                    visible = isKeyboardVisible,
+                    enter = slideInVertically(
+                        initialOffsetY = { fullHeight -> fullHeight },
+                        animationSpec = spring(
+                            dampingRatio = 0.84f,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    ) + expandVertically(
+                        expandFrom = Alignment.Bottom,
+                        animationSpec = spring(
+                            dampingRatio = 0.84f,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    ) + fadeIn(
+                        animationSpec = tween(160, easing = LinearOutSlowInEasing)
+                    ),
+                    exit = slideOutVertically(
+                        targetOffsetY = { fullHeight -> fullHeight },
+                        animationSpec = tween(220, easing = FastOutLinearInEasing)
+                    ) + shrinkVertically(
+                        shrinkTowards = Alignment.Bottom,
+                        animationSpec = tween(220, easing = FastOutLinearInEasing)
+                    ) + fadeOut(
+                        animationSpec = tween(160)
+                    )
+                ) {
+                    VirtualPianoKeyboard(
+                        heightFraction = 1f,
+                        pressedKeys = uiState.pressedKeys,
+                        octave = uiState.octave,
+                        tracks = uiState.tracks,
+                        isLayerExpanded = uiState.isKeyboardLayerExpanded,
+                        onToggleLayerExpanded = { viewModel.toggleKeyboardLayer() },
+                        onRangeChanged = { trackId, minN, maxN -> viewModel.updateTrackKeyRange(trackId, minN, maxN) },
+                        onKeyDown = { viewModel.onKeyDown(it) },
+                        onKeyUp = { viewModel.onKeyUp(it) },
+                        onKeyDownWithVelocity = { key, vel -> viewModel.onKeyDown(key, vel) },
+                        onGrabberDrag = { deltaY ->
+                            val fractionDelta = -deltaY / 200f
+                            viewModel.setKeyboardHeightFraction(uiState.keyboardHeightFraction + fractionDelta)
+                        },
+                        onGrabberClick = { viewModel.cycleKeyboardExpansion() },
+                        isSustainActive = uiState.isSustainActive,
+                        onToggleSustain = { viewModel.toggleSustain() },
+                        pitchBend = uiState.pitchBend,
+                        onPitchBendChange = { viewModel.setPitchBend(it) },
+                        onOctaveChange = { delta -> viewModel.updateOctave(delta) },
+                        activeAuraColor = activeSlotLedColor
+                    )
+                }
             }
 
             // Outside touch scrim for quick closing of floating dropdowns

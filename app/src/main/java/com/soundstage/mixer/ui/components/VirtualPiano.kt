@@ -65,6 +65,8 @@ fun VirtualPianoKeyboard(
     pressedKeys: Set<String>,
     octave: Int = 0,
     tracks: List<TrackChannel> = emptyList(),
+    isLayerExpanded: Boolean = false,
+    onToggleLayerExpanded: (() -> Unit)? = null,
     onRangeChanged: (trackId: Int, minNote: Int, maxNote: Int) -> Unit = { _, _, _ -> },
     onKeyDown: (String) -> Unit,
     onKeyUp: (String) -> Unit,
@@ -81,26 +83,36 @@ fun VirtualPianoKeyboard(
     activeAuraColor: Color = NeonCyan,
     modifier: Modifier = Modifier
 ) {
-    if (heightFraction <= 0.01f) return
-
     val scrollState = rememberScrollState()
     var currentScale by remember(keyScale) { mutableFloatStateOf(keyScale) }
-    var isLayerMapperExpanded by remember { mutableStateOf(false) }
+    var localLayerExpanded by remember { mutableStateOf(false) }
+    val isLayerMapperExpanded = onToggleLayerExpanded?.let { isLayerExpanded } ?: localLayerExpanded
+    val toggleMapperExpanded = {
+        if (onToggleLayerExpanded != null) {
+            onToggleLayerExpanded()
+        } else {
+            localLayerExpanded = !localLayerExpanded
+        }
+    }
 
     val activeTracksCount = remember(tracks) { tracks.count { it.isEnabled } }
-    val compactMapperHeight = if (tracks.isNotEmpty()) 16.dp else 0.dp
+    val compactMapperHeight = if (tracks.isNotEmpty()) 14.dp else 0.dp
     val expandedMapperHeight = if (tracks.isNotEmpty()) {
         (32.dp * activeTracksCount.coerceAtMost(4) + 8.dp).coerceAtLeast(40.dp)
     } else {
         0.dp
     }
     val currentMapperHeight = if (isLayerMapperExpanded) expandedMapperHeight else compactMapperHeight
-    val keysHeight = if (isLayerMapperExpanded) 90.dp else (120.dp - compactMapperHeight)
-    val totalTargetHeight = if (isLayerMapperExpanded) (keysHeight + expandedMapperHeight + 2.dp) else 120.dp
+    // Height reduced by 25%: Base keys height is 90.dp (was 120.dp)
+    val keysHeight = if (isLayerMapperExpanded) 68.dp else (90.dp - compactMapperHeight)
+    val totalTargetHeight = if (isLayerMapperExpanded) (keysHeight + expandedMapperHeight + 2.dp) else 90.dp
 
     val animatedKeyboardHeight by animateDpAsState(
         targetValue = totalTargetHeight,
-        animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
+        animationSpec = spring(
+            dampingRatio = 0.84f,
+            stiffness = Spring.StiffnessMediumLow
+        ),
         label = "kbHeight"
     )
 
@@ -149,32 +161,14 @@ fun VirtualPianoKeyboard(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
-                // Layer Mapper Row (Synchronized with keys scroll, toggle handle above Pitch Bend)
+                // Layer Mapper Row (Synchronized with keys scroll)
                 if (tracks.isNotEmpty()) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(currentMapperHeight)
                     ) {
-                        // Small handle box positioned directly above Pitch Bend
-                        Box(
-                            modifier = Modifier
-                                .width(42.dp)
-                                .fillMaxHeight()
-                                .padding(end = 4.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(Color(0xFF1B2230))
-                                .border(0.8.dp, Color(0x4422D3EE), RoundedCornerShape(4.dp))
-                                .clickable { isLayerMapperExpanded = !isLayerMapperExpanded },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Layers,
-                                contentDescription = "Toggle Layers",
-                                tint = if (isLayerMapperExpanded) NeonCyan else Color(0xAA94A3B8),
-                                modifier = Modifier.size(11.dp)
-                            )
-                        }
+                        Spacer(modifier = Modifier.width(46.dp))
 
                         Box(
                             modifier = Modifier
@@ -187,7 +181,7 @@ fun VirtualPianoKeyboard(
                                 whiteWidthDp = baseWhiteWidthDp,
                                 totalWhiteKeys = totalWhiteKeys,
                                 isExpanded = isLayerMapperExpanded,
-                                onToggleExpanded = { isLayerMapperExpanded = !isLayerMapperExpanded },
+                                onToggleExpanded = { toggleMapperExpanded() },
                                 onRangeChanged = onRangeChanged
                             )
                         }

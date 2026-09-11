@@ -95,7 +95,7 @@ fun LoopsDialog(
 
     val isEditing = editingLoopFile != null
     val targetWidth by animateDpAsState(
-        targetValue = if (isEditing) 640.dp else 440.dp,
+        targetValue = if (isEditing) 680.dp else 560.dp,
         animationSpec = tween(300),
         label = "dialog_width"
     )
@@ -122,12 +122,12 @@ fun LoopsDialog(
         ) {
             Surface(
                 modifier = modifier
-                    .widthIn(min = 340.dp, max = targetWidth)
+                    .widthIn(min = 380.dp, max = targetWidth)
                     .fillMaxWidth(if (isEditing) 0.95f else 0.88f)
-                    .heightIn(min = 380.dp, max = 580.dp)
-                    .clip(RoundedCornerShape(28.dp))
-                    .border(1.dp, Color(0x33A78BFA), RoundedCornerShape(28.dp))
-                    .shadow(16.dp, RoundedCornerShape(28.dp)),
+                    .heightIn(min = 280.dp, max = 350.dp)
+                    .clip(RoundedCornerShape(22.dp))
+                    .border(1.dp, Color(0x33A78BFA), RoundedCornerShape(22.dp))
+                    .shadow(16.dp, RoundedCornerShape(22.dp)),
                 color = Color(0xFF161926),
                 tonalElevation = 8.dp
             ) {
