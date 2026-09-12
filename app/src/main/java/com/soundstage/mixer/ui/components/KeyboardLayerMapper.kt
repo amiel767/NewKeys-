@@ -2,7 +2,9 @@ package com.soundstage.mixer.ui.components
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -43,8 +45,8 @@ import com.soundstage.mixer.ui.theme.*
  * Geometric Helper for Mapping MIDI Notes to Precise Key Centers & Snap Positions
  */
 object KeyPositionMapper {
-    const val MIN_MIDI = 24  // C1
-    const val MAX_MIDI = 108 // C7
+    const val MIN_MIDI = 33  // A1 (33), Bb1 (34), B1 (35), then C2 (36) to C8 (108)
+    const val MAX_MIDI = 108 // C8
 
     private val NOTE_NAMES = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 
@@ -57,10 +59,17 @@ object KeyPositionMapper {
 
     fun midiToKeyLeftEdgeFraction(midiNote: Int): Float {
         val clampedMidi = midiNote.coerceIn(MIN_MIDI, MAX_MIDI)
-        val octaveIndex = (clampedMidi - MIN_MIDI) / 12
-        val semitone = (clampedMidi - MIN_MIDI) % 12
-
-        val octaveWhiteStart = octaveIndex * 7f
+        if (clampedMidi < 36) {
+            return when (clampedMidi) {
+                33 -> 0.0f
+                34 -> 0.7f
+                35 -> 1.0f
+                else -> 0.0f
+            }
+        }
+        val octaveIndex = (clampedMidi - 36) / 12
+        val semitone = (clampedMidi - 36) % 12
+        val octaveWhiteStart = 2.0f + octaveIndex * 7f
         val whiteOffset = when (semitone) {
             0 -> 0.0f  // C
             1 -> 0.7f  // C#
@@ -81,10 +90,17 @@ object KeyPositionMapper {
 
     fun midiToKeyRightEdgeFraction(midiNote: Int): Float {
         val clampedMidi = midiNote.coerceIn(MIN_MIDI, MAX_MIDI)
-        val octaveIndex = (clampedMidi - MIN_MIDI) / 12
-        val semitone = (clampedMidi - MIN_MIDI) % 12
-
-        val octaveWhiteStart = octaveIndex * 7f
+        if (clampedMidi < 36) {
+            return when (clampedMidi) {
+                33 -> 1.0f
+                34 -> 1.3f
+                35 -> 2.0f
+                else -> 1.0f
+            }
+        }
+        val octaveIndex = (clampedMidi - 36) / 12
+        val semitone = (clampedMidi - 36) % 12
+        val octaveWhiteStart = 2.0f + octaveIndex * 7f
         val whiteOffset = when (semitone) {
             0 -> 1.0f  // C
             1 -> 1.3f  // C#
@@ -105,14 +121,21 @@ object KeyPositionMapper {
 
     /**
      * Maps a MIDI note to its exact center horizontal position (in white key width units).
-     * C1 (24) starts at index 0.
+     * A1 starts at 0.5.
      */
     fun midiToKeyCenterFraction(midiNote: Int): Float {
         val clampedMidi = midiNote.coerceIn(MIN_MIDI, MAX_MIDI)
-        val octaveIndex = (clampedMidi - MIN_MIDI) / 12
-        val semitone = (clampedMidi - MIN_MIDI) % 12
-
-        val octaveWhiteStart = octaveIndex * 7f
+        if (clampedMidi < 36) {
+            return when (clampedMidi) {
+                33 -> 0.5f
+                34 -> 1.0f
+                35 -> 1.5f
+                else -> 0.5f
+            }
+        }
+        val octaveIndex = (clampedMidi - 36) / 12
+        val semitone = (clampedMidi - 36) % 12
+        val octaveWhiteStart = 2.0f + octaveIndex * 7f
         val whiteOffset = when (semitone) {
             0 -> 0.5f  // C
             1 -> 1.0f  // C#
@@ -149,16 +172,19 @@ object KeyPositionMapper {
         return closestMidi
     }
 
-    val TRACK_PALETTE = listOf(
-        Color(0xFFF27D52), // T1: Expressive Terracotta / Coral
-        Color(0xFF38D9A9), // T2: Expressive Mint Green
-        Color(0xFFB197FC), // T3: Expressive Lavender Violet
-        Color(0xFFFFB703), // T4: Expressive Warm Amber
-        Color(0xFFFF6584), // T5: Expressive Rose Coral
-        Color(0xFF4EA8DE), // T6: Expressive Sky Azure
-        Color(0xFF94D82D), // T7: Expressive Lime
-        Color(0xFFE056FD)  // T8: Expressive Orchid
-    )
+    fun getTrackNeonColor(trackId: Int): Color {
+        return when (trackId) {
+            1 -> Color(0xFF22D3EE) // Neon Cyan
+            2 -> Color(0xFF10B981) // Neon Emerald
+            3 -> Color(0xFF8B5CF6) // Neon Purple
+            4 -> Color(0xFFFFC247) // Neon Amber
+            5 -> Color(0xFFD946EF) // Neon Magenta
+            6 -> Color(0xFF38BDF8) // Neon Sky Blue
+            7 -> Color(0xFF84CC16) // Neon Lime
+            8 -> Color(0xFFF43F5E) // Neon Rose
+            else -> Color(0xFF22D3EE)
+        }
+    }
 }
 
 /**
@@ -188,12 +214,16 @@ fun KeyboardLayerMapper(
     val targetHeight = if (isExpanded) {
         (30.dp * visibleCount + 8.dp).coerceAtLeast(38.dp)
     } else {
-        (3.dp * visibleTracks.size.coerceAtMost(6) + 6.dp).coerceIn(10.dp, 22.dp)
+        // Compact mode: generous height allocated from the keyboard 25% height reduction
+        (5.dp * visibleTracks.size.coerceAtMost(5) + 8.dp).coerceIn(24.dp, 36.dp)
     }
 
     val animatedHeight by animateDpAsState(
         targetValue = targetHeight,
-        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+        animationSpec = spring(
+            dampingRatio = 0.85f,
+            stiffness = Spring.StiffnessMediumLow
+        ),
         label = "mapperHeight"
     )
 
@@ -205,38 +235,43 @@ fun KeyboardLayerMapper(
             .height(animatedHeight)
             .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
             .background(Color(0xFF10141D))
-            .padding(horizontal = 0.dp, vertical = 1.dp)
+            .padding(horizontal = 0.dp, vertical = 2.dp)
             .testTag("keyboard_layer_mapper")
     ) {
         if (!isExpanded) {
-            // ================= COMPACT MODE: Thin Layered Range Lines =================
+            // ================= COMPACT MODE: Visible Layered Range Lines (36dp height allocation) =================
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .clickable { onToggleExpanded() },
                 verticalArrangement = Arrangement.SpaceEvenly
             ) {
-                visibleTracks.forEachIndexed { index, track ->
-                    val trackColor = KeyPositionMapper.TRACK_PALETTE.getOrElse(index % KeyPositionMapper.TRACK_PALETTE.size) { NeonCyan }
+                visibleTracks.forEachIndexed { _, track ->
+                    val trackColor = KeyPositionMapper.getTrackNeonColor(track.id)
                     val leftFrac = KeyPositionMapper.midiToKeyLeftEdgeFraction(track.splitNoteMin)
                     val rightFrac = KeyPositionMapper.midiToKeyRightEdgeFraction(track.splitNoteMax)
 
                     val startXDp = (leftFrac * whiteWidthDp.value).dp
                     val endXDp = (rightFrac * whiteWidthDp.value).dp
-                    val barWidthDp = (endXDp - startXDp).coerceAtLeast(4.dp)
+                    val barWidthDp = (endXDp - startXDp).coerceAtLeast(8.dp)
 
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(2.8.dp)
+                            .height(6.dp)
                     ) {
                         Box(
                             modifier = Modifier
                                 .offset(x = startXDp)
                                 .width(barWidthDp)
-                                .height(2.8.dp)
-                                .clip(RoundedCornerShape(1.4.dp))
-                                .background(trackColor)
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(
+                                    Brush.horizontalGradient(
+                                        listOf(trackColor.copy(alpha = 0.85f), trackColor)
+                                    )
+                                )
+                                .border(0.6.dp, Color(0x66FFFFFF), RoundedCornerShape(3.dp))
                         )
                     }
                 }
@@ -249,8 +284,8 @@ fun KeyboardLayerMapper(
                     .verticalScroll(verticalScrollState),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                visibleTracks.forEachIndexed { index, track ->
-                    val trackColor = KeyPositionMapper.TRACK_PALETTE.getOrElse(index % KeyPositionMapper.TRACK_PALETTE.size) { NeonCyan }
+                visibleTracks.forEachIndexed { _, track ->
+                    val trackColor = KeyPositionMapper.getTrackNeonColor(track.id)
                     val patchTitle = when {
                         track.patchName.isNotBlank() -> track.patchName
                         track.soundfontName.isNotBlank() -> track.soundfontName

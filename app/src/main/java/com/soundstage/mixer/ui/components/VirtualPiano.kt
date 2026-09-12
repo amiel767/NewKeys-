@@ -11,6 +11,8 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -31,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -96,33 +99,15 @@ fun VirtualPianoKeyboard(
     }
 
     val activeTracksCount = remember(tracks) { tracks.count { it.isEnabled } }
-    val compactMapperHeight = if (tracks.isNotEmpty()) 14.dp else 0.dp
-    val expandedMapperHeight = if (tracks.isNotEmpty()) {
-        (32.dp * activeTracksCount.coerceAtMost(4) + 8.dp).coerceAtLeast(40.dp)
-    } else {
-        0.dp
-    }
-    
-    // Constant key height ensures keys don't jitter or compress when expanding layers
-    val keysHeight = 90.dp
-    val targetMapperHeight = if (isLayerMapperExpanded) expandedMapperHeight else compactMapperHeight
-    val animatedMapperHeight by animateDpAsState(
-        targetValue = targetMapperHeight,
-        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
-        label = "mapperHeight"
-    )
-    val totalTargetHeight = keysHeight + targetMapperHeight + 2.dp
-
-    val animatedKeyboardHeight by animateDpAsState(
-        targetValue = totalTargetHeight,
-        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
-        label = "kbHeight"
-    )
+    val compactMapperHeight = if (tracks.isNotEmpty()) 36.dp else 0.dp
+    // 25% height reduction: 90.dp -> 68.dp. Reclaimed space is given to compact layers (36.dp)
+    val keysHeight = 68.dp
+    val totalPianoContainerHeight = keysHeight + compactMapperHeight + 6.dp
 
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .height(animatedKeyboardHeight)
+            .height(totalPianoContainerHeight)
             .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
             .background(
                 Brush.verticalGradient(
@@ -132,11 +117,11 @@ fun VirtualPianoKeyboard(
             .border(1.dp, Color(0x3322D3EE), RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
             .testTag("virtual_piano_keyboard")
     ) {
-        // ================= KEYBOARD BODY (LAYER MAPPER + PITCH BEND & C1-C8 KEYS) =================
-        val baseOctave = 1
-        val octaves = (0..6).map { baseOctave + it } // C1..C7
-        val highestOctave = baseOctave + 7 // C8
-        val totalWhiteKeys = 50 // 7 octaves * 7 + 1 High C (C1 to C8)
+        // ================= KEYBOARD BODY (LAYER MAPPER + PITCH BEND & A1-C8 KEYS) =================
+        // Keyboard range starting at A1 (MIDI 33), Bb1 (34), B1 (35) then C2 to C8 (45 white keys total)
+        val octaves = (2..7).toList() // 6 octaves from C2 to C7 (42 white keys)
+        val highestOctave = 8 // C8
+        val totalWhiteKeys = 45 // 2 (A1, B1) + 42 (C2..B7) + 1 (C8) = 45
         val density = LocalDensity.current
 
         BoxWithConstraints(
@@ -158,212 +143,288 @@ fun VirtualPianoKeyboard(
             val currentOnKeyDownWithVel by rememberUpdatedState(onKeyDownWithVelocity)
             val currentWhiteWidthPx by rememberUpdatedState(whiteWidthPx)
             val currentBlackKeyWidthPx by rememberUpdatedState(blackKeyWidthPx)
-            val currentBaseOctave by rememberUpdatedState(baseOctave)
 
             // Computer mouse style live blue translucent selection overlay range over the keyboard
             var activeDragSelectionRange by remember { mutableStateOf<Pair<Float, Float>?>(null) }
 
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(0.dp)
-            ) {
-                // Layer Mapper Row (Synchronized with keys scroll)
-                if (tracks.isNotEmpty()) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    // Compact Layer Mapper Row (Directly visible, height increased to 36dp with track neon colors)
+                    if (tracks.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(compactMapperHeight)
+                        ) {
+                            Spacer(modifier = Modifier.width(46.dp))
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .horizontalScroll(scrollState)
+                            ) {
+                                KeyboardLayerMapper(
+                                    tracks = tracks,
+                                    whiteWidthDp = baseWhiteWidthDp,
+                                    totalWhiteKeys = totalWhiteKeys,
+                                    isExpanded = false,
+                                    onToggleExpanded = { toggleMapperExpanded() },
+                                    onRangeChanged = onRangeChanged,
+                                    onDragSelectionChange = { activeDragSelectionRange = it }
+                                )
+                            }
+                        }
+                    }
+
+                    // Main Keys Section: Pitch Bend (68.dp) + Virtual Piano Keys (68.dp)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(animatedMapperHeight)
+                            .height(keysHeight)
                     ) {
-                        Spacer(modifier = Modifier.width(46.dp))
+                        // Pitch Bend Wheel: fixed to keys height (68.dp)
+                        PitchBendWheel(
+                            currentBend = pitchBend,
+                            onBendChange = onPitchBendChange,
+                            modifier = Modifier
+                                .width(42.dp)
+                                .height(keysHeight)
+                                .padding(end = 4.dp, bottom = 2.dp)
+                        )
 
+                        // Piano Keys Scrollable Container (Fixed 68.dp)
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .fillMaxHeight()
-                                .horizontalScroll(scrollState)
-                        ) {
-                            KeyboardLayerMapper(
-                                tracks = tracks,
-                                whiteWidthDp = baseWhiteWidthDp,
-                                totalWhiteKeys = totalWhiteKeys,
-                                isExpanded = isLayerMapperExpanded,
-                                onToggleExpanded = { toggleMapperExpanded() },
-                                onRangeChanged = onRangeChanged,
-                                onDragSelectionChange = { activeDragSelectionRange = it }
-                            )
-                        }
-                    }
-                }
-
-                // Main Keys Section: Pitch Bend (Fixed 120.dp) + Virtual Piano Keys (Fixed 120.dp)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(keysHeight)
-                ) {
-                    // Pitch Bend Wheel: strictly fixed to 120.dp height, does NOT expand with the layers
-                    PitchBendWheel(
-                        currentBend = pitchBend,
-                        onBendChange = onPitchBendChange,
-                        modifier = Modifier
-                            .width(42.dp)
-                            .height(keysHeight)
-                            .padding(end = 4.dp, bottom = 2.dp)
-                    )
-
-                    // Piano Keys Scrollable Container (Fixed 120.dp)
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(keysHeight)
-                            .horizontalScroll(scrollState)
-                            .pointerInput(Unit) {
-                                detectTransformGestures { _, _, zoom, _ ->
-                                    if (zoom != 1.0f) {
-                                        currentScale = (currentScale * zoom).coerceIn(0.7f, 3.0f)
-                                        onKeyScaleChange(currentScale)
-                                    }
-                                }
-                            }
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .width(totalKeyboardWidthDp)
                                 .height(keysHeight)
+                                .horizontalScroll(scrollState)
                                 .pointerInput(Unit) {
-                                    awaitEachGesture {
-                                        try {
-                                            while (true) {
-                                                val event = awaitPointerEvent()
-
-                                                // 1. Release keys for pointers that explicitly ended (lifted)
-                                                for (change in event.changes) {
-                                                    if (!change.pressed) {
-                                                        pointerKeyMap.remove(change.id)?.let { releasedKey ->
-                                                            if (!pointerKeyMap.values.contains(releasedKey)) {
-                                                                currentOnKeyUp(releasedKey)
-                                                            }
-                                                        }
-                                                    }
-                                                }
-
-                                                // 2. Process currently pressed pointers
-                                                for (change in event.changes) {
-                                                    if (change.pressed) {
-                                                        val x = change.position.x
-                                                        val y = change.position.y
-                                                        val height = size.height.toFloat()
-
-                                                        val detectedKey = resolveKeyAtPosition(
-                                                            x = x,
-                                                            y = y,
-                                                            totalHeight = height,
-                                                            whiteWidthPx = currentWhiteWidthPx,
-                                                            blackWidthPx = currentBlackKeyWidthPx,
-                                                            baseOctave = currentBaseOctave,
-                                                            totalOctaves = 7
-                                                        )
-                                                        val prevKey = pointerKeyMap[change.id]
-
-                                                        if (detectedKey != prevKey) {
-                                                            if (prevKey != null) {
-                                                                pointerKeyMap.remove(change.id)
-                                                                if (!pointerKeyMap.values.contains(prevKey)) {
-                                                                    currentOnKeyUp(prevKey)
-                                                                }
-                                                            }
-                                                            if (detectedKey != null) {
-                                                                pointerKeyMap[change.id] = detectedKey
-                                                                val touchVel = if (height > 0f) (y / height).coerceIn(0.15f, 1.0f) else 0.85f
-                                                                if (currentOnKeyDownWithVel != null) {
-                                                                    currentOnKeyDownWithVel?.invoke(detectedKey, touchVel)
-                                                                } else {
-                                                                    currentOnKeyDown(detectedKey)
-                                                                }
-                                                            }
-                                                        }
-                                                        change.consume()
-                                                    }
-                                                }
-
-                                                if (event.changes.none { it.pressed }) {
-                                                    pointerKeyMap.values.toSet().forEach { currentOnKeyUp(it) }
-                                                    pointerKeyMap.clear()
-                                                    break
-                                                }
-                                            }
-                                        } finally {
-                                            pointerKeyMap.values.forEach { currentOnKeyUp(it) }
-                                            pointerKeyMap.clear()
+                                    detectTransformGestures { _, _, zoom, _ ->
+                                        if (zoom != 1.0f) {
+                                            currentScale = (currentScale * zoom).coerceIn(0.7f, 3.0f)
+                                            onKeyScaleChange(currentScale)
                                         }
                                     }
-                                },
-                            horizontalArrangement = Arrangement.Start
+                                }
                         ) {
-                            octaves.forEach { oct ->
-                                OctaveGroupView(
-                                    octave = oct,
+                            Row(
+                                modifier = Modifier
+                                    .width(totalKeyboardWidthDp)
+                                    .height(keysHeight)
+                                    .pointerInput(Unit) {
+                                        awaitEachGesture {
+                                            try {
+                                                while (true) {
+                                                    val event = awaitPointerEvent()
+
+                                                    // 1. Release keys for pointers that explicitly ended (lifted)
+                                                    for (change in event.changes) {
+                                                        if (!change.pressed) {
+                                                            pointerKeyMap.remove(change.id)?.let { releasedKey ->
+                                                                if (!pointerKeyMap.values.contains(releasedKey)) {
+                                                                    currentOnKeyUp(releasedKey)
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+
+                                                    // 2. Process currently pressed pointers
+                                                    for (change in event.changes) {
+                                                        if (change.pressed) {
+                                                            val x = change.position.x
+                                                            val y = change.position.y
+                                                            val height = size.height.toFloat()
+
+                                                            val detectedKey = resolveKeyAtPosition(
+                                                                x = x,
+                                                                y = y,
+                                                                totalHeight = height,
+                                                                whiteWidthPx = currentWhiteWidthPx,
+                                                                blackWidthPx = currentBlackKeyWidthPx
+                                                            )
+                                                            val prevKey = pointerKeyMap[change.id]
+
+                                                            if (detectedKey != prevKey) {
+                                                                if (prevKey != null) {
+                                                                    pointerKeyMap.remove(change.id)
+                                                                    if (!pointerKeyMap.values.contains(prevKey)) {
+                                                                        currentOnKeyUp(prevKey)
+                                                                    }
+                                                                }
+                                                                if (detectedKey != null) {
+                                                                    pointerKeyMap[change.id] = detectedKey
+                                                                    val touchVel = if (height > 0f) (y / height).coerceIn(0.15f, 1.0f) else 0.85f
+                                                                    if (currentOnKeyDownWithVel != null) {
+                                                                        currentOnKeyDownWithVel?.invoke(detectedKey, touchVel)
+                                                                    } else {
+                                                                        currentOnKeyDown(detectedKey)
+                                                                    }
+                                                                }
+                                                            }
+                                                            change.consume()
+                                                        }
+                                                    }
+
+                                                    if (event.changes.none { it.pressed }) {
+                                                        pointerKeyMap.values.toSet().forEach { currentOnKeyUp(it) }
+                                                        pointerKeyMap.clear()
+                                                        break
+                                                    }
+                                                }
+                                            } finally {
+                                                pointerKeyMap.values.forEach { currentOnKeyUp(it) }
+                                                pointerKeyMap.clear()
+                                            }
+                                        }
+                                    },
+                                horizontalArrangement = Arrangement.Start
+                            ) {
+                                // 1. Initial 2 White Keys: A1 and B1 (with Bb1 / A#1 black key)
+                                IntroA1B1GroupView(
                                     whiteWidthDp = baseWhiteWidthDp,
                                     pressedKeys = pressedKeys,
                                     activeAuraColor = activeAuraColor
                                 )
+
+                                // 2. Octaves C2 through C7 (6 complete octaves * 7 white keys = 42)
+                                octaves.forEach { oct ->
+                                    OctaveGroupView(
+                                        octave = oct,
+                                        whiteWidthDp = baseWhiteWidthDp,
+                                        pressedKeys = pressedKeys,
+                                        activeAuraColor = activeAuraColor
+                                    )
+                                }
+
+                                // 3. Final High C Key (C8)
+                                val highCKey = "C$highestOctave"
+                                val isHighCPressed = pressedKeys.contains(highCKey)
+                                val keyBrush = if (isHighCPressed) {
+                                    Brush.verticalGradient(
+                                        listOf(Color.Red, Color.Black)
+                                    )
+                                } else {
+                                    Brush.verticalGradient(
+                                        listOf(Color(0xFFFFFFFF), Color(0xFFF0F1F7), Color(0xFFD6D9E6))
+                                    )
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .width(baseWhiteWidthDp)
+                                        .fillMaxHeight()
+                                        .clip(RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp))
+                                        .background(keyBrush)
+                                        .border(
+                                            1.dp,
+                                            if (isHighCPressed) activeAuraColor else Color(0x33000000),
+                                            RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp)
+                                        ),
+                                    contentAlignment = Alignment.BottomCenter
+                                ) {
+                                    Text(
+                                        text = highCKey,
+                                        fontSize = 8.5.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (isHighCPressed) Color(0xFF002E38) else Color(0xFF1E2238),
+                                        modifier = Modifier.padding(bottom = 3.dp)
+                                    )
+                                }
                             }
 
-                            // Final High C Key (C8)
-                            val highCKey = "C$highestOctave"
-                            val isHighCPressed = pressedKeys.contains(highCKey)
-                            val keyBrush = if (isHighCPressed) {
-                                Brush.verticalGradient(
-                                    listOf(Color.Red, Color.Black)
-                                )
-                            } else {
-                                Brush.verticalGradient(
-                                    listOf(Color(0xFFFFFFFF), Color(0xFFF0F1F7), Color(0xFFD6D9E6))
-                                )
-                            }
+                            // Computer mouse-style live blue translucent selection overlay over the Virtual Keyboard
+                            activeDragSelectionRange?.let { (startFrac, endFrac) ->
+                                val overlayStartXDp = (startFrac * baseWhiteWidthDp.value).dp
+                                val overlayEndXDp = (endFrac * baseWhiteWidthDp.value).dp
+                                val overlayWidthDp = (overlayEndXDp - overlayStartXDp).coerceAtLeast(1.dp)
 
-                            Box(
-                                modifier = Modifier
-                                    .width(baseWhiteWidthDp)
-                                    .fillMaxHeight()
-                                    .clip(RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp))
-                                    .background(keyBrush)
-                                    .border(
-                                        1.dp,
-                                        if (isHighCPressed) activeAuraColor else Color(0x33000000),
-                                        RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp)
-                                    ),
-                                contentAlignment = Alignment.BottomCenter
-                            ) {
-                                Text(
-                                    text = highCKey,
-                                    fontSize = 8.5.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = if (isHighCPressed) Color(0xFF002E38) else Color(0xFF1E2238),
-                                    modifier = Modifier.padding(bottom = 3.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .offset(x = overlayStartXDp)
+                                        .width(overlayWidthDp)
+                                        .height(keysHeight)
+                                        .clip(RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp))
+                                        .background(Color(0x353B82F6))
+                                        .border(
+                                            width = 1.2.dp,
+                                            color = Color(0x9960A5FA),
+                                            shape = RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp)
+                                        )
                                 )
                             }
                         }
+                    }
+                }
 
-                        // Computer mouse-style live blue translucent selection overlay over the Virtual Keyboard
-                        activeDragSelectionRange?.let { (startFrac, endFrac) ->
-                            val overlayStartXDp = (startFrac * baseWhiteWidthDp.value).dp
-                            val overlayEndXDp = (endFrac * baseWhiteWidthDp.value).dp
-                            val overlayWidthDp = (overlayEndXDp - overlayStartXDp).coerceAtLeast(1.dp)
+                // ================= EXPANDED LAYER OVERLAY (Superposed without pushing the UI) =================
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = isLayerMapperExpanded && tracks.isNotEmpty(),
+                    enter = fadeIn(animationSpec = tween(180)) + slideInVertically(
+                        initialOffsetY = { -it / 2 },
+                        animationSpec = spring(
+                            dampingRatio = 0.82f,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    ),
+                    exit = fadeOut(animationSpec = tween(150)) + slideOutVertically(
+                        targetOffsetY = { -it / 2 },
+                        animationSpec = tween(180)
+                    ),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .zIndex(40f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xF70C1018))
+                            .border(1.dp, Color(0x4422D3EE), RoundedCornerShape(10.dp))
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            // Close/Collapse button on left
+                            Box(
+                                modifier = Modifier
+                                    .width(36.dp)
+                                    .fillMaxHeight()
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0x22FFFFFF))
+                                    .clickable { toggleMapperExpanded() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "✕",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = NeonCyan
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(6.dp))
 
                             Box(
                                 modifier = Modifier
-                                    .offset(x = overlayStartXDp)
-                                    .width(overlayWidthDp)
-                                    .height(keysHeight)
-                                    .clip(RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp))
-                                    .background(Color(0x353B82F6)) // Esthetic translucent blue (mouse selection)
-                                    .border(
-                                        width = 1.2.dp,
-                                        color = Color(0x9960A5FA), // Crisp translucent border
-                                        shape = RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp)
-                                    )
-                            )
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .horizontalScroll(scrollState)
+                            ) {
+                                KeyboardLayerMapper(
+                                    tracks = tracks,
+                                    whiteWidthDp = baseWhiteWidthDp,
+                                    totalWhiteKeys = totalWhiteKeys,
+                                    isExpanded = true,
+                                    onToggleExpanded = { toggleMapperExpanded() },
+                                    onRangeChanged = onRangeChanged,
+                                    onDragSelectionChange = { activeDragSelectionRange = it }
+                                )
+                            }
                         }
                     }
                 }
@@ -595,30 +656,142 @@ private fun OctaveGroupView(
 }
 
 /**
- * Geometric resolver: maps (x, y) coordinates to exact key name with perfect split detection.
+ * Initial Group Component: A1, Bb1 (A#1), B1
+ * First two white keys and one black key of the 7-octave virtual keyboard.
+ */
+@Composable
+private fun IntroA1B1GroupView(
+    whiteWidthDp: Dp,
+    pressedKeys: Set<String>,
+    activeAuraColor: Color = NeonCyan
+) {
+    val blackKeyWidthDp = whiteWidthDp * 0.60f
+    Box(
+        modifier = Modifier
+            .width(whiteWidthDp * 2)
+            .fillMaxHeight()
+    ) {
+        // White Keys: A1 and B1
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.Start
+        ) {
+            listOf("A1", "B1").forEach { fullKey ->
+                val isPressed = pressedKeys.contains(fullKey)
+                val keyBrush = if (isPressed) {
+                    Brush.verticalGradient(
+                        listOf(Color.Red, Color.Black)
+                    )
+                } else {
+                    Brush.verticalGradient(
+                        listOf(
+                            Color(0xFFFFFFFF),
+                            Color(0xFFF0F1F7),
+                            Color(0xFFD6D9E6)
+                        )
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .width(whiteWidthDp)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp))
+                        .background(keyBrush)
+                        .border(
+                            1.dp,
+                            if (isPressed) Color.Red else Color(0x33000000),
+                            RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp)
+                        ),
+                    contentAlignment = Alignment.BottomCenter
+                ) {
+                    Text(
+                        text = fullKey,
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isPressed) Color(0xFF002E38) else Color(0xFF1E2238),
+                        modifier = Modifier.padding(bottom = 3.dp)
+                    )
+                }
+            }
+        }
+
+        // Black Key: Bb1 / A#1 at split line between A1 and B1
+        val fullBlackKey = "A#1"
+        val isBlackPressed = pressedKeys.contains("A#1") || pressedKeys.contains("Bb1")
+        val leftOffsetDp = whiteWidthDp - (blackKeyWidthDp / 2f)
+
+        val blackKeyBrush = if (isBlackPressed) {
+            Brush.verticalGradient(
+                listOf(Color.Red, Color.Black)
+            )
+        } else {
+            Brush.verticalGradient(
+                listOf(
+                    Color(0xFF2C2F3D),
+                    Color(0xFF181A24),
+                    Color(0xFF0B0C12)
+                )
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .offset(x = leftOffsetDp)
+                .width(blackKeyWidthDp)
+                .fillMaxHeight(0.60f)
+                .shadow(5.dp, RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp))
+                .clip(RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp))
+                .background(blackKeyBrush)
+                .border(
+                    1.dp,
+                    if (isBlackPressed) activeAuraColor else Color(0x44000000),
+                    RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)
+                )
+        )
+    }
+}
+
+/**
+ * Geometric resolver: maps (x, y) coordinates to exact key name starting at A1 (MIDI 33).
  */
 private fun resolveKeyAtPosition(
     x: Float,
     y: Float,
     totalHeight: Float,
     whiteWidthPx: Float,
-    blackWidthPx: Float,
-    baseOctave: Int = 1,
-    totalOctaves: Int = 7
+    blackWidthPx: Float
 ): String? {
     if (x < 0 || y < 0 || y > totalHeight) return null
 
-    val octaveWidth = whiteWidthPx * 7
-    val octaveIndex = (x / octaveWidth).toInt()
+    val isUpperHalf = y <= (totalHeight * 0.60f)
 
-    // Handle high C
-    if (octaveIndex >= totalOctaves) {
-        return "C${baseOctave + totalOctaves}"
+    // Section 1: Intro (A1, Bb1 / A#1, B1) = 2 white keys width
+    val introWidthPx = whiteWidthPx * 2f
+    if (x < introWidthPx) {
+        if (isUpperHalf) {
+            val center = whiteWidthPx
+            val left = center - (blackWidthPx / 2f)
+            val right = center + (blackWidthPx / 2f)
+            if (x in left..right) {
+                return "A#1"
+            }
+        }
+        return if (x < whiteWidthPx) "A1" else "B1"
     }
 
-    val currentOctave = (baseOctave + octaveIndex).coerceIn(baseOctave, baseOctave + totalOctaves - 1)
-    val xWithinOctave = x - (octaveIndex * octaveWidth)
-    val isUpperHalf = y <= (totalHeight * 0.60f)
+    // Section 2: Octaves C2 through C7 (6 octaves * 7 white keys)
+    val xFromC2 = x - introWidthPx
+    val octaveWidth = whiteWidthPx * 7f
+    val octaveIndex = (xFromC2 / octaveWidth).toInt()
+
+    // Handle high C8
+    if (octaveIndex >= 6) {
+        return "C8"
+    }
+
+    val currentOctave = 2 + octaveIndex
+    val xWithinOctave = xFromC2 - (octaveIndex * octaveWidth)
 
     if (isUpperHalf) {
         val blackSpecs = listOf(

@@ -151,8 +151,8 @@ fun MixerScreen(
                     val availableH = maxHeight
                     // When the virtual keyboard deploys, keep the 8 vertical tracks cleanly displayed
                     val isVerticalMode = availableH >= 85.dp
-                    // Hide volume graduation ticks when keyboard is active to maximize vertical track space
-                    val showTicks = !isKeyboardVisible
+                    // The 3 streamlined reference ticks adapt smoothly whether keyboard is open or closed
+                    val showTicks = true
 
                     AnimatedContent(
                         targetState = isVerticalMode,

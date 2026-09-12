@@ -38,24 +38,24 @@ fun LiveKeysSplashScreen(
     var startFadeIn by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        delay(100)
+        delay(60)
         startFadeIn = true
-        delay(4000)
+        delay(1100)
         isVisible = false
-        delay(900)
+        delay(250)
         onFinished()
     }
 
     val animatedFade by animateFloatAsState(
         targetValue = if (startFadeIn && isVisible) 1f else 0f,
-        animationSpec = tween(700, easing = FastOutSlowInEasing),
+        animationSpec = tween(400, easing = FastOutSlowInEasing),
         label = "splash_fade"
     )
 
     AnimatedVisibility(
         visible = isVisible,
-        enter = fadeIn(tween(400)),
-        exit = fadeOut(tween(400)),
+        enter = fadeIn(tween(300)),
+        exit = fadeOut(tween(250)),
         modifier = modifier
     ) {
         val infiniteTransition = rememberInfiniteTransition(label = "splash_pulse")

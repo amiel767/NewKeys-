@@ -635,10 +635,64 @@ private fun LoopListContent(
                                             overflow = TextOverflow.Ellipsis
                                         )
                                         Text(
-                                            text = if (file.beats > 0) "${file.beats}T · ${file.bpm} BPM · ${file.duration}" else "${file.bpm} BPM · ${file.duration}",
+                                            text = if (file.beats > 0) "${file.beats}T · ${file.duration}" else file.duration,
                                             fontSize = 9.5.sp,
                                             color = if (isSelected) NeonCyanLight else TextDim
                                         )
+                                    }
+
+                                    // Musical Key & BPM Display Badge (Visible outside file details, hidden when edit/delete appear)
+                                    AnimatedVisibility(
+                                        visible = !isActionsRevealed,
+                                        enter = fadeIn() + expandHorizontally(),
+                                        exit = fadeOut() + shrinkHorizontally()
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            // Musical Key Badge
+                                            if (file.musicalKey.isNotEmpty()) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(6.dp))
+                                                        .background(if (isSelected) Color(0x338B5CF6) else Color(0x18FFFFFF))
+                                                        .border(
+                                                            width = 0.8.dp,
+                                                            color = if (isSelected) Color(0xFFA78BFA) else Color(0x22FFFFFF),
+                                                            shape = RoundedCornerShape(6.dp)
+                                                        )
+                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text(
+                                                        text = file.musicalKey,
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = if (isSelected) Color(0xFFDDD6FE) else Color(0xCCFFFFFF)
+                                                    )
+                                                }
+                                            }
+
+                                            // BPM Badge
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(if (isSelected) Color(0x3300E5FF) else Color(0x14FFFFFF))
+                                                    .border(
+                                                        width = 0.8.dp,
+                                                        color = if (isSelected) Color(0xFF00E5FF) else Color(0x20FFFFFF),
+                                                        shape = RoundedCornerShape(6.dp)
+                                                    )
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = "${file.bpm} BPM",
+                                                    fontSize = 9.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isSelected) Color(0xFF00E5FF) else Color(0xAAFFFFFF)
+                                                )
+                                            }
+                                        }
                                     }
 
                                     // Contextual Actions on Long Press: Edit (pen) and Delete (trash)

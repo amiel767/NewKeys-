@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="68dp"
+        android:height="68dp"
+        android:gravity="center">
+        <vector
+            android:width="108dp"
+            android:height="108dp"
+            android:viewportWidth="108"
+            android:viewportHeight="108">
+            <!-- Continuous clean stylized triangle delta ribbon for Material You theming -->
+            <path
+                android:fillColor="#FFFFFFFF"
+                android:pathData="M54,22 C51,25 28,62 25,69 C22,74 26,78 33,78 L75,78 C82,78 86,74 83,69 C80,62 57,25 54,22 Z M54,34 L71,68 C73,71 70,72 67,72 L41,72 C38,72 35,71 37,68 Z" />
+            <!-- Piano keys accent inside bottom base -->
+            <path
+                android:fillColor="#FFFFFFFF"
+                android:pathData="M44,79 L44,83 L47,83 L47,79 Z M50,79 L50,83 L53,83 L53,79 Z M56,79 L56,83 L59,79 Z M62,79 L62,83 L65,83 L65,79 Z" />
+        </vector>
+    </item>
+</layer-list>

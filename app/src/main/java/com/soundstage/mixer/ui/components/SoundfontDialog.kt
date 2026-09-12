@@ -62,11 +62,7 @@ fun SoundfontDialog(
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val subtitle = when (source) {
-        "drum" -> "Sons & Échantillons Drum Pad · .sf2"
-        "pad" -> "Banque et Presets · Tonic Pad"
-        else -> if (trackId == 0) "Sortie Audio Master · Moteur FluidSynth" else "Piste $trackId · Canal MIDI #$trackId"
-    }
+    val subtitle = if (trackId == 0) "Piste Master" else "Piste $trackId"
 
     // 3-Color Floating Aura / Halo in Background (Lissajous gentle fluid motion)
     val infiniteTransition = rememberInfiniteTransition(label = "liquid_glass_halo")
@@ -161,7 +157,7 @@ fun SoundfontDialog(
         Box(
             modifier = Modifier
                 .width(520.dp)
-                .fillMaxHeight(0.88f)
+                .fillMaxHeight(0.92f)
                 .shadow(32.dp, RoundedCornerShape(26.dp), spotColor = Color(0x6600E5FF))
                 .clip(RoundedCornerShape(26.dp))
                 .background(Color(0xEE0B101C))
@@ -259,7 +255,7 @@ fun SoundfontDialog(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 20.dp, vertical = 18.dp)
+                    .padding(horizontal = 18.dp, vertical = 12.dp)
             ) {
                 // ================= 1. CLEAN HEADER (NO KEYBOARD ICON, NO WINDOW TITLE) =================
                 Row(
@@ -332,65 +328,16 @@ fun SoundfontDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // ================= 2. LIQUID GLASS PILL SEGMENTED SWITCHER =================
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(38.dp)
-                        .clip(RoundedCornerShape(19.dp))
-                        .background(Color(0x2B0A0E18))
-                        .border(1.dp, Color(0x1EFFFFFF), RoundedCornerShape(19.dp))
-                        .padding(3.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        listOf("bank" to "Presets Soundfont", "other" to "Fichiers .SF2").forEach { (tabKey, tabLabel) ->
-                            val isSelected = activeTab == tabKey
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(
-                                        if (isSelected) {
-                                            Brush.horizontalGradient(
-                                                listOf(Color(0x4000E5FF), Color(0x388B5CF6))
-                                            )
-                                        } else SolidColor(Color.Transparent)
-                                    )
-                                    .border(
-                                        width = if (isSelected) 1.dp else 0.dp,
-                                        color = if (isSelected) Color(0x6600E5FF) else Color.Transparent,
-                                        shape = RoundedCornerShape(16.dp)
-                                    )
-                                    .clickable { onTabChange(tabKey) },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = tabLabel,
-                                    fontSize = 12.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSelected) Color.White else Color(0x99CBD5E1)
-                                )
-                            }
-                        }
-                    }
-                }
-
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // ================= 3. LIQUID GLASS SEARCH BAR =================
+                // ================= 2. LIQUID GLASS SEARCH BAR (MOVED HIGHER) =================
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(36.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .height(34.dp)
+                        .clip(RoundedCornerShape(10.dp))
                         .background(Color(0x1EFFFFFF))
-                        .border(0.8.dp, Color(0x24FFFFFF), RoundedCornerShape(12.dp))
+                        .border(0.8.dp, Color(0x24FFFFFF), RoundedCornerShape(10.dp))
                         .padding(horizontal = 10.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
@@ -419,7 +366,7 @@ fun SoundfontDialog(
                             decorationBox = { innerTextField ->
                                 if (searchQuery.isEmpty()) {
                                     Text(
-                                        text = if (activeTab == "bank") "Rechercher un preset..." else "Rechercher un fichier .sf2...",
+                                        text = if (activeTab == "bank") "Rechercher un preset..." else "Rechercher une soundfont...",
                                         color = Color(0x55FFFFFF),
                                         fontSize = 12.sp
                                     )
@@ -440,7 +387,56 @@ fun SoundfontDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // ================= 3. LIQUID GLASS PILL SEGMENTED SWITCHER =================
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(32.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0x2B0A0E18))
+                        .border(1.dp, Color(0x1EFFFFFF), RoundedCornerShape(16.dp))
+                        .padding(2.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        listOf("bank" to "Soundfonts preset", "other" to "soundfonts").forEach { (tabKey, tabLabel) ->
+                            val isSelected = activeTab == tabKey
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(
+                                        if (isSelected) {
+                                            Brush.horizontalGradient(
+                                                listOf(Color(0x4000E5FF), Color(0x388B5CF6))
+                                            )
+                                        } else SolidColor(Color.Transparent)
+                                    )
+                                    .border(
+                                        width = if (isSelected) 1.dp else 0.dp,
+                                        color = if (isSelected) Color(0x6600E5FF) else Color.Transparent,
+                                        shape = RoundedCornerShape(14.dp)
+                                    )
+                                    .clickable { onTabChange(tabKey) },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = tabLabel,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) Color.White else Color(0x99CBD5E1)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // ================= 4. CONTENT LIST WITH POSITION PERSISTENCE =================
                 if (activeTab == "bank") {
@@ -491,7 +487,7 @@ fun SoundfontDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             items(
                                 items = filteredPresets,
@@ -501,32 +497,32 @@ fun SoundfontDialog(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(54.dp)
-                                        .clip(RoundedCornerShape(14.dp))
+                                        .height(44.dp)
+                                        .clip(RoundedCornerShape(12.dp))
                                         .background(
                                             if (isSelected) Color(0x2A00E5FF) else Color(0x14FFFFFF)
                                         )
                                         .border(
                                             width = if (isSelected) 1.2.dp else 0.8.dp,
                                             color = if (isSelected) Color(0xFF00E5FF) else Color(0x18FFFFFF),
-                                            shape = RoundedCornerShape(14.dp)
+                                            shape = RoundedCornerShape(12.dp)
                                         )
                                         .clickable { onSelectPreset(preset.id) }
-                                        .padding(horizontal = 12.dp),
+                                        .padding(horizontal = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     // Number Badge
                                     Box(
                                         modifier = Modifier
-                                            .size(30.dp)
+                                            .size(26.dp)
                                             .clip(CircleShape)
                                             .background(if (isSelected) Color(0xFF00E5FF) else Color(0x25FFFFFF)),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
                                             text = "${preset.id}",
-                                            fontSize = 11.sp,
+                                            fontSize = 10.5.sp,
                                             fontWeight = FontWeight.ExtraBold,
                                             color = if (isSelected) Color(0xFF0B101B) else Color.White
                                         )
@@ -535,7 +531,7 @@ fun SoundfontDialog(
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             text = preset.name,
-                                            fontSize = 13.sp,
+                                            fontSize = 12.5.sp,
                                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                             color = if (isSelected) Color.White else Color(0xEEFFFFFF),
                                             maxLines = 1,
@@ -543,7 +539,7 @@ fun SoundfontDialog(
                                         )
                                         Text(
                                             text = "Banque ${preset.bankNumber} · Preset #${preset.id}",
-                                            fontSize = 10.sp,
+                                            fontSize = 9.5.sp,
                                             color = if (isSelected) Color(0xCC00E5FF) else Color(0x77FFFFFF)
                                         )
                                     }
@@ -551,14 +547,14 @@ fun SoundfontDialog(
                                     if (isSelected) {
                                         Box(
                                             modifier = Modifier
-                                                .clip(RoundedCornerShape(10.dp))
+                                                .clip(RoundedCornerShape(8.dp))
                                                 .background(Color(0x3300E5FF))
-                                                .border(1.dp, Color(0xFF00E5FF), RoundedCornerShape(10.dp))
-                                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                                                .border(1.dp, Color(0xFF00E5FF), RoundedCornerShape(8.dp))
+                                                .padding(horizontal = 7.dp, vertical = 2.dp)
                                         ) {
                                             Text(
                                                 text = "✓ ACTIF",
-                                                fontSize = 10.sp,
+                                                fontSize = 9.5.sp,
                                                 fontWeight = FontWeight.ExtraBold,
                                                 color = Color(0xFF00E5FF)
                                             )
@@ -619,7 +615,7 @@ fun SoundfontDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             items(filteredFiles) { file ->
                                 val isLoaded = selectedSoundfontName.isNotBlank() &&
@@ -628,36 +624,36 @@ fun SoundfontDialog(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(56.dp)
-                                        .clip(RoundedCornerShape(14.dp))
+                                        .height(44.dp)
+                                        .clip(RoundedCornerShape(12.dp))
                                         .background(if (isLoaded) Color(0x268B5CF6) else Color(0x14FFFFFF))
                                         .border(
                                             width = if (isLoaded) 1.2.dp else 0.8.dp,
                                             color = if (isLoaded) Color(0xFFA78BFA) else Color(0x18FFFFFF),
-                                            shape = RoundedCornerShape(14.dp)
+                                            shape = RoundedCornerShape(12.dp)
                                         )
                                         .clickable {
                                             onSelectSf2File?.invoke(file)
                                             onTabChange("bank")
                                         }
-                                        .padding(horizontal = 12.dp),
+                                        .padding(horizontal = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .size(32.dp)
+                                            .size(26.dp)
                                             .clip(CircleShape)
                                             .background(Color(0x22FFFFFF)),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Text(text = "📦", fontSize = 15.sp)
+                                        Text(text = "📦", fontSize = 13.sp)
                                     }
 
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             text = file.name,
-                                            fontSize = 13.sp,
+                                            fontSize = 12.5.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = Color.White,
                                             maxLines = 1,
@@ -665,25 +661,25 @@ fun SoundfontDialog(
                                         )
                                         Text(
                                             text = if (file.formattedSize.isNotEmpty()) file.formattedSize else "Soundfont SF2",
-                                            fontSize = 10.sp,
+                                            fontSize = 9.5.sp,
                                             color = Color(0x77FFFFFF)
                                         )
                                     }
 
                                     Box(
                                         modifier = Modifier
-                                            .clip(RoundedCornerShape(10.dp))
+                                            .clip(RoundedCornerShape(8.dp))
                                             .background(if (isLoaded) Color(0x44A78BFA) else Color(0x2200E5FF))
                                             .border(
                                                 1.dp,
                                                 if (isLoaded) Color(0xFFA78BFA) else Color(0x8800E5FF),
-                                                RoundedCornerShape(10.dp)
+                                                RoundedCornerShape(8.dp)
                                             )
-                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                            .padding(horizontal = 8.dp, vertical = 2.dp)
                                     ) {
                                         Text(
                                             text = if (isLoaded) "CHARGÉ" else "CHARGER",
-                                            fontSize = 10.5.sp,
+                                            fontSize = 9.5.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = if (isLoaded) Color(0xFFDDD6FE) else Color(0xFF00E5FF)
                                         )

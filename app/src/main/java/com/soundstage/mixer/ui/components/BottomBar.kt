@@ -219,7 +219,7 @@ fun BottomBar(
             }
         }
 
-        // ================= 3. METRONOME BUTTON =================
+        // ================= 3. FUSED METRONOME & SIGNATURE/KEY BUTTON =================
         val metroBg by animateColorAsState(
             targetValue = if (isMetronomeOn) Color(0xFF0F394A) else DarkSurface,
             label = "metro_bg"
@@ -229,18 +229,20 @@ fun BottomBar(
             label = "metro_border"
         )
 
-        Box(
+        Row(
             modifier = Modifier
-                .width(42.dp)
                 .height(barHeight)
                 .clip(RoundedCornerShape(9.dp))
                 .background(metroBg)
                 .border(1.dp, metroBorder, RoundedCornerShape(9.dp))
                 .clickable { onToggleMetroPanel() }
+                .padding(horizontal = 6.dp)
                 .testTag("btn_metronome"),
-            contentAlignment = Alignment.Center
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {
-            Canvas(modifier = Modifier.size(20.dp)) {
+            // Left: Metronome Icon
+            Canvas(modifier = Modifier.size(18.dp)) {
                 val w = size.width
                 val h = size.height
 
@@ -276,6 +278,23 @@ fun BottomBar(
                     cap = StrokeCap.Round
                 )
             }
+
+            // Subtle vertical separator
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .height(14.dp)
+                    .background(if (isMetronomeOn) NeonCyan.copy(alpha = 0.4f) else Color(0x22FFFFFF))
+            )
+
+            // Right: Signature / Key indicator
+            Text(
+                text = metroSignature,
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = if (isMetronomeOn) NeonCyanLight else TextPrimary,
+                modifier = Modifier.padding(end = 2.dp)
+            )
         }
 
         // ================= 4. AFFICHEUR D'ACCORDS (CHORD DISPLAY BAR - EXPANDED SPACE) =================

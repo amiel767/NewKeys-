@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -418,6 +419,16 @@ fun MicroPanKnob(
     Box(
         modifier = modifier
             .size(24.dp)
+            .pointerInput(isEnabled) {
+                if (isEnabled) {
+                    detectTapGestures(
+                        onDoubleTap = {
+                            currentPan = 0.0f
+                            onPanChangeState(0.0f)
+                        }
+                    )
+                }
+            }
             .pointerInput(isEnabled) {
                 if (isEnabled) {
                     detectHorizontalDragGestures { change, dragAmount ->

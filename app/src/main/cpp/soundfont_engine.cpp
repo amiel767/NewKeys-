@@ -25,7 +25,7 @@ bool SoundfontEngine::init(int sampleRate, int polyphony, const char* instanceNa
     }
 
     fluid_settings_setnum(mSettings, "synth.sample-rate", static_cast<double>(sampleRate));
-    fluid_settings_setnum(mSettings, "synth.gain", 0.7);
+    fluid_settings_setnum(mSettings, "synth.gain", 1.3);
     fluid_settings_setint(mSettings, "synth.polyphony", mConfiguredPolyphony);
     fluid_settings_setint(mSettings, "synth.midi-channels", kMaxChannels);
     fluid_settings_setint(mSettings, "synth.reverb.active", 0);
@@ -39,7 +39,7 @@ bool SoundfontEngine::init(int sampleRate, int polyphony, const char* instanceNa
         return false;
     }
 
-    fluid_synth_set_gain(mSynth, 0.7f);
+    fluid_synth_set_gain(mSynth, 1.3f);
     fluid_synth_set_interp_method(mSynth, -1, FLUID_INTERP_LINEAR);
     fluid_synth_reverb_on(mSynth, -1, 0);
     fluid_synth_chorus_on(mSynth, -1, 0);
@@ -76,14 +76,14 @@ int SoundfontEngine::loadSoundFont(const std::string &absolutePath) {
         mSettings = new_fluid_settings();
         if (mSettings) {
             fluid_settings_setnum(mSettings, "synth.sample-rate", 48000.0);
-            fluid_settings_setnum(mSettings, "synth.gain", 0.7);
+            fluid_settings_setnum(mSettings, "synth.gain", 1.3);
             fluid_settings_setint(mSettings, "synth.polyphony", mConfiguredPolyphony);
             fluid_settings_setint(mSettings, "synth.midi-channels", kMaxChannels);
             fluid_settings_setint(mSettings, "synth.reverb.active", 0);
             fluid_settings_setint(mSettings, "synth.chorus.active", 0);
             mSynth = new_fluid_synth(mSettings);
             if (mSynth) {
-                fluid_synth_set_gain(mSynth, 0.7f);
+                fluid_synth_set_gain(mSynth, 1.3f);
                 fluid_synth_set_interp_method(mSynth, -1, FLUID_INTERP_LINEAR);
                 fluid_synth_reverb_on(mSynth, -1, 0);
                 fluid_synth_chorus_on(mSynth, -1, 0);
@@ -287,10 +287,15 @@ void SoundfontEngine::pitchBend(int channel, int bendValue) {
 void SoundfontEngine::setChannelVolume(int channel, float volume01) {
     if (channel < 0 || channel >= kMaxChannels) return;
 
-    // Perceptual mapping: sqrt(vol) compensates for FluidSynth's internal quadratic (cc7/127)^2 attenuation
+    // Professional audio console taper: below 0.005 is absolute silence.
+    // Natural audio taper ensures smooth fade-out at bottom of rail instead of abrupt loudness.
     float clampedVol = std::clamp(volume01, 0.0f, 1.0f);
-    float perceptualVol = std::sqrt(clampedVol);
-    int ccVal = static_cast<int>(perceptualVol * 127.0f);
+    int ccVal = 0;
+    if (clampedVol > 0.002f) {
+        // Applying power-law taper gives precise control in low volumes and full punch at top
+        float tapered = std::pow(clampedVol, 1.35f);
+        ccVal = std::clamp(static_cast<int>(tapered * 127.0f), 1, 127);
+    }
 
     EngineMidiEvent ev;
     ev.type = EngineMidiEvent::CC;

@@ -260,15 +260,19 @@ int AudioEngine::renderDirect(int16_t *outputBuffer16, int32_t numFrames) {
         mEqMid.process(floatBuf, numFrames);
         mEqHigh.process(floatBuf, numFrames);
 
-        // 7. Master Studio Peak Limiter / Ceiling (-0.3 dBFS = 0.965 max amplitude)
-        // Provides clean, massive headroom without harsh clipping or harmonic distortion
+        // 7. Master Studio Peak Limiter / Maximizer (Makeup Gain +6 dB with soft-knee analog saturation)
+        // Eliminates harsh clipping while delivering punchy, full-bodied presence even at moderate volume
+        constexpr float kMakeupGain = 2.0f;
+        constexpr float kThreshold = 0.94f;
+        constexpr float kMargin = 0.045f; // Ceiling at ~0.985 max amplitude
         for (size_t i = 0; i < totalSamples; ++i) {
-            float s = floatBuf[i];
-            float absVal = std::abs(s);
-            if (absVal > 0.96f) {
-                float excess = absVal - 0.96f;
-                float compressed = 0.96f + 0.035f * (1.0f - std::exp(-excess / 0.04f));
-                floatBuf[i] = (s >= 0.0f) ? compressed : -compressed;
+            float x = floatBuf[i] * kMakeupGain;
+            if (x > kThreshold) {
+                floatBuf[i] = kThreshold + kMargin * tanhf((x - kThreshold) / kMargin);
+            } else if (x < -kThreshold) {
+                floatBuf[i] = -kThreshold + kMargin * tanhf((x + kThreshold) / kMargin);
+            } else {
+                floatBuf[i] = x;
             }
         }
     }
@@ -347,12 +351,15 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
             mEqHigh.process(floatBuf, numFrames);
 
             // 7. Master Soft-Clipping Maximizer / Limiter
+            constexpr float kMakeupGain = 2.0f;
+            constexpr float kThreshold = 0.94f;
+            constexpr float kMargin = 0.045f;
             for (size_t i = 0; i < totalSamples; ++i) {
-                float x = floatBuf[i] * 1.8f;
-                if (x > 0.95f) {
-                    floatBuf[i] = 0.95f + 0.05f * tanhf((x - 0.95f) / 0.05f);
-                } else if (x < -0.95f) {
-                    floatBuf[i] = -0.95f + 0.05f * tanhf((x + 0.95f) / 0.05f);
+                float x = floatBuf[i] * kMakeupGain;
+                if (x > kThreshold) {
+                    floatBuf[i] = kThreshold + kMargin * tanhf((x - kThreshold) / kMargin);
+                } else if (x < -kThreshold) {
+                    floatBuf[i] = -kThreshold + kMargin * tanhf((x + kThreshold) / kMargin);
                 } else {
                     floatBuf[i] = x;
                 }
@@ -399,15 +406,19 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
             mEqMid.process(outputBuffer, numFrames);
             mEqHigh.process(outputBuffer, numFrames);
 
-            // 7. Master Studio Peak Limiter / Ceiling (-0.3 dBFS = 0.965 max amplitude)
-            // Provides clean, massive headroom without harsh clipping or harmonic distortion
+            // 7. Master Studio Peak Limiter / Maximizer (Float 32-bit: Makeup Gain +6 dB with soft-knee analog saturation)
+            // Eliminates harsh clipping while delivering punchy, full-bodied presence
+            constexpr float kMakeupGain = 2.0f;
+            constexpr float kThreshold = 0.94f;
+            constexpr float kMargin = 0.045f;
             for (size_t i = 0; i < totalSamples; ++i) {
-                float s = outputBuffer[i];
-                float absVal = std::abs(s);
-                if (absVal > 0.96f) {
-                    float excess = absVal - 0.96f;
-                    float compressed = 0.96f + 0.035f * (1.0f - std::exp(-excess / 0.04f));
-                    outputBuffer[i] = (s >= 0.0f) ? compressed : -compressed;
+                float x = outputBuffer[i] * kMakeupGain;
+                if (x > kThreshold) {
+                    outputBuffer[i] = kThreshold + kMargin * tanhf((x - kThreshold) / kMargin);
+                } else if (x < -kThreshold) {
+                    outputBuffer[i] = -kThreshold + kMargin * tanhf((x + kThreshold) / kMargin);
+                } else {
+                    outputBuffer[i] = x;
                 }
             }
         }

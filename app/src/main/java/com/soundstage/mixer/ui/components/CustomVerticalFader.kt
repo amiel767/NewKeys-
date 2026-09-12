@@ -98,30 +98,31 @@ fun CustomVerticalFader(
             },
         contentAlignment = Alignment.Center
     ) {
-        // ================= 0. dB REFERENCE TICKS AND TEXT (0 dB, -inf) =================
+        // ================= 0. dB REFERENCE TICKS AND TEXT (3 Levels: -24dB, -12dB, 0dB) =================
         if (showTicks) {
-            val tickColor = Color(0xFF4E556A)
-            val tickPositions = listOf(0.12f, 0.32f, 0.52f, 0.72f, 0.90f)
+            val tickColor = Color(0x664E556A)
+            // Exactly 3 cleanly spaced reference levels adapting smoothly to any height
+            val tickPositions = listOf(0.20f, 0.55f, 0.88f)
 
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val w = size.width
                 val h = size.height
-                val usableH = h - thumbHeightPx
+                val usableH = (h - thumbHeightPx).coerceAtLeast(10f)
 
                 tickPositions.forEach { frac ->
                     val y = thumbHeightPx / 2f + (1f - frac) * usableH
-                    // Left tick line
+                    // Left tick mark
                     drawLine(
                         color = tickColor,
                         start = Offset(4.dp.toPx(), y),
-                        end = Offset(w * 0.30f, y),
+                        end = Offset(w * 0.26f, y),
                         strokeWidth = 1.2.dp.toPx(),
                         cap = StrokeCap.Round
                     )
-                    // Right tick line
+                    // Right tick mark
                     drawLine(
                         color = tickColor,
-                        start = Offset(w * 0.70f, y),
+                        start = Offset(w * 0.74f, y),
                         end = Offset(w - 4.dp.toPx(), y),
                         strokeWidth = 1.2.dp.toPx(),
                         cap = StrokeCap.Round

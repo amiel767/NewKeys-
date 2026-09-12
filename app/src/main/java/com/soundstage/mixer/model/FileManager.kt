@@ -439,11 +439,13 @@ class FileManager(private val context: Context) {
             if (loopsDir.exists() && loopsDir.canRead()) {
                 val rootFiles = loopsDir.listFiles { file -> file.isFile && isAudioFile(file) }
                     ?.map { file ->
+                        val detected = com.soundstage.mixer.audio.AudioKeyBpmDetector.detectKeyAndBpm(file.name, file)
                         LoopFile(
                             name = file.name,
                             duration = "Audio",
                             folder = "Loops",
-                            bpm = 120
+                            bpm = detected.bpm,
+                            musicalKey = detected.key
                         )
                     } ?: emptyList()
 
@@ -461,11 +463,13 @@ class FileManager(private val context: Context) {
                 loopsDir.listFiles { file -> file.isDirectory }?.forEach { subDir ->
                     val subFiles = subDir.listFiles { file -> file.isFile && isAudioFile(file) }
                         ?.map { file ->
+                            val detected = com.soundstage.mixer.audio.AudioKeyBpmDetector.detectKeyAndBpm(file.name, file)
                             LoopFile(
                                 name = file.name,
                                 duration = "Audio",
                                 folder = subDir.name,
-                                bpm = 120
+                                bpm = detected.bpm,
+                                musicalKey = detected.key
                             )
                         } ?: emptyList()
 
