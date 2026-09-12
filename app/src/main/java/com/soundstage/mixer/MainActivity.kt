@@ -1,5 +1,6 @@
 package com.soundstage.mixer
 
+import android.annotation.SuppressLint
 import android.os.Bundle
 import android.os.Build
 import android.os.Environment
@@ -34,6 +35,7 @@ import com.soundstage.mixer.ui.theme.SoundfontLiveMixerTheme
 import com.soundstage.mixer.viewmodel.MixerViewModel
 import kotlinx.coroutines.launch
 
+@SuppressLint("InvalidFragmentVersionForActivityResult")
 class MainActivity : ComponentActivity() {
   private val viewModel: MixerViewModel by viewModels()
 

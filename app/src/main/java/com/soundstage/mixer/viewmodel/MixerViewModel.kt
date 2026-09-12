@@ -1238,14 +1238,18 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateBpm(delta: Int) {
-        val newBpm = (_uiState.value.bpm + delta).coerceIn(20, 300)
-        _uiState.update { it.copy(bpm = newBpm) }
+        setGlobalBpm(_uiState.value.bpm + delta)
+    }
+
+    fun setGlobalBpm(newBpm: Int) {
+        val bpm = newBpm.coerceIn(20, 300)
+        _uiState.update { it.copy(bpm = bpm) }
         if (_uiState.value.isMetronomeOn) {
-            audioEngine.startMetronome(newBpm, _uiState.value.metronomeSignature, _uiState.value.metronomeVolume)
+            audioEngine.startMetronome(bpm, _uiState.value.metronomeSignature, _uiState.value.metronomeVolume)
         }
         if (_uiState.value.isLoopPlaying) {
             val beats = _uiState.value.activeLoopFile?.beats.takeIf { b -> (b ?: 0) > 0 } ?: _uiState.value.selectedBeatCount
-            audioEngine.setLoopBeats(beats, newBpm)
+            audioEngine.setLoopBeats(beats, bpm)
         }
     }
 

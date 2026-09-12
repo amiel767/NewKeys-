@@ -417,6 +417,7 @@ fun MixerScreen(
                 subView = uiState.drumSubView,
                 onSetSubView = { viewModel.setDrumSubView(it) },
                 audioFiles = uiState.drumPadAudioFiles,
+                loopFiles = uiState.drumPadLoopAudioFiles,
                 isPinned = uiState.isDrumPadPinned,
                 onTogglePin = { viewModel.togglePinDrumPad() },
                 onClose = { viewModel.closeDrumPad() },
@@ -433,7 +434,14 @@ fun MixerScreen(
                 },
                 onAssignPadSample = { padId, sample -> viewModel.assignDrumSample(padId, sample.name, sample.path) },
                 onAssignPadNote = { padId, noteStr, oct, key -> viewModel.assignDrumSf2Note(padId, key, oct) },
-                onImportAudioFile = { drumPadPickerLauncher.launch(arrayOf("audio/*", "*/*")) }
+                onImportAudioFile = { drumPadPickerLauncher.launch(arrayOf("audio/*", "*/*")) },
+                isRecording = uiState.isDrumLoopRecording,
+                loopBars = uiState.drumLoopBars,
+                onSetLoopBars = { viewModel.setDrumLoopBars(it) },
+                onStartRecording = { viewModel.startDrumLoopRecording() },
+                onStopRecording = { viewModel.stopAndRenderDrumLoop(onFinished = { /* toast? */ }) },
+                onCancelRecording = { viewModel.cancelDrumLoopRecording() },
+                isRendering = uiState.isDrumLoopRendering
             )
         }
 
@@ -520,7 +528,7 @@ fun MixerScreen(
                     loopVolume = uiState.loopVolume,
                     onLoopVolumeChange = { viewModel.setLoopVolume(it) },
                     bpm = uiState.bpm,
-                    onUpdateBpm = { viewModel.updateBpm(it) },
+                    onUpdateBpm = { viewModel.setGlobalBpm(it) },
                     selectedBeats = uiState.selectedBeatCount,
                     onSelectBeats = { viewModel.selectBeatCount(it) },
                     onToggleFolder = { viewModel.toggleLoopFolder(it) },

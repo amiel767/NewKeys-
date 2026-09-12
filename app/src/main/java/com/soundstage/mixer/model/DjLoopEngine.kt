@@ -176,9 +176,14 @@ class DjLoopEngine(private val context: Context) {
 
     fun setBeats(beatCount: Int, bpm: Int) {
         activeBeatCount = beatCount
-        activeBpm = bpm.coerceAtLeast(30)
+        val targetBpm = bpm.coerceAtLeast(30)
+        val shouldStretch = targetBpm != activeBpm
+        activeBpm = targetBpm
+        if (rawDecodedPcm != null && shouldStretch) {
+            applyTimeStretchAndPitch(activeBpm, semitonePitchShift)
+        }
         if (currentPcm == null || totalFrames <= 0) return
-        computeFrames(0, 0, beatCount, bpm)
+        computeFrames(0, 0, beatCount, activeBpm)
     }
 
     fun setVolume(volume: Float) {

@@ -119,13 +119,11 @@ fun VirtualPianoKeyboard(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
             .background(
                 Brush.verticalGradient(
                     listOf(Color(0xFF141923), Color(0xFF0F141C), Color(0xFF0A0E15))
                 )
             )
-            .border(1.dp, Color(0x3322D3EE), RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
             .testTag("virtual_piano_keyboard"),
         contentAlignment = Alignment.BottomCenter
     ) {
@@ -162,30 +160,39 @@ fun VirtualPianoKeyboard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                // Layer Mapper Row (Smooth in-place growth animation: 16dp -> 130dp, with 4 visible rows & vertical scroll)
+                // Layer Mapper Row (Smooth overlay expansion upwards: 16dp -> 130dp, without compressing faders)
                 if (tracks.isNotEmpty()) {
-                    Row(
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(animatedMapperHeight)
+                            .height(compactMapperHeight),
+                        contentAlignment = Alignment.BottomStart
                     ) {
-                        Spacer(modifier = Modifier.width(46.dp))
-
-                        Box(
+                        Row(
                             modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .horizontalScroll(scrollState)
+                                .fillMaxWidth()
+                                .height(animatedMapperHeight)
+                                .offset(y = -(animatedMapperHeight - compactMapperHeight))
+                                .zIndex(10f)
                         ) {
-                            KeyboardLayerMapper(
-                                tracks = tracks,
-                                whiteWidthDp = baseWhiteWidthDp,
-                                totalWhiteKeys = totalWhiteKeys,
-                                isExpanded = isLayerMapperExpanded,
-                                onToggleExpanded = { toggleMapperExpanded() },
-                                onRangeChanged = onRangeChanged,
-                                onDragSelectionChange = { activeDragSelectionRange = it }
-                            )
+                            Spacer(modifier = Modifier.width(46.dp))
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .horizontalScroll(scrollState)
+                            ) {
+                                KeyboardLayerMapper(
+                                    tracks = tracks,
+                                    whiteWidthDp = baseWhiteWidthDp,
+                                    totalWhiteKeys = totalWhiteKeys,
+                                    isExpanded = isLayerMapperExpanded,
+                                    onToggleExpanded = { toggleMapperExpanded() },
+                                    onRangeChanged = onRangeChanged,
+                                    onDragSelectionChange = { activeDragSelectionRange = it }
+                                )
+                            }
                         }
                     }
                 }

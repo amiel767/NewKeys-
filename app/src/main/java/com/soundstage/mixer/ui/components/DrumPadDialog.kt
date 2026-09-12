@@ -59,6 +59,7 @@ fun DrumPadDialog(
     onSelectSf2File: (StorageItem) -> Unit = {},
     onOpenSoundfontPicker: () -> Unit = {},
     audioFiles: List<StorageItem>,
+    loopFiles: List<StorageItem> = emptyList(),
     isPinned: Boolean,
     onTogglePin: () -> Unit,
     onClose: () -> Unit,
@@ -70,6 +71,13 @@ fun DrumPadDialog(
     onAssignPadSample: (padId: Int, sample: StorageItem) -> Unit,
     onAssignPadNote: (padId: Int, noteStr: String, oct: Int, key: String) -> Unit,
     onImportAudioFile: (() -> Unit)? = null,
+    isRecording: Boolean = false,
+    loopBars: Int = 2,
+    onSetLoopBars: (Int) -> Unit = {},
+    onStartRecording: () -> Unit = {},
+    onStopRecording: () -> Unit = {},
+    onCancelRecording: () -> Unit = {},
+    isRendering: Boolean = false,
     initialOffsetX: Float = 0f,
     initialOffsetY: Float = 0f,
     initialSizeDp: Float = 440f,
@@ -160,9 +168,17 @@ fun DrumPadDialog(
                             onPadReleased = onPadReleased,
                             onLongPressPad = { pad -> editingPad = pad },
                             audioFiles = audioFiles,
+                            loopFiles = loopFiles,
                             onPlaySample = onPlaySample,
                             onLongPressSample = { file -> quickAssignSample = file },
-                            onImportAudioFile = onImportAudioFile
+                            onImportAudioFile = onImportAudioFile,
+                            isRecording = isRecording,
+                            loopBars = loopBars,
+                            onSetLoopBars = onSetLoopBars,
+                            onStartRecording = onStartRecording,
+                            onStopRecording = onStopRecording,
+                            onCancelRecording = onCancelRecording,
+                            isRendering = isRendering
                         )
                     }
                 }
@@ -224,9 +240,17 @@ private fun MainDrumPadSquareContent(
     onPadReleased: (Int) -> Unit,
     onLongPressPad: (DrumPadItem) -> Unit,
     audioFiles: List<StorageItem>,
+    loopFiles: List<StorageItem> = emptyList(),
     onPlaySample: (StorageItem) -> Unit,
     onLongPressSample: (StorageItem) -> Unit,
-    onImportAudioFile: (() -> Unit)? = null
+    onImportAudioFile: (() -> Unit)? = null,
+    isRecording: Boolean = false,
+    loopBars: Int = 2,
+    onSetLoopBars: (Int) -> Unit = {},
+    onStartRecording: () -> Unit = {},
+    onStopRecording: () -> Unit = {},
+    onCancelRecording: () -> Unit = {},
+    isRendering: Boolean = false
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         // ================= TOP BAR WITH TITLE, SOUNDFONT PICKER & MINIMALIST PIN =================
@@ -292,7 +316,7 @@ private fun MainDrumPadSquareContent(
             }
         }
 
-        // ================= 2 TABS: Pads, Fichiers =================
+        // ================= TABS: Pads, Fichiers, Loops =================
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -303,7 +327,8 @@ private fun MainDrumPadSquareContent(
         ) {
             listOf(
                 "pad" to "Pads",
-                "files" to "Fichiers"
+                "files" to "Fichiers",
+                "loops" to "Loops"
             ).forEach { (tabId, label) ->
                 val isSel = (tabId == activeTab)
                 Box(
@@ -421,10 +446,100 @@ private fun MainDrumPadSquareContent(
                             baseColor = NeonMagenta
                         )
                     }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // ================= DRUM LOOPER UI =================
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF1E212E))
+                            .border(1.dp, if (isRecording) Color(0xFFFF0055) else Color(0x33FFFFFF), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        // Left: Recording Status & Bar Selector
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isRecording) Color(0xFFFF0055) else Color.Gray)
+                            )
+                            Text(
+                                text = if (isRendering) "RENDU..." else if (isRecording) "REC (BARS: $loopBars)" else "LOOPER",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isRecording) Color(0xFFFF0055) else TextPrimary
+                            )
+                            if (!isRecording && !isRendering) {
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color(0x1AFFFFFF))
+                                        .padding(2.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    listOf(1, 2, 4, 8).forEach { bars ->
+                                        val isSel = (bars == loopBars)
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(3.dp))
+                                                .background(if (isSel) NeonCyan else Color.Transparent)
+                                                .clickable { onSetLoopBars(bars) }
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = "${bars}b",
+                                                fontSize = 9.sp,
+                                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSel) Color(0xFF003844) else TextDim
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Right: Record/Stop Actions
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            if (isRecording) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color(0x33FF0055))
+                                        .clickable { onCancelRecording() }
+                                        .padding(horizontal = 6.dp, vertical = 4.dp)
+                                ) {
+                                    Text("✕", fontSize = 10.sp, color = Color(0xFFFF0055), fontWeight = FontWeight.Bold)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(NeonCyan)
+                                        .clickable { onStopRecording() }
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Text("STOP & RENDER", fontSize = 9.sp, color = Color(0xFF003844), fontWeight = FontWeight.Bold)
+                                }
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(if (isRendering) Color.Gray else Color(0xFFFF0055))
+                                        .clickable(enabled = !isRendering) { onStartRecording() }
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Text("RECORD LOOP", fontSize = 9.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
                 }
             }
-
-            else -> {
+            "files" -> {
                 // FILES TAB: Elements of /DrumPad in clean AOSP style list
                 Column(
                     modifier = Modifier
@@ -504,6 +619,91 @@ private fun MainDrumPadSquareContent(
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         Text(text = "🎵", fontSize = 11.sp)
+                                        Column {
+                                            Text(
+                                                text = file.name,
+                                                fontSize = 10.5.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Color.White
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            "loops" -> {
+                // LOOPS TAB: Recorded drum pad loops
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Boucles enregistrées (DrumPad loop/)",
+                            fontSize = 8.5.sp,
+                            color = TextDim2
+                        )
+                    }
+
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        if (loopFiles.isEmpty()) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "Aucune boucle enregistrée.",
+                                        fontSize = 10.sp,
+                                        color = TextDim
+                                    )
+                                }
+                            }
+                        } else {
+                            items(loopFiles) { file ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xFF222533))
+                                        .combinedClickable(
+                                            onClick = { onPlaySample(file) },
+                                            onLongClick = { onLongPressSample(file) }
+                                        )
+                                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(24.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFF0F2537)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text("🔄", fontSize = 10.sp)
+                                        }
                                         Column {
                                             Text(
                                                 text = file.name,

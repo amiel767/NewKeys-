@@ -468,6 +468,45 @@ private fun LoopListContent(
             )
         }
 
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // BPM / Time-Stretching Row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0x14FFFFFF))
+                .padding(horizontal = 14.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Speed,
+                contentDescription = "BPM",
+                tint = NeonCyanLight,
+                modifier = Modifier.size(20.dp)
+            )
+            Slider(
+                value = bpm.toFloat(),
+                onValueChange = { onUpdateBpm(it.toInt()) },
+                valueRange = 60f..200f,
+                modifier = Modifier.weight(1f),
+                colors = SliderDefaults.colors(
+                    thumbColor = NeonCyanLight,
+                    activeTrackColor = NeonCyanLight,
+                    inactiveTrackColor = Color(0x22FFFFFF)
+                )
+            )
+            Text(
+                text = "${bpm} BPM",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                modifier = Modifier.width(52.dp),
+                textAlign = TextAlign.End
+            )
+        }
+
         Spacer(modifier = Modifier.height(14.dp))
 
         // Folders and Files (Material You Expressive List)
