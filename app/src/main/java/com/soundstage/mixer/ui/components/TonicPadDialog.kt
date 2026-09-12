@@ -242,7 +242,7 @@ private fun TonicPadContent(
                     }
                 }
                 Text(
-                    text = if (isSoundPickerOpen) "Sounds" else "🎵 Tonic Pad",
+                    text = if (isSoundPickerOpen) "Sounds" else "🎵 Pad",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary,

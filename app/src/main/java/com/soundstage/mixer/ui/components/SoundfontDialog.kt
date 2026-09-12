@@ -145,11 +145,11 @@ fun SoundfontDialog(
         }
     }
 
-    // Modal Background overlay
+    // Modal Background overlay: subtle dark tint allowing the background mixer interface to peek through
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0x8A030712))
+            .background(Color(0x66040814))
             .clickable { onClose() },
         contentAlignment = Alignment.Center
     ) {
@@ -158,17 +158,26 @@ fun SoundfontDialog(
             modifier = Modifier
                 .width(520.dp)
                 .fillMaxHeight(0.92f)
-                .shadow(32.dp, RoundedCornerShape(26.dp), spotColor = Color(0x6600E5FF))
+                .shadow(36.dp, RoundedCornerShape(26.dp), spotColor = Color(0x7700E5FF))
                 .clip(RoundedCornerShape(26.dp))
-                .background(Color(0xEE0B101C))
-                // iOS Frosted Glass border
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color(0xDA101728),
+                            Color(0xEA0B101D),
+                            Color(0xF4070B14)
+                        )
+                    )
+                )
+                // iOS Liquid Glass specular refraction border
                 .border(
-                    width = 1.dp,
+                    width = 1.2.dp,
                     brush = Brush.verticalGradient(
                         listOf(
-                            Color(0x40FFFFFF),
-                            Color(0x14FFFFFF),
-                            Color(0x22FFFFFF)
+                            Color(0x88FFFFFF), // Top specular lens rim
+                            Color(0x2EFFFFFF),
+                            Color(0x10FFFFFF),
+                            Color(0x4400E5FF)  // Subdued neon cyan refraction bottom
                         )
                     ),
                     shape = RoundedCornerShape(26.dp)
@@ -176,7 +185,7 @@ fun SoundfontDialog(
                 .clickable(enabled = false) {}
                 .testTag("dialog_soundfont")
         ) {
-            // 3-Color Floating Aura / Halo Canvas (moving softly in the background)
+            // 3-Color Floating Aura / Halo Canvas (liquid motion behind the glass)
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val w = size.width
                 val h = size.height
@@ -186,7 +195,7 @@ fun SoundfontDialog(
                 val cy1 = (h * 0.30f) + (sin(animPhase1 * 1.2f) * (h * 0.18f))
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(Color(0x4200E5FF), Color(0x1800E5FF), Color.Transparent),
+                        colors = listOf(Color(0x3800E5FF), Color(0x1200E5FF), Color.Transparent),
                         center = Offset(cx1, cy1),
                         radius = w * 0.48f
                     ),
@@ -199,7 +208,7 @@ fun SoundfontDialog(
                 val cy2 = (h * 0.65f) + (cos(animPhase2 * 0.9f) * (h * 0.22f))
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(Color(0x3A8B5CF6), Color(0x148B5CF6), Color.Transparent),
+                        colors = listOf(Color(0x328B5CF6), Color(0x108B5CF6), Color.Transparent),
                         center = Offset(cx2, cy2),
                         radius = w * 0.52f
                     ),
@@ -212,7 +221,7 @@ fun SoundfontDialog(
                 val cy3 = (h * 0.20f) + (sin(animPhase1 * 0.8f) * (h * 0.15f))
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(Color(0x32FA5C7C), Color(0x10FA5C7C), Color.Transparent),
+                        colors = listOf(Color(0x28FA5C7C), Color(0x0CFA5C7C), Color.Transparent),
                         center = Offset(cx3, cy3),
                         radius = w * 0.42f
                     ),
@@ -221,31 +230,31 @@ fun SoundfontDialog(
                 )
             }
 
-            // Translucent Glass Blur / Frosted Shield (ensures supreme text contrast)
+            // Liquid Glass Frosted Smoked Shield (deep comfortable contrast for reading)
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
                             listOf(
-                                Color(0xCC0D1322),
-                                Color(0xD40A0F1A),
-                                Color(0xDE070A12)
+                                Color(0xBC0B101E),
+                                Color(0xCE080D18),
+                                Color(0xD8050912)
                             )
                         )
                     )
             )
 
-            // Specular Glass Top Highlight
+            // Specular Liquid Glass Top Sheen (iOS curved reflection)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(64.dp)
+                    .height(90.dp)
                     .background(
                         Brush.verticalGradient(
                             listOf(
-                                Color(0x28FFFFFF),
-                                Color(0x08FFFFFF),
+                                Color(0x30FFFFFF),
+                                Color(0x0CFFFFFF),
                                 Color.Transparent
                             )
                         )

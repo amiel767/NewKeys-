@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soundstage.mixer.model.ActivePopup
 import com.soundstage.mixer.model.FxParameters
@@ -225,6 +226,8 @@ fun MixerScreen(
                     onSelectSignature = { viewModel.setMetronomeSignature(it) },
                     metroVolume = uiState.metronomeVolume,
                     onMetroVolumeChange = { viewModel.setMetronomeVolume(it) },
+                    selectedKey = uiState.selectedRootKey,
+                    onSelectKey = { viewModel.setSelectedRootKey(it) },
                     
                     // Real-time Detected Chord
                     detectedChord = detectedChord,
@@ -296,6 +299,32 @@ fun MixerScreen(
                 }
             }
 
+            // Floating Sunday Keys Layer Panel: extends upwards over faders without pushing the keyboard
+            AnimatedVisibility(
+                visible = uiState.isKeyboardLayerExpanded && uiState.tracks.isNotEmpty(),
+                enter = fadeIn(animationSpec = tween(180)) + slideInVertically(
+                    initialOffsetY = { it },
+                    animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow)
+                ),
+                exit = fadeOut(animationSpec = tween(150)) + slideOutVertically(
+                    targetOffsetY = { it },
+                    animationSpec = tween(180)
+                ),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = (if (isKeyboardVisible) 90.dp else 48.dp) + safeBottomPadding)
+                    .fillMaxWidth()
+                    .zIndex(85f)
+            ) {
+                ExpandedSundayKeysLayerPanel(
+                    tracks = uiState.tracks,
+                    onClose = { viewModel.toggleKeyboardLayer() },
+                    onRangeChanged = { trackId, minN, maxN ->
+                        viewModel.updateTrackKeyRange(trackId, minN, maxN)
+                    }
+                )
+            }
+
             // Outside touch scrim for quick closing of floating dropdowns
             if (uiState.isLoopsPanelOpen || uiState.isMetroPanelOpen || uiState.isMidiPanelOpen || uiState.activePopup == ActivePopup.SCENE) {
                 Box(
@@ -328,6 +357,8 @@ fun MixerScreen(
                     onSelectSignature = { viewModel.setMetronomeSignature(it) },
                     volume = uiState.metronomeVolume,
                     onVolumeChange = { viewModel.setMetronomeVolume(it) },
+                    selectedKey = uiState.selectedRootKey,
+                    onSelectKey = { viewModel.setSelectedRootKey(it) },
                     onClose = { viewModel.closeMetroPanel() }
                 )
             }

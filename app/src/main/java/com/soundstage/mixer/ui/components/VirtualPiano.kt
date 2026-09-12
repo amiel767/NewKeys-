@@ -99,8 +99,8 @@ fun VirtualPianoKeyboard(
     }
 
     val activeTracksCount = remember(tracks) { tracks.count { it.isEnabled } }
-    val compactMapperHeight = if (tracks.isNotEmpty()) 36.dp else 0.dp
-    // 25% height reduction: 90.dp -> 68.dp. Reclaimed space is given to compact layers (36.dp)
+    val compactMapperHeight = if (tracks.isNotEmpty()) 16.dp else 0.dp
+    // 25% height reduction: 90.dp -> 68.dp. Reclaimed space is given to compact layers (16.dp)
     val keysHeight = 68.dp
     val totalPianoContainerHeight = keysHeight + compactMapperHeight + 6.dp
 
@@ -354,75 +354,6 @@ fun VirtualPianoKeyboard(
                                             color = Color(0x9960A5FA),
                                             shape = RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp)
                                         )
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // ================= EXPANDED LAYER OVERLAY (Superposed without pushing the UI) =================
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = isLayerMapperExpanded && tracks.isNotEmpty(),
-                    enter = fadeIn(animationSpec = tween(180)) + slideInVertically(
-                        initialOffsetY = { -it / 2 },
-                        animationSpec = spring(
-                            dampingRatio = 0.82f,
-                            stiffness = Spring.StiffnessMediumLow
-                        )
-                    ),
-                    exit = fadeOut(animationSpec = tween(150)) + slideOutVertically(
-                        targetOffsetY = { -it / 2 },
-                        animationSpec = tween(180)
-                    ),
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .zIndex(40f)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xF70C1018))
-                            .border(1.dp, Color(0x4422D3EE), RoundedCornerShape(10.dp))
-                            .padding(horizontal = 6.dp, vertical = 4.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            // Close/Collapse button on left
-                            Box(
-                                modifier = Modifier
-                                    .width(36.dp)
-                                    .fillMaxHeight()
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(Color(0x22FFFFFF))
-                                    .clickable { toggleMapperExpanded() },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "✕",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = NeonCyan
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.width(6.dp))
-
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                                    .horizontalScroll(scrollState)
-                            ) {
-                                KeyboardLayerMapper(
-                                    tracks = tracks,
-                                    whiteWidthDp = baseWhiteWidthDp,
-                                    totalWhiteKeys = totalWhiteKeys,
-                                    isExpanded = true,
-                                    onToggleExpanded = { toggleMapperExpanded() },
-                                    onRangeChanged = onRangeChanged,
-                                    onDragSelectionChange = { activeDragSelectionRange = it }
                                 )
                             }
                         }
@@ -704,15 +635,7 @@ private fun IntroA1B1GroupView(
                             RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp)
                         ),
                     contentAlignment = Alignment.BottomCenter
-                ) {
-                    Text(
-                        text = fullKey,
-                        fontSize = 8.5.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (isPressed) Color(0xFF002E38) else Color(0xFF1E2238),
-                        modifier = Modifier.padding(bottom = 3.dp)
-                    )
-                }
+                ) {}
             }
         }
 

@@ -11,6 +11,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -210,12 +211,12 @@ fun KeyboardLayerMapper(
     if (visibleTracks.isEmpty()) return
 
     val totalWidthDp = whiteWidthDp * totalWhiteKeys
-    val visibleCount = visibleTracks.size.coerceAtMost(4)
+    val visibleCount = visibleTracks.size.coerceAtMost(6)
     val targetHeight = if (isExpanded) {
         (30.dp * visibleCount + 8.dp).coerceAtLeast(38.dp)
     } else {
-        // Compact mode: generous height allocated from the keyboard 25% height reduction
-        (5.dp * visibleTracks.size.coerceAtMost(5) + 8.dp).coerceIn(24.dp, 36.dp)
+        // Compact mode: ultra-fine, aesthetic Sunday Keys style lines (12-16dp total)
+        (2.8.dp * visibleTracks.size.coerceAtMost(6) + 3.dp).coerceIn(10.dp, 16.dp)
     }
 
     val animatedHeight by animateDpAsState(
@@ -233,18 +234,18 @@ fun KeyboardLayerMapper(
         modifier = modifier
             .width(totalWidthDp)
             .height(animatedHeight)
-            .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
-            .background(Color(0xFF10141D))
-            .padding(horizontal = 0.dp, vertical = 2.dp)
+            .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
+            .background(Color(0xE60A0E16))
+            .padding(horizontal = 0.dp, vertical = 1.dp)
             .testTag("keyboard_layer_mapper")
     ) {
         if (!isExpanded) {
-            // ================= COMPACT MODE: Visible Layered Range Lines (36dp height allocation) =================
+            // ================= COMPACT MODE: Sunday Keys Ultra-Thin Layer Lines (Fine & Aesthetic) =================
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .clickable { onToggleExpanded() },
-                verticalArrangement = Arrangement.SpaceEvenly
+                verticalArrangement = Arrangement.spacedBy(1.5.dp, Alignment.CenterVertically)
             ) {
                 visibleTracks.forEachIndexed { _, track ->
                     val trackColor = KeyPositionMapper.getTrackNeonColor(track.id)
@@ -253,25 +254,25 @@ fun KeyboardLayerMapper(
 
                     val startXDp = (leftFrac * whiteWidthDp.value).dp
                     val endXDp = (rightFrac * whiteWidthDp.value).dp
-                    val barWidthDp = (endXDp - startXDp).coerceAtLeast(8.dp)
+                    val barWidthDp = (endXDp - startXDp).coerceAtLeast(6.dp)
 
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(6.dp)
+                            .height(2.5.dp)
                     ) {
                         Box(
                             modifier = Modifier
                                 .offset(x = startXDp)
                                 .width(barWidthDp)
-                                .height(6.dp)
-                                .clip(RoundedCornerShape(3.dp))
+                                .height(2.5.dp)
+                                .clip(RoundedCornerShape(1.5.dp))
                                 .background(
                                     Brush.horizontalGradient(
-                                        listOf(trackColor.copy(alpha = 0.85f), trackColor)
+                                        listOf(trackColor.copy(alpha = 0.90f), trackColor)
                                     )
                                 )
-                                .border(0.6.dp, Color(0x66FFFFFF), RoundedCornerShape(3.dp))
+                                .border(0.4.dp, Color(0x44FFFFFF), RoundedCornerShape(1.5.dp))
                         )
                     }
                 }
@@ -555,6 +556,110 @@ private fun TrackRangeBarRow(
                     .clip(CircleShape)
                     .background(Color.White)
             )
+        }
+    }
+}
+
+@Composable
+fun ExpandedSundayKeysLayerPanel(
+    tracks: List<TrackChannel>,
+    onClose: () -> Unit,
+    onRangeChanged: (trackId: Int, minNote: Int, maxNote: Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val scrollState = rememberScrollState()
+    val visibleTracks = remember(tracks) { tracks.filter { it.isEnabled } }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(142.dp)
+            .shadow(20.dp, RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFA101826),
+                        Color(0xFD0A0E18)
+                    )
+                )
+            )
+            .border(
+                1.dp,
+                Brush.verticalGradient(
+                    listOf(Color(0x6622D3EE), Color(0x2222D3EE))
+                ),
+                RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+            )
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Header: Title + Close Button
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(NeonCyan)
+                    )
+                    Text(
+                        text = "KEYBOARD LAYERS & SPLITS (SUNDAY KEYS)",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        letterSpacing = 0.6.sp
+                    )
+                }
+
+                // Close Button
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(Color(0x22FFFFFF))
+                        .clickable { onClose() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "✕",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            }
+
+            // Layer Bars container
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                val availableWidthDp = maxWidth
+                val totalWhiteKeys = 45 // A1..C8
+                val whiteWidthDp = (availableWidthDp / totalWhiteKeys.toFloat()).coerceAtLeast(14.dp)
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .horizontalScroll(scrollState)
+                ) {
+                    KeyboardLayerMapper(
+                        tracks = tracks,
+                        whiteWidthDp = whiteWidthDp,
+                        totalWhiteKeys = totalWhiteKeys,
+                        isExpanded = true,
+                        onToggleExpanded = onClose,
+                        onRangeChanged = onRangeChanged
+                    )
+                }
+            }
         }
     }
 }

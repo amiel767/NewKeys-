@@ -57,6 +57,8 @@ fun BottomBar(
     onSelectSignature: (String) -> Unit,
     metroVolume: Float,
     onMetroVolumeChange: (Float) -> Unit,
+    selectedKey: String = "C",
+    onSelectKey: (String) -> Unit = {},
     
     // Chord Display (Afficheur d'accords)
     detectedChord: DetectedChord? = null,
@@ -236,10 +238,10 @@ fun BottomBar(
                 .background(metroBg)
                 .border(1.dp, metroBorder, RoundedCornerShape(9.dp))
                 .clickable { onToggleMetroPanel() }
-                .padding(horizontal = 6.dp)
+                .padding(horizontal = 8.dp)
                 .testTag("btn_metronome"),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(5.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             // Left: Metronome Icon
             Canvas(modifier = Modifier.size(18.dp)) {
@@ -287,14 +289,29 @@ fun BottomBar(
                     .background(if (isMetronomeOn) NeonCyan.copy(alpha = 0.4f) else Color(0x22FFFFFF))
             )
 
-            // Right: Signature / Key indicator
-            Text(
-                text = metroSignature,
-                fontSize = 11.5.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = if (isMetronomeOn) NeonCyanLight else TextPrimary,
-                modifier = Modifier.padding(end = 2.dp)
-            )
+            // Right: Signature & Key indicator (avec "C" fade gris éteint)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(
+                    text = metroSignature,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (isMetronomeOn) NeonCyanLight else TextPrimary
+                )
+                Text(
+                    text = "·",
+                    fontSize = 10.sp,
+                    color = Color(0x44FFFFFF)
+                )
+                Text(
+                    text = selectedKey,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0x66FFFFFF) // Gris fade éteint comme demandé
+                )
+            }
         }
 
         // ================= 4. AFFICHEUR D'ACCORDS (CHORD DISPLAY BAR - EXPANDED SPACE) =================
@@ -538,12 +555,18 @@ fun MetronomeFloatingPanel(
     volume: Float,
     onVolumeChange: (Float) -> Unit,
     onClose: () -> Unit,
+    selectedKey: String = "C",
+    onSelectKey: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val allSignatures = listOf(
         "2/4", "3/4", "4/4", "5/4",
         "6/4", "7/4", "3/8", "5/8",
         "6/8", "7/8", "9/8", "12/8"
+    )
+    val chromaticKeys = listOf(
+        "C", "C#", "D", "D#", "E", "F",
+        "F#", "G", "G#", "A", "A#", "B"
     )
 
     AnimatedVisibility(
@@ -554,7 +577,7 @@ fun MetronomeFloatingPanel(
     ) {
         Column(
             modifier = Modifier
-                .width(280.dp)
+                .width(288.dp)
                 .shadow(20.dp, RoundedCornerShape(16.dp))
                 .clip(RoundedCornerShape(16.dp))
                 .background(
@@ -569,7 +592,7 @@ fun MetronomeFloatingPanel(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "Métronome",
+                    text = "Métronome & Tonalité",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
@@ -591,6 +614,56 @@ fun MetronomeFloatingPanel(
                             .clip(CircleShape)
                             .background(Color.White)
                     )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // TONALITÉ (ROOT KEY)
+            Text(
+                text = "TONALITÉ (ROOT KEY)",
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextDim,
+                letterSpacing = 0.6.sp
+            )
+
+            Spacer(modifier = Modifier.height(5.dp))
+
+            chromaticKeys.chunked(6).forEach { rowKeys ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    rowKeys.forEach { note ->
+                        val isSelected = selectedKey.equals(note, ignoreCase = true)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(26.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(
+                                    if (isSelected) Brush.verticalGradient(listOf(NeonCyanLight, NeonCyanDark))
+                                    else Brush.linearGradient(listOf(Color(0x0DFFFFFF), Color(0x08FFFFFF)))
+                                )
+                                .border(
+                                    1.dp,
+                                    if (isSelected) Color.Transparent else Color(0x1AFFFFFF),
+                                    RoundedCornerShape(6.dp)
+                                )
+                                .clickable { onSelectKey(note) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = note,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSelected) Color(0xFF00232B) else TextDim
+                            )
+                        }
+                    }
                 }
             }
 

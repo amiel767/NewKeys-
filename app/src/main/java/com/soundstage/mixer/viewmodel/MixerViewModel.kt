@@ -35,6 +35,7 @@ data class MixerUiState(
     val isMetroPanelOpen: Boolean = false,
     val metronomeSignature: String = "4/4",
     val metronomeVolume: Float = 0.65f,
+    val selectedRootKey: String = "C",
     
     // Real Storage / File Manager State
     val storageBaseDirPath: String = "",
@@ -464,7 +465,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             TrackChannel(
                 id = i,
                 name = "Piste $i",
-                isEnabled = true,
+                isEnabled = i <= 4, // Pistes 1-4 allumées, 5-8 éteintes/désactivées par défaut
                 volume = 0.65f,
                 pan = 0.0f,
                 fxSummary = "Fx, EQ...",
@@ -1261,6 +1262,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         if (_uiState.value.isMetronomeOn) {
             audioEngine.startMetronome(_uiState.value.bpm, sig, _uiState.value.metronomeVolume)
         }
+    }
+
+    fun setSelectedRootKey(key: String) {
+        _uiState.update { it.copy(selectedRootKey = key) }
     }
 
     fun setMetronomeVolume(vol: Float) {

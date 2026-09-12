@@ -511,15 +511,6 @@ private fun MainDrumPadSquareContent(
                                             )
                                         }
                                     }
-
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(Color(0x2222D3EE))
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    ) {
-                                        Text(text = "Assigner", fontSize = 8.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
-                                    }
                                 }
                             }
                         }
