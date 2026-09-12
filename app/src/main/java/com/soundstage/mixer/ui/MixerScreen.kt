@@ -299,31 +299,6 @@ fun MixerScreen(
                 }
             }
 
-            // Floating Sunday Keys Layer Panel: extends upwards over faders without pushing the keyboard
-            AnimatedVisibility(
-                visible = uiState.isKeyboardLayerExpanded && uiState.tracks.isNotEmpty(),
-                enter = fadeIn(animationSpec = tween(180)) + slideInVertically(
-                    initialOffsetY = { it },
-                    animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow)
-                ),
-                exit = fadeOut(animationSpec = tween(150)) + slideOutVertically(
-                    targetOffsetY = { it },
-                    animationSpec = tween(180)
-                ),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = (if (isKeyboardVisible) 90.dp else 48.dp) + safeBottomPadding)
-                    .fillMaxWidth()
-                    .zIndex(85f)
-            ) {
-                ExpandedSundayKeysLayerPanel(
-                    tracks = uiState.tracks,
-                    onClose = { viewModel.toggleKeyboardLayer() },
-                    onRangeChanged = { trackId, minN, maxN ->
-                        viewModel.updateTrackKeyRange(trackId, minN, maxN)
-                    }
-                )
-            }
 
             // Outside touch scrim for quick closing of floating dropdowns
             if (uiState.isLoopsPanelOpen || uiState.isMetroPanelOpen || uiState.isMidiPanelOpen || uiState.activePopup == ActivePopup.SCENE) {

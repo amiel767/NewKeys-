@@ -67,6 +67,7 @@ class FileManager(private val context: Context) {
     val soundfontsDir: File get() = File(baseDir, "SoundFonts")
     val loopsDir: File get() = File(baseDir, "Loops")
     val drumPadDir: File get() = File(baseDir, "DrumPad")
+    val drumPadLoopDir: File get() = File(drumPadDir, "DrumPad loop")
     val scenesDir: File get() = File(baseDir, "Scenes")
     val recordingsDir: File get() = File(baseDir, "Recordings")
     val presetsDir: File get() = File(baseDir, "Presets")
@@ -102,6 +103,7 @@ class FileManager(private val context: Context) {
             if (!soundfontsDir.exists()) soundfontsDir.mkdirs()
             if (!loopsDir.exists()) loopsDir.mkdirs()
             if (!drumPadDir.exists()) drumPadDir.mkdirs()
+            if (!drumPadLoopDir.exists()) drumPadLoopDir.mkdirs()
             if (!scenesDir.exists()) scenesDir.mkdirs()
             if (!presetsDir.exists()) presetsDir.mkdirs()
             if (!logsDir.exists()) logsDir.mkdirs()
@@ -116,7 +118,7 @@ class FileManager(private val context: Context) {
             } catch (_: Exception) {}
 
             // Create index marker files in each folder so Android MTP and file explorers list them immediately
-            listOf(baseDir, soundfontsDir, loopsDir, drumPadDir, scenesDir, presetsDir, logsDir, recordingsDir).forEach { dir ->
+            listOf(baseDir, soundfontsDir, loopsDir, drumPadDir, drumPadLoopDir, scenesDir, presetsDir, logsDir, recordingsDir).forEach { dir ->
                 try {
                     val marker = File(dir, ".soundstage")
                     if (!marker.exists()) {
@@ -445,7 +447,8 @@ class FileManager(private val context: Context) {
                             duration = "Audio",
                             folder = "Loops",
                             bpm = detected.bpm,
-                            musicalKey = detected.key
+                            musicalKey = detected.key,
+                            timeSignature = detected.timeSignature
                         )
                     } ?: emptyList()
 
@@ -469,7 +472,8 @@ class FileManager(private val context: Context) {
                                 duration = "Audio",
                                 folder = subDir.name,
                                 bpm = detected.bpm,
-                                musicalKey = detected.key
+                                musicalKey = detected.key,
+                                timeSignature = detected.timeSignature
                             )
                         } ?: emptyList()
 
@@ -564,6 +568,32 @@ class FileManager(private val context: Context) {
             e.printStackTrace()
         }
         result.sortedBy { it.name.lowercase() }
+    }
+
+    suspend fun getDrumPadLoopFiles(): List<StorageItem> = withContext(Dispatchers.IO) {
+        val result = mutableListOf<StorageItem>()
+        try {
+            if (drumPadLoopDir.exists() && drumPadLoopDir.canRead()) {
+                drumPadLoopDir.walkTopDown()
+                    .maxDepth(3)
+                    .filter { it.isFile && isAudioFile(it) }
+                    .forEach { file ->
+                        result.add(
+                            StorageItem(
+                                name = file.name,
+                                path = file.absolutePath,
+                                isDirectory = false,
+                                size = file.length(),
+                                extension = file.extension.lowercase(),
+                                formattedSize = formatSize(file.length())
+                            )
+                        )
+                    }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        result.sortedByDescending { it.name }
     }
 
     suspend fun getDrumSampleFiles(): List<StorageItem> = getDrumPadFiles()

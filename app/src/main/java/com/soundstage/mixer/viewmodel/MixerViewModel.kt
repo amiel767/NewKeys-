@@ -42,6 +42,7 @@ data class MixerUiState(
     val realSoundfonts: List<StorageItem> = emptyList(),
     val realLoopFiles: List<StorageItem> = emptyList(),
     val realDrumPadFiles: List<StorageItem> = emptyList(),
+    val realDrumPadLoopFiles: List<StorageItem> = emptyList(),
     val realStyleFiles: List<StorageItem> = emptyList(),
     val realRecordingFiles: List<StorageItem> = emptyList(),
     val realMidiFiles: List<StorageItem> = emptyList(),
@@ -125,6 +126,9 @@ data class MixerUiState(
     val drumReverb: Float = 0.24f,
     val drumActiveTab: String = "pad",
     val drumSubView: String = "main",
+    val isDrumLoopRecording: Boolean = false,
+    val drumLoopBars: Int = 2,
+    val isDrumLoopRendering: Boolean = false,
     val editingDrumPadId: Int? = null,
     val selectedDrumSampleForAssign: StorageItem? = null,
     val isAssignPadDialogOpen: Boolean = false,
@@ -176,6 +180,7 @@ data class MixerUiState(
     val soundfontFiles: List<StorageItem> get() = realSoundfonts
     val loopAudioFiles: List<StorageItem> get() = realLoopFiles
     val drumPadAudioFiles: List<StorageItem> get() = realDrumPadFiles
+    val drumPadLoopAudioFiles: List<StorageItem> get() = realDrumPadLoopFiles
     val styleFiles: List<StorageItem> get() = realStyleFiles
     val midiFiles: List<StorageItem> get() = realMidiFiles
 }
@@ -188,6 +193,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(createInitialState())
     val uiState: StateFlow<MixerUiState> = _uiState.asStateFlow()
+
+    private val drumPadLooper = com.soundstage.mixer.audio.DrumPadLooperEngine { pad, _ ->
+        com.soundstage.mixer.audio.DrumPadSampleProvider.getOrGeneratePadPcm(application.applicationContext, pad)
+    }
 
     private var peakMeterJob: Job? = null
     private var recordingTimerJob: Job? = null
@@ -229,6 +238,20 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
         audioEngine.onMidiSustainListener = { isPressed ->
             _uiState.update { it.copy(isMidiPedalPressed = isPressed) }
+        }
+        audioEngine.onMidiCcListener = { channel, cc, value ->
+            when (cc) {
+                7, 11 -> { // CC#7 Volume, CC#11 Expression
+                    val vol = (value / 127f).coerceIn(0f, 1f)
+                    val targetTrackId = if (channel in 0..7) (channel + 1) else 1
+                    setTrackVolume(targetTrackId, vol)
+                }
+                10 -> { // CC#10 Pan
+                    val pan = ((value - 64) / 63f).coerceIn(-1f, 1f)
+                    val targetTrackId = if (channel in 0..7) (channel + 1) else 1
+                    setTrackPan(targetTrackId, pan)
+                }
+            }
         }
 
         // Connect multi-channel layer performance routing for USB MIDI
@@ -521,6 +544,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 val sfs = fileManager.getSoundFontFiles()
                 val loops = fileManager.getLoopFiles()
                 val drumPads = fileManager.getDrumPadFiles()
+                val drumPadLoops = fileManager.getDrumPadLoopFiles()
                 val loopFolderTree = fileManager.getLoopFolderTree()
                 val midis = fileManager.getMidiFiles()
                 val midiFolderTree = fileManager.getMidiFolderTree()
@@ -556,6 +580,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         realSoundfonts = sfs,
                         realLoopFiles = loops,
                         realDrumPadFiles = drumPads,
+                        realDrumPadLoopFiles = drumPadLoops,
                         loopFolders = loopFolderTree,
                         realStyleFiles = styles,
                         realRecordingFiles = recs,
@@ -829,16 +854,25 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             val f = java.io.File(fileManager.loopsDir, "${file.folder}/${file.name}".replace("Racine /Loops/", "").replace("Loops/", ""))
             val path = if (f.exists()) f.absolutePath else java.io.File(fileManager.loopsDir, file.name).absolutePath
+            val effectiveBpm = if (file.bpm > 0) file.bpm else _uiState.value.bpm
+            val effectiveKey = if (file.musicalKey.isNotEmpty()) file.musicalKey else _uiState.value.selectedRootKey
+            val effectiveSig = if (file.timeSignature.isNotEmpty()) file.timeSignature else _uiState.value.metronomeSignature
+            val effectiveBeats = file.beats.takeIf { b -> b > 0 } ?: _uiState.value.selectedBeatCount
+
             audioEngine.playLoopFile(
                 filePath = path,
                 volume = _uiState.value.loopVolume,
-                beatCount = file.beats.takeIf { b -> b > 0 } ?: _uiState.value.selectedBeatCount,
-                bpm = _uiState.value.bpm,
+                beatCount = effectiveBeats,
+                bpm = effectiveBpm,
                 startMs = file.startMs,
                 endMs = file.endMs
             )
             _uiState.update {
                 it.copy(
+                    bpm = effectiveBpm,
+                    selectedRootKey = effectiveKey,
+                    metronomeSignature = effectiveSig,
+                    selectedBeatCount = effectiveBeats,
                     activeLoopFile = file,
                     lastSelectedLoopFile = file,
                     isLoopPlaying = true
@@ -1209,6 +1243,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         if (_uiState.value.isMetronomeOn) {
             audioEngine.startMetronome(newBpm, _uiState.value.metronomeSignature, _uiState.value.metronomeVolume)
         }
+        if (_uiState.value.isLoopPlaying) {
+            val beats = _uiState.value.activeLoopFile?.beats.takeIf { b -> (b ?: 0) > 0 } ?: _uiState.value.selectedBeatCount
+            audioEngine.setLoopBeats(beats, newBpm)
+        }
     }
 
     // ================= RECORDING =================
@@ -1279,9 +1317,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     // ================= SUSTAIN, PANIC & SPLITTER =================
     fun toggleSustain() {
         val nextSustain = !_uiState.value.isSustainActive
-        audioEngine.setSustainPedal(nextSustain || _uiState.value.isMidiPedalPressed)
+        audioEngine.setSustainPedal(nextSustain)
         _uiState.update { state ->
-            val updatedKeys = if (!nextSustain && !state.isMidiPedalPressed) emptySet() else state.pressedKeys
+            val updatedKeys = if (!nextSustain) emptySet() else state.pressedKeys
             state.copy(
                 isSustainActive = nextSustain,
                 pressedKeys = updatedKeys
@@ -1690,6 +1728,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val pad = _uiState.value.drumPads.find { it.id == padId }
         if (pad != null) {
             audioEngine.playDrumPadSound(pad, _uiState.value.drumVolume)
+            if (_uiState.value.isDrumLoopRecording) {
+                drumPadLooper.recordHit(pad, _uiState.value.drumVolume)
+            }
         }
 
         _uiState.update { state ->
@@ -1773,6 +1814,52 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun playDrumSample(sample: StorageItem) {
         audioEngine.playDrumSample(sample.name, sample.path, _uiState.value.drumVolume)
+    }
+
+    // ================= DRUM PAD LOOPER CONTROLS =================
+    fun setDrumLoopBars(bars: Int) {
+        _uiState.update { it.copy(drumLoopBars = bars.coerceIn(1, 8)) }
+    }
+
+    fun startDrumLoopRecording() {
+        val bpm = _uiState.value.bpm
+        val bars = _uiState.value.drumLoopBars
+        drumPadLooper.startRecording(bpm, bars)
+        _uiState.update { it.copy(isDrumLoopRecording = true) }
+    }
+
+    fun stopAndRenderDrumLoop(customName: String? = null, onFinished: ((File) -> Unit)? = null) {
+        if (!_uiState.value.isDrumLoopRecording) return
+        _uiState.update { it.copy(isDrumLoopRecording = false, isDrumLoopRendering = true) }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                fileManager.ensureDirectoriesExist()
+                val targetDir = fileManager.drumPadLoopDir
+                val bpm = _uiState.value.bpm
+                val bars = _uiState.value.drumLoopBars
+                val loopName = customName?.takeIf { it.isNotBlank() }
+                    ?: "DrumLoop_${bpm}BPM_${bars}Bars_${System.currentTimeMillis() % 10000}"
+                val targetFile = File(targetDir, if (loopName.endsWith(".wav", ignoreCase = true)) loopName else "$loopName.wav")
+
+                val success = drumPadLooper.stopAndRenderLoop(targetFile)
+                if (success != null && targetFile.exists()) {
+                    refreshStorageFiles()
+                    withContext(Dispatchers.Main) {
+                        onFinished?.invoke(targetFile)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _uiState.update { it.copy(isDrumLoopRendering = false) }
+            }
+        }
+    }
+
+    fun cancelDrumLoopRecording() {
+        drumPadLooper.cancelRecording()
+        _uiState.update { it.copy(isDrumLoopRecording = false, isDrumLoopRendering = false) }
     }
 
     // ================= TONIC PAD CONTROLS =================

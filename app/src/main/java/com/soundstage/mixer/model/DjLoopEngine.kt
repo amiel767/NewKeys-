@@ -59,11 +59,14 @@ class DjLoopEngine(private val context: Context) {
     @Volatile private var loopVolume: Float = 0.75f
 
     @Volatile private var currentPcm: ShortArray? = null
+    @Volatile private var rawDecodedPcm: ShortArray? = null
     @Volatile private var currentSampleRate: Int = DEFAULT_SAMPLE_RATE
     @Volatile private var currentChannels: Int = CHANNELS
 
     @Volatile private var activeBeatCount: Int = 0
     @Volatile private var activeBpm: Int = 120
+    @Volatile private var baseFileBpm: Int = 120
+    @Volatile private var semitonePitchShift: Int = 0
 
     fun playLoop(
         filePath: String,
@@ -71,14 +74,18 @@ class DjLoopEngine(private val context: Context) {
         beatCount: Int = 0,
         bpm: Int = 120,
         startMs: Int = 0,
-        endMs: Int = 0
+        endMs: Int = 0,
+        pitchShiftSemitones: Int = 0
     ) {
         loopVolume = volume.coerceIn(0f, 1f)
         activeBeatCount = beatCount
         activeBpm = bpm.coerceAtLeast(30)
+        baseFileBpm = if (bpm > 0) bpm else 120
+        semitonePitchShift = pitchShiftSemitones
 
-        // If currently playing the exact same file, simply update trims / volume dynamically!
-        if (isPlaying && currentFilePath == filePath && currentPcm != null) {
+        // If currently playing the exact same file, update trims / pitch dynamically
+        if (isPlaying && currentFilePath == filePath && rawDecodedPcm != null) {
+            applyTimeStretchAndPitch(bpm, pitchShiftSemitones)
             updateTrimPoints(startMs, endMs, beatCount, bpm)
             audioTrack?.setVolume(loopVolume)
             return
@@ -90,18 +97,43 @@ class DjLoopEngine(private val context: Context) {
             try {
                 val decoded = getOrDecodeAudio(filePath) ?: return@Thread
                 currentFilePath = filePath
-                currentPcm = decoded.pcm
+                rawDecodedPcm = decoded.pcm
                 currentSampleRate = decoded.sampleRate
                 currentChannels = decoded.channels
-                totalFrames = decoded.pcm.size / decoded.channels
 
-                computeFrames(startMs, endMs, beatCount, bpm)
+                applyTimeStretchAndPitch(bpm, pitchShiftSemitones)
 
                 startAudioStream()
             } catch (e: Exception) {
                 Log.e(TAG, "Error starting DJ loop: ${e.message}")
             }
         }.start()
+    }
+
+    private fun applyTimeStretchAndPitch(targetBpm: Int, semitones: Int) {
+        val raw = rawDecodedPcm ?: return
+        val ratio = if (baseFileBpm > 0 && targetBpm > 0) {
+            targetBpm.toFloat() / baseFileBpm.toFloat()
+        } else 1.0f
+
+        val processed = com.soundstage.mixer.audio.TimeStretchPitchShifter.process(
+            inputPCM = raw,
+            channels = currentChannels,
+            sampleRate = currentSampleRate,
+            tempoRatio = ratio,
+            semitonePitchOffset = semitones
+        )
+
+        currentPcm = processed
+        totalFrames = processed.size / currentChannels
+        computeFrames(0, 0, activeBeatCount, targetBpm)
+    }
+
+    fun setPitchShift(semitones: Int) {
+        semitonePitchShift = semitones.coerceIn(-12, 12)
+        if (isPlaying && rawDecodedPcm != null) {
+            applyTimeStretchAndPitch(activeBpm, semitonePitchShift)
+        }
     }
 
     private fun computeFrames(startMs: Int, endMs: Int, beatCount: Int, bpm: Int) {

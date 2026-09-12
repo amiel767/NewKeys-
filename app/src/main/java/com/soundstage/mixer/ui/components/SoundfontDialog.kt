@@ -64,27 +64,6 @@ fun SoundfontDialog(
 ) {
     val subtitle = if (trackId == 0) "Piste Master" else "Piste $trackId"
 
-    // 3-Color Floating Aura / Halo in Background (Lissajous gentle fluid motion)
-    val infiniteTransition = rememberInfiniteTransition(label = "liquid_glass_halo")
-    val animPhase1 by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 6.28318f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 14000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "phase_1"
-    )
-    val animPhase2 by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 6.28318f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 18000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "phase_2"
-    )
-
     // Search query state
     var searchQuery by remember { mutableStateOf("") }
 
@@ -150,7 +129,10 @@ fun SoundfontDialog(
         modifier = modifier
             .fillMaxSize()
             .background(Color(0x66040814))
-            .clickable { onClose() },
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null
+            ) { onClose() },
         contentAlignment = Alignment.Center
     ) {
         // ================= LIQUID GLASS IOS POPUP CONTAINER =================
@@ -158,7 +140,7 @@ fun SoundfontDialog(
             modifier = Modifier
                 .width(520.dp)
                 .fillMaxHeight(0.92f)
-                .shadow(36.dp, RoundedCornerShape(26.dp), spotColor = Color(0x7700E5FF))
+                .shadow(24.dp, RoundedCornerShape(26.dp))
                 .clip(RoundedCornerShape(26.dp))
                 .background(
                     Brush.verticalGradient(
@@ -185,51 +167,6 @@ fun SoundfontDialog(
                 .clickable(enabled = false) {}
                 .testTag("dialog_soundfont")
         ) {
-            // 3-Color Floating Aura / Halo Canvas (liquid motion behind the glass)
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val w = size.width
-                val h = size.height
-
-                // Halo 1: Cyan / Azure
-                val cx1 = (w * 0.35f) + (cos(animPhase1) * (w * 0.22f))
-                val cy1 = (h * 0.30f) + (sin(animPhase1 * 1.2f) * (h * 0.18f))
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(Color(0x3800E5FF), Color(0x1200E5FF), Color.Transparent),
-                        center = Offset(cx1, cy1),
-                        radius = w * 0.48f
-                    ),
-                    center = Offset(cx1, cy1),
-                    radius = w * 0.48f
-                )
-
-                // Halo 2: Electric Purple / Indigo
-                val cx2 = (w * 0.68f) + (sin(animPhase2) * (w * 0.20f))
-                val cy2 = (h * 0.65f) + (cos(animPhase2 * 0.9f) * (h * 0.22f))
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(Color(0x328B5CF6), Color(0x108B5CF6), Color.Transparent),
-                        center = Offset(cx2, cy2),
-                        radius = w * 0.52f
-                    ),
-                    center = Offset(cx2, cy2),
-                    radius = w * 0.52f
-                )
-
-                // Halo 3: Soft Coral / Rose
-                val cx3 = (w * 0.50f) + (cos(animPhase2 * 1.3f) * (w * 0.25f))
-                val cy3 = (h * 0.20f) + (sin(animPhase1 * 0.8f) * (h * 0.15f))
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(Color(0x28FA5C7C), Color(0x0CFA5C7C), Color.Transparent),
-                        center = Offset(cx3, cy3),
-                        radius = w * 0.42f
-                    ),
-                    center = Offset(cx3, cy3),
-                    radius = w * 0.42f
-                )
-            }
-
             // Liquid Glass Frosted Smoked Shield (deep comfortable contrast for reading)
             Box(
                 modifier = Modifier

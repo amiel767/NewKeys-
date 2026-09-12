@@ -167,23 +167,25 @@ fun DrumPadDialog(
                     }
                 }
 
-                // Discrete Resize Arrow (Identical to TonicPad)
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .size(24.dp)
-                        .pointerInput(Unit) {
-                            detectDragGestures { change, dragAmount ->
-                                change.consume()
-                                val dDp = with(density) { (dragAmount.x + dragAmount.y) / 2f }.toDp()
-                                windowSizeDp = (windowSizeDp + dDp).coerceIn(300.dp, 600.dp)
-                                onTransformChange(offsetX, offsetY, windowSizeDp.value)
+                // Discrete Resize Arrow (Only visible & active when Pinned)
+                if (isPinned) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .size(24.dp)
+                            .pointerInput(Unit) {
+                                detectDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    val dDp = with(density) { (dragAmount.x + dragAmount.y) / 2f }.toDp()
+                                    windowSizeDp = (windowSizeDp + dDp).coerceIn(300.dp, 600.dp)
+                                    onTransformChange(offsetX, offsetY, windowSizeDp.value)
+                                }
                             }
-                        }
-                        .padding(end = 4.dp, bottom = 4.dp),
-                    contentAlignment = Alignment.BottomEnd
-                ) {
-                    Text(text = "◢", fontSize = 12.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
+                            .padding(end = 4.dp, bottom = 4.dp),
+                        contentAlignment = Alignment.BottomEnd
+                    ) {
+                        Text(text = "◢", fontSize = 12.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
+                    }
                 }
 
                 // Quick Pad Assignment Modal (When long-pressing sample)
@@ -405,7 +407,7 @@ private fun MainDrumPadSquareContent(
                             value = volume,
                             onValueChange = onVolumeChange,
                             label = "VOLUME",
-                            valueText = "${(volume * 100).toInt()}%",
+                            showFloatingTooltipOnTouch = true,
                             size = 36.dp,
                             baseColor = NeonCyan
                         )
@@ -414,7 +416,7 @@ private fun MainDrumPadSquareContent(
                             value = reverb,
                             onValueChange = onReverbChange,
                             label = "REVERB",
-                            valueText = "${(reverb * 100).toInt()}%",
+                            showFloatingTooltipOnTouch = true,
                             size = 36.dp,
                             baseColor = NeonMagenta
                         )

@@ -100,14 +100,25 @@ fun VirtualPianoKeyboard(
 
     val activeTracksCount = remember(tracks) { tracks.count { it.isEnabled } }
     val compactMapperHeight = if (tracks.isNotEmpty()) 16.dp else 0.dp
-    // 25% height reduction: 90.dp -> 68.dp. Reclaimed space is given to compact layers (16.dp)
+    // Keys height (68.dp)
     val keysHeight = 68.dp
-    val totalPianoContainerHeight = keysHeight + compactMapperHeight + 6.dp
 
-    Column(
+    val visibleTracksCount = remember(tracks) { tracks.count { it.isEnabled }.coerceAtMost(4) }
+    val expandedMapperHeight = (30.dp * visibleTracksCount + 8.dp).coerceIn(38.dp, 130.dp)
+    val targetMapperHeight = if (isLayerMapperExpanded && tracks.isNotEmpty()) expandedMapperHeight else compactMapperHeight
+
+    val animatedMapperHeight by animateDpAsState(
+        targetValue = targetMapperHeight,
+        animationSpec = spring(
+            dampingRatio = 0.85f,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "pianoMapperHeight"
+    )
+
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(totalPianoContainerHeight)
             .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
             .background(
                 Brush.verticalGradient(
@@ -115,7 +126,8 @@ fun VirtualPianoKeyboard(
                 )
             )
             .border(1.dp, Color(0x3322D3EE), RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
-            .testTag("virtual_piano_keyboard")
+            .testTag("virtual_piano_keyboard"),
+        contentAlignment = Alignment.BottomCenter
     ) {
         // ================= KEYBOARD BODY (LAYER MAPPER + PITCH BEND & A1-C8 KEYS) =================
         // Keyboard range starting at A1 (MIDI 33), Bb1 (34), B1 (35) then C2 to C8 (45 white keys total)
@@ -127,7 +139,6 @@ fun VirtualPianoKeyboard(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
                 .padding(horizontal = 4.dp, vertical = 2.dp)
         ) {
             val availableWidthDp = (maxWidth - 46.dp).coerceAtLeast(100.dp)
@@ -147,45 +158,44 @@ fun VirtualPianoKeyboard(
             // Computer mouse style live blue translucent selection overlay range over the keyboard
             var activeDragSelectionRange by remember { mutableStateOf<Pair<Float, Float>?>(null) }
 
-            Box(modifier = Modifier.fillMaxSize()) {
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    // Compact Layer Mapper Row (Directly visible, height increased to 36dp with track neon colors)
-                    if (tracks.isNotEmpty()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(compactMapperHeight)
-                        ) {
-                            Spacer(modifier = Modifier.width(46.dp))
-
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                                    .horizontalScroll(scrollState)
-                            ) {
-                                KeyboardLayerMapper(
-                                    tracks = tracks,
-                                    whiteWidthDp = baseWhiteWidthDp,
-                                    totalWhiteKeys = totalWhiteKeys,
-                                    isExpanded = false,
-                                    onToggleExpanded = { toggleMapperExpanded() },
-                                    onRangeChanged = onRangeChanged,
-                                    onDragSelectionChange = { activeDragSelectionRange = it }
-                                )
-                            }
-                        }
-                    }
-
-                    // Main Keys Section: Pitch Bend (68.dp) + Virtual Piano Keys (68.dp)
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                // Layer Mapper Row (Smooth in-place growth animation: 16dp -> 130dp, with 4 visible rows & vertical scroll)
+                if (tracks.isNotEmpty()) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(keysHeight)
+                            .height(animatedMapperHeight)
                     ) {
+                        Spacer(modifier = Modifier.width(46.dp))
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .horizontalScroll(scrollState)
+                        ) {
+                            KeyboardLayerMapper(
+                                tracks = tracks,
+                                whiteWidthDp = baseWhiteWidthDp,
+                                totalWhiteKeys = totalWhiteKeys,
+                                isExpanded = isLayerMapperExpanded,
+                                onToggleExpanded = { toggleMapperExpanded() },
+                                onRangeChanged = onRangeChanged,
+                                onDragSelectionChange = { activeDragSelectionRange = it }
+                            )
+                        }
+                    }
+                }
+
+                // Main Keys Section: Pitch Bend (68.dp) + Virtual Piano Keys (68.dp)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(keysHeight)
+                ) {
                         // Pitch Bend Wheel: fixed to keys height (68.dp)
                         PitchBendWheel(
                             currentBend = pitchBend,
@@ -362,7 +372,7 @@ fun VirtualPianoKeyboard(
             }
         }
     }
-}
+
 
 /**
  * Spring-Loaded Pitch Bend Wheel with center détente (0.0).

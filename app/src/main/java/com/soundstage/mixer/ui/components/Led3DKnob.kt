@@ -1,6 +1,7 @@
 package com.soundstage.mixer.ui.components
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -37,11 +38,13 @@ fun Led3DKnob(
     label: String,
     modifier: Modifier = Modifier,
     valueText: String? = null,
+    showFloatingTooltipOnTouch: Boolean = true,
     size: Dp = 64.dp,
     baseColor: Color = NeonCyan,
     dynamicColorMorph: Boolean = true
 ) {
     var currentValue by remember(value) { mutableFloatStateOf(value) }
+    var isDragging by remember { mutableStateOf(false) }
     val onValueChangeState by rememberUpdatedState(onValueChange)
 
     // Calculate fluid morphing LED color across range: Cyan -> Sky Blue -> Violet -> Magenta -> Amber
@@ -56,6 +59,8 @@ fun Led3DKnob(
         baseColor
     }
 
+    val displayValue = valueText ?: "${(currentValue * 100).toInt()}%"
+
     Column(
         modifier = modifier.width(size + 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -64,7 +69,11 @@ fun Led3DKnob(
             modifier = Modifier
                 .size(size)
                 .pointerInput(Unit) {
-                    detectVerticalDragGestures { _, dragAmount ->
+                    detectVerticalDragGestures(
+                        onDragStart = { isDragging = true },
+                        onDragEnd = { isDragging = false },
+                        onDragCancel = { isDragging = false }
+                    ) { _, dragAmount ->
                         val delta = -dragAmount / 150f
                         currentValue = (currentValue + delta).coerceIn(0f, 1f)
                         onValueChangeState(currentValue)
@@ -268,6 +277,26 @@ fun Led3DKnob(
                     )
                 }
             }
+
+            // Floating Tooltip Badge on Touch/Drag
+            if (showFloatingTooltipOnTouch && isDragging) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset(y = (-20).dp)
+                        .shadow(8.dp, CircleShape, spotColor = dynamicLedColor)
+                        .background(Color(0xE60D1117), CircleShape)
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = displayValue,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = dynamicLedColor
+                    )
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(3.dp))
@@ -282,8 +311,8 @@ fun Led3DKnob(
             lineHeight = 11.sp
         )
 
-        // Formatted Value
-        if (valueText != null) {
+        // Formatted Value (only if provided and not hidden)
+        if (valueText != null && !showFloatingTooltipOnTouch) {
             Text(
                 text = valueText,
                 fontSize = 9.5.sp,

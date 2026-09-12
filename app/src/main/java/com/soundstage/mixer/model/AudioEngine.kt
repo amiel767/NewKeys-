@@ -505,6 +505,21 @@ class AudioEngine(private val context: Context) {
             }
 
             0xB0 -> { // Control Change (CC)
+                when (data1) {
+                    7, 11 -> { // CC#7 Volume, CC#11 Expression
+                        val vol = (data2 / 127f).coerceIn(0f, 1f)
+                        targetChannels.forEach { ch ->
+                            NativeAudioBridge.safeSetTrackVolume(ch, vol)
+                        }
+                    }
+                    10 -> { // CC#10 Pan
+                        val pan = ((data2 - 64) / 63f).coerceIn(-1f, 1f)
+                        targetChannels.forEach { ch ->
+                            NativeAudioBridge.safeSetTrackPan(ch, pan)
+                        }
+                    }
+                }
+
                 coroutineScope.launch(Dispatchers.Main) {
                     onMidiCcListener?.invoke(channel, data1, data2)
                 }
@@ -1086,7 +1101,8 @@ class AudioEngine(private val context: Context) {
         beatCount: Int = 0,
         bpm: Int = 120,
         startMs: Int = 0,
-        endMs: Int = 0
+        endMs: Int = 0,
+        pitchShiftSemitones: Int = 0
     ) {
         currentLoopVolume = volume.coerceIn(0f, 1f)
         currentLoopFilePath = filePath
@@ -1094,7 +1110,11 @@ class AudioEngine(private val context: Context) {
         activeLoopBpm = bpm
         loopTrimStartMs = startMs
         loopTrimEndMs = endMs
-        djLoopEngine.playLoop(filePath, currentLoopVolume, beatCount, bpm, startMs, endMs)
+        djLoopEngine.playLoop(filePath, currentLoopVolume, beatCount, bpm, startMs, endMs, pitchShiftSemitones)
+    }
+
+    fun setLoopPitchShift(semitones: Int) {
+        djLoopEngine.setPitchShift(semitones)
     }
 
     fun setLoopBeats(beatCount: Int, bpm: Int) {

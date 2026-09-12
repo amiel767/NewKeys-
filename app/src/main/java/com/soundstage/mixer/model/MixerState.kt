@@ -143,6 +143,7 @@ data class LoopFile(
     val folder: String,
     val bpm: Int = 120,
     val musicalKey: String = "",
+    val timeSignature: String = "4/4",
     val startMs: Int = 0,
     val endMs: Int = 0,
     val beats: Int = 0,

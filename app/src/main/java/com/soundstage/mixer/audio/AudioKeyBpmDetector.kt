@@ -13,7 +13,8 @@ import kotlin.math.*
 
 data class KeyBpmResult(
     val key: String,
-    val bpm: Int
+    val bpm: Int,
+    val timeSignature: String = "4/4"
 )
 
 /**
@@ -24,6 +25,10 @@ data class KeyBpmResult(
 object AudioKeyBpmDetector {
 
     private const val TAG = "AudioKeyBpmDetector"
+
+    private val SIG_REGEX = Pattern.compile(
+        """(?i)(?:^|\D)(2/4|3/4|4/4|6/8|12/8|5/4|7/8)(?:\D|$)"""
+    )
 
     private val KEY_REGEX = Pattern.compile(
         """(?i)\b([A-G](?:#|b)?)\s*(maj(?:or)?|min(?:or)?|m)?\b"""
@@ -96,6 +101,17 @@ object AudioKeyBpmDetector {
             }
         }
 
+        // Check for Time Signature in filename
+        var detectedSig = "4/4"
+        val sigMatcher = SIG_REGEX.matcher(cleanName)
+        if (sigMatcher.find()) {
+            detectedSig = sigMatcher.group(1) ?: "4/4"
+        } else if (cleanName.contains("3 temps", ignoreCase = true) || cleanName.contains("3 4", ignoreCase = true) || cleanName.contains("waltz", ignoreCase = true)) {
+            detectedSig = "3/4"
+        } else if (cleanName.contains("6 8", ignoreCase = true) || cleanName.contains("6 temps", ignoreCase = true)) {
+            detectedSig = "6/8"
+        }
+
         // 2. If metadata not found or incomplete, perform fast acoustic signal inspection
         if (audioFile != null && audioFile.exists() && audioFile.canRead() && (detectedKey.isEmpty() || detectedBpm == 0)) {
             try {
@@ -120,7 +136,7 @@ object AudioKeyBpmDetector {
             detectedKey = if (isMinor) "${CHROMATIC_NOTES[noteIndex]}m" else CHROMATIC_NOTES[noteIndex]
         }
 
-        return KeyBpmResult(key = detectedKey, bpm = detectedBpm)
+        return KeyBpmResult(key = detectedKey, bpm = detectedBpm, timeSignature = detectedSig)
     }
 
     /**

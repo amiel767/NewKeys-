@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -117,7 +118,13 @@ fun LoopsDialog(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(12.dp),
+                .padding(12.dp)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) {
+                    if (isEditing) onCloseEditFile() else onClose()
+                },
             contentAlignment = Alignment.Center
         ) {
             Surface(
@@ -127,7 +134,11 @@ fun LoopsDialog(
                     .heightIn(min = 280.dp, max = 350.dp)
                     .clip(RoundedCornerShape(22.dp))
                     .border(1.dp, Color(0x33A78BFA), RoundedCornerShape(22.dp))
-                    .shadow(16.dp, RoundedCornerShape(22.dp)),
+                    .shadow(16.dp, RoundedCornerShape(22.dp))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) {},
                 color = Color(0xFF161926),
                 tonalElevation = 8.dp
             ) {
@@ -297,62 +308,11 @@ private fun LoopListContent(
                 )
             }
 
-            // Right Actions: [ BPM Stepper ] [ Case Réglage Temps ] [ + compact ] [ x compact ]
+            // Right Actions: [ Case Réglage Temps ] [ + compact ] [ x compact ]
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // BPM Control Stepper
-                Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0x18FFFFFF))
-                        .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(10.dp))
-                        .padding(horizontal = 4.dp, vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(24.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0x12FFFFFF))
-                            .clickable { onUpdateBpm(-1) },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Remove,
-                            contentDescription = "Minus BPM",
-                            tint = Color.White,
-                            modifier = Modifier.size(12.dp)
-                        )
-                    }
-
-                    Text(
-                        text = "$bpm BPM",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        modifier = Modifier.padding(horizontal = 4.dp)
-                    )
-
-                    Box(
-                        modifier = Modifier
-                            .size(24.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0x12FFFFFF))
-                            .clickable { onUpdateBpm(1) },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Plus BPM",
-                            tint = Color.White,
-                            modifier = Modifier.size(12.dp)
-                        )
-                    }
-                }
-
                 // Case de réglage de temps (Temps / Beats)
                 Row(
                     modifier = Modifier

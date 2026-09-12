@@ -260,15 +260,5 @@ fun CompactHorizontalFadersRack(
                 onFxClick = { onFxClick(track.id) }
             )
         }
-
-        item(key = "master") {
-            CompactHorizontalFaderStrip(
-                track = masterTrack,
-                onVolumeChange = { onVolumeChange(0, it) },
-                onTrackNameClick = {},
-                onMuteClick = {},
-                onSoloClick = {}
-            )
-        }
     }
 }

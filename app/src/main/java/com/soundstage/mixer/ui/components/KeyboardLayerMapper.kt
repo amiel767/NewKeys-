@@ -211,9 +211,9 @@ fun KeyboardLayerMapper(
     if (visibleTracks.isEmpty()) return
 
     val totalWidthDp = whiteWidthDp * totalWhiteKeys
-    val visibleCount = visibleTracks.size.coerceAtMost(6)
+    val visibleCount = visibleTracks.size.coerceAtMost(4)
     val targetHeight = if (isExpanded) {
-        (30.dp * visibleCount + 8.dp).coerceAtLeast(38.dp)
+        (30.dp * visibleCount + 8.dp).coerceIn(38.dp, 130.dp)
     } else {
         // Compact mode: ultra-fine, aesthetic Sunday Keys style lines (12-16dp total)
         (2.8.dp * visibleTracks.size.coerceAtMost(6) + 3.dp).coerceIn(10.dp, 16.dp)
@@ -556,110 +556,6 @@ private fun TrackRangeBarRow(
                     .clip(CircleShape)
                     .background(Color.White)
             )
-        }
-    }
-}
-
-@Composable
-fun ExpandedSundayKeysLayerPanel(
-    tracks: List<TrackChannel>,
-    onClose: () -> Unit,
-    onRangeChanged: (trackId: Int, minNote: Int, maxNote: Int) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val scrollState = rememberScrollState()
-    val visibleTracks = remember(tracks) { tracks.filter { it.isEnabled } }
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(142.dp)
-            .shadow(20.dp, RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        Color(0xFA101826),
-                        Color(0xFD0A0E18)
-                    )
-                )
-            )
-            .border(
-                1.dp,
-                Brush.verticalGradient(
-                    listOf(Color(0x6622D3EE), Color(0x2222D3EE))
-                ),
-                RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
-            )
-            .padding(horizontal = 8.dp, vertical = 6.dp)
-    ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // Header: Title + Close Button
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(NeonCyan)
-                    )
-                    Text(
-                        text = "KEYBOARD LAYERS & SPLITS (SUNDAY KEYS)",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        letterSpacing = 0.6.sp
-                    )
-                }
-
-                // Close Button
-                Box(
-                    modifier = Modifier
-                        .size(24.dp)
-                        .clip(CircleShape)
-                        .background(Color(0x22FFFFFF))
-                        .clickable { onClose() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "✕",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                }
-            }
-
-            // Layer Bars container
-            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                val availableWidthDp = maxWidth
-                val totalWhiteKeys = 45 // A1..C8
-                val whiteWidthDp = (availableWidthDp / totalWhiteKeys.toFloat()).coerceAtLeast(14.dp)
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .horizontalScroll(scrollState)
-                ) {
-                    KeyboardLayerMapper(
-                        tracks = tracks,
-                        whiteWidthDp = whiteWidthDp,
-                        totalWhiteKeys = totalWhiteKeys,
-                        isExpanded = true,
-                        onToggleExpanded = onClose,
-                        onRangeChanged = onRangeChanged
-                    )
-                }
-            }
         }
     }
 }

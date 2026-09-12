@@ -152,23 +152,25 @@ fun TonicPadDialog(
                 }
             )
 
-            // Discrete Resize Arrow (No background box around the arrow)
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .size(24.dp)
-                    .pointerInput(density) {
-                        detectDragGestures { change, dragAmount ->
-                            change.consume()
-                            val dDp = with(density) { (dragAmount.x + dragAmount.y) / 2f }.toDp()
-                            windowSizeDp = (windowSizeDp + dDp).coerceIn(300.dp, 600.dp)
-                            onTransformChange(floatingOffsetX, floatingOffsetY, windowSizeDp.value)
+            // Discrete Resize Arrow (Only visible & active when Pinned)
+            if (isPinned) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(24.dp)
+                        .pointerInput(density) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                val dDp = with(density) { (dragAmount.x + dragAmount.y) / 2f }.toDp()
+                                windowSizeDp = (windowSizeDp + dDp).coerceIn(300.dp, 600.dp)
+                                onTransformChange(floatingOffsetX, floatingOffsetY, windowSizeDp.value)
+                            }
                         }
-                    }
-                    .padding(end = 4.dp, bottom = 4.dp),
-                contentAlignment = Alignment.BottomEnd
-            ) {
-                Text(text = "◢", fontSize = 12.sp, color = NeonPurpleLight, fontWeight = FontWeight.Bold)
+                        .padding(end = 4.dp, bottom = 4.dp),
+                    contentAlignment = Alignment.BottomEnd
+                ) {
+                    Text(text = "◢", fontSize = 12.sp, color = NeonPurpleLight, fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
@@ -635,8 +637,8 @@ private fun TonicPadContent(
                     value = brightness,
                     onValueChange = onBrightnessChange,
                     label = "Brightness",
-                    valueText = "${(brightness * 100).toInt()}%",
-                    size = 44.dp,
+                    showFloatingTooltipOnTouch = true,
+                    size = 40.dp,
                     baseColor = Color(0xFF8B5CF6)
                 )
 
@@ -644,8 +646,8 @@ private fun TonicPadContent(
                     value = shimmer,
                     onValueChange = onShimmerChange,
                     label = "Shimmer",
-                    valueText = "${(shimmer * 100).toInt()}%",
-                    size = 44.dp,
+                    showFloatingTooltipOnTouch = true,
+                    size = 40.dp,
                     baseColor = NeonCyan
                 )
 
@@ -653,8 +655,8 @@ private fun TonicPadContent(
                     value = reverb,
                     onValueChange = onReverbChange,
                     label = "Reverb",
-                    valueText = "${(reverb * 100).toInt()}%",
-                    size = 44.dp,
+                    showFloatingTooltipOnTouch = true,
+                    size = 40.dp,
                     baseColor = Color(0xFFEC4899)
                 )
             }
