@@ -30,6 +30,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -84,6 +86,16 @@ fun DrumPadDialog(
     onTransformChange: (Float, Float, Float) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    DisposableEffect(Unit) {
+        onDispose {
+            focusManager.clearFocus()
+            keyboardController?.hide()
+        }
+    }
+
     val density = LocalDensity.current
     var editingPad by remember { mutableStateOf<DrumPadItem?>(null) }
     var quickAssignSample by remember { mutableStateOf<StorageItem?>(null) }
@@ -421,8 +433,7 @@ private fun MainDrumPadSquareContent(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFF181B26))
+                            .background(Color(0xFF181B26), RoundedCornerShape(10.dp))
                             .border(0.8.dp, Color(0x22FFFFFF), RoundedCornerShape(10.dp))
                             .padding(vertical = 3.dp, horizontal = 12.dp),
                         horizontalArrangement = Arrangement.SpaceEvenly,

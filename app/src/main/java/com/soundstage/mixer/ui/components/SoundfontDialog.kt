@@ -3,6 +3,7 @@ package com.soundstage.mixer.ui.components
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -28,6 +29,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -63,6 +66,16 @@ fun SoundfontDialog(
     modifier: Modifier = Modifier
 ) {
     val subtitle = if (trackId == 0) "Piste Master" else "Piste $trackId"
+
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    DisposableEffect(Unit) {
+        onDispose {
+            focusManager.clearFocus()
+            keyboardController?.hide()
+        }
+    }
 
     // Search query state
     var searchQuery by remember { mutableStateOf("") }
@@ -124,25 +137,25 @@ fun SoundfontDialog(
         }
     }
 
-    // Modal Background overlay: dense aesthetic blur for iOS Liquid Glass effect
+    // Modal Background overlay: dark semi-transparent backdrop peeking through to mixer
     Box(
         modifier = modifier
             .fillMaxSize()
-            .blur(24.dp)
-            .background(Color(0x77040814))
+            .background(Color(0x88040814))
             .clickable(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                 indication = null
             ) { onClose() },
         contentAlignment = Alignment.Center
     ) {
-        // ================= LIQUID GLASS IOS POPUP CONTAINER =================
+        // ================= HIGH-CONTRAST DARK GLASS POPUP CONTAINER =================
         Box(
             modifier = Modifier
                 .width(620.dp) // Wider for landscape
                 .fillMaxHeight(0.92f)
                 .clip(RoundedCornerShape(26.dp))
-                .background(Color(0x80080C1A)) // Transparent blur look
+                .background(Color(0xF00D1322)) // Solid crisp dark glass surface
+                .border(1.dp, Color(0x33A855F7), RoundedCornerShape(26.dp))
                 .clickable(enabled = false) {}
                 .testTag("dialog_soundfont")
         ) {
@@ -242,7 +255,11 @@ fun SoundfontDialog(
                                 .size(38.dp)
                                 .clip(CircleShape)
                                 .background(Color(0x22FFFFFF))
-                                .clickable { onClose() },
+                                .clickable {
+                                    focusManager.clearFocus()
+                                    keyboardController?.hide()
+                                    onClose()
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(

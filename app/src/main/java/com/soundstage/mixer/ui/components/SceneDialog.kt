@@ -33,6 +33,8 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -64,6 +66,16 @@ fun SceneDialog(
     var isNamingOpen by remember { mutableStateOf(false) }
     var sceneNameInput by remember { mutableStateOf("") }
     var pendingDeleteSceneId by remember { mutableStateOf<String?>(null) }
+
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    DisposableEffect(Unit) {
+        onDispose {
+            focusManager.clearFocus()
+            keyboardController?.hide()
+        }
+    }
 
     Box(
         modifier = modifier
@@ -180,7 +192,11 @@ fun SceneDialog(
                             .size(24.dp)
                             .clip(CircleShape)
                             .background(Color(0x1FFFFFFF))
-                            .clickable { onClose() },
+                            .clickable {
+                                focusManager.clearFocus()
+                                keyboardController?.hide()
+                                onClose()
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(

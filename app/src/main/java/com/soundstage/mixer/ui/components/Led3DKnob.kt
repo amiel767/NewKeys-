@@ -2,6 +2,7 @@ package com.soundstage.mixer.ui.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -9,6 +10,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -283,9 +285,11 @@ fun Led3DKnob(
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .offset(y = (-20).dp)
+                        .offset(y = (-24).dp)
+                        .zIndex(100f)
                         .shadow(8.dp, CircleShape, spotColor = dynamicLedColor)
-                        .background(Color(0xE60D1117), CircleShape)
+                        .background(Color(0xFA0D1117), CircleShape)
+                        .border(1.dp, dynamicLedColor, CircleShape)
                         .padding(horizontal = 8.dp, vertical = 2.dp),
                     contentAlignment = Alignment.Center
                 ) {

@@ -160,20 +160,28 @@ fun VirtualPianoKeyboard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                // Layer Mapper Row (Smooth overlay expansion upwards: 16dp -> 130dp, without compressing faders)
+                // Layer Mapper Row (Floating Overlay Panel: fixed 16dp layout slot so faders never get pushed, expanding upwards with clean dark background)
                 if (tracks.isNotEmpty()) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(compactMapperHeight),
-                        contentAlignment = Alignment.BottomStart
+                            .height(compactMapperHeight)
+                            .zIndex(50f),
+                        contentAlignment = Alignment.BottomCenter
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(animatedMapperHeight)
-                                .offset(y = -(animatedMapperHeight - compactMapperHeight))
-                                .zIndex(10f)
+                                .background(
+                                    color = Color(0xFF0B0F19),
+                                    shape = RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp)
+                                )
+                                .border(
+                                    width = 1.dp,
+                                    color = if (isLayerMapperExpanded) Color(0xFF22D3EE) else Color(0x33FFFFFF),
+                                    shape = RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp)
+                                )
                         ) {
                             Spacer(modifier = Modifier.width(46.dp))
 

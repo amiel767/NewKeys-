@@ -243,59 +243,39 @@ fun MixerScreen(
                     }
                 )
 
-                // 4. RETRACTABLE MULTI-TOUCH VIRTUAL PIANO KEYBOARD (IOS-Style Fluid Bottom Expand Animation)
+                // 4. RETRACTABLE MULTI-TOUCH VIRTUAL PIANO KEYBOARD (Non-clipping, direct render for seamless Layer Mapper)
                 val (_, activeSlotLedColor) = rememberDynamicFaderHue(uiState.activeSoundfontSlotId + 1)
 
-                AnimatedVisibility(
-                    visible = isKeyboardVisible,
-                    enter = slideInVertically(
-                        initialOffsetY = { fullHeight -> fullHeight },
-                        animationSpec = spring(
-                            dampingRatio = 0.84f,
-                            stiffness = Spring.StiffnessMediumLow
+                if (isKeyboardVisible) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .zIndex(100f) // Keep the keyboard and its overlapping mapper on top of siblings
+                    ) {
+                        VirtualPianoKeyboard(
+                            heightFraction = 1f,
+                            pressedKeys = uiState.pressedKeys,
+                            octave = uiState.octave,
+                            tracks = uiState.tracks,
+                            isLayerExpanded = uiState.isKeyboardLayerExpanded,
+                            onToggleLayerExpanded = { viewModel.toggleKeyboardLayer() },
+                            onRangeChanged = { trackId, minN, maxN -> viewModel.updateTrackKeyRange(trackId, minN, maxN) },
+                            onKeyDown = { viewModel.onKeyDown(it) },
+                            onKeyUp = { viewModel.onKeyUp(it) },
+                            onKeyDownWithVelocity = { key, vel -> viewModel.onKeyDown(key, vel) },
+                            onGrabberDrag = { deltaY ->
+                                val fractionDelta = -deltaY / 200f
+                                viewModel.setKeyboardHeightFraction(uiState.keyboardHeightFraction + fractionDelta)
+                            },
+                            onGrabberClick = { viewModel.cycleKeyboardExpansion() },
+                            isSustainActive = uiState.isSustainActive,
+                            onToggleSustain = { viewModel.toggleSustain() },
+                            pitchBend = uiState.pitchBend,
+                            onPitchBendChange = { viewModel.setPitchBend(it) },
+                            onOctaveChange = { delta -> viewModel.updateOctave(delta) },
+                            activeAuraColor = activeSlotLedColor
                         )
-                    ) + expandVertically(
-                        expandFrom = Alignment.Bottom,
-                        animationSpec = spring(
-                            dampingRatio = 0.84f,
-                            stiffness = Spring.StiffnessMediumLow
-                        )
-                    ) + fadeIn(
-                        animationSpec = tween(160, easing = LinearOutSlowInEasing)
-                    ),
-                    exit = slideOutVertically(
-                        targetOffsetY = { fullHeight -> fullHeight },
-                        animationSpec = tween(220, easing = FastOutLinearInEasing)
-                    ) + shrinkVertically(
-                        shrinkTowards = Alignment.Bottom,
-                        animationSpec = tween(220, easing = FastOutLinearInEasing)
-                    ) + fadeOut(
-                        animationSpec = tween(160)
-                    )
-                ) {
-                    VirtualPianoKeyboard(
-                        heightFraction = 1f,
-                        pressedKeys = uiState.pressedKeys,
-                        octave = uiState.octave,
-                        tracks = uiState.tracks,
-                        isLayerExpanded = uiState.isKeyboardLayerExpanded,
-                        onToggleLayerExpanded = { viewModel.toggleKeyboardLayer() },
-                        onRangeChanged = { trackId, minN, maxN -> viewModel.updateTrackKeyRange(trackId, minN, maxN) },
-                        onKeyDown = { viewModel.onKeyDown(it) },
-                        onKeyUp = { viewModel.onKeyUp(it) },
-                        onKeyDownWithVelocity = { key, vel -> viewModel.onKeyDown(key, vel) },
-                        onGrabberDrag = { deltaY ->
-                            val fractionDelta = -deltaY / 200f
-                            viewModel.setKeyboardHeightFraction(uiState.keyboardHeightFraction + fractionDelta)
-                        },
-                        onGrabberClick = { viewModel.cycleKeyboardExpansion() },
-                        isSustainActive = uiState.isSustainActive,
-                        onToggleSustain = { viewModel.toggleSustain() },
-                        pitchBend = uiState.pitchBend,
-                        onPitchBendChange = { viewModel.setPitchBend(it) },
-                        onOctaveChange = { delta -> viewModel.updateOctave(delta) },
-                        activeAuraColor = activeSlotLedColor
-                    )
+                    }
                 }
             }
 

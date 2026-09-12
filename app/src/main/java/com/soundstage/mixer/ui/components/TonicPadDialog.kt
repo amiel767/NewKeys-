@@ -627,8 +627,7 @@ private fun TonicPadContent(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0x0CFFFFFF))
+                    .background(Color(0x0CFFFFFF), RoundedCornerShape(10.dp))
                     .padding(vertical = 4.dp, horizontal = 8.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
