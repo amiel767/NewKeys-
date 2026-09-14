@@ -175,7 +175,11 @@ data class MixerUiState(
     val spatialWidener: Float = 0.38f,
     
     // Connected MIDI Devices
-    val midiDevices: List<MidiDeviceItem> = emptyList()
+    val midiDevices: List<MidiDeviceItem> = emptyList(),
+    
+    // Screen & Scale Settings
+    val keepScreenOn: Boolean = true,
+    val selectedScaleMode: String = "Majeur"
 ) {
     val soundfontFiles: List<StorageItem> get() = realSoundfonts
     val loopAudioFiles: List<StorageItem> get() = realLoopFiles
@@ -373,7 +377,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         tracks = restoredTracks,
                         audioSlots = restoredSlots,
                         drumPads = restoredDrums,
-                        fxParameters = restoredFx
+                        fxParameters = restoredFx,
+                        tonicBrightness = saved.tonicBrightness ?: state.tonicBrightness,
+                        tonicShimmer = saved.tonicShimmer ?: state.tonicShimmer,
+                        drumReverb = saved.drumReverb ?: state.drumReverb,
+                        keepScreenOn = saved.keepScreenOn ?: state.keepScreenOn,
+                        selectedScaleMode = saved.selectedScaleMode ?: state.selectedScaleMode
                     )
                 }
 
@@ -524,7 +533,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             drumPads = state.drumPads,
             fxParameters = state.fxParameters,
             activeSf2TrackId = state.activeSoundfontSlotId,
-            lastActivity = "mixer"
+            lastActivity = "mixer",
+            tonicBrightness = state.tonicBrightness,
+            tonicShimmer = state.tonicShimmer,
+            drumReverb = state.drumReverb,
+            keepScreenOn = state.keepScreenOn,
+            selectedScaleMode = state.selectedScaleMode
         )
     }
 
@@ -2597,6 +2611,21 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleLowLatencyAudio() {
         _uiState.update { it.copy(isLowLatencyAudio = !it.isLowLatencyAudio) }
+    }
+
+    fun setKeepScreenOn(enabled: Boolean) {
+        _uiState.update { it.copy(keepScreenOn = enabled) }
+        persistCurrentStateDebounced()
+    }
+
+    fun toggleKeepScreenOn() {
+        _uiState.update { it.copy(keepScreenOn = !it.keepScreenOn) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setScaleMode(mode: String) {
+        _uiState.update { it.copy(selectedScaleMode = mode) }
+        persistCurrentStateDebounced()
     }
 
     // ================= FX PARAMETERS =================

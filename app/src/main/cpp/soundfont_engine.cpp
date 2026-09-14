@@ -117,7 +117,11 @@ int SoundfontEngine::unloadSoundFont(int sfontId) {
     std::lock_guard<std::mutex> lock(mMutex);
     if (!mSynth) return -1;
 
-    int res = fluid_synth_sfunload(mSynth, sfontId, 0);
+    // Safety: shut down any voices using this soundfont before freeing memory
+    fluid_synth_all_sounds_off(mSynth, -1);
+    fluid_synth_all_notes_off(mSynth, -1);
+
+    int res = fluid_synth_sfunload(mSynth, sfontId, 1);
     LOGI("Unloaded SoundFont ID: %d (res: %d)", sfontId, res);
     return res;
 }
@@ -399,7 +403,8 @@ void SoundfontEngine::resetAuditCounters() {
 }
 
 void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool accumulate) {
-    if (!mSynth || fluid_synth_sfcount(mSynth) == 0) {
+    std::unique_lock<std::mutex> lock(mMutex, std::try_to_lock);
+    if (!lock.owns_lock() || !mSynth || fluid_synth_sfcount(mSynth) == 0) {
         if (!accumulate) {
             std::fill(outputBuffer, outputBuffer + (numFrames * 2), 0.0f);
         }

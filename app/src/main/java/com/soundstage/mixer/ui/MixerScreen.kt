@@ -233,6 +233,8 @@ fun MixerScreen(
                     onMetroVolumeChange = { viewModel.setMetronomeVolume(it) },
                     selectedKey = uiState.selectedRootKey,
                     onSelectKey = { viewModel.setSelectedRootKey(it) },
+                    selectedScaleMode = uiState.selectedScaleMode,
+                    onSelectScaleMode = { viewModel.setScaleMode(it) },
                     
                     // Real-time Detected Chord
                     detectedChord = detectedChord,
@@ -248,12 +250,12 @@ fun MixerScreen(
                     }
                 )
 
-                // 4. FIXED LAYOUT SLOT FOR RETRACTABLE PIANO (so faders/BottomBar get pushed up by exactly 65.dp when keyboard is visible)
+                // 4. FIXED LAYOUT SLOT FOR RETRACTABLE PIANO (so faders/BottomBar get pushed up cleanly when keyboard is visible)
                 if (isKeyboardVisible) {
                     Spacer(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(65.dp)
+                            .height(76.dp)
                     )
                 }
             }
@@ -343,6 +345,8 @@ fun MixerScreen(
                     onVolumeChange = { viewModel.setMetronomeVolume(it) },
                     selectedKey = uiState.selectedRootKey,
                     onSelectKey = { viewModel.setSelectedRootKey(it) },
+                    selectedScaleMode = uiState.selectedScaleMode,
+                    onSelectScaleMode = { viewModel.setScaleMode(it) },
                     onClose = { viewModel.closeMetroPanel() }
                 )
             }
@@ -570,7 +574,7 @@ fun MixerScreen(
             else -> {}
         }
 
-        // Settings Drawer (AOSP Material You with Theme selector & FL SoundGoodizer A/B/C/D)
+        // Settings Drawer (AOSP Material You settings & engine controls)
         SettingsDrawer(
             isOpen = uiState.isSettingsDrawerOpen,
             onClose = { viewModel.closeSettingsDrawer() },
@@ -590,6 +594,8 @@ fun MixerScreen(
             onMasterPunchChange = { viewModel.setMasterPunch(it) },
             spatialWidener = uiState.spatialWidener,
             onSpatialWidenerChange = { viewModel.setSpatialWidener(it) },
+            keepScreenOn = uiState.keepScreenOn,
+            onToggleKeepScreenOn = { viewModel.toggleKeepScreenOn() },
             velocityMin = uiState.globalVelocityMin,
             velocityMax = uiState.globalVelocityMax,
             onVelocityRangeChange = { min, max -> viewModel.setGlobalVelocityRange(min, max) }

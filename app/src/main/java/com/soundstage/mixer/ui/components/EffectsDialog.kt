@@ -1,13 +1,20 @@
 package com.soundstage.mixer.ui.components
 
 import kotlin.math.roundToInt
+import kotlin.math.cos
+import kotlin.math.sin
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -18,10 +25,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -46,7 +56,7 @@ fun EffectsDialog(
     val title = if (trackId == 0) "Effets — Master" else "Effets & Réglages — Piste $trackId"
 
     val tabs = if (trackId == 0) {
-        listOf("eq" to "EQ", "reverb" to "Reverb", "comp" to "Comp", "delay" to "Delay", "sg" to "SG")
+        listOf("eq" to "EQ", "reverb" to "Reverb", "comp" to "Comp", "delay" to "Delay", "sg" to "SoundGoodizer")
     } else {
         listOf(
             "reverb" to "Reverb",
@@ -587,73 +597,347 @@ fun EffectsDialog(
                         }
                     }
                     "sg" -> {
-                        val isEnabled = fxParameters.isSgEnabled
-                        Column(modifier = Modifier.fillMaxSize()) {
-                            // Presets Header with ON/OFF Switch
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "SOUNDGOODIZER (A/B/C/D)",
-                                    fontSize = 9.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextDim,
-                                    letterSpacing = 0.6.sp
-                                )
-                                // Simple ON/OFF toggle
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(if (isEnabled) NeonCyan else Color(0x1AFFFFFF))
-                                        .clickable { onUpdateFx { it.copy(isSgEnabled = !isEnabled) } }
-                                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Text(
-                                        text = if (isEnabled) "ON" else "OFF",
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isEnabled) Color.Black else TextDim
+                        // Authentic FL Studio SoundGoodizer: Grand Knob with Luminous Contour + Minimal ABCD Buttons
+                        SoundGoodizerMasterView(
+                            isEnabled = fxParameters.isSgEnabled,
+                            amount = fxParameters.sgAmount,
+                            mode = fxParameters.sgMode,
+                            onToggleEnabled = {
+                                val nextState = !fxParameters.isSgEnabled
+                                onUpdateFx {
+                                    it.copy(
+                                        isSgEnabled = nextState,
+                                        sgAmount = if (nextState && it.sgAmount < 0.05f) 0.50f else it.sgAmount
                                     )
                                 }
+                            },
+                            onAmountChange = { newAmt ->
+                                onUpdateFx {
+                                    it.copy(
+                                        sgAmount = newAmt,
+                                        isSgEnabled = newAmt > 0.001f
+                                    )
+                                }
+                            },
+                            onModeChange = { newMode ->
+                                onUpdateFx { it.copy(sgMode = newMode) }
                             }
-
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .weight(1f),
-                                horizontalArrangement = Arrangement.SpaceEvenly,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                FxUnitCard("Amount") {
-                                    RotaryKnob(
-                                        value = if (isEnabled) fxParameters.sgAmount else 0f,
-                                        onValueChange = { v -> onUpdateFx { it.copy(sgAmount = v) } },
-                                        label = "Amount",
-                                        valueText = if (isEnabled) "${(fxParameters.sgAmount * 100).toInt()}%" else "OFF",
-                                        size = 50.dp
-                                    )
-                                }
-                                FxUnitCard("Mode") {
-                                    val modeValue = (fxParameters.sgMode / 3f)
-                                    RotaryKnob(
-                                        value = if (isEnabled) modeValue else 0f,
-                                        onValueChange = { v -> 
-                                            val mode = (v * 3f).roundToInt().coerceIn(0, 3)
-                                            onUpdateFx { it.copy(sgMode = mode) } 
-                                        },
-                                        label = "Mode",
-                                        valueText = if (isEnabled) listOf("A", "B", "C", "D")[fxParameters.sgMode] else "OFF",
-                                        size = 50.dp
-                                    )
-                                }
-                            }
-                        }
+                        )
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * SoundGoodizer Master Effect View
+ * Features:
+ * - Grand Knob with vibrant luminous contour arc
+ * - Center glowing percentage readout
+ * - Minimal aesthetic ABCD preset capsules (A: Punch, B: Warmth, C: Air, D: Maximizer)
+ * - Power bypass switch
+ */
+@Composable
+private fun SoundGoodizerMasterView(
+    isEnabled: Boolean,
+    amount: Float,
+    mode: Int,
+    onToggleEnabled: () -> Unit,
+    onAmountChange: (Float) -> Unit,
+    onModeChange: (Int) -> Unit
+) {
+    val modeColor = when (mode) {
+        0 -> Color(0xFF00F5FF) // A: Electric Cyan
+        1 -> Color(0xFFF43F5E) // B: Warm Rose/Pink
+        2 -> Color(0xFFF59E0B) // C: Warm Gold/Amber
+        3 -> Color(0xFF10B981) // D: Emerald Boost
+        else -> Color(0xFF00F5FF)
+    }
+
+    val activeGlowColor = if (isEnabled) modeColor else Color(0x33FFFFFF)
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        // Top Sub-Header with Power Indicator
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(if (isEnabled) modeColor else Color(0x44FFFFFF))
+                        .shadow(if (isEnabled) 6.dp else 0.dp, CircleShape, spotColor = modeColor)
+                )
+                Text(
+                    text = "SOUNDGOODIZER MAXIMIZER",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isEnabled) Color.White else TextDim,
+                    letterSpacing = 0.8.sp
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(if (isEnabled) modeColor.copy(alpha = 0.25f) else Color(0x14FFFFFF))
+                    .border(1.dp, if (isEnabled) modeColor else Color(0x22FFFFFF), RoundedCornerShape(6.dp))
+                    .clickable { onToggleEnabled() }
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = if (isEnabled) "ACTIVE" else "BYPASS",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (isEnabled) modeColor else TextDim
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(2.dp))
+
+        // Center: GRAND KNOB WITH LUMINOUS CONTOUR
+        GrandLuminousKnob(
+            value = if (isEnabled) amount else 0f,
+            onValueChange = onAmountChange,
+            glowColor = activeGlowColor,
+            isEnabled = isEnabled,
+            modifier = Modifier.size(116.dp)
+        )
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // Bottom: MINIMAL ABCD BUTTONS
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val modesList = listOf(
+                Triple(0, "A", "Punch"),
+                Triple(1, "B", "Warmth"),
+                Triple(2, "C", "Air"),
+                Triple(3, "D", "Boost")
+            )
+
+            modesList.forEach { (mIndex, mLabel, mDesc) ->
+                val isSelected = mode == mIndex
+                val buttonColor = when (mIndex) {
+                    0 -> Color(0xFF00F5FF)
+                    1 -> Color(0xFFF43F5E)
+                    2 -> Color(0xFFF59E0B)
+                    3 -> Color(0xFF10B981)
+                    else -> Color(0xFF00F5FF)
+                }
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(38.dp)
+                        .shadow(
+                            elevation = if (isSelected && isEnabled) 8.dp else 1.dp,
+                            shape = RoundedCornerShape(12.dp),
+                            spotColor = buttonColor
+                        )
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            if (isSelected && isEnabled) {
+                                Brush.verticalGradient(
+                                    listOf(buttonColor.copy(alpha = 0.35f), buttonColor.copy(alpha = 0.15f))
+                                )
+                            } else {
+                                Brush.verticalGradient(
+                                    listOf(Color(0xFF221A36), Color(0xFF161024))
+                                )
+                            }
+                        )
+                        .border(
+                            width = if (isSelected) 1.5.dp else 1.dp,
+                            color = if (isSelected && isEnabled) buttonColor else Color(0x22FFFFFF),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .clickable { onModeChange(mIndex) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = mLabel,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isSelected && isEnabled) buttonColor else Color.White
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = mDesc,
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Normal,
+                            color = if (isSelected && isEnabled) Color.White else TextDim
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Grand Knob with Luminous Contour
+ * High precision rotary dial with glowing LED sweep arc and interactive drag gesture
+ */
+@Composable
+private fun GrandLuminousKnob(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    glowColor: Color,
+    isEnabled: Boolean,
+    modifier: Modifier = Modifier
+) {
+    var accumulatedDrag by remember { mutableFloatStateOf(0f) }
+    val animatedValue by animateFloatAsState(
+        targetValue = value.coerceIn(0f, 1f),
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
+        label = "knob_val"
+    )
+
+    Box(
+        modifier = modifier
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { accumulatedDrag = 0f },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        accumulatedDrag -= dragAmount.y
+                        val delta = (dragAmount.x - dragAmount.y) / 180f
+                        val nextVal = (value + delta).coerceIn(0f, 1f)
+                        onValueChange(nextVal)
+                    }
+                )
+            }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = { onValueChange(0.5f) }
+                )
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        // Canvas: Outer Glowing Track & Luminous Arc
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            if (size.width <= 0f || size.height <= 0f) return@Canvas
+            val strokeWidth = 8.dp.toPx()
+            val diameter = (size.minDimension - strokeWidth - 6.dp.toPx()).coerceAtLeast(0f)
+            if (diameter <= 0f) return@Canvas
+            val radius = diameter / 2f
+            val center = Offset(size.width / 2f, size.height / 2f)
+
+            val startAngle = 135f
+            val sweepTotal = 270f
+            val safeAnimVal = if (animatedValue.isNaN()) 0f else animatedValue.coerceIn(0f, 1f)
+            val activeSweep = safeAnimVal * sweepTotal
+
+            // 1. Dark Background Track
+            drawArc(
+                color = Color(0x22FFFFFF),
+                startAngle = startAngle,
+                sweepAngle = sweepTotal,
+                useCenter = false,
+                topLeft = Offset(center.x - radius, center.y - radius),
+                size = Size(diameter, diameter),
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+            )
+
+            // 2. Outer Luminous Glow Arc
+            if (activeSweep > 1f) {
+                drawArc(
+                    color = glowColor.copy(alpha = 0.35f),
+                    startAngle = startAngle,
+                    sweepAngle = activeSweep,
+                    useCenter = false,
+                    topLeft = Offset(center.x - radius, center.y - radius),
+                    size = Size(diameter, diameter),
+                    style = Stroke(width = strokeWidth + 4.dp.toPx(), cap = StrokeCap.Round)
+                )
+
+                // 3. Primary Crisp Luminous Arc
+                drawArc(
+                    brush = Brush.sweepGradient(
+                        listOf(glowColor.copy(alpha = 0.7f), glowColor, glowColor),
+                        center = center
+                    ),
+                    startAngle = startAngle,
+                    sweepAngle = activeSweep,
+                    useCenter = false,
+                    topLeft = Offset(center.x - radius, center.y - radius),
+                    size = Size(diameter, diameter),
+                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                )
+            }
+
+            // 4. Indicator Needle Tip
+            val tipAngleRad = Math.toRadians((startAngle + activeSweep).toDouble())
+            val tipX = center.x + (radius - 2.dp.toPx()) * cos(tipAngleRad).toFloat()
+            val tipY = center.y + (radius - 2.dp.toPx()) * sin(tipAngleRad).toFloat()
+
+            drawCircle(
+                color = Color.White,
+                radius = 4.dp.toPx(),
+                center = Offset(tipX, tipY)
+            )
+        }
+
+        // Inner Dial Core (Metallic brushed feel)
+        Box(
+            modifier = Modifier
+                .size(76.dp)
+                .shadow(12.dp, CircleShape, ambientColor = glowColor, spotColor = glowColor)
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFF2C2245),
+                            Color(0xFF1E1630),
+                            Color(0xFF120B20)
+                        )
+                    )
+                )
+                .border(
+                    width = 1.2.dp,
+                    color = if (isEnabled) glowColor.copy(alpha = 0.6f) else Color(0x22FFFFFF),
+                    shape = CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = if (isEnabled) "${(value * 100).roundToInt()}%" else "OFF",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (isEnabled) glowColor else TextDim
+                )
+                Text(
+                    text = "AMOUNT",
+                    fontSize = 7.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0x88FFFFFF),
+                    letterSpacing = 0.5.sp
+                )
             }
         }
     }

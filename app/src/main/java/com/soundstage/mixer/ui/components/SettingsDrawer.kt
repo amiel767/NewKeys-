@@ -75,10 +75,14 @@ fun SettingsDrawer(
     onSelectLanguage: (String) -> Unit,
     
     // Master Processing
-    masterPunch: Float,
-    onMasterPunchChange: (Float) -> Unit,
-    spatialWidener: Float,
-    onSpatialWidenerChange: (Float) -> Unit,
+    masterPunch: Float = 0.5f,
+    onMasterPunchChange: (Float) -> Unit = {},
+    spatialWidener: Float = 0.5f,
+    onSpatialWidenerChange: (Float) -> Unit = {},
+    
+    // Screen Keep Alive
+    keepScreenOn: Boolean = true,
+    onToggleKeepScreenOn: () -> Unit = {},
     
     // Velocity Settings
     velocityMin: Float = 0.10f,
@@ -148,6 +152,8 @@ fun SettingsDrawer(
                             onMasterPunchChange = onMasterPunchChange,
                             spatialWidener = spatialWidener,
                             onSpatialWidenerChange = onSpatialWidenerChange,
+                            keepScreenOn = keepScreenOn,
+                            onToggleKeepScreenOn = onToggleKeepScreenOn,
                             velocityMin = velocityMin,
                             velocityMax = velocityMax,
                             onVelocityRangeChange = onVelocityRangeChange
@@ -172,6 +178,8 @@ private fun AospMainSettingsPage(
     onMasterPunchChange: (Float) -> Unit,
     spatialWidener: Float,
     onSpatialWidenerChange: (Float) -> Unit,
+    keepScreenOn: Boolean,
+    onToggleKeepScreenOn: () -> Unit,
     velocityMin: Float,
     velocityMax: Float,
     onVelocityRangeChange: (Float, Float) -> Unit
@@ -275,11 +283,63 @@ private fun AospMainSettingsPage(
                             subtitle = selectedLanguage,
                             onClick = { onNavigateSubPage("language") }
                         )
+
+                        AospDivider()
+
+                        // Keep Screen On Toggle
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onToggleKeepScreenOn() }
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0x1800E5FF)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Tune,
+                                    contentDescription = "Écran Allumé",
+                                    tint = NeonCyan,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Écran toujours allumé",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = if (keepScreenOn) "Actif (empêche la mise en veille)" else "Désactivé (veille système)",
+                                    fontSize = 11.sp,
+                                    color = TextDim
+                                )
+                            }
+
+                            Switch(
+                                checked = keepScreenOn,
+                                onCheckedChange = { onToggleKeepScreenOn() },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = NeonCyan,
+                                    uncheckedThumbColor = Color.LightGray,
+                                    uncheckedTrackColor = Color(0xFF33384A)
+                                )
+                            )
+                        }
                     }
                 }
             }
 
-            // CARD 3: DYNAMIQUE & MASTER PROCESSING
+            // CARD 3: DYNAMIQUE & VÉLOCITÉ
             item {
                 AospCard(title = "Dynamique & Vélocité") {
                     Column(

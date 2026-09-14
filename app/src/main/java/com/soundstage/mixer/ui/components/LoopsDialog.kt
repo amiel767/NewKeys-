@@ -15,6 +15,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -108,7 +109,7 @@ fun LoopsDialog(
 
     val isEditing = editingLoopFile != null
     val targetWidth by animateDpAsState(
-        targetValue = if (isEditing) 680.dp else 560.dp,
+        targetValue = if (isEditing) 720.dp else 660.dp,
         animationSpec = tween(300),
         label = "dialog_width"
     )
@@ -141,9 +142,9 @@ fun LoopsDialog(
         ) {
             Surface(
                 modifier = modifier
-                    .widthIn(min = 380.dp, max = targetWidth)
-                    .fillMaxWidth(if (isEditing) 0.95f else 0.88f)
-                    .heightIn(min = 280.dp, max = 350.dp)
+                    .widthIn(min = 400.dp, max = targetWidth)
+                    .fillMaxWidth(if (isEditing) 0.95f else 0.90f)
+                    .heightIn(min = 340.dp, max = 460.dp)
                     .clip(RoundedCornerShape(22.dp))
                     .border(1.dp, Color(0x33A78BFA), RoundedCornerShape(22.dp))
                     .shadow(16.dp, RoundedCornerShape(22.dp))
@@ -480,240 +481,316 @@ private fun LoopListContent(
             )
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
-        // Folders and Files (Material You Expressive List)
-        Text(
-            text = "BIBLIOTHÈQUE DE BOUCLES",
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            color = TextDim,
-            letterSpacing = 0.8.sp
-        )
+        // 2-PANE EXPLORER: DOSSIERS (Gauche) + FICHIERS AUDIO & METADATA (Droite)
+        var selectedFolderIndex by remember { mutableStateOf(0) }
+        val activeFolder = loopFolders.getOrNull(selectedFolderIndex.coerceIn(0, (loopFolders.size - 1).coerceAtLeast(0)))
+        val filesToShow = activeFolder?.files ?: loopFolders.flatMap { it.files }
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        LazyColumn(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            items(loopFolders) { folder ->
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    // Folder Item Card
-                    Row(
+            // ================= PANE 1 (GAUCHE) : DOSSIERS =================
+            Column(
+                modifier = Modifier
+                    .width(185.dp)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0x0EFFFFFF))
+                    .border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(16.dp))
+                    .padding(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "DOSSIERS",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = NeonPurpleLight,
+                        letterSpacing = 0.6.sp
+                    )
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(if (folder.isOpen) Color(0x1A8B5CF6) else Color(0x0CFFFFFF))
-                            .border(1.dp, if (folder.isOpen) Color(0x338B5CF6) else Color(0x10FFFFFF), RoundedCornerShape(16.dp))
-                            .clickable { onToggleFolder(folder.name) }
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0x188B5CF6))
+                            .padding(horizontal = 5.dp, vertical = 1.dp)
                     ) {
-                        Icon(
-                            imageVector = if (folder.isOpen) Icons.Default.FolderOpen else Icons.Default.Folder,
-                            contentDescription = "Dossier",
-                            tint = NeonPurpleLight,
-                            modifier = Modifier.size(20.dp)
-                        )
                         Text(
-                            text = folder.name,
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.White,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(
-                            text = "${folder.files.size} piste${if (folder.files.size > 1) "s" else ""}",
-                            fontSize = 10.sp,
-                            color = TextDim2
-                        )
-                        Icon(
-                            imageVector = if (folder.isOpen) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                            contentDescription = null,
-                            tint = TextDim,
-                            modifier = Modifier.size(18.dp)
+                            text = "${loopFolders.size}",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NeonPurpleLight
                         )
                     }
+                }
 
-                    // Expanded Files
-                    if (folder.isOpen) {
-                        Column(
+                Spacer(modifier = Modifier.height(6.dp))
+
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    itemsIndexed(loopFolders) { index, folder ->
+                        val isFolderSelected = (index == selectedFolderIndex)
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(start = 12.dp, top = 4.dp, bottom = 4.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(
+                                    if (isFolderSelected) Color(0x2E8B5CF6) else Color(0x06FFFFFF)
+                                )
+                                .border(
+                                    1.dp,
+                                    if (isFolderSelected) NeonPurpleLight.copy(alpha = 0.7f) else Color.Transparent,
+                                    RoundedCornerShape(10.dp)
+                                )
+                                .clickable {
+                                    selectedFolderIndex = index
+                                    onToggleFolder(folder.name)
+                                }
+                                .padding(horizontal = 8.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            folder.files.forEach { file ->
-                                val isPlayingThis = (activeLoopFile?.name == file.name && isLoopPlaying)
-                                val isSelected = (activeLoopFile?.name == file.name)
-                                val isActionsRevealed = (revealedActionFileName == file.name)
+                            Icon(
+                                imageVector = if (isFolderSelected) Icons.Default.FolderOpen else Icons.Default.Folder,
+                                contentDescription = null,
+                                tint = if (isFolderSelected) NeonPurpleLight else TextDim,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = folder.name,
+                                fontSize = 11.5.sp,
+                                fontWeight = if (isFolderSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isFolderSelected) Color.White else TextPrimary,
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "${folder.files.size}",
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isFolderSelected) NeonCyanLight else TextDim2
+                            )
+                        }
+                    }
+                }
+            }
 
-                                Row(
+            // ================= PANE 2 (DROITE) : FICHIERS & MÉTADONNÉES =================
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0x0EFFFFFF))
+                    .border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(16.dp))
+                    .padding(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "FICHIERS (${activeFolder?.name ?: "TOUS"})",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = NeonCyanLight,
+                        letterSpacing = 0.6.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = "${filesToShow.size} élément${if (filesToShow.size > 1) "s" else ""}",
+                        fontSize = 9.5.sp,
+                        color = TextDim
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                if (filesToShow.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Aucun fichier audio dans ce dossier",
+                            fontSize = 11.sp,
+                            color = TextDim2
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        items(filesToShow) { file ->
+                            val isPlayingThis = (activeLoopFile?.name == file.name && isLoopPlaying)
+                            val isSelected = (activeLoopFile?.name == file.name)
+                            val isActionsRevealed = (revealedActionFileName == file.name)
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(
+                                        if (isSelected) Color(0x288B5CF6) else Color(0x06FFFFFF)
+                                    )
+                                    .border(
+                                        1.dp,
+                                        if (isSelected) NeonPurpleLight.copy(alpha = 0.6f) else Color.Transparent,
+                                        RoundedCornerShape(12.dp)
+                                    )
+                                    .combinedClickable(
+                                        onClick = {
+                                            if (isActionsRevealed) {
+                                                onRevealActions(null)
+                                            } else {
+                                                onSelectFile(file)
+                                            }
+                                        },
+                                        onLongClick = {
+                                            onRevealActions(if (isActionsRevealed) null else file.name)
+                                        }
+                                    )
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                // Play / Pause Button
+                                Box(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .background(
-                                            if (isSelected) Color(0x288B5CF6) else Color(0x08FFFFFF)
-                                        )
-                                        .border(
-                                            1.dp,
-                                            if (isSelected) NeonPurpleLight.copy(alpha = 0.6f) else Color.Transparent,
-                                            RoundedCornerShape(14.dp)
-                                        )
-                                        .combinedClickable(
-                                            onClick = {
-                                                if (isActionsRevealed) {
-                                                    onRevealActions(null)
-                                                } else {
-                                                    onSelectFile(file)
-                                                }
-                                            },
-                                            onLongClick = {
-                                                onRevealActions(if (isActionsRevealed) null else file.name)
-                                            }
-                                        )
-                                        .padding(horizontal = 12.dp, vertical = 9.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        .size(26.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isPlayingThis) NeonCyan else Color(0x20A78BFA)),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    // Play / Playing badge
-                                    Box(
-                                        modifier = Modifier
-                                            .size(28.dp)
-                                            .clip(CircleShape)
-                                            .background(if (isPlayingThis) NeonCyan else Color(0x20A78BFA)),
-                                        contentAlignment = Alignment.Center
+                                    Icon(
+                                        imageVector = if (isPlayingThis) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                        contentDescription = "Lecture",
+                                        tint = if (isPlayingThis) Color(0xFF003844) else NeonPurpleLight,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                }
+
+                                // File Details
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = file.name,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) Color.White else TextPrimary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = if (file.beats > 0) "${file.beats}T · ${file.duration}" else file.duration,
+                                        fontSize = 9.sp,
+                                        color = if (isSelected) NeonCyanLight else TextDim
+                                    )
+                                }
+
+                                // Metadata Badges (Key & BPM)
+                                AnimatedVisibility(
+                                    visible = !isActionsRevealed,
+                                    enter = fadeIn() + expandHorizontally(),
+                                    exit = fadeOut() + shrinkHorizontally()
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
                                     ) {
-                                        Icon(
-                                            imageVector = if (isPlayingThis) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                            contentDescription = "Lecture",
-                                            tint = if (isPlayingThis) Color(0xFF003844) else NeonPurpleLight,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-
-                                    // File Details
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = file.name,
-                                            fontSize = 12.sp,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                            color = if (isSelected) Color.White else TextPrimary,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = if (file.beats > 0) "${file.beats}T · ${file.duration}" else file.duration,
-                                            fontSize = 9.5.sp,
-                                            color = if (isSelected) NeonCyanLight else TextDim
-                                        )
-                                    }
-
-                                    // Musical Key & BPM Display Badge (Visible outside file details, hidden when edit/delete appear)
-                                    AnimatedVisibility(
-                                        visible = !isActionsRevealed,
-                                        enter = fadeIn() + expandHorizontally(),
-                                        exit = fadeOut() + shrinkHorizontally()
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            // Musical Key Badge
-                                            if (file.musicalKey.isNotEmpty()) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .clip(RoundedCornerShape(6.dp))
-                                                        .background(if (isSelected) Color(0x338B5CF6) else Color(0x18FFFFFF))
-                                                        .border(
-                                                            width = 0.8.dp,
-                                                            color = if (isSelected) Color(0xFFA78BFA) else Color(0x22FFFFFF),
-                                                            shape = RoundedCornerShape(6.dp)
-                                                        )
-                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                                ) {
-                                                    Text(
-                                                        text = file.musicalKey,
-                                                        fontSize = 10.sp,
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        color = if (isSelected) Color(0xFFDDD6FE) else Color(0xCCFFFFFF)
-                                                    )
-                                                }
-                                            }
-
-                                            // BPM Badge
+                                        if (file.musicalKey.isNotEmpty()) {
                                             Box(
                                                 modifier = Modifier
-                                                    .clip(RoundedCornerShape(6.dp))
-                                                    .background(if (isSelected) Color(0x3300E5FF) else Color(0x14FFFFFF))
-                                                    .border(
-                                                        width = 0.8.dp,
-                                                        color = if (isSelected) Color(0xFF00E5FF) else Color(0x20FFFFFF),
-                                                        shape = RoundedCornerShape(6.dp)
-                                                    )
-                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    .clip(RoundedCornerShape(5.dp))
+                                                    .background(if (isSelected) Color(0x338B5CF6) else Color(0x18FFFFFF))
+                                                    .border(0.8.dp, if (isSelected) Color(0xFFA78BFA) else Color(0x22FFFFFF), RoundedCornerShape(5.dp))
+                                                    .padding(horizontal = 5.dp, vertical = 1.5.dp)
                                             ) {
                                                 Text(
-                                                    text = "${file.bpm} BPM",
-                                                    fontSize = 9.5.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = if (isSelected) Color(0xFF00E5FF) else Color(0xAAFFFFFF)
+                                                    text = file.musicalKey,
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = if (isSelected) Color(0xFFDDD6FE) else Color(0xCCFFFFFF)
                                                 )
                                             }
                                         }
-                                    }
 
-                                    // Contextual Actions on Long Press: Edit (pen) and Delete (trash)
-                                    AnimatedVisibility(
-                                        visible = isActionsRevealed,
-                                        enter = fadeIn() + expandHorizontally(),
-                                        exit = fadeOut() + shrinkHorizontally()
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(5.dp))
+                                                .background(if (isSelected) Color(0x3300E5FF) else Color(0x14FFFFFF))
+                                                .border(0.8.dp, if (isSelected) Color(0xFF00E5FF) else Color(0x20FFFFFF), RoundedCornerShape(5.dp))
+                                                .padding(horizontal = 5.dp, vertical = 1.5.dp)
                                         ) {
-                                            // Edit Button (Pen) en carré bordure néon petit et adapté
-                                            Box(
-                                                modifier = Modifier
-                                                    .padding(horizontal = 2.dp)
-                                                    .size(28.dp)
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .background(Color(0x2222D3EE))
-                                                    .border(1.dp, NeonCyan.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
-                                                    .clickable { onOpenEdit(file) },
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Edit,
-                                                    contentDescription = "Éditer",
-                                                    tint = NeonCyanLight,
-                                                    modifier = Modifier.size(15.dp)
-                                                )
-                                            }
+                                            Text(
+                                                text = "${file.bpm} BPM",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isSelected) Color(0xFF00E5FF) else Color(0xAAFFFFFF)
+                                            )
+                                        }
+                                    }
+                                }
 
-                                            // Delete Button (Trash) en carré bordure néon petit et adapté
-                                            Box(
-                                                modifier = Modifier
-                                                    .padding(horizontal = 2.dp)
-                                                    .size(28.dp)
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .background(Color(0x22FB4570))
-                                                    .border(1.dp, MuteRed.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
-                                                    .clickable { onConfirmDelete(file) },
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Delete,
-                                                    contentDescription = "Supprimer",
-                                                    tint = MuteRed,
-                                                    modifier = Modifier.size(15.dp)
-                                                )
-                                            }
+                                // Actions (Edit / Delete)
+                                AnimatedVisibility(
+                                    visible = isActionsRevealed,
+                                    enter = fadeIn() + expandHorizontally(),
+                                    exit = fadeOut() + shrinkHorizontally()
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(24.dp)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(Color(0x2222D3EE))
+                                                .border(1.dp, NeonCyan.copy(alpha = 0.85f), RoundedCornerShape(6.dp))
+                                                .clickable { onOpenEdit(file) },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Edit,
+                                                contentDescription = "Éditer",
+                                                tint = NeonCyanLight,
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                        }
+
+                                        Box(
+                                            modifier = Modifier
+                                                .size(24.dp)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(Color(0x22FB4570))
+                                                .border(1.dp, MuteRed.copy(alpha = 0.85f), RoundedCornerShape(6.dp))
+                                                .clickable { onConfirmDelete(file) },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = "Supprimer",
+                                                tint = MuteRed,
+                                                modifier = Modifier.size(13.dp)
+                                            )
                                         }
                                     }
                                 }

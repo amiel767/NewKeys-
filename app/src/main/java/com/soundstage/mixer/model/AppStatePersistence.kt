@@ -35,6 +35,11 @@ class AppStatePersistence(context: Context) {
         private const val KEY_FX_PARAMETERS_JSON = "fx_parameters_json"
         private const val KEY_ACTIVE_SF2_TRACK_ID = "active_sf2_track_id"
         private const val KEY_LAST_ACTIVITY = "last_activity"
+        private const val KEY_TONIC_BRIGHTNESS = "tonic_brightness"
+        private const val KEY_TONIC_SHIMMER = "tonic_shimmer"
+        private const val KEY_DRUM_REVERB = "drum_reverb"
+        private const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
+        private const val KEY_SELECTED_SCALE_MODE = "selected_scale_mode"
     }
 
     data class SavedTrackData(
@@ -90,7 +95,12 @@ class AppStatePersistence(context: Context) {
         val drumPads: List<SavedDrumData>,
         val fxParameters: Map<Int, FxParameters> = emptyMap(),
         val activeSf2TrackId: Int?,
-        val lastActivity: String?
+        val lastActivity: String?,
+        val tonicBrightness: Float? = null,
+        val tonicShimmer: Float? = null,
+        val drumReverb: Float? = null,
+        val keepScreenOn: Boolean? = null,
+        val selectedScaleMode: String? = null
     )
 
     fun saveAppState(
@@ -109,7 +119,12 @@ class AppStatePersistence(context: Context) {
         drumPads: List<DrumPadItem>,
         fxParameters: Map<Int, FxParameters> = emptyMap(),
         activeSf2TrackId: Int,
-        lastActivity: String = "mixer"
+        lastActivity: String = "mixer",
+        tonicBrightness: Float = 0.70f,
+        tonicShimmer: Float = 0.15f,
+        drumReverb: Float = 0.24f,
+        keepScreenOn: Boolean = true,
+        selectedScaleMode: String = "Majeur"
     ) {
         try {
             val tracksArray = JSONArray()
@@ -207,6 +222,11 @@ class AppStatePersistence(context: Context) {
                 putString(KEY_DRUM_PADS_JSON, drumArray.toString())
                 putInt(KEY_ACTIVE_SF2_TRACK_ID, activeSf2TrackId)
                 putString(KEY_LAST_ACTIVITY, lastActivity)
+                putFloat(KEY_TONIC_BRIGHTNESS, tonicBrightness)
+                putFloat(KEY_TONIC_SHIMMER, tonicShimmer)
+                putFloat(KEY_DRUM_REVERB, drumReverb)
+                putBoolean(KEY_KEEP_SCREEN_ON, keepScreenOn)
+                putString(KEY_SELECTED_SCALE_MODE, selectedScaleMode)
                 apply()
             }
         } catch (e: Exception) {
@@ -232,6 +252,11 @@ class AppStatePersistence(context: Context) {
             val masterVolume = if (prefs.contains(KEY_MASTER_VOLUME)) prefs.getFloat(KEY_MASTER_VOLUME, 0.70f) else null
             val activeSf2TrackId = if (prefs.contains(KEY_ACTIVE_SF2_TRACK_ID)) prefs.getInt(KEY_ACTIVE_SF2_TRACK_ID, 1) else null
             val lastActivity = prefs.getString(KEY_LAST_ACTIVITY, null)
+            val tonicBrightness = if (prefs.contains(KEY_TONIC_BRIGHTNESS)) prefs.getFloat(KEY_TONIC_BRIGHTNESS, 0.70f) else null
+            val tonicShimmer = if (prefs.contains(KEY_TONIC_SHIMMER)) prefs.getFloat(KEY_TONIC_SHIMMER, 0.15f) else null
+            val drumReverb = if (prefs.contains(KEY_DRUM_REVERB)) prefs.getFloat(KEY_DRUM_REVERB, 0.24f) else null
+            val keepScreenOn = if (prefs.contains(KEY_KEEP_SCREEN_ON)) prefs.getBoolean(KEY_KEEP_SCREEN_ON, true) else null
+            val selectedScaleMode = prefs.getString(KEY_SELECTED_SCALE_MODE, null)
 
             val tracksList = mutableListOf<SavedTrackData>()
             val tracksJson = prefs.getString(KEY_TRACKS_JSON, null)
@@ -356,7 +381,12 @@ class AppStatePersistence(context: Context) {
                 drumPads = drumList,
                 fxParameters = fxMap,
                 activeSf2TrackId = activeSf2TrackId,
-                lastActivity = lastActivity
+                lastActivity = lastActivity,
+                tonicBrightness = tonicBrightness,
+                tonicShimmer = tonicShimmer,
+                drumReverb = drumReverb,
+                keepScreenOn = keepScreenOn,
+                selectedScaleMode = selectedScaleMode
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error loading app state: ${e.message}")

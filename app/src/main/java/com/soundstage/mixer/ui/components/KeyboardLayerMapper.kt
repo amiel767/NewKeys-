@@ -1,9 +1,9 @@
 package com.soundstage.mixer.ui.components
 
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -30,6 +30,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -38,6 +39,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.model.TrackChannel
 import com.soundstage.mixer.ui.theme.*
@@ -211,88 +213,58 @@ fun KeyboardLayerMapper(
     if (visibleTracks.isEmpty()) return
 
     val totalWidthDp = whiteWidthDp * totalWhiteKeys
-    val visibleCount = visibleTracks.size.coerceIn(1, 8)
-    val targetHeight = if (isExpanded) {
-        (36.dp * visibleCount.coerceAtMost(4) + 12.dp).coerceIn(46.dp, 160.dp)
-    } else {
-        // Compact mode: ultra-fine, aesthetic Sunday Keys style lines for ALL active tracks (up to 8)
-        ((visibleTracks.size * 3.4f).dp + 4.dp).coerceIn(12.dp, 36.dp)
-    }
+
+    // Fluid spring expansion progress (0f = ultra-thin Sunday Keys lines, 1f = rich interactive capsules)
+    val expandProgress by animateFloatAsState(
+        targetValue = if (isExpanded) 1f else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioLowBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "layer_expand_progress"
+    )
 
     val verticalScrollState = rememberScrollState()
+    val rowSpacingDp = lerp(1.2.dp, 6.dp, expandProgress)
 
     Column(
         modifier = modifier
             .width(totalWidthDp)
             .fillMaxHeight()
             .background(Color.Transparent)
-            .padding(horizontal = 0.dp, vertical = 1.dp)
+            .padding(horizontal = 0.dp, vertical = lerp(0.dp, 4.dp, expandProgress))
             .testTag("keyboard_layer_mapper")
     ) {
-        if (!isExpanded) {
-            // ================= COMPACT MODE: Sunday Keys Ultra-Thin Layer Lines (Fine & Aesthetic) =================
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clickable { onToggleExpanded() },
-                verticalArrangement = Arrangement.spacedBy(1.2.dp, Alignment.CenterVertically)
-            ) {
-                visibleTracks.forEachIndexed { _, track ->
-                    val trackColor = KeyPositionMapper.getTrackNeonColor(track.id)
-                    val leftFrac = KeyPositionMapper.midiToKeyLeftEdgeFraction(track.splitNoteMin)
-                    val rightFrac = KeyPositionMapper.midiToKeyRightEdgeFraction(track.splitNoteMax)
-
-                    val startXDp = (leftFrac * whiteWidthDp.value).dp
-                    val endXDp = (rightFrac * whiteWidthDp.value).dp
-                    val barWidthDp = (endXDp - startXDp).coerceAtLeast(6.dp)
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(2.2.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .offset(x = startXDp)
-                                .width(barWidthDp)
-                                .height(2.2.dp)
-                                .background(
-                                    Brush.horizontalGradient(
-                                        listOf(trackColor.copy(alpha = 0.90f), trackColor)
-                                    ),
-                                    shape = RoundedCornerShape(1.dp)
-                                )
-                                .border(0.4.dp, Color(0x44FFFFFF), shape = RoundedCornerShape(1.dp))
-                        )
-                    }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    if (expandProgress > 0.6f) Modifier.verticalScroll(verticalScrollState)
+                    else Modifier.clickable { onToggleExpanded() }
+                ),
+            verticalArrangement = Arrangement.spacedBy(
+                rowSpacingDp,
+                if (expandProgress < 0.5f) Alignment.CenterVertically else Alignment.Top
+            )
+        ) {
+            visibleTracks.forEach { track ->
+                val trackColor = KeyPositionMapper.getTrackNeonColor(track.id)
+                val patchTitle = when {
+                    track.patchName.isNotBlank() -> track.patchName
+                    track.soundfontName.isNotBlank() -> track.soundfontName
+                    else -> track.name
                 }
-            }
-        } else {
-            // ================= EXPANDED MODE: Rich Range Bars with Drag Handles =================
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(verticalScrollState),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                visibleTracks.forEachIndexed { _, track ->
-                    val trackColor = KeyPositionMapper.getTrackNeonColor(track.id)
-                    val patchTitle = when {
-                        track.patchName.isNotBlank() -> track.patchName
-                        track.soundfontName.isNotBlank() -> track.soundfontName
-                        else -> track.name
-                    }
 
-                    TrackRangeBarRow(
-                        track = track,
-                        trackColor = trackColor,
-                        patchTitle = patchTitle,
-                        whiteWidthDp = whiteWidthDp,
-                        onToggleExpanded = onToggleExpanded,
-                        onRangeChanged = onRangeChanged,
-                        onDragSelectionChange = onDragSelectionChange
-                    )
-                }
+                TrackRangeBarRow(
+                    track = track,
+                    trackColor = trackColor,
+                    patchTitle = patchTitle,
+                    whiteWidthDp = whiteWidthDp,
+                    expandProgress = expandProgress,
+                    onToggleExpanded = onToggleExpanded,
+                    onRangeChanged = onRangeChanged,
+                    onDragSelectionChange = onDragSelectionChange
+                )
             }
         }
     }
@@ -304,6 +276,7 @@ private fun TrackRangeBarRow(
     trackColor: Color,
     patchTitle: String,
     whiteWidthDp: Dp,
+    expandProgress: Float,
     onToggleExpanded: () -> Unit,
     onRangeChanged: (trackId: Int, minNote: Int, maxNote: Int) -> Unit,
     onDragSelectionChange: ((range: Pair<Float, Float>?) -> Unit)? = null
@@ -320,7 +293,12 @@ private fun TrackRangeBarRow(
 
     val startXDp = (leftFrac * whiteWidthDp.value).dp
     val endXDp = (rightFrac * whiteWidthDp.value).dp
-    val barWidthDp = (endXDp - startXDp).coerceAtLeast(18.dp)
+
+    // Dynamic animated height and corner radius
+    val rowHeightDp = lerp(2.2.dp, 28.dp, expandProgress)
+    val cornerRadiusDp = lerp(1.dp, 8.dp, expandProgress)
+    val minBarWidth = lerp(6.dp, 18.dp, expandProgress)
+    val barWidthDp = (endXDp - startXDp).coerceAtLeast(minBarWidth)
 
     val dotSize = 7.dp
     val dotInset = 5.dp
@@ -349,208 +327,251 @@ private fun TrackRangeBarRow(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(30.dp)
+            .height(rowHeightDp)
     ) {
         // Main Colored Capsule Bar (Border-less, MaterialYou Expressive)
         val minNoteName = KeyPositionMapper.midiToNoteName(minNote)
         val maxNoteName = KeyPositionMapper.midiToNoteName(maxNote)
 
+        val safeExpand = if (expandProgress.isNaN()) 0f else expandProgress.coerceIn(0f, 1f)
         Box(
             modifier = Modifier
                 .offset(x = startXDp)
-                .width(barWidthDp)
-                .height(28.dp)
+                .width(barWidthDp.coerceAtLeast(4.dp))
+                .height(rowHeightDp.coerceAtLeast(2.dp))
                 .shadow(
-                    elevation = if (isActivelyDragging) 4.dp else 1.5.dp,
-                    shape = RoundedCornerShape(8.dp)
+                    elevation = if (isActivelyDragging) 4.dp else (2.dp * safeExpand),
+                    shape = RoundedCornerShape(cornerRadiusDp)
                 )
                 .background(
-                    color = trackColor.copy(alpha = if (isActivelyDragging) 0.96f else 0.88f),
-                    shape = RoundedCornerShape(8.dp)
+                    brush = if (safeExpand < 0.2f) {
+                        Brush.horizontalGradient(
+                            listOf(trackColor.copy(alpha = 0.90f), trackColor)
+                        )
+                    } else {
+                        Brush.horizontalGradient(
+                            listOf(
+                                trackColor.copy(alpha = if (isActivelyDragging) 0.98f else 0.88f),
+                                trackColor.copy(alpha = if (isActivelyDragging) 0.92f else 0.75f)
+                            )
+                        )
+                    },
+                    shape = RoundedCornerShape(cornerRadiusDp)
+                )
+                .border(
+                    width = lerp(0.4.dp, 1.dp, safeExpand),
+                    color = Color.White.copy(alpha = (0.35f + 0.10f * safeExpand).coerceIn(0f, 1f)),
+                    shape = RoundedCornerShape(cornerRadiusDp)
                 )
                 .pointerInput(Unit) {
                     detectTapGestures(
-                        onDoubleTap = { onToggleExpanded() }
+                        onDoubleTap = { onToggleExpanded() },
+                        onTap = {
+                            if (expandProgress < 0.5f) {
+                                onToggleExpanded()
+                            }
+                        }
                     )
                 }
-                .padding(horizontal = 14.dp),
+                .padding(horizontal = lerp(0.dp, 14.dp, expandProgress)),
             contentAlignment = Alignment.Center
         ) {
-            if (barWidthDp >= 64.dp) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                    modifier = Modifier.wrapContentWidth()
+            if (expandProgress > 0.35f) {
+                val textAlpha = ((expandProgress - 0.35f) / 0.65f).coerceIn(0f, 1f)
+                Box(
+                    modifier = Modifier.graphicsLayer { alpha = textAlpha },
+                    contentAlignment = Alignment.Center
                 ) {
-                    // Low Note Indicator Badge
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(Color(0x40000000))
-                            .padding(horizontal = 3.dp, vertical = 0.5.dp)
-                    ) {
+                    if (barWidthDp >= 64.dp) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.wrapContentWidth()
+                        ) {
+                            // Low Note Indicator Badge
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(Color(0x45000000))
+                                    .padding(horizontal = 3.dp, vertical = 0.5.dp)
+                            ) {
+                                Text(
+                                    text = minNoteName,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(4.dp))
+
+                            // Track / Patch Name centered in the middle
+                            Text(
+                                text = patchTitle,
+                                fontSize = 8.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier
+                                    .weight(1f, fill = false)
+                                    .padding(horizontal = 2.dp)
+                            )
+
+                            Spacer(modifier = Modifier.width(4.dp))
+
+                            // High Note Indicator Badge
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(Color(0x45000000))
+                                    .padding(horizontal = 3.dp, vertical = 0.5.dp)
+                            ) {
+                                Text(
+                                    text = maxNoteName,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    } else if (barWidthDp >= 38.dp) {
+                        Text(
+                            text = "$minNoteName-$maxNoteName",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            maxLines = 1
+                        )
+                    } else {
                         Text(
                             text = minNoteName,
-                            fontSize = 8.sp,
+                            fontSize = 7.5.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(4.dp))
-
-                    // Track / Patch Name centered in the middle
-                    Text(
-                        text = patchTitle,
-                        fontSize = 8.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .weight(1f, fill = false)
-                            .padding(horizontal = 2.dp)
-                    )
-
-                    Spacer(modifier = Modifier.width(4.dp))
-
-                    // High Note Indicator Badge
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(Color(0x40000000))
-                            .padding(horizontal = 3.dp, vertical = 0.5.dp)
-                    ) {
-                        Text(
-                            text = maxNoteName,
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = Color.White,
+                            maxLines = 1
                         )
                     }
                 }
-            } else if (barWidthDp >= 38.dp) {
-                Text(
-                    text = "$minNoteName-$maxNoteName",
-                    fontSize = 8.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 1
-                )
-            } else {
-                Text(
-                    text = minNoteName,
-                    fontSize = 7.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 1
-                )
             }
         }
 
-        // ================= LEFT DRAG HANDLE: Small White Dot inside line with ergonomic hitbox =================
-        Box(
-            modifier = Modifier
-                .offset(x = (leftDotX + (dotSize / 2f)) - (touchHitboxWidth / 2f))
-                .size(touchHitboxWidth, 30.dp)
-                .pointerInput(track.id) {
-                    detectHorizontalDragGestures(
-                        onDragStart = {
-                            dragMinOffsetPx = 0f
-                            initialMinFrac = currentLeftFrac
-                            isDraggingMin = true
-                            currentOnDragSelectionChange?.invoke(currentLeftFrac to currentRightFrac)
-                        },
-                        onDragEnd = {
-                            isDraggingMin = false
-                            currentOnDragSelectionChange?.invoke(null)
-                        },
-                        onDragCancel = {
-                            isDraggingMin = false
-                            currentOnDragSelectionChange?.invoke(null)
-                        },
-                        onHorizontalDrag = { change, dragAmount ->
-                            change.consume()
-                            dragMinOffsetPx += dragAmount
-                            val wPx = if (currentWhiteWidthPx > 0f) currentWhiteWidthPx else 10f
-                            val currentFrac = initialMinFrac + (dragMinOffsetPx / wPx)
-                            val newMidi = KeyPositionMapper.xFractionToNearestMidi(
-                                xFraction = currentFrac,
-                                minAllowedMidi = KeyPositionMapper.MIN_MIDI,
-                                maxAllowedMidi = currentMaxNote
-                            )
-                            if (newMidi != currentMinNote) {
-                                currentOnRangeChanged(track.id, newMidi, currentMaxNote)
-                            }
-                            val updatedLeft = KeyPositionMapper.midiToKeyLeftEdgeFraction(newMidi)
-                            val updatedRight = KeyPositionMapper.midiToKeyRightEdgeFraction(currentMaxNote)
-                            currentOnDragSelectionChange?.invoke(updatedLeft to updatedRight)
-                        }
-                    )
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            // Pure small white dot cleanly nestled inside the line extremity
-            Box(
-                modifier = Modifier
-                    .size(dotSize)
-                    .shadow(1.dp, CircleShape)
-                    .clip(CircleShape)
-                    .background(Color.White)
-            )
-        }
+        // Handles (Left and Right Drag Handles): fade and scale in with expandProgress
+        if (expandProgress > 0.45f) {
+            val handleAlpha = ((expandProgress - 0.45f) / 0.55f).coerceIn(0f, 1f)
 
-        // ================= RIGHT DRAG HANDLE: Small White Dot inside line with ergonomic hitbox =================
-        Box(
-            modifier = Modifier
-                .offset(x = (rightDotX + (dotSize / 2f)) - (touchHitboxWidth / 2f))
-                .size(touchHitboxWidth, 30.dp)
-                .pointerInput(track.id) {
-                    detectHorizontalDragGestures(
-                        onDragStart = {
-                            dragMaxOffsetPx = 0f
-                            initialMaxFrac = currentRightFrac
-                            isDraggingMax = true
-                            currentOnDragSelectionChange?.invoke(currentLeftFrac to currentRightFrac)
-                        },
-                        onDragEnd = {
-                            isDraggingMax = false
-                            currentOnDragSelectionChange?.invoke(null)
-                        },
-                        onDragCancel = {
-                            isDraggingMax = false
-                            currentOnDragSelectionChange?.invoke(null)
-                        },
-                        onHorizontalDrag = { change, dragAmount ->
-                            change.consume()
-                            dragMaxOffsetPx += dragAmount
-                            val wPx = if (currentWhiteWidthPx > 0f) currentWhiteWidthPx else 10f
-                            val currentFrac = initialMaxFrac + (dragMaxOffsetPx / wPx)
-                            val newMidi = KeyPositionMapper.xFractionToNearestMidi(
-                                xFraction = currentFrac,
-                                minAllowedMidi = currentMinNote,
-                                maxAllowedMidi = KeyPositionMapper.MAX_MIDI
-                            )
-                            if (newMidi != currentMaxNote) {
-                                currentOnRangeChanged(track.id, currentMinNote, newMidi)
-                            }
-                            val updatedLeft = KeyPositionMapper.midiToKeyLeftEdgeFraction(currentMinNote)
-                            val updatedRight = KeyPositionMapper.midiToKeyRightEdgeFraction(newMidi)
-                            currentOnDragSelectionChange?.invoke(updatedLeft to updatedRight)
-                        }
-                    )
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            // Pure small white dot cleanly nestled inside the line extremity
+            // ================= LEFT DRAG HANDLE =================
             Box(
                 modifier = Modifier
-                    .size(dotSize)
-                    .shadow(1.dp, CircleShape)
-                    .clip(CircleShape)
-                    .background(Color.White)
-            )
+                    .offset(x = (leftDotX + (dotSize / 2f)) - (touchHitboxWidth / 2f))
+                    .size(touchHitboxWidth, 28.dp)
+                    .graphicsLayer {
+                        alpha = handleAlpha
+                        scaleX = expandProgress
+                        scaleY = expandProgress
+                    }
+                    .pointerInput(track.id) {
+                        detectHorizontalDragGestures(
+                            onDragStart = {
+                                dragMinOffsetPx = 0f
+                                initialMinFrac = currentLeftFrac
+                                isDraggingMin = true
+                                currentOnDragSelectionChange?.invoke(currentLeftFrac to currentRightFrac)
+                            },
+                            onDragEnd = {
+                                isDraggingMin = false
+                                currentOnDragSelectionChange?.invoke(null)
+                            },
+                            onDragCancel = {
+                                isDraggingMin = false
+                                currentOnDragSelectionChange?.invoke(null)
+                            },
+                            onHorizontalDrag = { change, dragAmount ->
+                                change.consume()
+                                dragMinOffsetPx += dragAmount
+                                val wPx = if (currentWhiteWidthPx > 0f) currentWhiteWidthPx else 10f
+                                val currentFrac = initialMinFrac + (dragMinOffsetPx / wPx)
+                                val newMidi = KeyPositionMapper.xFractionToNearestMidi(
+                                    xFraction = currentFrac,
+                                    minAllowedMidi = KeyPositionMapper.MIN_MIDI,
+                                    maxAllowedMidi = currentMaxNote
+                                )
+                                if (newMidi != currentMinNote) {
+                                    currentOnRangeChanged(track.id, newMidi, currentMaxNote)
+                                }
+                                val updatedLeft = KeyPositionMapper.midiToKeyLeftEdgeFraction(newMidi)
+                                val updatedRight = KeyPositionMapper.midiToKeyRightEdgeFraction(currentMaxNote)
+                                currentOnDragSelectionChange?.invoke(updatedLeft to updatedRight)
+                            }
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(dotSize)
+                        .shadow(1.dp, CircleShape)
+                        .clip(CircleShape)
+                        .background(Color.White)
+                )
+            }
+
+            // ================= RIGHT DRAG HANDLE =================
+            Box(
+                modifier = Modifier
+                    .offset(x = (rightDotX + (dotSize / 2f)) - (touchHitboxWidth / 2f))
+                    .size(touchHitboxWidth, 28.dp)
+                    .graphicsLayer {
+                        alpha = handleAlpha
+                        scaleX = expandProgress
+                        scaleY = expandProgress
+                    }
+                    .pointerInput(track.id) {
+                        detectHorizontalDragGestures(
+                            onDragStart = {
+                                dragMaxOffsetPx = 0f
+                                initialMaxFrac = currentRightFrac
+                                isDraggingMax = true
+                                currentOnDragSelectionChange?.invoke(currentLeftFrac to currentRightFrac)
+                            },
+                            onDragEnd = {
+                                isDraggingMax = false
+                                currentOnDragSelectionChange?.invoke(null)
+                            },
+                            onDragCancel = {
+                                isDraggingMax = false
+                                currentOnDragSelectionChange?.invoke(null)
+                            },
+                            onHorizontalDrag = { change, dragAmount ->
+                                change.consume()
+                                dragMaxOffsetPx += dragAmount
+                                val wPx = if (currentWhiteWidthPx > 0f) currentWhiteWidthPx else 10f
+                                val currentFrac = initialMaxFrac + (dragMaxOffsetPx / wPx)
+                                val newMidi = KeyPositionMapper.xFractionToNearestMidi(
+                                    xFraction = currentFrac,
+                                    minAllowedMidi = currentMinNote,
+                                    maxAllowedMidi = KeyPositionMapper.MAX_MIDI
+                                )
+                                if (newMidi != currentMaxNote) {
+                                    currentOnRangeChanged(track.id, currentMinNote, newMidi)
+                                }
+                                val updatedLeft = KeyPositionMapper.midiToKeyLeftEdgeFraction(currentMinNote)
+                                val updatedRight = KeyPositionMapper.midiToKeyRightEdgeFraction(newMidi)
+                                currentOnDragSelectionChange?.invoke(updatedLeft to updatedRight)
+                            }
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(dotSize)
+                        .shadow(1.dp, CircleShape)
+                        .clip(CircleShape)
+                        .background(Color.White)
+                )
+            }
         }
     }
 }

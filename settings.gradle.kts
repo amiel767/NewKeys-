@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "SoundStage"
+rootProject.name = "SoundStage Debug App"
 
 include(":app")

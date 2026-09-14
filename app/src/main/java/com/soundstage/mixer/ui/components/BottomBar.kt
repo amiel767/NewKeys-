@@ -59,6 +59,8 @@ fun BottomBar(
     onMetroVolumeChange: (Float) -> Unit,
     selectedKey: String = "C",
     onSelectKey: (String) -> Unit = {},
+    selectedScaleMode: String = "Majeur",
+    onSelectScaleMode: (String) -> Unit = {},
     
     // Chord Display (Afficheur d'accords)
     detectedChord: DetectedChord? = null,
@@ -289,7 +291,7 @@ fun BottomBar(
                     .background(if (isMetronomeOn) NeonCyan.copy(alpha = 0.4f) else Color(0x22FFFFFF))
             )
 
-            // Right: Signature & Key indicator (avec "C" fade gris éteint)
+            // Right: Signature & Key indicator
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(3.dp)
@@ -306,7 +308,7 @@ fun BottomBar(
                     color = Color(0x44FFFFFF)
                 )
                 Text(
-                    text = selectedKey,
+                    text = if (selectedScaleMode.contains("Min", ignoreCase = true)) "${selectedKey}m" else selectedKey,
                     fontSize = 11.5.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0x66FFFFFF) // Gris fade éteint comme demandé
@@ -557,6 +559,8 @@ fun MetronomeFloatingPanel(
     onClose: () -> Unit,
     selectedKey: String = "C",
     onSelectKey: (String) -> Unit = {},
+    selectedScaleMode: String = "Majeur",
+    onSelectScaleMode: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val allSignatures = listOf(
@@ -663,6 +667,42 @@ fun MetronomeFloatingPanel(
                                 color = if (isSelected) Color(0xFF00232B) else TextDim
                             )
                         }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // MODE TONALITÉ (MAJEUR / MINEUR)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                listOf("Majeur", "Mineur").forEach { mode ->
+                    val isModeSelected = selectedScaleMode.equals(mode, ignoreCase = true)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(26.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(
+                                if (isModeSelected) Brush.verticalGradient(listOf(NeonCyanLight, NeonCyanDark))
+                                else Brush.linearGradient(listOf(Color(0x0DFFFFFF), Color(0x08FFFFFF)))
+                            )
+                            .border(
+                                1.dp,
+                                if (isModeSelected) Color.Transparent else Color(0x1AFFFFFF),
+                                RoundedCornerShape(6.dp)
+                            )
+                            .clickable { onSelectScaleMode(mode) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = mode.uppercase(),
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isModeSelected) Color(0xFF00232B) else TextDim
+                        )
                     }
                 }
             }
