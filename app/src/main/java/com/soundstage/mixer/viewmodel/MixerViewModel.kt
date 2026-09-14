@@ -306,11 +306,18 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                                     bank = savedT.bank,
                                     program = savedT.program,
                                     reverbPreset = savedT.reverbPreset,
-                                    reverbMix = savedT.reverbMix
+                                    reverbMix = savedT.reverbMix,
+                                    velocityCurve = savedT.velocityCurve,
+                                    splitNoteMin = savedT.splitNoteMin,
+                                    splitNoteMax = savedT.splitNoteMax
                                 )
                             } else currentTrack
                         }
                     } else state.tracks
+
+                    val restoredFx = if (saved.fxParameters.isNotEmpty()) {
+                        state.fxParameters + saved.fxParameters
+                    } else state.fxParameters
 
                     val restoredDrums = if (saved.drumPads.isNotEmpty()) {
                         state.drumPads.map { currentPad ->
@@ -365,7 +372,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         masterTrack = state.masterTrack.copy(volume = saved.masterVolume ?: state.masterTrack.volume),
                         tracks = restoredTracks,
                         audioSlots = restoredSlots,
-                        drumPads = restoredDrums
+                        drumPads = restoredDrums,
+                        fxParameters = restoredFx
                     )
                 }
 
@@ -379,11 +387,56 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 audioEngine.masterVolume = effectiveMasterVol
                 NativeAudioBridge.safeSetMasterVolume(effectiveMasterVol)
 
+                // Restore Master FX (EQ, Reverb, Delay, SoundGoodizer)
+                val masterFx = saved.fxParameters[0]
+                if (masterFx != null) {
+                    val lowDb = (masterFx.eqLow - 0.5f) * 24.0f
+                    val midDb = (masterFx.eqMid - 0.5f) * 24.0f
+                    val highDb = (masterFx.eqHigh - 0.5f) * 24.0f
+                    audioEngine.setMasterEq(lowDb, midDb, highDb)
+                    audioEngine.setMasterReverb(
+                        enabled = masterFx.isReverbEnabled,
+                        size = masterFx.reverbSize,
+                        decay = masterFx.reverbDecay,
+                        damp = masterFx.reverbDamp,
+                        mix = masterFx.reverbMix
+                    )
+                    val isDelayActive = masterFx.isDelayEnabled && masterFx.delayMix > 0.005f
+                    audioEngine.setMasterDelay(
+                        enabled = isDelayActive,
+                        timeSec = 0.05f + masterFx.delayTime * 0.95f,
+                        feedback = if (isDelayActive) masterFx.delayFeedback else 0f,
+                        mix = if (isDelayActive) masterFx.delayMix else 0f,
+                        pingPong = masterFx.delayPingPong > 0.5f
+                    )
+                    val modeStr = when (masterFx.sgMode) {
+                        0 -> "A"
+                        1 -> "B"
+                        2 -> "C"
+                        3 -> "D"
+                        else -> "A"
+                    }
+                    audioEngine.soundGoodizerMode = modeStr
+                    audioEngine.isSoundGoodizerEnabled = masterFx.isSgEnabled
+                    audioEngine.soundGoodizerAmount = masterFx.sgAmount
+                    NativeAudioBridge.safeSetSoundGoodizer(masterFx.isSgEnabled, masterFx.sgMode, masterFx.sgAmount)
+                } else {
+                    val restoredMode = saved.soundGoodizerMode?.let { name ->
+                        try { SoundGoodizerMode.valueOf(name) } catch (_: Exception) { null }
+                    } ?: _uiState.value.soundGoodizerMode
+                    val sgAmt = saved.soundGoodizerAmount ?: _uiState.value.soundGoodizer
+                    audioEngine.soundGoodizerMode = restoredMode.name
+                    audioEngine.soundGoodizerAmount = sgAmt
+                    NativeAudioBridge.safeSetSoundGoodizer(audioEngine.isSoundGoodizerEnabled, restoredMode.ordinal, sgAmt)
+                }
+
                 saved.tracks.forEach { t ->
                     val ch = (t.id - 1).coerceIn(0, 7)
                     NativeAudioBridge.safeSetTrackVolume(ch, t.volume)
                     NativeAudioBridge.safeSetTrackPan(ch, t.pan)
-                    audioEngine.setChannelReverb(ch, t.reverbMix)
+                    val trackFx = saved.fxParameters[t.id]
+                    val reverbMix = if (trackFx != null && trackFx.isReverbEnabled) trackFx.reverbMix else t.reverbMix
+                    audioEngine.setChannelReverb(ch, reverbMix)
                 }
 
                 var hasLoadedAnySlot = false
@@ -469,6 +522,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             tracks = state.tracks,
             audioSlots = state.audioSlots,
             drumPads = state.drumPads,
+            fxParameters = state.fxParameters,
             activeSf2TrackId = state.activeSoundfontSlotId,
             lastActivity = "mixer"
         )
@@ -2473,29 +2527,60 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(globalVelocityMin = safeMin, globalVelocityMax = safeMax) }
         audioEngine.globalVelocityMin = safeMin
         audioEngine.globalVelocityMax = safeMax
+        persistCurrentStateDebounced()
     }
 
     fun setSoundGoodizer(v: Float) {
         val clamped = v.coerceIn(0f, 1f)
-        _uiState.update { it.copy(soundGoodizer = clamped) }
+        _uiState.update { state ->
+            val curMasterFx = state.fxParameters[0] ?: FxParameters()
+            val updatedMasterFx = curMasterFx.copy(
+                isSgEnabled = clamped > 0.001f,
+                sgAmount = clamped
+            )
+            val updatedMap = state.fxParameters.toMutableMap()
+            updatedMap[0] = updatedMasterFx
+            state.copy(
+                soundGoodizer = clamped,
+                fxParameters = updatedMap
+            )
+        }
         audioEngine.soundGoodizerAmount = clamped
+        audioEngine.isSoundGoodizerEnabled = clamped > 0.001f
+        val mode = _uiState.value.soundGoodizerMode
+        NativeAudioBridge.safeSetSoundGoodizer(clamped > 0.001f, mode.ordinal, clamped)
+        persistCurrentStateDebounced()
     }
 
     fun setSoundGoodizerMode(mode: SoundGoodizerMode) {
-        _uiState.update { it.copy(soundGoodizerMode = mode) }
+        _uiState.update { state ->
+            val curMasterFx = state.fxParameters[0] ?: FxParameters()
+            val updatedMasterFx = curMasterFx.copy(sgMode = mode.ordinal)
+            val updatedMap = state.fxParameters.toMutableMap()
+            updatedMap[0] = updatedMasterFx
+            state.copy(
+                soundGoodizerMode = mode,
+                fxParameters = updatedMap
+            )
+        }
         audioEngine.soundGoodizerMode = mode.name
+        val amt = _uiState.value.soundGoodizer
+        NativeAudioBridge.safeSetSoundGoodizer(amt > 0.001f, mode.ordinal, amt)
+        persistCurrentStateDebounced()
     }
 
     fun setMasterPunch(v: Float) {
         val clamped = v.coerceIn(0f, 1f)
         _uiState.update { it.copy(masterPunch = clamped) }
         audioEngine.masterPunch = clamped
+        persistCurrentStateDebounced()
     }
 
     fun setSpatialWidener(v: Float) {
         val clamped = v.coerceIn(0f, 1f)
         _uiState.update { it.copy(spatialWidener = clamped) }
         audioEngine.spatialWidener = clamped
+        persistCurrentStateDebounced()
     }
 
     fun toggleMidiDevice(deviceId: String) {
@@ -2553,12 +2638,27 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 audioEngine.soundGoodizerMode = modeStr
                 audioEngine.isSoundGoodizerEnabled = newFx.isSgEnabled
                 audioEngine.soundGoodizerAmount = newFx.sgAmount
-            } else if (trackId in 1..8) {
-                val channel = trackId - 1
-                audioEngine.setChannelReverb(channel, if (newFx.isReverbEnabled) newFx.reverbMix else 0f)
+                NativeAudioBridge.safeSetSoundGoodizer(newFx.isSgEnabled, newFx.sgMode, newFx.sgAmount)
+                val sgEnumMode = when (newFx.sgMode) {
+                    0 -> SoundGoodizerMode.A
+                    1 -> SoundGoodizerMode.B
+                    2 -> SoundGoodizerMode.C
+                    else -> SoundGoodizerMode.D
+                }
+                state.copy(
+                    fxParameters = updatedMap,
+                    soundGoodizer = newFx.sgAmount,
+                    soundGoodizerMode = sgEnumMode
+                )
+            } else {
+                if (trackId in 1..8) {
+                    val channel = trackId - 1
+                    audioEngine.setChannelReverb(channel, if (newFx.isReverbEnabled) newFx.reverbMix else 0f)
+                }
+                state.copy(fxParameters = updatedMap)
             }
-            state.copy(fxParameters = updatedMap)
         }
+        persistCurrentStateDebounced()
     }
 
     fun setFxTab(tab: String) {
@@ -2635,6 +2735,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 state.copy(tracks = updated, fxParameters = updatedFxMap)
             }
         }
+        persistCurrentStateDebounced()
     }
 
     fun toggleTrackReverb(trackId: Int) {
@@ -2661,6 +2762,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 state.copy(tracks = updated, fxParameters = updatedMap)
             }
         }
+        persistCurrentStateDebounced()
     }
 
     private data class Quad(val a: Float, val b: Float, val c: Float, val d: Float)
@@ -2672,6 +2774,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             }
             state.copy(tracks = updated)
         }
+        persistCurrentStateDebounced()
     }
 
     fun setTrackSplitRange(trackId: Int, minNote: Int, maxNote: Int) {
@@ -2681,6 +2784,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             }
             state.copy(tracks = updated)
         }
+        persistCurrentStateDebounced()
     }
 
     fun updateTrackKeyRange(trackId: Int, minNote: Int, maxNote: Int) {

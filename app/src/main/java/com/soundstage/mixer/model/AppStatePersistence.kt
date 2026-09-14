@@ -32,6 +32,7 @@ class AppStatePersistence(context: Context) {
         private const val KEY_TRACKS_JSON = "tracks_json"
         private const val KEY_DRUM_PADS_JSON = "drum_pads_json"
         private const val KEY_AUDIO_SLOTS_JSON = "audio_slots_json"
+        private const val KEY_FX_PARAMETERS_JSON = "fx_parameters_json"
         private const val KEY_ACTIVE_SF2_TRACK_ID = "active_sf2_track_id"
         private const val KEY_LAST_ACTIVITY = "last_activity"
     }
@@ -47,7 +48,10 @@ class AppStatePersistence(context: Context) {
         val bank: Int,
         val program: Int,
         val reverbPreset: String,
-        val reverbMix: Float
+        val reverbMix: Float,
+        val velocityCurve: Float = 0.5f,
+        val splitNoteMin: Int = 24,
+        val splitNoteMax: Int = 108
     )
 
     data class SavedAudioSlotData(
@@ -84,6 +88,7 @@ class AppStatePersistence(context: Context) {
         val tracks: List<SavedTrackData>,
         val audioSlots: List<SavedAudioSlotData>,
         val drumPads: List<SavedDrumData>,
+        val fxParameters: Map<Int, FxParameters> = emptyMap(),
         val activeSf2TrackId: Int?,
         val lastActivity: String?
     )
@@ -102,6 +107,7 @@ class AppStatePersistence(context: Context) {
         tracks: List<TrackChannel>,
         audioSlots: List<AudioSlot>,
         drumPads: List<DrumPadItem>,
+        fxParameters: Map<Int, FxParameters> = emptyMap(),
         activeSf2TrackId: Int,
         lastActivity: String = "mixer"
     ) {
@@ -120,8 +126,40 @@ class AppStatePersistence(context: Context) {
                     put("program", t.program)
                     put("reverbPreset", t.reverbPreset)
                     put("reverbMix", t.reverbMix.toDouble())
+                    put("velocityCurve", t.velocityCurve.toDouble())
+                    put("splitNoteMin", t.splitNoteMin)
+                    put("splitNoteMax", t.splitNoteMax)
                 }
                 tracksArray.put(obj)
+            }
+
+            val fxObject = JSONObject()
+            fxParameters.forEach { (trackId, fx) ->
+                val o = JSONObject().apply {
+                    put("eqLow", fx.eqLow.toDouble())
+                    put("eqMid", fx.eqMid.toDouble())
+                    put("eqHigh", fx.eqHigh.toDouble())
+                    put("eqGain", fx.eqGain.toDouble())
+                    put("isReverbEnabled", fx.isReverbEnabled)
+                    put("isSgEnabled", fx.isSgEnabled)
+                    put("sgAmount", fx.sgAmount.toDouble())
+                    put("sgMode", fx.sgMode)
+                    put("reverbPreset", fx.reverbPreset)
+                    put("reverbMix", fx.reverbMix.toDouble())
+                    put("reverbSize", fx.reverbSize.toDouble())
+                    put("reverbDecay", fx.reverbDecay.toDouble())
+                    put("reverbDamp", fx.reverbDamp.toDouble())
+                    put("compThresh", fx.compThresh.toDouble())
+                    put("compRatio", fx.compRatio.toDouble())
+                    put("compAttack", fx.compAttack.toDouble())
+                    put("compRelease", fx.compRelease.toDouble())
+                    put("isDelayEnabled", fx.isDelayEnabled)
+                    put("delayTime", fx.delayTime.toDouble())
+                    put("delayFeedback", fx.delayFeedback.toDouble())
+                    put("delayMix", fx.delayMix.toDouble())
+                    put("delayPingPong", fx.delayPingPong.toDouble())
+                }
+                fxObject.put(trackId.toString(), o)
             }
 
             val slotsArray = JSONArray()
@@ -164,6 +202,7 @@ class AppStatePersistence(context: Context) {
                 putFloat(KEY_SPATIAL_WIDENER, spatialWidener)
                 putFloat(KEY_MASTER_VOLUME, masterVolume)
                 putString(KEY_TRACKS_JSON, tracksArray.toString())
+                putString(KEY_FX_PARAMETERS_JSON, fxObject.toString())
                 putString(KEY_AUDIO_SLOTS_JSON, slotsArray.toString())
                 putString(KEY_DRUM_PADS_JSON, drumArray.toString())
                 putInt(KEY_ACTIVE_SF2_TRACK_ID, activeSf2TrackId)
@@ -212,9 +251,52 @@ class AppStatePersistence(context: Context) {
                             bank = obj.optInt("bank", 0),
                             program = obj.optInt("program", 0),
                             reverbPreset = obj.optString("reverbPreset", "Concert Hall"),
-                            reverbMix = obj.optDouble("reverbMix", 0.20).toFloat()
+                            reverbMix = obj.optDouble("reverbMix", 0.20).toFloat(),
+                            velocityCurve = obj.optDouble("velocityCurve", 0.5).toFloat(),
+                            splitNoteMin = obj.optInt("splitNoteMin", 24),
+                            splitNoteMax = obj.optInt("splitNoteMax", 108)
                         )
                     )
+                }
+            }
+
+            val fxMap = mutableMapOf<Int, FxParameters>()
+            val fxJsonStr = prefs.getString(KEY_FX_PARAMETERS_JSON, null)
+            if (fxJsonStr != null) {
+                try {
+                    val fxObj = JSONObject(fxJsonStr)
+                    val keys = fxObj.keys()
+                    while (keys.hasNext()) {
+                        val key = keys.next()
+                        val trackId = key.toIntOrNull() ?: continue
+                        val o = fxObj.getJSONObject(key)
+                        fxMap[trackId] = FxParameters(
+                            eqLow = o.optDouble("eqLow", 0.5).toFloat(),
+                            eqMid = o.optDouble("eqMid", 0.5).toFloat(),
+                            eqHigh = o.optDouble("eqHigh", 0.5).toFloat(),
+                            eqGain = o.optDouble("eqGain", 0.5).toFloat(),
+                            isReverbEnabled = o.optBoolean("isReverbEnabled", false),
+                            isSgEnabled = o.optBoolean("isSgEnabled", false),
+                            sgAmount = o.optDouble("sgAmount", 0.0).toFloat(),
+                            sgMode = o.optInt("sgMode", 0),
+                            reverbPreset = o.optString("reverbPreset", "Concert Hall"),
+                            reverbMix = o.optDouble("reverbMix", 0.24).toFloat(),
+                            reverbSize = o.optDouble("reverbSize", 0.6).toFloat(),
+                            reverbDecay = o.optDouble("reverbDecay", 0.45).toFloat(),
+                            reverbDamp = o.optDouble("reverbDamp", 0.3).toFloat(),
+                            compThresh = o.optDouble("compThresh", 0.4).toFloat(),
+                            compRatio = o.optDouble("compRatio", 0.5).toFloat(),
+                            compAttack = o.optDouble("compAttack", 0.2).toFloat(),
+                            compRelease = o.optDouble("compRelease", 0.35).toFloat(),
+                            isDelayEnabled = o.optBoolean("isDelayEnabled", false),
+                            delayTime = o.optDouble("delayTime", 0.35).toFloat(),
+                            delayFeedback = o.optDouble("delayFeedback", 0.4).toFloat(),
+                            delayMix = o.optDouble("delayMix", 0.0).toFloat(),
+                            delayPingPong = o.optDouble("delayPingPong", 0.0).toFloat()
+                        )
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error parsing saved fx parameters: ${e.message}")
                 }
             }
 
@@ -272,6 +354,7 @@ class AppStatePersistence(context: Context) {
                 tracks = tracksList,
                 audioSlots = slotsList,
                 drumPads = drumList,
+                fxParameters = fxMap,
                 activeSf2TrackId = activeSf2TrackId,
                 lastActivity = lastActivity
             )

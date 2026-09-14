@@ -98,13 +98,13 @@ fun VirtualPianoKeyboard(
         }
     }
 
-    val activeTracksCount = remember(tracks) { tracks.count { it.isEnabled } }
-    val compactMapperHeight = if (tracks.isNotEmpty()) 14.dp else 0.dp
+    val activeTracksCount = remember(tracks) { tracks.count { it.isEnabled }.coerceAtLeast(1) }
+    val compactMapperHeight = if (tracks.isNotEmpty()) ((activeTracksCount * 3.4f).dp + 4.dp).coerceIn(12.dp, 36.dp) else 0.dp
     // Keys height (reduced by 25% from 68.dp)
     val keysHeight = 51.dp
 
-    val visibleTracksCount = remember(tracks) { tracks.count { it.isEnabled }.coerceAtMost(4) }
-    val expandedMapperHeight = (36.dp * visibleTracksCount + 16.dp).coerceIn(52.dp, 160.dp)
+    val visibleTracksCount = remember(tracks) { tracks.count { it.isEnabled }.coerceIn(1, 8) }
+    val expandedMapperHeight = (36.dp * visibleTracksCount.coerceAtMost(4) + 16.dp).coerceIn(52.dp, 160.dp)
     val targetMapperHeight = if (isLayerMapperExpanded && tracks.isNotEmpty()) expandedMapperHeight else compactMapperHeight
 
     val animatedMapperHeight by animateDpAsState(

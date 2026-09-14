@@ -176,10 +176,10 @@ fun CustomVerticalFader(
                 .fillMaxHeight(),
             contentAlignment = Alignment.Center
         ) {
-            // Slot background: Dark metallic gray above bonnet, clean lighter gray below bonnet
+            // Slot background: Dark recessed groove
             Canvas(
                 modifier = Modifier
-                    .width(4.dp)
+                    .width(4.5.dp)
                     .fillMaxHeight(0.92f)
             ) {
                 val h = size.height
@@ -187,21 +187,21 @@ fun CustomVerticalFader(
                 val railTopPx = (containerHeightPx - h) / 2f
                 val relativeBonnetY = (bonnetCenterYPx - railTopPx).coerceIn(0f, h)
 
-                // Top segment (above bonnet) - dark slot
+                // Top segment (above bonnet) - deep black/charcoal slot
                 if (relativeBonnetY > 0f) {
                     drawRoundRect(
-                        color = Color(0xFF181B24),
+                        color = Color(0xFF0D0F14),
                         topLeft = Offset(0f, 0f),
                         size = Size(w, relativeBonnetY),
                         cornerRadius = CornerRadius(2.dp.toPx())
                     )
                 }
 
-                // Bottom segment (below bonnet) - noticeably lighter gray slot
+                // Bottom segment (below bonnet) - dark recessed slot base
                 val bottomHeight = h - relativeBonnetY
                 if (bottomHeight > 0f) {
                     drawRoundRect(
-                        color = Color(0xFF4C5468),
+                        color = Color(0xFF141720),
                         topLeft = Offset(0f, relativeBonnetY),
                         size = Size(w, bottomHeight),
                         cornerRadius = CornerRadius(2.dp.toPx())
@@ -209,33 +209,86 @@ fun CustomVerticalFader(
                 }
             }
 
-            // Glowing neon line in central slot: ONLY when audio sound is active and ONLY up to bonnet height
-            if (isAudioSoundActive) {
-                val glowAlpha = (audioActivity.coerceIn(0.15f, 1.0f) * 0.95f).coerceIn(0.4f, 1.0f)
+            // ================= BRILLIANT GLOWING NEON LINE (SHINES / BRILLE) =================
+            // Visible at all times when track is enabled, dynamically pulses and blooms with audio
+            if (isEnabled) {
+                val baseAlpha = if (isAudioSoundActive) (0.6f + audioActivity.coerceIn(0f, 1f) * 0.4f) else 0.85f
+                val bloomAlpha = if (isAudioSoundActive) (0.45f + audioActivity.coerceIn(0f, 1f) * 0.5f).coerceIn(0.45f, 0.95f) else 0.35f
+
+                // 1. Wide ambient neon halo / bloom (radiates outward to create authentic shine)
                 Canvas(
                     modifier = Modifier
-                        .width(3.2.dp)
+                        .width(9.dp)
                         .fillMaxHeight(0.92f)
                 ) {
                     val h = size.height
                     val w = size.width
                     val railTopPx = (containerHeightPx - h) / 2f
                     val relativeBonnetY = (bonnetCenterYPx - railTopPx).coerceIn(0f, h)
-                    val activeGlowHeight = h - relativeBonnetY
-                    if (activeGlowHeight > 0f) {
+                    val activeHeight = h - relativeBonnetY
+                    if (activeHeight > 0f) {
+                        drawRoundRect(
+                            brush = Brush.horizontalGradient(
+                                colors = listOf(
+                                    dynamicAura.copy(alpha = 0f),
+                                    dynamicAura.copy(alpha = bloomAlpha),
+                                    dynamicAura.copy(alpha = 0f)
+                                )
+                            ),
+                            topLeft = Offset(0f, relativeBonnetY),
+                            size = Size(w, activeHeight),
+                            cornerRadius = CornerRadius(4.dp.toPx())
+                        )
+                    }
+                }
+
+                // 2. Saturated neon body line with vertical gradient
+                Canvas(
+                    modifier = Modifier
+                        .width(3.6.dp)
+                        .fillMaxHeight(0.92f)
+                ) {
+                    val h = size.height
+                    val w = size.width
+                    val railTopPx = (containerHeightPx - h) / 2f
+                    val relativeBonnetY = (bonnetCenterYPx - railTopPx).coerceIn(0f, h)
+                    val activeHeight = h - relativeBonnetY
+                    if (activeHeight > 0f) {
                         drawRoundRect(
                             brush = Brush.verticalGradient(
                                 colors = listOf(
-                                    Color.White.copy(alpha = glowAlpha),
-                                    dynamicAura.copy(alpha = glowAlpha),
-                                    dynamicAura.copy(alpha = glowAlpha * 0.85f)
+                                    Color.White.copy(alpha = baseAlpha),
+                                    dynamicAura.copy(alpha = baseAlpha),
+                                    dynamicAura.copy(alpha = (baseAlpha * 0.90f).coerceIn(0.5f, 1f))
                                 ),
                                 startY = relativeBonnetY,
                                 endY = h
                             ),
                             topLeft = Offset(0f, relativeBonnetY),
-                            size = Size(w, activeGlowHeight),
-                            cornerRadius = CornerRadius(1.6.dp.toPx())
+                            size = Size(w, activeHeight),
+                            cornerRadius = CornerRadius(1.8.dp.toPx())
+                        )
+                    }
+                }
+
+                // 3. Incandescent white-hot core line down the center (gives electric laser / neon tube brilliance)
+                Canvas(
+                    modifier = Modifier
+                        .width(1.4.dp)
+                        .fillMaxHeight(0.92f)
+                ) {
+                    val h = size.height
+                    val w = size.width
+                    val railTopPx = (containerHeightPx - h) / 2f
+                    val relativeBonnetY = (bonnetCenterYPx - railTopPx).coerceIn(0f, h)
+                    val activeHeight = h - relativeBonnetY
+                    if (activeHeight > 0f) {
+                        val coreAlpha = if (isAudioSoundActive) 0.95f else 0.82f
+                        drawRoundRect(
+                            color = Color.White.copy(alpha = coreAlpha),
+                            topLeft = Offset(0f, relativeBonnetY),
+                            size = Size(w, activeHeight),
+                            cornerRadius = CornerRadius(0.7.dp.toPx())
                         )
                     }
                 }
@@ -253,10 +306,10 @@ fun CustomVerticalFader(
                             this@drawWithContent.drawContent()
                         }
                     },
-                colorFilter = ColorFilter.tint(Color(0xFF262934), androidx.compose.ui.graphics.BlendMode.SrcIn)
+                colorFilter = ColorFilter.tint(Color(0xFF1E212B), androidx.compose.ui.graphics.BlendMode.SrcIn)
             )
 
-            // Authentic Rail PNG element: Light gray metallic contour below bonnet, dynamically adapting when moving the bonnet
+            // Authentic Rail PNG element: Sleek metallic lighter gray contour below bonnet
             Image(
                 painter = painterResource(id = R.drawable.ic_fader_track),
                 contentDescription = "Fader Track Rail Light",
@@ -268,7 +321,7 @@ fun CustomVerticalFader(
                             this@drawWithContent.drawContent()
                         }
                     },
-                colorFilter = ColorFilter.tint(Color(0xFF8E98AC), androidx.compose.ui.graphics.BlendMode.SrcIn)
+                colorFilter = ColorFilter.tint(Color(0xFF3E4554), androidx.compose.ui.graphics.BlendMode.SrcIn)
             )
         }
 

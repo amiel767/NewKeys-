@@ -211,12 +211,12 @@ fun KeyboardLayerMapper(
     if (visibleTracks.isEmpty()) return
 
     val totalWidthDp = whiteWidthDp * totalWhiteKeys
-    val visibleCount = visibleTracks.size.coerceAtMost(4)
+    val visibleCount = visibleTracks.size.coerceIn(1, 8)
     val targetHeight = if (isExpanded) {
-        (36.dp * visibleCount + 12.dp).coerceIn(46.dp, 160.dp)
+        (36.dp * visibleCount.coerceAtMost(4) + 12.dp).coerceIn(46.dp, 160.dp)
     } else {
-        // Compact mode: ultra-fine, aesthetic Sunday Keys style lines (12-16dp total)
-        (2.8.dp * visibleTracks.size.coerceAtMost(6) + 3.dp).coerceIn(10.dp, 16.dp)
+        // Compact mode: ultra-fine, aesthetic Sunday Keys style lines for ALL active tracks (up to 8)
+        ((visibleTracks.size * 3.4f).dp + 4.dp).coerceIn(12.dp, 36.dp)
     }
 
     val verticalScrollState = rememberScrollState()
@@ -235,7 +235,7 @@ fun KeyboardLayerMapper(
                 modifier = Modifier
                     .fillMaxSize()
                     .clickable { onToggleExpanded() },
-                verticalArrangement = Arrangement.spacedBy(1.5.dp, Alignment.CenterVertically)
+                verticalArrangement = Arrangement.spacedBy(1.2.dp, Alignment.CenterVertically)
             ) {
                 visibleTracks.forEachIndexed { _, track ->
                     val trackColor = KeyPositionMapper.getTrackNeonColor(track.id)
@@ -249,13 +249,13 @@ fun KeyboardLayerMapper(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(2.5.dp)
+                            .height(2.2.dp)
                     ) {
                         Box(
                             modifier = Modifier
                                 .offset(x = startXDp)
                                 .width(barWidthDp)
-                                .height(2.5.dp)
+                                .height(2.2.dp)
                                 .background(
                                     Brush.horizontalGradient(
                                         listOf(trackColor.copy(alpha = 0.90f), trackColor)
