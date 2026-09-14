@@ -366,10 +366,10 @@ fun BottomBar(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = if (isKeyboardActive) "CLAVIER ACTIF" else "ACCORDS / HARMONIE",
+                        text = "ACCORDS / HARMONIE",
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isKeyboardActive) NeonCyan else Color(0x77FFFFFF)
+                        color = Color(0x77FFFFFF)
                     )
                 }
             }

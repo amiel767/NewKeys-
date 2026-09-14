@@ -8,6 +8,7 @@ import android.media.AudioTrack
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
+import android.media.PlaybackParams
 import android.os.Process
 import android.util.Log
 import java.io.File
@@ -75,18 +76,19 @@ class DjLoopEngine(private val context: Context) {
         bpm: Int = 120,
         startMs: Int = 0,
         endMs: Int = 0,
-        pitchShiftSemitones: Int = 0
+        pitchShiftSemitones: Int = 0,
+        baseBpm: Int = 120
     ) {
         loopVolume = volume.coerceIn(0f, 1f)
         activeBeatCount = beatCount
         activeBpm = bpm.coerceAtLeast(30)
-        baseFileBpm = if (bpm > 0) bpm else 120
+        baseFileBpm = if (baseBpm > 0) baseBpm else (if (bpm > 0) bpm else 120)
         semitonePitchShift = pitchShiftSemitones
 
-        // If currently playing the exact same file, update trims / pitch dynamically
+        // If currently playing the exact same file, update trims / pitch / tempo dynamically
         if (isPlaying && currentFilePath == filePath && rawDecodedPcm != null) {
-            applyTimeStretchAndPitch(bpm, pitchShiftSemitones)
-            updateTrimPoints(startMs, endMs, beatCount, bpm)
+            applyPlaybackParams()
+            updateTrimPoints(startMs, endMs, beatCount, baseFileBpm)
             audioTrack?.setVolume(loopVolume)
             return
         }
@@ -100,9 +102,10 @@ class DjLoopEngine(private val context: Context) {
                 rawDecodedPcm = decoded.pcm
                 currentSampleRate = decoded.sampleRate
                 currentChannels = decoded.channels
+                currentPcm = decoded.pcm
+                totalFrames = decoded.pcm.size / decoded.channels
 
-                applyTimeStretchAndPitch(bpm, pitchShiftSemitones)
-
+                computeFrames(startMs, endMs, beatCount, baseFileBpm)
                 startAudioStream()
             } catch (e: Exception) {
                 Log.e(TAG, "Error starting DJ loop: ${e.message}")
@@ -110,30 +113,41 @@ class DjLoopEngine(private val context: Context) {
         }.start()
     }
 
-    private fun applyTimeStretchAndPitch(targetBpm: Int, semitones: Int) {
-        val raw = rawDecodedPcm ?: return
-        val ratio = if (baseFileBpm > 0 && targetBpm > 0) {
-            targetBpm.toFloat() / baseFileBpm.toFloat()
-        } else 1.0f
+    fun applyPlaybackParams() {
+        val track = audioTrack ?: return
+        try {
+            val speed = if (baseFileBpm > 0 && activeBpm > 0) {
+                (activeBpm.toFloat() / baseFileBpm.toFloat()).coerceIn(0.25f, 4.0f)
+            } else 1.0f
 
-        val processed = com.soundstage.mixer.audio.TimeStretchPitchShifter.process(
-            inputPCM = raw,
-            channels = currentChannels,
-            sampleRate = currentSampleRate,
-            tempoRatio = ratio,
-            semitonePitchOffset = semitones
-        )
+            val pitchFactor = Math.pow(2.0, semitonePitchShift.toDouble() / 12.0).toFloat().coerceIn(0.25f, 4.0f)
 
-        currentPcm = processed
-        totalFrames = processed.size / currentChannels
-        computeFrames(0, 0, activeBeatCount, targetBpm)
+            val params = PlaybackParams()
+                .setSpeed(speed)
+                .setPitch(pitchFactor)
+            track.playbackParams = params
+            Log.d(TAG, "DjLoopEngine: PlaybackParams applied: speed=$speed (BPM $activeBpm / $baseFileBpm), pitch=$pitchFactor (semitones=$semitonePitchShift)")
+        } catch (e: Exception) {
+            Log.e(TAG, "DjLoopEngine: Error setting playbackParams: ${e.message}")
+        }
     }
 
     fun setPitchShift(semitones: Int) {
         semitonePitchShift = semitones.coerceIn(-12, 12)
-        if (isPlaying && rawDecodedPcm != null) {
-            applyTimeStretchAndPitch(activeBpm, semitonePitchShift)
-        }
+        applyPlaybackParams()
+    }
+
+    fun setBpm(bpm: Int) {
+        activeBpm = bpm.coerceAtLeast(30)
+        applyPlaybackParams()
+        computeFrames(0, 0, activeBeatCount, baseFileBpm)
+    }
+
+    fun setBeats(beatCount: Int, bpm: Int) {
+        activeBeatCount = beatCount
+        activeBpm = bpm.coerceAtLeast(30)
+        applyPlaybackParams()
+        computeFrames(0, 0, beatCount, baseFileBpm)
     }
 
     private fun computeFrames(startMs: Int, endMs: Int, beatCount: Int, bpm: Int) {
@@ -171,19 +185,7 @@ class DjLoopEngine(private val context: Context) {
 
     fun updateTrims(startMs: Int, endMs: Int) {
         if (currentPcm == null || totalFrames <= 0) return
-        computeFrames(startMs, endMs, activeBeatCount, activeBpm)
-    }
-
-    fun setBeats(beatCount: Int, bpm: Int) {
-        activeBeatCount = beatCount
-        val targetBpm = bpm.coerceAtLeast(30)
-        val shouldStretch = targetBpm != activeBpm
-        activeBpm = targetBpm
-        if (rawDecodedPcm != null && shouldStretch) {
-            applyTimeStretchAndPitch(activeBpm, semitonePitchShift)
-        }
-        if (currentPcm == null || totalFrames <= 0) return
-        computeFrames(0, 0, beatCount, activeBpm)
+        computeFrames(startMs, endMs, activeBeatCount, baseFileBpm)
     }
 
     fun setVolume(volume: Float) {
@@ -224,6 +226,7 @@ class DjLoopEngine(private val context: Context) {
         track.setVolume(loopVolume)
         track.play()
         audioTrack = track
+        applyPlaybackParams()
         isPlaying = true
         isPaused = false
 

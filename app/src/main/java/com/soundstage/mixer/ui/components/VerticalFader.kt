@@ -521,7 +521,7 @@ fun FaderSliderWithVuMeter(
             trackWidth = 22.dp,
             trackHeight = 220.dp,
             thumbWidth = 40.dp,
-            thumbHeight = 45.dp,
+            thumbHeight = 51.dp,
             modifier = Modifier.fillMaxHeight()
         )
     }

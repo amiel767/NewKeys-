@@ -213,29 +213,19 @@ fun KeyboardLayerMapper(
     val totalWidthDp = whiteWidthDp * totalWhiteKeys
     val visibleCount = visibleTracks.size.coerceAtMost(4)
     val targetHeight = if (isExpanded) {
-        (30.dp * visibleCount + 8.dp).coerceIn(38.dp, 130.dp)
+        (36.dp * visibleCount + 12.dp).coerceIn(46.dp, 160.dp)
     } else {
         // Compact mode: ultra-fine, aesthetic Sunday Keys style lines (12-16dp total)
         (2.8.dp * visibleTracks.size.coerceAtMost(6) + 3.dp).coerceIn(10.dp, 16.dp)
     }
-
-    val animatedHeight by animateDpAsState(
-        targetValue = targetHeight,
-        animationSpec = spring(
-            dampingRatio = 0.85f,
-            stiffness = Spring.StiffnessMediumLow
-        ),
-        label = "mapperHeight"
-    )
 
     val verticalScrollState = rememberScrollState()
 
     Column(
         modifier = modifier
             .width(totalWidthDp)
-            .height(animatedHeight)
-            .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
-            .background(Color(0xE60A0E16))
+            .fillMaxHeight()
+            .background(Color.Transparent)
             .padding(horizontal = 0.dp, vertical = 1.dp)
             .testTag("keyboard_layer_mapper")
     ) {
@@ -266,13 +256,13 @@ fun KeyboardLayerMapper(
                                 .offset(x = startXDp)
                                 .width(barWidthDp)
                                 .height(2.5.dp)
-                                .clip(RoundedCornerShape(1.5.dp))
                                 .background(
                                     Brush.horizontalGradient(
                                         listOf(trackColor.copy(alpha = 0.90f), trackColor)
-                                    )
+                                    ),
+                                    shape = RoundedCornerShape(1.dp)
                                 )
-                                .border(0.4.dp, Color(0x44FFFFFF), RoundedCornerShape(1.5.dp))
+                                .border(0.4.dp, Color(0x44FFFFFF), shape = RoundedCornerShape(1.dp))
                         )
                     }
                 }
@@ -283,7 +273,7 @@ fun KeyboardLayerMapper(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(verticalScrollState),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 visibleTracks.forEachIndexed { _, track ->
                     val trackColor = KeyPositionMapper.getTrackNeonColor(track.id)
@@ -359,7 +349,7 @@ private fun TrackRangeBarRow(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(26.dp)
+            .height(30.dp)
     ) {
         // Main Colored Capsule Bar (Border-less, MaterialYou Expressive)
         val minNoteName = KeyPositionMapper.midiToNoteName(minNote)
@@ -369,10 +359,15 @@ private fun TrackRangeBarRow(
             modifier = Modifier
                 .offset(x = startXDp)
                 .width(barWidthDp)
-                .height(24.dp)
-                .shadow(if (isActivelyDragging) 4.dp else 1.5.dp, RoundedCornerShape(12.dp))
-                .clip(RoundedCornerShape(12.dp))
-                .background(trackColor.copy(alpha = if (isActivelyDragging) 0.96f else 0.88f))
+                .height(28.dp)
+                .shadow(
+                    elevation = if (isActivelyDragging) 4.dp else 1.5.dp,
+                    shape = RoundedCornerShape(8.dp)
+                )
+                .background(
+                    color = trackColor.copy(alpha = if (isActivelyDragging) 0.96f else 0.88f),
+                    shape = RoundedCornerShape(8.dp)
+                )
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onDoubleTap = { onToggleExpanded() }
@@ -458,7 +453,7 @@ private fun TrackRangeBarRow(
         Box(
             modifier = Modifier
                 .offset(x = (leftDotX + (dotSize / 2f)) - (touchHitboxWidth / 2f))
-                .size(touchHitboxWidth, 26.dp)
+                .size(touchHitboxWidth, 30.dp)
                 .pointerInput(track.id) {
                     detectHorizontalDragGestures(
                         onDragStart = {
@@ -510,7 +505,7 @@ private fun TrackRangeBarRow(
         Box(
             modifier = Modifier
                 .offset(x = (rightDotX + (dotSize / 2f)) - (touchHitboxWidth / 2f))
-                .size(touchHitboxWidth, 26.dp)
+                .size(touchHitboxWidth, 30.dp)
                 .pointerInput(track.id) {
                     detectHorizontalDragGestures(
                         onDragStart = {

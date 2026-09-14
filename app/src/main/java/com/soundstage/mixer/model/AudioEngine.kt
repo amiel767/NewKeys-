@@ -506,7 +506,12 @@ class AudioEngine(private val context: Context) {
 
             0xB0 -> { // Control Change (CC)
                 when (data1) {
-                    7, 11 -> { // CC#7 Volume, CC#11 Expression
+                    7 -> { // CC#7 Volume (Global Master Volume)
+                        val vol = (data2 / 127f).coerceIn(0f, 1f)
+                        masterVolume = vol
+                        NativeAudioBridge.safeSetMasterVolume(vol)
+                    }
+                    11 -> { // CC#11 Expression
                         val vol = (data2 / 127f).coerceIn(0f, 1f)
                         targetChannels.forEach { ch ->
                             NativeAudioBridge.safeSetTrackVolume(ch, vol)
@@ -516,6 +521,11 @@ class AudioEngine(private val context: Context) {
                         val pan = ((data2 - 64) / 63f).coerceIn(-1f, 1f)
                         targetChannels.forEach { ch ->
                             NativeAudioBridge.safeSetTrackPan(ch, pan)
+                        }
+                    }
+                    else -> {
+                        targetChannels.forEach { ch ->
+                            NativeAudioBridge.safeControlChange(channel = ch, cc = data1, value = data2)
                         }
                     }
                 }
@@ -1106,7 +1116,8 @@ class AudioEngine(private val context: Context) {
         bpm: Int = 120,
         startMs: Int = 0,
         endMs: Int = 0,
-        pitchShiftSemitones: Int = 0
+        pitchShiftSemitones: Int = 0,
+        baseBpm: Int = 120
     ) {
         currentLoopVolume = volume.coerceIn(0f, 1f)
         currentLoopFilePath = filePath
@@ -1114,11 +1125,16 @@ class AudioEngine(private val context: Context) {
         activeLoopBpm = bpm
         loopTrimStartMs = startMs
         loopTrimEndMs = endMs
-        djLoopEngine.playLoop(filePath, currentLoopVolume, beatCount, bpm, startMs, endMs, pitchShiftSemitones)
+        djLoopEngine.playLoop(filePath, currentLoopVolume, beatCount, bpm, startMs, endMs, pitchShiftSemitones, baseBpm)
     }
 
     fun setLoopPitchShift(semitones: Int) {
         djLoopEngine.setPitchShift(semitones)
+    }
+
+    fun setLoopBpm(bpm: Int) {
+        activeLoopBpm = bpm
+        djLoopEngine.setBpm(bpm)
     }
 
     fun setLoopBeats(beatCount: Int, bpm: Int) {

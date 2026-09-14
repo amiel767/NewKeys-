@@ -12,10 +12,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -48,7 +54,7 @@ fun CustomVerticalFader(
     trackWidth: Dp = 16.dp,
     trackHeight: Dp = 220.dp,
     thumbWidth: Dp = 38.dp,
-    thumbHeight: Dp = 46.dp,
+    thumbHeight: Dp = 51.dp,
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
@@ -155,10 +161,14 @@ fun CustomVerticalFader(
             }
         }
 
+        // Calculate precise vertical position of thumb bonnet and its center
+        val usableHeightPx = (containerHeightPx - thumbHeightPx).coerceAtLeast(0f)
+        val offsetYPx = ((1f - localValue.coerceIn(0f, 1f)) * usableHeightPx).roundToInt()
+        val bonnetCenterYPx = offsetYPx + thumbHeightPx / 2f
+
         // ================= 1. RAIL / TRACK AUTHENTIC PNG ELEMENT =================
         val isAudioSoundActive = isEnabled && audioActivity > 0.015f
-        val neonAlpha = if (isAudioSoundActive) 1.0f else 0.85f
-        val dynamicAura = auraColor.copy(alpha = neonAlpha)
+        val dynamicAura = auraColor.copy(alpha = 1.0f)
 
         Box(
             modifier = Modifier
@@ -166,59 +176,114 @@ fun CustomVerticalFader(
                 .fillMaxHeight(),
             contentAlignment = Alignment.Center
         ) {
-            // Glowing neon line in central slot
-            Box(
+            // Slot background: Dark metallic gray above bonnet, clean lighter gray below bonnet
+            Canvas(
                 modifier = Modifier
-                    .width(3.2.dp)
+                    .width(4.dp)
                     .fillMaxHeight(0.92f)
-                    .clip(RoundedCornerShape(1.6.dp))
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                dynamicAura.copy(alpha = 0.90f),
-                                Color.White.copy(alpha = 0.95f),
-                                dynamicAura.copy(alpha = 0.90f)
-                            )
-                        )
-                    )
-            )
-
-            // Glowing neon crossbar slit near top of rail (matching authentic rail design)
-            Box(
-                modifier = Modifier.fillMaxSize()
             ) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 34.dp)
-                        .width(trackWidth * 0.55f)
-                        .height(2.2.dp)
-                        .clip(RoundedCornerShape(1.1.dp))
-                        .background(
-                            Brush.horizontalGradient(
-                                listOf(
-                                    dynamicAura.copy(alpha = 0.70f),
-                                    Color.White.copy(alpha = 0.95f),
-                                    dynamicAura.copy(alpha = 0.70f)
-                                )
-                            )
-                        )
-                )
+                val h = size.height
+                val w = size.width
+                val railTopPx = (containerHeightPx - h) / 2f
+                val relativeBonnetY = (bonnetCenterYPx - railTopPx).coerceIn(0f, h)
+
+                // Top segment (above bonnet) - dark slot
+                if (relativeBonnetY > 0f) {
+                    drawRoundRect(
+                        color = Color(0xFF181B24),
+                        topLeft = Offset(0f, 0f),
+                        size = Size(w, relativeBonnetY),
+                        cornerRadius = CornerRadius(2.dp.toPx())
+                    )
+                }
+
+                // Bottom segment (below bonnet) - noticeably lighter gray slot
+                val bottomHeight = h - relativeBonnetY
+                if (bottomHeight > 0f) {
+                    drawRoundRect(
+                        color = Color(0xFF4C5468),
+                        topLeft = Offset(0f, relativeBonnetY),
+                        size = Size(w, bottomHeight),
+                        cornerRadius = CornerRadius(2.dp.toPx())
+                    )
+                }
             }
 
-            // Authentic Rail PNG element (sleeker, slightly darker metallic rail)
+            // Glowing neon line in central slot: ONLY when audio sound is active and ONLY up to bonnet height
+            if (isAudioSoundActive) {
+                val glowAlpha = (audioActivity.coerceIn(0.15f, 1.0f) * 0.95f).coerceIn(0.4f, 1.0f)
+                Canvas(
+                    modifier = Modifier
+                        .width(3.2.dp)
+                        .fillMaxHeight(0.92f)
+                ) {
+                    val h = size.height
+                    val w = size.width
+                    val railTopPx = (containerHeightPx - h) / 2f
+                    val relativeBonnetY = (bonnetCenterYPx - railTopPx).coerceIn(0f, h)
+                    val activeGlowHeight = h - relativeBonnetY
+                    if (activeGlowHeight > 0f) {
+                        drawRoundRect(
+                            brush = Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.White.copy(alpha = glowAlpha),
+                                    dynamicAura.copy(alpha = glowAlpha),
+                                    dynamicAura.copy(alpha = glowAlpha * 0.85f)
+                                ),
+                                startY = relativeBonnetY,
+                                endY = h
+                            ),
+                            topLeft = Offset(0f, relativeBonnetY),
+                            size = Size(w, activeGlowHeight),
+                            cornerRadius = CornerRadius(1.6.dp.toPx())
+                        )
+                    }
+                }
+            }
+
+            // Authentic Rail PNG element: Dark metallic contour above bonnet
             Image(
                 painter = painterResource(id = R.drawable.ic_fader_track),
-                contentDescription = "Fader Track Rail",
+                contentDescription = "Fader Track Rail Dark",
                 contentScale = ContentScale.FillBounds,
-                modifier = Modifier.fillMaxSize(),
-                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color(0xFF262934), androidx.compose.ui.graphics.BlendMode.SrcIn)
+                modifier = Modifier
+                    .fillMaxSize()
+                    .drawWithContent {
+                        clipRect(top = 0f, bottom = bonnetCenterYPx, left = 0f, right = size.width) {
+                            this@drawWithContent.drawContent()
+                        }
+                    },
+                colorFilter = ColorFilter.tint(Color(0xFF262934), androidx.compose.ui.graphics.BlendMode.SrcIn)
+            )
+
+            // Authentic Rail PNG element: Light gray metallic contour below bonnet, dynamically adapting when moving the bonnet
+            Image(
+                painter = painterResource(id = R.drawable.ic_fader_track),
+                contentDescription = "Fader Track Rail Light",
+                contentScale = ContentScale.FillBounds,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .drawWithContent {
+                        clipRect(top = bonnetCenterYPx, bottom = size.height, left = 0f, right = size.width) {
+                            this@drawWithContent.drawContent()
+                        }
+                    },
+                colorFilter = ColorFilter.tint(Color(0xFF8E98AC), androidx.compose.ui.graphics.BlendMode.SrcIn)
             )
         }
 
         // ================= 2. CAP / THUMB BONNET AUTHENTIC PNG ELEMENT =================
-        val usableHeightPx = (containerHeightPx - thumbHeightPx).coerceAtLeast(0f)
-        val offsetYPx = ((1f - localValue.coerceIn(0f, 1f)) * usableHeightPx).roundToInt()
+        // Lightened ColorMatrix: subtly lighter grey while preserving 100% texture, ridges, and bevels
+        val lightenedBonnetMatrix = remember {
+            ColorMatrix(
+                floatArrayOf(
+                    1.24f, 0f, 0f, 0f, 24f,
+                    0f, 1.24f, 0f, 0f, 24f,
+                    0f, 0f, 1.26f, 0f, 24f,
+                    0f, 0f, 0f, 1.0f, 0f
+                )
+            )
+        }
 
         // Fader Thumb Bonnet (exact PNG with baked-in drop shadow, bevels & colors)
         Box(
@@ -229,12 +294,13 @@ fun CustomVerticalFader(
                 .height(thumbHeight),
             contentAlignment = Alignment.Center
         ) {
-            // Authentic Bonnet PNG element
+            // Authentic Bonnet PNG element with lighter grey metallic color matrix
             Image(
                 painter = painterResource(id = R.drawable.ic_fader_thumb),
                 contentDescription = "Fader Thumb Cap",
                 contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                colorFilter = ColorFilter.colorMatrix(lightenedBonnetMatrix)
             )
 
             // Central neon indicator slit following dynamic fader aura color

@@ -189,6 +189,17 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_pitchBend(
 }
 
 JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_controlChange(
+        JNIEnv *env,
+        jobject /* this */,
+        jint engineIndex,
+        jint channel,
+        jint cc,
+        jint value) {
+    gAudioEngine.getEngine(engineIndex).sendCC(channel, cc, value);
+}
+
+JNIEXPORT void JNICALL
 Java_com_soundstage_mixer_audio_NativeAudioBridge_setMasterVolume(
         JNIEnv *env,
         jobject /* this */,

@@ -260,21 +260,8 @@ int AudioEngine::renderDirect(int16_t *outputBuffer16, int32_t numFrames) {
         mEqMid.process(floatBuf, numFrames);
         mEqHigh.process(floatBuf, numFrames);
 
-        // 7. Master Studio Peak Limiter / Maximizer (Makeup Gain +6 dB with soft-knee analog saturation)
-        // Eliminates harsh clipping while delivering punchy, full-bodied presence even at moderate volume
-        constexpr float kMakeupGain = 2.0f;
-        constexpr float kThreshold = 0.94f;
-        constexpr float kMargin = 0.045f; // Ceiling at ~0.985 max amplitude
-        for (size_t i = 0; i < totalSamples; ++i) {
-            float x = floatBuf[i] * kMakeupGain;
-            if (x > kThreshold) {
-                floatBuf[i] = kThreshold + kMargin * tanhf((x - kThreshold) / kMargin);
-            } else if (x < -kThreshold) {
-                floatBuf[i] = -kThreshold + kMargin * tanhf((x + kThreshold) / kMargin);
-            } else {
-                floatBuf[i] = x;
-            }
-        }
+        // 7. Master Studio Peak Limiter, Parallel Compressor & Sub-Bass Cut HPF
+        processMasterChain(floatBuf, numFrames);
     }
 
     // Convert Float to PCM 16-bit
@@ -350,20 +337,8 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
             mEqMid.process(floatBuf, numFrames);
             mEqHigh.process(floatBuf, numFrames);
 
-            // 7. Master Soft-Clipping Maximizer / Limiter
-            constexpr float kMakeupGain = 2.0f;
-            constexpr float kThreshold = 0.94f;
-            constexpr float kMargin = 0.045f;
-            for (size_t i = 0; i < totalSamples; ++i) {
-                float x = floatBuf[i] * kMakeupGain;
-                if (x > kThreshold) {
-                    floatBuf[i] = kThreshold + kMargin * tanhf((x - kThreshold) / kMargin);
-                } else if (x < -kThreshold) {
-                    floatBuf[i] = -kThreshold + kMargin * tanhf((x + kThreshold) / kMargin);
-                } else {
-                    floatBuf[i] = x;
-                }
-            }
+            // 7. Master Studio Peak Limiter, Parallel Compressor & Sub-Bass Cut HPF
+            processMasterChain(floatBuf, numFrames);
         }
 
         // Convert Float to PCM 16-bit
@@ -406,21 +381,8 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
             mEqMid.process(outputBuffer, numFrames);
             mEqHigh.process(outputBuffer, numFrames);
 
-            // 7. Master Studio Peak Limiter / Maximizer (Float 32-bit: Makeup Gain +6 dB with soft-knee analog saturation)
-            // Eliminates harsh clipping while delivering punchy, full-bodied presence
-            constexpr float kMakeupGain = 2.0f;
-            constexpr float kThreshold = 0.94f;
-            constexpr float kMargin = 0.045f;
-            for (size_t i = 0; i < totalSamples; ++i) {
-                float x = outputBuffer[i] * kMakeupGain;
-                if (x > kThreshold) {
-                    outputBuffer[i] = kThreshold + kMargin * tanhf((x - kThreshold) / kMargin);
-                } else if (x < -kThreshold) {
-                    outputBuffer[i] = -kThreshold + kMargin * tanhf((x + kThreshold) / kMargin);
-                } else {
-                    outputBuffer[i] = x;
-                }
-            }
+            // 7. Master Studio Peak Limiter, Parallel Compressor & Sub-Bass Cut HPF
+            processMasterChain(outputBuffer, numFrames);
         }
     }
 
@@ -436,6 +398,82 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
     }
 
     return oboe::DataCallbackResult::Continue;
+}
+
+void AudioEngine::processMasterChain(float *floatBuf, int32_t numFrames) {
+    if (mBypassMasterFX.load(std::memory_order_relaxed)) return;
+
+    // 1. Apply Sub-Bass Butterworth 4-pole Cut-off at 30Hz
+    mSubBassCut1.process(floatBuf, numFrames);
+    mSubBassCut2.process(floatBuf, numFrames);
+
+    // 2. Master Parallel Upward Compressor & Look-Ahead Limiter
+    float sr = static_cast<float>(mSampleRate > 0 ? mSampleRate : 48000);
+    float alphaAttack = std::exp(-1.0f / (sr * 0.010f)); // 10ms attack
+    float alphaRelease = std::exp(-1.0f / (sr * 0.100f)); // 100ms release
+    float limAttack = std::exp(-1.0f / (sr * 0.001f)); // 1ms attack
+    float limRelease = std::exp(-1.0f / (sr * 0.120f)); // 120ms release
+    constexpr float compThreshold = 0.063f; // -24 dB
+    constexpr float limCeiling = 0.96f; // Master output safety ceiling
+    constexpr float kMasterMakeupGain = 2.2f; // Pro Workstation makeup gain for rich/loud sound without clipping
+
+    for (int32_t i = 0; i < numFrames; ++i) {
+        float xL = floatBuf[2 * i] * kMasterMakeupGain;
+        float xR = floatBuf[2 * i + 1] * kMasterMakeupGain;
+
+        // A. Parallel / Upward Compression Envelope Follower
+        float envIn = std::max(std::abs(xL), std::abs(xR));
+        if (envIn > mParallelCompEnv) {
+            mParallelCompEnv = envIn + alphaAttack * (mParallelCompEnv - envIn);
+        } else {
+            mParallelCompEnv = envIn + alphaRelease * (mParallelCompEnv - envIn);
+        }
+
+        float compGain = 1.0f;
+        if (mParallelCompEnv > compThreshold) {
+            float dbEnv = 20.0f * std::log10(mParallelCompEnv / compThreshold);
+            float dbTarget = dbEnv / 4.0f; // 4:1 compression ratio
+            float dbReduction = dbTarget - dbEnv;
+            compGain = std::pow(10.0f, dbReduction / 20.0f);
+        }
+
+        // Mix 65% dry and 35% heavily compressed signal to lift low-level details (upward warmth)
+        float processedL = xL + 0.35f * (xL * compGain * 2.5f);
+        float processedR = xR + 0.35f * (xR * compGain * 2.5f);
+
+        // B. Write processed samples to the look-ahead delay buffer
+        mDelayBufferL[mLimiterWriteIndex] = processedL;
+        mDelayBufferR[mLimiterWriteIndex] = processedR;
+
+        // C. Look-Ahead Transient Peak Detection
+        float futurePeak = 0.0f;
+        for (int d = 0; d < 64; ++d) {
+            float p = std::max(std::abs(mDelayBufferL[d]), std::abs(mDelayBufferR[d]));
+            if (p > futurePeak) futurePeak = p;
+        }
+
+        // D. Smooth Limiter Gain Reduction Envelope
+        if (futurePeak > mLimiterEnv) {
+            mLimiterEnv = futurePeak + limAttack * (mLimiterEnv - futurePeak);
+        } else {
+            mLimiterEnv = futurePeak + limRelease * (mLimiterEnv - futurePeak);
+        }
+
+        float limiterGain = 1.0f;
+        if (mLimiterEnv > limCeiling) {
+            limiterGain = limCeiling / mLimiterEnv;
+        }
+
+        // E. Read delayed sample and apply limiter gain reduction
+        int readIndex = (mLimiterWriteIndex + 1) % 64;
+        float delayedL = mDelayBufferL[readIndex];
+        float delayedR = mDelayBufferR[readIndex];
+
+        floatBuf[2 * i] = delayedL * limiterGain;
+        floatBuf[2 * i + 1] = delayedR * limiterGain;
+
+        mLimiterWriteIndex = (mLimiterWriteIndex + 1) % 64;
+    }
 }
 
 #else

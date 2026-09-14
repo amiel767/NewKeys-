@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -110,7 +111,11 @@ fun MixerScreen(
                     bottom = safeBottomPadding
                 )
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .blur(if (uiState.isKeyboardLayerExpanded && isKeyboardVisible) 3.5.dp else 0.dp)
+            ) {
                 // 1. TOP BAR
                 TopBar(
                     transpose = uiState.transpose,
@@ -243,39 +248,63 @@ fun MixerScreen(
                     }
                 )
 
-                // 4. RETRACTABLE MULTI-TOUCH VIRTUAL PIANO KEYBOARD (Non-clipping, direct render for seamless Layer Mapper)
-                val (_, activeSlotLedColor) = rememberDynamicFaderHue(uiState.activeSoundfontSlotId + 1)
-
+                // 4. FIXED LAYOUT SLOT FOR RETRACTABLE PIANO (so faders/BottomBar get pushed up by exactly 65.dp when keyboard is visible)
                 if (isKeyboardVisible) {
-                    Box(
+                    Spacer(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .zIndex(100f) // Keep the keyboard and its overlapping mapper on top of siblings
-                    ) {
-                        VirtualPianoKeyboard(
-                            heightFraction = 1f,
-                            pressedKeys = uiState.pressedKeys,
-                            octave = uiState.octave,
-                            tracks = uiState.tracks,
-                            isLayerExpanded = uiState.isKeyboardLayerExpanded,
-                            onToggleLayerExpanded = { viewModel.toggleKeyboardLayer() },
-                            onRangeChanged = { trackId, minN, maxN -> viewModel.updateTrackKeyRange(trackId, minN, maxN) },
-                            onKeyDown = { viewModel.onKeyDown(it) },
-                            onKeyUp = { viewModel.onKeyUp(it) },
-                            onKeyDownWithVelocity = { key, vel -> viewModel.onKeyDown(key, vel) },
-                            onGrabberDrag = { deltaY ->
-                                val fractionDelta = -deltaY / 200f
-                                viewModel.setKeyboardHeightFraction(uiState.keyboardHeightFraction + fractionDelta)
-                            },
-                            onGrabberClick = { viewModel.cycleKeyboardExpansion() },
-                            isSustainActive = uiState.isSustainActive,
-                            onToggleSustain = { viewModel.toggleSustain() },
-                            pitchBend = uiState.pitchBend,
-                            onPitchBendChange = { viewModel.setPitchBend(it) },
-                            onOctaveChange = { delta -> viewModel.updateOctave(delta) },
-                            activeAuraColor = activeSlotLedColor
-                        )
-                    }
+                            .height(65.dp)
+                    )
+                }
+            }
+
+            // Outside tap dismisser for expanded keyboard layer lines
+            if (isKeyboardVisible && uiState.isKeyboardLayerExpanded) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .zIndex(60f)
+                        .clickable(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            viewModel.toggleKeyboardLayer()
+                        }
+                )
+            }
+
+            // 5. RETRACTABLE MULTI-TOUCH VIRTUAL PIANO KEYBOARD (Floating overlay anchored to BottomCenter of chassis card, can expand without pushing)
+            val (_, activeSlotLedColor) = rememberDynamicFaderHue(uiState.activeSoundfontSlotId + 1)
+            if (isKeyboardVisible) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .zIndex(100f) // Keep the keyboard and its overlapping mapper on top of siblings
+                ) {
+                    VirtualPianoKeyboard(
+                        heightFraction = 1f,
+                        pressedKeys = uiState.pressedKeys,
+                        octave = uiState.octave,
+                        tracks = uiState.tracks,
+                        isLayerExpanded = uiState.isKeyboardLayerExpanded,
+                        onToggleLayerExpanded = { viewModel.toggleKeyboardLayer() },
+                        onRangeChanged = { trackId, minN, maxN -> viewModel.updateTrackKeyRange(trackId, minN, maxN) },
+                        onKeyDown = { viewModel.onKeyDown(it) },
+                        onKeyUp = { viewModel.onKeyUp(it) },
+                        onKeyDownWithVelocity = { key, vel -> viewModel.onKeyDown(key, vel) },
+                        onGrabberDrag = { deltaY ->
+                            val fractionDelta = -deltaY / 200f
+                            viewModel.setKeyboardHeightFraction(uiState.keyboardHeightFraction + fractionDelta)
+                        },
+                        onGrabberClick = { viewModel.cycleKeyboardExpansion() },
+                        isSustainActive = uiState.isSustainActive,
+                        onToggleSustain = { viewModel.toggleSustain() },
+                        pitchBend = uiState.pitchBend,
+                        onPitchBendChange = { viewModel.setPitchBend(it) },
+                        onOctaveChange = { delta -> viewModel.updateOctave(delta) },
+                        activeAuraColor = activeSlotLedColor
+                    )
                 }
             }
 

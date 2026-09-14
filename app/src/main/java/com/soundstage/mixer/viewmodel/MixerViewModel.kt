@@ -241,7 +241,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
         audioEngine.onMidiCcListener = { channel, cc, value ->
             when (cc) {
-                7, 11 -> { // CC#7 Volume, CC#11 Expression
+                7 -> { // CC#7 Volume (Global Master Volume)
+                    val vol = (value / 127f).coerceIn(0f, 1f)
+                    setTrackVolume(0, vol)
+                }
+                11 -> { // CC#11 Expression
                     val vol = (value / 127f).coerceIn(0f, 1f)
                     val targetTrackId = if (channel in 0..7) (channel + 1) else 1
                     setTrackVolume(targetTrackId, vol)
@@ -781,13 +785,17 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             if (target != null) {
                 val f = java.io.File(fileManager.loopsDir, "${target.folder}/${target.name}".replace("Racine /Loops/", "").replace("Loops/", ""))
                 val path = if (f.exists()) f.absolutePath else java.io.File(fileManager.loopsDir, target.name).absolutePath
+                val baseBpm = if (target.bpm > 0) target.bpm else _uiState.value.bpm
+                val semitones = if (target.musicalKey.isNotEmpty()) calculateSemitoneDiff(target.musicalKey, _uiState.value.selectedRootKey) else 0
                 audioEngine.playLoopFile(
                     filePath = path,
                     volume = _uiState.value.loopVolume,
                     beatCount = target.beats.takeIf { b -> b > 0 } ?: _uiState.value.selectedBeatCount,
                     bpm = _uiState.value.bpm,
                     startMs = target.startMs,
-                    endMs = target.endMs
+                    endMs = target.endMs,
+                    pitchShiftSemitones = semitones,
+                    baseBpm = baseBpm
                 )
                 _uiState.update {
                     it.copy(
@@ -858,6 +866,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             val effectiveKey = if (file.musicalKey.isNotEmpty()) file.musicalKey else _uiState.value.selectedRootKey
             val effectiveSig = if (file.timeSignature.isNotEmpty()) file.timeSignature else _uiState.value.metronomeSignature
             val effectiveBeats = file.beats.takeIf { b -> b > 0 } ?: _uiState.value.selectedBeatCount
+            val baseBpm = if (file.bpm > 0) file.bpm else _uiState.value.bpm
+            val semitones = if (file.musicalKey.isNotEmpty()) calculateSemitoneDiff(file.musicalKey, effectiveKey) else 0
 
             audioEngine.playLoopFile(
                 filePath = path,
@@ -865,7 +875,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 beatCount = effectiveBeats,
                 bpm = effectiveBpm,
                 startMs = file.startMs,
-                endMs = file.endMs
+                endMs = file.endMs,
+                pitchShiftSemitones = semitones,
+                baseBpm = baseBpm
             )
             _uiState.update {
                 it.copy(
@@ -922,13 +934,17 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             val f = java.io.File(fileManager.loopsDir, "${editing.folder}/${editing.name}".replace("Racine /Loops/", "").replace("Loops/", ""))
             val path = if (f.exists()) f.absolutePath else java.io.File(fileManager.loopsDir, editing.name).absolutePath
+            val baseBpm = if (editing.bpm > 0) editing.bpm else _uiState.value.bpm
+            val semitones = if (editing.musicalKey.isNotEmpty()) calculateSemitoneDiff(editing.musicalKey, _uiState.value.selectedRootKey) else 0
             audioEngine.playLoopFile(
                 filePath = path,
                 volume = _uiState.value.loopVolume,
                 beatCount = _uiState.value.loopEditorBeats,
                 bpm = _uiState.value.bpm,
                 startMs = _uiState.value.loopEditorStartMs,
-                endMs = _uiState.value.loopEditorEndMs
+                endMs = _uiState.value.loopEditorEndMs,
+                pitchShiftSemitones = semitones,
+                baseBpm = baseBpm
             )
             _uiState.update {
                 it.copy(
@@ -1010,7 +1026,18 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         if (_uiState.value.activeLoopFile?.name == editing.name && _uiState.value.isLoopPlaying) {
             val f = java.io.File(fileManager.loopsDir, "${updatedFile.folder}/${updatedFile.name}".replace("Racine /Loops/", "").replace("Loops/", ""))
             val path = if (f.exists()) f.absolutePath else java.io.File(fileManager.loopsDir, updatedFile.name).absolutePath
-            audioEngine.playLoopFile(path, _uiState.value.loopVolume, updatedFile.beats, _uiState.value.bpm, updatedFile.startMs, updatedFile.endMs)
+            val baseBpm = if (updatedFile.bpm > 0) updatedFile.bpm else _uiState.value.bpm
+            val semitones = if (updatedFile.musicalKey.isNotEmpty()) calculateSemitoneDiff(updatedFile.musicalKey, _uiState.value.selectedRootKey) else 0
+            audioEngine.playLoopFile(
+                filePath = path,
+                volume = _uiState.value.loopVolume,
+                beatCount = updatedFile.beats,
+                bpm = _uiState.value.bpm,
+                startMs = updatedFile.startMs,
+                endMs = updatedFile.endMs,
+                pitchShiftSemitones = semitones,
+                baseBpm = baseBpm
+            )
         }
     }
 
@@ -1248,8 +1275,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             audioEngine.startMetronome(bpm, _uiState.value.metronomeSignature, _uiState.value.metronomeVolume)
         }
         if (_uiState.value.isLoopPlaying) {
-            val beats = _uiState.value.activeLoopFile?.beats.takeIf { b -> (b ?: 0) > 0 } ?: _uiState.value.selectedBeatCount
-            audioEngine.setLoopBeats(beats, bpm)
+            audioEngine.setLoopBpm(bpm)
         }
     }
 
@@ -1308,6 +1334,35 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setSelectedRootKey(key: String) {
         _uiState.update { it.copy(selectedRootKey = key) }
+        val active = _uiState.value.activeLoopFile
+        if (active != null && _uiState.value.isLoopPlaying) {
+            val sourceKey = if (active.musicalKey.isNotEmpty()) active.musicalKey else "C"
+            val semitones = calculateSemitoneDiff(sourceKey, key)
+            audioEngine.setLoopPitchShift(semitones)
+        }
+    }
+
+    private fun calculateSemitoneDiff(sourceKey: String, targetKey: String): Int {
+        fun keyToVal(k: String): Int = when (k.trim().uppercase().replace("M", "").replace("MIN", "").replace("MAJ", "")) {
+            "C" -> 0
+            "C#", "DB" -> 1
+            "D" -> 2
+            "D#", "EB" -> 3
+            "E" -> 4
+            "F" -> 5
+            "F#", "GB" -> 6
+            "G" -> 7
+            "G#", "AB" -> 8
+            "A" -> 9
+            "A#", "BB" -> 10
+            "B" -> 11
+            else -> 0
+        }
+        if (sourceKey.isBlank() || targetKey.isBlank()) return 0
+        var diff = keyToVal(targetKey) - keyToVal(sourceKey)
+        if (diff > 6) diff -= 12
+        if (diff < -6) diff += 12
+        return diff
     }
 
     fun setMetronomeVolume(vol: Float) {
@@ -1492,22 +1547,27 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     // ================= VIRTUAL KEYBOARD & MULTI-TOUCH =================
     companion object {
-        const val FIXED_DEPLOYED_KEYBOARD_FRACTION = 0.28f
+        const val FIXED_DEPLOYED_KEYBOARD_FRACTION = 0.21f
     }
 
     fun cycleKeyboardExpansion() {
         _uiState.update { state ->
             val nextFraction = if (state.keyboardHeightFraction > 0.05f) 0f else FIXED_DEPLOYED_KEYBOARD_FRACTION
-            state.copy(keyboardHeightFraction = nextFraction)
+            state.copy(
+                keyboardHeightFraction = nextFraction,
+                isKeyboardLayerExpanded = if (nextFraction == 0f) false else state.isKeyboardLayerExpanded
+            )
         }
     }
 
     fun toggleKeyboardLock() {
         _uiState.update { state ->
             val newLocked = !state.isKeyboardLocked
+            val nextFraction = if (newLocked) 0f else FIXED_DEPLOYED_KEYBOARD_FRACTION
             state.copy(
                 isKeyboardLocked = newLocked,
-                keyboardHeightFraction = if (newLocked) 0f else FIXED_DEPLOYED_KEYBOARD_FRACTION
+                keyboardHeightFraction = nextFraction,
+                isKeyboardLayerExpanded = if (nextFraction == 0f) false else state.isKeyboardLayerExpanded
             )
         }
     }
@@ -1516,7 +1576,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { state ->
             // Virtual keyboard is exclusively locked to fixed deployed height or collapsed
             val target = if (fraction > 0.10f) FIXED_DEPLOYED_KEYBOARD_FRACTION else 0f
-            state.copy(keyboardHeightFraction = target)
+            state.copy(
+                keyboardHeightFraction = target,
+                isKeyboardLayerExpanded = if (target == 0f) false else state.isKeyboardLayerExpanded
+            )
         }
     }
 

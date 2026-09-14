@@ -79,6 +79,7 @@ object NativeAudioBridge {
     external fun isOboeActive(): Boolean
     external fun setBypassMasterFX(bypass: Boolean)
     external fun isMasterFxBypassed(): Boolean
+    external fun controlChange(engineIndex: Int, channel: Int, cc: Int, value: Int)
 
     // Dedicated SamplePlaybackEngine external functions
     external fun triggerDrumSample(sampleId: Int, velocity: Float, pan: Float)
@@ -448,7 +449,17 @@ object NativeAudioBridge {
                 Log.e("NativeAudioBridge", "Error invoking setChannelChorus: ${e.message}")
             }
         }
-    }
+     }
+
+     fun safeControlChange(channel: Int, cc: Int, value: Int, engineIndex: Int = ENGINE_FADER) {
+        if (isLibraryLoaded) {
+            try {
+                controlChange(engineIndex, channel, cc, value)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking controlChange: ${e.message}")
+            }
+        }
+     }
 
     fun safeRenderNativeAudio(audioBuffer: ShortArray, numFrames: Int): Int {
         return if (isLibraryLoaded) {

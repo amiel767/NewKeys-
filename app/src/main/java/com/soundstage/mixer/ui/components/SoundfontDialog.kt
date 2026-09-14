@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
@@ -517,16 +518,24 @@ fun SoundfontDialog(
 
                                             Box(
                                                 modifier = Modifier
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .background(if (isLoaded) Color(0x44A78BFA) else Color(0x2200E5FF))
-                                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                                                    .size(24.dp)
+                                                    .clip(CircleShape)
+                                                    .background(if (isLoaded) Color(0x3322D3EE) else Color(0x11FFFFFF))
+                                                    .border(
+                                                        width = 1.2.dp,
+                                                        color = if (isLoaded) Color(0xFF22D3EE) else Color(0x44FFFFFF),
+                                                        shape = CircleShape
+                                                    ),
+                                                contentAlignment = Alignment.Center
                                             ) {
-                                                Text(
-                                                    text = if (isLoaded) "CHARGÉ" else "CHARGER",
-                                                    fontSize = 9.5.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = if (isLoaded) Color(0xFFDDD6FE) else Color(0xFF00E5FF)
-                                                )
+                                                if (isLoaded) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Check,
+                                                        contentDescription = "Soundfont Chargée",
+                                                        tint = Color(0xFF22D3EE),
+                                                        modifier = Modifier.size(14.dp)
+                                                    )
+                                                }
                                             }
                                         }
                                     }
