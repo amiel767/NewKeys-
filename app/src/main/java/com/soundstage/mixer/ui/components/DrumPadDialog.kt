@@ -2,6 +2,10 @@ package com.soundstage.mixer.ui.components
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -19,6 +23,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -69,13 +77,22 @@ fun DrumPadDialog(
     onPadReleased: (Int) -> Unit,
     onPlayNote: (note: String, octave: Int) -> Unit = { _, _ -> },
     onPlaySample: (StorageItem) -> Unit = {},
-    onUpdatePadCustomization: (padId: Int, label: String, style: DrumPadStyle) -> Unit,
+    onUpdatePadCustomization: (padId: Int, label: String, style: DrumPadStyle, isLoopMode: Boolean) -> Unit = { _, _, _, _ -> },
     onAssignPadSample: (padId: Int, sample: StorageItem) -> Unit,
+    onAssignPadSampleOrLoop: ((padId: Int, sample: StorageItem, isLoop: Boolean) -> Unit)? = null,
+    onDeleteLoopFile: (StorageItem) -> Unit = {},
     onAssignPadNote: (padId: Int, noteStr: String, oct: Int, key: String) -> Unit,
     onImportAudioFile: (() -> Unit)? = null,
     isRecording: Boolean = false,
+    isArmed: Boolean = false,
+    onToggleArmLoop: () -> Unit = {},
+    bpm: Int = 140,
+    timeSignature: String = "4/4",
+    onToggleTimeSignature: () -> Unit = {},
     loopBars: Int = 2,
     onSetLoopBars: (Int) -> Unit = {},
+    onIncrementLoopBars: () -> Unit = {},
+    onDecrementLoopBars: () -> Unit = {},
     onStartRecording: () -> Unit = {},
     onStopRecording: () -> Unit = {},
     onCancelRecording: () -> Unit = {},
@@ -148,8 +165,8 @@ fun DrumPadDialog(
                     editingPad != null -> {
                         PadCustomizerScreen(
                             pad = editingPad!!,
-                            onSave = { newLabel, newStyle ->
-                                onUpdatePadCustomization(editingPad!!.id, newLabel, newStyle)
+                            onSave = { newLabel, newStyle, isLoopMode ->
+                                onUpdatePadCustomization(editingPad!!.id, newLabel, newStyle, isLoopMode)
                                 editingPad = null
                             },
                             onAssignSample = {
@@ -183,10 +200,19 @@ fun DrumPadDialog(
                             loopFiles = loopFiles,
                             onPlaySample = onPlaySample,
                             onLongPressSample = { file -> quickAssignSample = file },
+                            onDeleteLoopFile = onDeleteLoopFile,
+                            onAssignPadSampleOrLoop = onAssignPadSampleOrLoop,
                             onImportAudioFile = onImportAudioFile,
                             isRecording = isRecording,
+                            isArmed = isArmed,
+                            onToggleArmLoop = onToggleArmLoop,
+                            bpm = bpm,
+                            timeSignature = timeSignature,
+                            onToggleTimeSignature = onToggleTimeSignature,
                             loopBars = loopBars,
                             onSetLoopBars = onSetLoopBars,
+                            onIncrementLoopBars = onIncrementLoopBars,
+                            onDecrementLoopBars = onDecrementLoopBars,
                             onStartRecording = onStartRecording,
                             onStopRecording = onStopRecording,
                             onCancelRecording = onCancelRecording,
@@ -222,8 +248,13 @@ fun DrumPadDialog(
                     QuickPadAssignModal(
                         title = "Assigner ${sample.name.take(16)} au Pad",
                         pads = drumPads,
-                        onSelectPad = { padId ->
-                            onAssignPadSample(padId, sample)
+                        initialIsLoop = (activeTab == "loops"),
+                        onSelectPad = { padId, isLoop ->
+                            if (onAssignPadSampleOrLoop != null) {
+                                onAssignPadSampleOrLoop(padId, sample, isLoop)
+                            } else {
+                                onAssignPadSample(padId, sample)
+                            }
                             quickAssignSample = null
                         },
                         onDismiss = { quickAssignSample = null }
@@ -255,10 +286,19 @@ internal fun MainDrumPadSquareContent(
     loopFiles: List<StorageItem> = emptyList(),
     onPlaySample: (StorageItem) -> Unit,
     onLongPressSample: (StorageItem) -> Unit,
+    onDeleteLoopFile: (StorageItem) -> Unit = {},
+    onAssignPadSampleOrLoop: ((padId: Int, sample: StorageItem, isLoop: Boolean) -> Unit)? = null,
     onImportAudioFile: (() -> Unit)? = null,
     isRecording: Boolean = false,
+    isArmed: Boolean = false,
+    onToggleArmLoop: () -> Unit = {},
+    bpm: Int = 140,
+    timeSignature: String = "4/4",
+    onToggleTimeSignature: () -> Unit = {},
     loopBars: Int = 2,
     onSetLoopBars: (Int) -> Unit = {},
+    onIncrementLoopBars: () -> Unit = {},
+    onDecrementLoopBars: () -> Unit = {},
     onStartRecording: () -> Unit = {},
     onStopRecording: () -> Unit = {},
     onCancelRecording: () -> Unit = {},
@@ -312,46 +352,244 @@ internal fun MainDrumPadSquareContent(
             }
         }
 
-        // ================= TABS: Pads, Fichiers, Loops =================
+        // ================= TABS & LIVE CONTROLS =================
+        val infinitePulse = rememberInfiniteTransition(label = "rec_pulse")
+        val recPulseAlpha by infinitePulse.animateFloat(
+            initialValue = 0.4f,
+            targetValue = 1.0f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(450),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "rec_alpha"
+        )
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFF1C1F2D))
-                .padding(2.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                .padding(bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            listOf(
-                "pad" to "Pads",
-                "files" to "Fichiers",
-                "loops" to "Loops"
-            ).forEach { (tabId, label) ->
-                val isSel = (tabId == activeTab)
+            // Left: Tempo, Time Signature & Stepper [-] ${loopBars}B [+]
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                // Tempo indicator
                 Box(
                     modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(if (isSel) NeonCyan else Color.Transparent)
-                        .clickable { onTabChange(tabId) }
-                        .padding(vertical = 5.dp),
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF1E2232))
+                        .border(0.8.dp, Color(0x33FFFFFF), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 5.dp, vertical = 4.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = label,
-                        fontSize = 11.sp,
-                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
-                        color = if (isSel) Color(0xFF002233) else TextDim
+                        text = "$bpm BPM",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
                     )
+                }
+
+                // Time Signature Indicator (linked to case rhythm signature, clickable)
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF181B26))
+                        .border(0.8.dp, NeonCyan.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                        .clickable { onToggleTimeSignature() }
+                        .padding(horizontal = 5.dp, vertical = 4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = timeSignature,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = NeonCyanLight
+                    )
+                }
+
+                // Bar length stepper: [-] ${loopBars}B [+]
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF181B26))
+                        .border(0.8.dp, Color(0x33FFFFFF), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 2.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFF24283B))
+                            .clickable { onDecrementLoopBars() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = "−", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+
+                    Text(
+                        text = "${loopBars}B",
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = NeonCyan,
+                        modifier = Modifier.padding(horizontal = 3.dp)
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFF24283B))
+                            .clickable { onIncrementLoopBars() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = "+", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
+            }
+
+            // Center: Tabs [ Pads | Fichiers | Loops ]
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF1C1F2D))
+                    .padding(2.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                listOf(
+                    "pad" to "Pads",
+                    "files" to "Fichiers",
+                    "loops" to "Loops"
+                ).forEach { (tabId, label) ->
+                    val isSel = (tabId == activeTab)
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (isSel) NeonCyan else Color.Transparent)
+                            .clickable { onTabChange(tabId) }
+                            .padding(horizontal = 7.dp, vertical = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = label,
+                            fontSize = 9.sp,
+                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSel) Color(0xFF002233) else TextDim
+                        )
+                    }
+                }
+            }
+
+            // Right: Minimal Loop Arm Icon + Pro Studio REC Button
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                // Minimal Loop Arm Button
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            if (isArmed) Color(0xFF382D10)
+                            else Color(0xFF1E2232)
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = if (isArmed) NeonCyan.copy(alpha = recPulseAlpha) else Color(0x33FFFFFF),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .clickable { onToggleArmLoop() }
+                        .padding(horizontal = 5.dp, vertical = 4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Repeat,
+                            contentDescription = "Loop Arm",
+                            tint = if (isArmed) NeonCyan else TextDim,
+                            modifier = Modifier.size(11.dp)
+                        )
+                        Text(
+                            text = if (isArmed) "ARM" else "Loop",
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isArmed) NeonCyanLight else TextDim
+                        )
+                    }
+                }
+
+                // Studio REC Icon Button (Pro DrumPad Record)
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            if (isRecording) Color(0xFF3B0D14)
+                            else Color(0xFF1E2232)
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = if (isRecording) MuteRed.copy(alpha = recPulseAlpha) else Color(0x33FFFFFF),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .clickable {
+                            if (isRecording) {
+                                onStopRecording()
+                            } else {
+                                onStartRecording()
+                            }
+                        }
+                        .padding(horizontal = 7.dp, vertical = 4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        if (isRendering) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(10.dp),
+                                color = NeonCyan,
+                                strokeWidth = 1.5.dp
+                            )
+                        } else {
+                            // Studio Record Glowing Dot
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (isRecording) MuteRed.copy(alpha = recPulseAlpha)
+                                        else MuteRed
+                                    )
+                            )
+                        }
+                        Text(
+                            text = if (isRecording) "REC..." else "REC",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isRecording) MuteRed else Color.White
+                        )
+                    }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(4.dp))
 
         // ================= TAB CONTENT =================
         when (activeTab) {
             "pad" -> {
-                // 1_PAD TAB: Large Square Pads on the Left + Vertical 3D Realistic LED Knobs on the Right
+                // EXACTLY 8 PADS (2 Rows x 4 Columns) + Volume & Reverb Knobs
+                val currentPads = drumPads.take(8)
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -359,55 +597,37 @@ internal fun MainDrumPadSquareContent(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Large Square Pads Grid (2 rows x 4 cols)
+                    // 2 rows x 4 columns Grid (8 Cases)
                     Column(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight(),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        // Top Row (Pads 1..4)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            drumPads.take(4).forEach { pad ->
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight()
-                                ) {
-                                    FluidSquareDrumPadCell(
-                                        pad = pad,
-                                        onPress = { onPadPressed(pad.id) },
-                                        onRelease = { onPadReleased(pad.id) },
-                                        onLongPress = { onLongPressPad(pad) }
-                                    )
-                                }
-                            }
-                        }
-
-                        // Bottom Row (Pads 5..8)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            drumPads.drop(4).take(4).forEach { pad ->
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight()
-                                ) {
-                                    FluidSquareDrumPadCell(
-                                        pad = pad,
-                                        onPress = { onPadPressed(pad.id) },
-                                        onRelease = { onPadReleased(pad.id) },
-                                        onLongPress = { onLongPressPad(pad) }
-                                    )
+                        (0..1).forEach { rowIndex ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                (0..3).forEach { colIndex ->
+                                    val padIndex = rowIndex * 4 + colIndex
+                                    val pad = currentPads.getOrNull(padIndex)
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                    ) {
+                                        if (pad != null) {
+                                            FluidSquareDrumPadCell(
+                                                pad = pad,
+                                                onPress = { onPadPressed(pad.id) },
+                                                onRelease = { onPadReleased(pad.id) },
+                                                onLongPress = { onLongPressPad(pad) }
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -416,12 +636,12 @@ internal fun MainDrumPadSquareContent(
                     // Vertical 3D Realistic Knobs Column on the right
                     Column(
                         modifier = Modifier
-                            .width(72.dp)
+                            .width(68.dp)
                             .fillMaxHeight()
                             .clip(RoundedCornerShape(12.dp))
                             .background(Color(0xFF181B26))
                             .border(0.8.dp, Color(0x22FFFFFF), RoundedCornerShape(12.dp))
-                            .padding(vertical = 10.dp, horizontal = 4.dp),
+                            .padding(vertical = 8.dp, horizontal = 4.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.SpaceEvenly
                     ) {
@@ -430,7 +650,7 @@ internal fun MainDrumPadSquareContent(
                             onValueChange = onVolumeChange,
                             label = "VOLUME",
                             showFloatingTooltipOnTouch = true,
-                            size = 40.dp,
+                            size = 38.dp,
                             baseColor = NeonCyan
                         )
 
@@ -439,7 +659,7 @@ internal fun MainDrumPadSquareContent(
                             onValueChange = onReverbChange,
                             label = "REVERB",
                             showFloatingTooltipOnTouch = true,
-                            size = 40.dp,
+                            size = 38.dp,
                             baseColor = NeonMagenta
                         )
                     }
@@ -541,7 +761,10 @@ internal fun MainDrumPadSquareContent(
                 }
             }
             "loops" -> {
-                // LOOPS TAB: Recorded drum pad loops
+                // LOOPS TAB: Recorded drum pad loops with Reveal Actions & Delete pattern
+                var revealedLoopName by remember { mutableStateOf<String?>(null) }
+                var fileToDelete by remember { mutableStateOf<StorageItem?>(null) }
+
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -555,9 +778,14 @@ internal fun MainDrumPadSquareContent(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "Boucles enregistrées (DrumPad loop/)",
+                            text = "Boucles enregistrées (Court = Jouer · Long = Assigner / Supprimer)",
                             fontSize = 8.5.sp,
                             color = TextDim2
+                        )
+                        Text(
+                            text = "${loopFiles.size} boucle${if (loopFiles.size > 1) "s" else ""}",
+                            fontSize = 8.5.sp,
+                            color = NeonCyanLight
                         )
                     }
 
@@ -584,14 +812,28 @@ internal fun MainDrumPadSquareContent(
                             }
                         } else {
                             items(loopFiles) { file ->
+                                val isActionsRevealed = (revealedLoopName == file.name)
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(Color(0xFF222533))
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isActionsRevealed) Color(0x288B5CF6) else Color(0xFF222533))
+                                        .border(
+                                            0.8.dp,
+                                            if (isActionsRevealed) NeonPurpleLight.copy(alpha = 0.7f) else Color(0x18FFFFFF),
+                                            RoundedCornerShape(8.dp)
+                                        )
                                         .combinedClickable(
-                                            onClick = { onPlaySample(file) },
-                                            onLongClick = { onLongPressSample(file) }
+                                            onClick = {
+                                                if (isActionsRevealed) {
+                                                    revealedLoopName = null
+                                                } else {
+                                                    onPlaySample(file)
+                                                }
+                                            },
+                                            onLongClick = {
+                                                revealedLoopName = if (isActionsRevealed) null else file.name
+                                            }
                                         )
                                         .padding(horizontal = 8.dp, vertical = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically,
@@ -599,7 +841,8 @@ internal fun MainDrumPadSquareContent(
                                 ) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.weight(1f)
                                     ) {
                                         Box(
                                             modifier = Modifier
@@ -610,18 +853,115 @@ internal fun MainDrumPadSquareContent(
                                         ) {
                                             Text("🔄", fontSize = 10.sp)
                                         }
-                                        Column {
+                                        Column(modifier = Modifier.weight(1f)) {
                                             Text(
                                                 text = file.name,
                                                 fontSize = 10.5.sp,
                                                 fontWeight = FontWeight.SemiBold,
-                                                color = Color.White
+                                                color = Color.White,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
                                             )
+                                        }
+                                    }
+
+                                    // Action buttons when revealed
+                                    AnimatedVisibility(
+                                        visible = isActionsRevealed,
+                                        enter = fadeIn() + expandHorizontally(),
+                                        exit = fadeOut() + shrinkHorizontally()
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            // Assign to Pad Button
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(Color(0x2222D3EE))
+                                                    .border(0.8.dp, NeonCyan, RoundedCornerShape(6.dp))
+                                                    .clickable {
+                                                        revealedLoopName = null
+                                                        onLongPressSample(file)
+                                                    }
+                                                    .padding(horizontal = 6.dp, vertical = 3.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = "Assigner",
+                                                    fontSize = 8.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = NeonCyanLight
+                                                )
+                                            }
+
+                                            // Delete Button (Trash icon)
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(24.dp)
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(Color(0x22FB4570))
+                                                    .border(1.dp, MuteRed.copy(alpha = 0.85f), RoundedCornerShape(6.dp))
+                                                    .clickable {
+                                                        fileToDelete = file
+                                                    },
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Delete,
+                                                    contentDescription = "Supprimer",
+                                                    tint = MuteRed,
+                                                    modifier = Modifier.size(13.dp)
+                                                )
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
+                    }
+
+                    // Delete Confirmation Dialog
+                    if (fileToDelete != null) {
+                        val target = fileToDelete!!
+                        AlertDialog(
+                            onDismissRequest = { fileToDelete = null },
+                            title = {
+                                Text(
+                                    text = "Supprimer la boucle ?",
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    fontSize = 13.sp
+                                )
+                            },
+                            text = {
+                                Text(
+                                    text = "Voulez-vous vraiment supprimer définitivement « ${target.name} » ?",
+                                    color = TextDim,
+                                    fontSize = 11.sp
+                                )
+                            },
+                            confirmButton = {
+                                TextButton(
+                                    onClick = {
+                                        onDeleteLoopFile(target)
+                                        fileToDelete = null
+                                        revealedLoopName = null
+                                    },
+                                    colors = ButtonDefaults.textButtonColors(contentColor = MuteRed)
+                                ) {
+                                    Text("Supprimer", fontWeight = FontWeight.Bold)
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { fileToDelete = null }) {
+                                    Text("Annuler", color = TextDim)
+                                }
+                            },
+                            containerColor = Color(0xFF222638),
+                            shape = RoundedCornerShape(16.dp)
+                        )
                     }
                 }
             }
@@ -638,69 +978,185 @@ private fun FluidSquareDrumPadCell(
     onLongPress: () -> Unit
 ) {
     val style = pad.colorStyle
+    val isLoop = pad.isLoopMode
+    val isPlaying = pad.isLoopPlaying
 
+    // Pulsing animation for active loop playback
+    val infiniteTransition = rememberInfiniteTransition(label = "pad_loop_pulse")
+    val loopPulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.40f,
+        targetValue = 0.95f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(400),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "loop_pulse"
+    )
+
+    // 3D Recessed Chassis Bay Socket
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .clip(RoundedCornerShape(12.dp))
-            .background(
-                if (pad.isPressed) {
-                    Brush.verticalGradient(listOf(style.primaryColor, style.secondaryColor))
-                } else {
-                    Brush.verticalGradient(
-                        listOf(
-                            style.primaryColor.copy(alpha = 0.25f),
-                            style.secondaryColor.copy(alpha = 0.12f)
-                        )
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xFF0C0E14)) // Deep matte chassis socket
+            .border(
+                width = 0.8.dp,
+                color = if (pad.isPressed) Color(0x66FFFFFF) else Color(0x14FFFFFF),
+                shape = RoundedCornerShape(16.dp)
+            )
+            .padding(2.dp) // Socket recess margin
+    ) {
+        // 3D Physical Silicone Pad with Radial Gradient Center
+        val padBrush = remember(pad.isPressed, style, isLoop, isPlaying, loopPulseAlpha) {
+            if (pad.isPressed) {
+                // High-intensity strike flash with incandescent center
+                Brush.radialGradient(
+                    colors = listOf(
+                        Color.White,
+                        style.secondaryColor,
+                        style.primaryColor
+                    )
+                )
+            } else if (isPlaying) {
+                // Active playing loop pulse
+                Brush.radialGradient(
+                    colors = listOf(
+                        style.secondaryColor.copy(alpha = loopPulseAlpha),
+                        style.primaryColor.copy(alpha = (loopPulseAlpha * 0.95f).coerceIn(0.65f, 1f))
+                    )
+                )
+            } else {
+                // Authentic Dubstep silicone pad: Glowing lighter center + saturated outer border
+                Brush.radialGradient(
+                    colors = listOf(
+                        style.secondaryColor,
+                        style.primaryColor
+                    )
+                )
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .offset(y = if (pad.isPressed) 2.dp else 0.dp) // Physical depression
+                .shadow(
+                    elevation = if (pad.isPressed) 1.dp else 5.dp,
+                    shape = RoundedCornerShape(14.dp)
+                )
+                .clip(RoundedCornerShape(14.dp))
+                .background(padBrush)
+                .border(
+                    width = if (pad.isPressed) 1.8.dp else if (isPlaying) 1.5.dp else 0.8.dp,
+                    color = if (pad.isPressed) Color.White else if (isPlaying) Color.White.copy(alpha = loopPulseAlpha) else Color(0x33FFFFFF),
+                    shape = RoundedCornerShape(14.dp)
+                )
+                .pointerInput(pad.id) {
+                    detectTapGestures(
+                        onPress = {
+                            onPress()
+                            tryAwaitRelease()
+                            onRelease()
+                        },
+                        onLongPress = {
+                            onLongPress()
+                        }
                     )
                 }
-            )
-            .border(
-                1.5.dp,
-                if (pad.isPressed) Color.White else style.primaryColor.copy(alpha = 0.65f),
-                RoundedCornerShape(12.dp)
-            )
-            .pointerInput(pad.id) {
-                detectTapGestures(
-                    onPress = {
-                        onPress()
-                        tryAwaitRelease()
-                        onRelease()
-                    },
-                    onLongPress = {
-                        onLongPress()
-                    }
-                )
-            }
-            .padding(4.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .padding(horizontal = 4.dp, vertical = 3.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = "P${pad.id}",
-                fontSize = 9.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = if (pad.isPressed) Color.White else style.primaryColor
+            // Specular top highlight bevel (silicone chamfer edge)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth(0.92f)
+                    .height(1.dp)
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(Color.Transparent, Color(0x80FFFFFF), Color.Transparent)
+                        )
+                    )
             )
-            if (pad.label.isNotEmpty()) {
+
+            // Top Status Row: Pad ID (Left) & Loop Mode Badge (Right)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopCenter),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    text = pad.label,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    text = "P${pad.id}",
+                    fontSize = 8.5.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (pad.isPressed) Color(0xFF002233) else style.primaryColor
+                )
+
+                if (isLoop) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(
+                                if (isPlaying) NeonCyan.copy(alpha = loopPulseAlpha) else Color(0x3322D3EE)
+                            )
+                            .padding(horizontal = 3.5.dp, vertical = 0.5.dp)
+                    ) {
+                        Text(
+                            text = if (isPlaying) "▶ LOOP" else "LOOP",
+                            fontSize = 7.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isPlaying) Color(0xFF002233) else NeonCyanLight
+                        )
+                    }
+                }
+            }
+
+            // Center Content: Label & Sample / Note info
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                if (pad.label.isNotEmpty()) {
+                    Text(
+                        text = pad.label,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (pad.isPressed) Color.Black else Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                val subText = if (pad.soundType == DrumSoundType.SF2_NOTE) pad.sf2Note else pad.sampleFileName.substringBeforeLast(".")
+                Text(
+                    text = subText.take(8),
+                    fontSize = 7.5.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = if (pad.isPressed) Color(0xFF1B2032) else TextDim,
+                    maxLines = 1
                 )
             }
-            Text(
-                text = if (pad.soundType == DrumSoundType.SF2_NOTE) pad.sf2Note else pad.sampleFileName.take(6),
-                fontSize = 7.5.sp,
-                color = TextDim,
-                maxLines = 1
-            )
+
+            // Bottom Active Waveform Indicator when Loop is Playing
+            if (isPlaying) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 1.dp),
+                    horizontalArrangement = Arrangement.spacedBy(1.5.dp),
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    repeat(5) { idx ->
+                        Box(
+                            modifier = Modifier
+                                .width(2.dp)
+                                .height((3 + ((idx * 2) % 5)).dp)
+                                .background(NeonCyanLight, RoundedCornerShape(1.dp))
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -946,9 +1402,12 @@ private fun DrumSoundfontPickerSubView(
 private fun QuickPadAssignModal(
     title: String,
     pads: List<DrumPadItem>,
-    onSelectPad: (Int) -> Unit,
+    initialIsLoop: Boolean = false,
+    onSelectPad: (padId: Int, isLoop: Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
+    var isLoopMode by remember { mutableStateOf(initialIsLoop) }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -974,6 +1433,52 @@ private fun QuickPadAssignModal(
                     color = Color.White,
                     textAlign = TextAlign.Center
                 )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Toggle: One-Shot vs Continuous Loop
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF111420))
+                        .padding(2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (!isLoopMode) Color(0x3322D3EE) else Color.Transparent)
+                            .clickable { isLoopMode = false }
+                            .padding(vertical = 5.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "⚡ Coup Simple (One-Shot)",
+                            fontSize = 9.sp,
+                            fontWeight = if (!isLoopMode) FontWeight.Bold else FontWeight.Normal,
+                            color = if (!isLoopMode) NeonCyan else TextDim
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (isLoopMode) NeonCyan else Color.Transparent)
+                            .clickable { isLoopMode = true }
+                            .padding(vertical = 5.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "🔁 Loop Continu",
+                            fontSize = 9.sp,
+                            fontWeight = if (isLoopMode) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isLoopMode) Color(0xFF002233) else TextDim
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(10.dp))
 
                 LazyVerticalGrid(
@@ -987,7 +1492,7 @@ private fun QuickPadAssignModal(
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(Color(0xFF252A3C))
                                 .border(1.dp, pad.colorStyle.primaryColor, RoundedCornerShape(8.dp))
-                                .clickable { onSelectPad(pad.id) }
+                                .clickable { onSelectPad(pad.id, isLoopMode) }
                                 .padding(vertical = 8.dp),
                             contentAlignment = Alignment.Center
                         ) {
@@ -1022,13 +1527,14 @@ private fun QuickPadAssignModal(
 @Composable
 private fun PadCustomizerScreen(
     pad: DrumPadItem,
-    onSave: (newLabel: String, newStyle: DrumPadStyle) -> Unit,
+    onSave: (newLabel: String, newStyle: DrumPadStyle, isLoopMode: Boolean) -> Unit,
     onAssignSample: () -> Unit,
     onAssignSoundfont: () -> Unit = {},
     onBack: () -> Unit
 ) {
     var labelText by remember { mutableStateOf(pad.label) }
     var selectedStyle by remember { mutableStateOf(pad.colorStyle) }
+    var isLoopMode by remember { mutableStateOf(pad.isLoopMode) }
     var selectedCategory by remember { mutableStateOf(DrumPadCategory.GRADIENT) }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -1061,7 +1567,7 @@ private fun PadCustomizerScreen(
                 modifier = Modifier
                     .clip(RoundedCornerShape(6.dp))
                     .background(NeonCyan)
-                    .clickable { onSave(labelText, selectedStyle) }
+                    .clickable { onSave(labelText, selectedStyle, isLoopMode) }
                     .padding(horizontal = 10.dp, vertical = 4.dp)
             ) {
                 Text(text = "Enregistrer", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF002233))
@@ -1093,7 +1599,55 @@ private fun PadCustomizerScreen(
                 )
             }
 
-            // 2. Sound Assignment Shortcuts
+            // 2. Playback Mode (One-Shot vs Loop)
+            item {
+                Text(text = "MODE DE LECTURE DU PAD", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF1E212E))
+                        .padding(2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (!isLoopMode) Color(0x3322D3EE) else Color.Transparent)
+                            .clickable { isLoopMode = false }
+                            .padding(vertical = 6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "⚡ Coup Unique (One-Shot)",
+                            fontSize = 9.sp,
+                            fontWeight = if (!isLoopMode) FontWeight.Bold else FontWeight.Normal,
+                            color = if (!isLoopMode) NeonCyan else TextDim
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (isLoopMode) NeonCyan else Color.Transparent)
+                            .clickable { isLoopMode = true }
+                            .padding(vertical = 6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "🔁 Mode Loop Continu",
+                            fontSize = 9.sp,
+                            fontWeight = if (isLoopMode) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isLoopMode) Color(0xFF002233) else TextDim
+                        )
+                    }
+                }
+            }
+
+            // 3. Sound Assignment Shortcuts
             item {
                 Text(text = "SOURCE SONORE (ÉCHANTILLONS DÉDIÉS)", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
                 Spacer(modifier = Modifier.height(3.dp))
@@ -1111,7 +1665,7 @@ private fun PadCustomizerScreen(
                 }
             }
 
-            // 3. Style Categories & Palette
+            // 4. Style Categories & Palette
             item {
                 Text(text = "PALETTE DE COULEURS & STYLE", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
                 Spacer(modifier = Modifier.height(3.dp))

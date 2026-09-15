@@ -68,7 +68,14 @@ enum class DrumPadStyle(
     MY_TURQUOISE("Dynamic Teal", DrumPadCategory.MATERIAL_YOU, Color(0xFF80DEEA), Color(0xFF00695C)),
     MY_LAVENDER("Pastel Lavender", DrumPadCategory.MATERIAL_YOU, Color(0xFFD1C4E9), Color(0xFF512DA8)),
     MY_MINT("Mint Pistache", DrumPadCategory.MATERIAL_YOU, Color(0xFFA7F3D0), Color(0xFF047857)),
-    MY_PEACH("Peach Blossom", DrumPadCategory.MATERIAL_YOU, Color(0xFFFED7AA), Color(0xFFC2410C))
+    MY_PEACH("Peach Blossom", DrumPadCategory.MATERIAL_YOU, Color(0xFFFED7AA), Color(0xFFC2410C)),
+
+    // DUBSTEP CLUB / LIVE DRUMPAD
+    DUBSTEP_CORAL("Coral Pink", DrumPadCategory.NEON, Color(0xFFFF3366), Color(0xFFFF6B97)),
+    DUBSTEP_PURPLE("Neon Purple", DrumPadCategory.NEON, Color(0xFFB829D6), Color(0xFFE879F9)),
+    DUBSTEP_BLUE("Vibrant Blue", DrumPadCategory.NEON, Color(0xFF1E88E5), Color(0xFF60A5FA)),
+    DUBSTEP_GREEN("Acid Green", DrumPadCategory.NEON, Color(0xFF5CD626), Color(0xFF86EFAC)),
+    DUBSTEP_YELLOW("Golden Sun", DrumPadCategory.NEON, Color(0xFFFBC02D), Color(0xFFFEF08A))
 }
 
 fun midiChannelForSlot(slotId: Int): Int {
@@ -134,7 +141,9 @@ data class DrumPadItem(
     val sf2NoteOctave: Int = 2,
     val sf2NoteKey: String = "C",
     val isPressed: Boolean = false,
-    val colorStyle: DrumPadStyle = DrumPadStyle.GRADIENT_CYAN
+    val colorStyle: DrumPadStyle = DrumPadStyle.GRADIENT_CYAN,
+    val isLoopMode: Boolean = false,
+    val isLoopPlaying: Boolean = false
 )
 
 data class LoopFile(

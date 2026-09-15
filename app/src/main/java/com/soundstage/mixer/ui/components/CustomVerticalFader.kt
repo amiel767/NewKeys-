@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -166,7 +167,7 @@ fun CustomVerticalFader(
         val offsetYPx = ((1f - localValue.coerceIn(0f, 1f)) * usableHeightPx).roundToInt()
         val bonnetCenterYPx = offsetYPx + thumbHeightPx / 2f
 
-        // ================= 1. RAIL / TRACK AUTHENTIC PNG ELEMENT =================
+        // ================= 1. SUNDAYKEYS PRECISION RAIL & AUDIO-REACTIVE LUMINOUS NEON =================
         val isAudioSoundActive = isEnabled && audioActivity > 0.015f
         val dynamicAura = auraColor.copy(alpha = 1.0f)
 
@@ -176,153 +177,215 @@ fun CustomVerticalFader(
                 .fillMaxHeight(),
             contentAlignment = Alignment.Center
         ) {
-            // Slot background: Dark recessed groove
+            // ================= REALISTIC OBLONG CAPSULE RAIL CHASSIS (SUNDAYKEYS EXACT AS IMAGE) =================
             Canvas(
                 modifier = Modifier
-                    .width(4.5.dp)
-                    .fillMaxHeight(0.92f)
+                    .width(13.dp)
+                    .fillMaxHeight(0.96f)
             ) {
                 val h = size.height
                 val w = size.width
-                val railTopPx = (containerHeightPx - h) / 2f
-                val relativeBonnetY = (bonnetCenterYPx - railTopPx).coerceIn(0f, h)
+                // Fully rounded semi-circular caps top & bottom
+                val corner = CornerRadius(w / 2f, w / 2f)
 
-                // Top segment (above bonnet) - deep black/charcoal slot
-                if (relativeBonnetY > 0f) {
-                    drawRoundRect(
-                        color = Color(0xFF0D0F14),
-                        topLeft = Offset(0f, 0f),
-                        size = Size(w, relativeBonnetY),
-                        cornerRadius = CornerRadius(2.dp.toPx())
-                    )
-                }
+                // 1. Outer Satin Slate-Grey Chassis Body (Smooth Capsule as in image)
+                drawRoundRect(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            Color(0xFF343B4E), // Left subtle light bevel
+                            Color(0xFF242A38), // Matte dark slate body
+                            Color(0xFF202532), // Core slate
+                            Color(0xFF2D3444)  // Right edge
+                        )
+                    ),
+                    topLeft = Offset(0f, 0f),
+                    size = Size(w, h),
+                    cornerRadius = corner
+                )
 
-                // Bottom segment (below bonnet) - dark recessed slot base
-                val bottomHeight = h - relativeBonnetY
-                if (bottomHeight > 0f) {
-                    drawRoundRect(
-                        color = Color(0xFF141720),
-                        topLeft = Offset(0f, relativeBonnetY),
-                        size = Size(w, bottomHeight),
-                        cornerRadius = CornerRadius(2.dp.toPx())
-                    )
-                }
+                // 2. Smooth Machined Perimeter Bevel (Soft Satin Chamfer border)
+                drawRoundRect(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            Color(0xFF4C5670), // Crisp top-left light highlight
+                            Color(0xFF363E52),
+                            Color(0xFF282F40),
+                            Color(0xFF454F68)  // Right rim edge
+                        )
+                    ),
+                    topLeft = Offset(0.5f, 0.5f),
+                    size = Size(w - 1f, h - 1f),
+                    cornerRadius = corner,
+                    style = Stroke(width = 1.2.dp.toPx())
+                )
+
+                // 3. Inner Recessed Mechanical Slot Groove (Oblong Dark Channel)
+                val slotWidthPx = 4.2.dp.toPx()
+                val slotLeft = (w - slotWidthPx) / 2f
+                val slotTop = 4.dp.toPx()
+                val slotHeight = h - (slotTop * 2)
+                val slotCorner = CornerRadius(slotWidthPx / 2f, slotWidthPx / 2f)
+
+                drawRoundRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFF10131B), // Dark recessed top
+                            Color(0xFF161A24), // Center depth
+                            Color(0xFF12151E)  // Recessed bottom
+                        )
+                    ),
+                    topLeft = Offset(slotLeft, slotTop),
+                    size = Size(slotWidthPx, slotHeight),
+                    cornerRadius = slotCorner
+                )
+
+                // Subtle inner shadow stroke around the groove
+                drawRoundRect(
+                    color = Color(0x66000000),
+                    topLeft = Offset(slotLeft, slotTop),
+                    size = Size(slotWidthPx, slotHeight),
+                    cornerRadius = slotCorner,
+                    style = Stroke(width = 0.8.dp.toPx())
+                )
             }
 
-            // ================= BRILLIANT GLOWING NEON LINE (SHINES / BRILLE) =================
-            // Visible at all times when track is enabled, dynamically pulses and blooms with audio
+            // ================= CENTRAL NEON LINE: GLOWING IN THE GROOVE AS IN IMAGE =================
+            // When audio is played, a radiant luminous glow layer shines on top in sync with volume
             if (isEnabled) {
-                val baseAlpha = if (isAudioSoundActive) (0.6f + audioActivity.coerceIn(0f, 1f) * 0.4f) else 0.85f
-                val bloomAlpha = if (isAudioSoundActive) (0.45f + audioActivity.coerceIn(0f, 1f) * 0.5f).coerceIn(0.45f, 0.95f) else 0.35f
-
-                // 1. Wide ambient neon halo / bloom (radiates outward to create authentic shine)
+                // 1. BASELINE NEON VIOLET / TRACK LINE (Runs in the slot below thumb to the bottom)
                 Canvas(
                     modifier = Modifier
-                        .width(9.dp)
-                        .fillMaxHeight(0.92f)
+                        .width(4.2.dp)
+                        .fillMaxHeight(0.96f)
                 ) {
                     val h = size.height
                     val w = size.width
                     val railTopPx = (containerHeightPx - h) / 2f
-                    val relativeBonnetY = (bonnetCenterYPx - railTopPx).coerceIn(0f, h)
-                    val activeHeight = h - relativeBonnetY
+                    val relativeBonnetY = (bonnetCenterYPx - railTopPx).coerceIn(4.dp.toPx(), h - 4.dp.toPx())
+                    val activeHeight = (h - 4.dp.toPx()) - relativeBonnetY
+                    val lineWidthPx = 2.2.dp.toPx()
+                    val lineLeft = (w - lineWidthPx) / 2f
+                    val lineCorner = CornerRadius(lineWidthPx / 2f, lineWidthPx / 2f)
+
                     if (activeHeight > 0f) {
+                        // Soft slot cavity neon glow diffusion
                         drawRoundRect(
                             brush = Brush.horizontalGradient(
                                 colors = listOf(
-                                    dynamicAura.copy(alpha = 0f),
-                                    dynamicAura.copy(alpha = bloomAlpha),
-                                    dynamicAura.copy(alpha = 0f)
+                                    dynamicAura.copy(alpha = 0.15f),
+                                    dynamicAura.copy(alpha = 0.50f),
+                                    dynamicAura.copy(alpha = 0.15f)
                                 )
                             ),
                             topLeft = Offset(0f, relativeBonnetY),
                             size = Size(w, activeHeight),
-                            cornerRadius = CornerRadius(4.dp.toPx())
+                            cornerRadius = CornerRadius(w / 2f, w / 2f)
                         )
-                    }
-                }
 
-                // 2. Saturated neon body line with vertical gradient
-                Canvas(
-                    modifier = Modifier
-                        .width(3.6.dp)
-                        .fillMaxHeight(0.92f)
-                ) {
-                    val h = size.height
-                    val w = size.width
-                    val railTopPx = (containerHeightPx - h) / 2f
-                    val relativeBonnetY = (bonnetCenterYPx - railTopPx).coerceIn(0f, h)
-                    val activeHeight = h - relativeBonnetY
-                    if (activeHeight > 0f) {
+                        // Saturated core neon line (Crisp violet / track color)
                         drawRoundRect(
                             brush = Brush.verticalGradient(
                                 colors = listOf(
-                                    Color.White.copy(alpha = baseAlpha),
-                                    dynamicAura.copy(alpha = baseAlpha),
-                                    dynamicAura.copy(alpha = (baseAlpha * 0.90f).coerceIn(0.5f, 1f))
+                                    dynamicAura.copy(alpha = 0.98f),
+                                    dynamicAura.copy(alpha = 0.90f)
                                 ),
                                 startY = relativeBonnetY,
-                                endY = h
+                                endY = h - 4.dp.toPx()
                             ),
-                            topLeft = Offset(0f, relativeBonnetY),
-                            size = Size(w, activeHeight),
-                            cornerRadius = CornerRadius(1.8.dp.toPx())
+                            topLeft = Offset(lineLeft, relativeBonnetY),
+                            size = Size(lineWidthPx, activeHeight),
+                            cornerRadius = lineCorner
                         )
                     }
                 }
 
-                // 3. Incandescent white-hot core line down the center (gives electric laser / neon tube brilliance)
-                Canvas(
-                    modifier = Modifier
-                        .width(1.4.dp)
-                        .fillMaxHeight(0.92f)
-                ) {
-                    val h = size.height
-                    val w = size.width
-                    val railTopPx = (containerHeightPx - h) / 2f
-                    val relativeBonnetY = (bonnetCenterYPx - railTopPx).coerceIn(0f, h)
-                    val activeHeight = h - relativeBonnetY
-                    if (activeHeight > 0f) {
-                        val coreAlpha = if (isAudioSoundActive) 0.95f else 0.82f
-                        drawRoundRect(
-                            color = Color.White.copy(alpha = coreAlpha),
-                            topLeft = Offset(0f, relativeBonnetY),
-                            size = Size(w, activeHeight),
-                            cornerRadius = CornerRadius(0.7.dp.toPx())
-                        )
+                // 2. AUDIO-REACTIVE LUMINOUS LAYER (Brilliant glow that pulses when sound is active)
+                if (isAudioSoundActive) {
+                    val intensity = audioActivity.coerceIn(0f, 1f)
+                    val glowBloomAlpha = (0.50f + intensity * 0.50f).coerceIn(0.50f, 1.0f)
+                    val coreLaserAlpha = (0.85f + intensity * 0.15f).coerceIn(0.85f, 1.0f)
+
+                    // Layer A: Wide Radiant Neon Bloom Layer
+                    Canvas(
+                        modifier = Modifier
+                            .width(18.dp)
+                            .fillMaxHeight(0.96f)
+                    ) {
+                        val h = size.height
+                        val w = size.width
+                        val railTopPx = (containerHeightPx - h) / 2f
+                        val relativeBonnetY = (bonnetCenterYPx - railTopPx).coerceIn(4.dp.toPx(), h - 4.dp.toPx())
+                        val activeHeight = (h - 4.dp.toPx()) - relativeBonnetY
+
+                        if (activeHeight > 0f) {
+                            drawRoundRect(
+                                brush = Brush.horizontalGradient(
+                                    colors = listOf(
+                                        dynamicAura.copy(alpha = 0f),
+                                        dynamicAura.copy(alpha = glowBloomAlpha * 0.85f),
+                                        dynamicAura.copy(alpha = 0f)
+                                    )
+                                ),
+                                topLeft = Offset(0f, relativeBonnetY),
+                                size = Size(w, activeHeight),
+                                cornerRadius = CornerRadius(6.dp.toPx())
+                            )
+                        }
+                    }
+
+                    // Layer B: Intense Saturated Core Glow
+                    Canvas(
+                        modifier = Modifier
+                            .width(6.dp)
+                            .fillMaxHeight(0.96f)
+                    ) {
+                        val h = size.height
+                        val w = size.width
+                        val railTopPx = (containerHeightPx - h) / 2f
+                        val relativeBonnetY = (bonnetCenterYPx - railTopPx).coerceIn(4.dp.toPx(), h - 4.dp.toPx())
+                        val activeHeight = (h - 4.dp.toPx()) - relativeBonnetY
+
+                        if (activeHeight > 0f) {
+                            drawRoundRect(
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color.White.copy(alpha = coreLaserAlpha),
+                                        dynamicAura.copy(alpha = coreLaserAlpha),
+                                        dynamicAura.copy(alpha = 0.95f)
+                                    ),
+                                    startY = relativeBonnetY,
+                                    endY = h - 4.dp.toPx()
+                                ),
+                                topLeft = Offset(0f, relativeBonnetY),
+                                size = Size(w, activeHeight),
+                                cornerRadius = CornerRadius(3.dp.toPx())
+                            )
+                        }
+                    }
+
+                    // Layer C: Incandescent White-Hot Laser Filament (Electric brilliance)
+                    Canvas(
+                        modifier = Modifier
+                            .width(2.2.dp)
+                            .fillMaxHeight(0.96f)
+                    ) {
+                        val h = size.height
+                        val w = size.width
+                        val railTopPx = (containerHeightPx - h) / 2f
+                        val relativeBonnetY = (bonnetCenterYPx - railTopPx).coerceIn(4.dp.toPx(), h - 4.dp.toPx())
+                        val activeHeight = (h - 4.dp.toPx()) - relativeBonnetY
+
+                        if (activeHeight > 0f) {
+                            drawRoundRect(
+                                color = Color.White.copy(alpha = 0.95f),
+                                topLeft = Offset(0f, relativeBonnetY),
+                                size = Size(w, activeHeight),
+                                cornerRadius = CornerRadius(1.1.dp.toPx())
+                            )
+                        }
                     }
                 }
             }
-
-            // Authentic Rail PNG element: Dark metallic contour above bonnet
-            Image(
-                painter = painterResource(id = R.drawable.ic_fader_track),
-                contentDescription = "Fader Track Rail Dark",
-                contentScale = ContentScale.FillBounds,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .drawWithContent {
-                        clipRect(top = 0f, bottom = bonnetCenterYPx, left = 0f, right = size.width) {
-                            this@drawWithContent.drawContent()
-                        }
-                    },
-                colorFilter = ColorFilter.tint(Color(0xFF1E212B), androidx.compose.ui.graphics.BlendMode.SrcIn)
-            )
-
-            // Authentic Rail PNG element: Sleek metallic lighter gray contour below bonnet
-            Image(
-                painter = painterResource(id = R.drawable.ic_fader_track),
-                contentDescription = "Fader Track Rail Light",
-                contentScale = ContentScale.FillBounds,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .drawWithContent {
-                        clipRect(top = bonnetCenterYPx, bottom = size.height, left = 0f, right = size.width) {
-                            this@drawWithContent.drawContent()
-                        }
-                    },
-                colorFilter = ColorFilter.tint(Color(0xFF3E4554), androidx.compose.ui.graphics.BlendMode.SrcIn)
-            )
         }
 
         // ================= 2. CAP / THUMB BONNET AUTHENTIC PNG ELEMENT =================

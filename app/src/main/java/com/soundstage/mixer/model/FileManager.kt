@@ -337,61 +337,111 @@ class FileManager(private val context: Context) {
     }
 
     /**
-     * Scans for SoundFont (.sf2, .sfz) files across external /SoundStage/SoundFonts/, Downloads, and internal storage.
+     * Scans for SoundFont (.sf2, .sfz) files across external SoundStage/, Downloads, Music, and internal storage.
+     * Prevents symlink duplicates and deduplicates by lowercase filename.
      */
     suspend fun getSoundFontFiles(): List<StorageItem> = withContext(Dispatchers.IO) {
         val result = mutableListOf<StorageItem>()
-        val seenPaths = HashSet<String>()
+        val seenCanonicalPaths = HashSet<String>()
+        val seenFileNames = HashSet<String>()
+
         try {
             val dirsToScan = mutableListOf<File>()
-            
-            val possibleLocations = listOf(
-                soundfontsDir,
-                File(Environment.getExternalStorageDirectory(), "SoundStage/SoundFonts"),
-                File("/storage/emulated/0/SoundStage/SoundFonts"),
-                File("/sdcard/SoundStage/SoundFonts"),
-                File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "SoundStage/SoundFonts"),
-                File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "SoundStage/SoundFonts"),
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                File(Environment.getExternalStorageDirectory(), "LiveKeys/SoundFonts"),
-                File(context.filesDir, "SoundStage/SoundFonts"),
-                File(context.filesDir, "LiveKeys/SoundFonts")
-            )
-            for (candidate in possibleLocations) {
-                if (candidate.exists() && !dirsToScan.contains(candidate)) {
-                    dirsToScan.add(candidate)
+            val candidates = mutableListOf<File?>()
+
+            // Internal app storage directories
+            candidates.add(soundfontsDir)
+            candidates.add(File(context.filesDir, "SoundStage/SoundFonts"))
+            candidates.add(File(context.filesDir, "LiveKeys/SoundFonts"))
+            candidates.add(context.getExternalFilesDir(null))
+            candidates.add(File(context.getExternalFilesDir(null) ?: context.filesDir, "SoundFonts"))
+
+            // External Public & Storage directories
+            val extStorage = Environment.getExternalStorageDirectory()
+            if (extStorage != null) {
+                candidates.add(File(extStorage, "SoundStage"))
+                candidates.add(File(extStorage, "SoundStage/SoundFonts"))
+                candidates.add(File(extStorage, "Soundfonts"))
+                candidates.add(File(extStorage, "SoundFonts"))
+                candidates.add(File(extStorage, "LiveKeys/SoundFonts"))
+            }
+
+            try {
+                val downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                if (downloads != null) {
+                    candidates.add(downloads)
+                    candidates.add(File(downloads, "SoundFonts"))
+                    candidates.add(File(downloads, "SoundStage"))
+                }
+            } catch (_: Exception) {}
+
+            try {
+                val music = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
+                if (music != null) {
+                    candidates.add(music)
+                    candidates.add(File(music, "SoundStage"))
+                    candidates.add(File(music, "SoundFonts"))
+                }
+            } catch (_: Exception) {}
+
+            try {
+                val documents = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+                if (documents != null) {
+                    candidates.add(documents)
+                    candidates.add(File(documents, "SoundStage"))
+                    candidates.add(File(documents, "SoundFonts"))
+                }
+            } catch (_: Exception) {}
+
+            // Deduplicate directory candidates by canonical path
+            val seenDirCanonicals = HashSet<String>()
+            for (cand in candidates) {
+                if (cand != null && cand.exists() && cand.isDirectory) {
+                    try {
+                        val canonical = cand.canonicalPath
+                        if (seenDirCanonicals.add(canonical)) {
+                            dirsToScan.add(cand)
+                        }
+                    } catch (_: Exception) {
+                        dirsToScan.add(cand)
+                    }
                 }
             }
 
             for (dir in dirsToScan) {
                 try {
-                    if (dir.exists()) {
-                        dir.walkTopDown()
-                            .maxDepth(4)
-                            .filter { file ->
-                                file.isFile && (file.extension.equals("sf2", ignoreCase = true) ||
-                                        file.extension.equals("sfz", ignoreCase = true))
-                            }
-                            .forEach { file ->
-                                if (seenPaths.add(file.absolutePath)) {
-                                    result.add(
-                                        StorageItem(
-                                            name = file.name,
-                                            path = file.absolutePath,
-                                            isDirectory = false,
-                                            size = file.length(),
-                                            extension = file.extension.lowercase(),
-                                            formattedSize = formatSize(file.length())
-                                        )
+                    dir.walkTopDown()
+                        .maxDepth(5)
+                        .filter { file ->
+                            file.isFile &&
+                                (file.extension.equals("sf2", ignoreCase = true) ||
+                                 file.extension.equals("sfz", ignoreCase = true)) &&
+                                file.length() > 512L
+                        }
+                        .forEach { file ->
+                            val canonical = try { file.canonicalPath } catch (_: Exception) { file.absolutePath }
+                            val lowerName = file.name.trim().lowercase()
+
+                            // Check both canonical path and lowercase filename to avoid duplicates
+                            if (seenCanonicalPaths.add(canonical) && seenFileNames.add(lowerName)) {
+                                result.add(
+                                    StorageItem(
+                                        name = file.name,
+                                        path = file.absolutePath,
+                                        isDirectory = false,
+                                        size = file.length(),
+                                        extension = file.extension.lowercase(),
+                                        formattedSize = formatSize(file.length())
                                     )
-                                }
+                                )
                             }
-                    }
+                        }
                 } catch (_: Exception) {}
             }
         } catch (e: Exception) {
             e.printStackTrace()
         }
+
         result.sortedBy { it.name.lowercase() }
     }
 

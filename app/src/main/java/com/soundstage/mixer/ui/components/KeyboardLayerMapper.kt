@@ -178,29 +178,29 @@ object KeyPositionMapper {
 
     fun getTrackNeonColor(trackId: Int): Color {
         return when (trackId) {
-            1 -> Color(0xFF00E5FF) // Neon Cyan
-            2 -> Color(0xFF10B981) // Neon Emerald
-            3 -> Color(0xFFA855F7) // Neon Violet
-            4 -> Color(0xFFFFB020) // Neon Amber
-            5 -> Color(0xFFFF2E93) // Neon Magenta
-            6 -> Color(0xFF38BDF8) // Neon Sky Blue
-            7 -> Color(0xFF84CC16) // Neon Lime
-            8 -> Color(0xFFFF5252) // Neon Rose
-            else -> Color(0xFF00E5FF)
+            1 -> Color(0xFF00F5FF) // Electric Bright Cyan
+            2 -> Color(0xFF10F59B) // Radiant Mint Emerald
+            3 -> Color(0xFFC084FC) // Radiant Bright Violet
+            4 -> Color(0xFFFFC000) // Solar Gold Amber
+            5 -> Color(0xFFFF2E93) // Hot Neon Pink
+            6 -> Color(0xFF38BDF8) // Bright Sky Blue
+            7 -> Color(0xFFA3E635) // Radiant Electric Lime
+            8 -> Color(0xFFFF5252) // Radiant Coral Flame
+            else -> Color(0xFF00F5FF)
         }
     }
 
     fun getTrackNeonGradient(trackId: Int): Pair<Color, Color> {
         return when (trackId) {
-            1 -> Color(0xFF00E5FF) to Color(0xFF0284C7) // Neon Cyan to Blue
-            2 -> Color(0xFF10B981) to Color(0xFF059669) // Emerald to Deep Green
-            3 -> Color(0xFFA855F7) to Color(0xFF7E22CE) // Violet to Deep Purple
-            4 -> Color(0xFFFFB020) to Color(0xFFEA580C) // Amber to Deep Orange
-            5 -> Color(0xFFFF2E93) to Color(0xFFDB2777) // Hot Pink to Magenta
+            1 -> Color(0xFF00F5FF) to Color(0xFF00B4D8) // Electric Cyan to Azure
+            2 -> Color(0xFF10F59B) to Color(0xFF059669) // Radiant Mint to Emerald
+            3 -> Color(0xFFC084FC) to Color(0xFF9333EA) // Bright Violet to Purple
+            4 -> Color(0xFFFFD128) to Color(0xFFFF7A00) // Bright Gold to Amber
+            5 -> Color(0xFFFF2E93) to Color(0xFFE11D48) // Hot Pink to Bright Rose
             6 -> Color(0xFF38BDF8) to Color(0xFF2563EB) // Sky Blue to Electric Indigo
-            7 -> Color(0xFF84CC16) to Color(0xFF4D7C0F) // Lime to Olive
-            8 -> Color(0xFFFF5252) to Color(0xFFE11D48) // Crimson to Rose
-            else -> Color(0xFF00E5FF) to Color(0xFF0284C7)
+            7 -> Color(0xFFA3E635) to Color(0xFF65A30D) // Electric Lime to Green
+            8 -> Color(0xFFFF5E57) to Color(0xFFE11D48) // Vivid Flame to Crimson
+            else -> Color(0xFF00F5FF) to Color(0xFF00B4D8)
         }
     }
 }
@@ -229,12 +229,12 @@ fun KeyboardLayerMapper(
 
     val totalWidthDp = whiteWidthDp * totalWhiteKeys
 
-    // Fluid spring expansion progress (0f = ultra-thin Sunday Keys lines, 1f = rich interactive capsules)
+    // Fluid, ultra-smooth 60/120fps expansion progress without spring oscillation lag
     val expandProgress by animateFloatAsState(
         targetValue = if (isExpanded) 1f else 0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioLowBouncy,
-            stiffness = Spring.StiffnessLow
+        animationSpec = tween(
+            durationMillis = 260,
+            easing = FastOutSlowInEasing
         ),
         label = "layer_expand_progress"
     )
@@ -377,12 +377,11 @@ private fun TrackRangeBarRow(
             .fillMaxWidth()
             .height(rowHeightDp)
     ) {
-        // Main Colored Capsule Bar (Completely Border-less, Pure Solid Body, MaterialYou Expressive)
+        // Main Colored Capsule Bar (Completely Border-less, Pure Clear Solid Body)
         val minNoteName = KeyPositionMapper.midiToNoteName(minNote)
         val maxNoteName = KeyPositionMapper.midiToNoteName(maxNote)
 
         val safeExpand = if (expandProgress.isNaN()) 0f else expandProgress.coerceIn(0f, 1f)
-        val (gradStart, gradEnd) = KeyPositionMapper.getTrackNeonGradient(track.id)
 
         Box(
             modifier = Modifier
@@ -390,22 +389,11 @@ private fun TrackRangeBarRow(
                 .width(animatedWidth.coerceAtLeast(4.dp))
                 .height(rowHeightDp.coerceAtLeast(2.dp))
                 .shadow(
-                    elevation = if (isActivelyDragging) 4.dp else (2.dp * safeExpand),
+                    elevation = if (isActivelyDragging) 4.dp else (1.5.dp * safeExpand),
                     shape = RoundedCornerShape(cornerRadiusDp)
                 )
                 .background(
-                    brush = if (safeExpand < 0.2f) {
-                        Brush.horizontalGradient(
-                            listOf(gradStart.copy(alpha = 0.95f), gradEnd.copy(alpha = 0.95f))
-                        )
-                    } else {
-                        Brush.horizontalGradient(
-                            listOf(
-                                gradStart.copy(alpha = if (isActivelyDragging) 1.0f else 0.92f),
-                                gradEnd.copy(alpha = if (isActivelyDragging) 0.96f else 0.85f)
-                            )
-                        )
-                    },
+                    color = trackColor.copy(alpha = if (isActivelyDragging) 1.0f else 0.96f),
                     shape = RoundedCornerShape(cornerRadiusDp)
                 )
                 .pointerInput(Unit) {

@@ -717,12 +717,12 @@ private fun SoundGoodizerMasterView(
 
         Spacer(modifier = Modifier.height(4.dp))
 
-        // Bottom: MINIMAL ABCD BUTTONS
+        // Bottom: 3D REALISTIC HARDWARE CONSOLE ABCD PUSH-SWITCHES
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                .padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             val modesList = listOf(
@@ -742,52 +742,86 @@ private fun SoundGoodizerMasterView(
                     else -> Color(0xFF00F5FF)
                 }
 
+                // 3D Recessed Socket Well
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .height(38.dp)
-                        .shadow(
-                            elevation = if (isSelected && isEnabled) 8.dp else 1.dp,
-                            shape = RoundedCornerShape(12.dp),
-                            spotColor = buttonColor
-                        )
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(
-                            if (isSelected && isEnabled) {
-                                Brush.verticalGradient(
-                                    listOf(buttonColor.copy(alpha = 0.35f), buttonColor.copy(alpha = 0.15f))
+                        .height(42.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF0D0F18))
+                        .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(10.dp))
+                        .padding(2.dp)
+                ) {
+                    // Physical Push Switch Surface
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .offset(y = if (isSelected) 1.5.dp else 0.dp)
+                            .shadow(
+                                elevation = if (isSelected && isEnabled) 6.dp else 2.dp,
+                                shape = RoundedCornerShape(8.dp),
+                                spotColor = buttonColor
+                            )
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(
+                                if (isSelected && isEnabled) {
+                                    Brush.verticalGradient(
+                                        listOf(
+                                            buttonColor.copy(alpha = 0.38f),
+                                            Color(0xFF1E2235)
+                                        )
+                                    )
+                                } else {
+                                    Brush.verticalGradient(
+                                        listOf(
+                                            Color(0xFF252A3D),
+                                            Color(0xFF141724)
+                                        )
+                                    )
+                                }
+                            )
+                            .border(
+                                width = if (isSelected && isEnabled) 1.5.dp else 0.8.dp,
+                                color = if (isSelected && isEnabled) buttonColor else Color(0x33FFFFFF),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .clickable { onModeChange(mIndex) }
+                            .padding(horizontal = 4.dp, vertical = 3.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            // Top LED Jewel Indicator
+                            Box(
+                                modifier = Modifier
+                                    .size(width = 14.dp, height = 3.dp)
+                                    .clip(RoundedCornerShape(1.5.dp))
+                                    .background(
+                                        if (isSelected && isEnabled) buttonColor else Color(0x33FFFFFF)
+                                    )
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Text(
+                                    text = mLabel,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isSelected && isEnabled) buttonColor else Color.White
                                 )
-                            } else {
-                                Brush.verticalGradient(
-                                    listOf(Color(0xFF221A36), Color(0xFF161024))
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = mDesc,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = if (isSelected && isEnabled) Color.White else TextDim
                                 )
                             }
-                        )
-                        .border(
-                            width = if (isSelected) 1.5.dp else 1.dp,
-                            color = if (isSelected && isEnabled) buttonColor else Color(0x22FFFFFF),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        .clickable { onModeChange(mIndex) },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = mLabel,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (isSelected && isEnabled) buttonColor else Color.White
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = mDesc,
-                            fontSize = 8.5.sp,
-                            fontWeight = FontWeight.Normal,
-                            color = if (isSelected && isEnabled) Color.White else TextDim
-                        )
+                        }
                     }
                 }
             }

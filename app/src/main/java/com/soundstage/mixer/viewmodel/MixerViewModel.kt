@@ -126,8 +126,10 @@ data class MixerUiState(
     val drumReverb: Float = 0.24f,
     val drumActiveTab: String = "pad",
     val drumSubView: String = "main",
+    val isDrumLoopArmed: Boolean = false,
     val isDrumLoopRecording: Boolean = false,
     val drumLoopBars: Int = 2,
+    val drumTimeSignature: String = "4/4",
     val isDrumLoopRendering: Boolean = false,
     val editingDrumPadId: Int? = null,
     val selectedDrumSampleForAssign: StorageItem? = null,
@@ -576,19 +578,31 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
 
-        val initialDrumPads = (1..8).map { padIdx ->
-            val defaultStyle = when (padIdx) {
-                1, 2 -> DrumPadStyle.GRADIENT_CYAN
-                3, 4 -> DrumPadStyle.LED_AMBER
-                5, 6 -> DrumPadStyle.NEON_MAGENTA
-                else -> DrumPadStyle.MY_CORAL
+        val defaultPadStylesSideA = listOf(
+            DrumPadStyle.DUBSTEP_CORAL, DrumPadStyle.DUBSTEP_CORAL, DrumPadStyle.DUBSTEP_PURPLE,
+            DrumPadStyle.DUBSTEP_CORAL, DrumPadStyle.DUBSTEP_CORAL, DrumPadStyle.DUBSTEP_BLUE,
+            DrumPadStyle.DUBSTEP_BLUE, DrumPadStyle.DUBSTEP_PURPLE, DrumPadStyle.DUBSTEP_GREEN,
+            DrumPadStyle.DUBSTEP_YELLOW, DrumPadStyle.DUBSTEP_CORAL, DrumPadStyle.DUBSTEP_BLUE
+        )
+        val defaultPadStylesSideB = listOf(
+            DrumPadStyle.DUBSTEP_BLUE, DrumPadStyle.DUBSTEP_PURPLE, DrumPadStyle.DUBSTEP_CORAL,
+            DrumPadStyle.DUBSTEP_GREEN, DrumPadStyle.DUBSTEP_YELLOW, DrumPadStyle.DUBSTEP_CORAL,
+            DrumPadStyle.DUBSTEP_CORAL, DrumPadStyle.DUBSTEP_BLUE, DrumPadStyle.DUBSTEP_PURPLE,
+            DrumPadStyle.DUBSTEP_PURPLE, DrumPadStyle.DUBSTEP_GREEN, DrumPadStyle.DUBSTEP_YELLOW
+        )
+
+        val initialDrumPads = (1..24).map { padIdx ->
+            val style = if (padIdx <= 12) {
+                defaultPadStylesSideA.getOrElse(padIdx - 1) { DrumPadStyle.DUBSTEP_CORAL }
+            } else {
+                defaultPadStylesSideB.getOrElse(padIdx - 13) { DrumPadStyle.DUBSTEP_BLUE }
             }
             DrumPadItem(
                 id = padIdx,
-                label = "", // No predefined name at startup per user instructions
+                label = "",
                 soundType = DrumSoundType.SAMPLE,
                 sampleFileName = "sample_$padIdx.wav",
-                colorStyle = defaultStyle
+                colorStyle = style
             )
         }
 
@@ -1740,11 +1754,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             audioEngine.noteOff(key, channel)
         }
         _uiState.update { state ->
-            if (!state.isSustainActive && !state.isMidiPedalPressed) {
-                state.copy(pressedKeys = state.pressedKeys - key)
-            } else {
-                state
-            }
+            state.copy(pressedKeys = state.pressedKeys - key)
         }
     }
 
@@ -1862,8 +1872,67 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     fun onDrumPadPressed(padId: Int) {
         val pad = _uiState.value.drumPads.find { it.id == padId }
         if (pad != null) {
+            if (pad.isLoopMode) {
+                // Toggle loop playback continuously
+                val willPlay = !pad.isLoopPlaying
+                if (willPlay) {
+                    val path = if (pad.sampleFilePath.isNotEmpty()) pad.sampleFilePath else {
+                        val f = File(getApplication<Application>().filesDir, "LiveKeys/DrumPad/${pad.sampleFileName}")
+                        if (f.exists()) f.absolutePath else ""
+                    }
+                    if (path.isNotEmpty() && File(path).exists()) {
+                        audioEngine.playLoopFile(
+                            filePath = path,
+                            volume = _uiState.value.drumVolume,
+                            beatCount = 4,
+                            bpm = _uiState.value.bpm
+                        )
+                    } else {
+                        audioEngine.playDrumPadSound(pad, _uiState.value.drumVolume)
+                    }
+                } else {
+                    audioEngine.stopLoopPlayer()
+                }
+
+                _uiState.update { state ->
+                    val updated = state.drumPads.map { p ->
+                        if (p.id == padId) p.copy(isPressed = true, isLoopPlaying = willPlay)
+                        else if (willPlay && p.isLoopPlaying) p.copy(isLoopPlaying = false) // Choke other loops if needed
+                        else p
+                    }
+                    state.copy(drumPads = updated)
+                }
+                return
+            }
+
+            // High precision low-latency live drum hit
             audioEngine.playDrumPadSound(pad, _uiState.value.drumVolume)
-            if (_uiState.value.isDrumLoopRecording) {
+
+            // Auto-trigger recording on 1st pad hit when loop is armed!
+            if (_uiState.value.isDrumLoopArmed && !_uiState.value.isDrumLoopRecording) {
+                _uiState.update { it.copy(isDrumLoopArmed = false, isDrumLoopRecording = true) }
+                val bpm = _uiState.value.bpm
+                val bars = _uiState.value.drumLoopBars
+                drumPadLooper.startRecording(bpm, bars)
+                drumPadLooper.recordHit(pad, _uiState.value.drumVolume)
+
+                // Schedule auto-completion at exact loop boundary
+                viewModelScope.launch {
+                    val durationMs = ((bars * 4.0 / bpm.toDouble()) * 60.0 * 1000.0).toLong()
+                    kotlinx.coroutines.delay(durationMs)
+                    if (_uiState.value.isDrumLoopRecording) {
+                        stopAndRenderDrumLoop { loopFile ->
+                            // Auto-play the recorded loop smoothly
+                            audioEngine.playLoopFile(
+                                filePath = loopFile.absolutePath,
+                                volume = _uiState.value.drumVolume,
+                                beatCount = bars * 4,
+                                bpm = bpm
+                            )
+                        }
+                    }
+                }
+            } else if (_uiState.value.isDrumLoopRecording) {
                 drumPadLooper.recordHit(pad, _uiState.value.drumVolume)
             }
         }
@@ -1885,18 +1954,64 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun updateDrumPadCustomization(padId: Int, label: String, style: DrumPadStyle) {
+    fun toggleDrumPadLoopMode(padId: Int) {
         _uiState.update { state ->
             val updated = state.drumPads.map { pad ->
                 if (pad.id == padId) {
-                    pad.copy(label = label.take(12), colorStyle = style)
+                    val next = !pad.isLoopMode
+                    if (!next && pad.isLoopPlaying) {
+                        audioEngine.stopLoopPlayer()
+                    }
+                    pad.copy(isLoopMode = next, isLoopPlaying = false)
                 } else pad
             }
             state.copy(drumPads = updated)
         }
+        persistCurrentStateDebounced()
     }
 
-    fun assignDrumSample(padId: Int, sampleName: String, samplePath: String = "") {
+    fun setDrumPadLoopMode(padId: Int, isLoop: Boolean) {
+        _uiState.update { state ->
+            val updated = state.drumPads.map { pad ->
+                if (pad.id == padId) {
+                    if (!isLoop && pad.isLoopPlaying) {
+                        audioEngine.stopLoopPlayer()
+                    }
+                    pad.copy(isLoopMode = isLoop, isLoopPlaying = if (!isLoop) false else pad.isLoopPlaying)
+                } else pad
+            }
+            state.copy(drumPads = updated)
+        }
+        persistCurrentStateDebounced()
+    }
+
+    fun deleteDrumPadLoopFile(item: StorageItem) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val f = File(item.path)
+                if (f.exists()) {
+                    f.delete()
+                }
+                refreshStorageFiles()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun updateDrumPadCustomization(padId: Int, label: String, style: DrumPadStyle, isLoopMode: Boolean = false) {
+        _uiState.update { state ->
+            val updated = state.drumPads.map { pad ->
+                if (pad.id == padId) {
+                    pad.copy(label = label.take(12), colorStyle = style, isLoopMode = isLoopMode)
+                } else pad
+            }
+            state.copy(drumPads = updated)
+        }
+        persistCurrentStateDebounced()
+    }
+
+    fun assignDrumSampleOrLoop(padId: Int, sampleName: String, samplePath: String, isLoop: Boolean = false) {
         val resolvedPath = if (samplePath.isNotEmpty()) samplePath else {
             val f = File(getApplication<Application>().filesDir, "LiveKeys/DrumPad/$sampleName")
             if (f.exists()) f.absolutePath else ""
@@ -1912,13 +2027,19 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         soundType = DrumSoundType.SAMPLE,
                         sampleFileName = sampleName,
                         sampleFilePath = resolvedPath,
-                        label = sampleName.substringBeforeLast(".").take(8)
+                        label = sampleName.substringBeforeLast(".").take(8),
+                        isLoopMode = isLoop,
+                        isLoopPlaying = false
                     )
                 } else pad
             }
             state.copy(drumPads = updated)
         }
         persistCurrentStateDebounced()
+    }
+
+    fun assignDrumSample(padId: Int, sampleName: String, samplePath: String = "") {
+        assignDrumSampleOrLoop(padId, sampleName, samplePath, isLoop = false)
     }
 
     fun assignDrumSf2Note(padId: Int, key: String, octave: Int) {
@@ -1953,7 +2074,57 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     // ================= DRUM PAD LOOPER CONTROLS =================
     fun setDrumLoopBars(bars: Int) {
-        _uiState.update { it.copy(drumLoopBars = bars.coerceIn(1, 8)) }
+        _uiState.update { it.copy(drumLoopBars = bars.coerceIn(1, 16)) }
+    }
+
+    fun incrementDrumLoopBars() {
+        _uiState.update { state ->
+            val nextBars = when (state.drumLoopBars) {
+                1 -> 2
+                2 -> 4
+                4 -> 8
+                8 -> 16
+                else -> (state.drumLoopBars + 1).coerceAtMost(16)
+            }
+            state.copy(drumLoopBars = nextBars)
+        }
+    }
+
+    fun decrementDrumLoopBars() {
+        _uiState.update { state ->
+            val prevBars = when (state.drumLoopBars) {
+                16 -> 8
+                8 -> 4
+                4 -> 2
+                2 -> 1
+                else -> (state.drumLoopBars - 1).coerceAtLeast(1)
+            }
+            state.copy(drumLoopBars = prevBars)
+        }
+    }
+
+    fun setDrumTimeSignature(sig: String) {
+        _uiState.update { it.copy(drumTimeSignature = sig) }
+    }
+
+    fun toggleDrumTimeSignature() {
+        _uiState.update { state ->
+            val nextSig = when (state.drumTimeSignature) {
+                "4/4" -> "3/4"
+                "3/4" -> "6/8"
+                "6/8" -> "2/4"
+                else -> "4/4"
+            }
+            state.copy(drumTimeSignature = nextSig)
+        }
+    }
+
+    fun toggleArmDrumLoop() {
+        if (_uiState.value.isDrumLoopRecording) {
+            stopAndRenderDrumLoop()
+        } else {
+            _uiState.update { it.copy(isDrumLoopArmed = !it.isDrumLoopArmed) }
+        }
     }
 
     fun startDrumLoopRecording() {

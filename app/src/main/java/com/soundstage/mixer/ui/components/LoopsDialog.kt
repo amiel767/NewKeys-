@@ -31,6 +31,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalFocusManager
@@ -922,7 +926,7 @@ private fun LoopEditorContent(
 
                 Column {
                     Text(
-                        text = "Édition de Boucle DJ",
+                        text = "Loops Maker",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -954,15 +958,43 @@ private fun LoopEditorContent(
                 }
             }
 
-            // Right Actions: [ Play/Pause ] [ Écraser ] [ Copie ] [ Fermer ]
+            // Right Actions: [ 🧲 Aimant ] [ Play/Pause ] [ Écraser ] [ Enregistrer ] [ Fermer ]
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
-                // Bouton Play / Pause DJ
+                // Bouton Aimant (Magnétique / Libre)
                 Box(
                     modifier = Modifier
-                        .padding(horizontal = 2.dp)
+                        .height(28.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (isMagnetMode) Color(0x338B5CF6) else Color(0x18FFFFFF))
+                        .border(
+                            1.dp,
+                            if (isMagnetMode) NeonPurpleLight else Color(0x33FFFFFF),
+                            RoundedCornerShape(8.dp)
+                        )
+                        .clickable { isMagnetMode = !isMagnetMode }
+                        .padding(horizontal = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("🧲", fontSize = 11.sp)
+                        Text(
+                            text = if (isMagnetMode) "Aimant ON" else "Aimant OFF",
+                            fontSize = 10.sp,
+                            fontWeight = if (isMagnetMode) FontWeight.ExtraBold else FontWeight.Medium,
+                            color = if (isMagnetMode) NeonPurpleLight else Color(0x88FFFFFF)
+                        )
+                    }
+                }
+
+                // Bouton Play / Pause
+                Box(
+                    modifier = Modifier
                         .height(28.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(if (isLoopPlaying) Color(0x3322D3EE) else Color(0x22FFFFFF))
@@ -983,14 +1015,14 @@ private fun LoopEditorContent(
                         )
                         Text(
                             text = if (isLoopPlaying) "Pause" else "Play",
-                            fontSize = 11.sp,
+                            fontSize = 10.5.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (isLoopPlaying) NeonCyanLight else Color.White
                         )
                     }
                 }
 
-                // Bouton Écraser le fichier
+                // Bouton Écraser
                 Button(
                     onClick = onOverwrite,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9333EA)),
@@ -1007,13 +1039,13 @@ private fun LoopEditorContent(
                     Spacer(modifier = Modifier.width(3.dp))
                     Text(
                         text = "Écraser",
-                        fontSize = 10.5.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
                 }
 
-                // Bouton Enregistrer une copie
+                // Bouton Enregistrer (Copie)
                 Button(
                     onClick = onSaveCopy,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
@@ -1023,23 +1055,22 @@ private fun LoopEditorContent(
                 ) {
                     Icon(
                         imageVector = Icons.Default.ContentCopy,
-                        contentDescription = "Copie",
+                        contentDescription = "Enregistrer",
                         tint = Color.White,
                         modifier = Modifier.size(13.dp)
                     )
                     Spacer(modifier = Modifier.width(3.dp))
                     Text(
-                        text = "Copie",
-                        fontSize = 10.5.sp,
+                        text = "Enregistrer",
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
                 }
 
-                // Bouton X
+                // Bouton Fermer
                 Box(
                     modifier = Modifier
-                        .padding(start = 2.dp)
                         .size(28.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(Color(0x22FFFFFF))
@@ -1182,62 +1213,8 @@ private fun LoopEditorContent(
                 }
             }
 
-            // Mode Sélection: [ 🔓 Libre ] [ 🧲 Aimant ]
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0x18000000))
-                    .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(8.dp))
-                    .padding(2.dp)
-            ) {
-                // Libre
-                Box(
-                    modifier = Modifier
-                        .height(22.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(if (!isMagnetMode) Color(0x3300E5FF) else Color.Transparent)
-                        .border(
-                            width = if (!isMagnetMode) 1.dp else 0.dp,
-                            color = if (!isMagnetMode) NeonCyan else Color.Transparent,
-                            shape = RoundedCornerShape(6.dp)
-                        )
-                        .clickable { isMagnetMode = false }
-                        .padding(horizontal = 7.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "🔓 Libre",
-                        fontSize = 9.5.sp,
-                        fontWeight = if (!isMagnetMode) FontWeight.ExtraBold else FontWeight.Medium,
-                        color = if (!isMagnetMode) Color.White else Color(0x88FFFFFF)
-                    )
-                }
-
-                // Aimant
-                Box(
-                    modifier = Modifier
-                        .height(22.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(if (isMagnetMode) Color(0x338B5CF6) else Color.Transparent)
-                        .border(
-                            width = if (isMagnetMode) 1.dp else 0.dp,
-                            color = if (isMagnetMode) NeonPurpleLight else Color.Transparent,
-                            shape = RoundedCornerShape(6.dp)
-                        )
-                        .clickable { isMagnetMode = true }
-                        .padding(horizontal = 7.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "🧲 Aimant",
-                        fontSize = 9.5.sp,
-                        fontWeight = if (isMagnetMode) FontWeight.ExtraBold else FontWeight.Medium,
-                        color = if (isMagnetMode) Color.White else Color(0x88FFFFFF)
-                    )
-                }
-            }
+                // Mode Sélection: Handled exclusively via header 🧲 Aimant button
+                Spacer(modifier = Modifier.width(4.dp))
 
             // DJ Quick Loop Roll buttons: [ 1/4 ] [ 1/2 ] [ 1T ] [ 2T ] [ 4T ] [ /2 ] [ x2 ] [ TOUT ]
             Row(
@@ -1590,18 +1567,61 @@ private fun WaveformDisplay(
             val totalBars = 120
             val barGap = 1.5f
             val barWidth = (size.width / totalBars) - barGap
-            val centerY = size.height / 2f
+            val rulerHeight = 18f
+            val waveHeight = size.height - rulerHeight
+            val centerY = rulerHeight + waveHeight / 2f
 
-            // 1. Draw subtle background beat grid divisions
+            // 0. DAW Timeline Ruler (FL Studio Bar / Beat numbers)
+            drawRect(
+                color = Color(0xFF141724),
+                topLeft = Offset(0f, 0f),
+                size = Size(size.width, rulerHeight)
+            )
+            drawLine(
+                color = Color(0x40FFFFFF),
+                start = Offset(0f, rulerHeight),
+                end = Offset(size.width, rulerHeight),
+                strokeWidth = 1f
+            )
+
+            val textPaint = android.graphics.Paint().apply {
+                color = android.graphics.Color.argb(200, 200, 220, 255)
+                textSize = density.run { 9.sp.toPx() }
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                isAntiAlias = true
+            }
+
+            // 1. Draw background beat grid divisions & Ruler ticks
             val numBeats = beats.coerceIn(2, 64)
             for (b in 0..numBeats) {
                 val beatX = (b.toFloat() / numBeats.toFloat()) * size.width
-                val isMajor = (b % 4 == 0)
+                val isMeasure = (b % 4 == 0)
+                val measureNum = (b / 4) + 1
+
+                // Ruler tick
                 drawLine(
-                    color = if (isMajor) Color(0x28FFFFFF) else Color(0x12FFFFFF),
-                    start = Offset(beatX, 0f),
+                    color = if (isMeasure) Color(0x90FFFFFF) else Color(0x40FFFFFF),
+                    start = Offset(beatX, if (isMeasure) 0f else rulerHeight * 0.45f),
+                    end = Offset(beatX, rulerHeight),
+                    strokeWidth = if (isMeasure) 1.5f else 1.0f
+                )
+
+                // Draw measure number
+                if (isMeasure && beatX < size.width - 20f) {
+                    drawContext.canvas.nativeCanvas.drawText(
+                        "$measureNum",
+                        beatX + 4f,
+                        rulerHeight - 4f,
+                        textPaint
+                    )
+                }
+
+                // Waveform grid line
+                drawLine(
+                    color = if (isMeasure) Color(0x28FFFFFF) else Color(0x12FFFFFF),
+                    start = Offset(beatX, rulerHeight),
                     end = Offset(beatX, size.height),
-                    strokeWidth = if (isMajor) 1.5f else 1.0f
+                    strokeWidth = if (isMeasure) 1.5f else 1.0f
                 )
             }
 
@@ -1613,59 +1633,165 @@ private fun WaveformDisplay(
                 strokeWidth = 1f
             )
 
-            // 3. Audio Waveform Bars (Dual Envelope: Peak + RMS body with organic audio transients)
+            // 3. Ultra-Fluid Professional DAW Continuous Vector Waveform
+            val numSamples = 240
             val seedOffset = kotlin.math.abs(seed % 1000)
-            for (i in 0 until totalBars) {
-                val progress = i.toFloat() / totalBars.toFloat()
-                val isInsideLoop = progress in startFraction..endFraction
 
-                // Synthesize natural rhythmic audio transient profile
+            // Synthesize audio amplitude envelope points
+            val amps = FloatArray(numSamples)
+            val halfHeights = FloatArray(numSamples)
+            val dx = size.width / (numSamples - 1).toFloat()
+
+            for (i in 0 until numSamples) {
+                val progress = i.toFloat() / (numSamples - 1).toFloat()
                 val beatPhase = (progress * beats) % 1.0f
-                val transientImpact = (1.0f - beatPhase * 0.75f).coerceIn(0.25f, 1.0f)
-                val fundamental = kotlin.math.sin(progress * 18.0 + seedOffset * 0.1).toFloat()
-                val harmonic = kotlin.math.cos(progress * 42.0 + seedOffset * 0.3).toFloat()
-                val noise = kotlin.math.sin(progress * 130.0 + seedOffset * 0.7).toFloat()
+                val transientImpact = (1.0f - beatPhase * 0.72f).coerceIn(0.28f, 1.0f)
+                val fundamental = kotlin.math.sin(progress * 24.0 + seedOffset * 0.15).toFloat()
+                val harmonic = kotlin.math.cos(progress * 56.0 + seedOffset * 0.35).toFloat()
+                val noise = kotlin.math.sin(progress * 140.0 + seedOffset * 0.8).toFloat()
 
                 val rawAmp = (kotlin.math.abs(fundamental) * 0.45f + kotlin.math.abs(harmonic) * 0.35f + kotlin.math.abs(noise) * 0.20f) * transientImpact
-                val peakHeight = (rawAmp * (size.height * 0.82f)).coerceIn(6f, size.height * 0.88f)
-                val rmsHeight = peakHeight * 0.52f
-                val barX = i * (barWidth + barGap)
+                val amp = rawAmp.coerceIn(0.04f, 0.94f)
+                amps[i] = amp
+                halfHeights[i] = amp * (waveHeight * 0.43f)
+            }
 
-                // Selected vs unselected colors
-                if (isInsideLoop) {
-                    // Loop region gradient
-                    val loopProgress = if (endFraction > startFraction) {
-                        ((progress - startFraction) / (endFraction - startFraction)).coerceIn(0f, 1f)
-                    } else 0.5f
+            // Path for the complete filled waveform envelope
+            val fullWavePath = Path().apply {
+                moveTo(0f, centerY)
+                // Upper envelope contour
+                for (i in 0 until numSamples) {
+                    val x = i * dx
+                    val y = centerY - halfHeights[i]
+                    lineTo(x, y)
+                }
+                // Lower envelope contour (reversed)
+                for (i in (numSamples - 1) downTo 0) {
+                    val x = i * dx
+                    val y = centerY + halfHeights[i]
+                    lineTo(x, y)
+                }
+                close()
+            }
 
-                    val activeBarColor = when {
-                        loopProgress < 0.4f -> NeonCyan
-                        loopProgress < 0.75f -> NeonPurpleLight
-                        else -> NeonPink
-                    }
+            // Path for dense RMS core body
+            val rmsWavePath = Path().apply {
+                moveTo(0f, centerY)
+                for (i in 0 until numSamples) {
+                    val x = i * dx
+                    val y = centerY - (halfHeights[i] * 0.52f)
+                    lineTo(x, y)
+                }
+                for (i in (numSamples - 1) downTo 0) {
+                    val x = i * dx
+                    val y = centerY + (halfHeights[i] * 0.52f)
+                    lineTo(x, y)
+                }
+                close()
+            }
 
-                    // Peak bar
-                    drawRoundRect(
-                        color = activeBarColor.copy(alpha = 0.92f),
-                        topLeft = Offset(barX, centerY - peakHeight / 2f),
-                        size = Size(barWidth, peakHeight),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f, 2f)
+            // Path for top crest stroke
+            val topCrestPath = Path().apply {
+                moveTo(0f, centerY - halfHeights[0])
+                for (i in 1 until numSamples) {
+                    lineTo(i * dx, centerY - halfHeights[i])
+                }
+            }
+
+            // Path for bottom crest stroke
+            val bottomCrestPath = Path().apply {
+                moveTo(0f, centerY + halfHeights[0])
+                for (i in 1 until numSamples) {
+                    lineTo(i * dx, centerY + halfHeights[i])
+                }
+            }
+
+            // A. Draw base unselected waveform body
+            drawPath(
+                path = fullWavePath,
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0x3500E5FF),
+                        Color(0x1500E5FF),
+                        Color(0x15FB4570),
+                        Color(0x35FB4570)
+                    ),
+                    startY = rulerHeight,
+                    endY = size.height
+                )
+            )
+
+            // Draw base crest lines (dimmed)
+            drawPath(
+                path = topCrestPath,
+                color = Color(0x5500E5FF),
+                style = Stroke(width = 1f)
+            )
+            drawPath(
+                path = bottomCrestPath,
+                color = Color(0x55FB4570),
+                style = Stroke(width = 1f)
+            )
+
+            // B. Draw active loop region with radiant vibrant DAW styling
+            val loopStartX = size.width * startFraction
+            val loopEndX = size.width * endFraction
+
+            if (loopEndX > loopStartX) {
+                clipRect(
+                    left = loopStartX,
+                    top = rulerHeight,
+                    right = loopEndX,
+                    bottom = size.height
+                ) {
+                    // 1. Radiant saturated vector waveform fill
+                    drawPath(
+                        path = fullWavePath,
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(
+                                NeonCyan.copy(alpha = 0.85f),
+                                NeonPurpleLight.copy(alpha = 0.88f),
+                                NeonPink.copy(alpha = 0.90f)
+                            ),
+                            startX = loopStartX,
+                            endX = loopEndX
+                        )
                     )
 
-                    // RMS core density
-                    drawRoundRect(
-                        color = Color.White.copy(alpha = 0.7f),
-                        topLeft = Offset(barX, centerY - rmsHeight / 2f),
-                        size = Size(barWidth, rmsHeight),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(1.5f, 1.5f)
+                    // 2. Dense RMS white luminous core
+                    drawPath(
+                        path = rmsWavePath,
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = 0.70f),
+                                Color.White.copy(alpha = 0.40f),
+                                Color.White.copy(alpha = 0.70f)
+                            ),
+                            startY = rulerHeight,
+                            endY = size.height
+                        )
                     )
-                } else {
-                    // Dimmed inactive region
-                    drawRoundRect(
-                        color = Color(0x35FFFFFF),
-                        topLeft = Offset(barX, centerY - peakHeight / 2f),
-                        size = Size(barWidth, peakHeight),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f, 2f)
+
+                    // 3. Glowing top crest vector line
+                    drawPath(
+                        path = topCrestPath,
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(Color(0xFFE0FFFF), Color(0xFFF3E8FF), Color(0xFFFFE4E6)),
+                            startX = loopStartX,
+                            endX = loopEndX
+                        ),
+                        style = Stroke(width = 1.6f)
+                    )
+
+                    // 4. Glowing bottom crest vector line
+                    drawPath(
+                        path = bottomCrestPath,
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(Color(0xFF00E5FF), Color(0xFFA78BFA), Color(0xFFFB4570)),
+                            startX = loopStartX,
+                            endX = loopEndX
+                        ),
+                        style = Stroke(width = 1.4f)
                     )
                 }
             }
@@ -1673,32 +1799,31 @@ private fun WaveformDisplay(
             // 4. Darken outside loop regions
             if (startFraction > 0f) {
                 drawRect(
-                    color = Color(0x88000000),
+                    color = Color(0x95080A12),
                     topLeft = Offset(0f, 0f),
                     size = Size(size.width * startFraction, size.height)
                 )
             }
             if (endFraction < 1f) {
                 drawRect(
-                    color = Color(0x88000000),
+                    color = Color(0x95080A12),
                     topLeft = Offset(size.width * endFraction, 0f),
                     size = Size(size.width * (1f - endFraction), size.height)
                 )
             }
 
             // 5. Active loop window luminous glow & frame
-            val loopStartX = size.width * startFraction
-            val loopWidth = (size.width * (endFraction - startFraction)).coerceAtLeast(0f)
+            val loopWidth = (loopEndX - loopStartX).coerceAtLeast(0f)
 
             drawRect(
                 brush = Brush.horizontalGradient(
                     colors = listOf(
-                        Color(0x1800E5FF),
-                        Color(0x18A78BFA),
-                        Color(0x18FB4570)
+                        Color(0x1200E5FF),
+                        Color(0x12A78BFA),
+                        Color(0x12FB4570)
                     ),
                     startX = loopStartX,
-                    endX = loopStartX + loopWidth
+                    endX = loopEndX
                 ),
                 topLeft = Offset(loopStartX, 0f),
                 size = Size(loopWidth, size.height)
@@ -1706,15 +1831,15 @@ private fun WaveformDisplay(
 
             // Top & bottom glowing border lines of the active loop
             drawLine(
-                color = Color(0x4000E5FF),
-                start = Offset(loopStartX, 0f),
-                end = Offset(loopStartX + loopWidth, 0f),
+                color = Color(0x8000E5FF),
+                start = Offset(loopStartX, rulerHeight),
+                end = Offset(loopEndX, rulerHeight),
                 strokeWidth = 2f
             )
             drawLine(
-                color = Color(0x40FB4570),
+                color = Color(0x80FB4570),
                 start = Offset(loopStartX, size.height),
-                end = Offset(loopStartX + loopWidth, size.height),
+                end = Offset(loopEndX, size.height),
                 strokeWidth = 2f
             )
         }

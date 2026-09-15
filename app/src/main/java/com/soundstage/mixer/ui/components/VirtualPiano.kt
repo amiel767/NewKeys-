@@ -109,9 +109,9 @@ fun VirtualPianoKeyboard(
 
     val animatedMapperHeight by animateDpAsState(
         targetValue = targetMapperHeight,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioLowBouncy,
-            stiffness = Spring.StiffnessLow
+        animationSpec = tween(
+            durationMillis = 260,
+            easing = FastOutSlowInEasing
         ),
         label = "pianoMapperHeight"
     )
@@ -327,37 +327,13 @@ fun VirtualPianoKeyboard(
                                 // 3. Final High C Key (C8)
                                 val highCKey = "C$highestOctave"
                                 val isHighCPressed = pressedKeys.contains(highCKey)
-                                val keyBrush = if (isHighCPressed) {
-                                    Brush.verticalGradient(
-                                        listOf(Color.Red, Color.Black)
-                                    )
-                                } else {
-                                    Brush.verticalGradient(
-                                        listOf(Color(0xFFFFFFFF), Color(0xFFF0F1F7), Color(0xFFD6D9E6))
-                                    )
-                                }
-
-                                Box(
-                                    modifier = Modifier
-                                        .width(baseWhiteWidthDp)
-                                        .fillMaxHeight()
-                                        .clip(RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp))
-                                        .background(keyBrush)
-                                        .border(
-                                            1.dp,
-                                            if (isHighCPressed) activeAuraColor else Color(0x33000000),
-                                            RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp)
-                                        ),
-                                    contentAlignment = Alignment.BottomCenter
-                                ) {
-                                    Text(
-                                        text = highCKey,
-                                        fontSize = 8.5.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = if (isHighCPressed) Color(0xFF002E38) else Color(0xFF1E2238),
-                                        modifier = Modifier.padding(bottom = 3.dp)
-                                    )
-                                }
+                                StudioWhiteKey(
+                                    keyName = highCKey,
+                                    isPressed = isHighCPressed,
+                                    isCKey = true,
+                                    whiteWidthDp = baseWhiteWidthDp,
+                                    activeAuraColor = activeAuraColor
+                                )
                             }
 
                             // Computer mouse-style live blue translucent selection overlay over the Virtual Keyboard
@@ -498,6 +474,171 @@ private fun PitchBendWheel(
 }
 
 /**
+ * Ultra High Quality Studio White Piano Key (Ivoire Polie & Biseaux 3D)
+ */
+@Composable
+private fun StudioWhiteKey(
+    keyName: String,
+    isPressed: Boolean,
+    isCKey: Boolean,
+    whiteWidthDp: Dp,
+    activeAuraColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val idleKeyBrush = remember {
+        Brush.verticalGradient(
+            listOf(
+                Color(0xFFFAFBFC), // Ivory top crest specular
+                Color(0xFFF3F5FA), // Polished ivory body
+                Color(0xFFDFE4F0), // Lower acoustic body gradient
+                Color(0xFFC7CEDF)  // Bottom edge 3D lip
+            )
+        )
+    }
+
+    val pressedKeyBrush = remember {
+        Brush.verticalGradient(
+            listOf(
+                Color(0xFFFF1E40), // Bright Red top impact
+                Color(0xFFB80026), // Deep rich crimson
+                Color(0xFF4A000E), // Shadow burgundy
+                Color(0xFF160004)  // Deep black base
+            )
+        )
+    }
+
+    Box(
+        modifier = modifier
+            .width(whiteWidthDp)
+            .fillMaxHeight()
+            .offset(y = if (isPressed) 1.5.dp else 0.dp)
+            .clip(RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp))
+            .background(if (isPressed) pressedKeyBrush else idleKeyBrush)
+            .border(
+                width = if (isPressed) 1.3.dp else 0.8.dp,
+                color = if (isPressed) Color(0xFFFF2A55) else Color(0x35000000),
+                shape = RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp)
+            ),
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        // Specular reflection along the left edge of the white key
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .width(0.7.dp)
+                .fillMaxHeight(0.95f)
+                .background(Color(0x66FFFFFF))
+        )
+
+        // Bottom bevel shadow (gives 3D physical keyboard depth into the chassis)
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(3.dp)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color.Transparent, Color(0x2A000000))
+                    )
+                )
+        )
+
+        if (isCKey) {
+            Box(
+                modifier = Modifier
+                    .padding(bottom = 3.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(if (isPressed) Color(0x88FF1E40) else Color(0x15000000))
+                    .padding(horizontal = 3.dp, vertical = 0.5.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = keyName,
+                    fontSize = 8.5.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (isPressed) Color.White else Color(0xFF1B2032)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Ultra High Quality Studio Black Piano Key (Ébène Mat, Biseaux 3D & Facettes Spéculaires)
+ */
+@Composable
+private fun StudioBlackKey(
+    keyName: String,
+    isPressed: Boolean,
+    leftOffsetDp: Dp,
+    blackKeyWidthDp: Dp,
+    activeAuraColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val idleBlackBrush = remember {
+        Brush.verticalGradient(
+            listOf(
+                Color(0xFF262936), // Matte charcoal top facet
+                Color(0xFF171A24), // Smooth ebony body
+                Color(0xFF0C0E14), // Front face drop
+                Color(0xFF050608)  // Deep shadow base
+            )
+        )
+    }
+
+    val pressedBlackBrush = remember {
+        Brush.verticalGradient(
+            listOf(
+                Color(0xFFFF2247), // Glowing red top crest
+                Color(0xFF99001C), // Deep crimson
+                Color(0xFF3B000B), // Dark burgundy
+                Color(0xFF120003)  // Black shadow base
+            )
+        )
+    }
+
+    Box(
+        modifier = modifier
+            .offset(x = leftOffsetDp, y = if (isPressed) 2.dp else 0.dp)
+            .width(blackKeyWidthDp)
+            .fillMaxHeight(0.60f)
+            .shadow(
+                elevation = if (isPressed) 1.5.dp else 5.dp,
+                shape = RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)
+            )
+            .clip(RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp))
+            .background(if (isPressed) pressedBlackBrush else idleBlackBrush)
+            .border(
+                width = 1.dp,
+                color = if (isPressed) Color(0xFFFF2A55) else Color(0x40000000),
+                shape = RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)
+            )
+    ) {
+        // Specular left bevel highlight (liseré de lumière sur l'arête d'ébène)
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .width(0.7.dp)
+                .fillMaxHeight(0.92f)
+                .background(Color(0x35FFFFFF))
+        )
+
+        // Front face 3D bevel ridge
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(4.dp)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0x25FFFFFF), Color.Transparent)
+                    )
+                )
+        )
+    }
+}
+
+/**
  * Standard Acoustic 1-Octave Group Component: 7 White Keys + 5 Black Keys
  * Exact layout across all octaves with zero drift.
  */
@@ -534,43 +675,13 @@ private fun OctaveGroupView(
                 val isPressed = pressedKeys.contains(fullKey)
                 val isCKey = (noteName == "C")
 
-                val keyBrush = if (isPressed) {
-                    Brush.verticalGradient(
-                        listOf(Color.Red, Color.Black)
-                    )
-                } else {
-                    Brush.verticalGradient(
-                        listOf(
-                            Color(0xFFFFFFFF),
-                            Color(0xFFF0F1F7),
-                            Color(0xFFD6D9E6)
-                        )
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .width(whiteWidthDp)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp))
-                        .background(keyBrush)
-                        .border(
-                            1.dp,
-                            if (isPressed) Color.Red else Color(0x33000000),
-                            RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp)
-                        ),
-                    contentAlignment = Alignment.BottomCenter
-                ) {
-                    if (isCKey) {
-                        Text(
-                            text = fullKey,
-                            fontSize = 8.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (isPressed) Color(0xFF002E38) else Color(0xFF1E2238),
-                            modifier = Modifier.padding(bottom = 3.dp)
-                        )
-                    }
-                }
+                StudioWhiteKey(
+                    keyName = fullKey,
+                    isPressed = isPressed,
+                    isCKey = isCKey,
+                    whiteWidthDp = whiteWidthDp,
+                    activeAuraColor = activeAuraColor
+                )
             }
         }
 
@@ -578,36 +689,14 @@ private fun OctaveGroupView(
         blackSpecs.forEach { (noteName, boundaryIndex) ->
             val fullKey = "$noteName$octave"
             val isPressed = pressedKeys.contains(fullKey)
-
             val leftOffsetDp = (whiteWidthDp * boundaryIndex) - (blackKeyWidthDp / 2f)
 
-            val keyBrush = if (isPressed) {
-                Brush.verticalGradient(
-                    listOf(Color.Red, Color.Black)
-                )
-            } else {
-                Brush.verticalGradient(
-                    listOf(
-                        Color(0xFF2C2F3D),
-                        Color(0xFF181A24),
-                        Color(0xFF0B0C12)
-                    )
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .offset(x = leftOffsetDp)
-                    .width(blackKeyWidthDp)
-                    .fillMaxHeight(0.60f)
-                    .shadow(5.dp, RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp))
-                    .clip(RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp))
-                    .background(keyBrush)
-                    .border(
-                        1.dp,
-                        if (isPressed) activeAuraColor else Color(0x44000000),
-                        RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)
-                    )
+            StudioBlackKey(
+                keyName = fullKey,
+                isPressed = isPressed,
+                leftOffsetDp = leftOffsetDp,
+                blackKeyWidthDp = blackKeyWidthDp,
+                activeAuraColor = activeAuraColor
             )
         }
     }
@@ -636,33 +725,13 @@ private fun IntroA1B1GroupView(
         ) {
             listOf("A1", "B1").forEach { fullKey ->
                 val isPressed = pressedKeys.contains(fullKey)
-                val keyBrush = if (isPressed) {
-                    Brush.verticalGradient(
-                        listOf(Color.Red, Color.Black)
-                    )
-                } else {
-                    Brush.verticalGradient(
-                        listOf(
-                            Color(0xFFFFFFFF),
-                            Color(0xFFF0F1F7),
-                            Color(0xFFD6D9E6)
-                        )
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .width(whiteWidthDp)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp))
-                        .background(keyBrush)
-                        .border(
-                            1.dp,
-                            if (isPressed) Color.Red else Color(0x33000000),
-                            RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp)
-                        ),
-                    contentAlignment = Alignment.BottomCenter
-                ) {}
+                StudioWhiteKey(
+                    keyName = fullKey,
+                    isPressed = isPressed,
+                    isCKey = false,
+                    whiteWidthDp = whiteWidthDp,
+                    activeAuraColor = activeAuraColor
+                )
             }
         }
 
@@ -671,33 +740,12 @@ private fun IntroA1B1GroupView(
         val isBlackPressed = pressedKeys.contains("A#1") || pressedKeys.contains("Bb1")
         val leftOffsetDp = whiteWidthDp - (blackKeyWidthDp / 2f)
 
-        val blackKeyBrush = if (isBlackPressed) {
-            Brush.verticalGradient(
-                listOf(Color.Red, Color.Black)
-            )
-        } else {
-            Brush.verticalGradient(
-                listOf(
-                    Color(0xFF2C2F3D),
-                    Color(0xFF181A24),
-                    Color(0xFF0B0C12)
-                )
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .offset(x = leftOffsetDp)
-                .width(blackKeyWidthDp)
-                .fillMaxHeight(0.60f)
-                .shadow(5.dp, RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp))
-                .clip(RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp))
-                .background(blackKeyBrush)
-                .border(
-                    1.dp,
-                    if (isBlackPressed) activeAuraColor else Color(0x44000000),
-                    RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)
-                )
+        StudioBlackKey(
+            keyName = fullBlackKey,
+            isPressed = isBlackPressed,
+            leftOffsetDp = leftOffsetDp,
+            blackKeyWidthDp = blackKeyWidthDp,
+            activeAuraColor = activeAuraColor
         )
     }
 }

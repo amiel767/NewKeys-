@@ -340,22 +340,23 @@ fun BottomBar(
             contentAlignment = Alignment.CenterStart
         ) {
             if (detectedChord != null) {
-                // Real-time Jazz & Pop Chord Display
+                // Real-time Jazz & Pop Chord Display (Original Name + Variant Name)
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.Center
                 ) {
                     Text(
                         text = detectedChord.primaryName,
-                        fontSize = 13.sp,
+                        fontSize = 12.5.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = NeonCyanLight,
+                        color = Color.White,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = detectedChord.formula,
-                        fontSize = 8.sp,
+                        text = detectedChord.variantName,
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.SemiBold,
                         color = NeonCyan,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
