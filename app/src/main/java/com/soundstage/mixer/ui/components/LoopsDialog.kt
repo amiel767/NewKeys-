@@ -403,6 +403,44 @@ private fun LoopListContent(
                     }
                 }
 
+                // Mini Volume Slider in Header
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0x18FFFFFF))
+                        .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(10.dp))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                        .width(120.dp)
+                        .height(28.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.VolumeUp,
+                        contentDescription = "Volume",
+                        tint = NeonPurpleLight,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Slider(
+                        value = loopVolume,
+                        onValueChange = onLoopVolumeChange,
+                        modifier = Modifier.weight(1f),
+                        colors = SliderDefaults.colors(
+                            thumbColor = NeonPurpleLight,
+                            activeTrackColor = NeonPurpleLight,
+                            inactiveTrackColor = Color(0x22FFFFFF)
+                        )
+                    )
+                    Text(
+                        text = "${(loopVolume * 100).toInt()}%",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        modifier = Modifier.width(28.dp),
+                        textAlign = TextAlign.End
+                    )
+                }
+
                 // Bouton + (Importer) en carré bordure néon petit et adapté
                 Box(
                     modifier = Modifier
@@ -441,44 +479,6 @@ private fun LoopListContent(
                     )
                 }
             }
-        }
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // Volume Controller Row
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color(0x14FFFFFF))
-                .padding(horizontal = 14.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.VolumeUp,
-                contentDescription = "Volume",
-                tint = NeonPurpleLight,
-                modifier = Modifier.size(20.dp)
-            )
-            Slider(
-                value = loopVolume,
-                onValueChange = onLoopVolumeChange,
-                modifier = Modifier.weight(1f),
-                colors = SliderDefaults.colors(
-                    thumbColor = NeonPurpleLight,
-                    activeTrackColor = NeonPurpleLight,
-                    inactiveTrackColor = Color(0x22FFFFFF)
-                )
-            )
-            Text(
-                text = "${(loopVolume * 100).toInt()}%",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                modifier = Modifier.width(36.dp),
-                textAlign = TextAlign.End
-            )
         }
 
         Spacer(modifier = Modifier.height(10.dp))

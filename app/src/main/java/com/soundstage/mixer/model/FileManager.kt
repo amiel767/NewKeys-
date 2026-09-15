@@ -165,80 +165,41 @@ class FileManager(private val context: Context) {
     private fun copyAssetSoundFonts() {
         try {
             val assetList = context.assets.list("soundfonts") ?: emptyArray()
-            val targetDirs = mutableListOf<File>()
-
-            // 1. App internal files directories (Guaranteed 100% accessible on all Android versions)
-            val internalSsSf = File(context.filesDir, "SoundStage/SoundFonts").apply { if (!exists()) mkdirs() }
-            targetDirs.add(internalSsSf)
-            val internalLkSf = File(context.filesDir, "LiveKeys/SoundFonts").apply { if (!exists()) mkdirs() }
-            targetDirs.add(internalLkSf)
-            val internalSf = File(context.filesDir, "SoundFonts").apply { if (!exists()) mkdirs() }
-            targetDirs.add(internalSf)
-
-            // 2. App-specific external files dir (Accessible without runtime permissions)
-            context.getExternalFilesDir("SoundFonts")?.let {
-                if (!it.exists()) it.mkdirs()
-                if (it.exists()) targetDirs.add(it)
-            }
-            context.getExternalFilesDir(null)?.let { rootExt ->
-                val ssExt = File(rootExt, "SoundStage/SoundFonts").apply { if (!exists()) mkdirs() }
-                if (ssExt.exists()) targetDirs.add(ssExt)
-            }
-
-            // 3. Main configured soundfontsDir (if exists or can be created)
-            try {
-                if (!soundfontsDir.exists()) soundfontsDir.mkdirs()
-                if (soundfontsDir.exists()) targetDirs.add(soundfontsDir)
-            } catch (_: Exception) {}
-
-            // 4. Shared public storage folders
-            try {
-                val extSdSoundstage = File(Environment.getExternalStorageDirectory(), "SoundStage/SoundFonts")
-                if (!extSdSoundstage.exists()) extSdSoundstage.mkdirs()
-                if (extSdSoundstage.exists()) targetDirs.add(extSdSoundstage)
-            } catch (_: Exception) {}
-
             for (sfName in assetList) {
-                for (dir in targetDirs) {
-                    val target = File(dir, sfName)
-                    if (!target.exists() || target.length() == 0L) {
-                        val tmpFile = File(dir, "$sfName.tmp")
-                        try {
-                            context.assets.open("soundfonts/$sfName").use { input ->
-                                tmpFile.outputStream().use { output ->
-                                    input.copyTo(output)
-                                }
+                val target = File(soundfontsDir, sfName)
+                if (!target.exists() || target.length() == 0L) {
+                    val tmpFile = File(soundfontsDir, "$sfName.tmp")
+                    try {
+                        context.assets.open("soundfonts/$sfName").use { input ->
+                            tmpFile.outputStream().use { output ->
+                                input.copyTo(output)
                             }
-                            if (tmpFile.exists() && tmpFile.length() > 0L) {
-                                if (target.exists()) target.delete()
-                                tmpFile.renameTo(target)
-                                Log.i("FileManager", "Extracted asset soundfont to: ${target.absolutePath} (${target.length()} bytes)")
-                            }
-                        } catch (e: Exception) {
-                            tmpFile.delete()
-                            Log.w("FileManager", "Error writing soundfont $sfName in ${dir.absolutePath}: ${e.message}")
                         }
+                        if (tmpFile.exists() && tmpFile.length() > 0L) {
+                            if (target.exists()) target.delete()
+                            tmpFile.renameTo(target)
+                            Log.i("FileManager", "Extracted asset soundfont to: ${target.absolutePath} (${target.length()} bytes)")
+                        }
+                    } catch (e: Exception) {
+                        tmpFile.delete()
+                        Log.w("FileManager", "Error writing soundfont $sfName: ${e.message}")
                     }
                 }
             }
 
-            // Also copy across from previous folders if present
+            // Also copy across from previous LiveKeys folder or internal if present
             listOf(
                 File(Environment.getExternalStorageDirectory(), "LiveKeys/SoundFonts"),
                 File(context.filesDir, "LiveKeys/SoundFonts"),
                 File(context.filesDir, "SoundStage/SoundFonts")
             ).forEach { oldDir ->
-                if (oldDir.exists()) {
+                if (oldDir.exists() && oldDir.absolutePath != soundfontsDir.absolutePath) {
                     oldDir.listFiles()?.forEach { oldSf ->
-                        if (oldSf.isFile && (oldSf.extension.equals("sf2", ignoreCase = true) || oldSf.extension.equals("sfz", ignoreCase = true))) {
-                            targetDirs.forEach { tDir ->
-                                val extTarget = File(tDir, oldSf.name)
-                                if (!extTarget.exists() || extTarget.length() == 0L) {
-                                    try {
-                                        oldSf.copyTo(extTarget, overwrite = true)
-                                    } catch (_: Exception) {}
-                                }
-                            }
+                        val extTarget = File(soundfontsDir, oldSf.name)
+                        if (!extTarget.exists() || extTarget.length() == 0L) {
+                            try {
+                                oldSf.copyTo(extTarget, overwrite = true)
+                            } catch (_: Exception) {}
                         }
                     }
                 }
@@ -381,68 +342,52 @@ class FileManager(private val context: Context) {
     suspend fun getSoundFontFiles(): List<StorageItem> = withContext(Dispatchers.IO) {
         val result = mutableListOf<StorageItem>()
         val seenPaths = HashSet<String>()
-        val seenNames = HashSet<String>()
         try {
             val dirsToScan = mutableListOf<File>()
-
-            // 1. Internal App Storage (Guaranteed 100% accessible on all Android versions)
-            val internalSoundstageDir = File(context.filesDir, "SoundStage/SoundFonts")
-            if (internalSoundstageDir.exists()) dirsToScan.add(internalSoundstageDir)
-
-            val internalDir = File(context.filesDir, "LiveKeys/SoundFonts")
-            if (internalDir.exists()) dirsToScan.add(internalDir)
-
-            val internalSfDir = File(context.filesDir, "SoundFonts")
-            if (internalSfDir.exists()) dirsToScan.add(internalSfDir)
-
-            // 2. App-specific external storage
-            context.getExternalFilesDir("SoundFonts")?.let { if (it.exists()) dirsToScan.add(it) }
-            context.getExternalFilesDir(null)?.let { rootExt ->
-                val ssExt = File(rootExt, "SoundStage/SoundFonts")
-                if (ssExt.exists()) dirsToScan.add(ssExt)
+            
+            val possibleLocations = listOf(
+                soundfontsDir,
+                File(Environment.getExternalStorageDirectory(), "SoundStage/SoundFonts"),
+                File("/storage/emulated/0/SoundStage/SoundFonts"),
+                File("/sdcard/SoundStage/SoundFonts"),
+                File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "SoundStage/SoundFonts"),
+                File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "SoundStage/SoundFonts"),
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                File(Environment.getExternalStorageDirectory(), "LiveKeys/SoundFonts"),
+                File(context.filesDir, "SoundStage/SoundFonts"),
+                File(context.filesDir, "LiveKeys/SoundFonts")
+            )
+            for (candidate in possibleLocations) {
+                if (candidate.exists() && !dirsToScan.contains(candidate)) {
+                    dirsToScan.add(candidate)
+                }
             }
 
-            // 3. Primary configured directory
-            if (soundfontsDir.exists()) dirsToScan.add(soundfontsDir)
-
-            // 4. Public external storage
-            val extSdSoundstage = File(Environment.getExternalStorageDirectory(), "SoundStage/SoundFonts")
-            if (extSdSoundstage.exists()) dirsToScan.add(extSdSoundstage)
-
-            val extSdLiveKeys = File(Environment.getExternalStorageDirectory(), "LiveKeys/SoundFonts")
-            if (extSdLiveKeys.exists()) dirsToScan.add(extSdLiveKeys)
-
-            val musicDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "SoundStage/SoundFonts")
-            if (musicDir.exists()) dirsToScan.add(musicDir)
-
-            // 5. Downloads folder
-            val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            if (downloadDir.exists()) dirsToScan.add(downloadDir)
-
             for (dir in dirsToScan) {
-                if (dir.exists() && dir.canRead()) {
-                    dir.walkTopDown()
-                        .maxDepth(3)
-                        .filter { file ->
-                            file.isFile && file.length() > 0L && (file.extension.equals("sf2", ignoreCase = true) ||
-                                    file.extension.equals("sfz", ignoreCase = true))
-                        }
-                        .forEach { file ->
-                            // Prioritize showing distinct files
-                            if (seenPaths.add(file.absolutePath)) {
-                                result.add(
-                                    StorageItem(
-                                        name = file.name,
-                                        path = file.absolutePath,
-                                        isDirectory = false,
-                                        size = file.length(),
-                                        extension = file.extension.lowercase(),
-                                        formattedSize = formatSize(file.length())
-                                    )
-                                )
+                try {
+                    if (dir.exists()) {
+                        dir.walkTopDown()
+                            .maxDepth(4)
+                            .filter { file ->
+                                file.isFile && (file.extension.equals("sf2", ignoreCase = true) ||
+                                        file.extension.equals("sfz", ignoreCase = true))
                             }
-                        }
-                }
+                            .forEach { file ->
+                                if (seenPaths.add(file.absolutePath)) {
+                                    result.add(
+                                        StorageItem(
+                                            name = file.name,
+                                            path = file.absolutePath,
+                                            isDirectory = false,
+                                            size = file.length(),
+                                            extension = file.extension.lowercase(),
+                                            formattedSize = formatSize(file.length())
+                                        )
+                                    )
+                                }
+                            }
+                    }
+                } catch (_: Exception) {}
             }
         } catch (e: Exception) {
             e.printStackTrace()

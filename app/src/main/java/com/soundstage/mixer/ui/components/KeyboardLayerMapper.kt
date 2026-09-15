@@ -4,6 +4,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -177,15 +178,29 @@ object KeyPositionMapper {
 
     fun getTrackNeonColor(trackId: Int): Color {
         return when (trackId) {
-            1 -> Color(0xFF22D3EE) // Neon Cyan
+            1 -> Color(0xFF00E5FF) // Neon Cyan
             2 -> Color(0xFF10B981) // Neon Emerald
-            3 -> Color(0xFF8B5CF6) // Neon Purple
-            4 -> Color(0xFFFFC247) // Neon Amber
-            5 -> Color(0xFFD946EF) // Neon Magenta
+            3 -> Color(0xFFA855F7) // Neon Violet
+            4 -> Color(0xFFFFB020) // Neon Amber
+            5 -> Color(0xFFFF2E93) // Neon Magenta
             6 -> Color(0xFF38BDF8) // Neon Sky Blue
             7 -> Color(0xFF84CC16) // Neon Lime
-            8 -> Color(0xFFF43F5E) // Neon Rose
-            else -> Color(0xFF22D3EE)
+            8 -> Color(0xFFFF5252) // Neon Rose
+            else -> Color(0xFF00E5FF)
+        }
+    }
+
+    fun getTrackNeonGradient(trackId: Int): Pair<Color, Color> {
+        return when (trackId) {
+            1 -> Color(0xFF00E5FF) to Color(0xFF0284C7) // Neon Cyan to Blue
+            2 -> Color(0xFF10B981) to Color(0xFF059669) // Emerald to Deep Green
+            3 -> Color(0xFFA855F7) to Color(0xFF7E22CE) // Violet to Deep Purple
+            4 -> Color(0xFFFFB020) to Color(0xFFEA580C) // Amber to Deep Orange
+            5 -> Color(0xFFFF2E93) to Color(0xFFDB2777) // Hot Pink to Magenta
+            6 -> Color(0xFF38BDF8) to Color(0xFF2563EB) // Sky Blue to Electric Indigo
+            7 -> Color(0xFF84CC16) to Color(0xFF4D7C0F) // Lime to Olive
+            8 -> Color(0xFFFF5252) to Color(0xFFE11D48) // Crimson to Rose
+            else -> Color(0xFF00E5FF) to Color(0xFF0284C7)
         }
     }
 }
@@ -310,13 +325,7 @@ private fun TrackRangeBarRow(
     val rowHeightDp = lerp(2.2.dp, 28.dp, expandProgress)
     val cornerRadiusDp = lerp(1.dp, 8.dp, expandProgress)
     val minBarWidth = lerp(6.dp, 18.dp, expandProgress)
-    val barWidthDp = (endXDp - startXDp).coerceAtLeast(minBarWidth)
-
-    val dotSize = 7.dp
-    val dotInset = 5.dp
-    val leftDotX = startXDp + dotInset
-    val rightDotX = (endXDp - dotInset - dotSize).coerceAtLeast(leftDotX + dotSize + 2.dp)
-    val touchHitboxWidth = 36.dp
+    val rawBarWidthDp = (endXDp - startXDp).coerceAtLeast(minBarWidth)
 
     var dragMinOffsetPx by remember { mutableFloatStateOf(0f) }
     var dragMaxOffsetPx by remember { mutableFloatStateOf(0f) }
@@ -326,6 +335,30 @@ private fun TrackRangeBarRow(
     var isDraggingMax by remember { mutableStateOf(false) }
 
     val isActivelyDragging = isDraggingMin || isDraggingMax
+
+    // Bouncy aesthetic spring animation on position and width snap
+    val animatedStartX by animateDpAsState(
+        targetValue = startXDp,
+        animationSpec = if (isActivelyDragging) snap() else spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "layer_start_x"
+    )
+    val animatedWidth by animateDpAsState(
+        targetValue = rawBarWidthDp,
+        animationSpec = if (isActivelyDragging) snap() else spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "layer_width"
+    )
+
+    val dotSize = 7.dp
+    val dotInset = 5.dp
+    val leftDotX = animatedStartX + dotInset
+    val rightDotX = (animatedStartX + animatedWidth - dotInset - dotSize).coerceAtLeast(leftDotX + dotSize + 2.dp)
+    val touchHitboxWidth = 36.dp
 
     // Smooth Updated State References to prevent gesture reset/glue during recomposition
     val currentMinNote by rememberUpdatedState(minNote)
@@ -344,15 +377,17 @@ private fun TrackRangeBarRow(
             .fillMaxWidth()
             .height(rowHeightDp)
     ) {
-        // Main Colored Capsule Bar (Border-less, MaterialYou Expressive)
+        // Main Colored Capsule Bar (Completely Border-less, Pure Solid Body, MaterialYou Expressive)
         val minNoteName = KeyPositionMapper.midiToNoteName(minNote)
         val maxNoteName = KeyPositionMapper.midiToNoteName(maxNote)
 
         val safeExpand = if (expandProgress.isNaN()) 0f else expandProgress.coerceIn(0f, 1f)
+        val (gradStart, gradEnd) = KeyPositionMapper.getTrackNeonGradient(track.id)
+
         Box(
             modifier = Modifier
-                .offset(x = startXDp)
-                .width(barWidthDp.coerceAtLeast(4.dp))
+                .offset(x = animatedStartX)
+                .width(animatedWidth.coerceAtLeast(4.dp))
                 .height(rowHeightDp.coerceAtLeast(2.dp))
                 .shadow(
                     elevation = if (isActivelyDragging) 4.dp else (2.dp * safeExpand),
@@ -361,21 +396,16 @@ private fun TrackRangeBarRow(
                 .background(
                     brush = if (safeExpand < 0.2f) {
                         Brush.horizontalGradient(
-                            listOf(trackColor.copy(alpha = 0.90f), trackColor)
+                            listOf(gradStart.copy(alpha = 0.95f), gradEnd.copy(alpha = 0.95f))
                         )
                     } else {
                         Brush.horizontalGradient(
                             listOf(
-                                trackColor.copy(alpha = if (isActivelyDragging) 0.98f else 0.88f),
-                                trackColor.copy(alpha = if (isActivelyDragging) 0.92f else 0.75f)
+                                gradStart.copy(alpha = if (isActivelyDragging) 1.0f else 0.92f),
+                                gradEnd.copy(alpha = if (isActivelyDragging) 0.96f else 0.85f)
                             )
                         )
                     },
-                    shape = RoundedCornerShape(cornerRadiusDp)
-                )
-                .border(
-                    width = lerp(0.4.dp, 1.dp, safeExpand),
-                    color = Color.White.copy(alpha = (0.35f + 0.10f * safeExpand).coerceIn(0f, 1f)),
                     shape = RoundedCornerShape(cornerRadiusDp)
                 )
                 .pointerInput(Unit) {
@@ -397,7 +427,7 @@ private fun TrackRangeBarRow(
                     modifier = Modifier.graphicsLayer { alpha = textAlpha },
                     contentAlignment = Alignment.Center
                 ) {
-                    if (barWidthDp >= 64.dp) {
+                    if (animatedWidth >= 64.dp) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.Center,
@@ -451,7 +481,7 @@ private fun TrackRangeBarRow(
                                 )
                             }
                         }
-                    } else if (barWidthDp >= 38.dp) {
+                    } else if (animatedWidth >= 38.dp) {
                         Text(
                             text = "$minNoteName-$maxNoteName",
                             fontSize = 8.sp,

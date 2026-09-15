@@ -236,7 +236,7 @@ fun DrumPadDialog(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MainDrumPadSquareContent(
+internal fun MainDrumPadSquareContent(
     drumPads: List<DrumPadItem>,
     volume: Float,
     onVolumeChange: (Float) -> Unit,
@@ -296,34 +296,18 @@ private fun MainDrumPadSquareContent(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // Minimalist Pin Icon
-                Box(
-                    modifier = Modifier
-                        .size(26.dp)
-                        .clip(CircleShape)
-                        .background(if (isPinned) Color(0x3322D3EE) else Color(0x14FFFFFF))
-                        .border(1.dp, if (isPinned) NeonCyan else Color(0x22FFFFFF), CircleShape)
-                        .clickable { onTogglePin() }
-                        .testTag("btn_pin_drumpad"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = if (isPinned) "📍" else "📌",
-                        fontSize = 11.sp,
-                        color = if (isPinned) NeonCyan else TextDim
-                    )
-                }
-
                 // Close Button
                 Box(
                     modifier = Modifier
                         .size(26.dp)
                         .clip(CircleShape)
-                        .background(Color(0x14FFFFFF))
-                        .clickable { onClose() },
+                        .background(Color(0x22FFFFFF))
+                        .border(1.dp, Color(0x33FFFFFF), CircleShape)
+                        .clickable { onClose() }
+                        .testTag("btn_close_drumpad"),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = "✕", fontSize = 11.sp, color = TextPrimary)
+                    Text(text = "✕", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 }
             }
         }
@@ -367,17 +351,19 @@ private fun MainDrumPadSquareContent(
         // ================= TAB CONTENT =================
         when (activeTab) {
             "pad" -> {
-                // 1_PAD TAB: 8 Fluid Adaptive Pads (2 rows x 4 cols) + 3D Knobs
-                Column(
+                // 1_PAD TAB: Large Square Pads on the Left + Vertical 3D Realistic LED Knobs on the Right
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f)
+                        .weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // 8-Pad Adaptive Fluid Grid
+                    // Large Square Pads Grid (2 rows x 4 cols)
                     Column(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
+                            .weight(1f)
+                            .fillMaxHeight(),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         // Top Row (Pads 1..4)
@@ -427,24 +413,24 @@ private fun MainDrumPadSquareContent(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    // 3D Realistic Knobs with Morphing Glowing LED Rings (Volume & Reverb)
-                    Row(
+                    // Vertical 3D Realistic Knobs Column on the right
+                    Column(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color(0xFF181B26), RoundedCornerShape(10.dp))
-                            .border(0.8.dp, Color(0x22FFFFFF), RoundedCornerShape(10.dp))
-                            .padding(vertical = 3.dp, horizontal = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
+                            .width(72.dp)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF181B26))
+                            .border(0.8.dp, Color(0x22FFFFFF), RoundedCornerShape(12.dp))
+                            .padding(vertical = 10.dp, horizontal = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.SpaceEvenly
                     ) {
                         Led3DKnob(
                             value = volume,
                             onValueChange = onVolumeChange,
                             label = "VOLUME",
                             showFloatingTooltipOnTouch = true,
-                            size = 36.dp,
+                            size = 40.dp,
                             baseColor = NeonCyan
                         )
 
@@ -453,100 +439,9 @@ private fun MainDrumPadSquareContent(
                             onValueChange = onReverbChange,
                             label = "REVERB",
                             showFloatingTooltipOnTouch = true,
-                            size = 36.dp,
+                            size = 40.dp,
                             baseColor = NeonMagenta
                         )
-                    }
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    // ================= DRUM LOOPER UI =================
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF1E212E))
-                            .border(1.dp, if (isRecording) Color(0xFFFF0055) else Color(0x33FFFFFF), RoundedCornerShape(8.dp))
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        // Left: Recording Status & Bar Selector
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isRecording) Color(0xFFFF0055) else Color.Gray)
-                            )
-                            Text(
-                                text = if (isRendering) "RENDU..." else if (isRecording) "REC (BARS: $loopBars)" else "LOOPER",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isRecording) Color(0xFFFF0055) else TextPrimary
-                            )
-                            if (!isRecording && !isRendering) {
-                                Row(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(Color(0x1AFFFFFF))
-                                        .padding(2.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
-                                ) {
-                                    listOf(1, 2, 4, 8).forEach { bars ->
-                                        val isSel = (bars == loopBars)
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(3.dp))
-                                                .background(if (isSel) NeonCyan else Color.Transparent)
-                                                .clickable { onSetLoopBars(bars) }
-                                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                                        ) {
-                                            Text(
-                                                text = "${bars}b",
-                                                fontSize = 9.sp,
-                                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (isSel) Color(0xFF003844) else TextDim
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Right: Record/Stop Actions
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            if (isRecording) {
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(Color(0x33FF0055))
-                                        .clickable { onCancelRecording() }
-                                        .padding(horizontal = 6.dp, vertical = 4.dp)
-                                ) {
-                                    Text("✕", fontSize = 10.sp, color = Color(0xFFFF0055), fontWeight = FontWeight.Bold)
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(NeonCyan)
-                                        .clickable { onStopRecording() }
-                                        .padding(horizontal = 10.dp, vertical = 4.dp)
-                                ) {
-                                    Text("STOP & RENDER", fontSize = 9.sp, color = Color(0xFF003844), fontWeight = FontWeight.Bold)
-                                }
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(if (isRendering) Color.Gray else Color(0xFFFF0055))
-                                        .clickable(enabled = !isRendering) { onStartRecording() }
-                                        .padding(horizontal = 10.dp, vertical = 4.dp)
-                                ) {
-                                    Text("RECORD LOOP", fontSize = 9.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
                     }
                 }
             }

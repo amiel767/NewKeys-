@@ -7,6 +7,8 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
@@ -17,6 +19,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -149,15 +152,16 @@ fun MixerScreen(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 // 2. MIXER TRACKS SECTION (8 Tracks + 1 Master)
+                val defaultSfName = uiState.tracks.firstOrNull { it.soundfontName.isNotEmpty() }?.soundfontName ?: "FluidR3_GM.sf2"
+                val isPadOpen = uiState.activePopup == ActivePopup.DRUM_PAD || uiState.activePopup == ActivePopup.TONIC_PAD
+
                 BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
                 ) {
                     val availableH = maxHeight
-                    // When the virtual keyboard deploys, keep the 8 vertical tracks cleanly displayed
                     val isVerticalMode = availableH >= 85.dp
-                    // The 3 streamlined reference ticks adapt smoothly whether keyboard is open or closed
                     val showTicks = true
 
                     AnimatedContent(
@@ -169,11 +173,20 @@ fun MixerScreen(
                         label = "fader_mode_transition"
                     ) { verticalMode ->
                         if (verticalMode) {
+                            val trackScrollState = rememberScrollState()
+                            val overlayWidth = if (isPadOpen) (this@BoxWithConstraints.maxWidth * 0.50f) else 0.dp
+                            val trackItemWidth = if (isPadOpen) {
+                                ((this@BoxWithConstraints.maxWidth * 0.50f - 16.dp) / 4f).coerceAtLeast(68.dp)
+                            } else {
+                                (this@BoxWithConstraints.maxWidth / 8f).coerceAtLeast(65.dp)
+                            }
+
                             Row(
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .horizontalScroll(trackScrollState),
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                // Regular Tracks 1..8
                                 uiState.tracks.forEach { track ->
                                     VerticalTrackChannel(
                                         track = track,
@@ -186,9 +199,12 @@ fun MixerScreen(
                                         onFxClick = { viewModel.openEffectsForTrack(track.id) },
                                         showTicks = showTicks,
                                         modifier = Modifier
-                                            .weight(1f)
+                                            .width(trackItemWidth)
                                             .fillMaxHeight()
                                     )
+                                }
+                                if (isPadOpen) {
+                                    Spacer(modifier = Modifier.width(overlayWidth))
                                 }
                             }
                         } else {
@@ -206,6 +222,134 @@ fun MixerScreen(
                                     .fillMaxWidth()
                                     .align(Alignment.Center)
                             )
+                        }
+                    }
+
+                    // Fluid non-modal DrumPad & TonicPad overlay panel covering the 4 last faders area with bouncy spring animation
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = isPadOpen,
+                        enter = scaleIn(
+                            initialScale = 0.85f,
+                            transformOrigin = TransformOrigin(0.95f, 0.5f),
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        ) + slideInHorizontally(
+                            initialOffsetX = { it / 2 },
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        ) + fadeIn(tween(180)),
+                        exit = scaleOut(
+                            targetScale = 0.90f,
+                            transformOrigin = TransformOrigin(0.95f, 0.5f),
+                            animationSpec = tween(150)
+                        ) + slideOutHorizontally(
+                            targetOffsetX = { it / 2 },
+                            animationSpec = tween(150)
+                        ) + fadeOut(tween(150)),
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .width((this@BoxWithConstraints.maxWidth * 0.50f).coerceIn(310.dp, 480.dp))
+                            .fillMaxHeight()
+                            .zIndex(40f)
+                    ) {
+                        var isTonicSoundPickerOpen by remember { mutableStateOf(false) }
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .shadow(16.dp, RoundedCornerShape(16.dp))
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Color(0xFF131622))
+                                .border(1.2.dp, Color(0x668B5CF6), RoundedCornerShape(16.dp))
+                                .padding(8.dp)
+                        ) {
+                            AnimatedContent(
+                                targetState = uiState.activePopup,
+                                transitionSpec = {
+                                    (scaleIn(
+                                        initialScale = 0.90f,
+                                        animationSpec = spring(
+                                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                                            stiffness = Spring.StiffnessMediumLow
+                                        )
+                                    ) + fadeIn(tween(160)))
+                                        .togetherWith(scaleOut(targetScale = 0.95f, animationSpec = tween(120)) + fadeOut(tween(120)))
+                                },
+                                label = "inline_pad_view_switch"
+                            ) { popup ->
+                                when (popup) {
+                                    ActivePopup.DRUM_PAD -> {
+                                        MainDrumPadSquareContent(
+                                            drumPads = uiState.drumPads,
+                                            volume = uiState.drumVolume,
+                                            onVolumeChange = { viewModel.setDrumVolume(it) },
+                                            reverb = uiState.drumReverb,
+                                            onReverbChange = { viewModel.setDrumReverb(it) },
+                                            activeTab = uiState.drumActiveTab,
+                                            onTabChange = { viewModel.setDrumTab(it) },
+                                            isPinned = false,
+                                            onTogglePin = {},
+                                            onClose = { viewModel.closePopup() },
+                                            onDragWindow = { _, _ -> },
+                                            onPadPressed = { viewModel.onDrumPadPressed(it) },
+                                            onPadReleased = { viewModel.onDrumPadReleased(it) },
+                                            onLongPressPad = {},
+                                            audioFiles = uiState.drumPadAudioFiles,
+                                            loopFiles = uiState.drumPadLoopAudioFiles,
+                                            onPlaySample = { viewModel.playDrumSample(it) },
+                                            onLongPressSample = {},
+                                            onImportAudioFile = { drumPadPickerLauncher.launch(arrayOf("audio/*", "*/*")) },
+                                            isRecording = uiState.isDrumLoopRecording,
+                                            loopBars = uiState.drumLoopBars,
+                                            onSetLoopBars = { viewModel.setDrumLoopBars(it) },
+                                            onStartRecording = { viewModel.startDrumLoopRecording() },
+                                            onStopRecording = { viewModel.stopAndRenderDrumLoop(onFinished = {}) },
+                                            onCancelRecording = { viewModel.cancelDrumLoopRecording() },
+                                            isRendering = uiState.isDrumLoopRendering
+                                        )
+                                    }
+                                    ActivePopup.TONIC_PAD -> {
+                                        val singleOctaveText = remember(uiState.tonicOctaveRange) {
+                                            val match = Regex("C[0-8]").findAll(uiState.tonicOctaveRange).map { it.value }.toList()
+                                            if (match.isNotEmpty()) match.last() else "C4"
+                                        }
+                                        TonicPadContent(
+                                            activeNotes = uiState.activeTonicNotes,
+                                            onNoteClick = { viewModel.onTonicNoteClick(it) },
+                                            isMultiPadEnabled = uiState.isMultiPadEnabled,
+                                            onToggleMultiPad = { viewModel.toggleMultiPad() },
+                                            singleOctaveText = singleOctaveText,
+                                            onOctaveMinus = { viewModel.onTonicOctaveMinus() },
+                                            onOctavePlus = { viewModel.onTonicOctavePlus() },
+                                            volume = uiState.audioSlots.getOrNull(9)?.volume ?: 0.8f,
+                                            onVolumeChange = { viewModel.setTonicVolume(it) },
+                                            reverb = viewModel.audioEngine.channelParams[9].reverb,
+                                            onReverbChange = { viewModel.setTonicReverb(it) },
+                                            brightness = uiState.tonicBrightness,
+                                            onBrightnessChange = { viewModel.setTonicBrightness(it) },
+                                            shimmer = uiState.tonicShimmer,
+                                            onShimmerChange = { viewModel.setTonicShimmer(it) },
+                                            isPinned = false,
+                                            onTogglePin = {},
+                                            onClose = { viewModel.closePopup() },
+                                            isSoundPickerOpen = isTonicSoundPickerOpen,
+                                            onToggleSoundPicker = { isTonicSoundPickerOpen = it },
+                                            soundfonts = uiState.soundfontFiles,
+                                            currentLoadedSf2Name = uiState.audioSlots.getOrNull(9)?.soundFontPath?.substringAfterLast("/") ?: defaultSfName,
+                                            loadedSf2Presets = uiState.audioSlots.getOrNull(9)?.presets ?: emptyList(),
+                                            onSelectPreset = { viewModel.selectSf2Preset(9, it) },
+                                            onSelectSf2File = { viewModel.loadSoundFontForSlot(9, it.path) },
+                                            onOpenSoundfontPicker = { viewModel.openSoundfontForSlot(9) },
+                                            onDragHeader = null
+                                        )
+                                    }
+                                    else -> {}
+                                }
+                            }
                         }
                     }
                 }
@@ -414,84 +558,6 @@ fun MixerScreen(
             }
         }
 
-        // ================= POPUP OVERLAYS & FLOATING WINDOWS =================
-        val defaultSfName = uiState.tracks.firstOrNull { it.soundfontName.isNotEmpty() }?.soundfontName ?: "FluidR3_GM.sf2"
-
-        // Drum Pad (Identical size & behavior to PAD, 8 pads immediately visible, position/size memory with Pin)
-        if (uiState.isDrumPadPinned || uiState.activePopup == ActivePopup.DRUM_PAD) {
-            DrumPadDialog(
-                drumPads = uiState.drumPads,
-                volume = uiState.drumVolume,
-                onVolumeChange = { viewModel.setDrumVolume(it) },
-                reverb = uiState.drumReverb,
-                onReverbChange = { viewModel.setDrumReverb(it) },
-                activeTab = uiState.drumActiveTab,
-                onTabChange = { viewModel.setDrumTab(it) },
-                subView = uiState.drumSubView,
-                onSetSubView = { viewModel.setDrumSubView(it) },
-                audioFiles = uiState.drumPadAudioFiles,
-                loopFiles = uiState.drumPadLoopAudioFiles,
-                isPinned = uiState.isDrumPadPinned,
-                onTogglePin = { viewModel.togglePinDrumPad() },
-                onClose = { viewModel.closeDrumPad() },
-                initialOffsetX = uiState.drumPadOffsetX,
-                initialOffsetY = uiState.drumPadOffsetY,
-                initialSizeDp = uiState.drumPadSizeDp,
-                onTransformChange = { x, y, size -> viewModel.updateDrumPadTransform(x, y, size) },
-                onPadPressed = { viewModel.onDrumPadPressed(it) },
-                onPadReleased = { viewModel.onDrumPadReleased(it) },
-                onPlayNote = { note, oct -> viewModel.playDrumNote(note, oct) },
-                onPlaySample = { sample -> viewModel.playDrumSample(sample) },
-                onUpdatePadCustomization = { padId, label, style ->
-                    viewModel.updateDrumPadCustomization(padId, label, style)
-                },
-                onAssignPadSample = { padId, sample -> viewModel.assignDrumSample(padId, sample.name, sample.path) },
-                onAssignPadNote = { padId, noteStr, oct, key -> viewModel.assignDrumSf2Note(padId, key, oct) },
-                onImportAudioFile = { drumPadPickerLauncher.launch(arrayOf("audio/*", "*/*")) },
-                isRecording = uiState.isDrumLoopRecording,
-                loopBars = uiState.drumLoopBars,
-                onSetLoopBars = { viewModel.setDrumLoopBars(it) },
-                onStartRecording = { viewModel.startDrumLoopRecording() },
-                onStopRecording = { viewModel.stopAndRenderDrumLoop(onFinished = { /* toast? */ }) },
-                onCancelRecording = { viewModel.cancelDrumLoopRecording() },
-                isRendering = uiState.isDrumLoopRendering
-            )
-        }
-
-        // Tonic Pad (Shown if pinned or active, with position/size memory with Pin)
-        if (uiState.isTonicPadPinned || uiState.activePopup == ActivePopup.TONIC_PAD) {
-            TonicPadDialog(
-                activeNotes = uiState.activeTonicNotes,
-                onNoteClick = { viewModel.onTonicNoteClick(it) },
-                isMultiPadEnabled = uiState.isMultiPadEnabled,
-                onToggleMultiPad = { viewModel.toggleMultiPad() },
-                octaveRange = uiState.tonicOctaveRange,
-                onOctaveMinus = { viewModel.onTonicOctaveMinus() },
-                onOctavePlus = { viewModel.onTonicOctavePlus() },
-                volume = uiState.audioSlots.getOrNull(9)?.volume ?: 0.8f,
-                onVolumeChange = { viewModel.setTonicVolume(it) },
-                reverb = viewModel.audioEngine.channelParams[9].reverb,
-                onReverbChange = { viewModel.setTonicReverb(it) },
-                brightness = uiState.tonicBrightness,
-                onBrightnessChange = { viewModel.setTonicBrightness(it) },
-                shimmer = uiState.tonicShimmer,
-                onShimmerChange = { viewModel.setTonicShimmer(it) },
-                isPinned = uiState.isTonicPadPinned,
-                onTogglePin = { viewModel.togglePinTonicPad() },
-                onClose = { viewModel.closeTonicPad() },
-                soundfonts = uiState.soundfontFiles,
-                currentLoadedSf2Name = uiState.audioSlots.getOrNull(9)?.soundFontPath?.substringAfterLast("/") ?: defaultSfName,
-                loadedSf2Presets = uiState.audioSlots.getOrNull(9)?.presets ?: emptyList(),
-                onSelectPreset = { viewModel.selectSf2Preset(9, it) },
-                onSelectSf2File = { viewModel.loadSoundFontForSlot(9, it.path) },
-                onOpenSoundfontPicker = { viewModel.openSoundfontForSlot(9) },
-                initialOffsetX = uiState.tonicPadOffsetX,
-                initialOffsetY = uiState.tonicPadOffsetY,
-                initialSizeDp = uiState.tonicPadSizeDp,
-                onTransformChange = { x, y, size -> viewModel.updateTonicPadTransform(x, y, size) }
-            )
-        }
-
         when (uiState.activePopup) {
             ActivePopup.EFFECTS -> {
                 val fxParams = uiState.fxParameters[uiState.activeEffectTrackId] ?: FxParameters()
@@ -524,6 +590,7 @@ fun MixerScreen(
                     selectedPresetId = activePresetId,
                     selectedSoundfontName = activeSfName,
                     onSelectPreset = { viewModel.selectSf2Preset(it) },
+                    onSelectPresetFull = { viewModel.selectSf2Preset(it) },
                     onSelectSf2File = { viewModel.loadSoundfontFromStorage(it) },
                     activeTab = uiState.activeSf2Tab,
                     onTabChange = { viewModel.setSf2Tab(it) },

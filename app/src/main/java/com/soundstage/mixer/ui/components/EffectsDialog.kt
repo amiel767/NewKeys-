@@ -56,7 +56,7 @@ fun EffectsDialog(
     val title = if (trackId == 0) "Effets — Master" else "Effets & Réglages — Piste $trackId"
 
     val tabs = if (trackId == 0) {
-        listOf("eq" to "EQ", "reverb" to "Reverb", "comp" to "Comp", "delay" to "Delay", "sg" to "SoundGoodizer")
+        listOf("eq" to "EQ", "reverb" to "Reverb", "comp" to "Comp", "delay" to "Delay", "sg" to "Maximizer")
     } else {
         listOf(
             "reverb" to "Reverb",
@@ -679,11 +679,11 @@ private fun SoundGoodizerMasterView(
                         .shadow(if (isEnabled) 6.dp else 0.dp, CircleShape, spotColor = modeColor)
                 )
                 Text(
-                    text = "SOUNDGOODIZER MAXIMIZER",
-                    fontSize = 10.sp,
+                    text = "MAXIMISER",
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = if (isEnabled) Color.White else TextDim,
-                    letterSpacing = 0.8.sp
+                    letterSpacing = 1.sp
                 )
             }
 
@@ -807,7 +807,9 @@ private fun GrandLuminousKnob(
     isEnabled: Boolean,
     modifier: Modifier = Modifier
 ) {
-    var accumulatedDrag by remember { mutableFloatStateOf(0f) }
+    val currentValState by rememberUpdatedState(value)
+    val onValueChangeState by rememberUpdatedState(onValueChange)
+
     val animatedValue by animateFloatAsState(
         targetValue = value.coerceIn(0f, 1f),
         animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
@@ -818,19 +820,18 @@ private fun GrandLuminousKnob(
         modifier = modifier
             .pointerInput(Unit) {
                 detectDragGestures(
-                    onDragStart = { accumulatedDrag = 0f },
                     onDrag = { change, dragAmount ->
                         change.consume()
-                        accumulatedDrag -= dragAmount.y
-                        val delta = (dragAmount.x - dragAmount.y) / 180f
-                        val nextVal = (value + delta).coerceIn(0f, 1f)
-                        onValueChange(nextVal)
+                        // Fluid, immediate tactile response to vertical/horizontal touch drag
+                        val delta = (-dragAmount.y * 1.3f + dragAmount.x * 0.7f) / 100f
+                        val nextVal = (currentValState + delta).coerceIn(0f, 1f)
+                        onValueChangeState(nextVal)
                     }
                 )
             }
             .pointerInput(Unit) {
                 detectTapGestures(
-                    onDoubleTap = { onValueChange(0.5f) }
+                    onDoubleTap = { onValueChangeState(0.5f) }
                 )
             },
         contentAlignment = Alignment.Center

@@ -177,7 +177,7 @@ fun TonicPadDialog(
 }
 
 @Composable
-private fun TonicPadContent(
+internal fun TonicPadContent(
     activeNotes: Set<String>,
     onNoteClick: (String) -> Unit,
     isMultiPadEnabled: Boolean,
@@ -286,29 +286,18 @@ private fun TonicPadContent(
                     }
                 }
 
-                // Pin Button
-                Box(
-                    modifier = Modifier
-                        .size(24.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(if (isPinned) Color(0x448B5CF6) else Color(0x14FFFFFF))
-                        .border(1.dp, if (isPinned) NeonPurpleLight else Color.Transparent, RoundedCornerShape(6.dp))
-                        .clickable { onTogglePin() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(text = if (isPinned) "📌" else "📍", fontSize = 10.sp)
-                }
-
                 // Close Button
                 Box(
                     modifier = Modifier
                         .size(24.dp)
                         .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0x14FFFFFF))
-                        .clickable { onClose() },
+                        .background(Color(0x22FFFFFF))
+                        .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp))
+                        .clickable { onClose() }
+                        .testTag("btn_close_tonicpad"),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = "✕", fontSize = 10.5.sp, color = TextPrimary)
+                    Text(text = "✕", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 }
             }
         }
@@ -525,139 +514,105 @@ private fun TonicPadContent(
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
-            // 12 CHROMATIC NOTES GRID (4x3 Arrangement)
-            Column(
+            // Main Area: Square Pads Grid on Left + Vertical 3D LED Knobs on Right
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                verticalArrangement = Arrangement.spacedBy(5.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                for (row in 0 until 3) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                    ) {
-                        for (col in 0 until 4) {
-                            val note = chromaticNotes[row * 4 + col]
-                            val isActive = activeNotes.contains(note)
+                // 12 CHROMATIC SQUARE PADS GRID (3 rows x 4 cols)
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    for (row in 0 until 3) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            for (col in 0 until 4) {
+                                val note = chromaticNotes[row * 4 + col]
+                                val isActive = activeNotes.contains(note)
 
-                            val padBg = if (isActive) {
-                                Brush.verticalGradient(listOf(NeonPurpleLight, Color(0xFF7C3AED), Color(0xFF4C1D95)))
-                            } else {
-                                Brush.verticalGradient(listOf(Color(0xFF282038), Color(0xFF1A1426)))
-                            }
+                                val padBg = if (isActive) {
+                                    Brush.verticalGradient(listOf(NeonPurpleLight, Color(0xFF7C3AED), Color(0xFF4C1D95)))
+                                } else {
+                                    Brush.verticalGradient(listOf(Color(0xFF282038), Color(0xFF1A1426)))
+                                }
 
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                                    .clip(RoundedCornerShape(9.dp))
-                                    .background(padBg)
-                                    .border(
-                                        1.2.dp,
-                                        if (isActive) Color(0xFFC4B5FD) else Color(0x268B5CF6),
-                                        RoundedCornerShape(9.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .clip(RoundedCornerShape(9.dp))
+                                        .background(padBg)
+                                        .border(
+                                            1.2.dp,
+                                            if (isActive) Color(0xFFC4B5FD) else Color(0x268B5CF6),
+                                            RoundedCornerShape(9.dp)
+                                        )
+                                        .clickable { onNoteClick(note) },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = note,
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (isActive) Color.White else TextPrimary
                                     )
-                                    .clickable { onNoteClick(note) },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = note,
-                                    fontSize = 13.5.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = if (isActive) Color.White else TextPrimary
-                                )
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // VOLUME SLIDER (Direct Volume Control for Tonic Pad)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0x0CFFFFFF))
-                    .padding(horizontal = 8.dp, vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.VolumeUp,
-                    contentDescription = "Pad Volume",
-                    tint = Color(0xFFC4B5FD),
-                    modifier = Modifier.size(16.dp)
-                )
-                Text(
-                    text = "Vol",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextDim
-                )
-                Slider(
-                    value = volume,
-                    onValueChange = onVolumeChange,
-                    valueRange = 0f..1f,
-                    modifier = Modifier.weight(1f).height(24.dp),
-                    colors = SliderDefaults.colors(
-                        thumbColor = Color(0xFFC4B5FD),
-                        activeTrackColor = Color(0xFF8B5CF6),
-                        inactiveTrackColor = Color(0x338B5CF6)
+                // Vertical 3D Realistic Knobs Column on the right
+                Column(
+                    modifier = Modifier
+                        .width(72.dp)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF181326))
+                        .border(0.8.dp, Color(0x338B5CF6), RoundedCornerShape(12.dp))
+                        .padding(vertical = 8.dp, horizontal = 4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    Led3DKnob(
+                        value = volume,
+                        onValueChange = onVolumeChange,
+                        label = "VOLUME",
+                        showFloatingTooltipOnTouch = true,
+                        size = 36.dp,
+                        baseColor = Color(0xFFC4B5FD)
                     )
-                )
-                Text(
-                    text = "${(volume * 100).toInt()}%",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color.White,
-                    modifier = Modifier.width(32.dp)
-                )
-            }
 
-            Spacer(modifier = Modifier.height(6.dp))
+                    Led3DKnob(
+                        value = reverb,
+                        onValueChange = onReverbChange,
+                        label = "REVERB",
+                        showFloatingTooltipOnTouch = true,
+                        size = 36.dp,
+                        baseColor = Color(0xFFEC4899)
+                    )
 
-            // 3D SEMI-REALISTIC KNOBS WITH FLUID GLOWING LED (Brightness, Shimmer, Reverb)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0x0CFFFFFF), RoundedCornerShape(10.dp))
-                    .padding(vertical = 4.dp, horizontal = 8.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Led3DKnob(
-                    value = brightness,
-                    onValueChange = onBrightnessChange,
-                    label = "Brightness",
-                    showFloatingTooltipOnTouch = true,
-                    size = 40.dp,
-                    baseColor = Color(0xFF8B5CF6)
-                )
-
-                Led3DKnob(
-                    value = shimmer,
-                    onValueChange = onShimmerChange,
-                    label = "Shimmer",
-                    showFloatingTooltipOnTouch = true,
-                    size = 40.dp,
-                    baseColor = NeonCyan
-                )
-
-                Led3DKnob(
-                    value = reverb,
-                    onValueChange = onReverbChange,
-                    label = "Reverb",
-                    showFloatingTooltipOnTouch = true,
-                    size = 40.dp,
-                    baseColor = Color(0xFFEC4899)
-                )
+                    Led3DKnob(
+                        value = shimmer,
+                        onValueChange = onShimmerChange,
+                        label = "SHIMMER",
+                        showFloatingTooltipOnTouch = true,
+                        size = 36.dp,
+                        baseColor = NeonCyan
+                    )
+                }
             }
         }
     }

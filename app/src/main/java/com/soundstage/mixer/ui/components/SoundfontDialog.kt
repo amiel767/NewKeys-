@@ -5,10 +5,12 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -59,6 +61,7 @@ fun SoundfontDialog(
     selectedPresetId: Int,
     selectedSoundfontName: String = "",
     onSelectPreset: (Int) -> Unit,
+    onSelectPresetFull: ((SoundfontPreset) -> Unit)? = null,
     onSelectSf2File: ((StorageItem) -> Unit)? = null,
     activeTab: String,
     onTabChange: (String) -> Unit,
@@ -85,23 +88,43 @@ fun SoundfontDialog(
     val presetListState = rememberLazyListState()
     val fileListState = rememberLazyListState()
 
-    // Sorted and filtered presets
-    val sortedPresets = remember(presets) {
-        presets.sortedWith(compareBy({ it.bankNumber }, { it.id }))
+    // Distinct banks available in current SoundFont
+    val availableBanks = remember(presets) {
+        presets.map { it.bankNumber }.distinct().sorted()
     }
 
-    val filteredPresets = remember(sortedPresets, searchQuery) {
-        if (searchQuery.isBlank()) sortedPresets
-        else sortedPresets.filter {
-            it.name.contains(searchQuery, ignoreCase = true) ||
-                    it.id.toString().contains(searchQuery) ||
-                    it.bankNumber.toString().contains(searchQuery)
+    var selectedBank by remember(presets) {
+        val initialBank = presets.find { it.id == selectedPresetId }?.bankNumber ?: availableBanks.firstOrNull() ?: 0
+        mutableStateOf(initialBank)
+    }
+
+    LaunchedEffect(availableBanks) {
+        if (selectedBank !in availableBanks && availableBanks.isNotEmpty()) {
+            selectedBank = availableBanks.first()
         }
     }
 
+    // Filter presets: If multiple banks exist and search is blank, filter by selectedBank
+    val bankPresets = remember(presets, selectedBank, availableBanks) {
+        if (availableBanks.size <= 1) {
+            presets.sortedWith(compareBy({ it.bankNumber }, { it.id }))
+        } else {
+            presets.filter { it.bankNumber == selectedBank }.sortedBy { it.id }
+        }
+    }
+
+    val filteredPresets = remember(bankPresets, presets, searchQuery) {
+        if (searchQuery.isBlank()) bankPresets
+        else presets.filter {
+            it.name.contains(searchQuery, ignoreCase = true) ||
+                    it.id.toString().contains(searchQuery) ||
+                    it.bankNumber.toString().contains(searchQuery)
+        }.sortedWith(compareBy({ it.bankNumber }, { it.id }))
+    }
+
     // Persistent scroll to the selected preset when dialog opens or preset changes
-    LaunchedEffect(selectedPresetId, sortedPresets) {
-        val targetIdx = sortedPresets.indexOfFirst { it.id == selectedPresetId }
+    LaunchedEffect(selectedPresetId, bankPresets) {
+        val targetIdx = bankPresets.indexOfFirst { it.id == selectedPresetId }
         if (targetIdx >= 0) {
             val scrollTarget = (targetIdx - 1).coerceAtLeast(0)
             presetListState.scrollToItem(scrollTarget)
@@ -351,72 +374,121 @@ fun SoundfontDialog(
                                     }
                                 }
                             } else {
-                                LazyColumn(
-                                    state = presetListState,
-                                    modifier = Modifier.fillMaxSize(),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    items(
-                                        items = filteredPresets,
-                                        key = { "${it.bankNumber}:${it.id}" }
-                                    ) { preset ->
-                                        val isSelected = selectedPresetId == preset.id
+                                Column(modifier = Modifier.fillMaxSize()) {
+                                    // Bank selector tabs when multiple banks exist
+                                    if (availableBanks.size > 1 && searchQuery.isBlank()) {
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .height(44.dp)
-                                                .clip(RoundedCornerShape(12.dp))
-                                                .background(if (isSelected) Color(0x2A00E5FF) else Color(0x14FFFFFF))
-                                                .clickable { onSelectPreset(preset.id) }
-                                                .padding(horizontal = 10.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                .padding(bottom = 6.dp)
+                                                .horizontalScroll(rememberScrollState()),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            // Number Badge
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(26.dp)
-                                                    .clip(CircleShape)
-                                                    .background(if (isSelected) Color(0xFF00E5FF) else Color(0x25FFFFFF)),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Text(
-                                                    text = "${preset.id}",
-                                                    fontSize = 10.5.sp,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    color = if (isSelected) Color(0xFF0B101B) else Color.White
-                                                )
-                                            }
-
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = preset.name,
-                                                    fontSize = 12.5.sp,
-                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                                    color = if (isSelected) Color.White else Color(0xEEFFFFFF),
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                                Text(
-                                                    text = "Banque ${preset.bankNumber} · Preset #${preset.id}",
-                                                    fontSize = 9.5.sp,
-                                                    color = if (isSelected) Color(0xCC00E5FF) else Color(0x77FFFFFF)
-                                                )
-                                            }
-
-                                            if (isSelected) {
+                                            availableBanks.forEach { bankNum ->
+                                                val isBankSelected = selectedBank == bankNum
+                                                val bankLabel = when (bankNum) {
+                                                    0 -> "Banque 0 (Principal)"
+                                                    128 -> "Banque 128 (Drums)"
+                                                    else -> "Banque $bankNum"
+                                                }
                                                 Box(
                                                     modifier = Modifier
                                                         .clip(RoundedCornerShape(8.dp))
-                                                        .background(Color(0x3300E5FF))
-                                                        .padding(horizontal = 7.dp, vertical = 2.dp)
+                                                        .background(if (isBankSelected) Color(0xFF00E5FF) else Color(0x18FFFFFF))
+                                                        .border(
+                                                            1.dp,
+                                                            if (isBankSelected) Color(0xFF00E5FF) else Color(0x22FFFFFF),
+                                                            RoundedCornerShape(8.dp)
+                                                        )
+                                                        .clickable { selectedBank = bankNum }
+                                                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                                                    contentAlignment = Alignment.Center
                                                 ) {
                                                     Text(
-                                                        text = "✓ ACTIF",
-                                                        fontSize = 9.5.sp,
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        color = Color(0xFF00E5FF)
+                                                        text = bankLabel,
+                                                        fontSize = 11.sp,
+                                                        fontWeight = if (isBankSelected) FontWeight.Bold else FontWeight.Medium,
+                                                        color = if (isBankSelected) Color(0xFF0B101B) else Color.White
                                                     )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    LazyColumn(
+                                        state = presetListState,
+                                        modifier = Modifier.fillMaxWidth().weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        items(
+                                            items = filteredPresets,
+                                            key = { "${it.bankNumber}:${it.id}" }
+                                        ) { preset ->
+                                            val isSelected = selectedPresetId == preset.id && (availableBanks.size <= 1 || selectedBank == preset.bankNumber)
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(44.dp)
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .background(if (isSelected) Color(0x2A00E5FF) else Color(0x14FFFFFF))
+                                                    .clickable {
+                                                        if (onSelectPresetFull != null) {
+                                                            onSelectPresetFull(preset)
+                                                        } else {
+                                                            onSelectPreset(preset.id)
+                                                        }
+                                                    }
+                                                    .padding(horizontal = 10.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                // Number Badge
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(26.dp)
+                                                        .clip(CircleShape)
+                                                        .background(if (isSelected) Color(0xFF00E5FF) else Color(0x25FFFFFF)),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Text(
+                                                        text = "${preset.id}",
+                                                        fontSize = 10.5.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = if (isSelected) Color(0xFF0B101B) else Color.White
+                                                    )
+                                                }
+
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = preset.name,
+                                                        fontSize = 12.5.sp,
+                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                        color = if (isSelected) Color.White else Color(0xEEFFFFFF),
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                    Text(
+                                                        text = "Banque ${preset.bankNumber} · Preset #${preset.id}",
+                                                        fontSize = 9.5.sp,
+                                                        color = if (isSelected) Color(0xCC00E5FF) else Color(0x77FFFFFF)
+                                                    )
+                                                }
+
+                                                if (isSelected) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .clip(RoundedCornerShape(8.dp))
+                                                            .background(Color(0x3300E5FF))
+                                                            .padding(horizontal = 7.dp, vertical = 2.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = "✓ ACTIF",
+                                                            fontSize = 9.5.sp,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = Color(0xFF00E5FF)
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }

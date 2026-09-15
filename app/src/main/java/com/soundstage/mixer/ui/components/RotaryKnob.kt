@@ -41,6 +41,8 @@ fun RotaryKnob(
 ) {
     var currentValue by remember(value) { mutableFloatStateOf(value) }
 
+    val onValueChangeState by rememberUpdatedState(onValueChange)
+
     Column(
         modifier = modifier.width(size + 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -51,17 +53,16 @@ fun RotaryKnob(
                 .pointerInput(defaultValue) {
                     detectTapGestures(
                         onDoubleTap = {
-                            currentValue = defaultValue
-                            onValueChange(defaultValue)
+                            onValueChangeState(defaultValue)
                         }
                     )
                 }
                 .pointerInput(Unit) {
-                    detectVerticalDragGestures { _, dragAmount ->
-                        // dragging up increases value, down decreases
-                        val delta = -dragAmount / 160f
-                        currentValue = (currentValue + delta).coerceIn(0f, 1f)
-                        onValueChange(currentValue)
+                    detectVerticalDragGestures { change, dragAmount ->
+                        change.consume()
+                        val delta = -dragAmount / 120f
+                        val nextVal = (value + delta).coerceIn(0f, 1f)
+                        onValueChangeState(nextVal)
                     }
                 },
             contentAlignment = Alignment.Center
