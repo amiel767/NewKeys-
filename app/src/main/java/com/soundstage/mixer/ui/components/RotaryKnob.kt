@@ -68,15 +68,19 @@ fun RotaryKnob(
         ) {
             // Background LED Arc Track & Glow Fill
             Canvas(modifier = Modifier.fillMaxSize()) {
+                if (this.size.width <= 0f || this.size.height <= 0f) return@Canvas
+                val safeVal = if (currentValue.isNaN()) 0f else currentValue.coerceIn(0f, 1f)
                 val strokeWidth = size.toPx() * 0.085f
                 val padding = strokeWidth / 2 + 3f
-                val arcSize = Size(this.size.width - padding * 2, this.size.height - padding * 2)
+                val w = (this.size.width - padding * 2).coerceAtLeast(1f)
+                val h = (this.size.height - padding * 2).coerceAtLeast(1f)
+                val arcSize = Size(w, h)
                 val topLeft = Offset(padding, padding)
 
                 // 270 degree arc from 135 deg to 405 deg (135 + 270)
                 val startAngle = 135f
                 val sweepAngleTotal = 270f
-                val currentSweep = sweepAngleTotal * currentValue
+                val currentSweep = sweepAngleTotal * safeVal
 
                 // Inactive track
                 drawArc(
@@ -90,7 +94,7 @@ fun RotaryKnob(
                 )
 
                 // Active glow
-                if (currentSweep > 1f) {
+                if (currentSweep > 0f) {
                     drawArc(
                         color = glowColor,
                         startAngle = startAngle,

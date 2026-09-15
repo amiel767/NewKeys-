@@ -85,8 +85,11 @@ fun Led3DKnob(
         ) {
             // Background Canvas: Metallic Outer Bezel + Ambient Track + Glowing Multi-Layer LED Ring
             Canvas(modifier = Modifier.fillMaxSize()) {
+                if (this.size.width <= 0f || this.size.height <= 0f) return@Canvas
+                val safeVal = if (currentValue.isNaN()) 0f else currentValue.coerceIn(0f, 1f)
                 val center = Offset(this.size.width / 2f, this.size.height / 2f)
                 val outerRadius = this.size.minDimension / 2f
+                if (outerRadius <= 0f) return@Canvas
 
                 // 1. Outer Dark Chrome Bevel
                 drawCircle(
@@ -116,7 +119,7 @@ fun Led3DKnob(
                         ),
                         center = center
                     ),
-                    radius = outerRadius - 1.5f,
+                    radius = (outerRadius - 1.5f).coerceAtLeast(0.1f),
                     center = center,
                     style = Stroke(width = 1.8f)
                 )
@@ -132,10 +135,12 @@ fun Led3DKnob(
                 // 4. 270-degree LED Track (from 135 deg to 405 deg)
                 val startAngle = 135f
                 val sweepAngleTotal = 270f
-                val currentSweep = sweepAngleTotal * currentValue
+                val currentSweep = sweepAngleTotal * safeVal
                 val arcStrokeWidth = size.toPx() * 0.08f
                 val arcPadding = (outerRadius - grooveRadius) + arcStrokeWidth / 2f + 2f
-                val arcSize = Size(this.size.width - arcPadding * 2f, this.size.height - arcPadding * 2f)
+                val arcW = (this.size.width - arcPadding * 2f).coerceAtLeast(1f)
+                val arcH = (this.size.height - arcPadding * 2f).coerceAtLeast(1f)
+                val arcSize = Size(arcW, arcH)
                 val arcTopLeft = Offset(arcPadding, arcPadding)
 
                 // Background Inactive LED Track with tick dots
@@ -199,8 +204,11 @@ fun Led3DKnob(
                 contentAlignment = Alignment.Center
             ) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
+                    if (this.size.width <= 0f || this.size.height <= 0f) return@Canvas
+                    val safeVal = if (currentValue.isNaN()) 0f else currentValue.coerceIn(0f, 1f)
                     val center = Offset(this.size.width / 2f, this.size.height / 2f)
                     val radius = this.size.minDimension / 2f
+                    if (radius <= 0f) return@Canvas
 
                     // 1. Brushed Dark Metal Radial Face
                     drawCircle(
@@ -244,13 +252,13 @@ fun Led3DKnob(
                             listOf(Color(0x66FFFFFF), Color(0x11000000), Color(0x66FFFFFF)),
                             center = center
                         ),
-                        radius = radius - 1f,
+                        radius = (radius - 1f).coerceAtLeast(0.1f),
                         center = center,
                         style = Stroke(width = 1.2f)
                     )
 
                     // 4. Illuminated Pointer Notch with Glowing LED Tip
-                    val angleDeg = 135f + (270f * currentValue)
+                    val angleDeg = 135f + (270f * safeVal)
                     val angleRad = (angleDeg * PI / 180f).toFloat()
 
                     val notchLength = radius * 0.48f

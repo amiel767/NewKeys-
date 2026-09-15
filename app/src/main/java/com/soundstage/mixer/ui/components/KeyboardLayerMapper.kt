@@ -224,47 +224,59 @@ fun KeyboardLayerMapper(
         label = "layer_expand_progress"
     )
 
+    val safeExpand = expandProgress.coerceIn(0f, 1f)
     val verticalScrollState = rememberScrollState()
-    val rowSpacingDp = lerp(1.2.dp, 6.dp, expandProgress)
+    val rowSpacingDp = lerp(1.2.dp, 6.dp, safeExpand)
+
+    LaunchedEffect(isExpanded) {
+        if (!isExpanded) {
+            verticalScrollState.scrollTo(0)
+        }
+    }
+
+    val currentOnToggleExpanded by rememberUpdatedState(onToggleExpanded)
 
     Column(
         modifier = modifier
             .width(totalWidthDp)
             .fillMaxHeight()
             .background(Color.Transparent)
-            .padding(horizontal = 0.dp, vertical = lerp(0.dp, 4.dp, expandProgress))
+            .padding(horizontal = 0.dp, vertical = lerp(0.dp, 4.dp, safeExpand))
             .testTag("keyboard_layer_mapper")
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .then(
-                    if (expandProgress > 0.6f) Modifier.verticalScroll(verticalScrollState)
-                    else Modifier.clickable { onToggleExpanded() }
+                .verticalScroll(verticalScrollState, enabled = isExpanded)
+                .clickable(
+                    enabled = !isExpanded,
+                    onClick = { currentOnToggleExpanded() }
                 ),
             verticalArrangement = Arrangement.spacedBy(
                 rowSpacingDp,
-                if (expandProgress < 0.5f) Alignment.CenterVertically else Alignment.Top
+                Alignment.Top
             )
         ) {
             visibleTracks.forEach { track ->
-                val trackColor = KeyPositionMapper.getTrackNeonColor(track.id)
-                val patchTitle = when {
-                    track.patchName.isNotBlank() -> track.patchName
-                    track.soundfontName.isNotBlank() -> track.soundfontName
-                    else -> track.name
-                }
+                key(track.id) {
+                    val trackColor = KeyPositionMapper.getTrackNeonColor(track.id)
+                    val patchTitle = when {
+                        track.patchName.isNotBlank() -> track.patchName
+                        track.soundfontName.isNotBlank() -> track.soundfontName
+                        else -> track.name
+                    }
 
-                TrackRangeBarRow(
-                    track = track,
-                    trackColor = trackColor,
-                    patchTitle = patchTitle,
-                    whiteWidthDp = whiteWidthDp,
-                    expandProgress = expandProgress,
-                    onToggleExpanded = onToggleExpanded,
-                    onRangeChanged = onRangeChanged,
-                    onDragSelectionChange = onDragSelectionChange
-                )
+                    TrackRangeBarRow(
+                        track = track,
+                        trackColor = trackColor,
+                        patchTitle = patchTitle,
+                        whiteWidthDp = whiteWidthDp,
+                        expandProgress = safeExpand,
+                        onToggleExpanded = onToggleExpanded,
+                        onRangeChanged = onRangeChanged,
+                        onDragSelectionChange = onDragSelectionChange
+                    )
+                }
             }
         }
     }
@@ -324,6 +336,9 @@ private fun TrackRangeBarRow(
     val currentOnDragSelectionChange by rememberUpdatedState(onDragSelectionChange)
     val currentWhiteWidthPx by rememberUpdatedState(whiteWidthPx)
 
+    val currentExpandProgress by rememberUpdatedState(expandProgress)
+    val currentOnToggleExpanded by rememberUpdatedState(onToggleExpanded)
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -365,19 +380,19 @@ private fun TrackRangeBarRow(
                 )
                 .pointerInput(Unit) {
                     detectTapGestures(
-                        onDoubleTap = { onToggleExpanded() },
+                        onDoubleTap = { currentOnToggleExpanded() },
                         onTap = {
-                            if (expandProgress < 0.5f) {
-                                onToggleExpanded()
+                            if (currentExpandProgress < 0.5f) {
+                                currentOnToggleExpanded()
                             }
                         }
                     )
                 }
-                .padding(horizontal = lerp(0.dp, 14.dp, expandProgress)),
+                .padding(horizontal = lerp(0.dp, 14.dp, safeExpand)),
             contentAlignment = Alignment.Center
         ) {
-            if (expandProgress > 0.35f) {
-                val textAlpha = ((expandProgress - 0.35f) / 0.65f).coerceIn(0f, 1f)
+            if (safeExpand > 0.35f) {
+                val textAlpha = ((safeExpand - 0.35f) / 0.65f).coerceIn(0f, 1f)
                 Box(
                     modifier = Modifier.graphicsLayer { alpha = textAlpha },
                     contentAlignment = Alignment.Center

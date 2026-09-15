@@ -115,6 +115,7 @@ fun VirtualPianoKeyboard(
         ),
         label = "pianoMapperHeight"
     )
+    val safeMapperHeight = animatedMapperHeight.coerceAtLeast(0.dp)
 
     Box(
         modifier = modifier
@@ -182,7 +183,7 @@ fun VirtualPianoKeyboard(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(animatedMapperHeight)
+                                .height(safeMapperHeight)
                                 .zIndex(50f)
                         ) {
                             Box(
@@ -450,6 +451,8 @@ private fun PitchBendWheel(
         Canvas(modifier = Modifier.fillMaxSize().padding(4.dp)) {
             val w = size.width
             val h = size.height
+            if (w <= 8f || h <= 8f) return@Canvas
+            val safeBend = if (animatedBend.value.isNaN()) 0f else animatedBend.value.coerceIn(-1f, 1f)
 
             drawLine(
                 color = Color(0x3300E5FF),
@@ -458,9 +461,10 @@ private fun PitchBendWheel(
                 strokeWidth = 1.2f
             )
 
-            val thumbHeight = h * 0.26f
-            val thumbYCenter = (h / 2f) - (animatedBend.value * (h * 0.35f))
+            val thumbHeight = (h * 0.26f).coerceAtLeast(2f)
+            val thumbYCenter = (h / 2f) - (safeBend * (h * 0.35f))
             val top = thumbYCenter - (thumbHeight / 2f)
+            val thumbWidth = (w - 8f).coerceAtLeast(2f)
 
             drawRoundRect(
                 brush = Brush.verticalGradient(
@@ -471,20 +475,20 @@ private fun PitchBendWheel(
                     )
                 ),
                 topLeft = Offset(4f, top),
-                size = Size(w - 8f, thumbHeight),
+                size = Size(thumbWidth, thumbHeight),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(4.dp.toPx())
             )
 
             drawRoundRect(
-                color = if (animatedBend.value != 0f) NeonCyan else Color(0x55FFFFFF),
+                color = if (safeBend != 0f) NeonCyan else Color(0x55FFFFFF),
                 topLeft = Offset(4f, top),
-                size = Size(w - 8f, thumbHeight),
+                size = Size(thumbWidth, thumbHeight),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(4.dp.toPx()),
                 style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1f)
             )
 
             drawLine(
-                color = if (animatedBend.value != 0f) NeonCyan else Color.White,
+                color = if (safeBend != 0f) NeonCyan else Color.White,
                 start = Offset(8f, thumbYCenter),
                 end = Offset(w - 8f, thumbYCenter),
                 strokeWidth = 2f
