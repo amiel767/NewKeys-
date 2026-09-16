@@ -393,4 +393,20 @@ class AppStatePersistence(context: Context) {
             return null
         }
     }
+
+    fun saveLastPath(key: String, path: String) {
+        try {
+            prefs.edit().putString(key, path).apply()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving last path for $key: ${e.message}")
+        }
+    }
+
+    fun getLastPath(key: String, defaultPath: String): String {
+        return try {
+            prefs.getString(key, defaultPath) ?: defaultPath
+        } catch (e: Exception) {
+            defaultPath
+        }
+    }
 }

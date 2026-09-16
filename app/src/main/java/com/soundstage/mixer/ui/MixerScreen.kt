@@ -125,6 +125,7 @@ fun MixerScreen(
                     octave = uiState.octave,
                     onTransposeChange = { viewModel.updateTranspose(it) },
                     onOctaveChange = { viewModel.updateOctave(it) },
+                    pressedKeys = uiState.pressedKeys,
                     isLoopsOpen = uiState.activePopup == ActivePopup.LOOPS,
                     onToggleLoops = { viewModel.toggleLoopsPanel() },
                     isLoopPlaying = uiState.isLoopPlaying,
@@ -140,6 +141,7 @@ fun MixerScreen(
                     isSustainActive = uiState.isSustainActive,
                     isMidiPedalPressed = uiState.isMidiPedalPressed,
                     onToggleSustain = { viewModel.toggleSustain() },
+                    onOpenNotes = { viewModel.openPopup(ActivePopup.NOTES) },
                     onOpenDrumPad = { viewModel.openPopup(ActivePopup.DRUM_PAD) },
                     onOpenTonicPad = { viewModel.openPopup(ActivePopup.TONIC_PAD) },
                     onPanic = { viewModel.triggerPanic() },
@@ -153,7 +155,7 @@ fun MixerScreen(
 
                 // 2. MIXER TRACKS SECTION (8 Tracks + 1 Master)
                 val defaultSfName = uiState.tracks.firstOrNull { it.soundfontName.isNotEmpty() }?.soundfontName ?: "FluidR3_GM.sf2"
-                val isPadOpen = uiState.activePopup == ActivePopup.DRUM_PAD || uiState.activePopup == ActivePopup.TONIC_PAD
+                val isPadOpen = uiState.activePopup == ActivePopup.DRUM_PAD || uiState.activePopup == ActivePopup.TONIC_PAD || uiState.activePopup == ActivePopup.NOTES
 
                 BoxWithConstraints(
                     modifier = Modifier
@@ -178,7 +180,7 @@ fun MixerScreen(
                             val trackItemWidth = if (isPadOpen) {
                                 ((this@BoxWithConstraints.maxWidth * 0.50f - 16.dp) / 4f).coerceAtLeast(68.dp)
                             } else {
-                                (this@BoxWithConstraints.maxWidth / 8f).coerceAtLeast(65.dp)
+                                ((this@BoxWithConstraints.maxWidth - 28.dp) / 8f).coerceAtLeast(65.dp)
                             }
 
                             Row(
@@ -320,7 +322,9 @@ fun MixerScreen(
                                             onStartRecording = { viewModel.startDrumLoopRecording() },
                                             onStopRecording = { viewModel.stopAndRenderDrumLoop(onFinished = {}) },
                                             onCancelRecording = { viewModel.cancelDrumLoopRecording() },
-                                            isRendering = uiState.isDrumLoopRendering
+                                            isRendering = uiState.isDrumLoopRendering,
+                                            lastPath = uiState.lastDrumPadPath,
+                                            onUpdateLastPath = { viewModel.updateLastDrumPadPath(it) }
                                         )
                                     }
                                     ActivePopup.TONIC_PAD -> {
@@ -356,6 +360,16 @@ fun MixerScreen(
                                             onSelectSf2File = { viewModel.loadSoundFontForSlot(9, it.path) },
                                             onOpenSoundfontPicker = { viewModel.openSoundfontForSlot(9) },
                                             onDragHeader = null
+                                        )
+                                    }
+                                    ActivePopup.NOTES -> {
+                                        NotesDialog(
+                                            isOpen = true,
+                                            onClose = { viewModel.closePopup() },
+                                            detectedChord = detectedChord,
+                                            selectedRootKey = uiState.selectedRootKey,
+                                            notesDir = viewModel.fileManager.notesDir,
+                                            fileManager = viewModel.fileManager
                                         )
                                     }
                                     else -> {}
@@ -646,7 +660,9 @@ fun MixerScreen(
                     onRenameFile = { file, newName ->
                         viewModel.renameLoopFile(file, newName)
                     },
-                    onImportLoop = { loopPickerLauncher.launch(arrayOf("audio/*", "*/*")) }
+                    onImportLoop = { loopPickerLauncher.launch(arrayOf("audio/*", "*/*")) },
+                    lastPath = uiState.lastLoopsPath,
+                    onUpdateLastPath = { viewModel.updateLastLoopsPath(it) }
                 )
             }
             else -> {}

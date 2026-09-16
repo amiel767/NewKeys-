@@ -704,12 +704,9 @@ private fun LanguageSelectorSubPage(
     onBack: () -> Unit
 ) {
     val languages = listOf(
+        Pair("English", "🇺🇸"),
         Pair("Français", "🇫🇷"),
-        Pair("English", "🇬🇧"),
-        Pair("Español", "🇪🇸"),
-        Pair("Malagasy", "🇲🇬"),
-        Pair("Deutsch", "🇩🇪"),
-        Pair("Português", "🇧🇷")
+        Pair("Español", "🇪🇸")
     )
 
     Column(modifier = Modifier.fillMaxSize()) {

@@ -582,16 +582,16 @@ internal fun TonicPadContent(
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color(0xFF181326))
                         .border(0.8.dp, Color(0x338B5CF6), RoundedCornerShape(12.dp))
-                        .padding(vertical = 8.dp, horizontal = 4.dp),
+                        .padding(top = 16.dp, bottom = 6.dp, start = 4.dp, end = 4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.SpaceEvenly
+                    verticalArrangement = Arrangement.SpaceBetween
                 ) {
                     Led3DKnob(
                         value = volume,
                         onValueChange = onVolumeChange,
                         label = "VOLUME",
                         showFloatingTooltipOnTouch = true,
-                        size = 36.dp,
+                        size = 32.dp,
                         baseColor = Color(0xFFC4B5FD)
                     )
 
@@ -600,7 +600,7 @@ internal fun TonicPadContent(
                         onValueChange = onReverbChange,
                         label = "REVERB",
                         showFloatingTooltipOnTouch = true,
-                        size = 36.dp,
+                        size = 32.dp,
                         baseColor = Color(0xFFEC4899)
                     )
 
@@ -609,7 +609,7 @@ internal fun TonicPadContent(
                         onValueChange = onShimmerChange,
                         label = "SHIMMER",
                         showFloatingTooltipOnTouch = true,
-                        size = 36.dp,
+                        size = 32.dp,
                         baseColor = NeonCyan
                     )
                 }

@@ -72,6 +72,7 @@ class FileManager(private val context: Context) {
     val recordingsDir: File get() = File(baseDir, "Recordings")
     val presetsDir: File get() = File(baseDir, "Presets")
     val logsDir: File get() = File(baseDir, "Logs")
+    val notesDir: File get() = File(baseDir, "Notes")
     val midiDir: File get() = File(baseDir, "Midi")
     val stylesDir: File get() = File(baseDir, "Styles")
 

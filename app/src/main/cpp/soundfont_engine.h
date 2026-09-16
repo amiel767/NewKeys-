@@ -44,6 +44,7 @@ inline int fluid_synth_get_polyphony(fluid_synth_t*) { return 0; }
 #include <mutex>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 constexpr int kFaderPolyphony = 128;
 constexpr int kPadPolyphony = 64;
@@ -215,6 +216,11 @@ private:
     LockFreeRingBuffer<VoiceAuditSnapshot, 1024> mAuditSnapshots;
     LockFreeRingBuffer<NoteOnAuditRecord, 512> mNoteOnRecords;
     LockFreeRingBuffer<NoteOffAuditRecord, 512> mNoteOffRecords;
+
+    // Shared SoundFont pool for RAM optimization (zero memory duplication)
+    std::unordered_map<std::string, int> mPathToSfontId;
+    std::unordered_map<int, int> mSfontRefCount;
+    std::unordered_map<int, std::string> mSfontIdToPath;
 };
 
 #endif //DAWSTUDIO_SOUNDFONT_ENGINE_H

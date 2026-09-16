@@ -302,8 +302,12 @@ internal fun MainDrumPadSquareContent(
     onStartRecording: () -> Unit = {},
     onStopRecording: () -> Unit = {},
     onCancelRecording: () -> Unit = {},
-    isRendering: Boolean = false
+    isRendering: Boolean = false,
+    lastPath: String = "",
+    onUpdateLastPath: (String) -> Unit = {}
 ) {
+    var isNativeBrowserOpen by remember { mutableStateOf(false) }
+
     Column(modifier = Modifier.fillMaxSize()) {
         // ================= TOP BAR WITH TITLE, SOUNDFONT PICKER & MINIMALIST PIN =================
         Row(
@@ -690,7 +694,7 @@ internal fun MainDrumPadSquareContent(
                                     .size(24.dp)
                                     .clip(CircleShape)
                                     .background(NeonCyan)
-                                    .clickable { onImportAudioFile() },
+                                    .clickable { isNativeBrowserOpen = true },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
@@ -701,6 +705,19 @@ internal fun MainDrumPadSquareContent(
                                 )
                             }
                         }
+                    }
+
+                    if (isNativeBrowserOpen) {
+                        NativeFileBrowserDialog(
+                            isOpen = isNativeBrowserOpen,
+                            onClose = { isNativeBrowserOpen = false },
+                            initialPath = lastPath.ifEmpty { "/storage/emulated/0/SoundStage/DrumPad" },
+                            title = "Explorateur DrumPad",
+                            onPathChanged = { newPath -> onUpdateLastPath(newPath) },
+                            onFileSelected = { file ->
+                                onPlaySample(StorageItem(name = file.name, path = file.absolutePath, isDirectory = false))
+                            }
+                        )
                     }
 
                     LazyColumn(
@@ -742,7 +759,8 @@ internal fun MainDrumPadSquareContent(
                                 ) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        modifier = Modifier.weight(1f)
                                     ) {
                                         Text(text = "🎵", fontSize = 11.sp)
                                         Column {
@@ -750,9 +768,29 @@ internal fun MainDrumPadSquareContent(
                                                 text = file.name,
                                                 fontSize = 10.5.sp,
                                                 fontWeight = FontWeight.SemiBold,
-                                                color = Color.White
+                                                color = Color.White,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
                                             )
                                         }
+                                    }
+
+                                    // Direct Assigner Button
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(Color(0x2222D3EE))
+                                            .border(0.8.dp, NeonCyan, RoundedCornerShape(6.dp))
+                                            .clickable { onLongPressSample(file) }
+                                            .padding(horizontal = 7.dp, vertical = 3.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "Assigner",
+                                            fontSize = 8.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = NeonCyanLight
+                                        )
                                     }
                                 }
                             }

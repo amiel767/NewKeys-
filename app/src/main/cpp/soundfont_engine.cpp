@@ -101,6 +101,16 @@ int SoundfontEngine::loadSoundFont(const std::string &absolutePath) {
         return -1;
     }
 
+    // Check if this SoundFont is ALREADY loaded in memory (Shared Pool / Zero-RAM Duplication)
+    auto it = mPathToSfontId.find(absolutePath);
+    if (it != mPathToSfontId.end()) {
+        int existingId = it->second;
+        mSfontRefCount[existingId]++;
+        LOGI("[%s] Reusing existing loaded SoundFont ID: %d for path: %s (refCount: %d)",
+             mInstanceName.c_str(), existingId, absolutePath.c_str(), mSfontRefCount[existingId]);
+        return existingId;
+    }
+
     // reset_presets = 0 so loading a new SoundFont does NOT override presets on other channels!
     int sfontId = fluid_synth_sfload(mSynth, absolutePath.c_str(), 0);
     if (sfontId < 0) {
@@ -108,7 +118,13 @@ int SoundfontEngine::loadSoundFont(const std::string &absolutePath) {
         return -1;
     }
 
-    LOGI("Loaded SoundFont successfully (ID: %d, reset_presets=0): %s", sfontId, absolutePath.c_str());
+    // Register in shared pool
+    mPathToSfontId[absolutePath] = sfontId;
+    mSfontIdToPath[sfontId] = absolutePath;
+    mSfontRefCount[sfontId] = 1;
+
+    LOGI("[%s] Loaded SoundFont into Shared Pool successfully (ID: %d, refCount=1): %s",
+         mInstanceName.c_str(), sfontId, absolutePath.c_str());
     return sfontId;
 }
 
@@ -117,12 +133,28 @@ int SoundfontEngine::unloadSoundFont(int sfontId) {
     std::lock_guard<std::mutex> lock(mMutex);
     if (!mSynth) return -1;
 
+    // Check ref count in shared pool
+    auto refIt = mSfontRefCount.find(sfontId);
+    if (refIt != mSfontRefCount.end()) {
+        refIt->second--;
+        LOGI("[%s] Decremented SoundFont ID: %d refCount to %d", mInstanceName.c_str(), sfontId, refIt->second);
+        if (refIt->second > 0) {
+            // Still in use by other channels/tracks -> Keep in memory!
+            return 0;
+        }
+        // refCount is 0 -> Clean up from maps and free RAM from FluidSynth
+        std::string path = mSfontIdToPath[sfontId];
+        mPathToSfontId.erase(path);
+        mSfontIdToPath.erase(sfontId);
+        mSfontRefCount.erase(sfontId);
+    }
+
     // Safety: shut down any voices using this soundfont before freeing memory
     fluid_synth_all_sounds_off(mSynth, -1);
     fluid_synth_all_notes_off(mSynth, -1);
 
     int res = fluid_synth_sfunload(mSynth, sfontId, 1);
-    LOGI("Unloaded SoundFont ID: %d (res: %d)", sfontId, res);
+    LOGI("[%s] Completely Unloaded SoundFont ID: %d from RAM (res: %d)", mInstanceName.c_str(), sfontId, res);
     return res;
 }
 

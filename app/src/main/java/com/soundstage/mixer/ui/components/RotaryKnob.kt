@@ -60,9 +60,9 @@ fun RotaryKnob(
                 .pointerInput(Unit) {
                     detectVerticalDragGestures { change, dragAmount ->
                         change.consume()
-                        val delta = -dragAmount / 120f
-                        val nextVal = (value + delta).coerceIn(0f, 1f)
-                        onValueChangeState(nextVal)
+                        val delta = -dragAmount / 150f
+                        currentValue = (currentValue + delta).coerceIn(0f, 1f)
+                        onValueChangeState(currentValue)
                     }
                 },
             contentAlignment = Alignment.Center

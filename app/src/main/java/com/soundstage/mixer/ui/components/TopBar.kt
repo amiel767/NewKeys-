@@ -49,6 +49,7 @@ fun TopBar(
     octave: Int,
     onTransposeChange: (Int) -> Unit,
     onOctaveChange: (Int) -> Unit,
+    pressedKeys: Set<String> = emptySet(),
     
     // Loops
     isLoopsOpen: Boolean,
@@ -70,6 +71,7 @@ fun TopBar(
     onToggleSustain: () -> Unit,
     
     // Launchers
+    onOpenNotes: () -> Unit = {},
     onOpenDrumPad: () -> Unit,
     onOpenTonicPad: () -> Unit,
     onPanic: () -> Unit,
@@ -236,7 +238,57 @@ fun TopBar(
                 modifier = Modifier.testTag("stepper_oct")
             )
 
-            Spacer(modifier = Modifier.weight(1f))
+            // OLED Studio Chord Display Container (Section 1)
+            val detectedChord = androidx.compose.runtime.remember(pressedKeys) {
+                ChordCalculator.detect(pressedKeys)
+            }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(38.dp)
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(Color(0xFF0C101B))
+                    .border(1.dp, Color(0x3300E5FF), RoundedCornerShape(9.dp))
+                    .padding(horizontal = 6.dp, vertical = 1.dp)
+                    .testTag("topbar_chord_display"),
+                contentAlignment = Alignment.Center
+            ) {
+                if (detectedChord != null) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = detectedChord.primaryName,
+                            fontSize = if (detectedChord.variantName.isNotEmpty()) 11.5.sp else 13.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White,
+                            maxLines = 1,
+                            lineHeight = 12.sp,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                        if (detectedChord.variantName.isNotEmpty()) {
+                            Text(
+                                text = detectedChord.variantName,
+                                fontSize = 8.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = NeonCyan,
+                                maxLines = 1,
+                                lineHeight = 9.sp,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                } else {
+                    Text(
+                        text = "---",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextDim,
+                        letterSpacing = 2.sp
+                    )
+                }
+            }
 
             // 4. Global Sustain Button with Active Green Halo
             val infiniteTransition = rememberInfiniteTransition(label = "sustain_pedal_blink")
@@ -286,6 +338,20 @@ fun TopBar(
                         color = if (isSustainLit) sustainGreen else TextDim
                     )
                 }
+            }
+
+            // 4.5 Notes & ChordPro Launcher Icon
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(DarkSurface)
+                    .border(1.dp, BorderSubtle, RoundedCornerShape(12.dp))
+                    .clickable { onOpenNotes() }
+                    .testTag("btn_notes"),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("📝", fontSize = 15.sp)
             }
 
             // 5. Drum Pad Launcher Icon (Neon Pad Matrix)

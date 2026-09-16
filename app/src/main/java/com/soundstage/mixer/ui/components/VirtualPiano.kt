@@ -546,19 +546,11 @@ private fun StudioWhiteKey(
         if (isCKey) {
             Box(
                 modifier = Modifier
-                    .padding(bottom = 3.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(if (isPressed) Color(0x88FF1E40) else Color(0x15000000))
-                    .padding(horizontal = 3.dp, vertical = 0.5.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = keyName,
-                    fontSize = 8.5.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = if (isPressed) Color.White else Color(0xFF1B2032)
-                )
-            }
+                    .padding(bottom = 5.dp)
+                    .size(4.dp)
+                    .clip(CircleShape)
+                    .background(if (isPressed) Color.White.copy(alpha = 0.9f) else Color(0x66000000))
+            )
         }
     }
 }

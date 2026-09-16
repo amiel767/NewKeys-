@@ -24,6 +24,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -61,6 +62,13 @@ fun BottomBar(
     onSelectKey: (String) -> Unit = {},
     selectedScaleMode: String = "Majeur",
     onSelectScaleMode: (String) -> Unit = {},
+    
+    // Snapshots / Sub-Scenes (Section 2)
+    isSnapshotArmMode: Boolean = false,
+    onToggleSnapshotArm: () -> Unit = {},
+    activeSnapshotSlot: String? = null,
+    snapshots: Map<String, com.soundstage.mixer.model.SubSceneSnapshot> = emptyMap(),
+    onSnapshotSlotClick: (String) -> Unit = {},
     
     // Chord Display (Afficheur d'accords)
     detectedChord: DetectedChord? = null,
@@ -316,81 +324,154 @@ fun BottomBar(
             }
         }
 
-        // ================= 4. AFFICHEUR D'ACCORDS (CHORD DISPLAY BAR - EXPANDED SPACE) =================
-        Box(
+        // ================= 4. SNAPSHOTS / SUB-SCENES RACK (SECTION 2) =================
+        // Slow rotating vivid RGB LED phase for active slot halo
+        val ledInfiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition(label = "rgb_led_glow")
+        val ledHue by ledInfiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(8000, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "led_hue"
+        )
+        val vividLedColor = Color.hsv(ledHue, 0.95f, 1.0f)
+
+        Row(
             modifier = Modifier
-                .weight(1.05f)
+                .weight(1f)
                 .height(barHeight)
                 .clip(RoundedCornerShape(10.dp))
-                .background(
-                    Brush.horizontalGradient(
-                        listOf(
-                            if (isKeyboardActive) Color(0xFF192538) else Color(0xFF161E2E),
-                            if (isKeyboardActive) Color(0xFF121B2B) else Color(0xFF0E131E)
-                        )
-                    )
-                )
-                .border(
-                    1.dp,
-                    if (isKeyboardActive) NeonCyan.copy(alpha = 0.8f) else Color(0x3300E5FF),
-                    RoundedCornerShape(10.dp)
-                )
-                .padding(horizontal = 8.dp, vertical = 3.dp)
-                .testTag("chord_display_box"),
-            contentAlignment = Alignment.CenterStart
+                .background(Color(0xFF0C101A))
+                .border(1.dp, Color(0x3300E5FF), RoundedCornerShape(10.dp))
+                .padding(horizontal = 4.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
         ) {
-            if (detectedChord != null) {
-                // Real-time Jazz & Pop Chord Display (Original Name + Variant Name)
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        text = detectedChord.primaryName,
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+            // REC (ARM) Minimalist Mini Record Card Button
+            val armBlinkAlpha by animateFloatAsState(
+                targetValue = if (isSnapshotArmMode) 1.0f else 0.35f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(450),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "arm_blink"
+            )
+
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(
+                        if (isSnapshotArmMode) {
+                            Brush.radialGradient(
+                                colors = listOf(Color(0xFFFF2A55), Color(0xFF500015)),
+                                radius = 45f
+                            )
+                        } else {
+                            SolidColor(Color(0xFF161A26))
+                        }
                     )
-                    Text(
-                        text = detectedChord.variantName,
-                        fontSize = 8.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = NeonCyan,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                    .border(
+                        1.2.dp,
+                        if (isSnapshotArmMode) Color(0xFFFF2A55).copy(alpha = armBlinkAlpha) else Color(0x33FFFFFF),
+                        RoundedCornerShape(8.dp)
+                    )
+                    .clickable { onToggleSnapshotArm() }
+                    .testTag("btn_snapshot_arm"),
+                contentAlignment = Alignment.Center
+            ) {
+                // Minimalist memory / record card icon
+                Box(
+                    modifier = Modifier
+                        .size(18.dp)
+                        .border(1.2.dp, if (isSnapshotArmMode) Color.White else Color(0xFF8899AA), RoundedCornerShape(3.dp))
+                        .padding(2.dp),
+                    contentAlignment = Alignment.TopEnd
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(if (isSnapshotArmMode) Color(0xFFFF2A55) else Color(0xFF556677))
                     )
                 }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+            }
+
+            // 5 Snapshot Slots: INTRO, Snapshot 1, Snapshot 2, Snapshot 3, END
+            val slotNames = listOf("INTRO", "Snapshot 1", "Snapshot 2", "Snapshot 3", "END")
+            slotNames.forEach { slot ->
+                val legacyKey = when (slot) {
+                    "Snapshot 1" -> "S2"
+                    "Snapshot 2" -> "S3"
+                    "Snapshot 3" -> "S4"
+                    else -> slot
+                }
+                val isActive = activeSnapshotSlot == slot || activeSnapshotSlot == legacyKey
+                val isSaved = snapshots.containsKey(slot) || snapshots.containsKey(legacyKey)
+
+                val slotBg = when {
+                    isActive -> vividLedColor.copy(alpha = 0.22f)
+                    isSaved -> Color(0xFF162338)
+                    else -> Color(0xFF121622)
+                }
+
+                val slotBorderBrush = when {
+                    isActive -> Brush.sweepGradient(
+                        listOf(
+                            vividLedColor,
+                            Color.hsv((ledHue + 90f) % 360f, 0.95f, 1.0f),
+                            Color.hsv((ledHue + 180f) % 360f, 0.95f, 1.0f),
+                            vividLedColor
+                        )
+                    )
+                    isSaved -> SolidColor(Color(0x6600E5FF))
+                    else -> SolidColor(Color(0x22FFFFFF))
+                }
+
+                val slotTextColor = when {
+                    isActive -> Color.White
+                    isSaved -> Color.White
+                    else -> TextDim
+                }
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(7.dp))
+                        .background(slotBg)
+                        .border(if (isActive) 1.8.dp else 1.dp, slotBorderBrush, RoundedCornerShape(7.dp))
+                        .clickable { onSnapshotSlotClick(slot) }
+                        .testTag("btn_snapshot_$slot"),
+                    contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "ACCORDS / HARMONIE",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0x77FFFFFF)
+                        text = slot,
+                        fontSize = if (slot.startsWith("Snapshot")) 7.5.sp else 9.5.sp,
+                        fontWeight = if (isActive || isSaved) FontWeight.ExtraBold else FontWeight.Bold,
+                        color = slotTextColor,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                 }
             }
         }
 
-        // ================= 5. MASTER FADER (REDUCED TO COMPACT PROPORTION) =================
+        // ================= 5. MASTER FADER (COMPACT FIXED WIDTH) =================
         Row(
             modifier = Modifier
-                .weight(0.70f)
+                .width(108.dp)
                 .height(barHeight)
                 .clip(RoundedCornerShape(10.dp))
                 .background(Color(0xFF0A0E15))
                 .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(10.dp))
-                .padding(horizontal = 6.dp),
+                .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("M", color = Color(0xFF8E95A5), fontSize = 9.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.width(3.dp))
+            Spacer(modifier = Modifier.width(2.dp))
             Slider(
                 value = masterTrack.volume,
                 onValueChange = onMasterVolumeChange,
@@ -403,17 +484,17 @@ fun BottomBar(
                     inactiveTrackColor = Color(0xFF1E2238)
                 )
             )
-            Spacer(modifier = Modifier.width(3.dp))
+            Spacer(modifier = Modifier.width(2.dp))
             Box(
                 modifier = Modifier
-                    .size(24.dp)
+                    .size(22.dp)
                     .clip(RoundedCornerShape(4.dp))
                     .background(Color(0xFF161C28))
                     .border(1.dp, Color(0xFF2C3242), RoundedCornerShape(4.dp))
                     .clickable { onMasterFxClick() },
                 contentAlignment = Alignment.Center
             ) {
-                Text("FX", color = NeonCyan, fontSize = 8.5.sp, fontWeight = FontWeight.Bold)
+                Text("FX", color = NeonCyan, fontSize = 8.sp, fontWeight = FontWeight.Bold)
             }
         }
 

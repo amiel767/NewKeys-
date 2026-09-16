@@ -407,72 +407,29 @@ void AudioEngine::processMasterChain(float *floatBuf, int32_t numFrames) {
     mSubBassCut1.process(floatBuf, numFrames);
     mSubBassCut2.process(floatBuf, numFrames);
 
-    // 2. Master Parallel Upward Compressor & Look-Ahead Limiter
-    float sr = static_cast<float>(mSampleRate > 0 ? mSampleRate : 48000);
-    float alphaAttack = std::exp(-1.0f / (sr * 0.010f)); // 10ms attack
-    float alphaRelease = std::exp(-1.0f / (sr * 0.100f)); // 100ms release
-    float limAttack = std::exp(-1.0f / (sr * 0.001f)); // 1ms attack
-    float limRelease = std::exp(-1.0f / (sr * 0.120f)); // 120ms release
-    constexpr float compThreshold = 0.063f; // -24 dB
-    constexpr float limCeiling = 0.96f; // Master output safety ceiling
-    constexpr float kMasterMakeupGain = 2.2f; // Pro Workstation makeup gain for rich/loud sound without clipping
-
+    // 2. Pro Master Stage: Clean, Dynamic, Transparent Soft-Clipper
+    // Preserves 100% full dynamics, avoids ducking/drop-offs, and soft-saturates peaks at 0 dBFS smoothly.
     for (int32_t i = 0; i < numFrames; ++i) {
-        float xL = floatBuf[2 * i] * kMasterMakeupGain;
-        float xR = floatBuf[2 * i + 1] * kMasterMakeupGain;
+        float xL = floatBuf[2 * i];
+        float xR = floatBuf[2 * i + 1];
 
-        // A. Parallel / Upward Compression Envelope Follower
-        float envIn = std::max(std::abs(xL), std::abs(xR));
-        if (envIn > mParallelCompEnv) {
-            mParallelCompEnv = envIn + alphaAttack * (mParallelCompEnv - envIn);
-        } else {
-            mParallelCompEnv = envIn + alphaRelease * (mParallelCompEnv - envIn);
+        // Soft clipper curve (tanh-based transparent ceiling)
+        float absL = std::abs(xL);
+        if (absL > 0.95f) {
+            float diff = absL - 0.95f;
+            float compressed = 0.95f + 0.05f * std::tanh(diff / 0.05f);
+            xL = (xL > 0 ? 1.0f : -1.0f) * compressed;
         }
 
-        float compGain = 1.0f;
-        if (mParallelCompEnv > compThreshold) {
-            float dbEnv = 20.0f * std::log10(mParallelCompEnv / compThreshold);
-            float dbTarget = dbEnv / 4.0f; // 4:1 compression ratio
-            float dbReduction = dbTarget - dbEnv;
-            compGain = std::pow(10.0f, dbReduction / 20.0f);
+        float absR = std::abs(xR);
+        if (absR > 0.95f) {
+            float diff = absR - 0.95f;
+            float compressed = 0.95f + 0.05f * std::tanh(diff / 0.05f);
+            xR = (xR > 0 ? 1.0f : -1.0f) * compressed;
         }
 
-        // Mix 65% dry and 35% heavily compressed signal to lift low-level details (upward warmth)
-        float processedL = xL + 0.35f * (xL * compGain * 2.5f);
-        float processedR = xR + 0.35f * (xR * compGain * 2.5f);
-
-        // B. Write processed samples to the look-ahead delay buffer
-        mDelayBufferL[mLimiterWriteIndex] = processedL;
-        mDelayBufferR[mLimiterWriteIndex] = processedR;
-
-        // C. Look-Ahead Transient Peak Detection
-        float futurePeak = 0.0f;
-        for (int d = 0; d < 64; ++d) {
-            float p = std::max(std::abs(mDelayBufferL[d]), std::abs(mDelayBufferR[d]));
-            if (p > futurePeak) futurePeak = p;
-        }
-
-        // D. Smooth Limiter Gain Reduction Envelope
-        if (futurePeak > mLimiterEnv) {
-            mLimiterEnv = futurePeak + limAttack * (mLimiterEnv - futurePeak);
-        } else {
-            mLimiterEnv = futurePeak + limRelease * (mLimiterEnv - futurePeak);
-        }
-
-        float limiterGain = 1.0f;
-        if (mLimiterEnv > limCeiling) {
-            limiterGain = limCeiling / mLimiterEnv;
-        }
-
-        // E. Read delayed sample and apply limiter gain reduction
-        int readIndex = (mLimiterWriteIndex + 1) % 64;
-        float delayedL = mDelayBufferL[readIndex];
-        float delayedR = mDelayBufferR[readIndex];
-
-        floatBuf[2 * i] = delayedL * limiterGain;
-        floatBuf[2 * i + 1] = delayedR * limiterGain;
-
-        mLimiterWriteIndex = (mLimiterWriteIndex + 1) % 64;
+        floatBuf[2 * i] = xL;
+        floatBuf[2 * i + 1] = xR;
     }
 }
 

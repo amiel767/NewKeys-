@@ -7,7 +7,13 @@ import com.soundstage.mixer.ui.theme.MuteRed
 import com.soundstage.mixer.ui.theme.SoloAmber
 
 enum class ActivePopup {
-    NONE, DRUM_PAD, TONIC_PAD, SCENE, EFFECTS, SOUNDFONT, STYLE, MIDI, LOOPS
+    NONE, DRUM_PAD, TONIC_PAD, NOTES, SCENE, EFFECTS, SOUNDFONT, STYLE, MIDI, LOOPS
+}
+
+enum class AppLanguage(val code: String, val displayName: String, val flag: String) {
+    ENGLISH("en", "English", "🇺🇸"),
+    FRENCH("fr", "Français", "🇫🇷"),
+    SPANISH("es", "Español", "🇪🇸")
 }
 
 enum class SoundGoodizerMode(val label: String, val description: String) {
@@ -167,11 +173,31 @@ data class LoopFolder(
     val isOpen: Boolean = false
 )
 
+data class TrackSnapshot(
+    val id: Int,
+    val volume: Float,
+    val pan: Float,
+    val isMuted: Boolean = false,
+    val isSolo: Boolean = false,
+    val isEnabled: Boolean = true,
+    val soundfontName: String = "",
+    val patchName: String = "",
+    val bank: Int = 0,
+    val program: Int = 0
+)
+
+data class SubSceneSnapshot(
+    val slotName: String, // "INTRO", "S2", "S3", "S4", "END"
+    val tracks: List<TrackSnapshot>,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
 data class ScenePreset(
     val id: String,
     val name: String,
     val timestamp: String,
-    val color: Color
+    val color: Color,
+    val snapshots: Map<String, SubSceneSnapshot> = emptyMap()
 )
 
 data class SoundfontPreset(

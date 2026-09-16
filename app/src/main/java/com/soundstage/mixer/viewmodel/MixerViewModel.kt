@@ -166,7 +166,8 @@ data class MixerUiState(
     val audioEngine: String = "Oboe (C++)",
     val audioBufferSize: Int = 256,
     val polyphony: Int = 128,
-    val selectedLanguage: String = "Français",
+    val selectedLanguage: String = "English",
+    val selectedAppLanguage: AppLanguage = AppLanguage.ENGLISH,
     val globalVelocityMin: Float = 0.10f,
     val globalVelocityMax: Float = 1.0f,
     
@@ -181,7 +182,20 @@ data class MixerUiState(
     
     // Screen & Scale Settings
     val keepScreenOn: Boolean = true,
-    val selectedScaleMode: String = "Majeur"
+    val selectedScaleMode: String = "Majeur",
+    
+    // Live Notes & Chords
+    val notesText: String = "",
+
+    // Snapshots / Sub-Scenes (Section 2)
+    val isSnapshotArmMode: Boolean = false,
+    val activeSnapshotSlot: String? = null,
+    val snapshots: Map<String, SubSceneSnapshot> = emptyMap(),
+    val customLibreTracks: List<TrackChannel>? = null,
+
+    // In-App File Browser Persistence (Section 4)
+    val lastLoopsPath: String = "",
+    val lastDrumPadPath: String = ""
 ) {
     val soundfontFiles: List<StorageItem> get() = realSoundfonts
     val loopAudioFiles: List<StorageItem> get() = realLoopFiles
@@ -1191,9 +1205,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ================= THEME SELECTION =================
+    // ================= THEME & LANGUAGE SELECTION =================
     fun setAppTheme(theme: AppTheme) {
         _uiState.update { it.copy(currentTheme = theme) }
+    }
+
+    fun setAppLanguage(language: AppLanguage) {
+        _uiState.update { it.copy(selectedAppLanguage = language, selectedLanguage = language.displayName) }
     }
 
     // ================= PEAK METERS SIMULATION =================
@@ -1785,6 +1803,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 isAssignPadDialogOpen = false
             )
         }
+    }
+
+    fun updateNotesText(text: String) {
+        _uiState.update { it.copy(notesText = text) }
     }
 
     fun closeDrumPad() {
@@ -2669,6 +2691,103 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // ================= SNAPSHOTS / SUB-SCENES (SECTION 2) =================
+    fun toggleSnapshotArm() {
+        _uiState.update { it.copy(isSnapshotArmMode = !it.isSnapshotArmMode) }
+    }
+
+    fun onSnapshotSlotClick(slotName: String) {
+        val currentState = _uiState.value
+        if (currentState.isSnapshotArmMode) {
+            val trackSnapshots = currentState.tracks.map { t ->
+                TrackSnapshot(
+                    id = t.id,
+                    volume = t.volume,
+                    pan = t.pan,
+                    isMuted = t.isMuted,
+                    isSolo = t.isSolo,
+                    isEnabled = t.isEnabled,
+                    soundfontName = t.soundfontName,
+                    patchName = t.patchName,
+                    bank = t.bank,
+                    program = t.program
+                )
+            }
+            val newSubScene = SubSceneSnapshot(slotName, trackSnapshots)
+            val updatedSnapshots = currentState.snapshots + (slotName to newSubScene)
+            _uiState.update {
+                it.copy(
+                    isSnapshotArmMode = false,
+                    activeSnapshotSlot = slotName,
+                    snapshots = updatedSnapshots
+                )
+            }
+        } else {
+            if (currentState.activeSnapshotSlot == slotName) {
+                // 2nd tap -> Return to Custom Libre state
+                val freeTracks = currentState.customLibreTracks
+                if (freeTracks != null) {
+                    _uiState.update { state ->
+                        state.copy(
+                            tracks = freeTracks,
+                            activeSnapshotSlot = null
+                        )
+                    }
+                    freeTracks.forEachIndexed { idx, track ->
+                        NativeAudioBridge.safeSetTrackVolume(idx, if (track.isMuted) 0f else track.volume)
+                        NativeAudioBridge.safeSetTrackPan(idx, track.pan)
+                    }
+                } else {
+                    _uiState.update { it.copy(activeSnapshotSlot = null) }
+                }
+            } else {
+                // 1st tap (or switching slot)
+                val targetSnapshot = currentState.snapshots[slotName]
+                if (targetSnapshot != null) {
+                    val savedCustomTracks = currentState.customLibreTracks ?: currentState.tracks
+                    val updatedTracks = currentState.tracks.map { tr ->
+                        val snap = targetSnapshot.tracks.find { it.id == tr.id }
+                        if (snap != null) {
+                            tr.copy(
+                                volume = snap.volume,
+                                pan = snap.pan,
+                                isMuted = snap.isMuted,
+                                isSolo = snap.isSolo,
+                                isEnabled = snap.isEnabled
+                            )
+                        } else tr
+                    }
+
+                    _uiState.update {
+                        it.copy(
+                            customLibreTracks = savedCustomTracks,
+                            tracks = updatedTracks,
+                            activeSnapshotSlot = slotName
+                        )
+                    }
+
+                    updatedTracks.forEachIndexed { idx, track ->
+                        NativeAudioBridge.safeSetTrackVolume(idx, if (track.isMuted) 0f else track.volume)
+                        NativeAudioBridge.safeSetTrackPan(idx, track.pan)
+                    }
+                } else {
+                    _uiState.update { it.copy(activeSnapshotSlot = slotName) }
+                }
+            }
+        }
+    }
+
+    // ================= IN-APP FILE BROWSER PERSISTENCE (SECTION 4) =================
+    fun updateLastLoopsPath(path: String) {
+        _uiState.update { it.copy(lastLoopsPath = path) }
+        appStatePersistence.saveLastPath("last_loops_path", path)
+    }
+
+    fun updateLastDrumPadPath(path: String) {
+        _uiState.update { it.copy(lastDrumPadPath = path) }
+        appStatePersistence.saveLastPath("last_drumpad_path", path)
+    }
+
     // ================= SETTINGS DRAWER & FL SOUNDGOODIZER =================
     fun openSettingsDrawer() {
         _uiState.update { it.copy(isSettingsDrawerOpen = true, settingsSubPage = "main") }
@@ -2703,7 +2822,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setSelectedLanguage(lang: String) {
-        _uiState.update { it.copy(selectedLanguage = lang) }
+        val appLang = when {
+            lang.contains("Français", ignoreCase = true) || lang == "fr" -> AppLanguage.FRENCH
+            lang.contains("Español", ignoreCase = true) || lang == "es" -> AppLanguage.SPANISH
+            else -> AppLanguage.ENGLISH
+        }
+        _uiState.update { it.copy(selectedLanguage = lang, selectedAppLanguage = appLang) }
+        persistCurrentStateDebounced()
     }
 
     fun setGlobalVelocityRange(min: Float, max: Float) {

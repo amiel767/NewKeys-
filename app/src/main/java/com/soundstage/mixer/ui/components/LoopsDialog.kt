@@ -97,12 +97,15 @@ fun LoopsDialog(
     onSaveCopyEditChanges: (Int, Int, Int, Int, Int) -> Unit,
     onRenameFile: (LoopFile, String) -> Unit = { _, _ -> },
     onImportLoop: () -> Unit,
+    lastPath: String = "",
+    onUpdateLastPath: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     if (!isOpen) return
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    var isNativeBrowserOpen by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         onDispose {
@@ -210,13 +213,32 @@ fun LoopsDialog(
                             onConfirmDelete = { file ->
                                 fileToDelete = file
                             },
-                            onImportLoop = onImportLoop,
+                            onImportLoop = { isNativeBrowserOpen = true },
                             onClose = onClose
                         )
                     }
                 }
             }
         }
+    }
+
+    if (isNativeBrowserOpen) {
+        NativeFileBrowserDialog(
+            isOpen = isNativeBrowserOpen,
+            onClose = { isNativeBrowserOpen = false },
+            initialPath = lastPath.ifEmpty { "/storage/emulated/0/SoundStage/Loops" },
+            title = "Explorateur de Loops Audio",
+            onPathChanged = { newPath -> onUpdateLastPath(newPath) },
+            onFileSelected = { file ->
+                val imported = LoopFile(
+                    name = file.name,
+                    duration = "Audio",
+                    folder = "Imports",
+                    beats = selectedBeats.coerceAtLeast(2)
+                )
+                onSelectFile(imported)
+            }
+        )
     }
 
     // Delete Confirmation Dialog
