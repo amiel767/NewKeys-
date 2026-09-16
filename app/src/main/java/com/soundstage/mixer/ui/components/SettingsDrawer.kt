@@ -88,6 +88,10 @@ fun SettingsDrawer(
     velocityMin: Float = 0.10f,
     velocityMax: Float = 1.0f,
     onVelocityRangeChange: (Float, Float) -> Unit = { _, _ -> },
+
+    // Musical Notation Preference (# vs ♭)
+    useFlats: Boolean = false,
+    onToggleUseFlats: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     AnimatedVisibility(
@@ -156,7 +160,9 @@ fun SettingsDrawer(
                             onToggleKeepScreenOn = onToggleKeepScreenOn,
                             velocityMin = velocityMin,
                             velocityMax = velocityMax,
-                            onVelocityRangeChange = onVelocityRangeChange
+                            onVelocityRangeChange = onVelocityRangeChange,
+                            useFlats = useFlats,
+                            onToggleUseFlats = onToggleUseFlats
                         )
                     }
                 }
@@ -182,7 +188,9 @@ private fun AospMainSettingsPage(
     onToggleKeepScreenOn: () -> Unit,
     velocityMin: Float,
     velocityMax: Float,
-    onVelocityRangeChange: (Float, Float) -> Unit
+    onVelocityRangeChange: (Float, Float) -> Unit,
+    useFlats: Boolean = false,
+    onToggleUseFlats: () -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         // AOSP Header
@@ -283,6 +291,61 @@ private fun AospMainSettingsPage(
                             subtitle = selectedLanguage,
                             onClick = { onNavigateSubPage("language") }
                         )
+
+                        AospDivider()
+
+                        // Musical Notation Accidental Toggle (# Sharps vs ♭ Flats)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onToggleUseFlats() }
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color(0x183B82F6)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = if (useFlats) "♭" else "#",
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF3B82F6)
+                                    )
+                                }
+                                Column {
+                                    Text(
+                                        text = "Musical Notation",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        text = if (useFlats) "Flats (♭ - Db, Eb, Gb, Ab, Bb)" else "Sharps (# - C#, D#, F#, G#, A#)",
+                                        fontSize = 11.sp,
+                                        color = TextDim
+                                    )
+                                }
+                            }
+                            Switch(
+                                checked = useFlats,
+                                onCheckedChange = { onToggleUseFlats() },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = NeonCyan,
+                                    uncheckedThumbColor = TextDim,
+                                    uncheckedTrackColor = Color(0xFF202538)
+                                )
+                            )
+                        }
 
                         AospDivider()
 

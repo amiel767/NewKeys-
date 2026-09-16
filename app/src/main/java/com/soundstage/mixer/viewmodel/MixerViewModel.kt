@@ -160,6 +160,7 @@ data class MixerUiState(
     val isLowLatencyAudio: Boolean = true,
     val isKeyboardVelocityTouch: Boolean = true,
     val isMetronomeInRec: Boolean = false,
+    val useFlats: Boolean = false,
     val appFolder: String = "/LiveKeys",
     
     // System & Audio Engine Settings
@@ -618,7 +619,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 id = padIdx,
                 label = "",
                 soundType = DrumSoundType.SAMPLE,
-                sampleFileName = "sample_$padIdx.wav",
+                sampleFileName = "",
                 colorStyle = style
             )
         }
@@ -2833,7 +2834,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         it.copy(
                             customLibreTracks = savedCustomTracks,
                             activeSnapshotSlot = slotName,
-                            snapshotTransitionProgress = 0.0f
+                            snapshotTransitionProgress = 0.0f,
+                            transpose = targetSnapshot.globalTranspose,
+                            octave = targetSnapshot.globalOctaveShift
                         )
                     }
 
@@ -2942,6 +2945,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(globalVelocityMin = safeMin, globalVelocityMax = safeMax) }
         audioEngine.globalVelocityMin = safeMin
         audioEngine.globalVelocityMax = safeMax
+        persistCurrentStateDebounced()
+    }
+
+    fun toggleUseFlats() {
+        _uiState.update { it.copy(useFlats = !it.useFlats) }
         persistCurrentStateDebounced()
     }
 

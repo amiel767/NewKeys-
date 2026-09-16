@@ -260,24 +260,13 @@ fun TopBar(
                     ) {
                         Text(
                             text = detectedChord.primaryName,
-                            fontSize = if (detectedChord.variantName.isNotEmpty()) 11.5.sp else 13.sp,
+                            fontSize = 13.5.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White,
                             maxLines = 1,
-                            lineHeight = 12.sp,
+                            lineHeight = 14.sp,
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                         )
-                        if (detectedChord.variantName.isNotEmpty()) {
-                            Text(
-                                text = detectedChord.variantName,
-                                fontSize = 8.5.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = NeonCyan,
-                                maxLines = 1,
-                                lineHeight = 9.sp,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                            )
-                        }
                     }
                 } else {
                     Text(

@@ -439,30 +439,28 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
 void AudioEngine::processMasterChain(float *floatBuf, int32_t numFrames) {
     if (mBypassMasterFX.load(std::memory_order_relaxed)) return;
 
-    // Pure 32-bit linear transparent master bus:
-    // No phase distortion, no aggressive sub-bass cuts, zero transient attenuation below 1.0f.
-    // Transparent peak safety ceiling for values exceeding full scale (1.0f).
+    // Studio Transparent Brickwall Peak Limiter (-0.3 dB FS ceiling = 0.966f)
+    // Preserves full 32-bit linear dynamics, zero harmonic distortion below ceiling,
+    // and eliminates digital clipping on multi-note polyphony.
+    const float kCeiling = 0.966f;
     for (int32_t i = 0; i < numFrames; ++i) {
         float xL = floatBuf[2 * i];
         float xR = floatBuf[2 * i + 1];
 
-        // Transparent linear ceiling above 1.0f
-        float absL = std::abs(xL);
-        if (absL > 1.0f) {
-            float excess = absL - 1.0f;
-            float limited = 1.0f + 0.1f * std::tanh(excess / 0.1f);
-            xL = (xL > 0 ? 1.0f : -1.0f) * std::min(limited, 1.09f);
+        if (xL > kCeiling) {
+            xL = kCeiling + (1.0f - kCeiling) * (1.0f - std::exp(-(xL - kCeiling)));
+        } else if (xL < -kCeiling) {
+            xL = -kCeiling - (1.0f - kCeiling) * (1.0f - std::exp(-(-xL - kCeiling)));
         }
 
-        float absR = std::abs(xR);
-        if (absR > 1.0f) {
-            float excess = absR - 1.0f;
-            float limited = 1.0f + 0.1f * std::tanh(excess / 0.1f);
-            xR = (xR > 0 ? 1.0f : -1.0f) * std::min(limited, 1.09f);
+        if (xR > kCeiling) {
+            xR = kCeiling + (1.0f - kCeiling) * (1.0f - std::exp(-(xR - kCeiling)));
+        } else if (xR < -kCeiling) {
+            xR = -kCeiling - (1.0f - kCeiling) * (1.0f - std::exp(-(-xR - kCeiling)));
         }
 
-        floatBuf[2 * i] = xL;
-        floatBuf[2 * i + 1] = xR;
+        floatBuf[2 * i] = std::clamp(xL, -0.99f, 0.99f);
+        floatBuf[2 * i + 1] = std::clamp(xR, -0.99f, 0.99f);
     }
 }
 

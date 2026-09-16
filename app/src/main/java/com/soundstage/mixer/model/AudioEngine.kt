@@ -125,20 +125,7 @@ class AudioEngine(private val context: Context) {
             kotlinx.coroutines.delay(60)
             restoreAllEngineParameters()
 
-            // When headphones/jack are plugged in, Android OS often drops STREAM_MUSIC to ~50%
-            // Restore music stream volume so output volume and dynamics don't plummet!
-            try {
-                audioManager?.let { am ->
-                    val cur = am.getStreamVolume(AudioManager.STREAM_MUSIC)
-                    val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                    if (cur < (max * 0.75f).toInt()) {
-                        val target = (max * 0.90f).toInt().coerceIn(cur, max)
-                        am.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Audio stream volume check: ${e.message}")
-            }
+            // Let Android OS manage user's preferred stream volume directly
         }
     }
 

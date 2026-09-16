@@ -157,6 +157,10 @@ fun VirtualPianoKeyboard(
             // Computer mouse style live blue translucent selection overlay range over the keyboard
             var activeDragSelectionRange by remember { mutableStateOf<Pair<Float, Float>?>(null) }
 
+            // Filter pressed keys for visualization: if sustain is active, un-highlight keys when physical touch is lifted!
+            val physicalTouchedKeys = pointerKeyMap.values.toSet()
+            val displayedPressedKeys = if (isSustainActive) physicalTouchedKeys else pressedKeys
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.Bottom
@@ -310,7 +314,7 @@ fun VirtualPianoKeyboard(
                                 // 1. Initial 2 White Keys: A1 and B1 (with Bb1 / A#1 black key)
                                 IntroA1B1GroupView(
                                     whiteWidthDp = baseWhiteWidthDp,
-                                    pressedKeys = pressedKeys,
+                                    pressedKeys = displayedPressedKeys,
                                     activeAuraColor = activeAuraColor
                                 )
 
@@ -319,14 +323,14 @@ fun VirtualPianoKeyboard(
                                     OctaveGroupView(
                                         octave = oct,
                                         whiteWidthDp = baseWhiteWidthDp,
-                                        pressedKeys = pressedKeys,
+                                        pressedKeys = displayedPressedKeys,
                                         activeAuraColor = activeAuraColor
                                     )
                                 }
 
                                 // 3. Final High C Key (C8)
                                 val highCKey = "C$highestOctave"
-                                val isHighCPressed = pressedKeys.contains(highCKey)
+                                val isHighCPressed = displayedPressedKeys.contains(highCKey)
                                 StudioWhiteKey(
                                     keyName = highCKey,
                                     isPressed = isHighCPressed,
@@ -544,12 +548,12 @@ private fun StudioWhiteKey(
         )
 
         if (isCKey) {
-            Box(
-                modifier = Modifier
-                    .padding(bottom = 5.dp)
-                    .size(4.dp)
-                    .clip(CircleShape)
-                    .background(if (isPressed) Color.White.copy(alpha = 0.9f) else Color(0x66000000))
+            Text(
+                text = keyName,
+                fontSize = 8.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = if (isPressed) Color.White else Color(0x88111827),
+                modifier = Modifier.padding(bottom = 2.dp)
             )
         }
     }

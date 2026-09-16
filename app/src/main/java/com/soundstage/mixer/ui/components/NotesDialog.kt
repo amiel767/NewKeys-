@@ -108,6 +108,20 @@ fun NotesDialog(
         }
     }
 
+    fun deleteActiveNote() {
+        val file = activeNoteFile
+        if (file != null && file.exists()) {
+            try {
+                file.delete()
+                activeNoteFile = null
+                currentView = 1
+                refreshFiles()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
     // Open an existing note
     fun openNote(file: File) {
         activeNoteFile = file
@@ -288,62 +302,12 @@ fun NotesDialog(
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Text(text = "Nouvelle note", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                            Text(text = "New Note", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
 
-                // Search Bar Filter
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(36.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF1E2333))
-                        .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 10.dp),
-                    contentAlignment = Alignment.CenterStart
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "Rechercher",
-                            tint = TextDim,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        BasicTextField(
-                            value = searchQuery,
-                            onValueChange = { searchQuery = it },
-                            textStyle = TextStyle(color = Color.White, fontSize = 12.sp),
-                            singleLine = true,
-                            cursorBrush = SolidColor(NeonCyan),
-                            modifier = Modifier.weight(1f),
-                            decorationBox = { innerTextField ->
-                                if (searchQuery.isEmpty()) {
-                                    Text(
-                                        text = "Rechercher une note ou un chant...",
-                                        color = TextDim2,
-                                        fontSize = 11.5.sp
-                                    )
-                                }
-                                innerTextField()
-                            }
-                        )
-                        if (searchQuery.isNotEmpty()) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Effacer",
-                                tint = TextDim,
-                                modifier = Modifier
-                                    .size(16.dp)
-                                    .clickable { searchQuery = "" }
-                            )
-                        }
-                    }
-                }
+                Spacer(modifier = Modifier.height(10.dp))
 
                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -578,8 +542,21 @@ fun NotesDialog(
                         ) {
                             Icon(
                                 imageVector = if (showCopyFeedback) Icons.Default.Check else Icons.Default.Share,
-                                contentDescription = "Copier",
+                                contentDescription = "Copy",
                                 tint = if (showCopyFeedback) NeonCyan else TextDim,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
+                        // Delete Note Button
+                        IconButton(
+                            onClick = { deleteActiveNote() },
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete Note",
+                                tint = Color(0xFFFF4444),
                                 modifier = Modifier.size(16.dp)
                             )
                         }

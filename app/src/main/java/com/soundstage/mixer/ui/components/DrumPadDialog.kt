@@ -1520,33 +1520,35 @@ private fun QuickPadAssignModal(
 
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(4),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.heightIn(max = 160.dp)
                 ) {
-                    items(pads) { pad ->
+                    items(pads.take(8)) { pad ->
+                        val hasSample = pad.sampleFileName.isNotEmpty()
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF252A3C))
-                                .border(1.dp, pad.colorStyle.primaryColor, RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (hasSample) Color(0xFF22283A) else Color(0xFF161926))
+                                .border(1.5.dp, pad.colorStyle.primaryColor, RoundedCornerShape(10.dp))
                                 .clickable { onSelectPad(pad.id, isLoopMode) }
-                                .padding(vertical = 8.dp),
+                                .padding(vertical = 12.dp, horizontal = 4.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
-                                    text = "Pad ${pad.id}",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    text = "PAD ${pad.id}",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.ExtraBold,
                                     color = pad.colorStyle.primaryColor
                                 )
-                                if (pad.label.isNotEmpty()) {
-                                    Text(
-                                        text = pad.label,
-                                        fontSize = 8.sp,
-                                        color = TextDim
-                                    )
-                                }
+                                Text(
+                                    text = if (pad.label.isNotEmpty()) pad.label else if (hasSample) "Assigned" else "Empty",
+                                    fontSize = 8.5.sp,
+                                    color = if (hasSample) TextPrimary else TextDim2,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                         }
                     }
@@ -1554,7 +1556,7 @@ private fun QuickPadAssignModal(
 
                 Spacer(modifier = Modifier.height(10.dp))
                 TextButton(onClick = onDismiss) {
-                    Text(text = "Annuler", fontSize = 10.sp, color = TextDim)
+                    Text(text = "Cancel", fontSize = 11.sp, color = TextDim)
                 }
             }
         }

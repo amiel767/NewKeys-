@@ -715,7 +715,9 @@ fun MixerScreen(
             onToggleKeepScreenOn = { viewModel.toggleKeepScreenOn() },
             velocityMin = uiState.globalVelocityMin,
             velocityMax = uiState.globalVelocityMax,
-            onVelocityRangeChange = { min, max -> viewModel.setGlobalVelocityRange(min, max) }
+            onVelocityRangeChange = { min, max -> viewModel.setGlobalVelocityRange(min, max) },
+            useFlats = uiState.useFlats,
+            onToggleUseFlats = { viewModel.toggleUseFlats() }
         )
         } // End of isUIReady block
 
