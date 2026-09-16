@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Pause
@@ -698,10 +699,10 @@ internal fun MainDrumPadSquareContent(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Add,
-                                    contentDescription = "Importer (.wav/.mp3)",
+                                    imageVector = Icons.Default.Folder,
+                                    contentDescription = "Parcourir Stockage / SD",
                                     tint = Color(0xFF0F2537),
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(15.dp)
                                 )
                             }
                         }
@@ -712,10 +713,13 @@ internal fun MainDrumPadSquareContent(
                             isOpen = isNativeBrowserOpen,
                             onClose = { isNativeBrowserOpen = false },
                             initialPath = lastPath.ifEmpty { "/storage/emulated/0/SoundStage/DrumPad" },
-                            title = "Explorateur DrumPad",
+                            title = "Explorateur DrumPad (Stockage & SD)",
                             onPathChanged = { newPath -> onUpdateLastPath(newPath) },
                             onFileSelected = { file ->
-                                onPlaySample(StorageItem(name = file.name, path = file.absolutePath, isDirectory = false))
+                                val sampleItem = StorageItem(name = file.name, path = file.absolutePath, isDirectory = false)
+                                onPlaySample(sampleItem)
+                                onLongPressSample(sampleItem)
+                                isNativeBrowserOpen = false
                             }
                         )
                     }

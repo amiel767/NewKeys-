@@ -117,7 +117,7 @@ data class TrackChannel(
     val isEnabled: Boolean = true, // Power On/Off
     val isMuted: Boolean = false,
     val isSolo: Boolean = false,
-    val volume: Float = 0.65f,
+    val volume: Float = 0.78f,
     val pan: Float = 0.0f, // -1.0f (Left) to +1.0f (Right)
     val fxSummary: String = "Fx, EQ...",
     val soundfontName: String = "",
@@ -156,6 +156,7 @@ data class LoopFile(
     val name: String,
     val duration: String,
     val folder: String,
+    val path: String = "",
     val bpm: Int = 120,
     val musicalKey: String = "",
     val timeSignature: String = "4/4",

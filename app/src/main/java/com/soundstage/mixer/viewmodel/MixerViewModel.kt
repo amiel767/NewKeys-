@@ -192,6 +192,8 @@ data class MixerUiState(
     val activeSnapshotSlot: String? = null,
     val snapshots: Map<String, SubSceneSnapshot> = emptyMap(),
     val customLibreTracks: List<TrackChannel>? = null,
+    val snapshotTransitionProgress: Float = 1.0f,
+    val snapshotCustomNames: Map<String, String> = emptyMap(),
 
     // In-App File Browser Persistence (Section 4)
     val lastLoopsPath: String = "",
@@ -220,6 +222,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     private var peakMeterJob: Job? = null
     private var recordingTimerJob: Job? = null
+    private var snapshotTransitionJob: Job? = null
     private var lastTapTimeMap = mutableMapOf<Int, Long>()
 
     init {
@@ -956,8 +959,14 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             audioEngine.stopLoopPlayer()
             _uiState.update { it.copy(isLoopPlaying = false, lastSelectedLoopFile = file) }
         } else {
+            val directFile = when {
+                file.path.isNotEmpty() && java.io.File(file.path).exists() -> java.io.File(file.path)
+                java.io.File(file.folder, file.name).exists() -> java.io.File(file.folder, file.name)
+                java.io.File(file.name).exists() -> java.io.File(file.name)
+                else -> null
+            }
             val f = java.io.File(fileManager.loopsDir, "${file.folder}/${file.name}".replace("Racine /Loops/", "").replace("Loops/", ""))
-            val path = if (f.exists()) f.absolutePath else java.io.File(fileManager.loopsDir, file.name).absolutePath
+            val path = directFile?.absolutePath ?: if (f.exists()) f.absolutePath else java.io.File(fileManager.loopsDir, file.name).absolutePath
             val effectiveBpm = if (file.bpm > 0) file.bpm else _uiState.value.bpm
             val effectiveKey = if (file.musicalKey.isNotEmpty()) file.musicalKey else _uiState.value.selectedRootKey
             val effectiveSig = if (file.timeSignature.isNotEmpty()) file.timeSignature else _uiState.value.metronomeSignature
@@ -2696,6 +2705,15 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(isSnapshotArmMode = !it.isSnapshotArmMode) }
     }
 
+    fun renameSnapshotSlot(slotName: String, newName: String) {
+        val trimmed = newName.trim()
+        if (trimmed.isEmpty()) return
+        _uiState.update {
+            val updated = it.snapshotCustomNames + (slotName to trimmed)
+            it.copy(snapshotCustomNames = updated)
+        }
+    }
+
     fun onSnapshotSlotClick(slotName: String) {
         val currentState = _uiState.value
         if (currentState.isSnapshotArmMode) {
@@ -2719,33 +2737,61 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 it.copy(
                     isSnapshotArmMode = false,
                     activeSnapshotSlot = slotName,
-                    snapshots = updatedSnapshots
+                    snapshots = updatedSnapshots,
+                    snapshotTransitionProgress = 1.0f
                 )
             }
         } else {
+            snapshotTransitionJob?.cancel()
+            val startTracks = currentState.tracks
+
             if (currentState.activeSnapshotSlot == slotName) {
-                // 2nd tap -> Return to Custom Libre state
+                // 2nd tap -> Return to Custom Libre state smoothly
                 val freeTracks = currentState.customLibreTracks
                 if (freeTracks != null) {
                     _uiState.update { state ->
                         state.copy(
-                            tracks = freeTracks,
-                            activeSnapshotSlot = null
+                            activeSnapshotSlot = null,
+                            snapshotTransitionProgress = 0.0f
                         )
                     }
-                    freeTracks.forEachIndexed { idx, track ->
-                        NativeAudioBridge.safeSetTrackVolume(idx, if (track.isMuted) 0f else track.volume)
-                        NativeAudioBridge.safeSetTrackPan(idx, track.pan)
+                    snapshotTransitionJob = viewModelScope.launch {
+                        val steps = 16
+                        val stepDelay = 400L / steps
+                        for (step in 1..steps) {
+                            val progress = step.toFloat() / steps
+                            val interpolated = startTracks.mapIndexed { idx, startTr ->
+                                val targetTr = freeTracks.getOrNull(idx) ?: startTr
+                                startTr.copy(
+                                    volume = startTr.volume + (targetTr.volume - startTr.volume) * progress,
+                                    pan = startTr.pan + (targetTr.pan - startTr.pan) * progress,
+                                    isMuted = if (progress >= 0.5f) targetTr.isMuted else startTr.isMuted,
+                                    isSolo = if (progress >= 0.5f) targetTr.isSolo else startTr.isSolo,
+                                    isEnabled = if (progress >= 0.5f) targetTr.isEnabled else startTr.isEnabled
+                                )
+                            }
+                            _uiState.update {
+                                it.copy(tracks = interpolated, snapshotTransitionProgress = progress)
+                            }
+                            interpolated.forEachIndexed { idx, track ->
+                                NativeAudioBridge.safeSetTrackVolume(idx, if (track.isMuted) 0f else track.volume)
+                                NativeAudioBridge.safeSetTrackPan(idx, track.pan)
+                            }
+                            delay(stepDelay)
+                        }
+                        _uiState.update {
+                            it.copy(tracks = freeTracks, snapshotTransitionProgress = 1.0f)
+                        }
                     }
                 } else {
-                    _uiState.update { it.copy(activeSnapshotSlot = null) }
+                    _uiState.update { it.copy(activeSnapshotSlot = null, snapshotTransitionProgress = 1.0f) }
                 }
             } else {
                 // 1st tap (or switching slot)
                 val targetSnapshot = currentState.snapshots[slotName]
                 if (targetSnapshot != null) {
                     val savedCustomTracks = currentState.customLibreTracks ?: currentState.tracks
-                    val updatedTracks = currentState.tracks.map { tr ->
+                    val targetTracks = currentState.tracks.map { tr ->
                         val snap = targetSnapshot.tracks.find { it.id == tr.id }
                         if (snap != null) {
                             tr.copy(
@@ -2761,17 +2807,41 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     _uiState.update {
                         it.copy(
                             customLibreTracks = savedCustomTracks,
-                            tracks = updatedTracks,
-                            activeSnapshotSlot = slotName
+                            activeSnapshotSlot = slotName,
+                            snapshotTransitionProgress = 0.0f
                         )
                     }
 
-                    updatedTracks.forEachIndexed { idx, track ->
-                        NativeAudioBridge.safeSetTrackVolume(idx, if (track.isMuted) 0f else track.volume)
-                        NativeAudioBridge.safeSetTrackPan(idx, track.pan)
+                    snapshotTransitionJob = viewModelScope.launch {
+                        val steps = 16
+                        val stepDelay = 400L / steps
+                        for (step in 1..steps) {
+                            val progress = step.toFloat() / steps
+                            val interpolated = startTracks.mapIndexed { idx, startTr ->
+                                val targetTr = targetTracks.getOrNull(idx) ?: startTr
+                                startTr.copy(
+                                    volume = startTr.volume + (targetTr.volume - startTr.volume) * progress,
+                                    pan = startTr.pan + (targetTr.pan - startTr.pan) * progress,
+                                    isMuted = if (progress >= 0.5f) targetTr.isMuted else startTr.isMuted,
+                                    isSolo = if (progress >= 0.5f) targetTr.isSolo else startTr.isSolo,
+                                    isEnabled = if (progress >= 0.5f) targetTr.isEnabled else startTr.isEnabled
+                                )
+                            }
+                            _uiState.update {
+                                it.copy(tracks = interpolated, snapshotTransitionProgress = progress)
+                            }
+                            interpolated.forEachIndexed { idx, track ->
+                                NativeAudioBridge.safeSetTrackVolume(idx, if (track.isMuted) 0f else track.volume)
+                                NativeAudioBridge.safeSetTrackPan(idx, track.pan)
+                            }
+                            delay(stepDelay)
+                        }
+                        _uiState.update {
+                            it.copy(tracks = targetTracks, snapshotTransitionProgress = 1.0f)
+                        }
                     }
                 } else {
-                    _uiState.update { it.copy(activeSnapshotSlot = slotName) }
+                    _uiState.update { it.copy(activeSnapshotSlot = slotName, snapshotTransitionProgress = 1.0f) }
                 }
             }
         }

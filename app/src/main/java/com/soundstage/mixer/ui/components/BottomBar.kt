@@ -15,10 +15,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -26,6 +31,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -69,6 +75,9 @@ fun BottomBar(
     activeSnapshotSlot: String? = null,
     snapshots: Map<String, com.soundstage.mixer.model.SubSceneSnapshot> = emptyMap(),
     onSnapshotSlotClick: (String) -> Unit = {},
+    snapshotCustomNames: Map<String, String> = emptyMap(),
+    onRenameSnapshotSlot: (String, String) -> Unit = { _, _ -> },
+    snapshotTransitionProgress: Float = 1.0f,
     
     // Chord Display (Afficheur d'accords)
     detectedChord: DetectedChord? = null,
@@ -338,6 +347,70 @@ fun BottomBar(
         )
         val vividLedColor = Color.hsv(ledHue, 0.95f, 1.0f)
 
+        var renamingSlotKey by remember { mutableStateOf<String?>(null) }
+        var renamingSlotCurrentName by remember { mutableStateOf("") }
+
+        if (renamingSlotKey != null) {
+            AlertDialog(
+                onDismissRequest = { renamingSlotKey = null },
+                title = {
+                    Text(
+                        text = "Renommer la case",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "Entrez le nouveau nom pour ce snapshot :",
+                            color = Color(0xFFB0BEC5),
+                            fontSize = 12.sp
+                        )
+                        OutlinedTextField(
+                            value = renamingSlotCurrentName,
+                            onValueChange = { renamingSlotCurrentName = it },
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedBorderColor = NeonCyan,
+                                unfocusedBorderColor = Color(0x66FFFFFF),
+                                cursorColor = NeonCyan
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("input_rename_snapshot")
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val key = renamingSlotKey
+                            if (key != null && renamingSlotCurrentName.isNotBlank()) {
+                                onRenameSnapshotSlot(key, renamingSlotCurrentName.trim())
+                            }
+                            renamingSlotKey = null
+                        },
+                        modifier = Modifier.testTag("btn_confirm_rename_snapshot")
+                    ) {
+                        Text("Valider", color = NeonCyan, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { renamingSlotKey = null }
+                    ) {
+                        Text("Annuler", color = Color(0xFF8E95A5))
+                    }
+                },
+                containerColor = Color(0xFF161B29),
+                shape = RoundedCornerShape(16.dp)
+            )
+        }
+
         Row(
             modifier = Modifier
                 .weight(1f)
@@ -349,9 +422,9 @@ fun BottomBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(3.dp)
         ) {
-            // REC (ARM) Minimalist Mini Record Card Button
+            // REC (ARM) Material You Floppy Disk Save Button (matching save.jpg)
             val armBlinkAlpha by animateFloatAsState(
-                targetValue = if (isSnapshotArmMode) 1.0f else 0.35f,
+                targetValue = if (isSnapshotArmMode) 1.0f else 0.40f,
                 animationSpec = infiniteRepeatable(
                     animation = tween(450),
                     repeatMode = RepeatMode.Reverse
@@ -366,7 +439,7 @@ fun BottomBar(
                     .background(
                         if (isSnapshotArmMode) {
                             Brush.radialGradient(
-                                colors = listOf(Color(0xFFFF2A55), Color(0xFF500015)),
+                                colors = listOf(Color(0xFFFF2A55), Color(0xFF4A0014)),
                                 radius = 45f
                             )
                         } else {
@@ -382,52 +455,42 @@ fun BottomBar(
                     .testTag("btn_snapshot_arm"),
                 contentAlignment = Alignment.Center
             ) {
-                // Minimalist memory / record card icon
-                Box(
-                    modifier = Modifier
-                        .size(18.dp)
-                        .border(1.2.dp, if (isSnapshotArmMode) Color.White else Color(0xFF8899AA), RoundedCornerShape(3.dp))
-                        .padding(2.dp),
-                    contentAlignment = Alignment.TopEnd
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(if (isSnapshotArmMode) Color(0xFFFF2A55) else Color(0xFF556677))
-                    )
-                }
+                // Material You Floppy Disk (Save) Icon - flat colors, geometric forms, no textures
+                FloppyDiskIcon(
+                    isArmed = isSnapshotArmMode,
+                    modifier = Modifier.size(20.dp)
+                )
             }
 
-            // 5 Snapshot Slots: INTRO, Snapshot 1, Snapshot 2, Snapshot 3, END
-            val slotNames = listOf("INTRO", "Snapshot 1", "Snapshot 2", "Snapshot 3", "END")
-            slotNames.forEach { slot ->
-                val legacyKey = when (slot) {
-                    "Snapshot 1" -> "S2"
-                    "Snapshot 2" -> "S3"
-                    "Snapshot 3" -> "S4"
-                    else -> slot
+            // 5 Snapshot Slots: Défaut, Snapshot 1, Snapshot 2, Snapshot 3, END (renamable on long press)
+            val slotKeys = listOf("slot_default", "slot_1", "slot_2", "slot_3", "slot_end")
+            slotKeys.forEach { slotKey ->
+                val defaultLabel = when (slotKey) {
+                    "slot_default" -> "Défaut"
+                    "slot_1" -> "Snapshot 1"
+                    "slot_2" -> "Snapshot 2"
+                    "slot_3" -> "Snapshot 3"
+                    "slot_end" -> "END"
+                    else -> slotKey
                 }
-                val isActive = activeSnapshotSlot == slot || activeSnapshotSlot == legacyKey
-                val isSaved = snapshots.containsKey(slot) || snapshots.containsKey(legacyKey)
+                val displayName = snapshotCustomNames[slotKey] ?: defaultLabel
+
+                // Key aliases for backward compatibility with previously saved snapshots
+                val keyAliases = when (slotKey) {
+                    "slot_default" -> listOf("slot_default", "INTRO", "Intro", "Défaut", "Default")
+                    "slot_1" -> listOf("slot_1", "Snapshot 1", "S2")
+                    "slot_2" -> listOf("slot_2", "Snapshot 2", "S3")
+                    "slot_3" -> listOf("slot_3", "Snapshot 3", "S4")
+                    "slot_end" -> listOf("slot_end", "END", "End")
+                    else -> listOf(slotKey)
+                }
+                val isActive = keyAliases.any { activeSnapshotSlot == it }
+                val isSaved = keyAliases.any { snapshots.containsKey(it) }
 
                 val slotBg = when {
                     isActive -> vividLedColor.copy(alpha = 0.22f)
                     isSaved -> Color(0xFF162338)
                     else -> Color(0xFF121622)
-                }
-
-                val slotBorderBrush = when {
-                    isActive -> Brush.sweepGradient(
-                        listOf(
-                            vividLedColor,
-                            Color.hsv((ledHue + 90f) % 360f, 0.95f, 1.0f),
-                            Color.hsv((ledHue + 180f) % 360f, 0.95f, 1.0f),
-                            vividLedColor
-                        )
-                    )
-                    isSaved -> SolidColor(Color(0x6600E5FF))
-                    else -> SolidColor(Color(0x22FFFFFF))
                 }
 
                 val slotTextColor = when {
@@ -442,18 +505,80 @@ fun BottomBar(
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(7.dp))
                         .background(slotBg)
-                        .border(if (isActive) 1.8.dp else 1.dp, slotBorderBrush, RoundedCornerShape(7.dp))
-                        .clickable { onSnapshotSlotClick(slot) }
-                        .testTag("btn_snapshot_$slot"),
+                        .pointerInput(slotKey, displayName) {
+                            detectTapGestures(
+                                onTap = { onSnapshotSlotClick(slotKey) },
+                                onLongPress = {
+                                    renamingSlotKey = slotKey
+                                    renamingSlotCurrentName = displayName
+                                }
+                            )
+                        }
+                        .drawWithContent {
+                            drawContent()
+                            val w = this@drawWithContent.size.width
+                            val h = this@drawWithContent.size.height
+                            val r = 7.dp.toPx()
+                            val rrect = androidx.compose.ui.geometry.RoundRect(
+                                left = 1f, top = 1f, right = w - 1f, bottom = h - 1f,
+                                radiusX = r, radiusY = r
+                            )
+                            val p = Path().apply { addRoundRect(rrect) }
+
+                            if (isActive) {
+                                val ledBrush = Brush.sweepGradient(
+                                    listOf(
+                                        vividLedColor,
+                                        Color.hsv((ledHue + 90f) % 360f, 0.95f, 1.0f),
+                                        Color.hsv((ledHue + 180f) % 360f, 0.95f, 1.0f),
+                                        vividLedColor
+                                    )
+                                )
+                                if (snapshotTransitionProgress < 1.0f) {
+                                    // Progression LED: commence par un point jusqu'à couvrir toute la case à la fin
+                                    val pm = PathMeasure()
+                                    pm.setPath(p, false)
+                                    val totalLen = pm.length
+                                    val curLen = (totalLen * snapshotTransitionProgress.coerceIn(0.01f, 1.0f))
+                                    val seg = Path()
+                                    pm.getSegment(0f, curLen, seg, true)
+                                    drawPath(
+                                        path = seg,
+                                        brush = ledBrush,
+                                        style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round)
+                                    )
+                                } else {
+                                    // Pleine couverture LED à la fin de la transition fluide
+                                    drawPath(
+                                        path = p,
+                                        brush = ledBrush,
+                                        style = Stroke(width = 1.8.dp.toPx())
+                                    )
+                                }
+                            } else if (isSaved) {
+                                drawPath(
+                                    path = p,
+                                    color = Color(0x6600E5FF),
+                                    style = Stroke(width = 1.dp.toPx())
+                                )
+                            } else {
+                                drawPath(
+                                    path = p,
+                                    color = Color(0x22FFFFFF),
+                                    style = Stroke(width = 1.dp.toPx())
+                                )
+                            }
+                        }
+                        .testTag("btn_snapshot_$slotKey"),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = slot,
-                        fontSize = if (slot.startsWith("Snapshot")) 7.5.sp else 9.5.sp,
+                        text = displayName,
+                        fontSize = if (displayName.length > 7) 7.5.sp else 9.5.sp,
                         fontWeight = if (isActive || isSaved) FontWeight.ExtraBold else FontWeight.Bold,
                         color = slotTextColor,
                         maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -861,3 +986,92 @@ fun MetronomeFloatingPanel(
         }
     }
 }
+
+/**
+ * Material You Floppy Disk Save Icon
+ * Geometric flat shapes, vibrant solid colors, no textures (matching save.jpg).
+ */
+@Composable
+fun FloppyDiskIcon(
+    isArmed: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val diskColor = if (isArmed) Color(0xFFFF2A55) else Color(0xFF8E95A5)
+    val innerCutoutColor = Color(0xFF0C101A)
+    val labelColor = if (isArmed) Color(0xFFFFB3BA) else Color(0xFFECEFF1)
+
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val corner = w * 0.12f
+        val notch = w * 0.22f
+
+        // Outer disk body with chamfered top-right corner
+        val bodyPath = Path().apply {
+            moveTo(corner, 0f)
+            lineTo(w - notch, 0f)
+            lineTo(w, notch)
+            lineTo(w, h - corner)
+            arcTo(
+                androidx.compose.ui.geometry.Rect(w - 2 * corner, h - 2 * corner, w, h),
+                0f, 90f, false
+            )
+            lineTo(corner, h)
+            arcTo(
+                androidx.compose.ui.geometry.Rect(0f, h - 2 * corner, 2 * corner, h),
+                90f, 90f, false
+            )
+            lineTo(0f, corner)
+            arcTo(
+                androidx.compose.ui.geometry.Rect(0f, 0f, 2 * corner, 2 * corner),
+                180f, 90f, false
+            )
+            close()
+        }
+        drawPath(bodyPath, color = diskColor)
+
+        // Top shutter cutout
+        val sliderW = w * 0.58f
+        val sliderH = h * 0.38f
+        val sliderLeft = (w - sliderW) / 2f
+        drawRoundRect(
+            color = innerCutoutColor,
+            topLeft = Offset(sliderLeft, 0f),
+            size = Size(sliderW, sliderH),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(corner * 0.25f, corner * 0.25f)
+        )
+
+        // Shutter window cutout
+        val winW = sliderW * 0.26f
+        val winH = sliderH * 0.55f
+        val winLeft = sliderLeft + sliderW * 0.18f
+        val winTop = sliderH * 0.22f
+        drawRoundRect(
+            color = diskColor,
+            topLeft = Offset(winLeft, winTop),
+            size = Size(winW, winH),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f, 2f)
+        )
+
+        // Bottom label rectangle
+        val labelW = w * 0.72f
+        val labelH = h * 0.40f
+        val labelLeft = (w - labelW) / 2f
+        val labelTop = h - labelH
+        drawRoundRect(
+            color = labelColor,
+            topLeft = Offset(labelLeft, labelTop),
+            size = Size(labelW, labelH),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(corner * 0.35f, corner * 0.35f)
+        )
+
+        // Write notch hole
+        val notchHole = w * 0.11f
+        drawRect(
+            color = innerCutoutColor,
+            topLeft = Offset(w * 0.10f, h - notchHole - 2f),
+            size = Size(notchHole, notchHole)
+        )
+    }
+}
+

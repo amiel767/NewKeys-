@@ -39,7 +39,7 @@ bool SoundfontEngine::init(int sampleRate, int polyphony, const char* instanceNa
         return false;
     }
 
-    fluid_synth_set_gain(mSynth, 1.3f);
+    fluid_synth_set_gain(mSynth, 2.0f);
     fluid_synth_set_interp_method(mSynth, -1, FLUID_INTERP_LINEAR);
     fluid_synth_reverb_on(mSynth, -1, 0);
     fluid_synth_chorus_on(mSynth, -1, 0);
@@ -76,14 +76,14 @@ int SoundfontEngine::loadSoundFont(const std::string &absolutePath) {
         mSettings = new_fluid_settings();
         if (mSettings) {
             fluid_settings_setnum(mSettings, "synth.sample-rate", 48000.0);
-            fluid_settings_setnum(mSettings, "synth.gain", 1.3);
+            fluid_settings_setnum(mSettings, "synth.gain", 2.0);
             fluid_settings_setint(mSettings, "synth.polyphony", mConfiguredPolyphony);
             fluid_settings_setint(mSettings, "synth.midi-channels", kMaxChannels);
             fluid_settings_setint(mSettings, "synth.reverb.active", 0);
             fluid_settings_setint(mSettings, "synth.chorus.active", 0);
             mSynth = new_fluid_synth(mSettings);
             if (mSynth) {
-                fluid_synth_set_gain(mSynth, 1.3f);
+                fluid_synth_set_gain(mSynth, 2.0f);
                 fluid_synth_set_interp_method(mSynth, -1, FLUID_INTERP_LINEAR);
                 fluid_synth_reverb_on(mSynth, -1, 0);
                 fluid_synth_chorus_on(mSynth, -1, 0);
@@ -323,15 +323,12 @@ void SoundfontEngine::pitchBend(int channel, int bendValue) {
 void SoundfontEngine::setChannelVolume(int channel, float volume01) {
     if (channel < 0 || channel >= kMaxChannels) return;
 
-    // Professional audio console taper: below 0.005 is absolute silence.
-    // Natural audio taper ensures smooth fade-out at bottom of rail instead of abrupt loudness.
     float clampedVol = std::clamp(volume01, 0.0f, 1.0f);
-    int ccVal = 0;
-    if (clampedVol > 0.002f) {
-        // Applying power-law taper gives precise control in low volumes and full punch at top
-        float tapered = std::pow(clampedVol, 1.35f);
-        ccVal = std::clamp(static_cast<int>(tapered * 127.0f), 1, 127);
-    }
+    // FluidSynth natively calculates attenuation using the standard SoundFont 2.04 specification:
+    // Attenuation (dB) = 40 * log10(127 / CC7).
+    // Mapping directly ensures true full dynamics, punchy transients, and zero volume recession!
+    int ccVal = static_cast<int>(std::round(clampedVol * 127.0f));
+    ccVal = std::clamp(ccVal, 0, 127);
 
     EngineMidiEvent ev;
     ev.type = EngineMidiEvent::CC;
@@ -444,21 +441,6 @@ void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool 
     }
 
     auto tStart = std::chrono::steady_clock::now();
-
-    // Dynamic release time management: gently accelerate voice decay when load > 40 voices
-    int activeVoices = fluid_synth_get_active_voice_count(mSynth);
-    if (activeVoices > 40) {
-        int relVal = std::max(15, 64 - (activeVoices - 40) * 1);
-        for (int ch = 0; ch < kMaxChannels; ++ch) {
-            fluid_synth_cc(mSynth, ch, 72, relVal);
-        }
-        mWasHighLoad = true;
-    } else if (mWasHighLoad) {
-        for (int ch = 0; ch < kMaxChannels; ++ch) {
-            fluid_synth_cc(mSynth, ch, 72, 64);
-        }
-        mWasHighLoad = false;
-    }
 
     // Lock-free drain of pending MIDI events directly on the audio thread
     // NoteOns, NoteOffs, PitchBends, CCs and AllNotesOffs are processed with high throughput.

@@ -556,7 +556,12 @@ public:
     void stop();
     void setDriver(int driverType);
     void setMasterGain(float gain) {
+        mMasterGain = gain;
         mSynthEngine.setGain(gain);
+    }
+    void setDrumMasterVolume(float vol) {
+        mDrumMasterVolume = vol;
+        mDrumSampler.setMasterVolume(vol);
     }
     void setPolyphony(int polyphony) {
         mSynthEngine.setPolyphony(polyphony);
@@ -623,6 +628,29 @@ private:
     MasterPunchDsp mMasterPunch;
     StereoBiquad mPadFilter;
     float mPadBrightness = 0.75f;
+
+    // Preserved parameters across stream reconnections (Jack plug/unplug, routing events)
+    std::atomic<bool> mIsReconnecting{false};
+    float mMasterGain = 2.0f;
+    float mDrumMasterVolume = 0.80f;
+    float mMasterPunchAmount = 0.50f;
+    float mSpatialWidenerAmount = 0.35f;
+    bool mSoundGoodizerEnabled = false;
+    int mSoundGoodizerMode = 0;
+    float mSoundGoodizerAmount = 0.42f;
+    bool mMasterReverbEnabled = false;
+    float mMasterReverbSize = 0.60f;
+    float mMasterReverbDecay = 0.50f;
+    float mMasterReverbDamp = 0.30f;
+    float mMasterReverbMix = 0.25f;
+    bool mMasterDelayEnabled = false;
+    float mMasterDelayTime = 0.35f;
+    float mMasterDelayFeedback = 0.40f;
+    float mMasterDelayMix = 0.20f;
+    bool mMasterDelayPingPong = false;
+    float mEqLowDb = 0.0f;
+    float mEqMidDb = 0.0f;
+    float mEqHighDb = 0.0f;
 
     int mSampleRate = 48000;
     std::atomic<int> mConfiguredBufferSize{512};

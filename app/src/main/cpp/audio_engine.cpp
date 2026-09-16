@@ -41,7 +41,8 @@ bool AudioEngine::openAndStartStream() {
         ->setSampleRate(48000)
         ->setDataCallback(this)
         ->setErrorCallback(this)
-        ->setUsage(oboe::Usage::Media);
+        ->setUsage(oboe::Usage::Media)
+        ->setContentType(oboe::ContentType::Music);
 
     if (mDriverType == 1) {
         LOGI("Requesting OpenSL ES audio backend...");
@@ -95,10 +96,22 @@ bool AudioEngine::openAndStartStream() {
     mPadFilter.setLowPass(static_cast<float>(sampleRate), 400.0f * std::pow(45.0f, mPadBrightness), 0.707f);
     mDrumSampler.init(sampleRate);
 
+    // Immediately re-apply all preserved DSP, Gain and Volume parameters
+    // This ensures that when plugging in or unplugging a 3.5mm jack or BT device,
+    // the audio output retains full power, master gain, punch, and dynamics without ducking!
+    mMasterDelay.setParams(mMasterDelayEnabled, mMasterDelayTime, mMasterDelayFeedback, mMasterDelayMix, mMasterDelayPingPong);
+    mMasterReverb.setParams(mMasterReverbEnabled, mMasterReverbSize, mMasterReverbDecay, mMasterReverbDamp, mMasterReverbMix);
+    mSoundGoodizer.setParams(mSoundGoodizerEnabled, mSoundGoodizerMode, mSoundGoodizerAmount);
+    mSpatialWidener.setAmount(mSpatialWidenerAmount);
+    mMasterPunch.setAmount(mMasterPunchAmount);
+    setMasterEq(mEqLowDb, mEqMidDb, mEqHighDb);
+    mDrumSampler.setMasterVolume(mDrumMasterVolume);
+
     // Initialize unified FluidSynth engine (16 MIDI channels covering Tracks 1..8, Drum 8, TonicPad 9)
     if (!mSynthEngine.isInitialized()) {
         mSynthEngine.init(sampleRate, kFaderPolyphony, "UnifiedSynthEngine");
     }
+    mSynthEngine.setGain(mMasterGain);
 
     result = mStream->requestStart();
     if (result != oboe::Result::OK) {
@@ -117,9 +130,14 @@ void AudioEngine::onErrorBeforeClose(oboe::AudioStream *audioStream, oboe::Resul
 void AudioEngine::onErrorAfterClose(oboe::AudioStream *audioStream, oboe::Result error) {
     LOGI("Oboe stream error/disconnected: %s. Reopening stream asynchronously...", 
         oboe::convertToText(error));
+    if (mIsReconnecting.exchange(true)) {
+        LOGI("Reconnection already pending or in progress, skipping duplicate request");
+        return;
+    }
     std::thread([this]() {
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
         openAndStartStream();
+        mIsReconnecting.store(false);
     }).detach();
 }
 
@@ -166,6 +184,9 @@ void AudioEngine::setBufferSize(int bufferSizeInFrames) {
 }
 
 void AudioEngine::setMasterEq(float lowGainDb, float midGainDb, float highGainDb) {
+    mEqLowDb = lowGainDb;
+    mEqMidDb = midGainDb;
+    mEqHighDb = highGainDb;
     float sr = static_cast<float>(mSampleRate > 0 ? mSampleRate : 48000);
     mEqLow.setLowShelf(sr, 150.0f, lowGainDb);
     mEqMid.setPeaking(sr, 1000.0f, midGainDb);
@@ -173,22 +194,37 @@ void AudioEngine::setMasterEq(float lowGainDb, float midGainDb, float highGainDb
 }
 
 void AudioEngine::setSoundGoodizer(bool enabled, int mode, float amount) {
+    mSoundGoodizerEnabled = enabled;
+    mSoundGoodizerMode = mode;
+    mSoundGoodizerAmount = amount;
     mSoundGoodizer.setParams(enabled, mode, amount);
 }
 
 void AudioEngine::setMasterReverb(bool enabled, float size, float decay, float damp, float mix) {
+    mMasterReverbEnabled = enabled;
+    mMasterReverbSize = size;
+    mMasterReverbDecay = decay;
+    mMasterReverbDamp = damp;
+    mMasterReverbMix = mix;
     mMasterReverb.setParams(enabled, size, decay, damp, mix);
 }
 
 void AudioEngine::setMasterDelay(bool enabled, float timeSec, float feedback, float mix, bool pingPong) {
+    mMasterDelayEnabled = enabled;
+    mMasterDelayTime = timeSec;
+    mMasterDelayFeedback = feedback;
+    mMasterDelayMix = mix;
+    mMasterDelayPingPong = pingPong;
     mMasterDelay.setParams(enabled, timeSec, feedback, mix, pingPong);
 }
 
 void AudioEngine::setSpatialWidener(float amount) {
+    mSpatialWidenerAmount = amount;
     mSpatialWidener.setAmount(amount);
 }
 
 void AudioEngine::setMasterPunch(float amount) {
+    mMasterPunchAmount = amount;
     mMasterPunch.setAmount(amount);
 }
 

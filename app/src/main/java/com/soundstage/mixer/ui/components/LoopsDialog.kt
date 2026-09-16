@@ -233,10 +233,12 @@ fun LoopsDialog(
                 val imported = LoopFile(
                     name = file.name,
                     duration = "Audio",
-                    folder = "Imports",
-                    beats = selectedBeats.coerceAtLeast(2)
+                    folder = file.parentFile?.name ?: "Stockage",
+                    beats = selectedBeats.coerceAtLeast(2),
+                    path = file.absolutePath
                 )
                 onSelectFile(imported)
+                isNativeBrowserOpen = false
             }
         )
     }
@@ -467,7 +469,7 @@ private fun LoopListContent(
                     )
                 }
 
-                // Bouton + (Importer) en carré bordure néon petit et adapté
+                // Bouton Parcourir Stockage & SD (Explorateur de fichiers)
                 Box(
                     modifier = Modifier
                         .padding(horizontal = 2.dp)
@@ -479,8 +481,8 @@ private fun LoopListContent(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Importer",
+                        imageVector = Icons.Default.FolderOpen,
+                        contentDescription = "Parcourir Stockage / SD",
                         tint = NeonCyanLight,
                         modifier = Modifier.size(16.dp)
                     )

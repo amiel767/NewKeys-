@@ -93,10 +93,52 @@ class AudioEngine(private val context: Context) {
         }
     }
 
+    fun restoreAllEngineParameters() {
+        NativeAudioBridge.safeSetMasterVolume(masterVolume)
+        NativeAudioBridge.safeSetMasterPunch(masterPunch)
+        NativeAudioBridge.safeSetSpatialWidener(spatialWidener)
+        val modeInt = when (soundGoodizerMode) {
+            "A" -> 0
+            "B" -> 1
+            "C" -> 2
+            "D" -> 3
+            else -> 0
+        }
+        NativeAudioBridge.safeSetSoundGoodizer(isSoundGoodizerEnabled, modeInt, soundGoodizerAmount)
+        for (ch in 0..11) {
+            val p = channelParams[ch]
+            if (p.isEnabled) {
+                setChannelVolume(ch, p.volume)
+            } else {
+                setChannelVolume(ch, 0f)
+            }
+            setChannelPan(ch, p.pan)
+            setChannelTranspose(ch, p.transpose)
+            setChannelReverb(ch, p.reverb)
+        }
+    }
+
     fun reconnectAudioStream() {
-        coroutineScope.launch {
+        coroutineScope.launch(Dispatchers.IO) {
             kotlinx.coroutines.delay(200)
             NativeAudioBridge.safeStartEngine(0)
+            kotlinx.coroutines.delay(60)
+            restoreAllEngineParameters()
+
+            // When headphones/jack are plugged in, Android OS often drops STREAM_MUSIC to ~50%
+            // Restore music stream volume so output volume and dynamics don't plummet!
+            try {
+                audioManager?.let { am ->
+                    val cur = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+                    val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                    if (cur < (max * 0.75f).toInt()) {
+                        val target = (max * 0.90f).toInt().coerceIn(cur, max)
+                        am.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Audio stream volume check: ${e.message}")
+            }
         }
     }
 

@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -54,14 +55,31 @@ fun NativeFileBrowserDialog(
 
     val currentDir = remember(currentPath) { File(currentPath) }
 
-    val dirContents by remember(currentPath) {
-        mutableStateOf(
-            currentDir.listFiles()?.filter { file ->
-                !file.isHidden && (file.isDirectory || isSupportedAudioFile(file.name))
-            }?.sortedWith(
-                compareBy<File> { !it.isDirectory }.thenBy { it.name.lowercase() }
-            ) ?: emptyList()
-        )
+    val dirContents = remember(currentPath) {
+        currentDir.listFiles()?.filter { file ->
+            !file.isHidden && (file.isDirectory || isSupportedAudioFile(file.name))
+        }?.sortedWith(
+            compareBy<File> { !it.isDirectory }.thenBy { it.name.lowercase() }
+        ) ?: emptyList()
+    }
+
+    val storageShortcuts = remember {
+        val list = mutableListOf<Pair<String, String>>()
+        list.add("📱 Interne" to defaultRoot)
+        try {
+            val rootStorage = File("/storage")
+            if (rootStorage.exists()) {
+                rootStorage.listFiles()?.forEach { f ->
+                    if (f.isDirectory && f.name != "emulated" && f.name != "self" && f.canRead()) {
+                        list.add("💾 SD Card (${f.name})" to f.absolutePath)
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        list.add("📥 Downloads" to "$defaultRoot/Download")
+        list.add("🎵 Music" to "$defaultRoot/Music")
+        list.add("🎹 SoundStage" to "$defaultRoot/SoundStage")
+        list
     }
 
     LaunchedEffect(currentPath) {
@@ -133,15 +151,14 @@ fun NativeFileBrowserDialog(
 
                     Spacer(modifier = Modifier.height(6.dp))
 
-                    // Quick Jump Shortcuts
-                    Row(
+                    // Quick Jump Shortcuts (Horizontally scrollable for internal + SD cards)
+                    LazyRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        ShortcutChip("🏠 Stockage", defaultRoot) { currentPath = it }
-                        ShortcutChip("🎵 SoundStage", "$defaultRoot/SoundStage") { currentPath = it }
-                        ShortcutChip("📥 Downloads", "$defaultRoot/Download") { currentPath = it }
-                        ShortcutChip("🎶 Music", "$defaultRoot/Music") { currentPath = it }
+                        items(storageShortcuts) { (label, path) ->
+                            ShortcutChip(label, path) { currentPath = it }
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(6.dp))

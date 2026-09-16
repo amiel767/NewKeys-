@@ -407,6 +407,16 @@ fun MixerScreen(
                     
                     // Real-time Detected Chord
                     detectedChord = detectedChord,
+
+                    // Snapshots / Sub-Scenes (Section 2)
+                    isSnapshotArmMode = uiState.isSnapshotArmMode,
+                    onToggleSnapshotArm = { viewModel.toggleSnapshotArm() },
+                    activeSnapshotSlot = uiState.activeSnapshotSlot,
+                    snapshots = uiState.snapshots,
+                    onSnapshotSlotClick = { slotKey -> viewModel.onSnapshotSlotClick(slotKey) },
+                    snapshotCustomNames = uiState.snapshotCustomNames,
+                    onRenameSnapshotSlot = { slotKey, newName -> viewModel.renameSnapshotSlot(slotKey, newName) },
+                    snapshotTransitionProgress = uiState.snapshotTransitionProgress,
                     
                     isKeyboardActive = isKeyboardVisible,
                     onToggleKeyboard = { viewModel.cycleKeyboardExpansion() },
