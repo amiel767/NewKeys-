@@ -487,15 +487,22 @@ fun BottomBar(
                 val isActive = keyAliases.any { activeSnapshotSlot == it }
                 val isSaved = keyAliases.any { snapshots.containsKey(it) }
 
-                val slotBg = when {
-                    isActive -> vividLedColor.copy(alpha = 0.22f)
-                    isSaved -> Color(0xFF162338)
-                    else -> Color(0xFF121622)
+                // Vivid LED palette per snapshot slot (Cyan, Lime, Magenta, Violet, Amber)
+                val slotLedColor = when (slotKey) {
+                    "slot_default" -> Color(0xFF00E5FF) // Electric Cyan
+                    "slot_1" -> Color(0xFF84CC16)       // Acid Lime
+                    "slot_2" -> Color(0xFFEC4899)       // Hot Magenta
+                    "slot_3" -> Color(0xFFA855F7)       // Laser Violet
+                    "slot_end" -> Color(0xFFFFB300)     // Amber Gold
+                    else -> Color(0xFF00E5FF)
                 }
+
+                // Neutral dark background for all slots - NO interior color fill shift
+                val slotBg = Color(0xFF111522)
 
                 val slotTextColor = when {
                     isActive -> Color.White
-                    isSaved -> Color.White
+                    isSaved -> Color(0xFFE2E8F0)
                     else -> TextDim
                 }
 
@@ -526,16 +533,8 @@ fun BottomBar(
                             val p = Path().apply { addRoundRect(rrect) }
 
                             if (isActive) {
-                                val ledBrush = Brush.sweepGradient(
-                                    listOf(
-                                        vividLedColor,
-                                        Color.hsv((ledHue + 90f) % 360f, 0.95f, 1.0f),
-                                        Color.hsv((ledHue + 180f) % 360f, 0.95f, 1.0f),
-                                        vividLedColor
-                                    )
-                                )
                                 if (snapshotTransitionProgress < 1.0f) {
-                                    // Progression LED: commence par un point jusqu'à couvrir toute la case à la fin
+                                    // Animated LED Progress stroke along contour
                                     val pm = PathMeasure()
                                     pm.setPath(p, false)
                                     val totalLen = pm.length
@@ -544,24 +543,26 @@ fun BottomBar(
                                     pm.getSegment(0f, curLen, seg, true)
                                     drawPath(
                                         path = seg,
-                                        brush = ledBrush,
+                                        color = slotLedColor,
                                         style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round)
                                     )
                                 } else {
-                                    // Pleine couverture LED à la fin de la transition fluide
+                                    // Ultra-vivid solid LED stroke
                                     drawPath(
                                         path = p,
-                                        brush = ledBrush,
-                                        style = Stroke(width = 1.8.dp.toPx())
+                                        color = slotLedColor,
+                                        style = Stroke(width = 2.2.dp.toPx())
                                     )
                                 }
                             } else if (isSaved) {
+                                // Subtle saved LED outline
                                 drawPath(
                                     path = p,
-                                    color = Color(0x6600E5FF),
-                                    style = Stroke(width = 1.dp.toPx())
+                                    color = slotLedColor.copy(alpha = 0.55f),
+                                    style = Stroke(width = 1.2.dp.toPx())
                                 )
                             } else {
+                                // Default subtle border
                                 drawPath(
                                     path = p,
                                     color = Color(0x22FFFFFF),

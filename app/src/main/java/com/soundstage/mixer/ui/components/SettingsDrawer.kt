@@ -703,11 +703,7 @@ private fun LanguageSelectorSubPage(
     onSelectLanguage: (String) -> Unit,
     onBack: () -> Unit
 ) {
-    val languages = listOf(
-        Pair("English", "🇺🇸"),
-        Pair("Français", "🇫🇷"),
-        Pair("Español", "🇪🇸")
-    )
+    val languages = listOf("English", "Français", "Español")
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -727,18 +723,18 @@ private fun LanguageSelectorSubPage(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Retour",
+                    contentDescription = "Back",
                     tint = NeonCyan,
                     modifier = Modifier.size(14.dp)
                 )
-                Text(text = "Retour", fontSize = 10.sp, color = NeonCyan)
+                Text(text = "Back", fontSize = 10.sp, color = NeonCyan)
             }
             Spacer(modifier = Modifier.width(12.dp))
-            Text(text = "Langue / Language", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Text(text = "Language", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
         }
 
         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(languages) { (lang, flag) ->
+            items(languages) { lang ->
                 val isSel = (lang == selectedLanguage)
                 Row(
                     modifier = Modifier
@@ -751,7 +747,6 @@ private fun LanguageSelectorSubPage(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(text = flag, fontSize = 20.sp)
                     Text(
                         text = lang,
                         fontSize = 13.sp,

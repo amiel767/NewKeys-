@@ -21,6 +21,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -271,7 +272,12 @@ internal fun TonicPadContent(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
-                            Text(text = "🎹", fontSize = 8.5.sp)
+                            Icon(
+                                imageVector = Icons.Default.MusicNote,
+                                contentDescription = null,
+                                tint = NeonPurpleLight,
+                                modifier = Modifier.size(10.dp)
+                            )
                             Text(
                                 text = currentLoadedSf2Name.ifEmpty { "Soundfont" },
                                 fontSize = 8.5.sp,

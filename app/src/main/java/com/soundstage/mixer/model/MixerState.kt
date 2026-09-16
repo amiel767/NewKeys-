@@ -10,25 +10,25 @@ enum class ActivePopup {
     NONE, DRUM_PAD, TONIC_PAD, NOTES, SCENE, EFFECTS, SOUNDFONT, STYLE, MIDI, LOOPS
 }
 
-enum class AppLanguage(val code: String, val displayName: String, val flag: String) {
-    ENGLISH("en", "English", "🇺🇸"),
-    FRENCH("fr", "Français", "🇫🇷"),
-    SPANISH("es", "Español", "🇪🇸")
+enum class AppLanguage(val code: String, val displayName: String) {
+    ENGLISH("en", "English"),
+    FRENCH("fr", "Français"),
+    SPANISH("es", "Español")
 }
 
 enum class SoundGoodizerMode(val label: String, val description: String) {
-    A("A - Warm Tube", "Chaleur analogique & saturation harmonique ronde"),
-    B("B - Crisp Air", "Exciter d'aigus brillant et dynamique punchy"),
-    C("C - Deep Crunch", "Compression multibande lourde & crunch basse"),
-    D("D - Hard Limiter", "Impact maximal, mur du son & punch puissant")
+    A("A - Warm Tube", "Analog warmth & round harmonic saturation"),
+    B("B - Crisp Air", "Brilliant high exciter & punchy dynamics"),
+    C("C - Deep Crunch", "Heavy multiband compression & bass crunch"),
+    D("D - Hard Limiter", "Maximum impact, brickwall & punchy loudness")
 }
 
 enum class AppTheme(val displayName: String, val description: String) {
-    CYBER_NEON("Cyber Neon (Défaut)", "Teintes sombres avec accents cyan & violet néon"),
-    OBSIDIAN_GOLD("Obsidian Gold", "Noir profond avec accents dorés et ambrés luxueux"),
-    TOKYO_NIGHT("Tokyo Night", "Bleu nuit profond avec touches rose magenta et indigo"),
-    STUDIO_SLATE("Studio Slate", "Gris studio professionnel épuré et minimaliste"),
-    OLED_BLACK("OLED Pure Black", "Noir absolu pour économie d'énergie et contraste max")
+    CYBER_NEON("Cyber Neon (Default)", "Dark canvas with cyan & violet neon accents"),
+    OBSIDIAN_GOLD("Obsidian Gold", "Deep black with luxury amber & gold accents"),
+    TOKYO_NIGHT("Tokyo Night", "Deep night blue with magenta & indigo touches"),
+    STUDIO_SLATE("Studio Slate", "Clean professional studio slate gray"),
+    OLED_BLACK("OLED Pure Black", "Absolute pitch black for maximum contrast")
 }
 
 enum class DrumSoundType {
@@ -184,12 +184,19 @@ data class TrackSnapshot(
     val soundfontName: String = "",
     val patchName: String = "",
     val bank: Int = 0,
-    val program: Int = 0
+    val program: Int = 0,
+    val transpose: Int = 0,
+    val octave: Int = 0,
+    val reverbSend: Float = 0f
 )
 
 data class SubSceneSnapshot(
     val slotName: String, // "INTRO", "S2", "S3", "S4", "END"
     val tracks: List<TrackSnapshot>,
+    val globalTranspose: Int = 0,
+    val globalOctaveShift: Int = 0,
+    val masterVolume: Float = 0.85f,
+    val fxParameters: FxParameters? = null,
     val timestamp: Long = System.currentTimeMillis()
 )
 

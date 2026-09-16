@@ -26,21 +26,25 @@ public:
     struct AudioSample {
         int id = -1;
         std::string name;
-        std::vector<float> pcmData; // Interleaved stereo float32 samples
+        std::vector<int16_t> pcmData16; // Interleaved stereo 16-bit signed PCM (50% RAM reduction)
         size_t totalFrames = 0;
         int channels = 2;
         int sampleRate = kDefaultSampleRate;
+        int chokeGroup = 0; // 0: OFF, 1: GRP1, 2: GRP2, 3: GRP3
     };
 
     struct SamplerVoice {
         int sampleId = -1;
-        const float* pcmData = nullptr;
+        int chokeGroup = 0;
+        const int16_t* pcmData16 = nullptr;
         size_t totalFrames = 0;
         double readPosition = 0.0;
         double pitchRatio = 1.0;
         float gainLeft = 1.0f;
         float gainRight = 1.0f;
         bool active = false;
+        bool isFadingOut = false;
+        float fadeMultiplier = 1.0f;
         uint64_t triggerTimestamp = 0;
     };
 
@@ -49,7 +53,8 @@ public:
         STOP,
         STOP_ALL,
         SET_VOLUME,
-        SET_PAN
+        SET_PAN,
+        SET_CHOKE_GROUP
     };
 
     struct SamplerCommand {
@@ -58,6 +63,7 @@ public:
         float velocity;
         float pan;
         float volume;
+        int chokeGroup;
     };
 
     template <typename T, size_t Capacity>
@@ -127,6 +133,7 @@ public:
     void stopAll();
     void setMasterVolume(float volume01);
     void setMasterPan(float pan);
+    void setChokeGroup(int sampleId, int chokeGroup);
 
     // Synthesize high-quality default acoustic drum set (Kick, Snare, Hat, Clap, Toms, Cymbal)
     void initDefaultDrumKit();

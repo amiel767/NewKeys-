@@ -437,6 +437,10 @@ class AudioEngine(private val context: Context) {
         val ch = channel.coerceIn(0, 11)
         channelParams[ch].isEnabled = enabled
         if (!enabled) {
+            // Cut all sounds, reset sustain (CC 64) and release all held voices immediately
+            NativeAudioBridge.safeControlChange(channel = ch, cc = 64, value = 0)
+            NativeAudioBridge.safeControlChange(channel = ch, cc = 120, value = 0) // All Sound Off
+            NativeAudioBridge.safeControlChange(channel = ch, cc = 123, value = 0) // All Notes Off
             NativeAudioBridge.safeAllNotesOff(ch)
             NativeAudioBridge.safeSetTrackVolume(ch, 0f)
         } else {

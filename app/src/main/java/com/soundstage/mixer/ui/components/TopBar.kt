@@ -351,7 +351,12 @@ fun TopBar(
                     .testTag("btn_notes"),
                 contentAlignment = Alignment.Center
             ) {
-                Text("📝", fontSize = 15.sp)
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_quill),
+                    contentDescription = "Notes & Grilles d'accords",
+                    tint = Color.White,
+                    modifier = Modifier.size(19.dp)
+                )
             }
 
             // 5. Drum Pad Launcher Icon (Neon Pad Matrix)

@@ -25,7 +25,7 @@ bool SoundfontEngine::init(int sampleRate, int polyphony, const char* instanceNa
     }
 
     fluid_settings_setnum(mSettings, "synth.sample-rate", static_cast<double>(sampleRate));
-    fluid_settings_setnum(mSettings, "synth.gain", 1.3);
+    fluid_settings_setnum(mSettings, "synth.gain", 0.70);
     fluid_settings_setint(mSettings, "synth.polyphony", mConfiguredPolyphony);
     fluid_settings_setint(mSettings, "synth.midi-channels", kMaxChannels);
     fluid_settings_setint(mSettings, "synth.reverb.active", 0);
@@ -39,7 +39,7 @@ bool SoundfontEngine::init(int sampleRate, int polyphony, const char* instanceNa
         return false;
     }
 
-    fluid_synth_set_gain(mSynth, 2.0f);
+    fluid_synth_set_gain(mSynth, 0.70f);
     fluid_synth_set_interp_method(mSynth, -1, FLUID_INTERP_LINEAR);
     fluid_synth_reverb_on(mSynth, -1, 0);
     fluid_synth_chorus_on(mSynth, -1, 0);
@@ -76,14 +76,14 @@ int SoundfontEngine::loadSoundFont(const std::string &absolutePath) {
         mSettings = new_fluid_settings();
         if (mSettings) {
             fluid_settings_setnum(mSettings, "synth.sample-rate", 48000.0);
-            fluid_settings_setnum(mSettings, "synth.gain", 2.0);
+            fluid_settings_setnum(mSettings, "synth.gain", 0.70);
             fluid_settings_setint(mSettings, "synth.polyphony", mConfiguredPolyphony);
             fluid_settings_setint(mSettings, "synth.midi-channels", kMaxChannels);
             fluid_settings_setint(mSettings, "synth.reverb.active", 0);
             fluid_settings_setint(mSettings, "synth.chorus.active", 0);
             mSynth = new_fluid_synth(mSettings);
             if (mSynth) {
-                fluid_synth_set_gain(mSynth, 2.0f);
+                fluid_synth_set_gain(mSynth, 0.70f);
                 fluid_synth_set_interp_method(mSynth, -1, FLUID_INTERP_LINEAR);
                 fluid_synth_reverb_on(mSynth, -1, 0);
                 fluid_synth_chorus_on(mSynth, -1, 0);

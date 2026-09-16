@@ -53,36 +53,36 @@ fun EffectsDialog(
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val title = if (trackId == 0) "Effets — Master" else "Effets & Réglages — Piste $trackId"
+    val title = if (trackId == 0) "Master FX Rack" else "Track $trackId FX"
 
     val tabs = if (trackId == 0) {
-        listOf("eq" to "EQ", "reverb" to "Reverb", "comp" to "Comp", "delay" to "Delay", "sg" to "Maximizer")
+        listOf("eq" to "EQ", "reverb" to "Reverb", "comp" to "Compressor", "delay" to "Delay", "sg" to "Maximizer")
     } else {
         listOf(
             "reverb" to "Reverb",
-            "velocity" to "Vélocité"
+            "velocity" to "Velocity"
         )
     }
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0x6608080C))
+            .background(Color(0x88000000))
             .clickable { onClose() },
         contentAlignment = Alignment.Center
     ) {
         Box(
             modifier = Modifier
-                .width(520.dp)
-                .fillMaxHeight(0.88f)
-                .shadow(24.dp, RoundedCornerShape(20.dp))
-                .clip(RoundedCornerShape(20.dp))
+                .width(540.dp)
+                .fillMaxHeight(0.90f)
+                .shadow(28.dp, RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(16.dp))
                 .background(
-                    Brush.linearGradient(
-                        colors = listOf(Color(0xFF241A3D), Color(0xFF180F2C), Color(0xFF120A20))
+                    Brush.verticalGradient(
+                        colors = listOf(Color(0xFF141722), Color(0xFF0C0E17), Color(0xFF080A10))
                     )
                 )
-                .border(1.dp, Color(0x668B5CF6), RoundedCornerShape(20.dp))
+                .border(1.5.dp, Color(0x3322D3EE), RoundedCornerShape(16.dp))
                 .clickable(enabled = false) {}
                 .padding(14.dp)
                 .testTag("dialog_effects")
@@ -96,19 +96,29 @@ fun EffectsDialog(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(
-                        text = title,
-                        fontSize = 13.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(NeonCyan)
+                                .shadow(6.dp, CircleShape, spotColor = NeonCyan)
+                        )
+                        Text(
+                            text = title.uppercase(),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White,
+                            letterSpacing = 0.8.sp
+                        )
+                    }
 
                     Box(
                         modifier = Modifier
                             .size(26.dp)
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(6.dp))
                             .background(Color(0x14FFFFFF))
-                            .border(1.dp, Color(0x26FFFFFF), RoundedCornerShape(8.dp))
+                            .border(1.dp, Color(0x26FFFFFF), RoundedCornerShape(6.dp))
                             .clickable { onClose() },
                         contentAlignment = Alignment.Center
                     ) {
@@ -121,7 +131,7 @@ fun EffectsDialog(
                 // Scrollable Tabs Row
                 LazyRow(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     items(tabs) { (tabKey, tabLabel) ->
                         val isSelected = activeTab == tabKey
@@ -129,7 +139,7 @@ fun EffectsDialog(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(
-                                    if (isSelected) Brush.verticalGradient(listOf(NeonPurpleLight, NeonPurple)) else Brush.linearGradient(listOf(Color(0x0DFFFFFF), Color(0x08FFFFFF)))
+                                    if (isSelected) Brush.verticalGradient(listOf(Color(0xFF00E5FF), Color(0xFF00B8D4))) else Brush.linearGradient(listOf(Color(0x14FFFFFF), Color(0x0AFFFFFF)))
                                 )
                                 .border(
                                     1.dp,
@@ -137,20 +147,20 @@ fun EffectsDialog(
                                     RoundedCornerShape(8.dp)
                                 )
                                 .clickable { onTabChange(tabKey) }
-                                .padding(horizontal = 12.dp, vertical = 5.dp),
+                                .padding(horizontal = 14.dp, vertical = 6.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = tabLabel,
                                 fontSize = 10.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isSelected) Color.White else TextDim
+                                color = if (isSelected) Color(0xFF002233) else TextDim
                             )
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 // TAB CONTENTS
                 when (activeTab) {
@@ -162,21 +172,19 @@ fun EffectsDialog(
                         val currentPreset = track?.reverbPreset ?: fxParameters.reverbPreset
 
                         Column(modifier = Modifier.fillMaxSize()) {
-                            // Presets Header with ON/OFF Switch
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
-                                    text = "PRESETS REVERB",
+                                    text = "REVERB PRESETS",
                                     fontSize = 9.5.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = TextDim,
                                     letterSpacing = 0.6.sp
                                 )
 
-                                // ON / OFF Button
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(6.dp))
@@ -189,7 +197,7 @@ fun EffectsDialog(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = if (isEnabled) "REVERB ON" else "BYPASS (OFF)",
+                                        text = if (isEnabled) "REVERB ON" else "BYPASS",
                                         fontSize = 8.5.sp,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = if (isEnabled) Color(0xFF002933) else TextDim
@@ -197,11 +205,11 @@ fun EffectsDialog(
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(4.dp))
+                            Spacer(modifier = Modifier.height(6.dp))
 
                             LazyRow(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
                             ) {
                                 items(reverbPresets) { preset ->
                                     val isSel = (currentPreset == preset)
@@ -213,7 +221,7 @@ fun EffectsDialog(
                                             .clickable {
                                                 onSetReverbPreset(preset)
                                             }
-                                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                                            .padding(horizontal = 10.dp, vertical = 5.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
@@ -226,9 +234,8 @@ fun EffectsDialog(
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(10.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
 
-                            // 4 Reverb Knobs (Mix, Size, Decay, Damp)
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -294,13 +301,13 @@ fun EffectsDialog(
                         ) {
                             Column {
                                 Text(
-                                    text = "COURBE DE VÉLOCITÉ DÉDIÉE",
+                                    text = "DYNAMIC VELOCITY CURVE",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = TextPrimary
                                 )
                                 Text(
-                                    text = "Ajustez la sensibilité dynamique des frappes clavier pour cette piste.",
+                                    text = "Adjust keyboard strike sensitivity and response curve for this track.",
                                     fontSize = 9.sp,
                                     color = TextDim
                                 )
@@ -312,8 +319,8 @@ fun EffectsDialog(
                                     .fillMaxWidth()
                                     .height(90.dp)
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(Color(0x33000000))
-                                    .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(10.dp))
+                                    .background(Color(0xFF080A10))
+                                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(10.dp))
                             ) {
                                 Canvas(modifier = Modifier.fillMaxSize()) {
                                     val w = size.width
@@ -332,18 +339,18 @@ fun EffectsDialog(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text(text = "Douce (Soft)", fontSize = 9.sp, color = TextDim)
+                                    Text(text = "Soft Touch", fontSize = 9.sp, color = TextDim)
                                     Text(
                                         text = when {
-                                            curveValue < 0.35f -> "Douce / Soft"
-                                            curveValue > 0.65f -> "Dure / Hard"
-                                            else -> "Linéaire"
+                                            curveValue < 0.35f -> "Soft"
+                                            curveValue > 0.65f -> "Hard"
+                                            else -> "Linear"
                                         },
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = NeonCyan
                                     )
-                                    Text(text = "Dure (Hard)", fontSize = 9.sp, color = TextDim)
+                                    Text(text = "Hard Touch", fontSize = 9.sp, color = TextDim)
                                 }
 
                                 Slider(
@@ -364,18 +371,26 @@ fun EffectsDialog(
                     }
                     "eq" -> {
                         Column(modifier = Modifier.fillMaxSize()) {
-                            // Parametric EQ Response Graph
+                            // 3D Parametric Spectrum Analyzer Screen (FabFilter Pro Q3 inspired)
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(85.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(Color(0x40000000))
-                                    .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(12.dp))
+                                    .height(95.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0xFF07090F))
+                                    .border(1.2.dp, Color(0x3322D3EE), RoundedCornerShape(10.dp))
                             ) {
                                 Canvas(modifier = Modifier.fillMaxSize()) {
                                     val w = size.width
                                     val h = size.height
+
+                                    // Grid lines
+                                    val gridColor = Color(0x14FFFFFF)
+                                    drawLine(gridColor, Offset(0f, h * 0.25f), Offset(w, h * 0.25f))
+                                    drawLine(gridColor, Offset(0f, h * 0.50f), Offset(w, h * 0.50f))
+                                    drawLine(gridColor, Offset(0f, h * 0.75f), Offset(w, h * 0.75f))
+                                    drawLine(gridColor, Offset(w * 0.33f, 0f), Offset(w * 0.33f, h))
+                                    drawLine(gridColor, Offset(w * 0.66f, 0f), Offset(w * 0.66f, h))
 
                                     val midH = h / 2f
                                     val lowShift = (fxParameters.eqLow - 0.5f) * (h * 0.7f)
@@ -407,10 +422,15 @@ fun EffectsDialog(
                                         color = NeonCyan,
                                         style = Stroke(width = 2.5f)
                                     )
+
+                                    // Glowing Band Nodes
+                                    drawCircle(NeonCyan, radius = 4.dp.toPx(), center = Offset(w * 0.2f, midH - lowShift - gainShift))
+                                    drawCircle(Color(0xFF84CC16), radius = 4.dp.toPx(), center = Offset(w * 0.5f, midH - midShift - gainShift))
+                                    drawCircle(Color(0xFFEC4899), radius = 4.dp.toPx(), center = Offset(w * 0.8f, midH - highShift - gainShift))
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
 
                             Row(
                                 modifier = Modifier
@@ -459,48 +479,106 @@ fun EffectsDialog(
                         }
                     }
                     "comp" -> {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f),
-                            horizontalArrangement = Arrangement.SpaceEvenly,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            FxUnitCard("Thresh") {
-                                RotaryKnob(
-                                    value = fxParameters.compThresh,
-                                    onValueChange = { v -> onUpdateFx { it.copy(compThresh = v) } },
-                                    label = "Thresh",
-                                    valueText = "${((fxParameters.compThresh * 40) - 40).toInt()} dB",
-                                    size = 46.dp
+                        // 3D SSL Bus Compressor Rack with Analog VU Meter
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            // Analog VU Meter Screen
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(75.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFFFFF8E7)) // Vintage amber VU paper face
+                                    .border(2.dp, Color(0xFF2B2519), RoundedCornerShape(8.dp))
+                                    .padding(4.dp)
+                            ) {
+                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                    val w = size.width
+                                    val h = size.height
+
+                                    // Arc & Scale text
+                                    drawArc(
+                                        color = Color(0xFF332A1B),
+                                        startAngle = 210f,
+                                        sweepAngle = 120f,
+                                        useCenter = false,
+                                        style = Stroke(width = 2.dp.toPx())
+                                    )
+
+                                    // Dynamic Gain Reduction Needle Angle
+                                    val reduction = (1f - fxParameters.compThresh) * fxParameters.compRatio
+                                    val targetAngle = 210f + (reduction * 120f).coerceIn(0f, 120f)
+                                    val rad = Math.toRadians(targetAngle.toDouble())
+
+                                    val pivot = Offset(w / 2f, h * 1.3f)
+                                    val needleLen = h * 1.1f
+                                    val tip = Offset(
+                                        pivot.x + needleLen * cos(rad).toFloat(),
+                                        pivot.y + needleLen * sin(rad).toFloat()
+                                    )
+
+                                    drawLine(
+                                        color = Color(0xFFD92B2B), // Classic red needle
+                                        start = pivot,
+                                        end = tip,
+                                        strokeWidth = 2.5.dp.toPx()
+                                    )
+
+                                    drawCircle(Color(0xFF221B10), radius = 5.dp.toPx(), center = pivot)
+                                }
+                                Text(
+                                    text = "GAIN REDUCTION (dB)",
+                                    fontSize = 7.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF4A3E2C),
+                                    modifier = Modifier.align(Alignment.TopCenter)
                                 )
                             }
-                            FxUnitCard("Ratio") {
-                                RotaryKnob(
-                                    value = fxParameters.compRatio,
-                                    onValueChange = { v -> onUpdateFx { it.copy(compRatio = v) } },
-                                    label = "Ratio",
-                                    valueText = "1:${(1 + fxParameters.compRatio * 15).toInt()}",
-                                    size = 46.dp
-                                )
-                            }
-                            FxUnitCard("Attack") {
-                                RotaryKnob(
-                                    value = fxParameters.compAttack,
-                                    onValueChange = { v -> onUpdateFx { it.copy(compAttack = v) } },
-                                    label = "Attack",
-                                    valueText = "${(fxParameters.compAttack * 100).toInt()}ms",
-                                    size = 46.dp
-                                )
-                            }
-                            FxUnitCard("Release") {
-                                RotaryKnob(
-                                    value = fxParameters.compRelease,
-                                    onValueChange = { v -> onUpdateFx { it.copy(compRelease = v) } },
-                                    label = "Release",
-                                    valueText = "${(fxParameters.compRelease * 500).toInt()}ms",
-                                    size = 46.dp
-                                )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                FxUnitCard("Thresh") {
+                                    RotaryKnob(
+                                        value = fxParameters.compThresh,
+                                        onValueChange = { v -> onUpdateFx { it.copy(compThresh = v) } },
+                                        label = "Thresh",
+                                        valueText = "${((fxParameters.compThresh * 40) - 40).toInt()} dB",
+                                        size = 44.dp
+                                    )
+                                }
+                                FxUnitCard("Ratio") {
+                                    RotaryKnob(
+                                        value = fxParameters.compRatio,
+                                        onValueChange = { v -> onUpdateFx { it.copy(compRatio = v) } },
+                                        label = "Ratio",
+                                        valueText = "1:${(1 + fxParameters.compRatio * 15).toInt()}",
+                                        size = 44.dp
+                                    )
+                                }
+                                FxUnitCard("Attack") {
+                                    RotaryKnob(
+                                        value = fxParameters.compAttack,
+                                        onValueChange = { v -> onUpdateFx { it.copy(compAttack = v) } },
+                                        label = "Attack",
+                                        valueText = "${(fxParameters.compAttack * 100).toInt()}ms",
+                                        size = 44.dp
+                                    )
+                                }
+                                FxUnitCard("Release") {
+                                    RotaryKnob(
+                                        value = fxParameters.compRelease,
+                                        onValueChange = { v -> onUpdateFx { it.copy(compRelease = v) } },
+                                        label = "Release",
+                                        valueText = "${(fxParameters.compRelease * 500).toInt()}ms",
+                                        size = 44.dp
+                                    )
+                                }
                             }
                         }
                     }
@@ -521,7 +599,7 @@ fun EffectsDialog(
                                 )
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
+                                        .clip(RoundedCornerShape(6.dp))
                                         .background(if (isDelayOn) NeonCyan else Color(0x1AFFFFFF))
                                         .clickable {
                                             val nextOn = !isDelayOn
@@ -538,7 +616,7 @@ fun EffectsDialog(
                                         text = if (isDelayOn) "DELAY ON" else "DELAY OFF",
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isDelayOn) Color.Black else TextDim
+                                        color = if (isDelayOn) Color(0xFF002233) else TextDim
                                     )
                                 }
                             }
@@ -556,7 +634,7 @@ fun EffectsDialog(
                                         onValueChange = { v -> onUpdateFx { it.copy(delayTime = v) } },
                                         label = "Time",
                                         valueText = "${(fxParameters.delayTime * 1000).toInt()}ms",
-                                        size = 46.dp
+                                        size = 44.dp
                                     )
                                 }
                                 FxUnitCard("Feedback") {
@@ -565,7 +643,7 @@ fun EffectsDialog(
                                         onValueChange = { v -> onUpdateFx { it.copy(delayFeedback = v) } },
                                         label = "Feedback",
                                         valueText = "${(fxParameters.delayFeedback * 100).toInt()}%",
-                                        size = 46.dp
+                                        size = 44.dp
                                     )
                                 }
                                 FxUnitCard("Mix") {
@@ -581,7 +659,7 @@ fun EffectsDialog(
                                         },
                                         label = "Mix",
                                         valueText = "${(fxParameters.delayMix * 100).toInt()}%",
-                                        size = 46.dp
+                                        size = 44.dp
                                     )
                                 }
                                 FxUnitCard("Ping-Pong") {
@@ -590,14 +668,13 @@ fun EffectsDialog(
                                         onValueChange = { v -> onUpdateFx { it.copy(delayPingPong = v) } },
                                         label = "Ping-Pong",
                                         valueText = if (fxParameters.delayPingPong > 0.5f) "ON" else "OFF",
-                                        size = 46.dp
+                                        size = 44.dp
                                     )
                                 }
                             }
                         }
                     }
                     "sg" -> {
-                        // Authentic FL Studio SoundGoodizer: Grand Knob with Luminous Contour + Minimal ABCD Buttons
                         SoundGoodizerMasterView(
                             isEnabled = fxParameters.isSgEnabled,
                             amount = fxParameters.sgAmount,
@@ -706,14 +783,66 @@ private fun SoundGoodizerMasterView(
 
         Spacer(modifier = Modifier.height(2.dp))
 
-        // Center: GRAND KNOB WITH LUMINOUS CONTOUR
-        GrandLuminousKnob(
-            value = if (isEnabled) amount else 0f,
-            onValueChange = onAmountChange,
-            glowColor = activeGlowColor,
-            isEnabled = isEnabled,
-            modifier = Modifier.size(116.dp)
-        )
+        // Center: GRAND KNOB WITH LUMINOUS CONTOUR & DUAL PEAK LED METERS
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Input Peak Meter
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(text = "IN", fontSize = 7.5.sp, fontWeight = FontWeight.Bold, color = TextDim)
+                Spacer(modifier = Modifier.height(2.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    val inActive = if (isEnabled) (amount * 8 + 2).toInt().coerceIn(0, 10) else 0
+                    for (i in 9 downTo 0) {
+                        val segColor = when {
+                            i >= 8 -> Color(0xFFEF4444)
+                            i >= 6 -> Color(0xFFF59E0B)
+                            else -> modeColor
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(width = 14.dp, height = 5.dp)
+                                .clip(RoundedCornerShape(1.dp))
+                                .background(if (i < inActive) segColor else Color(0x1EFFFFFF))
+                        )
+                    }
+                }
+            }
+
+            GrandLuminousKnob(
+                value = if (isEnabled) amount else 0f,
+                onValueChange = onAmountChange,
+                glowColor = activeGlowColor,
+                isEnabled = isEnabled,
+                modifier = Modifier.size(116.dp)
+            )
+
+            // Output Peak Meter
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(text = "OUT", fontSize = 7.5.sp, fontWeight = FontWeight.Bold, color = TextDim)
+                Spacer(modifier = Modifier.height(2.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    val outActive = if (isEnabled) (amount * 9 + 1).toInt().coerceIn(0, 10) else 0
+                    for (i in 9 downTo 0) {
+                        val segColor = when {
+                            i >= 8 -> Color(0xFFEF4444)
+                            i >= 6 -> Color(0xFFF59E0B)
+                            else -> modeColor
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(width = 14.dp, height = 5.dp)
+                                .clip(RoundedCornerShape(1.dp))
+                                .background(if (i < outActive) segColor else Color(0x1EFFFFFF))
+                        )
+                    }
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(4.dp))
 
@@ -986,12 +1115,13 @@ fun FxUnitCard(
     Box(
         modifier = Modifier
             .width(96.dp)
-            .fillMaxHeight(0.85f)
-            .clip(RoundedCornerShape(12.dp))
+            .fillMaxHeight(0.88f)
+            .shadow(6.dp, RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(10.dp))
             .background(
-                Brush.linearGradient(listOf(Color(0xFF2B2B37), Color(0xFF1C1C26)))
+                Brush.verticalGradient(listOf(Color(0xFF222738), Color(0xFF131624), Color(0xFF0D0F1A)))
             )
-            .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(12.dp))
+            .border(1.2.dp, Brush.verticalGradient(listOf(Color(0x4022D3EE), Color(0x10FFFFFF))), RoundedCornerShape(10.dp))
             .padding(6.dp),
         contentAlignment = Alignment.Center
     ) {

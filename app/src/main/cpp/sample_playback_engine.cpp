@@ -25,7 +25,7 @@ bool SamplePlaybackEngine::init(int sampleRate) {
 
     for (size_t i = 0; i < kMaxVoices; ++i) {
         mVoices[i].active = false;
-        mVoices[i].pcmData = nullptr;
+        mVoices[i].pcmData16 = nullptr;
         mVoices[i].readPosition = 0.0;
         mVoices[i].totalFrames = 0;
     }
@@ -209,7 +209,14 @@ int SamplePlaybackEngine::registerSamplePcm(
     sample->totalFrames = totalFrames;
     sample->channels = 2;
     sample->sampleRate = sampleRate;
-    sample->pcmData.assign(interleavedStereo, interleavedStereo + (totalFrames * 2));
+    
+    // Store as 16-bit PCM (Halves RAM usage compared to float32)
+    sample->pcmData16.resize(totalFrames * 2);
+    for (size_t i = 0; i < totalFrames * 2; ++i) {
+        float val = interleavedStereo[i];
+        int32_t s16 = static_cast<int32_t>(std::clamp(val, -1.0f, 1.0f) * 32767.0f);
+        sample->pcmData16[i] = static_cast<int16_t>(s16);
+    }
 
     {
         std::lock_guard<std::mutex> lock(mSampleMutex);
@@ -220,7 +227,8 @@ int SamplePlaybackEngine::registerSamplePcm(
         mFastSampleLookup[sampleId].store(sample.get(), std::memory_order_release);
     }
 
-    LOGI("Registered PCM sample ID: %d (%s, %zu frames, %d Hz)", sampleId, name.c_str(), totalFrames, sampleRate);
+    LOGI("Registered PCM16 sample ID: %d (%s, %zu frames, %d Hz, RAM footprint: %zu KB)",
+         sampleId, name.c_str(), totalFrames, sampleRate, (totalFrames * 2 * sizeof(int16_t)) / 1024);
     return sampleId;
 }
 
@@ -229,14 +237,14 @@ int SamplePlaybackEngine::loadWavFromMemory(int sampleId, const std::string& nam
 
     // Standard RIFF WAVE header validation
     if (std::memcmp(wavBytes, "RIFF", 4) != 0 || std::memcmp(wavBytes + 8, "WAVE", 4) != 0) {
-        LOGE("Invalid WAV header format for sample %d (%s)", sampleId, name.c_str());
+        LOGE("Invalid RIFF/WAVE header for sample ID %d", sampleId);
         return -1;
     }
 
     size_t offset = 12;
-    int audioFormat = 1; // 1 = PCM, 3 = IEEE Float
-    int numChannels = 2;
-    int sampleRate = 44100;
+    uint16_t audioFormat = 1;
+    uint16_t numChannels = 2;
+    uint32_t sampleRate = 44100;
     int bitsPerSample = 16;
     const uint8_t* dataPtr = nullptr;
     size_t dataSize = 0;
@@ -267,37 +275,53 @@ int SamplePlaybackEngine::loadWavFromMemory(int sampleId, const std::string& nam
 
     size_t bytesPerSample = bitsPerSample / 8;
     size_t numFrames = dataSize / (numChannels * bytesPerSample);
-    std::vector<float> stereoPcm(numFrames * 2, 0.0f);
+    
+    auto sample = std::make_shared<AudioSample>();
+    sample->id = sampleId;
+    sample->name = name;
+    sample->totalFrames = numFrames;
+    sample->channels = 2;
+    sample->sampleRate = sampleRate;
+    sample->pcmData16.resize(numFrames * 2);
 
     for (size_t f = 0; f < numFrames; ++f) {
-        float left = 0.0f;
-        float right = 0.0f;
+        int16_t left16 = 0;
+        int16_t right16 = 0;
 
         if (audioFormat == 1 && bitsPerSample == 16) {
             const int16_t* s16 = reinterpret_cast<const int16_t*>(dataPtr + f * numChannels * 2);
-            left = s16[0] / 32768.0f;
-            right = (numChannels > 1) ? s16[1] / 32768.0f : left;
+            left16 = s16[0];
+            right16 = (numChannels > 1) ? s16[1] : left16;
         } else if (audioFormat == 1 && bitsPerSample == 24) {
             const uint8_t* s24 = dataPtr + f * numChannels * 3;
             int32_t valL = (s24[0] << 8) | (s24[1] << 16) | (s24[2] << 24);
-            left = valL / 2147483648.0f;
+            left16 = static_cast<int16_t>(valL >> 16);
             if (numChannels > 1) {
                 int32_t valR = (s24[3] << 8) | (s24[4] << 16) | (s24[5] << 24);
-                right = valR / 2147483648.0f;
+                right16 = static_cast<int16_t>(valR >> 16);
             } else {
-                right = left;
+                right16 = left16;
             }
         } else if (audioFormat == 3 && bitsPerSample == 32) {
             const float* s32 = reinterpret_cast<const float*>(dataPtr + f * numChannels * 4);
-            left = s32[0];
-            right = (numChannels > 1) ? s32[1] : left;
+            left16 = static_cast<int16_t>(std::clamp(s32[0], -1.0f, 1.0f) * 32767.0f);
+            right16 = (numChannels > 1) ? static_cast<int16_t>(std::clamp(s32[1], -1.0f, 1.0f) * 32767.0f) : left16;
         }
 
-        stereoPcm[f * 2] = left;
-        stereoPcm[f * 2 + 1] = right;
+        sample->pcmData16[f * 2] = left16;
+        sample->pcmData16[f * 2 + 1] = right16;
     }
 
-    return registerSamplePcm(sampleId, name, stereoPcm.data(), numFrames, sampleRate);
+    {
+        std::lock_guard<std::mutex> lock(mSampleMutex);
+        mSamples[sampleId] = sample;
+    }
+
+    if (sampleId < kMaxFastSampleId) {
+        mFastSampleLookup[sampleId].store(sample.get(), std::memory_order_release);
+    }
+
+    return sampleId;
 }
 
 int SamplePlaybackEngine::loadWavFile(int sampleId, const std::string& filePath) {
@@ -373,6 +397,14 @@ void SamplePlaybackEngine::setMasterPan(float pan) {
     mMasterPan.store(std::clamp(pan, -1.0f, 1.0f), std::memory_order_relaxed);
 }
 
+void SamplePlaybackEngine::setChokeGroup(int sampleId, int chokeGroup) {
+    std::lock_guard<std::mutex> lock(mSampleMutex);
+    auto it = mSamples.find(sampleId);
+    if (it != mSamples.end()) {
+        it->second->chokeGroup = chokeGroup;
+    }
+}
+
 int SamplePlaybackEngine::allocateVoice(int sampleId) {
     // 1. Priority: Find inactive voice slot
     for (size_t i = 0; i < kMaxVoices; ++i) {
@@ -409,16 +441,28 @@ void SamplePlaybackEngine::processCommands() {
                     sample = mFastSampleLookup[cmd.sampleId].load(std::memory_order_acquire);
                 }
 
-                if (sample && sample->totalFrames > 0 && !sample->pcmData.empty()) {
+                if (sample && sample->totalFrames > 0 && !sample->pcmData16.empty()) {
+                    // Choke group handling: choke all other voices currently playing in the same group (e.g., Closed Hat chokes Open Hat)
+                    if (sample->chokeGroup > 0) {
+                        for (size_t i = 0; i < kMaxVoices; ++i) {
+                            if (mVoices[i].active && mVoices[i].chokeGroup == sample->chokeGroup) {
+                                mVoices[i].isFadingOut = true;
+                            }
+                        }
+                    }
+
                     int voiceIdx = allocateVoice(cmd.sampleId);
                     if (voiceIdx >= 0 && voiceIdx < static_cast<int>(kMaxVoices)) {
                         SamplerVoice& v = mVoices[voiceIdx];
                         v.sampleId = cmd.sampleId;
-                        v.pcmData = sample->pcmData.data();
+                        v.chokeGroup = sample->chokeGroup;
+                        v.pcmData16 = sample->pcmData16.data();
                         v.totalFrames = sample->totalFrames;
                         v.readPosition = 0.0;
                         v.pitchRatio = static_cast<double>(sample->sampleRate) / static_cast<double>(mSampleRate > 0 ? mSampleRate : kDefaultSampleRate);
                         v.triggerTimestamp = ++mTimestampCounter;
+                        v.isFadingOut = false;
+                        v.fadeMultiplier = 1.0f;
 
                         // Constant-power panning law
                         float panNorm = (cmd.pan + 1.0f) * 0.5f;
@@ -454,6 +498,9 @@ void SamplePlaybackEngine::processCommands() {
             case CommandType::SET_PAN:
                 setMasterPan(cmd.pan);
                 break;
+            case CommandType::SET_CHOKE_GROUP:
+                setChokeGroup(cmd.sampleId, cmd.chokeGroup);
+                break;
         }
     }
 }
@@ -478,38 +525,47 @@ void SamplePlaybackEngine::renderStereo(float* outputBuffer, int32_t numFrames, 
     float masterGainR = masterVol * std::sin(masterPanNorm * static_cast<float>(M_PI_2));
 
     int activeCount = 0;
+    const float kFadeStep = 1.0f / (mSampleRate * 0.005f); // 5ms micro-fade for choked voices
 
     // 2. Render all active voices directly into the stereo output stream
     for (size_t vIdx = 0; vIdx < kMaxVoices; ++vIdx) {
         SamplerVoice& v = mVoices[vIdx];
-        if (!v.active || !v.pcmData) continue;
+        if (!v.active || !v.pcmData16) continue;
 
         activeCount++;
         float gainL = v.gainLeft * masterGainL;
         float gainR = v.gainRight * masterGainR;
-        const float* pcm = v.pcmData;
+        const int16_t* pcm16 = v.pcmData16;
         size_t totalFrames = v.totalFrames;
         double pos = v.readPosition;
         double pitch = v.pitchRatio;
 
         for (int32_t f = 0; f < numFrames; ++f) {
+            if (v.isFadingOut) {
+                v.fadeMultiplier -= kFadeStep;
+                if (v.fadeMultiplier <= 0.0f) {
+                    v.active = false;
+                    break;
+                }
+            }
+
             size_t frameIdx = static_cast<size_t>(pos);
             if (frameIdx >= totalFrames) {
                 v.active = false;
                 break;
             }
 
-            // High-speed Linear Interpolation
+            // High-speed Linear Interpolation on 16-bit PCM (scaled to float / 32768.0f)
             double frac = pos - static_cast<double>(frameIdx);
             size_t nextIdx = std::min(frameIdx + 1, totalFrames - 1);
 
-            float s0L = pcm[frameIdx * 2];
-            float s0R = pcm[frameIdx * 2 + 1];
-            float s1L = pcm[nextIdx * 2];
-            float s1R = pcm[nextIdx * 2 + 1];
+            float s0L = pcm16[frameIdx * 2] / 32768.0f;
+            float s0R = pcm16[frameIdx * 2 + 1] / 32768.0f;
+            float s1L = pcm16[nextIdx * 2] / 32768.0f;
+            float s1R = pcm16[nextIdx * 2 + 1] / 32768.0f;
 
-            float sampL = static_cast<float>(s0L + frac * (s1L - s0L));
-            float sampR = static_cast<float>(s0R + frac * (s1R - s0R));
+            float sampL = static_cast<float>(s0L + frac * (s1L - s0L)) * v.fadeMultiplier;
+            float sampR = static_cast<float>(s0R + frac * (s1R - s0R)) * v.fadeMultiplier;
 
             outputBuffer[f * 2] += sampL * gainL;
             outputBuffer[f * 2 + 1] += sampR * gainR;

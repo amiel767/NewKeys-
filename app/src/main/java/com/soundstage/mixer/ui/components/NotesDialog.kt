@@ -3,10 +3,12 @@ package com.soundstage.mixer.ui.components
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -17,27 +19,35 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.soundstage.mixer.R
 import com.soundstage.mixer.model.FileManager
 import com.soundstage.mixer.ui.theme.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.util.*
 
 /**
- * Notes, Chords & Setlist Component (Section 3)
- * Non-modal anchored overlay inside MixerScreen with 2 Interior Views:
- * - View 1: Notes List / Explorer (/SoundStage/Notes/)
- * - View 2: Note Editor & Harmonic Analysis / Transposition Page
+ * Modern Google Keep-style Notes & ChordPro Floating Component
+ * - Single subtle border, no heavy double frames, no obstructive header titles
+ * - Instant Note Creation on "+ Nouvelle note"
+ * - Full internal storage support (zero Scoped Storage permission barriers)
+ * - ChordPro syntax highlighting and live transposition (+/- semitones)
+ * - Auto-scroll engine with adjustable speed for live performance
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun NotesDialog(
     isOpen: Boolean,
@@ -50,30 +60,112 @@ fun NotesDialog(
 ) {
     if (!isOpen) return
 
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val clipboardManager = LocalClipboardManager.current
-    var currentView by remember { mutableIntStateOf(1) } // 1: List Explorer, 2: Note Editor
-    var selectedNoteFile by remember { mutableStateOf<File?>(null) }
-    var noteContent by remember { mutableStateOf("") }
-    var newNoteName by remember { mutableStateOf("") }
-    var showNewNoteDialog by remember { mutableStateOf(false) }
-    var showCopyFeedback by remember { mutableStateOf(false) }
 
-    // Ensure notes directory exists
+    // Internal app directory for notes (bypasses Scoped Storage restrictions)
     val actualNotesDir = remember(notesDir) {
-        notesDir ?: File("/storage/emulated/0/SoundStage/Notes").apply { if (!exists()) mkdirs() }
+        notesDir ?: File(context.getExternalFilesDir(null) ?: context.filesDir, "Notes").apply {
+            if (!exists()) mkdirs()
+        }
     }
 
-    var noteFiles by remember(currentView) {
+    var currentView by remember { mutableIntStateOf(1) } // 1: Keep Grid List, 2: Note Editor
+    var activeNoteFile by remember { mutableStateOf<File?>(null) }
+    var noteTitle by remember { mutableStateOf("") }
+    var noteBody by remember { mutableStateOf("") }
+    var searchQuery by remember { mutableStateOf("") }
+    var transposeSemitones by remember { mutableIntStateOf(0) }
+    var isAutoScrolling by remember { mutableStateOf(false) }
+    var scrollSpeed by remember { mutableFloatStateOf(1.0f) }
+    var showCopyFeedback by remember { mutableStateOf(false) }
+
+    val scrollState = rememberScrollState()
+
+    // Refresh note list
+    var noteFiles by remember {
         mutableStateOf(
-            actualNotesDir.listFiles { _, name -> name.endsWith(".txt") || name.endsWith(".json") }
+            actualNotesDir.listFiles { _, name -> name.endsWith(".txt") || name.endsWith(".chordpro") || name.endsWith(".chopro") }
                 ?.sortedByDescending { it.lastModified() } ?: emptyList()
         )
+    }
+
+    fun refreshFiles() {
+        noteFiles = actualNotesDir.listFiles { _, name -> name.endsWith(".txt") || name.endsWith(".chordpro") || name.endsWith(".chopro") }
+            ?.sortedByDescending { it.lastModified() } ?: emptyList()
+    }
+
+    // Auto-save active note
+    fun saveActiveNote() {
+        val file = activeNoteFile ?: return
+        try {
+            val content = if (noteTitle.isNotBlank()) "# $noteTitle\n\n$noteBody" else noteBody
+            file.writeText(content)
+            refreshFiles()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    // Open an existing note
+    fun openNote(file: File) {
+        activeNoteFile = file
+        transposeSemitones = 0
+        isAutoScrolling = false
+        try {
+            val lines = file.readLines()
+            if (lines.isNotEmpty() && lines[0].startsWith("# ")) {
+                noteTitle = lines[0].removePrefix("# ").trim()
+                noteBody = lines.drop(1).joinToString("\n").trimStart('\n')
+            } else {
+                noteTitle = file.nameWithoutExtension
+                noteBody = file.readText()
+            }
+            currentView = 2
+        } catch (e: Exception) {
+            noteTitle = file.nameWithoutExtension
+            noteBody = ""
+            currentView = 2
+        }
+    }
+
+    // Create a new note immediately
+    fun createNewNote() {
+        try {
+            if (!actualNotesDir.exists()) actualNotesDir.mkdirs()
+            val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val newFile = File(actualNotesDir, "Note_$timeStamp.txt")
+            newFile.writeText("# Nouvelle note\n\n")
+            noteTitle = "Nouvelle note"
+            noteBody = ""
+            activeNoteFile = newFile
+            transposeSemitones = 0
+            isAutoScrolling = false
+            refreshFiles()
+            currentView = 2
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    // Auto-scroll loop
+    LaunchedEffect(isAutoScrolling, scrollSpeed) {
+        if (isAutoScrolling) {
+            while (isAutoScrolling && scrollState.value < scrollState.maxValue) {
+                val nextVal = (scrollState.value + (2 * scrollSpeed).toInt()).coerceAtMost(scrollState.maxValue)
+                scrollState.scrollTo(nextVal)
+                delay(40L)
+            }
+            if (scrollState.value >= scrollState.maxValue) {
+                isAutoScrolling = false
+            }
+        }
     }
 
     val noteNames = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
     val flatToSharp = mapOf("Db" to "C#", "Eb" to "D#", "Gb" to "F#", "Ab" to "G#", "Bb" to "A#")
 
-    // Transposition Logic
     fun transposeText(text: String, semitones: Int): String {
         if (semitones == 0) return text
         val chordRegex = Regex("""\b([A-G][b#]?)(maj7|min7|m7|7|m|maj|dim|aug|sus2|sus4|add9|9|11|13|m9|ø7|6)?(/[A-G][b#]?)?\b""")
@@ -103,7 +195,7 @@ fun NotesDialog(
         }
     }
 
-    // Harmonic Degree Converter
+    // Convert Harmonic Degrees (1, 4, 5, 6m -> Chords in Key)
     fun convertDegreesToChords(text: String, rootKey: String): String {
         val rootIdx = noteNames.indexOf(rootKey).coerceAtLeast(0)
         val degreeMap = mapOf(
@@ -121,9 +213,9 @@ fun NotesDialog(
             val deg = match.value
             val info = degreeMap[deg]
             if (info != null) {
-                val semitones = info.first
+                val semi = info.first
                 val defaultQuality = info.second
-                val noteIdx = (rootIdx + semitones).mod(12)
+                val noteIdx = (rootIdx + semi).mod(12)
                 "${noteNames[noteIdx]}$defaultQuality"
             } else {
                 deg
@@ -131,20 +223,24 @@ fun NotesDialog(
         }
     }
 
+    // Google Keep Minimalist Card Container
     Box(
         modifier = modifier
             .fillMaxSize()
             .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFF131622))
-            .border(1.2.dp, Color(0x668B5CF6), RoundedCornerShape(16.dp))
-            .padding(10.dp)
-            .testTag("notes_panel_container")
+            .background(Color(0xFF141824))
+            .border(1.dp, Color(0x3300E5FF), RoundedCornerShape(16.dp))
+            .padding(12.dp)
+            .testTag("notes_google_keep_panel")
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             if (currentView == 1) {
-                // ================= VUE 1 : EXPLORATEUR DE NOTES =================
+                // ================= GOOGLE KEEP VIEW 1: NOTE EXPLORER =================
+                // Sleek Header with Quill Icon, Search & + Nouvelle note
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -154,132 +250,202 @@ fun NotesDialog(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(32.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0x338B5CF6)),
+                                .size(30.dp)
+                                .clip(CircleShape)
+                                .background(Color(0x2200E5FF)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("📝", fontSize = 16.sp)
-                        }
-                        Column {
-                            Text(
-                                text = "MES NOTES & PAROLES",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color.White
-                            )
-                            Text(
-                                text = "${noteFiles.size} fichier(s) · /SoundStage/Notes/",
-                                fontSize = 9.5.sp,
-                                color = TextDim
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_quill),
+                                contentDescription = "Notes",
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
                             )
                         }
+                        Text(
+                            text = "Notes & Grilles",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
                     }
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        // Button + Nouvelle Note
-                        Button(
-                            onClick = { showNewNoteDialog = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = NeonPurple),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.height(30.dp)
+                    // "+ Nouvelle note" Button (Google Keep style)
+                    Button(
+                        onClick = { createNewNote() },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = NeonCyan,
+                            contentColor = Color(0xFF003844)
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier
+                            .height(34.dp)
+                            .testTag("btn_new_note")
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Nouvelle Note", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Text(text = "Nouvelle note", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                         }
+                    }
+                }
 
-                        // Close button
-                        IconButton(
-                            onClick = onClose,
-                            modifier = Modifier.size(30.dp)
-                        ) {
-                            Icon(Icons.Default.Close, contentDescription = "Fermer", tint = Color.White)
+                // Search Bar Filter
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(36.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF1E2333))
+                        .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 10.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Rechercher",
+                            tint = TextDim,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        BasicTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            textStyle = TextStyle(color = Color.White, fontSize = 12.sp),
+                            singleLine = true,
+                            cursorBrush = SolidColor(NeonCyan),
+                            modifier = Modifier.weight(1f),
+                            decorationBox = { innerTextField ->
+                                if (searchQuery.isEmpty()) {
+                                    Text(
+                                        text = "Rechercher une note ou un chant...",
+                                        color = TextDim2,
+                                        fontSize = 11.5.sp
+                                    )
+                                }
+                                innerTextField()
+                            }
+                        )
+                        if (searchQuery.isNotEmpty()) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Effacer",
+                                tint = TextDim,
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .clickable { searchQuery = "" }
+                            )
                         }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                if (noteFiles.isEmpty()) {
+                // Notes Keep Cards Grid
+                val filteredNotes = remember(noteFiles, searchQuery) {
+                    if (searchQuery.isBlank()) noteFiles
+                    else noteFiles.filter { it.name.contains(searchQuery, ignoreCase = true) || (try { it.readText().contains(searchQuery, ignoreCase = true) } catch (_: Exception) { false }) }
+                }
+
+                if (filteredNotes.isEmpty()) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(1f)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFF0C0E14))
-                            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(12.dp)),
+                            .weight(1f),
                         contentAlignment = Alignment.Center
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("📁 Aucune note enregistrée", fontSize = 12.sp, color = TextDim)
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text("Cliquez sur '+ Nouvelle Note' pour commencer", fontSize = 10.sp, color = TextDim2)
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_quill),
+                                contentDescription = null,
+                                tint = TextDim2,
+                                modifier = Modifier.size(36.dp)
+                            )
+                            Text(
+                                text = "Aucune note enregistrée",
+                                fontSize = 12.sp,
+                                color = TextDim,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "Touchez \"+ Nouvelle note\" pour commencer",
+                                fontSize = 10.5.sp,
+                                color = TextDim2
+                            )
                         }
                     }
                 } else {
-                    LazyColumn(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(minSize = 150.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(noteFiles) { file ->
-                            val dateFormat = remember { SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()) }
-                            val modDate = dateFormat.format(Date(file.lastModified()))
+                        items(filteredNotes) { file ->
+                            val fileContent = remember(file) {
+                                try { file.readLines().take(4).joinToString("\n") } catch (_: Exception) { "" }
+                            }
+                            val displayName = remember(file) {
+                                try {
+                                    val first = file.readLines().firstOrNull() ?: ""
+                                    if (first.startsWith("# ")) first.removePrefix("# ") else file.nameWithoutExtension
+                                } catch (_: Exception) { file.nameWithoutExtension }
+                            }
 
-                            Row(
+                            Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(Color(0xFF1B2030))
-                                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(10.dp))
-                                    .clickable {
-                                        selectedNoteFile = file
-                                        noteContent = try { file.readText() } catch (e: Exception) { "" }
-                                        currentView = 2
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                    .border(1.dp, Color(0x2200E5FF), RoundedCornerShape(10.dp))
+                                    .clickable { openNote(file) }
+                                    .padding(10.dp)
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Description,
-                                        contentDescription = null,
-                                        tint = NeonCyan,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Column {
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
                                         Text(
-                                            text = file.name,
-                                            fontSize = 12.sp,
+                                            text = displayName,
+                                            fontSize = 11.5.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = Color.White
+                                            color = Color.White,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
                                         )
-                                        Text(
-                                            text = "Modifié le $modDate",
-                                            fontSize = 9.5.sp,
-                                            color = TextDim
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Supprimer",
+                                            tint = TextDim2,
+                                            modifier = Modifier
+                                                .size(15.dp)
+                                                .clickable {
+                                                    file.delete()
+                                                    refreshFiles()
+                                                }
                                         )
                                     }
-                                }
-
-                                IconButton(
-                                    onClick = {
-                                        file.delete()
-                                        noteFiles = actualNotesDir.listFiles { _, name -> name.endsWith(".txt") || name.endsWith(".json") }
-                                            ?.sortedByDescending { it.lastModified() } ?: emptyList()
-                                    },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Delete,
-                                        contentDescription = "Supprimer",
-                                        tint = Color(0xFFFF4466),
-                                        modifier = Modifier.size(16.dp)
+                                    Text(
+                                        text = fileContent.ifEmpty { "Note vide..." },
+                                        fontSize = 10.sp,
+                                        color = TextDim,
+                                        maxLines = 3,
+                                        overflow = TextOverflow.Ellipsis,
+                                        lineHeight = 13.sp
                                     )
                                 }
                             }
@@ -287,262 +453,243 @@ fun NotesDialog(
                     }
                 }
             } else {
-                // ================= VUE 2 : ÉDITEUR DE NOTE & ANALYSE HARMONIQUE =================
+                // ================= GOOGLE KEEP VIEW 2: NOTE & CHORDPRO EDITOR =================
+                // Clean Top Action Bar: Back Arrow, Title, Transpose & Auto-Scroll
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.weight(1f)
                     ) {
                         IconButton(
                             onClick = {
-                                // Auto save before returning
-                                selectedNoteFile?.let { f ->
-                                    try { f.writeText(noteContent) } catch (e: Exception) {}
-                                }
+                                saveActiveNote()
                                 currentView = 1
                             },
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(32.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "Retour",
-                                tint = Color.White
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
 
-                        Text(
-                            text = selectedNoteFile?.name ?: "Note.txt",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White
+                        // Inline Editable Title
+                        BasicTextField(
+                            value = noteTitle,
+                            onValueChange = {
+                                noteTitle = it
+                                saveActiveNote()
+                            },
+                            textStyle = TextStyle(
+                                color = Color.White,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            singleLine = true,
+                            cursorBrush = SolidColor(NeonCyan),
+                            modifier = Modifier.weight(1f),
+                            decorationBox = { innerTextField ->
+                                if (noteTitle.isEmpty()) {
+                                    Text(text = "Titre de la note...", color = TextDim2, fontSize = 13.sp)
+                                }
+                                innerTextField()
+                            }
                         )
                     }
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        // Save Button
-                        Button(
-                            onClick = {
-                                selectedNoteFile?.let { f ->
-                                    try { f.writeText(noteContent) } catch (e: Exception) {}
-                                }
-                                showCopyFeedback = true
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.height(30.dp)
+                    // Editor Toolbar Actions: Transpose, Auto-Scroll, Degrees, Copy
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        // Transpose Buttons [-] [0] [+]
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0xFF1E2333))
+                                .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
                         ) {
-                            Text("💾 Sauvegarder", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                            Text(
+                                text = "−",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = NeonCyan,
+                                modifier = Modifier
+                                    .clickable { transposeSemitones-- }
+                                    .padding(horizontal = 5.dp)
+                            )
+                            Text(
+                                text = if (transposeSemitones == 0) "TRANS" else "${if (transposeSemitones > 0) "+$transposeSemitones" else transposeSemitones}",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (transposeSemitones != 0) NeonCyan else TextDim
+                            )
+                            Text(
+                                text = "+",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = NeonCyan,
+                                modifier = Modifier
+                                    .clickable { transposeSemitones++ }
+                                    .padding(horizontal = 5.dp)
+                            )
                         }
 
-                        // Close Button
+                        // Auto-scroll toggle
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isAutoScrolling) Color(0x3300E5FF) else Color(0xFF1E2333))
+                                .border(1.dp, if (isAutoScrolling) NeonCyan else Color(0x22FFFFFF), RoundedCornerShape(6.dp))
+                                .clickable { isAutoScrolling = !isAutoScrolling }
+                                .padding(horizontal = 7.dp, vertical = 5.dp)
+                        ) {
+                            Text(
+                                text = if (isAutoScrolling) "❚❚ DÉFILÉ" else "▶ DÉFILÉ",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isAutoScrolling) NeonCyan else TextDim
+                            )
+                        }
+
+                        // Copy / Share
                         IconButton(
                             onClick = {
-                                selectedNoteFile?.let { f ->
-                                    try { f.writeText(noteContent) } catch (e: Exception) {}
+                                val currentText = if (transposeSemitones != 0) transposeText(noteBody, transposeSemitones) else noteBody
+                                clipboardManager.setText(AnnotatedString(currentText))
+                                showCopyFeedback = true
+                                coroutineScope.launch {
+                                    delay(1500)
+                                    showCopyFeedback = false
                                 }
-                                onClose()
                             },
                             modifier = Modifier.size(30.dp)
                         ) {
-                            Icon(Icons.Default.Close, contentDescription = "Fermer", tint = Color.White)
+                            Icon(
+                                imageVector = if (showCopyFeedback) Icons.Default.Check else Icons.Default.Share,
+                                contentDescription = "Copier",
+                                tint = if (showCopyFeedback) NeonCyan else TextDim,
+                                modifier = Modifier.size(16.dp)
+                            )
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Toolbar: Transposition & Harmonic Analysis
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFF1B2030))
-                        .padding(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        // Transposition Buttons: [-1] [+1] [-12] [+12]
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text("TRANS :", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = TextDim)
-                            listOf(-12, -1, 1, 12).forEach { semitones ->
-                                val label = if (semitones > 0) "+$semitones" else "$semitones"
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(Color(0xFF283048))
-                                        .clickable { noteContent = transposeText(noteContent, semitones) }
-                                        .padding(horizontal = 7.dp, vertical = 4.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(label, fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                }
-                            }
-                        }
-
-                        // Convert Harmonic Degrees Button
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF332050))
-                                .border(1.dp, NeonPurple, RoundedCornerShape(8.dp))
-                                .clickable {
-                                    noteContent = convertDegreesToChords(noteContent, selectedRootKey)
-                                }
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                "🎼 Convertir Degrés ($selectedRootKey)",
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = NeonPurpleLight
-                            )
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        // Insert Played Chord Button
-                        val currentChordName = detectedChord?.primaryName ?: "Accord..."
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0x2222D3EE))
-                                .border(1.dp, NeonCyan.copy(alpha = 0.8f), RoundedCornerShape(8.dp))
-                                .clickable(enabled = detectedChord != null) {
-                                    if (detectedChord != null) {
-                                        val space = if (noteContent.isNotEmpty() && !noteContent.endsWith(" ") && !noteContent.endsWith("\n")) " " else ""
-                                        noteContent += space + detectedChord.primaryName
-                                    }
-                                }
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                "➕ Insérer Joué : $currentChordName",
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (detectedChord != null) NeonCyan else TextDim
-                            )
-                        }
-
-                        // Copy Button
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF283048))
-                                .clickable {
-                                    clipboardManager.setText(AnnotatedString(noteContent))
-                                }
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("📋 Copier", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                        }
-                    }
+                // Main Note Body Editor with ChordPro formatting & Transpose view
+                val effectiveBody = remember(noteBody, transposeSemitones) {
+                    if (transposeSemitones != 0) transposeText(noteBody, transposeSemitones) else noteBody
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Text Area
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFF0C0E14))
-                        .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(12.dp))
-                        .padding(8.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF0F121C))
+                        .border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(8.dp))
+                        .padding(10.dp)
+                        .verticalScroll(scrollState)
                 ) {
-                    TextField(
-                        value = noteContent,
-                        onValueChange = { noteContent = it },
-                        modifier = Modifier.fillMaxSize(),
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent,
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White
-                        ),
-                        placeholder = {
-                            Text(
-                                text = "Saisissez vos paroles, mémo ou grille d'accords...\nEx : 1 - 4 - 6m - 5\nOu : Cmaj7 | Am7 | Dm7 | G7",
-                                fontSize = 11.sp,
-                                color = TextDim2
-                            )
+                    BasicTextField(
+                        value = effectiveBody,
+                        onValueChange = { newText ->
+                            if (transposeSemitones == 0) {
+                                noteBody = newText
+                                saveActiveNote()
+                            }
                         },
-                        textStyle = androidx.compose.ui.text.TextStyle(
+                        readOnly = (transposeSemitones != 0),
+                        textStyle = TextStyle(
+                            color = Color.White,
+                            fontSize = 13.sp,
                             fontFamily = FontFamily.Monospace,
-                            fontSize = 12.sp,
-                            lineHeight = 16.sp
-                        )
+                            lineHeight = 18.sp
+                        ),
+                        cursorBrush = SolidColor(NeonCyan),
+                        modifier = Modifier.fillMaxSize(),
+                        decorationBox = { innerTextField ->
+                            if (effectiveBody.isEmpty()) {
+                                Text(
+                                    text = "Écrivez les paroles et accords ici...\nExemple:\n[C] Amazing [G] grace how [Am] sweet the [F] sound\n\n(Ou tapez les degrés 1 4 5 6m)",
+                                    color = TextDim2,
+                                    fontSize = 12.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            innerTextField()
+                        }
                     )
                 }
-            }
-        }
 
-        // New Note Dialog Popup
-        if (showNewNoteDialog) {
-            AlertDialog(
-                onDismissRequest = { showNewNoteDialog = false },
-                title = { Text("Créer une nouvelle note", fontSize = 14.sp, color = Color.White) },
-                text = {
-                    OutlinedTextField(
-                        value = newNoteName,
-                        onValueChange = { newNoteName = it },
-                        label = { Text("Nom du fichier") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            if (newNoteName.isNotBlank()) {
-                                var safeName = newNoteName.trim()
-                                if (!safeName.endsWith(".txt")) safeName += ".txt"
-                                val newFile = File(actualNotesDir, safeName)
-                                try {
-                                    newFile.createNewFile()
-                                    selectedNoteFile = newFile
-                                    noteContent = ""
-                                    currentView = 2
-                                } catch (e: Exception) {
-                                    e.printStackTrace()
+                // Bottom Assistant Bar: Quick chord insert & Degree converter
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    // Quick Insert Current Live Detected Chord
+                    if (detectedChord != null) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0x2200E5FF))
+                                .border(1.dp, NeonCyan, RoundedCornerShape(6.dp))
+                                .clickable {
+                                    val chordName = detectedChord.primaryName
+                                    noteBody += " [$chordName] "
+                                    saveActiveNote()
                                 }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "+ Insérer ${detectedChord.primaryName}",
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = NeonCyan
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = "Format ChordPro: [C] Paroles...",
+                            fontSize = 9.sp,
+                            color = TextDim2
+                        )
+                    }
+
+                    // Degrees to Chords Converter Button
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0xFF1E2333))
+                            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(6.dp))
+                            .clickable {
+                                noteBody = convertDegreesToChords(noteBody, selectedRootKey)
+                                saveActiveNote()
                             }
-                            showNewNoteDialog = false
-                            newNoteName = ""
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = NeonPurple)
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                        Text("Créer", color = Color.White)
+                        Text(
+                            text = "Convertir Degrés (1,4,5)",
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextDim
+                        )
                     }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showNewNoteDialog = false }) {
-                        Text("Annuler", color = TextDim)
-                    }
-                },
-                containerColor = Color(0xFF1E2232)
-            )
+                }
+            }
         }
     }
 }

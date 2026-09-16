@@ -267,7 +267,7 @@ class AppStatePersistence(context: Context) {
                     tracksList.add(
                         SavedTrackData(
                             id = obj.optInt("id", i + 1),
-                            name = obj.optString("name", "Piste ${i + 1}"),
+                            name = obj.optString("name", "Track ${i + 1}"),
                             isEnabled = obj.optBoolean("isEnabled", true),
                             volume = obj.optDouble("volume", 0.65).toFloat(),
                             pan = obj.optDouble("pan", 0.0).toFloat(),

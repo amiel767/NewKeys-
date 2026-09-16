@@ -578,8 +578,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val initialTracks = (1..8).map { i ->
             TrackChannel(
                 id = i,
-                name = "Piste $i",
-                isEnabled = i <= 4, // Pistes 1-4 allumées, 5-8 éteintes/désactivées par défaut
+                name = "Track $i",
+                isEnabled = i <= 4, // Tracks 1-4 enabled, 5-8 disabled by default
                 volume = 0.65f,
                 pan = 0.0f,
                 fxSummary = "Fx, EQ...",
@@ -2728,10 +2728,18 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     soundfontName = t.soundfontName,
                     patchName = t.patchName,
                     bank = t.bank,
-                    program = t.program
+                    program = t.program,
+                    reverbSend = t.reverbMix
                 )
             }
-            val newSubScene = SubSceneSnapshot(slotName, trackSnapshots)
+            val newSubScene = SubSceneSnapshot(
+                slotName = slotName,
+                tracks = trackSnapshots,
+                globalTranspose = currentState.transpose,
+                globalOctaveShift = currentState.octave,
+                masterVolume = currentState.tracks.find { it.isMaster }?.volume ?: 0.85f,
+                fxParameters = currentState.fxParameters[0]
+            )
             val updatedSnapshots = currentState.snapshots + (slotName to newSubScene)
             _uiState.update {
                 it.copy(
@@ -2756,25 +2764,35 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     }
                     snapshotTransitionJob = viewModelScope.launch {
-                        val steps = 16
-                        val stepDelay = 400L / steps
+                        val totalDurationMs = 800L
+                        val steps = 32
+                        val stepDelay = totalDurationMs / steps
                         for (step in 1..steps) {
-                            val progress = step.toFloat() / steps
+                            val linearProgress = step.toFloat() / steps
+                            // S-Curve (EaseInOutCubic)
+                            val eased = if (linearProgress < 0.5f) {
+                                4f * linearProgress * linearProgress * linearProgress
+                            } else {
+                                val p = -2f * linearProgress + 2f
+                                1f - (p * p * p) / 2f
+                            }
+
                             val interpolated = startTracks.mapIndexed { idx, startTr ->
                                 val targetTr = freeTracks.getOrNull(idx) ?: startTr
                                 startTr.copy(
-                                    volume = startTr.volume + (targetTr.volume - startTr.volume) * progress,
-                                    pan = startTr.pan + (targetTr.pan - startTr.pan) * progress,
-                                    isMuted = if (progress >= 0.5f) targetTr.isMuted else startTr.isMuted,
-                                    isSolo = if (progress >= 0.5f) targetTr.isSolo else startTr.isSolo,
-                                    isEnabled = if (progress >= 0.5f) targetTr.isEnabled else startTr.isEnabled
+                                    volume = startTr.volume + (targetTr.volume - startTr.volume) * eased,
+                                    pan = startTr.pan + (targetTr.pan - startTr.pan) * eased,
+                                    isMuted = if (eased >= 0.5f) targetTr.isMuted else startTr.isMuted,
+                                    isSolo = if (eased >= 0.5f) targetTr.isSolo else startTr.isSolo,
+                                    isEnabled = if (eased >= 0.5f) targetTr.isEnabled else startTr.isEnabled
                                 )
                             }
                             _uiState.update {
-                                it.copy(tracks = interpolated, snapshotTransitionProgress = progress)
+                                it.copy(tracks = interpolated, snapshotTransitionProgress = linearProgress)
                             }
                             interpolated.forEachIndexed { idx, track ->
-                                NativeAudioBridge.safeSetTrackVolume(idx, if (track.isMuted) 0f else track.volume)
+                                val effectiveVol = if (track.isMuted || !track.isEnabled) 0f else track.volume
+                                NativeAudioBridge.safeSetTrackVolume(idx, effectiveVol)
                                 NativeAudioBridge.safeSetTrackPan(idx, track.pan)
                             }
                             delay(stepDelay)
@@ -2804,6 +2822,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         } else tr
                     }
 
+                    // Cut off notes immediately on tracks that are turning off or muting to avoid hanging voices
+                    targetTracks.forEachIndexed { idx, track ->
+                        if (!track.isEnabled || track.isMuted) {
+                            audioEngine.setChannelEnabled(idx, false)
+                        }
+                    }
+
                     _uiState.update {
                         it.copy(
                             customLibreTracks = savedCustomTracks,
@@ -2813,25 +2838,35 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     }
 
                     snapshotTransitionJob = viewModelScope.launch {
-                        val steps = 16
-                        val stepDelay = 400L / steps
+                        val totalDurationMs = 800L
+                        val steps = 32
+                        val stepDelay = totalDurationMs / steps
                         for (step in 1..steps) {
-                            val progress = step.toFloat() / steps
+                            val linearProgress = step.toFloat() / steps
+                            // S-Curve (EaseInOutCubic)
+                            val eased = if (linearProgress < 0.5f) {
+                                4f * linearProgress * linearProgress * linearProgress
+                            } else {
+                                val p = -2f * linearProgress + 2f
+                                1f - (p * p * p) / 2f
+                            }
+
                             val interpolated = startTracks.mapIndexed { idx, startTr ->
                                 val targetTr = targetTracks.getOrNull(idx) ?: startTr
                                 startTr.copy(
-                                    volume = startTr.volume + (targetTr.volume - startTr.volume) * progress,
-                                    pan = startTr.pan + (targetTr.pan - startTr.pan) * progress,
-                                    isMuted = if (progress >= 0.5f) targetTr.isMuted else startTr.isMuted,
-                                    isSolo = if (progress >= 0.5f) targetTr.isSolo else startTr.isSolo,
-                                    isEnabled = if (progress >= 0.5f) targetTr.isEnabled else startTr.isEnabled
+                                    volume = startTr.volume + (targetTr.volume - startTr.volume) * eased,
+                                    pan = startTr.pan + (targetTr.pan - startTr.pan) * eased,
+                                    isMuted = if (eased >= 0.5f) targetTr.isMuted else startTr.isMuted,
+                                    isSolo = if (eased >= 0.5f) targetTr.isSolo else startTr.isSolo,
+                                    isEnabled = if (eased >= 0.5f) targetTr.isEnabled else startTr.isEnabled
                                 )
                             }
                             _uiState.update {
-                                it.copy(tracks = interpolated, snapshotTransitionProgress = progress)
+                                it.copy(tracks = interpolated, snapshotTransitionProgress = linearProgress)
                             }
                             interpolated.forEachIndexed { idx, track ->
-                                NativeAudioBridge.safeSetTrackVolume(idx, if (track.isMuted) 0f else track.volume)
+                                val effectiveVol = if (track.isMuted || !track.isEnabled) 0f else track.volume
+                                NativeAudioBridge.safeSetTrackVolume(idx, effectiveVol)
                                 NativeAudioBridge.safeSetTrackPan(idx, track.pan)
                             }
                             delay(stepDelay)

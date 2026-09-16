@@ -458,6 +458,15 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_unloadDrumSample(
     gAudioEngine.getDrumSampler().unloadSample(sampleId);
 }
 
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setDrumChokeGroup(
+        JNIEnv *env,
+        jobject /* this */,
+        jint sampleId,
+        jint chokeGroup) {
+    gAudioEngine.getDrumSampler().setChokeGroup(sampleId, chokeGroup);
+}
+
 JNIEXPORT jint JNICALL
 Java_com_soundstage_mixer_audio_NativeAudioBridge_getDrumActiveVoices(
         JNIEnv *env,

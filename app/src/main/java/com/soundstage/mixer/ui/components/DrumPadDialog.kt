@@ -328,7 +328,12 @@ internal fun MainDrumPadSquareContent(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text(text = "🥁", fontSize = 14.sp)
+                Icon(
+                    imageVector = Icons.Default.Repeat,
+                    contentDescription = null,
+                    tint = NeonCyan,
+                    modifier = Modifier.size(16.dp)
+                )
                 Text(
                     text = "DrumPad",
                     fontSize = 14.sp,
@@ -766,7 +771,12 @@ internal fun MainDrumPadSquareContent(
                                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                                         modifier = Modifier.weight(1f)
                                     ) {
-                                        Text(text = "🎵", fontSize = 11.sp)
+                                        Icon(
+                                            imageVector = Icons.Default.PlayArrow,
+                                            contentDescription = null,
+                                            tint = NeonCyan,
+                                            modifier = Modifier.size(13.dp)
+                                        )
                                         Column {
                                             Text(
                                                 text = file.name,
@@ -1035,64 +1045,52 @@ private fun FluidSquareDrumPadCell(
         label = "loop_pulse"
     )
 
-    // 3D Recessed Chassis Bay Socket
+    // Vivid LED color palette based on pad ID / style
+    val vividLedColor = remember(pad.id, style) {
+        when (pad.id % 8) {
+            0 -> Color(0xFF00E5FF) // Electric Cyan
+            1 -> Color(0xFF84CC16) // Acid Lime
+            2 -> Color(0xFFF43F5E) // Hot Pink / Red
+            3 -> Color(0xFFFFB300) // Amber Gold
+            4 -> Color(0xFF38BDF8) // Ice Blue
+            5 -> Color(0xFFA855F7) // Laser Violet
+            6 -> Color(0xFF22C55E) // Matrix Green
+            else -> Color(0xFFEC4899)// Hot Magenta
+        }
+    }
+
+    // Silicone Pad Chassis
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFF0C0E14)) // Deep matte chassis socket
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFF0C0E17)) // Deep matte silicone black
             .border(
-                width = 0.8.dp,
-                color = if (pad.isPressed) Color(0x66FFFFFF) else Color(0x14FFFFFF),
-                shape = RoundedCornerShape(16.dp)
+                width = if (pad.isPressed) 2.8.dp else if (isPlaying) 2.2.dp else 1.8.dp,
+                color = if (pad.isPressed) Color.White else if (isPlaying) vividLedColor.copy(alpha = loopPulseAlpha) else vividLedColor,
+                shape = RoundedCornerShape(8.dp)
             )
-            .padding(2.dp) // Socket recess margin
+            .padding(1.5.dp)
     ) {
-        // 3D Physical Silicone Pad with Radial Gradient Center
-        val padBrush = remember(pad.isPressed, style, isLoop, isPlaying, loopPulseAlpha) {
-            if (pad.isPressed) {
-                // High-intensity strike flash with incandescent center
-                Brush.radialGradient(
-                    colors = listOf(
-                        Color.White,
-                        style.secondaryColor,
-                        style.primaryColor
-                    )
-                )
-            } else if (isPlaying) {
-                // Active playing loop pulse
-                Brush.radialGradient(
-                    colors = listOf(
-                        style.secondaryColor.copy(alpha = loopPulseAlpha),
-                        style.primaryColor.copy(alpha = (loopPulseAlpha * 0.95f).coerceIn(0.65f, 1f))
-                    )
-                )
-            } else {
-                // Authentic Dubstep silicone pad: Glowing lighter center + saturated outer border
-                Brush.radialGradient(
-                    colors = listOf(
-                        style.secondaryColor,
-                        style.primaryColor
-                    )
-                )
-            }
-        }
-
+        // Soft radial center white translucency highlight (silicone core)
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .offset(y = if (pad.isPressed) 2.dp else 0.dp) // Physical depression
-                .shadow(
-                    elevation = if (pad.isPressed) 1.dp else 5.dp,
-                    shape = RoundedCornerShape(14.dp)
+                .clip(RoundedCornerShape(7.dp))
+                .background(
+                    Brush.radialGradient(
+                        colors = if (pad.isPressed) listOf(
+                            Color.White.copy(alpha = 0.70f),
+                            vividLedColor.copy(alpha = 0.50f),
+                            Color(0xFF0C0E17)
+                        ) else listOf(
+                            Color.White.copy(alpha = 0.25f),
+                            Color.White.copy(alpha = 0.05f),
+                            Color(0xFF0C0E17)
+                        )
+                    )
                 )
-                .clip(RoundedCornerShape(14.dp))
-                .background(padBrush)
-                .border(
-                    width = if (pad.isPressed) 1.8.dp else if (isPlaying) 1.5.dp else 0.8.dp,
-                    color = if (pad.isPressed) Color.White else if (isPlaying) Color.White.copy(alpha = loopPulseAlpha) else Color(0x33FFFFFF),
-                    shape = RoundedCornerShape(14.dp)
-                )
+                .offset(y = if (pad.isPressed) 1.dp else 0.dp)
                 .pointerInput(pad.id) {
                     detectTapGestures(
                         onPress = {
@@ -1108,19 +1106,6 @@ private fun FluidSquareDrumPadCell(
                 .padding(horizontal = 4.dp, vertical = 3.dp),
             contentAlignment = Alignment.Center
         ) {
-            // Specular top highlight bevel (silicone chamfer edge)
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth(0.92f)
-                    .height(1.dp)
-                    .background(
-                        Brush.horizontalGradient(
-                            listOf(Color.Transparent, Color(0x80FFFFFF), Color.Transparent)
-                        )
-                    )
-            )
-
             // Top Status Row: Pad ID (Left) & Loop Mode Badge (Right)
             Row(
                 modifier = Modifier
@@ -1130,54 +1115,59 @@ private fun FluidSquareDrumPadCell(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "P${pad.id}",
-                    fontSize = 8.5.sp,
+                    text = String.format("P%02d", pad.id + 1),
+                    fontSize = 8.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    color = if (pad.isPressed) Color(0xFF002233) else style.primaryColor
+                    color = if (pad.isPressed) Color.White else vividLedColor
                 )
 
                 if (isLoop) {
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
+                            .clip(RoundedCornerShape(3.dp))
                             .background(
-                                if (isPlaying) NeonCyan.copy(alpha = loopPulseAlpha) else Color(0x3322D3EE)
+                                if (isPlaying) NeonCyan.copy(alpha = loopPulseAlpha) else Color(0x4400E5FF)
                             )
-                            .padding(horizontal = 3.5.dp, vertical = 0.5.dp)
+                            .padding(horizontal = 3.dp, vertical = 0.5.dp)
                     ) {
                         Text(
                             text = if (isPlaying) "▶ LOOP" else "LOOP",
-                            fontSize = 7.5.sp,
+                            fontSize = 7.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = if (isPlaying) Color(0xFF002233) else NeonCyanLight
+                            color = Color.White
                         )
                     }
                 }
             }
 
-            // Center Content: Label & Sample / Note info
+            // Center Content: Label & Sample / Note info in Crisp Bold White
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
             ) {
+                val labelText = if (pad.label.isNotEmpty()) pad.label else if (pad.soundType == DrumSoundType.SF2_NOTE) pad.sf2Note else pad.sampleFileName.substringBeforeLast(".")
+                Text(
+                    text = labelText,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White,
+                    maxLines = 1,
+                    textAlign = TextAlign.Center,
+                    overflow = TextOverflow.Ellipsis
+                )
+
                 if (pad.label.isNotEmpty()) {
+                    val subText = if (pad.soundType == DrumSoundType.SF2_NOTE) pad.sf2Note else pad.sampleFileName.substringBeforeLast(".")
                     Text(
-                        text = pad.label,
-                        fontSize = 10.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (pad.isPressed) Color.Black else Color.White,
+                        text = subText.take(10),
+                        fontSize = 7.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFFCBD5E1),
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        textAlign = TextAlign.Center
                     )
                 }
-                val subText = if (pad.soundType == DrumSoundType.SF2_NOTE) pad.sf2Note else pad.sampleFileName.substringBeforeLast(".")
-                Text(
-                    text = subText.take(8),
-                    fontSize = 7.5.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = if (pad.isPressed) Color(0xFF1B2032) else TextDim,
-                    maxLines = 1
-                )
             }
 
             // Bottom Active Waveform Indicator when Loop is Playing
@@ -1194,7 +1184,7 @@ private fun FluidSquareDrumPadCell(
                             modifier = Modifier
                                 .width(2.dp)
                                 .height((3 + ((idx * 2) % 5)).dp)
-                                .background(NeonCyanLight, RoundedCornerShape(1.dp))
+                                .background(Color.White, RoundedCornerShape(1.dp))
                         )
                     }
                 }
@@ -1419,7 +1409,12 @@ private fun DrumSoundfontPickerSubView(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Text(text = "📦", fontSize = 11.sp)
+                                Icon(
+                                    imageVector = Icons.Default.Folder,
+                                    contentDescription = null,
+                                    tint = NeonCyan,
+                                    modifier = Modifier.size(13.dp)
+                                )
                                 Column {
                                     Text(text = file.name, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
                                 }
@@ -1595,11 +1590,11 @@ private fun PadCustomizerScreen(
                     .clickable { onBack() }
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
-                Text(text = "← Annuler", fontSize = 9.5.sp, color = NeonCyan)
+                Text(text = "← Cancel", fontSize = 9.5.sp, color = NeonCyan)
             }
 
             Text(
-                text = "Modifier Pad ${pad.id}",
+                text = String.format("Pad Settings - P%02d", pad.id + 1),
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White
@@ -1612,7 +1607,7 @@ private fun PadCustomizerScreen(
                     .clickable { onSave(labelText, selectedStyle, isLoopMode) }
                     .padding(horizontal = 10.dp, vertical = 4.dp)
             ) {
-                Text(text = "Enregistrer", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF002233))
+                Text(text = "Save", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF002233))
             }
         }
 
@@ -1624,7 +1619,7 @@ private fun PadCustomizerScreen(
         ) {
             // 1. Rename Input
             item {
-                Text(text = "NOM DU PAD", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
+                Text(text = "PAD LABEL", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
                 Spacer(modifier = Modifier.height(3.dp))
                 OutlinedTextField(
                     value = labelText,
@@ -1641,9 +1636,9 @@ private fun PadCustomizerScreen(
                 )
             }
 
-            // 2. Playback Mode (One-Shot vs Loop)
+            // 2. Trigger Mode (One-Shot vs Loop)
             item {
-                Text(text = "MODE DE LECTURE DU PAD", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
+                Text(text = "TRIGGER MODE", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     modifier = Modifier
@@ -1663,7 +1658,7 @@ private fun PadCustomizerScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "⚡ Coup Unique (One-Shot)",
+                            text = "ONE-SHOT",
                             fontSize = 9.sp,
                             fontWeight = if (!isLoopMode) FontWeight.Bold else FontWeight.Normal,
                             color = if (!isLoopMode) NeonCyan else TextDim
@@ -1680,7 +1675,7 @@ private fun PadCustomizerScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "🔁 Mode Loop Continu",
+                            text = "CONTINUOUS LOOP",
                             fontSize = 9.sp,
                             fontWeight = if (isLoopMode) FontWeight.Bold else FontWeight.Normal,
                             color = if (isLoopMode) Color(0xFF002233) else TextDim
@@ -1691,7 +1686,7 @@ private fun PadCustomizerScreen(
 
             // 3. Sound Assignment Shortcuts
             item {
-                Text(text = "SOURCE SONORE (ÉCHANTILLONS DÉDIÉS)", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
+                Text(text = "SOUND SOURCE", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
                 Spacer(modifier = Modifier.height(3.dp))
                 Box(
                     modifier = Modifier
@@ -1703,13 +1698,24 @@ private fun PadCustomizerScreen(
                         .padding(10.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = "📁 Choisir un échantillon audio / DrumPad", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Folder,
+                            contentDescription = null,
+                            tint = NeonCyan,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(text = "Select Audio Sample", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
 
             // 4. Style Categories & Palette
             item {
-                Text(text = "PALETTE DE COULEURS & STYLE", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
+                Text(text = "COLOR PALETTE & STYLE", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
                 Spacer(modifier = Modifier.height(3.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),

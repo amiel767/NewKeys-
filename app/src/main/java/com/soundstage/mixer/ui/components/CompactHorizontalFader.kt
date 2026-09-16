@@ -100,7 +100,7 @@ fun CompactHorizontalFaderStrip(
                     )
                 }
                 Text(
-                    text = if (isMaster) "MASTER" else "Piste ${track.id}",
+                    text = if (isMaster) "MASTER" else "Track ${track.id}",
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Bold,
                     color = if (isEnabled) TextPrimary else TextDim2,

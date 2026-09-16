@@ -15,6 +15,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -109,7 +113,12 @@ fun StyleDialog(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Text(text = "🎹", fontSize = 16.sp)
+                            Icon(
+                                imageVector = Icons.Default.MusicNote,
+                                contentDescription = null,
+                                tint = NeonCyan,
+                                modifier = Modifier.size(16.dp)
+                            )
                             Column {
                                 Text(
                                     text = "ARRANGEUR DE STYLES (.STY)",
@@ -192,7 +201,7 @@ fun StyleDialog(
                                         letterSpacing = 0.5.sp
                                     )
                                     Text(
-                                        text = "${styleFiles.size} styles trouvés",
+                                        text = "${styleFiles.size} styles found",
                                         fontSize = 8.5.sp,
                                         color = TextDim2
                                     )
@@ -212,17 +221,22 @@ fun StyleDialog(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text(text = "📁", fontSize = 28.sp)
+                                            Icon(
+                                                imageVector = Icons.Default.Folder,
+                                                contentDescription = null,
+                                                tint = NeonCyan,
+                                                modifier = Modifier.size(28.dp)
+                                            )
                                             Spacer(modifier = Modifier.height(6.dp))
                                             Text(
-                                                text = "Aucun fichier de style trouvé",
+                                                text = "No style files found",
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = TextPrimary
                                             )
                                             Spacer(modifier = Modifier.height(2.dp))
                                             Text(
-                                                text = "Déposez vos styles Yamaha (.sty, .prs, .mid)\ndans le dossier /LiveKeys/Styles",
+                                                text = "Place your MIDI / style files (.mid, .prs)\nin the /LiveKeys/Styles folder",
                                                 fontSize = 9.sp,
                                                 color = TextDim,
                                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -354,7 +368,12 @@ fun StyleDialog(
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
-                                                Text(text = "📦", fontSize = 12.sp)
+                                                Icon(
+                                                    imageVector = Icons.Default.Folder,
+                                                    contentDescription = null,
+                                                    tint = NeonCyan,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
                                                 Column(modifier = Modifier.weight(1f)) {
                                                     Text(
                                                         text = sf2.name,

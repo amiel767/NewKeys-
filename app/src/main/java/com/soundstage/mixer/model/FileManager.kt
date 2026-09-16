@@ -507,7 +507,7 @@ class FileManager(private val context: Context) {
                     folders.add(
                         LoopFolder(
                             name = "Racine /Loops",
-                            icon = "📁",
+                            icon = "FOLDER",
                             files = rootFiles,
                             isOpen = true
                         )
@@ -529,11 +529,11 @@ class FileManager(private val context: Context) {
                         } ?: emptyList()
 
                     val icon = when {
-                        subDir.name.contains("drum", ignoreCase = true) -> "🥁"
-                        subDir.name.contains("bass", ignoreCase = true) -> "🎸"
-                        subDir.name.contains("guitar", ignoreCase = true) -> "🎶"
-                        subDir.name.contains("worship", ignoreCase = true) || subDir.name.contains("pad", ignoreCase = true) -> "🌊"
-                        else -> "📁"
+                        subDir.name.contains("drum", ignoreCase = true) -> "DRUM"
+                        subDir.name.contains("bass", ignoreCase = true) -> "BASS"
+                        subDir.name.contains("guitar", ignoreCase = true) -> "GUITAR"
+                        subDir.name.contains("worship", ignoreCase = true) || subDir.name.contains("pad", ignoreCase = true) -> "PAD"
+                        else -> "FOLDER"
                     }
 
                     folders.add(
@@ -878,7 +878,7 @@ class FileManager(private val context: Context) {
                     folders.add(
                         LoopFolder(
                             name = "Racine /Midi",
-                            icon = "🎹",
+                            icon = "MIDI",
                             files = rootFiles,
                             isOpen = true
                         )
@@ -899,7 +899,7 @@ class FileManager(private val context: Context) {
                     folders.add(
                         LoopFolder(
                             name = subDir.name,
-                            icon = "📁",
+                            icon = "FOLDER",
                             files = subFiles,
                             isOpen = false
                         )

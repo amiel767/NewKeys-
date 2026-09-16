@@ -90,6 +90,7 @@ object NativeAudioBridge {
     external fun loadDrumWavFile(sampleId: Int, filePath: String): Int
     external fun loadDrumSamplePcm(sampleId: Int, sampleName: String, pcmData: FloatArray, totalFrames: Int, sampleRate: Int): Int
     external fun unloadDrumSample(sampleId: Int)
+    external fun setDrumChokeGroup(sampleId: Int, chokeGroup: Int)
     external fun getDrumActiveVoices(): Int
 
     // Safe wrappers to avoid crashes if native library isn't compiled or loaded
@@ -580,6 +581,16 @@ object NativeAudioBridge {
                 unloadDrumSample(sampleId)
             } catch (e: Throwable) {
                 Log.e("NativeAudioBridge", "Error invoking unloadDrumSample: ${e.message}")
+            }
+        }
+    }
+
+    fun safeSetDrumChokeGroup(sampleId: Int, chokeGroup: Int) {
+        if (isLibraryLoaded) {
+            try {
+                setDrumChokeGroup(sampleId, chokeGroup)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking setDrumChokeGroup: ${e.message}")
             }
         }
     }

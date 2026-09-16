@@ -439,29 +439,26 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
 void AudioEngine::processMasterChain(float *floatBuf, int32_t numFrames) {
     if (mBypassMasterFX.load(std::memory_order_relaxed)) return;
 
-    // 1. Apply Sub-Bass Butterworth 4-pole Cut-off at 30Hz
-    mSubBassCut1.process(floatBuf, numFrames);
-    mSubBassCut2.process(floatBuf, numFrames);
-
-    // 2. Pro Master Stage: Clean, Dynamic, Transparent Soft-Clipper
-    // Preserves 100% full dynamics, avoids ducking/drop-offs, and soft-saturates peaks at 0 dBFS smoothly.
+    // Pure 32-bit linear transparent master bus:
+    // No phase distortion, no aggressive sub-bass cuts, zero transient attenuation below 1.0f.
+    // Transparent peak safety ceiling for values exceeding full scale (1.0f).
     for (int32_t i = 0; i < numFrames; ++i) {
         float xL = floatBuf[2 * i];
         float xR = floatBuf[2 * i + 1];
 
-        // Soft clipper curve (tanh-based transparent ceiling)
+        // Transparent linear ceiling above 1.0f
         float absL = std::abs(xL);
-        if (absL > 0.95f) {
-            float diff = absL - 0.95f;
-            float compressed = 0.95f + 0.05f * std::tanh(diff / 0.05f);
-            xL = (xL > 0 ? 1.0f : -1.0f) * compressed;
+        if (absL > 1.0f) {
+            float excess = absL - 1.0f;
+            float limited = 1.0f + 0.1f * std::tanh(excess / 0.1f);
+            xL = (xL > 0 ? 1.0f : -1.0f) * std::min(limited, 1.09f);
         }
 
         float absR = std::abs(xR);
-        if (absR > 0.95f) {
-            float diff = absR - 0.95f;
-            float compressed = 0.95f + 0.05f * std::tanh(diff / 0.05f);
-            xR = (xR > 0 ? 1.0f : -1.0f) * compressed;
+        if (absR > 1.0f) {
+            float excess = absR - 1.0f;
+            float limited = 1.0f + 0.1f * std::tanh(excess / 0.1f);
+            xR = (xR > 0 ? 1.0f : -1.0f) * std::min(limited, 1.09f);
         }
 
         floatBuf[2 * i] = xL;

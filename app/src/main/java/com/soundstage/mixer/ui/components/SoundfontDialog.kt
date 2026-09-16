@@ -18,7 +18,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Search
+import com.soundstage.mixer.ui.theme.*
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -69,7 +72,7 @@ fun SoundfontDialog(
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val subtitle = if (trackId == 0) "Piste Master" else "Piste $trackId"
+    val subtitle = if (trackId == 0) "Master Track" else "Track $trackId"
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -211,7 +214,7 @@ fun SoundfontDialog(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Search,
-                                contentDescription = "Rechercher",
+                                contentDescription = "Search",
                                 tint = Color(0x88FFFFFF),
                                 modifier = Modifier.size(18.dp)
                             )
@@ -229,7 +232,7 @@ fun SoundfontDialog(
                                 decorationBox = { innerTextField ->
                                     if (searchQuery.isEmpty()) {
                                         Text(
-                                            text = if (activeTab == "bank") "Rechercher un preset..." else "Rechercher une soundfont...",
+                                            text = if (activeTab == "bank") "Search presets..." else "Search soundfonts...",
                                             color = Color(0x55FFFFFF),
                                             fontSize = 13.sp
                                         )
@@ -240,7 +243,7 @@ fun SoundfontDialog(
                             if (searchQuery.isNotEmpty()) {
                                 Icon(
                                     imageVector = Icons.Default.Close,
-                                    contentDescription = "Effacer",
+                                    contentDescription = "Clear",
                                     tint = Color(0x88FFFFFF),
                                     modifier = Modifier
                                         .size(16.dp)
@@ -266,7 +269,7 @@ fun SoundfontDialog(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Add,
-                                    contentDescription = "Importer .sf2",
+                                    contentDescription = "Import .sf2",
                                     tint = Color(0xFF002B33),
                                     modifier = Modifier.size(20.dp)
                                 )
@@ -288,7 +291,7 @@ fun SoundfontDialog(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Close,
-                                contentDescription = "Fermer",
+                                contentDescription = "Close",
                                 tint = Color.White,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -311,7 +314,7 @@ fun SoundfontDialog(
                             .background(Color(0x14FFFFFF)),
                         verticalArrangement = Arrangement.Top
                     ) {
-                        listOf("bank" to "Soundfonts preset", "other" to "soundfonts").forEach { (tabKey, tabLabel) ->
+                        listOf("bank" to "Presets", "other" to "SoundFonts").forEach { (tabKey, tabLabel) ->
                             val isSelected = activeTab == tabKey
                             Box(
                                 modifier = Modifier
@@ -348,10 +351,15 @@ fun SoundfontDialog(
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                         verticalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
-                                        Text(text = "🎵", fontSize = 28.sp)
+                                        Icon(
+                                            imageVector = Icons.Default.MusicNote,
+                                            contentDescription = null,
+                                            tint = NeonCyan,
+                                            modifier = Modifier.size(28.dp)
+                                        )
                                         Text(
-                                            text = if (searchQuery.isNotEmpty()) "Aucun preset correspondant à \"$searchQuery\""
-                                            else "Aucun preset chargé pour cette piste.",
+                                            text = if (searchQuery.isNotEmpty()) "No presets match \"$searchQuery\""
+                                            else "No presets loaded for this track.",
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Medium,
                                             color = Color(0xAAFFFFFF),
@@ -365,7 +373,7 @@ fun SoundfontDialog(
                                                 .padding(horizontal = 14.dp, vertical = 7.dp)
                                         ) {
                                             Text(
-                                                text = "📁 Choisir un fichier .sf2",
+                                                text = "📁 Select .sf2 file",
                                                 fontSize = 12.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = Color(0xFF00E5FF)
@@ -388,9 +396,9 @@ fun SoundfontDialog(
                                             availableBanks.forEach { bankNum ->
                                                 val isBankSelected = selectedBank == bankNum
                                                 val bankLabel = when (bankNum) {
-                                                    0 -> "Banque 0 (Principal)"
-                                                    128 -> "Banque 128 (Drums)"
-                                                    else -> "Banque $bankNum"
+                                                    0 -> "Bank 0 (Main)"
+                                                    128 -> "Bank 128 (Drums)"
+                                                    else -> "Bank $bankNum"
                                                 }
                                                 Box(
                                                     modifier = Modifier
@@ -469,7 +477,7 @@ fun SoundfontDialog(
                                                         overflow = TextOverflow.Ellipsis
                                                     )
                                                     Text(
-                                                        text = "Banque ${preset.bankNumber} · Preset #${preset.id}",
+                                                        text = "Bank ${preset.bankNumber} · Preset #${preset.id}",
                                                         fontSize = 9.5.sp,
                                                         color = if (isSelected) Color(0xCC00E5FF) else Color(0x77FFFFFF)
                                                     )
@@ -483,7 +491,7 @@ fun SoundfontDialog(
                                                             .padding(horizontal = 7.dp, vertical = 2.dp)
                                                     ) {
                                                         Text(
-                                                            text = "✓ ACTIF",
+                                                            text = "✓ ACTIVE",
                                                             fontSize = 9.5.sp,
                                                             fontWeight = FontWeight.ExtraBold,
                                                             color = Color(0xFF00E5FF)
@@ -510,10 +518,15 @@ fun SoundfontDialog(
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
-                                        Text(text = "📦", fontSize = 32.sp)
+                                        Icon(
+                                            imageVector = Icons.Default.Folder,
+                                            contentDescription = null,
+                                            tint = NeonCyan,
+                                            modifier = Modifier.size(32.dp)
+                                        )
                                         Text(
-                                            text = if (searchQuery.isNotEmpty()) "Aucun fichier .sf2 correspondant à \"$searchQuery\""
-                                            else "Aucun fichier SoundFont (.sf2) détecté.",
+                                            text = if (searchQuery.isNotEmpty()) "No .sf2 files match \"$searchQuery\""
+                                            else "No SoundFont (.sf2) files detected.",
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Medium,
                                             color = Color(0xAAFFFFFF),
@@ -569,7 +582,12 @@ fun SoundfontDialog(
                                                     .background(Color(0x22FFFFFF)),
                                                 contentAlignment = Alignment.Center
                                             ) {
-                                                Text(text = "📦", fontSize = 13.sp)
+                                                Icon(
+                                                    imageVector = Icons.Default.Folder,
+                                                    contentDescription = null,
+                                                    tint = NeonCyan,
+                                                    modifier = Modifier.size(13.dp)
+                                                )
                                             }
 
                                             Column(modifier = Modifier.weight(1f)) {
