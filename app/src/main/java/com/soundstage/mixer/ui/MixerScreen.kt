@@ -43,12 +43,6 @@ fun MixerScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var isSplashFinished by remember { mutableStateOf(false) }
-    var isUIReady by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(100) // Defer heavy composition to avoid SurfaceSyncGroup timeout
-        isUIReady = true
-    }
 
     val sf2PickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
@@ -123,9 +117,8 @@ fun MixerScreen(
             )
             .testTag("mixer_screen_root")
     ) {
-        if (isUIReady) {
-            // Device Chassis Card
-            Box(
+        // Device Chassis Card
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .shadow(16.dp, RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomStart = if (isKeyboardVisible) 0.dp else 14.dp, bottomEnd = if (isKeyboardVisible) 0.dp else 14.dp))
@@ -746,7 +739,6 @@ fun MixerScreen(
             useFlats = uiState.useFlats,
             onToggleUseFlats = { viewModel.toggleUseFlats() }
         )
-        } // End of isUIReady block
 
         // Material 3 Storage Permission Explanation Dialog
         if (uiState.showStoragePermissionDialog) {

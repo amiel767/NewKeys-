@@ -230,18 +230,16 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     init {
         startPeakMeterSimulation()
         refreshStorageFiles()
-        
-        // Start Native FluidSynth engine if available
-        NativeAudioBridge.safeStartEngine()
 
-        // Apply initial buffer size and polyphony to native engine
-        audioEngine.setBufferSize(_uiState.value.audioBufferSize)
-        audioEngine.setPolyphony(_uiState.value.polyphony)
-
-        // Sync initial track volumes and pans to NativeAudioBridge (channels 0 to 7)
-        _uiState.value.tracks.forEachIndexed { index, track ->
-            NativeAudioBridge.safeSetTrackVolume(index, track.volume)
-            NativeAudioBridge.safeSetTrackPan(index, track.pan)
+        // Start Native FluidSynth engine asynchronously to prevent freezing UI thread on startup
+        viewModelScope.launch(Dispatchers.Default) {
+            NativeAudioBridge.safeStartEngine()
+            audioEngine.setBufferSize(_uiState.value.audioBufferSize)
+            audioEngine.setPolyphony(_uiState.value.polyphony)
+            _uiState.value.tracks.forEachIndexed { index, track ->
+                NativeAudioBridge.safeSetTrackVolume(index, track.volume)
+                NativeAudioBridge.safeSetTrackPan(index, track.pan)
+            }
         }
 
         // Detect and register USB MIDI Hardware devices
@@ -488,7 +486,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                             else -> null
                         }
                         if (candidatePath != null) {
-                            loadSoundFontForSlot(savedSlot.slotId, candidatePath, savedSlot.bank, savedSlot.preset, savedSlot.patchName)
+                            loadSoundFontForSlot(savedSlot.slotId, candidatePath, savedSlot.bank, savedSlot.preset, savedSlot.patchName, saveAfterLoad = false)
                             hasLoadedAnySlot = true
                         }
                     }
@@ -500,7 +498,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         if (track.soundfontName.isNotEmpty()) {
                             val candidate = File(fileManager.soundfontsDir, track.soundfontName)
                             if (candidate.exists()) {
-                                loadSoundFontForSlot(index, candidate.absolutePath, bank = track.bank, preset = track.program, patchName = track.patchName)
+                                loadSoundFontForSlot(index, candidate.absolutePath, bank = track.bank, preset = track.program, patchName = track.patchName, saveAfterLoad = false)
                                 hasLoadedAnySlot = true
                             }
                         }
@@ -2290,7 +2288,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         loadSoundFontForSlot(trackIndex, sf2Path, bank, preset, displayName)
     }
 
-    fun loadSoundFontForSlot(slotId: Int, sf2Path: String, bank: Int = 0, preset: Int = 0, patchName: String? = null) {
+    fun loadSoundFontForSlot(slotId: Int, sf2Path: String, bank: Int = 0, preset: Int = 0, patchName: String? = null, saveAfterLoad: Boolean = true) {
         val slot = _uiState.value.audioSlots.getOrNull(slotId) ?: return
         val targetChannel = AudioSlot.midiChannelForSlot(slotId)
 
@@ -2422,7 +2420,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         tracks = updatedTracks
                     )
                 }
-                persistCurrentState()
+                if (saveAfterLoad) {
+                    persistCurrentStateDebounced()
+                }
             }
         }
     }

@@ -87,6 +87,7 @@ object SF2Parser {
                     if (listType == "pdta") {
                         // Scan sub-chunks inside pdta to locate 'phdr'
                         while (raf.filePointer < chunkEnd - 8) {
+                            val prevPos = raf.filePointer
                             val subIdBytes = ByteArray(4)
                             raf.readFully(subIdBytes)
                             val subId = String(subIdBytes, Charsets.US_ASCII)
@@ -98,7 +99,13 @@ object SF2Parser {
                                 phdrSize = subSize
                                 break
                             } else {
-                                raf.seek((raf.filePointer + paddedSubSize).coerceAtMost(chunkEnd))
+                                val nextPos = (raf.filePointer + paddedSubSize).coerceAtMost(chunkEnd)
+                                if (nextPos <= prevPos) {
+                                    // Safeguard: force advance to avoid infinite loop
+                                    raf.seek((prevPos + 8).coerceAtMost(chunkEnd))
+                                } else {
+                                    raf.seek(nextPos)
+                                }
                             }
                         }
                         break
