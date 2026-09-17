@@ -13,7 +13,20 @@
 
 #if HAS_OBOE
 
-AudioEngine::AudioEngine() = default;
+AudioEngine::AudioEngine() {
+    int sampleRate = 48000;
+    mSampleRate = sampleRate;
+    mFloatRenderBuffer.resize(2048, 0.0f);
+    mSynthEngine.init(sampleRate);
+    mMasterDelay.init(sampleRate);
+    mMasterReverb.init(sampleRate);
+    mSoundGoodizer.init(sampleRate);
+    mMasterPunch.init(sampleRate);
+    mPadFilter.setLowPass(static_cast<float>(sampleRate), 400.0f * std::pow(45.0f, mPadBrightness), 0.707f);
+    mDrumSampler.init(sampleRate);
+    mMasterCompressor.init(sampleRate, -12.0f, 2.0f, 10.0f, 100.0f, 3.5f);
+    mMasterLimiter.init(sampleRate, -0.5f, 1.5f, 150.0f);
+}
 
 AudioEngine::~AudioEngine() {
     stop();
@@ -249,7 +262,7 @@ bool AudioEngine::hasActiveSoundFonts() const {
 }
 
 int AudioEngine::renderDirect(int16_t *outputBuffer16, int32_t numFrames) {
-    if (!outputBuffer16 || numFrames <= 0) return 0;
+    if (!this || !outputBuffer16 || numFrames <= 0) return 0;
 
     // If Oboe is actively running, let Oboe handle audio directly to hardware
     if (isOboeActive()) {
@@ -269,6 +282,10 @@ int AudioEngine::renderDirect(int16_t *outputBuffer16, int32_t numFrames) {
         mFloatRenderBuffer.resize(totalSamples, 0.0f);
     }
     float *floatBuf = mFloatRenderBuffer.data();
+    if (!floatBuf) {
+        std::fill_n(outputBuffer16, totalSamples, static_cast<int16_t>(0));
+        return 0;
+    }
 
     // 1. Render unified 16-channel SoundFont engine (Faders 0..7, Drum 8, TonicPad 9)
     mSynthEngine.renderStereo(floatBuf, numFrames, false);

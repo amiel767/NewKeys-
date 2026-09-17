@@ -151,6 +151,7 @@ private:
     void processCommands();
 
     int mSampleRate = kDefaultSampleRate;
+    std::atomic<bool> mSamplesReady{false};
     std::atomic<float> mMasterVolume{0.85f};
     std::atomic<float> mMasterPan{0.0f};
 

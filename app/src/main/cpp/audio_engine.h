@@ -257,6 +257,7 @@ public:
         mFilterState = 0.0f;
     }
     inline float process(float input, float feedback, float damp) {
+        if (mBuffer.empty() || mSize <= 0) return 0.0f;
         float output = mBuffer[mIndex];
         if (std::abs(output) < 1e-15f) output = 0.0f;
 
@@ -287,6 +288,7 @@ public:
         mIndex = 0;
     }
     inline float process(float input) {
+        if (mBuffer.empty() || mSize <= 0) return input;
         float bufOut = mBuffer[mIndex];
         if (std::abs(bufOut) < 1e-15f) bufOut = 0.0f;
 
@@ -620,7 +622,7 @@ public:
     }
 
     void process(float *buffer, int32_t numFrames) {
-        if (mLookaheadSamples <= 0) return;
+        if (mLookaheadSamples <= 0 || mBufferL.empty() || mBufferR.empty()) return;
 
         for (int32_t i = 0; i < numFrames; ++i) {
             float inL = buffer[2 * i];
@@ -662,7 +664,7 @@ public:
 private:
     int mSampleRate = 48000;
     float mThreshold = 0.95f;
-    int mLookaheadSamples = 72;
+    int mLookaheadSamples = 0;
     std::vector<float> mBufferL;
     std::vector<float> mBufferR;
     int mWriteIndex = 0;

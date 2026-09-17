@@ -21,6 +21,7 @@ SamplePlaybackEngine::~SamplePlaybackEngine() {
 }
 
 bool SamplePlaybackEngine::init(int sampleRate) {
+    mSamplesReady.store(false, std::memory_order_relaxed);
     mSampleRate = sampleRate > 0 ? sampleRate : kDefaultSampleRate;
 
     for (size_t i = 0; i < kMaxVoices; ++i) {
@@ -192,6 +193,8 @@ void SamplePlaybackEngine::initDefaultDrumKit() {
         }
         registerSamplePcm(8, "Crash Cymbal", crash.data(), len, mSampleRate);
     }
+
+    mSamplesReady.store(true, std::memory_order_release);
 }
 
 int SamplePlaybackEngine::registerSamplePcm(
@@ -508,6 +511,13 @@ void SamplePlaybackEngine::processCommands() {
 void SamplePlaybackEngine::renderStereo(float* outputBuffer, int32_t numFrames, bool accumulate) {
     if (!outputBuffer || numFrames <= 0) return;
 
+    if (!mSamplesReady.load(std::memory_order_acquire)) {
+        if (!accumulate) {
+            std::fill(outputBuffer, outputBuffer + (numFrames * 2), 0.0f);
+        }
+        return;
+    }
+
     auto startTime = std::chrono::high_resolution_clock::now();
 
     // 1. Process pending triggers lock-free
@@ -530,7 +540,7 @@ void SamplePlaybackEngine::renderStereo(float* outputBuffer, int32_t numFrames, 
     // 2. Render all active voices directly into the stereo output stream
     for (size_t vIdx = 0; vIdx < kMaxVoices; ++vIdx) {
         SamplerVoice& v = mVoices[vIdx];
-        if (!v.active || !v.pcmData16) continue;
+        if (!v.active || !v.pcmData16 || v.totalFrames == 0) continue;
 
         activeCount++;
         float gainL = v.gainLeft * masterGainL;
