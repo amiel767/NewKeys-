@@ -36,6 +36,13 @@ import java.util.Locale
  * Allows browsing storage without system intents.
  * Remembers last visited folder.
  */
+data class StorageShortcut(
+    val name: String,
+    val path: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val iconTint: Color
+)
+
 @Composable
 fun NativeFileBrowserDialog(
     isOpen: Boolean,
@@ -64,21 +71,21 @@ fun NativeFileBrowserDialog(
     }
 
     val storageShortcuts = remember {
-        val list = mutableListOf<Pair<String, String>>()
-        list.add("📱 Interne" to defaultRoot)
+        val list = mutableListOf<StorageShortcut>()
+        list.add(StorageShortcut("Interne", defaultRoot, Icons.Default.PhoneAndroid, NeonCyan))
         try {
             val rootStorage = File("/storage")
             if (rootStorage.exists()) {
                 rootStorage.listFiles()?.forEach { f ->
                     if (f.isDirectory && f.name != "emulated" && f.name != "self" && f.canRead()) {
-                        list.add("💾 SD Card (${f.name})" to f.absolutePath)
+                        list.add(StorageShortcut("SD Card (${f.name})", f.absolutePath, Icons.Default.SdCard, NeonCyanLight))
                     }
                 }
             }
         } catch (_: Exception) {}
-        list.add("📥 Downloads" to "$defaultRoot/Download")
-        list.add("🎵 Music" to "$defaultRoot/Music")
-        list.add("🎹 SoundStage" to "$defaultRoot/SoundStage")
+        list.add(StorageShortcut("Downloads", "$defaultRoot/Download", Icons.Default.Download, NeonMagenta))
+        list.add(StorageShortcut("Music", "$defaultRoot/Music", Icons.Default.MusicNote, NeonCyan))
+        list.add(StorageShortcut("SoundStage", "$defaultRoot/SoundStage", Icons.Default.Piano, Color.White))
         list
     }
 
@@ -156,8 +163,8 @@ fun NativeFileBrowserDialog(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        items(storageShortcuts) { (label, path) ->
-                            ShortcutChip(label, path) { currentPath = it }
+                        items(storageShortcuts) { shortcut ->
+                            ShortcutChip(shortcut) { currentPath = it }
                         }
                     }
 
@@ -295,23 +302,29 @@ fun NativeFileBrowserDialog(
 
 @Composable
 private fun ShortcutChip(
-    label: String,
-    targetPath: String,
+    shortcut: StorageShortcut,
     onClick: (String) -> Unit
 ) {
-    val targetFile = remember(targetPath) { File(targetPath) }
+    val targetFile = remember(shortcut.path) { File(shortcut.path) }
     if (!targetFile.exists()) return
 
-    Box(
+    Row(
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
             .background(Color(0xFF1C2235))
             .border(0.8.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp))
-            .clickable { onClick(targetPath) }
+            .clickable { onClick(shortcut.path) }
             .padding(horizontal = 7.dp, vertical = 3.dp),
-        contentAlignment = Alignment.Center
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Text(label, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
+        Icon(
+            imageVector = shortcut.icon,
+            contentDescription = null,
+            tint = shortcut.iconTint,
+            modifier = Modifier.size(12.dp)
+        )
+        Text(shortcut.name, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
     }
 }
 

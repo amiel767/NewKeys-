@@ -1,10 +1,12 @@
 package com.soundstage.mixer.ui.components
 
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,6 +23,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Delete
 import com.soundstage.mixer.ui.theme.*
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -54,6 +57,7 @@ import kotlin.math.sin
  * Pure iOS Liquid Glass Pop-Up with smooth 3-color ambient aura background,
  * high-contrast typography, and persistent scroll position restoration.
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun SoundfontDialog(
     trackId: Int,
@@ -86,6 +90,7 @@ fun SoundfontDialog(
 
     // Search query state
     var searchQuery by remember { mutableStateOf("") }
+    var pendingDeleteFile by remember { mutableStateOf<StorageItem?>(null) }
 
     // LazyListStates for scroll position persistence
     val presetListState = rememberLazyListState()
@@ -560,6 +565,7 @@ fun SoundfontDialog(
                                     items(filteredFiles) { file ->
                                         val isLoaded = selectedSoundfontName.isNotBlank() &&
                                                 file.name.contains(selectedSoundfontName, ignoreCase = true)
+                                        val isDeletePrompt = pendingDeleteFile == file
 
                                         Row(
                                             modifier = Modifier
@@ -567,10 +573,17 @@ fun SoundfontDialog(
                                                 .height(44.dp)
                                                 .clip(RoundedCornerShape(12.dp))
                                                 .background(if (isLoaded) Color(0x268B5CF6) else Color(0x14FFFFFF))
-                                                .clickable {
-                                                    onSelectSf2File?.invoke(file)
-                                                    onTabChange("bank")
-                                                }
+                                                .combinedClickable(
+                                                    onClick = {
+                                                        if (!isDeletePrompt) {
+                                                            onSelectSf2File?.invoke(file)
+                                                            onTabChange("bank")
+                                                        } else {
+                                                            pendingDeleteFile = null
+                                                        }
+                                                    },
+                                                    onLongClick = { pendingDeleteFile = file }
+                                                )
                                                 .padding(horizontal = 10.dp),
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -606,25 +619,55 @@ fun SoundfontDialog(
                                                 )
                                             }
 
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(24.dp)
-                                                    .clip(CircleShape)
-                                                    .background(if (isLoaded) Color(0x3322D3EE) else Color(0x11FFFFFF))
-                                                    .border(
-                                                        width = 1.2.dp,
-                                                        color = if (isLoaded) Color(0xFF22D3EE) else Color(0x44FFFFFF),
-                                                        shape = CircleShape
-                                                    ),
-                                                contentAlignment = Alignment.Center
+                                            AnimatedVisibility(
+                                                visible = isDeletePrompt,
+                                                enter = slideInHorizontally { it } + fadeIn(),
+                                                exit = slideOutHorizontally { it } + fadeOut()
                                             ) {
-                                                if (isLoaded) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(28.dp)
+                                                        .clip(CircleShape)
+                                                        .background(Color(0xFFFF2A55))
+                                                        .clickable {
+                                                            val javaFile = java.io.File(file.path)
+                                                            if (javaFile.exists()) {
+                                                                javaFile.delete()
+                                                            }
+                                                            pendingDeleteFile = null
+                                                        },
+                                                    contentAlignment = Alignment.Center
+                                                ) {
                                                     Icon(
-                                                        imageVector = Icons.Default.Check,
-                                                        contentDescription = "Soundfont Chargée",
-                                                        tint = Color(0xFF22D3EE),
-                                                        modifier = Modifier.size(14.dp)
+                                                        imageVector = Icons.Default.Delete,
+                                                        contentDescription = "Supprimer",
+                                                        tint = Color.White,
+                                                        modifier = Modifier.size(15.dp)
                                                     )
+                                                }
+                                            }
+
+                                            if (!isDeletePrompt) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(24.dp)
+                                                        .clip(CircleShape)
+                                                        .background(if (isLoaded) Color(0x3322D3EE) else Color(0x11FFFFFF))
+                                                        .border(
+                                                            width = 1.2.dp,
+                                                            color = if (isLoaded) Color(0xFF22D3EE) else Color(0x44FFFFFF),
+                                                            shape = CircleShape
+                                                        ),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    if (isLoaded) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Check,
+                                                            contentDescription = "Soundfont Chargée",
+                                                            tint = Color(0xFF22D3EE),
+                                                            modifier = Modifier.size(14.dp)
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }

@@ -152,7 +152,7 @@ private:
 
     int mSampleRate = kDefaultSampleRate;
     std::atomic<bool> mSamplesReady{false};
-    std::atomic<float> mMasterVolume{0.85f};
+    std::atomic<float> mMasterVolume{1.0f};
     std::atomic<float> mMasterPan{0.0f};
 
     // Preallocated voice pool

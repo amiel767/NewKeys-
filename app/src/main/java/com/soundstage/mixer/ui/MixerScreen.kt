@@ -391,6 +391,7 @@ fun MixerScreen(
                                             onClose = { viewModel.closePopup() },
                                             detectedChord = detectedChord,
                                             selectedRootKey = uiState.selectedRootKey,
+                                            useFlats = uiState.useFlats,
                                             notesDir = viewModel.fileManager.notesDir,
                                             fileManager = viewModel.fileManager
                                         )
@@ -454,11 +455,17 @@ fun MixerScreen(
                 )
 
                 // 4. FIXED LAYOUT SLOT FOR RETRACTABLE PIANO (so faders/BottomBar get pushed up cleanly when keyboard is visible)
-                if (isKeyboardVisible) {
+                val keyboardHeight by animateDpAsState(
+                    targetValue = if (isKeyboardVisible) 76.dp else 0.dp,
+                    animationSpec = tween(300, easing = EaseOutExpo),
+                    label = "keyboardHeight"
+                )
+                
+                if (keyboardHeight > 0.dp) {
                     Spacer(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(76.dp)
+                            .height(keyboardHeight)
                     )
                 }
             }

@@ -472,8 +472,11 @@ void SamplePlaybackEngine::processCommands() {
                         float leftPan = std::cos(panNorm * static_cast<float>(M_PI_2));
                         float rightPan = std::sin(panNorm * static_cast<float>(M_PI_2));
 
-                        v.gainLeft = cmd.velocity * leftPan;
-                        v.gainRight = cmd.velocity * rightPan;
+                        // Logarithmic velocity curve (gives punch to soft hits, hits 1.0 at max)
+                        float logVel = std::log10(9.0f * cmd.velocity + 1.0f);
+                        
+                        v.gainLeft = logVel * leftPan;
+                        v.gainRight = logVel * rightPan;
                         v.active = true;
 
                         mTriggersExecuted.fetch_add(1, std::memory_order_relaxed);

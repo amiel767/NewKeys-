@@ -2,6 +2,7 @@
 #include <android/log.h>
 #include <algorithm>
 #include <chrono>
+#include <thread>
 
 #if __has_include(<fluidsynth/voice.h>)
 #include <fluidsynth/voice.h>
@@ -158,10 +159,13 @@ int SoundfontEngine::unloadSoundFont(int sfontId) {
     }
 
     // Safety: shut down any voices using this soundfont before freeing memory
-    fluid_synth_all_sounds_off(mSynth, -1);
     fluid_synth_all_notes_off(mSynth, -1);
+    
+    // Slight delay to let voices fade if needed, though all_notes_off should be immediate
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-    int res = fluid_synth_sfunload(mSynth, sfontId, 1);
+    // reset_presets = 0 to avoid crashing active voices on other channels
+    int res = fluid_synth_sfunload(mSynth, sfontId, 0);
     LOGI("[%s] Completely Unloaded SoundFont ID: %d from RAM (res: %d)", mInstanceName.c_str(), sfontId, res);
     return res;
 }

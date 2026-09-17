@@ -298,14 +298,14 @@ private fun AospMainSettingsPage(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { onToggleUseFlats() }
                                 .padding(horizontal = 14.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                modifier = Modifier.weight(1f)
                             ) {
                                 Box(
                                     modifier = Modifier
@@ -315,7 +315,7 @@ private fun AospMainSettingsPage(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = if (useFlats) "♭" else "#",
+                                        text = if (useFlats) "♭" else "♯",
                                         fontSize = 18.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color(0xFF3B82F6)
@@ -329,22 +329,44 @@ private fun AospMainSettingsPage(
                                         color = Color.White
                                     )
                                     Text(
-                                        text = if (useFlats) "Flats (♭ - Db, Eb, Gb, Ab, Bb)" else "Sharps (# - C#, D#, F#, G#, A#)",
+                                        text = if (useFlats) "Flats (♭ - Db, Eb...)" else "Sharps (♯ - C#, D#...)",
                                         fontSize = 11.sp,
                                         color = TextDim
                                     )
                                 }
                             }
-                            Switch(
-                                checked = useFlats,
-                                onCheckedChange = { onToggleUseFlats() },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = Color.White,
-                                    checkedTrackColor = NeonCyan,
-                                    uncheckedThumbColor = TextDim,
-                                    uncheckedTrackColor = Color(0xFF202538)
-                                )
-                            )
+                            
+                            Row(
+                                modifier = Modifier
+                                    .width(100.dp)
+                                    .height(32.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFF141722))
+                                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(8.dp))
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .clip(RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp))
+                                        .background(if (!useFlats) Color(0xFF3B82F6) else Color.Transparent)
+                                        .clickable { if(useFlats) onToggleUseFlats() },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("♯", color = if (!useFlats) Color.White else TextDim, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .clip(RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp))
+                                        .background(if (useFlats) Color(0xFF3B82F6) else Color.Transparent)
+                                        .clickable { if(!useFlats) onToggleUseFlats() },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("♭", color = if (useFlats) Color.White else TextDim, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
                         }
 
                         AospDivider()

@@ -25,7 +25,7 @@ AudioEngine::AudioEngine() {
     mPadFilter.setLowPass(static_cast<float>(sampleRate), 400.0f * std::pow(45.0f, mPadBrightness), 0.707f);
     mDrumSampler.init(sampleRate);
     mMasterCompressor.init(sampleRate, -12.0f, 2.0f, 10.0f, 100.0f, 3.5f);
-    mMasterLimiter.init(sampleRate, -0.5f, 1.5f, 150.0f);
+    mSoftClipper.init(sampleRate);
 }
 
 AudioEngine::~AudioEngine() {
@@ -110,7 +110,7 @@ bool AudioEngine::openAndStartStream() {
     mPadFilter.setLowPass(static_cast<float>(sampleRate), 400.0f * std::pow(45.0f, mPadBrightness), 0.707f);
     mDrumSampler.init(sampleRate);
     mMasterCompressor.init(sampleRate, -12.0f, 2.0f, 10.0f, 100.0f, 3.5f); // 3.5dB makeup gain
-    mMasterLimiter.init(sampleRate, -0.5f, 1.5f, 150.0f); // -0.5dB ceiling, 1.5ms lookahead, 150ms release
+    mSoftClipper.init(sampleRate);
 
     // Immediately re-apply all preserved DSP, Gain and Volume parameters
     // This ensures that when plugging in or unplugging a 3.5mm jack or BT device,
@@ -464,8 +464,8 @@ void AudioEngine::processMasterChain(float *floatBuf, int32_t numFrames) {
     // 1. Smooth master bus compressor to glue tracks and elevate quiet details
     mMasterCompressor.process(floatBuf, numFrames);
 
-    // 2. High-performance look-ahead peak limiter to prevent saturation and boost perceived volume safely
-    mMasterLimiter.process(floatBuf, numFrames);
+    // 2. High-performance soft clipper to prevent saturation and boost perceived volume safely
+    mSoftClipper.process(floatBuf, numFrames);
 
     // Safety peak clamp guard to prevent hardware out-of-range issues under extreme feedback/accidents
     for (int32_t i = 0; i < numFrames; ++i) {

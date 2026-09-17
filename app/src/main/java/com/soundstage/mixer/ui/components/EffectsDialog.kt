@@ -16,9 +16,12 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -187,20 +190,20 @@ fun EffectsDialog(
 
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
+                                        .size(28.dp)
+                                        .clip(CircleShape)
                                         .background(if (isEnabled) Color(0xFF00E5FF) else Color(0x1EFFFFFF))
-                                        .border(1.dp, if (isEnabled) Color(0xFF00E5FF) else Color(0x33FFFFFF), RoundedCornerShape(6.dp))
+                                        .border(1.dp, if (isEnabled) Color(0xFF00E5FF) else Color(0x33FFFFFF), CircleShape)
                                         .clickable {
                                             onUpdateFx { it.copy(isReverbEnabled = !it.isReverbEnabled) }
-                                        }
-                                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                                        },
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Text(
-                                        text = if (isEnabled) "REVERB ON" else "BYPASS",
-                                        fontSize = 8.5.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = if (isEnabled) Color(0xFF002933) else TextDim
+                                    Icon(
+                                        imageVector = Icons.Default.PowerSettingsNew,
+                                        contentDescription = "Toggle Reverb",
+                                        tint = if (isEnabled) Color(0xFF002933) else TextDim,
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
                             }
@@ -766,17 +769,18 @@ private fun SoundGoodizerMasterView(
 
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
+                    .size(28.dp)
+                    .clip(CircleShape)
                     .background(if (isEnabled) modeColor.copy(alpha = 0.25f) else Color(0x14FFFFFF))
-                    .border(1.dp, if (isEnabled) modeColor else Color(0x22FFFFFF), RoundedCornerShape(6.dp))
-                    .clickable { onToggleEnabled() }
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                    .border(1.dp, if (isEnabled) modeColor else Color(0x22FFFFFF), CircleShape)
+                    .clickable { onToggleEnabled() },
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = if (isEnabled) "ACTIVE" else "BYPASS",
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = if (isEnabled) modeColor else TextDim
+                Icon(
+                    imageVector = Icons.Default.PowerSettingsNew,
+                    contentDescription = "Toggle FX",
+                    tint = if (isEnabled) modeColor else TextDim,
+                    modifier = Modifier.size(16.dp)
                 )
             }
         }

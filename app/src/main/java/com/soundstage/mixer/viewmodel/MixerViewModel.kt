@@ -2790,18 +2790,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     }
                     snapshotTransitionJob = viewModelScope.launch {
-                        val totalDurationMs = 800L
-                        val steps = 32
+                        val totalDurationMs = 1200L
+                        val steps = 48
                         val stepDelay = totalDurationMs / steps
                         for (step in 1..steps) {
                             val linearProgress = step.toFloat() / steps
-                            // S-Curve (EaseInOutCubic)
-                            val eased = if (linearProgress < 0.5f) {
-                                4f * linearProgress * linearProgress * linearProgress
-                            } else {
-                                val p = -2f * linearProgress + 2f
-                                1f - (p * p * p) / 2f
-                            }
+                            // Cosine progressive interpolation
+                            val eased = (1f - kotlin.math.cos(linearProgress * kotlin.math.PI.toFloat())) / 2f
 
                             val interpolated = startTracks.mapIndexed { idx, startTr ->
                                 val targetTr = freeTracks.getOrNull(idx) ?: startTr
@@ -2855,6 +2850,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
 
+                    // Update AudioEngine globals directly
+                    audioEngine.globalOctaveShift = targetSnapshot.globalOctaveShift
+                    audioEngine.globalTranspose = targetSnapshot.globalTranspose
+
                     _uiState.update {
                         it.copy(
                             customLibreTracks = savedCustomTracks,
@@ -2866,18 +2865,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     }
 
                     snapshotTransitionJob = viewModelScope.launch {
-                        val totalDurationMs = 800L
-                        val steps = 32
+                        val totalDurationMs = 1200L
+                        val steps = 48
                         val stepDelay = totalDurationMs / steps
                         for (step in 1..steps) {
                             val linearProgress = step.toFloat() / steps
-                            // S-Curve (EaseInOutCubic)
-                            val eased = if (linearProgress < 0.5f) {
-                                4f * linearProgress * linearProgress * linearProgress
-                            } else {
-                                val p = -2f * linearProgress + 2f
-                                1f - (p * p * p) / 2f
-                            }
+                            // Cosine progressive interpolation
+                            val eased = (1f - kotlin.math.cos(linearProgress * kotlin.math.PI.toFloat())) / 2f
 
                             val interpolated = startTracks.mapIndexed { idx, startTr ->
                                 val targetTr = targetTracks.getOrNull(idx) ?: startTr

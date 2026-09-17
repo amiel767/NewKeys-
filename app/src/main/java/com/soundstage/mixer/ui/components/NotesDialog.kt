@@ -48,12 +48,14 @@ import java.util.*
  * - ChordPro syntax highlighting and live transposition (+/- semitones)
  * - Auto-scroll engine with adjustable speed for live performance
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun NotesDialog(
     isOpen: Boolean,
     onClose: () -> Unit,
     detectedChord: DetectedChord?,
     selectedRootKey: String = "C",
+    useFlats: Boolean = false,
     notesDir: File? = null,
     fileManager: FileManager? = null,
     modifier: Modifier = Modifier
@@ -80,6 +82,8 @@ fun NotesDialog(
     var isAutoScrolling by remember { mutableStateOf(false) }
     var scrollSpeed by remember { mutableFloatStateOf(1.0f) }
     var showCopyFeedback by remember { mutableStateOf(false) }
+    var fileToRename by remember { mutableStateOf<File?>(null) }
+    var renameInput by remember { mutableStateOf("") }
 
     val scrollState = rememberScrollState()
 
@@ -178,10 +182,12 @@ fun NotesDialog(
     }
 
     val noteNames = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+    val flatNames = listOf("C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B")
     val flatToSharp = mapOf("Db" to "C#", "Eb" to "D#", "Gb" to "F#", "Ab" to "G#", "Bb" to "A#")
+    val sharpToFlat = flatToSharp.entries.associate { (k, v) -> v to k }
 
     fun transposeText(text: String, semitones: Int): String {
-        if (semitones == 0) return text
+        if (semitones == 0 && !useFlats) return text
         val chordRegex = Regex("""\b([A-G][b#]?)(maj7|min7|m7|7|m|maj|dim|aug|sus2|sus4|add9|9|11|13|m9|ø7|6)?(/[A-G][b#]?)?\b""")
         return chordRegex.replace(text) { match ->
             val root = match.groupValues[1]
@@ -192,7 +198,7 @@ fun NotesDialog(
             val rootIndex = noteNames.indexOf(standardizedRoot)
             val newRoot = if (rootIndex != -1) {
                 val newIndex = (rootIndex + semitones).mod(12)
-                noteNames[newIndex]
+                if (useFlats) flatNames[newIndex] else noteNames[newIndex]
             } else root
 
             val newBass = if (bass.isNotEmpty()) {
@@ -201,7 +207,7 @@ fun NotesDialog(
                 val bassIndex = noteNames.indexOf(stdBass)
                 if (bassIndex != -1) {
                     val newIndex = (bassIndex + semitones).mod(12)
-                    "/${noteNames[newIndex]}"
+                    "/" + (if (useFlats) flatNames[newIndex] else noteNames[newIndex])
                 } else bass
             } else ""
 
@@ -211,7 +217,8 @@ fun NotesDialog(
 
     // Convert Harmonic Degrees (1, 4, 5, 6m -> Chords in Key)
     fun convertDegreesToChords(text: String, rootKey: String): String {
-        val rootIdx = noteNames.indexOf(rootKey).coerceAtLeast(0)
+        val stdRootKey = flatToSharp[rootKey] ?: rootKey
+        val rootIdx = noteNames.indexOf(stdRootKey).coerceAtLeast(0)
         val degreeMap = mapOf(
             "1" to (0 to ""), "I" to (0 to ""), "i" to (0 to "m"),
             "2m" to (2 to "m"), "ii" to (2 to "m"), "2" to (2 to ""), "II" to (2 to ""),
@@ -230,7 +237,8 @@ fun NotesDialog(
                 val semi = info.first
                 val defaultQuality = info.second
                 val noteIdx = (rootIdx + semi).mod(12)
-                "${noteNames[noteIdx]}$defaultQuality"
+                val targetNote = if (useFlats) flatNames[noteIdx] else noteNames[noteIdx]
+                "$targetNote$defaultQuality"
             } else {
                 deg
             }
@@ -373,7 +381,13 @@ fun NotesDialog(
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(Color(0xFF1B2030))
                                     .border(1.dp, Color(0x2200E5FF), RoundedCornerShape(10.dp))
-                                    .clickable { openNote(file) }
+                                    .combinedClickable(
+                                        onClick = { openNote(file) },
+                                        onLongClick = {
+                                            renameInput = file.nameWithoutExtension
+                                            fileToRename = file
+                                        }
+                                    )
                                     .padding(10.dp)
                             ) {
                                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -667,6 +681,47 @@ fun NotesDialog(
                     }
                 }
             }
+        }
+
+        if (fileToRename != null) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { fileToRename = null },
+                title = { Text("Renommer la partition", color = Color.White) },
+                text = {
+                    BasicTextField(
+                        value = renameInput,
+                        onValueChange = { renameInput = it },
+                        textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 14.sp),
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(NeonCyan),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF1E2333), RoundedCornerShape(8.dp))
+                            .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(8.dp))
+                            .padding(12.dp)
+                    )
+                },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(
+                        onClick = {
+                            val f = fileToRename
+                            if (f != null && renameInput.isNotBlank()) {
+                                val newFile = java.io.File(f.parentFile, "${renameInput.trim()}.${f.extension}")
+                                f.renameTo(newFile)
+                                refreshFiles()
+                            }
+                            fileToRename = null
+                        }
+                    ) {
+                        Text("Renommer", color = NeonCyan)
+                    }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(onClick = { fileToRename = null }) {
+                        Text("Annuler", color = TextDim)
+                    }
+                },
+                containerColor = Color(0xFF111522)
+            )
         }
     }
 }

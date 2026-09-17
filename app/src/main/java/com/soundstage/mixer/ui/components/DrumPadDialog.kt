@@ -660,18 +660,9 @@ internal fun MainDrumPadSquareContent(
                             value = volume,
                             onValueChange = onVolumeChange,
                             label = "VOLUME",
-                            showFloatingTooltipOnTouch = true,
-                            size = 38.dp,
+                            showFloatingTooltipOnTouch = false,
+                            size = 34.dp,
                             baseColor = NeonCyan
-                        )
-
-                        Led3DKnob(
-                            value = reverb,
-                            onValueChange = onReverbChange,
-                            label = "REVERB",
-                            showFloatingTooltipOnTouch = true,
-                            size = 38.dp,
-                            baseColor = NeonMagenta
                         )
                     }
                 }
