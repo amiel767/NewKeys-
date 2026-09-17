@@ -25,7 +25,7 @@ bool SoundfontEngine::init(int sampleRate, int polyphony, const char* instanceNa
     }
 
     fluid_settings_setnum(mSettings, "synth.sample-rate", static_cast<double>(sampleRate));
-    fluid_settings_setnum(mSettings, "synth.gain", 1.15);
+    fluid_settings_setnum(mSettings, "synth.gain", 0.80);
     fluid_settings_setint(mSettings, "synth.polyphony", mConfiguredPolyphony);
     fluid_settings_setint(mSettings, "synth.midi-channels", kMaxChannels);
     fluid_settings_setint(mSettings, "synth.reverb.active", 0);
@@ -33,14 +33,14 @@ bool SoundfontEngine::init(int sampleRate, int polyphony, const char* instanceNa
 
     mSynth = new_fluid_synth(mSettings);
     if (!mSynth) {
-        LOGE("[%s] Failed to allocate fluid_synth", mInstanceName.c_str());
+        LOGE("[%s] Failed to allocate fluid_settings", mInstanceName.c_str());
         delete_fluid_settings(mSettings);
         mSettings = nullptr;
         return false;
     }
 
-    fluid_synth_set_gain(mSynth, 1.15f);
-    fluid_synth_set_interp_method(mSynth, -1, FLUID_INTERP_7THORDER);
+    fluid_synth_set_gain(mSynth, 0.80f);
+    fluid_synth_set_interp_method(mSynth, -1, FLUID_INTERP_4THORDER);
     fluid_synth_reverb_on(mSynth, -1, 0);
     fluid_synth_chorus_on(mSynth, -1, 0);
 
@@ -76,15 +76,15 @@ int SoundfontEngine::loadSoundFont(const std::string &absolutePath) {
         mSettings = new_fluid_settings();
         if (mSettings) {
             fluid_settings_setnum(mSettings, "synth.sample-rate", 48000.0);
-            fluid_settings_setnum(mSettings, "synth.gain", 1.15);
+            fluid_settings_setnum(mSettings, "synth.gain", 0.80);
             fluid_settings_setint(mSettings, "synth.polyphony", mConfiguredPolyphony);
             fluid_settings_setint(mSettings, "synth.midi-channels", kMaxChannels);
             fluid_settings_setint(mSettings, "synth.reverb.active", 0);
             fluid_settings_setint(mSettings, "synth.chorus.active", 0);
             mSynth = new_fluid_synth(mSettings);
             if (mSynth) {
-                fluid_synth_set_gain(mSynth, 1.15f);
-                fluid_synth_set_interp_method(mSynth, -1, FLUID_INTERP_7THORDER);
+                fluid_synth_set_gain(mSynth, 0.80f);
+                fluid_synth_set_interp_method(mSynth, -1, FLUID_INTERP_4THORDER);
                 fluid_synth_reverb_on(mSynth, -1, 0);
                 fluid_synth_chorus_on(mSynth, -1, 0);
                 for (int ch = 0; ch < kMaxChannels; ++ch) {
@@ -203,10 +203,8 @@ std::vector<NativePresetInfo> SoundfontEngine::listPresets(int soundFontId) {
     return result;
 }
 
-bool SoundfontEngine::selectProgram(int channel, int soundFontId, int bank, int preset) {
-    if (channel < 0 || channel >= kMaxChannels) return false;
-    std::lock_guard<std::mutex> lock(mMutex);
-    if (!mSynth) return false;
+void SoundfontEngine::executeProgramSelect(int channel, int soundFontId, int bank, int preset) {
+    if (!mSynth) return;
 
     int result = FLUID_FAILED;
     fluid_sfont_t* sfont = nullptr;
@@ -244,17 +242,36 @@ bool SoundfontEngine::selectProgram(int channel, int soundFontId, int bank, int 
         fluid_synth_bank_select(mSynth, channel, bank);
         result = fluid_synth_program_change(mSynth, channel, preset);
     }
-    LOGI("selectProgram completed for ch=%d, sfId=%d (target=%d), bank=%d, preset=%d -> %s",
+    LOGI("executeProgramSelect completed for ch=%d, sfId=%d (target=%d), bank=%d, preset=%d -> %s",
          channel, soundFontId, targetSfId, bank, preset, (result == FLUID_OK ? "SUCCESS" : "FAILED"));
-    return (result == FLUID_OK);
+}
+
+bool SoundfontEngine::selectProgram(int channel, int soundFontId, int bank, int preset) {
+    if (channel < 0 || channel >= kMaxChannels) return false;
+    
+    EngineMidiEvent ev;
+    ev.type = EngineMidiEvent::PROGRAM_SELECT;
+    ev.channel = channel;
+    ev.param1 = soundFontId;
+    ev.param2 = bank;
+    ev.note = preset;
+    ev.velocity = 0;
+    
+    return mEventQueue.push(ev);
 }
 
 bool SoundfontEngine::programChange(int channel, int program) {
     if (channel < 0 || channel >= kMaxChannels) return false;
-    std::lock_guard<std::mutex> lock(mMutex);
-    if (!mSynth) return false;
-    int result = fluid_synth_program_change(mSynth, channel, program);
-    return (result == FLUID_OK);
+    
+    EngineMidiEvent ev;
+    ev.type = EngineMidiEvent::PROGRAM_CHANGE;
+    ev.channel = channel;
+    ev.param1 = program;
+    ev.param2 = 0;
+    ev.note = 0;
+    ev.velocity = 0;
+    
+    return mEventQueue.push(ev);
 }
 
 void SoundfontEngine::noteOn(int channel, int midiNote, int velocity) {
@@ -493,7 +510,7 @@ void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool 
                 fluid_synth_program_change(mSynth, ev.channel, ev.param1);
                 break;
             case EngineMidiEvent::PROGRAM_SELECT:
-                fluid_synth_program_select(mSynth, ev.channel, ev.param1, ev.param2, ev.note);
+                executeProgramSelect(ev.channel, ev.param1, ev.param2, ev.note);
                 break;
         }
     }

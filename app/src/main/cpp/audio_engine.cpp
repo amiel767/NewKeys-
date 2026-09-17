@@ -95,6 +95,8 @@ bool AudioEngine::openAndStartStream() {
     mMasterPunch.init(sampleRate);
     mPadFilter.setLowPass(static_cast<float>(sampleRate), 400.0f * std::pow(45.0f, mPadBrightness), 0.707f);
     mDrumSampler.init(sampleRate);
+    mMasterCompressor.init(sampleRate, -12.0f, 2.0f, 10.0f, 100.0f, 3.5f); // 3.5dB makeup gain
+    mMasterLimiter.init(sampleRate, -0.5f, 1.5f, 150.0f); // -0.5dB ceiling, 1.5ms lookahead, 150ms release
 
     // Immediately re-apply all preserved DSP, Gain and Volume parameters
     // This ensures that when plugging in or unplugging a 3.5mm jack or BT device,
@@ -439,28 +441,16 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
 void AudioEngine::processMasterChain(float *floatBuf, int32_t numFrames) {
     if (mBypassMasterFX.load(std::memory_order_relaxed)) return;
 
-    // Studio Transparent Brickwall Peak Limiter (-0.3 dB FS ceiling = 0.966f)
-    // Preserves full 32-bit linear dynamics, zero harmonic distortion below ceiling,
-    // and eliminates digital clipping on multi-note polyphony.
-    const float kCeiling = 0.966f;
+    // 1. Smooth master bus compressor to glue tracks and elevate quiet details
+    mMasterCompressor.process(floatBuf, numFrames);
+
+    // 2. High-performance look-ahead peak limiter to prevent saturation and boost perceived volume safely
+    mMasterLimiter.process(floatBuf, numFrames);
+
+    // Safety peak clamp guard to prevent hardware out-of-range issues under extreme feedback/accidents
     for (int32_t i = 0; i < numFrames; ++i) {
-        float xL = floatBuf[2 * i];
-        float xR = floatBuf[2 * i + 1];
-
-        if (xL > kCeiling) {
-            xL = kCeiling + (1.0f - kCeiling) * (1.0f - std::exp(-(xL - kCeiling)));
-        } else if (xL < -kCeiling) {
-            xL = -kCeiling - (1.0f - kCeiling) * (1.0f - std::exp(-(-xL - kCeiling)));
-        }
-
-        if (xR > kCeiling) {
-            xR = kCeiling + (1.0f - kCeiling) * (1.0f - std::exp(-(xR - kCeiling)));
-        } else if (xR < -kCeiling) {
-            xR = -kCeiling - (1.0f - kCeiling) * (1.0f - std::exp(-(-xR - kCeiling)));
-        }
-
-        floatBuf[2 * i] = std::clamp(xL, -0.99f, 0.99f);
-        floatBuf[2 * i + 1] = std::clamp(xR, -0.99f, 0.99f);
+        floatBuf[2 * i] = std::clamp(floatBuf[2 * i], -1.0f, 1.0f);
+        floatBuf[2 * i + 1] = std::clamp(floatBuf[2 * i + 1], -1.0f, 1.0f);
     }
 }
 

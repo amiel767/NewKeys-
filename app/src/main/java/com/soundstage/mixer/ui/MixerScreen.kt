@@ -69,8 +69,27 @@ fun MixerScreen(
     }
 
     // Real-time zero-latency chord analysis from pressed keys
-    val detectedChord = remember(uiState.pressedKeys) {
+    val rawChord = remember(uiState.pressedKeys) {
         ChordCalculator.detect(uiState.pressedKeys)
+    }
+    val detectedChord = remember(rawChord, uiState.useFlats) {
+        if (uiState.useFlats && rawChord != null) {
+            fun String.toFlats(): String = this
+                .replace("C#", "Db")
+                .replace("D#", "Eb")
+                .replace("F#", "Gb")
+                .replace("G#", "Ab")
+                .replace("A#", "Bb")
+            
+            com.soundstage.mixer.ui.components.DetectedChord(
+                primaryName = rawChord.primaryName.toFlats(),
+                variantName = rawChord.variantName.toFlats(),
+                alternateNames = rawChord.alternateNames.toFlats(),
+                alternateName2 = rawChord.alternateName2.toFlats(),
+                formula = rawChord.formula,
+                notesList = rawChord.notesList.map { it.toFlats() }
+            )
+        } else rawChord
     }
 
     val isKeyboardVisible = uiState.keyboardHeightFraction > 0f
@@ -409,6 +428,7 @@ fun MixerScreen(
                     onSelectKey = { viewModel.setSelectedRootKey(it) },
                     selectedScaleMode = uiState.selectedScaleMode,
                     onSelectScaleMode = { viewModel.setScaleMode(it) },
+                    useFlats = uiState.useFlats,
                     
                     // Real-time Detected Chord
                     detectedChord = detectedChord,
@@ -539,6 +559,7 @@ fun MixerScreen(
                     onSelectKey = { viewModel.setSelectedRootKey(it) },
                     selectedScaleMode = uiState.selectedScaleMode,
                     onSelectScaleMode = { viewModel.setScaleMode(it) },
+                    useFlats = uiState.useFlats,
                     onClose = { viewModel.closeMetroPanel() }
                 )
             }

@@ -308,6 +308,7 @@ internal fun MainDrumPadSquareContent(
     onUpdateLastPath: (String) -> Unit = {}
 ) {
     var isNativeBrowserOpen by remember { mutableStateOf(false) }
+    var localAssignSample by remember { mutableStateOf<StorageItem?>(null) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         // ================= TOP BAR WITH TITLE, SOUNDFONT PICKER & MINIMALIST PIN =================
@@ -723,7 +724,7 @@ internal fun MainDrumPadSquareContent(
                             onFileSelected = { file ->
                                 val sampleItem = StorageItem(name = file.name, path = file.absolutePath, isDirectory = false)
                                 onPlaySample(sampleItem)
-                                onLongPressSample(sampleItem)
+                                localAssignSample = sampleItem
                                 isNativeBrowserOpen = false
                             }
                         )
@@ -760,7 +761,7 @@ internal fun MainDrumPadSquareContent(
                                         .border(0.8.dp, Color(0x1AFFFFFF), RoundedCornerShape(8.dp))
                                         .combinedClickable(
                                             onClick = { onPlaySample(file) },
-                                            onLongClick = { onLongPressSample(file) }
+                                            onLongClick = { localAssignSample = file }
                                         )
                                         .padding(horizontal = 8.dp, vertical = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically,
@@ -787,24 +788,6 @@ internal fun MainDrumPadSquareContent(
                                                 overflow = TextOverflow.Ellipsis
                                             )
                                         }
-                                    }
-
-                                    // Direct Assigner Button
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .background(Color(0x2222D3EE))
-                                            .border(0.8.dp, NeonCyan, RoundedCornerShape(6.dp))
-                                            .clickable { onLongPressSample(file) }
-                                            .padding(horizontal = 7.dp, vertical = 3.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "Assigner",
-                                            fontSize = 8.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = NeonCyanLight
-                                        )
                                     }
                                 }
                             }
@@ -864,28 +847,19 @@ internal fun MainDrumPadSquareContent(
                             }
                         } else {
                             items(loopFiles) { file ->
-                                val isActionsRevealed = (revealedLoopName == file.name)
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clip(RoundedCornerShape(8.dp))
-                                        .background(if (isActionsRevealed) Color(0x288B5CF6) else Color(0xFF222533))
+                                        .background(Color(0xFF222533))
                                         .border(
                                             0.8.dp,
-                                            if (isActionsRevealed) NeonPurpleLight.copy(alpha = 0.7f) else Color(0x18FFFFFF),
+                                            Color(0x18FFFFFF),
                                             RoundedCornerShape(8.dp)
                                         )
                                         .combinedClickable(
-                                            onClick = {
-                                                if (isActionsRevealed) {
-                                                    revealedLoopName = null
-                                                } else {
-                                                    onPlaySample(file)
-                                                }
-                                            },
-                                            onLongClick = {
-                                                revealedLoopName = if (isActionsRevealed) null else file.name
-                                            }
+                                            onClick = { onPlaySample(file) },
+                                            onLongClick = { localAssignSample = file }
                                         )
                                         .padding(horizontal = 8.dp, vertical = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically,
@@ -917,57 +891,24 @@ internal fun MainDrumPadSquareContent(
                                         }
                                     }
 
-                                    // Action buttons when revealed
-                                    AnimatedVisibility(
-                                        visible = isActionsRevealed,
-                                        enter = fadeIn() + expandHorizontally(),
-                                        exit = fadeOut() + shrinkHorizontally()
+                                    // Delete Button (Trash icon)
+                                    Box(
+                                        modifier = Modifier
+                                            .size(24.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(Color(0x22FB4570))
+                                            .border(1.dp, MuteRed.copy(alpha = 0.85f), RoundedCornerShape(6.dp))
+                                            .clickable {
+                                                fileToDelete = file
+                                            },
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            // Assign to Pad Button
-                                            Box(
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(6.dp))
-                                                    .background(Color(0x2222D3EE))
-                                                    .border(0.8.dp, NeonCyan, RoundedCornerShape(6.dp))
-                                                    .clickable {
-                                                        revealedLoopName = null
-                                                        onLongPressSample(file)
-                                                    }
-                                                    .padding(horizontal = 6.dp, vertical = 3.dp),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Text(
-                                                    text = "Assigner",
-                                                    fontSize = 8.5.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = NeonCyanLight
-                                                )
-                                            }
-
-                                            // Delete Button (Trash icon)
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(24.dp)
-                                                    .clip(RoundedCornerShape(6.dp))
-                                                    .background(Color(0x22FB4570))
-                                                    .border(1.dp, MuteRed.copy(alpha = 0.85f), RoundedCornerShape(6.dp))
-                                                    .clickable {
-                                                        fileToDelete = file
-                                                    },
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Delete,
-                                                    contentDescription = "Supprimer",
-                                                    tint = MuteRed,
-                                                    modifier = Modifier.size(13.dp)
-                                                )
-                                            }
-                                        }
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Supprimer",
+                                            tint = MuteRed,
+                                            modifier = Modifier.size(13.dp)
+                                        )
                                     }
                                 }
                             }
@@ -1018,6 +959,20 @@ internal fun MainDrumPadSquareContent(
                 }
             }
         }
+    }
+
+    if (localAssignSample != null) {
+        val sample = localAssignSample!!
+        QuickPadAssignModal(
+            title = "Assigner ${sample.name.take(16)} au Pad",
+            pads = drumPads,
+            initialIsLoop = (activeTab == "loops"),
+            onSelectPad = { padId, isLoop ->
+                onAssignPadSampleOrLoop?.invoke(padId, sample, isLoop)
+                localAssignSample = null
+            },
+            onDismiss = { localAssignSample = null }
+        )
     }
 }
 
@@ -1436,7 +1391,7 @@ private fun DrumSoundfontPickerSubView(
 }
 
 @Composable
-private fun QuickPadAssignModal(
+fun QuickPadAssignModal(
     title: String,
     pads: List<DrumPadItem>,
     initialIsLoop: Boolean = false,

@@ -190,6 +190,7 @@ public:
     void resetAuditCounters();
 
 private:
+    void executeProgramSelect(int channel, int soundFontId, int bank, int preset);
     std::string mInstanceName = "FaderEngine";
     int mConfiguredPolyphony = kFaderPolyphony;
     fluid_settings_t *mSettings = nullptr;

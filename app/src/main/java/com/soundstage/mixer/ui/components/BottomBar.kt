@@ -68,6 +68,7 @@ fun BottomBar(
     onSelectKey: (String) -> Unit = {},
     selectedScaleMode: String = "Majeur",
     onSelectScaleMode: (String) -> Unit = {},
+    useFlats: Boolean = false,
     
     // Snapshots / Sub-Scenes (Section 2)
     isSnapshotArmMode: Boolean = false,
@@ -324,8 +325,18 @@ fun BottomBar(
                     fontSize = 10.sp,
                     color = Color(0x44FFFFFF)
                 )
+                val formattedKey = if (useFlats) {
+                    when (selectedKey) {
+                        "C#" -> "Db"
+                        "D#" -> "Eb"
+                        "F#" -> "Gb"
+                        "G#" -> "Ab"
+                        "A#" -> "Bb"
+                        else -> selectedKey
+                    }
+                } else selectedKey
                 Text(
-                    text = if (selectedScaleMode.contains("Min", ignoreCase = true)) "${selectedKey}m" else selectedKey,
+                    text = if (selectedScaleMode.contains("Min", ignoreCase = true)) "${formattedKey}m" else formattedKey,
                     fontSize = 11.5.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0x66FFFFFF) // Gris fade éteint comme demandé
@@ -769,6 +780,7 @@ fun MetronomeFloatingPanel(
     onSelectKey: (String) -> Unit = {},
     selectedScaleMode: String = "Majeur",
     onSelectScaleMode: (String) -> Unit = {},
+    useFlats: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val allSignatures = listOf(
@@ -779,6 +791,10 @@ fun MetronomeFloatingPanel(
     val chromaticKeys = listOf(
         "C", "C#", "D", "D#", "E", "F",
         "F#", "G", "G#", "A", "A#", "B"
+    )
+    val displayedKeys = listOf(
+        "C", if (useFlats) "Db" else "C#", "D", if (useFlats) "Eb" else "D#", "E", "F",
+        if (useFlats) "Gb" else "F#", "G", if (useFlats) "Ab" else "G#", "A", if (useFlats) "Bb" else "A#", "B"
     )
 
     AnimatedVisibility(
@@ -842,15 +858,15 @@ fun MetronomeFloatingPanel(
 
             Spacer(modifier = Modifier.height(5.dp))
 
-            chromaticKeys.chunked(6).forEach { rowKeys ->
+            chromaticKeys.zip(displayedKeys).chunked(6).forEach { rowPairs ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 2.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    rowKeys.forEach { note ->
-                        val isSelected = selectedKey.equals(note, ignoreCase = true)
+                    rowPairs.forEach { (actualNote, displayedNote) ->
+                        val isSelected = selectedKey.equals(actualNote, ignoreCase = true)
                         Box(
                             modifier = Modifier
                                 .weight(1f)
@@ -865,11 +881,11 @@ fun MetronomeFloatingPanel(
                                     if (isSelected) Color.Transparent else Color(0x1AFFFFFF),
                                     RoundedCornerShape(6.dp)
                                 )
-                                .clickable { onSelectKey(note) },
+                                .clickable { onSelectKey(actualNote) },
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = note,
+                                text = displayedNote,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (isSelected) Color(0xFF00232B) else TextDim

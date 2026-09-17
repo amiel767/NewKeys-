@@ -107,22 +107,6 @@ class MainActivity : ComponentActivity() {
 
   private fun checkOptionalPermissions() {
     try {
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-        if (!Environment.isExternalStorageManager()) {
-          try {
-            val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
-              data = Uri.parse("package:$packageName")
-            }
-            manageStorageLauncher.launch(intent)
-          } catch (_: Exception) {
-            try {
-              val fallbackIntent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
-              manageStorageLauncher.launch(fallbackIntent)
-            } catch (_: Exception) {}
-          }
-        }
-      }
-
       val permissionsToRequest = mutableListOf<String>()
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_AUDIO) != PackageManager.PERMISSION_GRANTED) {

@@ -357,10 +357,10 @@ fun NotesDialog(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(filteredNotes) { file ->
-                            val fileContent = remember(file) {
+                            val fileContent = remember(file, file.lastModified()) {
                                 try { file.readLines().take(4).joinToString("\n") } catch (_: Exception) { "" }
                             }
-                            val displayName = remember(file) {
+                            val displayName = remember(file, file.lastModified()) {
                                 try {
                                     val first = file.readLines().firstOrNull() ?: ""
                                     if (first.startsWith("# ")) first.removePrefix("# ") else file.nameWithoutExtension
