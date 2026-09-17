@@ -168,8 +168,10 @@ class DrumPadLooperEngine(
     }
 
     private fun writeWavFile(file: File, pcmShorts: ShortArray, sampleRate: Int, channels: Int) {
-        if (!file.parentFile.exists()) {
-            file.parentFile.mkdirs()
+        file.parentFile?.let { parent ->
+            if (!parent.exists()) {
+                parent.mkdirs()
+            }
         }
 
         val totalAudioLen = pcmShorts.size * 2L

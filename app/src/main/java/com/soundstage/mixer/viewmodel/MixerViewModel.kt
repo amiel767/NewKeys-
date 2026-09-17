@@ -225,11 +225,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     private var peakMeterJob: Job? = null
     private var recordingTimerJob: Job? = null
     private var snapshotTransitionJob: Job? = null
+    private var refreshStorageJob: Job? = null
     private var lastTapTimeMap = mutableMapOf<Int, Long>()
 
     init {
         startPeakMeterSimulation()
-        refreshStorageFiles()
 
         // Start Native FluidSynth engine asynchronously to prevent freezing UI thread on startup
         viewModelScope.launch(Dispatchers.Default) {
@@ -296,14 +296,26 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 Log.w("MixerViewModel", "ensureDirectoriesExist warning: ${e.message}")
             }
-            restoreSavedAppState()
-            refreshStorageFiles()
+            try {
+                restoreSavedAppState()
+            } catch (e: Exception) {
+                Log.w("MixerViewModel", "restoreSavedAppState warning: ${e.message}")
+            }
+            try {
+                refreshStorageFiles()
+            } catch (e: Exception) {
+                Log.w("MixerViewModel", "refreshStorageFiles warning: ${e.message}")
+            }
             
             // Non-intrusive permission check on startup (Android 11+)
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                if (!android.os.Environment.isExternalStorageManager()) {
-                    _uiState.update { it.copy(showStoragePermissionDialog = true) }
+            try {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    if (!android.os.Environment.isExternalStorageManager()) {
+                        _uiState.update { it.copy(showStoragePermissionDialog = true) }
+                    }
                 }
+            } catch (e: Exception) {
+                Log.w("MixerViewModel", "Storage manager check skipped: ${e.message}")
             }
         }
     }
@@ -650,7 +662,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun refreshStorageFiles() {
-        viewModelScope.launch(Dispatchers.IO) {
+        refreshStorageJob?.cancel()
+        refreshStorageJob = viewModelScope.launch(Dispatchers.IO) {
             _uiState.update { it.copy(isScanningStorage = true) }
             try {
                 fileManager.ensureDirectoriesExist()
@@ -1265,11 +1278,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
                     // If idle (no keys pressed and all meters already decayed to 0), throttle loop and avoid State updates
                     if (pressedMidiNotes.isEmpty() && !isAnyMeterActive) {
-                        delay(120)
+                        delay(250)
                         continue
                     }
 
-                    delay(40)
+                    delay(50)
                     val anySolo = curr.tracks.any { it.isSolo }
 
                     _uiState.update { state ->

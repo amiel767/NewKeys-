@@ -676,7 +676,12 @@ class AudioEngine(private val context: Context) {
                 midiHandlerThread = HandlerThread("UsbMidiWorkerThread", android.os.Process.THREAD_PRIORITY_URGENT_AUDIO).apply { start() }
                 midiHandler = Handler(midiHandlerThread!!.looper)
 
-                midiManager = context.getSystemService(Context.MIDI_SERVICE) as? MidiManager
+                midiManager = try {
+                    context.getSystemService(Context.MIDI_SERVICE) as? MidiManager
+                } catch (e: Exception) {
+                    Log.w(TAG, "MidiManager not available: ${e.message}")
+                    null
+                }
                 midiManager?.registerDeviceCallback(object : MidiManager.DeviceCallback() {
                     override fun onDeviceAdded(device: MidiDeviceInfo?) {
                         device?.let { connectMidiDevice(it) }
@@ -689,13 +694,13 @@ class AudioEngine(private val context: Context) {
                 }, midiHandler)
 
                 // Connect to currently attached USB MIDI devices
-                val devices = midiManager?.devices ?: emptyArray()
+                val devices = try { midiManager?.devices ?: emptyArray() } catch (_: Exception) { emptyArray() }
                 for (dev in devices) {
                     connectMidiDevice(dev)
                 }
                 refreshMidiDevicesList()
             } catch (e: Exception) {
-                Log.e(TAG, "Error initializing USB MIDI: ${e.message}")
+                Log.w(TAG, "Safe fallback in initUsbMidi: ${e.message}")
             }
         }
     }

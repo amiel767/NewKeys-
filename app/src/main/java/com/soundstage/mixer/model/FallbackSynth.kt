@@ -58,7 +58,11 @@ class FallbackSynth {
             isRunning = true
 
             audioThread = Thread({
-                Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
+                try {
+                    Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
+                } catch (e: Exception) {
+                    Log.d("FallbackSynth", "Could not set thread priority: ${e.message}")
+                }
                 val bufferFrames = 512
                 val totalStereoSamples = bufferFrames * 2
                 val pcmBuffer = ShortArray(totalStereoSamples)

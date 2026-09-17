@@ -231,7 +231,11 @@ class DjLoopEngine(private val context: Context) {
         isPaused = false
 
         playThread = Thread({
-            Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
+            try {
+                Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
+            } catch (e: Exception) {
+                Log.d("DjLoopEngine", "Could not set thread priority: ${e.message}")
+            }
             val chunkFrames = 512
             val chunkSamples = chunkFrames * ch
             val outShorts = ShortArray(chunkSamples)

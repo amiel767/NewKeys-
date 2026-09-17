@@ -337,7 +337,7 @@ class AppStatePersistence(context: Context) {
                             soundFontPath = obj.optString("soundFontPath", "").let { if (it.isEmpty()) null else it },
                             bank = obj.optInt("bank", 0),
                             preset = obj.optInt("preset", 0),
-                            patchName = obj.optString("patchName", null),
+                            patchName = if (obj.has("patchName")) obj.optString("patchName", "") else null,
                             volume = obj.optDouble("volume", 0.8).toFloat(),
                             pan = obj.optDouble("pan", 0.0).toFloat()
                         )
