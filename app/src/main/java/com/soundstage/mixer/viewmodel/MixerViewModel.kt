@@ -198,7 +198,8 @@ data class MixerUiState(
 
     // In-App File Browser Persistence (Section 4)
     val lastLoopsPath: String = "",
-    val lastDrumPadPath: String = ""
+    val lastDrumPadPath: String = "",
+    val showStoragePermissionDialog: Boolean = false
 ) {
     val soundfontFiles: List<StorageItem> get() = realSoundfonts
     val loopAudioFiles: List<StorageItem> get() = realLoopFiles
@@ -299,6 +300,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             }
             restoreSavedAppState()
             refreshStorageFiles()
+            
+            // Non-intrusive permission check on startup (Android 11+)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                if (!android.os.Environment.isExternalStorageManager()) {
+                    _uiState.update { it.copy(showStoragePermissionDialog = true) }
+                }
+            }
         }
     }
 
@@ -639,6 +647,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // ================= REAL STORAGE & FILE REFRESH =================
+    fun setStoragePermissionDialogVisible(visible: Boolean) {
+        _uiState.update { it.copy(showStoragePermissionDialog = visible) }
+    }
+
     fun refreshStorageFiles() {
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.update { it.copy(isScanningStorage = true) }

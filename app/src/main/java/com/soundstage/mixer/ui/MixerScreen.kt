@@ -2,6 +2,11 @@ package com.soundstage.mixer.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -33,7 +38,8 @@ import com.soundstage.mixer.viewmodel.MixerViewModel
 @Composable
 fun MixerScreen(
     viewModel: MixerViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onRequestManageStoragePermission: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var isSplashFinished by remember { mutableStateOf(false) }
@@ -741,6 +747,44 @@ fun MixerScreen(
             onToggleUseFlats = { viewModel.toggleUseFlats() }
         )
         } // End of isUIReady block
+
+        // Material 3 Storage Permission Explanation Dialog
+        if (uiState.showStoragePermissionDialog) {
+            AlertDialog(
+                onDismissRequest = { viewModel.setStoragePermissionDialogVisible(false) },
+                title = {
+                    Text(
+                        text = "Accès au dossier SoundStage",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                },
+                text = {
+                    Text(
+                        text = "Pour détecter vos SoundFonts (.sf2), boucles audio et presets situés dans le dossier externe racine /SoundStage, l'application nécessite l'autorisation d'accès complet aux fichiers.\n\nSans cette permission, seuls les dossiers d'assets intégrés de l'application seront analysés.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.setStoragePermissionDialogVisible(false)
+                            onRequestManageStoragePermission()
+                        }
+                    ) {
+                        Text("Autoriser")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { viewModel.setStoragePermissionDialogVisible(false) }
+                    ) {
+                        Text("Plus tard")
+                    }
+                }
+            )
+        }
 
         // Startup Splash Screen Animation
         if (!isSplashFinished) {
