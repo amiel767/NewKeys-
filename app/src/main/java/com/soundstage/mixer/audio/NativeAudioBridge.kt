@@ -9,7 +9,11 @@ data class PresetInfo(
 )
 
 object NativeAudioBridge {
-    private var isLibraryLoaded = false
+    var isLibraryLoaded = false
+        private set
+
+    val isLoaded: Boolean
+        get() = isLibraryLoaded
 
     const val ENGINE_FADER = 0
     const val ENGINE_PAD = 1

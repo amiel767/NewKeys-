@@ -723,7 +723,7 @@ public:
     bool hasActiveSoundFonts() const;
     int renderDirect(int16_t *outputBuffer16, int32_t numFrames);
     bool isOboeActive() const {
-        return mStream && (mStream->getState() == oboe::StreamState::Started || mStream->getState() == oboe::StreamState::Starting);
+        return mOboeActive.load(std::memory_order_relaxed);
     }
 
     oboe::DataCallbackResult onAudioReady(

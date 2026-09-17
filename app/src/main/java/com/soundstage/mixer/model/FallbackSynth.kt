@@ -39,7 +39,7 @@ class FallbackSynth {
             )
             val bufSize = max(minBuf * 4, 8192)
 
-            audioTrack = AudioTrack(
+            val track = AudioTrack(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_MEDIA)
                     .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
@@ -54,8 +54,18 @@ class FallbackSynth {
                 AudioManager.AUDIO_SESSION_ID_GENERATE
             )
 
-            audioTrack?.play()
-            isRunning = true
+            if (track.state == AudioTrack.STATE_INITIALIZED) {
+                try {
+                    track.play()
+                } catch (e: Exception) {
+                    Log.w(TAG, "AudioTrack play exception: ${e.message}")
+                }
+                audioTrack = track
+                isRunning = true
+            } else {
+                Log.w(TAG, "AudioTrack not initialized, skipping DirectAudioPump")
+                return
+            }
 
             audioThread = Thread({
                 try {
@@ -68,7 +78,7 @@ class FallbackSynth {
                 val pcmBuffer = ShortArray(totalStereoSamples)
 
                 while (isRunning) {
-                    if (isBypassed || NativeAudioBridge.safeIsOboeActive()) {
+                    if (isBypassed || NativeAudioBridge.safeIsOboeActive() || !NativeAudioBridge.isLibraryLoaded) {
                         try {
                             Thread.sleep(100)
                         } catch (_: InterruptedException) {
@@ -78,10 +88,18 @@ class FallbackSynth {
                     }
 
                     // Render direct from native FluidSynth C++
-                    val renderedFrames = NativeAudioBridge.safeRenderNativeAudio(pcmBuffer, bufferFrames)
+                    val renderedFrames = try {
+                        NativeAudioBridge.safeRenderNativeAudio(pcmBuffer, bufferFrames)
+                    } catch (_: Throwable) {
+                        0
+                    }
 
                     if (renderedFrames > 0) {
-                        audioTrack?.write(pcmBuffer, 0, totalStereoSamples)
+                        try {
+                            if (audioTrack?.state == AudioTrack.STATE_INITIALIZED) {
+                                audioTrack?.write(pcmBuffer, 0, totalStereoSamples)
+                            }
+                        } catch (_: Exception) {}
                     } else {
                         try {
                             Thread.sleep(50)
@@ -92,7 +110,7 @@ class FallbackSynth {
                 }
             }, "DirectAudioPumpThread").apply { start() }
 
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "Error starting audio pump: ${e.message}")
         }
     }

@@ -68,10 +68,16 @@ class AudioEngine(private val context: Context) {
 
     private var audioManager: AudioManager? = null
     var activeLayerChannelsProvider: ((midiNote: Int) -> List<Int>)? = null
+    private var isFirstAudioDeviceCallback = true
+    private var reconnectJob: kotlinx.coroutines.Job? = null
 
     private val audioDeviceCallback = object : android.media.AudioDeviceCallback() {
         override fun onAudioDevicesAdded(addedDevices: Array<out android.media.AudioDeviceInfo>?) {
             super.onAudioDevicesAdded(addedDevices)
+            if (isFirstAudioDeviceCallback) {
+                isFirstAudioDeviceCallback = false
+                return
+            }
             Log.i(TAG, "Audio output device attached (headphones/BT). Restoring audio stream...")
             reconnectAudioStream()
         }
@@ -119,13 +125,12 @@ class AudioEngine(private val context: Context) {
     }
 
     fun reconnectAudioStream() {
-        coroutineScope.launch(Dispatchers.IO) {
-            kotlinx.coroutines.delay(200)
+        reconnectJob?.cancel()
+        reconnectJob = coroutineScope.launch(Dispatchers.IO) {
+            kotlinx.coroutines.delay(250)
             NativeAudioBridge.safeStartEngine(0)
             kotlinx.coroutines.delay(60)
             restoreAllEngineParameters()
-
-            // Let Android OS manage user's preferred stream volume directly
         }
     }
 
@@ -859,10 +864,19 @@ class AudioEngine(private val context: Context) {
                 trackBuilder.setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
             }
 
-            metronomeAudioTrack = trackBuilder.build()
-
-            metronomeAudioTrack?.play()
-            isMetronomeActive = true
+            val builtTrack = trackBuilder.build()
+            if (builtTrack.state == AudioTrack.STATE_INITIALIZED) {
+                try {
+                    builtTrack.play()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Metronome play exception: ${e.message}")
+                }
+                metronomeAudioTrack = builtTrack
+                isMetronomeActive = true
+            } else {
+                Log.w(TAG, "Metronome AudioTrack failed to initialize")
+                return
+            }
 
             metronomeJob = coroutineScope.launch(Dispatchers.Default) {
                 var currentBeat = 0

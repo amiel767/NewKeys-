@@ -26,6 +26,7 @@ bool AudioEngine::start(int driverType) {
 
 bool AudioEngine::openAndStartStream() {
     std::lock_guard<std::mutex> lock(mStreamMutex);
+    mOboeActive.store(false, std::memory_order_relaxed);
     if (mStream) {
         mStream->stop();
         mStream->close();
@@ -121,6 +122,7 @@ bool AudioEngine::openAndStartStream() {
         return false;
     }
 
+    mOboeActive.store(true, std::memory_order_relaxed);
     LOGI("Oboe audio engine running with driver mode: %d and realtime DSP active", mDriverType);
     return true;
 }
@@ -144,6 +146,7 @@ void AudioEngine::onErrorAfterClose(oboe::AudioStream *audioStream, oboe::Result
 }
 
 void AudioEngine::stop() {
+    mOboeActive.store(false, std::memory_order_relaxed);
     {
         std::lock_guard<std::mutex> lock(mStreamMutex);
         if (mStream) {

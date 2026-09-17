@@ -84,4 +84,10 @@ class ExampleRobolectricTest {
     assertTrue(vm.uiState.value.activeTonicNotes.isEmpty())
     assertFalse(vm.uiState.value.isSustainActive)
   }
+
+  @Test
+  fun `main activity launches without crashing`() {
+    val controller = org.robolectric.Robolectric.buildActivity(MainActivity::class.java).setup()
+    assertNotNull(controller.get())
+  }
 }

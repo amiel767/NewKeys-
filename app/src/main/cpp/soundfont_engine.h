@@ -160,6 +160,7 @@ public:
 
     bool init(int sampleRate, int polyphony = kFaderPolyphony, const char* instanceName = "FaderEngine");
     void destroy();
+    void destroyInternal();
     bool isInitialized() const { return mSynth != nullptr; }
 
     int loadSoundFont(const std::string &absolutePath);
@@ -195,7 +196,7 @@ private:
     int mConfiguredPolyphony = kFaderPolyphony;
     fluid_settings_t *mSettings = nullptr;
     fluid_synth_t *mSynth = nullptr;
-    std::mutex mMutex;
+    mutable std::recursive_mutex mMutex;
     std::array<std::atomic<int>, kMaxChannels> mTransposeSemitones{};
     std::vector<float> mTempRenderBuffer;
     LockFreeRingBuffer<EngineMidiEvent, 2048> mEventQueue;

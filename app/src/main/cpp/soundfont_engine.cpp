@@ -13,7 +13,8 @@
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
 bool SoundfontEngine::init(int sampleRate, int polyphony, const char* instanceName) {
-    destroy();
+    std::lock_guard<std::recursive_mutex> lock(mMutex);
+    destroyInternal();
 
     mInstanceName = instanceName ? instanceName : "FaderEngine";
     mConfiguredPolyphony = std::clamp(polyphony, 16, 256);
@@ -33,7 +34,7 @@ bool SoundfontEngine::init(int sampleRate, int polyphony, const char* instanceNa
 
     mSynth = new_fluid_synth(mSettings);
     if (!mSynth) {
-        LOGE("[%s] Failed to allocate fluid_settings", mInstanceName.c_str());
+        LOGE("[%s] Failed to allocate fluid_synth", mInstanceName.c_str());
         delete_fluid_settings(mSettings);
         mSettings = nullptr;
         return false;
@@ -58,7 +59,11 @@ bool SoundfontEngine::init(int sampleRate, int polyphony, const char* instanceNa
 }
 
 void SoundfontEngine::destroy() {
-    std::lock_guard<std::mutex> lock(mMutex);
+    std::lock_guard<std::recursive_mutex> lock(mMutex);
+    destroyInternal();
+}
+
+void SoundfontEngine::destroyInternal() {
     if (mSynth) {
         delete_fluid_synth(mSynth);
         mSynth = nullptr;
@@ -67,10 +72,13 @@ void SoundfontEngine::destroy() {
         delete_fluid_settings(mSettings);
         mSettings = nullptr;
     }
+    mPathToSfontId.clear();
+    mSfontRefCount.clear();
+    mSfontIdToPath.clear();
 }
 
 int SoundfontEngine::loadSoundFont(const std::string &absolutePath) {
-    std::lock_guard<std::mutex> lock(mMutex);
+    std::lock_guard<std::recursive_mutex> lock(mMutex);
     if (!mSynth) {
         LOGI("[%s] Synth instance not initialized yet, auto-initializing in loadSoundFont...", mInstanceName.c_str());
         mSettings = new_fluid_settings();
@@ -130,7 +138,7 @@ int SoundfontEngine::loadSoundFont(const std::string &absolutePath) {
 
 int SoundfontEngine::unloadSoundFont(int sfontId) {
     if (sfontId <= 0) return -1;
-    std::lock_guard<std::mutex> lock(mMutex);
+    std::lock_guard<std::recursive_mutex> lock(mMutex);
     if (!mSynth) return -1;
 
     // Check ref count in shared pool
@@ -161,7 +169,7 @@ int SoundfontEngine::unloadSoundFont(int sfontId) {
 std::vector<NativePresetInfo> SoundfontEngine::listPresets(int soundFontId) {
     std::vector<NativePresetInfo> result;
     if (soundFontId <= 0) return result;
-    std::lock_guard<std::mutex> lock(mMutex);
+    std::lock_guard<std::recursive_mutex> lock(mMutex);
     if (!mSynth) return result;
 
     fluid_sfont_t* sfont = fluid_synth_get_sfont_by_id(mSynth, soundFontId);
@@ -449,8 +457,16 @@ void SoundfontEngine::resetAuditCounters() {
 }
 
 void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool accumulate) {
-    std::unique_lock<std::mutex> lock(mMutex, std::try_to_lock);
-    if (!lock.owns_lock() || !mSynth || fluid_synth_sfcount(mSynth) == 0) {
+    std::unique_lock<std::recursive_mutex> lock(mMutex, std::try_to_lock);
+    if (!lock.owns_lock() || !mSynth) {
+        if (!accumulate) {
+            std::fill(outputBuffer, outputBuffer + (numFrames * 2), 0.0f);
+        }
+        return;
+    }
+
+    int sfCount = fluid_synth_sfcount(mSynth);
+    if (sfCount <= 0) {
         if (!accumulate) {
             std::fill(outputBuffer, outputBuffer + (numFrames * 2), 0.0f);
         }

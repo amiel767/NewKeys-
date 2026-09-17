@@ -223,12 +223,21 @@ class DjLoopEngine(private val context: Context) {
             AudioManager.AUDIO_SESSION_ID_GENERATE
         )
 
-        track.setVolume(loopVolume)
-        track.play()
-        audioTrack = track
-        applyPlaybackParams()
-        isPlaying = true
-        isPaused = false
+        if (track.state == AudioTrack.STATE_INITIALIZED) {
+            try {
+                track.setVolume(loopVolume)
+                track.play()
+            } catch (e: Exception) {
+                Log.w("DjLoopEngine", "AudioTrack play exception: ${e.message}")
+            }
+            audioTrack = track
+            applyPlaybackParams()
+            isPlaying = true
+            isPaused = false
+        } else {
+            Log.w("DjLoopEngine", "AudioTrack not initialized, skipping loop audio stream")
+            return
+        }
 
         playThread = Thread({
             try {

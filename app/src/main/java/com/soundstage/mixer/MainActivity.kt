@@ -72,18 +72,18 @@ class MainActivity : ComponentActivity() {
                 .build()
             audioManager?.requestAudioFocus(focusRequest)
         }
-    } catch (_: Exception) {}
-
-    checkOptionalPermissions()
+    } catch (_: Throwable) {}
 
     setContent {
       val uiState by viewModel.uiState.collectAsStateWithLifecycle()
       androidx.compose.runtime.SideEffect {
-        if (uiState.keepScreenOn) {
-          window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        } else {
-          window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
+        try {
+          if (uiState.keepScreenOn) {
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+          } else {
+            window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+          }
+        } catch (_: Throwable) {}
       }
       SoundfontLiveMixerTheme(appTheme = uiState.currentTheme) {
         Surface(
@@ -99,11 +99,11 @@ class MainActivity : ComponentActivity() {
                               data = Uri.parse("package:$packageName")
                           }
                           manageStorageLauncher.launch(intent)
-                      } catch (_: Exception) {
+                      } catch (_: Throwable) {
                           try {
                               val fallbackIntent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
                               manageStorageLauncher.launch(fallbackIntent)
-                          } catch (_: Exception) {}
+                          } catch (_: Throwable) {}
                       }
                   }
               }
@@ -118,11 +118,14 @@ class MainActivity : ComponentActivity() {
         insetsController.systemBarsBehavior =
             WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         insetsController.hide(WindowInsetsCompat.Type.systemBars())
-      } catch (_: Exception) {}
+      } catch (_: Throwable) {}
     }
   }
 
+  private var hasRequestedPermissions = false
+
   private fun checkOptionalPermissions() {
+    if (hasRequestedPermissions) return
     try {
       val permissionsToRequest = mutableListOf<String>()
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -141,14 +144,18 @@ class MainActivity : ComponentActivity() {
       }
 
       if (permissionsToRequest.isNotEmpty()) {
+        hasRequestedPermissions = true
         requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
       }
-    } catch (_: Exception) {}
+    } catch (_: Throwable) {}
   }
 
   override fun onResume() {
     super.onResume()
-    viewModel.refreshStorageFiles()
+    try {
+      checkOptionalPermissions()
+      viewModel.refreshStorageFiles()
+    } catch (_: Throwable) {}
   }
 
   override fun onWindowFocusChanged(hasFocus: Boolean) {
