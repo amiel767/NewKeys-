@@ -499,13 +499,13 @@ fun BottomBar(
                 val isSaved = keyAliases.any { snapshots.containsKey(it) }
 
                 val slotBgBrush = if (isActive) {
-                    Brush.verticalGradient(listOf(Color(0xFF0066FF), Color(0xFF0A2558)))
+                    Brush.verticalGradient(listOf(Color(0xFF00E5FF), Color(0xFF0088FF)))
                 } else {
                     Brush.verticalGradient(listOf(Color(0xFF111522), Color(0xFF111522)))
                 }
 
                 val slotTextColor = when {
-                    isActive -> Color.White
+                    isActive -> Color(0xFF001E36)
                     isSaved -> Color(0xFFE2E8F0)
                     else -> TextDim
                 }

@@ -73,6 +73,8 @@ object NativeAudioBridge {
     external fun setSoundGoodizer(enabled: Boolean, mode: Int, amount: Float)
     external fun setMasterReverb(enabled: Boolean, size: Float, decay: Float, damp: Float, mix: Float)
     external fun setMasterDelay(enabled: Boolean, timeSec: Float, feedback: Float, mix: Float, pingPong: Boolean)
+    external fun setMasterChorus(enabled: Boolean, rateHz: Float, depthMs: Float, mix: Float)
+    external fun setMasterCompressor(enabled: Boolean, thresholdDb: Float, ratio: Float, attackMs: Float, releaseMs: Float, makeupGainDb: Float)
     external fun setSpatialWidener(amount: Float)
     external fun setMasterPunch(amount: Float)
     external fun setPadBrightness(brightness: Float)
@@ -402,6 +404,26 @@ object NativeAudioBridge {
                 setMasterDelay(enabled, timeSec, feedback, mix, pingPong)
             } catch (e: Throwable) {
                 Log.e("NativeAudioBridge", "Error invoking setMasterDelay: ${e.message}")
+            }
+        }
+    }
+
+    fun safeSetMasterChorus(enabled: Boolean, rateHz: Float, depthMs: Float, mix: Float) {
+        if (isLibraryLoaded) {
+            try {
+                setMasterChorus(enabled, rateHz, depthMs, mix)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking setMasterChorus: ${e.message}")
+            }
+        }
+    }
+
+    fun safeSetMasterCompressor(enabled: Boolean, thresholdDb: Float, ratio: Float, attackMs: Float, releaseMs: Float, makeupGainDb: Float) {
+        if (isLibraryLoaded) {
+            try {
+                setMasterCompressor(enabled, thresholdDb, ratio, attackMs, releaseMs, makeupGainDb)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking setMasterCompressor: ${e.message}")
             }
         }
     }

@@ -325,10 +325,24 @@ class AudioEngine(private val context: Context) {
             else -> 1
         }
 
-        val chromaticNotes = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+        val noteToSemitone = mapOf(
+            "C" to 0, "B#" to 0,
+            "C#" to 1, "DB" to 1, "Db" to 1,
+            "D" to 2,
+            "D#" to 3, "EB" to 3, "Eb" to 3,
+            "E" to 4, "FB" to 4, "Fb" to 4,
+            "F" to 5, "E#" to 5,
+            "F#" to 6, "GB" to 6, "Gb" to 6,
+            "G" to 7,
+            "G#" to 8, "AB" to 8, "Ab" to 8,
+            "A" to 9,
+            "A#" to 10, "BB" to 10, "Bb" to 10,
+            "B" to 11, "CB" to 11, "Cb" to 11
+        )
         val newPitches = notes.mapNotNull { note ->
-            val idx = chromaticNotes.indexOf(note)
-            if (idx >= 0) (baseOctave + 1) * 12 + idx else null
+            val clean = note.trim()
+            val semitone = noteToSemitone[clean] ?: noteToSemitone[clean.uppercase()]
+            if (semitone != null) (baseOctave + 1) * 12 + semitone else null
         }.toSet()
 
         // Shimmer: Harmonic upper octave (+12 semitones)
@@ -639,14 +653,15 @@ class AudioEngine(private val context: Context) {
 
     private fun handleNoteOffDirect(targetChannel: Int, note: Int) {
         activeHeldNotes.remove(note)
-        // Tonic Pad (channel 9) is explicitly immune to sustain pedal holding
+        // Visually notify UI immediately that physical key/finger was released
+        coroutineScope.launch(Dispatchers.Main) {
+            onMidiNoteOffListener?.invoke(midiNumberToNoteName(note))
+        }
+        // Sonically: hold in memory if sustain pedal is down, otherwise stop sound immediately
         if (isSustainPedalDown && targetChannel != NativeAudioBridge.CHANNEL_TONIC_PAD && targetChannel != 9) {
             sustainedNotesToRelease.add(note)
         } else {
             stopMidiNote(note, targetChannel)
-            coroutineScope.launch(Dispatchers.Main) {
-                onMidiNoteOffListener?.invoke(midiNumberToNoteName(note))
-            }
         }
     }
 
@@ -1237,6 +1252,18 @@ class AudioEngine(private val context: Context) {
         val octave = (midiNumber / 12) - 1
         val note = noteNames[midiNumber % 12]
         return "$note$octave"
+    }
+
+    fun setMasterChorus(enabled: Boolean, rateHz: Float, depthMs: Float, mix: Float) {
+        NativeAudioBridge.safeSetMasterChorus(enabled, rateHz, depthMs, mix)
+    }
+
+    fun setMasterCompressor(enabled: Boolean, thresholdDb: Float, ratio: Float, attackMs: Float, releaseMs: Float, makeupGainDb: Float) {
+        NativeAudioBridge.safeSetMasterCompressor(enabled, thresholdDb, ratio, attackMs, releaseMs, makeupGainDb)
+    }
+
+    fun setChannelChorus(channel: Int, chorus: Float) {
+        NativeAudioBridge.safeSetChannelChorus(channel, chorus)
     }
 
     fun release() {

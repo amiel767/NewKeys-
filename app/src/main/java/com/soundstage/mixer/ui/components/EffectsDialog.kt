@@ -59,10 +59,20 @@ fun EffectsDialog(
     val title = if (trackId == 0) "Master FX Rack" else "Track $trackId FX"
 
     val tabs = if (trackId == 0) {
-        listOf("eq" to "EQ", "reverb" to "Reverb", "comp" to "Compressor", "delay" to "Delay", "sg" to "Maximizer")
+        listOf(
+            "eq" to "EQ",
+            "reverb" to "Reverb",
+            "chorus" to "Chorus",
+            "delay" to "Delay",
+            "comp" to "Compressor",
+            "sg" to "Maximizer"
+        )
     } else {
         listOf(
             "reverb" to "Reverb",
+            "chorus" to "Chorus",
+            "delay" to "Delay",
+            "comp" to "Compressor",
             "velocity" to "Velocity"
         )
     }
@@ -481,9 +491,123 @@ fun EffectsDialog(
                             }
                         }
                     }
-                    "comp" -> {
-                        // 3D SSL Bus Compressor Rack with Analog VU Meter
+                    "chorus" -> {
+                        val isChorusOn = fxParameters.isChorusEnabled
                         Column(modifier = Modifier.fillMaxSize()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = if (trackId == 0) "DIMENSION STEREO CHORUS" else "CHANNEL CHORUS SEND",
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextDim,
+                                    letterSpacing = 0.6.sp
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (isChorusOn) NeonCyan else Color(0x1AFFFFFF))
+                                        .clickable {
+                                            val nextOn = !isChorusOn
+                                            onUpdateFx {
+                                                it.copy(
+                                                    isChorusEnabled = nextOn,
+                                                    chorusMix = if (nextOn && it.chorusMix < 0.05f) 0.35f else it.chorusMix
+                                                )
+                                            }
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = if (isChorusOn) "CHORUS ON" else "CHORUS BYPASS",
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isChorusOn) Color(0xFF002233) else TextDim
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                FxUnitCard("Rate") {
+                                    RotaryKnob(
+                                        value = fxParameters.chorusRate,
+                                        onValueChange = { v -> onUpdateFx { it.copy(chorusRate = v) } },
+                                        label = "Rate",
+                                        valueText = "${String.format(java.util.Locale.US, "%.1f", 0.2f + fxParameters.chorusRate * 4.8f)} Hz",
+                                        size = 44.dp
+                                    )
+                                }
+                                FxUnitCard("Depth") {
+                                    RotaryKnob(
+                                        value = fxParameters.chorusDepth,
+                                        onValueChange = { v -> onUpdateFx { it.copy(chorusDepth = v) } },
+                                        label = "Depth",
+                                        valueText = "${(1.0f + fxParameters.chorusDepth * 14.0f).toInt()} ms",
+                                        size = 44.dp
+                                    )
+                                }
+                                FxUnitCard("Mix") {
+                                    RotaryKnob(
+                                        value = fxParameters.chorusMix,
+                                        onValueChange = { v ->
+                                            onUpdateFx {
+                                                it.copy(
+                                                    chorusMix = v,
+                                                    isChorusEnabled = v > 0.01f
+                                                )
+                                            }
+                                        },
+                                        label = "Mix",
+                                        valueText = "${(fxParameters.chorusMix * 100).toInt()}%",
+                                        size = 44.dp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    "comp" -> {
+                        // 3D SSL Bus Compressor Rack with Analog VU Meter & Bypass
+                        val isCompOn = fxParameters.isCompEnabled
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "SSL BUS COMPRESSOR",
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextDim,
+                                    letterSpacing = 0.6.sp
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (isCompOn) NeonCyan else Color(0x1AFFFFFF))
+                                        .clickable {
+                                            onUpdateFx { it.copy(isCompEnabled = !it.isCompEnabled) }
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = if (isCompOn) "COMP ON" else "COMP BYPASS",
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isCompOn) Color(0xFF002233) else TextDim
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
                             // Analog VU Meter Screen
                             Box(
                                 modifier = Modifier
@@ -508,7 +632,7 @@ fun EffectsDialog(
                                     )
 
                                     // Dynamic Gain Reduction Needle Angle
-                                    val reduction = (1f - fxParameters.compThresh) * fxParameters.compRatio
+                                    val reduction = if (isCompOn) (1f - fxParameters.compThresh) * fxParameters.compRatio else 0f
                                     val targetAngle = 210f + (reduction * 120f).coerceIn(0f, 120f)
                                     val rad = Math.toRadians(targetAngle.toDouble())
 

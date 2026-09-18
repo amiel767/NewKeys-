@@ -236,16 +236,22 @@ data class FxParameters(
     val eqGain: Float = 0.5f,
     // Reverb
     val isReverbEnabled: Boolean = false,
-    // SoundGoodizer
-    val isSgEnabled: Boolean = false,
-    val sgAmount: Float = 0f,
-    val sgMode: Int = 0,
     val reverbPreset: String = "Concert Hall",
     val reverbMix: Float = 0.24f,
     val reverbSize: Float = 0.6f,
     val reverbDecay: Float = 0.45f,
     val reverbDamp: Float = 0.3f,
+    // Chorus
+    val isChorusEnabled: Boolean = false,
+    val chorusRate: Float = 0.35f,
+    val chorusDepth: Float = 0.50f,
+    val chorusMix: Float = 0.0f,
+    // SoundGoodizer
+    val isSgEnabled: Boolean = false,
+    val sgAmount: Float = 0f,
+    val sgMode: Int = 0,
     // Compressor
+    val isCompEnabled: Boolean = false,
     val compThresh: Float = 0.4f,
     val compRatio: Float = 0.5f,
     val compAttack: Float = 0.2f,

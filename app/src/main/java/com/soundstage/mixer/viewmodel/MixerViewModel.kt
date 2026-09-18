@@ -416,6 +416,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         audioSlots = restoredSlots,
                         drumPads = restoredDrums,
                         fxParameters = restoredFx,
+                        snapshots = saved.snapshots.ifEmpty { state.snapshots },
+                        activeSnapshotSlot = saved.activeSnapshotSlot,
                         tonicBrightness = saved.tonicBrightness ?: state.tonicBrightness,
                         tonicShimmer = saved.tonicShimmer ?: state.tonicShimmer,
                         drumReverb = saved.drumReverb ?: state.drumReverb,
@@ -434,7 +436,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 audioEngine.masterVolume = effectiveMasterVol
                 NativeAudioBridge.safeSetMasterVolume(effectiveMasterVol)
 
-                // Restore Master FX (EQ, Reverb, Delay, SoundGoodizer)
+                // Restore Master FX (EQ, Reverb, Delay, Chorus, Compressor, SoundGoodizer)
                 val masterFx = saved.fxParameters[0]
                 if (masterFx != null) {
                     val lowDb = (masterFx.eqLow - 0.5f) * 24.0f
@@ -455,6 +457,27 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         feedback = if (isDelayActive) masterFx.delayFeedback else 0f,
                         mix = if (isDelayActive) masterFx.delayMix else 0f,
                         pingPong = masterFx.delayPingPong > 0.5f
+                    )
+                    val isChorusActive = masterFx.isChorusEnabled && masterFx.chorusMix > 0.005f
+                    audioEngine.setMasterChorus(
+                        enabled = isChorusActive,
+                        rateHz = 0.2f + masterFx.chorusRate * 4.8f,
+                        depthMs = 1.0f + masterFx.chorusDepth * 14.0f,
+                        mix = if (isChorusActive) masterFx.chorusMix else 0f
+                    )
+                    val compThreshold = -36f + masterFx.compThresh * 28f
+                    val compRatioVal = 1.5f + masterFx.compRatio * 8.5f
+                    val makeupGain = if (masterFx.isCompEnabled) {
+                        val reductionEst = (-compThreshold) * (1f - 1f / compRatioVal)
+                        (reductionEst * 0.75f).coerceIn(0f, 15f)
+                    } else 0f
+                    audioEngine.setMasterCompressor(
+                        enabled = masterFx.isCompEnabled,
+                        thresholdDb = compThreshold,
+                        ratio = compRatioVal,
+                        attackMs = 1.0f + masterFx.compAttack * 40f,
+                        releaseMs = 20.0f + masterFx.compRelease * 350f,
+                        makeupGainDb = makeupGain
                     )
                     val modeStr = when (masterFx.sgMode) {
                         0 -> "A"
@@ -484,6 +507,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     val trackFx = saved.fxParameters[t.id]
                     val reverbMix = if (trackFx != null && trackFx.isReverbEnabled) trackFx.reverbMix else t.reverbMix
                     audioEngine.setChannelReverb(ch, reverbMix)
+                    val chorusMix = if (trackFx != null && trackFx.isChorusEnabled) trackFx.chorusMix else 0f
+                    audioEngine.setChannelChorus(ch, chorusMix)
                 }
 
                 var hasLoadedAnySlot = false
@@ -576,7 +601,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             tonicShimmer = state.tonicShimmer,
             drumReverb = state.drumReverb,
             keepScreenOn = state.keepScreenOn,
-            selectedScaleMode = state.selectedScaleMode
+            selectedScaleMode = state.selectedScaleMode,
+            snapshots = state.snapshots,
+            activeSnapshotSlot = state.activeSnapshotSlot
         )
     }
 
@@ -1511,10 +1538,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val nextSustain = !_uiState.value.isSustainActive
         audioEngine.setSustainPedal(nextSustain)
         _uiState.update { state ->
-            val updatedKeys = if (!nextSustain) emptySet() else state.pressedKeys
             state.copy(
-                isSustainActive = nextSustain,
-                pressedKeys = updatedKeys
+                isSustainActive = nextSustain
             )
         }
     }
@@ -2775,6 +2800,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     snapshotTransitionProgress = 1.0f
                 )
             }
+            persistCurrentStateDebounced()
         } else {
             snapshotTransitionJob?.cancel()
             val startTracks = currentState.tracks
@@ -2789,6 +2815,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                             snapshotTransitionProgress = 0.0f
                         )
                     }
+                    persistCurrentStateDebounced()
                     snapshotTransitionJob = viewModelScope.launch {
                         val totalDurationMs = 1200L
                         val steps = 48
@@ -2821,9 +2848,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         _uiState.update {
                             it.copy(tracks = freeTracks, snapshotTransitionProgress = 1.0f)
                         }
+                        persistCurrentStateDebounced()
                     }
                 } else {
                     _uiState.update { it.copy(activeSnapshotSlot = null, snapshotTransitionProgress = 1.0f) }
+                    persistCurrentStateDebounced()
                 }
             } else {
                 // 1st tap (or switching slot)
@@ -2863,6 +2892,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                             octave = targetSnapshot.globalOctaveShift
                         )
                     }
+                    persistCurrentStateDebounced()
 
                     snapshotTransitionJob = viewModelScope.launch {
                         val totalDurationMs = 1200L
@@ -2896,9 +2926,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         _uiState.update {
                             it.copy(tracks = targetTracks, snapshotTransitionProgress = 1.0f)
                         }
+                        persistCurrentStateDebounced()
                     }
                 } else {
                     _uiState.update { it.copy(activeSnapshotSlot = slotName, snapshotTransitionProgress = 1.0f) }
+                    persistCurrentStateDebounced()
                 }
             }
         }
@@ -3085,6 +3117,27 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     mix = if (isDelayActive) newFx.delayMix else 0f,
                     pingPong = newFx.delayPingPong > 0.5f
                 )
+                val isChorusActive = newFx.isChorusEnabled && newFx.chorusMix > 0.005f
+                audioEngine.setMasterChorus(
+                    enabled = isChorusActive,
+                    rateHz = 0.2f + newFx.chorusRate * 4.8f,
+                    depthMs = 1.0f + newFx.chorusDepth * 14.0f,
+                    mix = if (isChorusActive) newFx.chorusMix else 0f
+                )
+                val compThreshold = -36f + newFx.compThresh * 28f
+                val compRatioVal = 1.5f + newFx.compRatio * 8.5f
+                val makeupGain = if (newFx.isCompEnabled) {
+                    val reductionEst = (-compThreshold) * (1f - 1f / compRatioVal)
+                    (reductionEst * 0.75f).coerceIn(0f, 15f)
+                } else 0f
+                audioEngine.setMasterCompressor(
+                    enabled = newFx.isCompEnabled,
+                    thresholdDb = compThreshold,
+                    ratio = compRatioVal,
+                    attackMs = 1.0f + newFx.compAttack * 40f,
+                    releaseMs = 20.0f + newFx.compRelease * 350f,
+                    makeupGainDb = makeupGain
+                )
                 val modeStr = when (newFx.sgMode) {
                     0 -> "A"
                     1 -> "B"
@@ -3111,6 +3164,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 if (trackId in 1..8) {
                     val channel = trackId - 1
                     audioEngine.setChannelReverb(channel, if (newFx.isReverbEnabled) newFx.reverbMix else 0f)
+                    audioEngine.setChannelChorus(channel, if (newFx.isChorusEnabled) newFx.chorusMix else 0f)
                 }
                 state.copy(fxParameters = updatedMap)
             }

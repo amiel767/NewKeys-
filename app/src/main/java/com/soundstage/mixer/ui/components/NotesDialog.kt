@@ -84,6 +84,7 @@ fun NotesDialog(
     var showCopyFeedback by remember { mutableStateOf(false) }
     var fileToRename by remember { mutableStateOf<File?>(null) }
     var renameInput by remember { mutableStateOf("") }
+    var showRomanNotation by remember { mutableStateOf(false) }
 
     val scrollState = rememberScrollState()
 
@@ -215,44 +216,18 @@ fun NotesDialog(
         }
     }
 
-    // Convert Harmonic Degrees (1, 4, 5, 6m -> Chords in Key)
+    // Convert Harmonic Degrees (All Arabic 1, 2m, 3mineur, 4aug, 5dim... and Roman I, ii, IV, V, etc.)
     fun convertDegreesToChords(text: String, rootKey: String): String {
-        val stdRootKey = flatToSharp[rootKey] ?: rootKey
-        val rootIdx = noteNames.indexOf(stdRootKey).coerceAtLeast(0)
-        val degreeMap = mapOf(
-            "1" to (0 to ""), "I" to (0 to ""), "i" to (0 to "m"),
-            "2m" to (2 to "m"), "ii" to (2 to "m"), "2" to (2 to ""), "II" to (2 to ""),
-            "3m" to (4 to "m"), "iii" to (4 to "m"), "3" to (4 to ""), "III" to (4 to ""),
-            "4" to (5 to ""), "IV" to (5 to ""), "iv" to (5 to "m"),
-            "5" to (7 to ""), "V" to (7 to ""), "v" to (7 to "m"),
-            "6m" to (9 to "m"), "vi" to (9 to "m"), "6" to (9 to ""), "VI" to (9 to ""),
-            "7" to (11 to "dim"), "vii" to (11 to "dim"), "VII" to (11 to "")
-        )
-
-        val regex = Regex("""\b(1|2m|2|3m|3|4|5|6m|6|7m|7|I|i|II|ii|III|iii|IV|iv|V|v|VI|vi|VII|vii)\b""")
-        return regex.replace(text) { match ->
-            val deg = match.value
-            val info = degreeMap[deg]
-            if (info != null) {
-                val semi = info.first
-                val defaultQuality = info.second
-                val noteIdx = (rootIdx + semi).mod(12)
-                val targetNote = if (useFlats) flatNames[noteIdx] else noteNames[noteIdx]
-                "$targetNote$defaultQuality"
-            } else {
-                deg
-            }
-        }
+        return HarmonicProgressionCalculator.convertAllDegreesToChords(text, rootKey, useFlats)
     }
 
-    // Google Keep Minimalist Card Container
+    // Modern Minimalist Card Container (Spacious, single border controlled by parent window)
     Box(
         modifier = modifier
             .fillMaxSize()
             .clip(RoundedCornerShape(16.dp))
             .background(Color(0xFF141824))
-            .border(1.dp, Color(0x3300E5FF), RoundedCornerShape(16.dp))
-            .padding(12.dp)
+            .padding(14.dp)
             .testTag("notes_google_keep_panel")
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -582,6 +557,132 @@ fun NotesDialog(
                     if (transposeSemitones != 0) transposeText(noteBody, transposeSemitones) else noteBody
                 }
 
+                // Real-time Harmonic & Progression Analysis Bar
+                val extractedChords = remember(effectiveBody) {
+                    HarmonicProgressionCalculator.extractChordsFromText(effectiveBody)
+                }
+                val progressionAnalysis = remember(extractedChords, selectedRootKey) {
+                    HarmonicProgressionCalculator.analyzeProgression(extractedChords, selectedRootKey)
+                }
+
+                if (extractedChords.isNotEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF0D111A))
+                            .border(1.dp, Color(0x2600E5FF), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "TONALITÉ: $selectedRootKey",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = NeonCyan
+                                )
+                                if (progressionAnalysis.progressionName != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(Color(0x2200E5FF))
+                                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = progressionAnalysis.progressionName,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFFE2E8F0)
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Roman Notation Toggle
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(5.dp))
+                                    .background(if (showRomanNotation) NeonCyan.copy(alpha = 0.25f) else Color(0xFF1E2333))
+                                    .border(1.dp, if (showRomanNotation) NeonCyan else Color(0x33FFFFFF), RoundedCornerShape(5.dp))
+                                    .clickable { showRomanNotation = !showRomanNotation }
+                                    .padding(horizontal = 6.dp, vertical = 2.5.dp)
+                            ) {
+                                Text(
+                                    text = if (showRomanNotation) "ROMAIN (I, ii)" else "ACCORDS",
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (showRomanNotation) NeonCyan else TextDim
+                                )
+                            }
+                        }
+
+                        // Horizontal list of analyzed chords with passing chord badges
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp)
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            progressionAnalysis.chords.forEach { ac ->
+                                val displayText = if (showRomanNotation) ac.romanNumeral else ac.originalChord
+                                if (ac.isPassingChord) {
+                                    // Highlighted Amber LED for Passing Chord ("Accord de passage")
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(5.dp))
+                                            .background(Color(0x33FFB300))
+                                            .border(1.dp, Color(0xFFFFB300), RoundedCornerShape(5.dp))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                            Text(
+                                                text = "⚡ $displayText",
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFFFFD54F)
+                                            )
+                                            if (ac.passingDescription != null) {
+                                                Text(
+                                                    text = "(${ac.passingDescription})",
+                                                    fontSize = 8.sp,
+                                                    color = Color(0xFFFFCA28)
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    // Diatonic / Standard degree badge
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(5.dp))
+                                            .background(Color(0xFF161C2C))
+                                            .border(1.dp, if (ac.isDiatonic) Color(0x3300E5FF) else Color(0x22FFFFFF), RoundedCornerShape(5.dp))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = displayText,
+                                            fontSize = 9.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (ac.isDiatonic) Color.White else TextDim
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -665,7 +766,7 @@ fun NotesDialog(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
                             .background(Color(0xFF1E2333))
-                            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(6.dp))
+                            .border(1.dp, Color(0x3300E5FF), RoundedCornerShape(6.dp))
                             .clickable {
                                 noteBody = convertDegreesToChords(noteBody, selectedRootKey)
                                 saveActiveNote()
@@ -673,10 +774,10 @@ fun NotesDialog(
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            text = "Convertir Degrés (1,4,5)",
+                            text = "Convertir Degrés (3m, 4aug, 5dim, ii...)",
                             fontSize = 9.5.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = TextDim
+                            color = NeonCyan
                         )
                     }
                 }

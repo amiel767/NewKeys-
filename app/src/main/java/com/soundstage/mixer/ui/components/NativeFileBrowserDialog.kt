@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -50,6 +51,7 @@ fun NativeFileBrowserDialog(
     initialPath: String,
     title: String = "Sélecteur de Fichiers Audio",
     onPathChanged: (String) -> Unit = {},
+    onPreviewAudio: ((File) -> Unit)? = null,
     onFileSelected: (File) -> Unit
 ) {
     if (!isOpen) return
@@ -72,7 +74,9 @@ fun NativeFileBrowserDialog(
 
     val storageShortcuts = remember {
         val list = mutableListOf<StorageShortcut>()
-        list.add(StorageShortcut("Interne", defaultRoot, Icons.Default.PhoneAndroid, NeonCyan))
+        list.add(StorageShortcut("DrumPad", "$defaultRoot/SoundStage/DrumPad", Icons.Default.MusicNote, NeonCyan))
+        list.add(StorageShortcut("SoundStage", "$defaultRoot/SoundStage", Icons.Default.Piano, Color.White))
+        list.add(StorageShortcut("Interne", defaultRoot, Icons.Default.PhoneAndroid, NeonCyanLight))
         try {
             val rootStorage = File("/storage")
             if (rootStorage.exists()) {
@@ -85,7 +89,6 @@ fun NativeFileBrowserDialog(
         } catch (_: Exception) {}
         list.add(StorageShortcut("Downloads", "$defaultRoot/Download", Icons.Default.Download, NeonMagenta))
         list.add(StorageShortcut("Music", "$defaultRoot/Music", Icons.Default.MusicNote, NeonCyan))
-        list.add(StorageShortcut("SoundStage", "$defaultRoot/SoundStage", Icons.Default.Piano, Color.White))
         list
     }
 
@@ -289,6 +292,29 @@ fun NativeFileBrowserDialog(
                                             tint = TextDim,
                                             modifier = Modifier.size(16.dp)
                                         )
+                                    } else {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            if (onPreviewAudio != null) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(28.dp)
+                                                        .clip(CircleShape)
+                                                        .background(Color(0x3300E5FF))
+                                                        .clickable { onPreviewAudio(file) },
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.PlayArrow,
+                                                        contentDescription = "Pré-écoute",
+                                                        tint = NeonCyan,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }

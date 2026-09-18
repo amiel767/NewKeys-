@@ -274,6 +274,30 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_setMasterDelay(
 }
 
 JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setMasterChorus(
+        JNIEnv *env,
+        jobject /* this */,
+        jboolean enabled,
+        jfloat rateHz,
+        jfloat depthMs,
+        jfloat mix) {
+    gAudioEngine.setMasterChorus(enabled, rateHz, depthMs, mix);
+}
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setMasterCompressor(
+        JNIEnv *env,
+        jobject /* this */,
+        jboolean enabled,
+        jfloat thresholdDb,
+        jfloat ratio,
+        jfloat attackMs,
+        jfloat releaseMs,
+        jfloat makeupGainDb) {
+    gAudioEngine.setMasterCompressor(enabled, thresholdDb, ratio, attackMs, releaseMs, makeupGainDb);
+}
+
+JNIEXPORT void JNICALL
 Java_com_soundstage_mixer_audio_NativeAudioBridge_setSpatialWidener(
         JNIEnv *env,
         jobject /* this */,

@@ -177,7 +177,7 @@ public:
     void setParams(bool enabled, float timeSec, float feedback, float mix, bool pingPong) {
         mEnabled = enabled;
         mDelayTimeSec = std::clamp(timeSec, 0.02f, 1.8f);
-        mFeedback = std::clamp(feedback, 0.0f, 0.85f);
+        mFeedback = std::clamp(feedback, 0.0f, 0.88f);
         mMix = std::clamp(mix, 0.0f, 1.0f);
         mPingPong = pingPong;
         if (!enabled || mix <= 0.001f) {
@@ -192,7 +192,8 @@ public:
         if (delaySamples >= mMaxDelayFrames) delaySamples = mMaxDelayFrames - 1;
         if (delaySamples < 1) delaySamples = 1;
 
-        float damp = 0.35f; // 1-pole high damping for warm analog tape sound
+        // Warm analog damping filter on repeats (gentle 6dB/oct roll-off above 4.5kHz, DC unity gain 1.0)
+        const float alpha = 0.65f;
 
         for (int32_t i = 0; i < numFrames; ++i) {
             float inL = buffer[2 * i];
@@ -208,9 +209,9 @@ public:
             if (std::abs(delL) < 1e-15f) delL = 0.0f;
             if (std::abs(delR) < 1e-15f) delR = 0.0f;
 
-            // 1-pole damping filter
-            mFilterStateL = mFilterStateL * damp + delL * (1.0f - damp);
-            mFilterStateR = mFilterStateR * damp + delR * (1.0f - damp);
+            // 1-pole unity-gain filter
+            mFilterStateL = mFilterStateL * (1.0f - alpha) + delL * alpha;
+            mFilterStateR = mFilterStateR * (1.0f - alpha) + delR * alpha;
             if (std::abs(mFilterStateL) < 1e-15f) mFilterStateL = 0.0f;
             if (std::abs(mFilterStateR) < 1e-15f) mFilterStateR = 0.0f;
 
@@ -225,8 +226,9 @@ public:
                 mBufferR[mWriteIndex] = inR + fbR;
             }
 
-            buffer[2 * i] = inL * (1.0f - mMix) + delL * mMix;
-            buffer[2 * i + 1] = inR * (1.0f - mMix) + delR * mMix;
+            // Studio Parallel Delay: dry signal maintains 100% punch and headroom, wet repeats are mixed cleanly
+            buffer[2 * i] = inL + delL * mMix;
+            buffer[2 * i + 1] = inR + delR * mMix;
 
             mWriteIndex = (mWriteIndex + 1) % mMaxDelayFrames;
         }
@@ -245,6 +247,96 @@ private:
     float mFeedback = 0.40f;
     float mMix = 0.0f;
     bool mPingPong = false;
+};
+
+// ================= DSP: STEREO CHORUS =================
+class StereoChorus {
+public:
+    void init(int sampleRate) {
+        mSampleRate = sampleRate > 0 ? sampleRate : 48000;
+        mMaxDelay = mSampleRate / 20; // 50ms buffer
+        mBufferL.assign(mMaxDelay, 0.0f);
+        mBufferR.assign(mMaxDelay, 0.0f);
+        mWriteIdx = 0;
+        mPhase = 0.0f;
+    }
+
+    void clear() {
+        if (!mBufferL.empty()) std::fill(mBufferL.begin(), mBufferL.end(), 0.0f);
+        if (!mBufferR.empty()) std::fill(mBufferR.begin(), mBufferR.end(), 0.0f);
+        mWriteIdx = 0;
+        mPhase = 0.0f;
+    }
+
+    void setParams(bool enabled, float rateHz, float depthMs, float mix) {
+        mEnabled = enabled;
+        mRateHz = std::clamp(rateHz, 0.1f, 5.0f);
+        mDepthMs = std::clamp(depthMs, 0.5f, 15.0f);
+        mMix = std::clamp(mix, 0.0f, 1.0f);
+        if (!enabled || mix <= 0.001f) {
+            clear();
+        }
+    }
+
+    void process(float *buffer, int32_t numFrames) {
+        if (!mEnabled || mMix <= 0.001f || mBufferL.empty()) return;
+
+        float phaseInc = (2.0f * static_cast<float>(M_PI) * mRateHz) / static_cast<float>(mSampleRate);
+        float baseDelaySamples = 0.012f * static_cast<float>(mSampleRate); // 12ms base
+        float modDepthSamples = (mDepthMs / 1000.0f) * static_cast<float>(mSampleRate) * 0.5f;
+
+        for (int32_t i = 0; i < numFrames; ++i) {
+            float inL = buffer[2 * i];
+            float inR = buffer[2 * i + 1];
+
+            mBufferL[mWriteIdx] = inL;
+            mBufferR[mWriteIdx] = inR;
+
+            // Quadrature LFO for rich 3D stereo width
+            float modL = std::sin(mPhase);
+            float modR = std::cos(mPhase);
+            mPhase += phaseInc;
+            if (mPhase > 2.0f * static_cast<float>(M_PI)) mPhase -= 2.0f * static_cast<float>(M_PI);
+
+            float dL = baseDelaySamples + modL * modDepthSamples;
+            float dR = baseDelaySamples + modR * modDepthSamples;
+
+            // Linear interpolation
+            float rIdxL = static_cast<float>(mWriteIdx) - dL;
+            if (rIdxL < 0.0f) rIdxL += static_cast<float>(mMaxDelay);
+            int i0L = static_cast<int>(rIdxL) % mMaxDelay;
+            int i1L = (i0L + 1) % mMaxDelay;
+            float fracL = rIdxL - static_cast<float>(static_cast<int>(rIdxL));
+            float wetL = mBufferL[i0L] * (1.0f - fracL) + mBufferL[i1L] * fracL;
+
+            float rIdxR = static_cast<float>(mWriteIdx) - dR;
+            if (rIdxR < 0.0f) rIdxR += static_cast<float>(mMaxDelay);
+            int i0R = static_cast<int>(rIdxR) % mMaxDelay;
+            int i1R = (i0R + 1) % mMaxDelay;
+            float fracR = rIdxR - static_cast<float>(static_cast<int>(rIdxR));
+            float wetR = mBufferR[i0R] * (1.0f - fracR) + mBufferR[i1R] * fracR;
+
+            // Dimension chorus: smooth equal-power blend between dry signal and modulated wet signal
+            float dryGain = 1.0f - (mMix * 0.35f);
+            float wetGain = mMix * 0.95f;
+            buffer[2 * i] = inL * dryGain + wetL * wetGain;
+            buffer[2 * i + 1] = inR * dryGain + wetR * wetGain;
+
+            mWriteIdx = (mWriteIdx + 1) % mMaxDelay;
+        }
+    }
+
+private:
+    int mSampleRate = 48000;
+    int mMaxDelay = 2400;
+    bool mEnabled = false;
+    float mRateHz = 0.8f;
+    float mDepthMs = 4.5f;
+    float mMix = 0.0f;
+    float mPhase = 0.0f;
+    int mWriteIdx = 0;
+    std::vector<float> mBufferL;
+    std::vector<float> mBufferR;
 };
 
 // ================= DSP: STEREO FREEVERB REVERBERATOR =================
@@ -550,18 +642,27 @@ class SimpleMasterCompressor {
 public:
     void init(int sampleRate, float thresholdDb = -12.0f, float ratio = 2.0f, float attackMs = 10.0f, float releaseMs = 100.0f, float makeupGainDb = 3.5f) {
         mSampleRate = sampleRate > 0 ? sampleRate : 48000;
-        mThreshold = std::pow(10.0f, thresholdDb / 20.0f);
-        mRatio = std::max(1.1f, ratio);
-        mMakeupGain = std::pow(10.0f, makeupGainDb / 20.0f);
-        mEnvelope = 0.0f;
+        setParams(true, thresholdDb, ratio, attackMs, releaseMs, makeupGainDb);
+    }
 
-        float attackTimeSec = attackMs / 1000.0f;
-        float releaseTimeSec = releaseMs / 1000.0f;
-        mAttackCoef = 1.0f - std::exp(-1.0f / (attackTimeSec * mSampleRate));
-        mReleaseCoef = 1.0f - std::exp(-1.0f / (releaseTimeSec * mSampleRate));
+    void setParams(bool enabled, float thresholdDb, float ratio, float attackMs, float releaseMs, float makeupGainDb) {
+        mEnabled = enabled;
+        mThreshold = std::pow(10.0f, std::clamp(thresholdDb, -50.0f, 0.0f) / 20.0f);
+        mRatio = std::max(1.0f, ratio);
+        mMakeupGain = std::pow(10.0f, std::clamp(makeupGainDb, 0.0f, 20.0f) / 20.0f);
+
+        float attackTimeSec = std::max(0.0005f, attackMs / 1000.0f);
+        float releaseTimeSec = std::max(0.010f, releaseMs / 1000.0f);
+        mAttackCoef = 1.0f - std::exp(-1.0f / (attackTimeSec * static_cast<float>(mSampleRate)));
+        mReleaseCoef = 1.0f - std::exp(-1.0f / (releaseTimeSec * static_cast<float>(mSampleRate)));
+        if (!enabled) {
+            mEnvelope = 0.0f;
+        }
     }
 
     void process(float *buffer, int32_t numFrames) {
+        if (!mEnabled) return;
+
         for (int32_t i = 0; i < numFrames; ++i) {
             float inL = buffer[2 * i];
             float inR = buffer[2 * i + 1];
@@ -577,7 +678,7 @@ public:
 
             // Compression gain calculation
             float gain = 1.0f;
-            if (mEnvelope > mThreshold) {
+            if (mEnvelope > mThreshold && mEnvelope > 0.00001f) {
                 gain = (mThreshold + (mEnvelope - mThreshold) / mRatio) / mEnvelope;
             }
 
@@ -589,6 +690,7 @@ public:
 
 private:
     int mSampleRate = 48000;
+    bool mEnabled = false;
     float mThreshold = 0.25f;
     float mRatio = 2.0f;
     float mMakeupGain = 1.5f;
@@ -597,33 +699,31 @@ private:
     float mReleaseCoef = 0.001f;
 };
 
-// ================= DSP: SOFT CLIPPER / MULTIBAND COMPRESSOR =================
+// ================= DSP: SOFT CLIPPER / ANALOG LIMITER =================
 class SoftClipper {
 public:
     void init(int sampleRate) {
         (void)sampleRate;
     }
 
+    // Studio-grade transparent mastering limiter with wide linear headroom (up to 0.88)
+    // and gentle analog soft-knee saturation on extreme transient peaks
     void process(float *buffer, int32_t numFrames) {
-        // Soft knee at 2dB, threshold -0.3 dBFS, clean make-up +3dB
-        // Simplified polynomial soft-clipper for real-time performance
-        const float threshold = 0.966f; // approx -0.3 dB
-        const float makeUpGain = 1.412f; // approx +3 dB
+        const float kneeStart = 0.85f;
+        const float maxOutput = 0.985f;
+        const float headroom = maxOutput - kneeStart;
 
         for (int32_t i = 0; i < numFrames * 2; ++i) {
-            float s = buffer[i] * makeUpGain;
-            float abs_s = std::abs(s);
-            if (abs_s > threshold) {
-                if (abs_s > 1.25f) {
-                    buffer[i] = (s > 0) ? 1.0f : -1.0f;
-                } else {
-                    // Soft knee polynomial approximation
-                    float diff = abs_s - threshold;
-                    float soft = threshold + (diff - (diff * diff) / (2.0f * (1.25f - threshold)));
-                    buffer[i] = (s > 0) ? soft : -soft;
-                }
+            float x = buffer[i];
+            float ax = std::abs(x);
+
+            if (ax <= kneeStart) {
+                buffer[i] = x;
             } else {
-                buffer[i] = s;
+                // Smooth progressive analog saturation curve for extreme peaks
+                float excess = ax - kneeStart;
+                float compressed = kneeStart + headroom * std::tanh(excess / headroom);
+                buffer[i] = (x > 0.0f) ? compressed : -compressed;
             }
         }
     }
@@ -659,6 +759,8 @@ public:
     void setSoundGoodizer(bool enabled, int mode, float amount);
     void setMasterReverb(bool enabled, float size, float decay, float damp, float mix);
     void setMasterDelay(bool enabled, float timeSec, float feedback, float mix, bool pingPong);
+    void setMasterChorus(bool enabled, float rateHz, float depthMs, float mix);
+    void setMasterCompressor(bool enabled, float thresholdDb, float ratio, float attackMs, float releaseMs, float makeupGainDb);
     void setSpatialWidener(float amount);
     void setMasterPunch(float amount);
     void setPadBrightness(float brightness);
@@ -709,6 +811,7 @@ private:
     StereoBiquad mEqHigh;
     StereoReverb mMasterReverb;
     StereoDelay mMasterDelay;
+    StereoChorus mMasterChorus;
     SoundGoodizerDsp mSoundGoodizer;
     SpatialWidenerDsp mSpatialWidener;
     MasterPunchDsp mMasterPunch;
@@ -719,7 +822,7 @@ private:
 
     // Preserved parameters across stream reconnections (Jack plug/unplug, routing events)
     std::atomic<bool> mIsReconnecting{false};
-    float mMasterGain = 2.0f;
+    float mMasterGain = 0.90f;
     float mDrumMasterVolume = 0.80f;
     float mMasterPunchAmount = 0.50f;
     float mSpatialWidenerAmount = 0.35f;
@@ -736,6 +839,16 @@ private:
     float mMasterDelayFeedback = 0.40f;
     float mMasterDelayMix = 0.20f;
     bool mMasterDelayPingPong = false;
+    bool mMasterChorusEnabled = false;
+    float mMasterChorusRateHz = 0.80f;
+    float mMasterChorusDepthMs = 4.5f;
+    float mMasterChorusMix = 0.0f;
+    bool mMasterCompressorEnabled = false;
+    float mMasterCompressorThreshDb = -12.0f;
+    float mMasterCompressorRatio = 2.5f;
+    float mMasterCompressorAttackMs = 10.0f;
+    float mMasterCompressorReleaseMs = 120.0f;
+    float mMasterCompressorMakeupDb = 3.0f;
     float mEqLowDb = 0.0f;
     float mEqMidDb = 0.0f;
     float mEqHighDb = 0.0f;
@@ -777,6 +890,8 @@ public:
     void setSoundGoodizer(bool enabled, int mode, float amount) {}
     void setMasterReverb(bool enabled, float size, float decay, float damp, float mix) {}
     void setMasterDelay(bool enabled, float timeSec, float feedback, float mix, bool pingPong) {}
+    void setMasterChorus(bool enabled, float rateHz, float depthMs, float mix) {}
+    void setMasterCompressor(bool enabled, float thresholdDb, float ratio, float attackMs, float releaseMs, float makeupGainDb) {}
     void setSpatialWidener(float amount) {}
     void setMasterPunch(float amount) {}
     void setPadBrightness(float brightness) {}

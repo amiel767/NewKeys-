@@ -154,10 +154,10 @@ fun DrumPadDialog(
                     .size(windowSizeDp)
                     .shadow(if (isPinned) 24.dp else 32.dp, RoundedCornerShape(20.dp))
                     .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xFF131622))
+                    .background(Color(0xFF0A0C13))
                     .border(
-                        1.2.dp,
-                        if (isPinned) NeonCyan.copy(alpha = 0.8f) else Color(0x33FFFFFF),
+                        1.dp,
+                        if (isPinned) NeonCyan.copy(alpha = 0.8f) else Color(0x22FFFFFF),
                         RoundedCornerShape(20.dp)
                     )
                     .padding(10.dp)
@@ -309,9 +309,15 @@ internal fun MainDrumPadSquareContent(
 ) {
     var isNativeBrowserOpen by remember { mutableStateOf(false) }
     var localAssignSample by remember { mutableStateOf<StorageItem?>(null) }
+    var currentDirPath by remember { mutableStateOf(lastPath.ifEmpty { "/storage/emulated/0/SoundStage/DrumPad" }) }
+    var tuneKnobValue by remember { mutableFloatStateOf(0.5f) }
+    var isFxEnabled by remember { mutableStateOf(true) }
+    var isSoloEnabled by remember { mutableStateOf(false) }
+    var selectedKitIndex by remember { mutableIntStateOf(0) }
+    val kitNames = listOf("KIT 01: TECHNO LIVE", "KIT 02: 808 TRAP", "KIT 03: ACOUSTIC JAZZ", "KIT 04: RETRO SYNTH", "KIT 05: LO-FI DREAMS")
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // ================= TOP BAR WITH TITLE, SOUNDFONT PICKER & MINIMALIST PIN =================
+        // ================= TOP BAR WITH PRO SAMPLING PAD TITLE =================
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -321,52 +327,60 @@ internal fun MainDrumPadSquareContent(
                         onDragWindow(dragAmount.x, dragAmount.y)
                     }
                 }
-                .padding(bottom = 8.dp),
+                .padding(horizontal = 4.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Repeat,
-                    contentDescription = null,
-                    tint = NeonCyan,
-                    modifier = Modifier.size(16.dp)
-                )
                 Text(
-                    text = "DrumPad",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    text = "DRUMPAD",
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White,
+                    letterSpacing = 1.5.sp
                 )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Text(
+                        text = "PRO",
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFFF43F5E),
+                        letterSpacing = 0.5.sp
+                    )
+                    Text(
+                        text = "SAMPLING PAD",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF64748B),
+                        letterSpacing = 0.5.sp
+                    )
+                }
             }
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            // Minimalist Close Button
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x22FFFFFF))
+                    .border(1.dp, Color(0x33FFFFFF), CircleShape)
+                    .clickable { onClose() }
+                    .testTag("btn_close_drumpad"),
+                contentAlignment = Alignment.Center
             ) {
-                // Close Button
-                Box(
-                    modifier = Modifier
-                        .size(26.dp)
-                        .clip(CircleShape)
-                        .background(Color(0x22FFFFFF))
-                        .border(1.dp, Color(0x33FFFFFF), CircleShape)
-                        .clickable { onClose() }
-                        .testTag("btn_close_drumpad"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(text = "✕", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                }
+                Text(text = "✕", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
             }
         }
 
-        // ================= TABS & LIVE CONTROLS =================
         val infinitePulse = rememberInfiniteTransition(label = "rec_pulse")
         val recPulseAlpha by infinitePulse.animateFloat(
-            initialValue = 0.4f,
+            initialValue = 0.35f,
             targetValue = 1.0f,
             animationSpec = infiniteRepeatable(
                 animation = tween(450),
@@ -375,577 +389,965 @@ internal fun MainDrumPadSquareContent(
             label = "rec_alpha"
         )
 
-        Row(
+        // ================= MAIN CONTENT AREA =================
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .weight(1f)
         ) {
-            // Left: Tempo, Time Signature & Stepper [-] ${loopBars}B [+]
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                // Tempo indicator
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF1E2232))
-                        .border(0.8.dp, Color(0x33FFFFFF), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 5.dp, vertical = 4.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "$bpm BPM",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                }
-
-                // Time Signature Indicator (linked to case rhythm signature, clickable)
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF181B26))
-                        .border(0.8.dp, NeonCyan.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                        .clickable { onToggleTimeSignature() }
-                        .padding(horizontal = 5.dp, vertical = 4.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = timeSignature,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = NeonCyanLight
-                    )
-                }
-
-                // Bar length stepper: [-] ${loopBars}B [+]
-                Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF181B26))
-                        .border(0.8.dp, Color(0x33FFFFFF), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 2.dp, vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(16.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0xFF24283B))
-                            .clickable { onDecrementLoopBars() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(text = "−", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    }
-
-                    Text(
-                        text = "${loopBars}B",
-                        fontSize = 8.5.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = NeonCyan,
-                        modifier = Modifier.padding(horizontal = 3.dp)
-                    )
-
-                    Box(
-                        modifier = Modifier
-                            .size(16.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0xFF24283B))
-                            .clickable { onIncrementLoopBars() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(text = "+", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    }
-                }
-            }
-
-            // Center: Tabs [ Pads | Fichiers | Loops ]
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF1C1F2D))
-                    .padding(2.dp),
-                horizontalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                listOf(
-                    "pad" to "Pads",
-                    "files" to "Fichiers",
-                    "loops" to "Loops"
-                ).forEach { (tabId, label) ->
-                    val isSel = (tabId == activeTab)
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(if (isSel) NeonCyan else Color.Transparent)
-                            .clickable { onTabChange(tabId) }
-                            .padding(horizontal = 7.dp, vertical = 4.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = label,
-                            fontSize = 9.sp,
-                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSel) Color(0xFF002233) else TextDim
-                        )
-                    }
-                }
-            }
-
-            // Right: Minimal Loop Arm Icon + Pro Studio REC Button
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                // Minimal Loop Arm Button
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(
-                            if (isArmed) Color(0xFF382D10)
-                            else Color(0xFF1E2232)
-                        )
-                        .border(
-                            width = 1.dp,
-                            color = if (isArmed) NeonCyan.copy(alpha = recPulseAlpha) else Color(0x33FFFFFF),
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                        .clickable { onToggleArmLoop() }
-                        .padding(horizontal = 5.dp, vertical = 4.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Repeat,
-                            contentDescription = "Loop Arm",
-                            tint = if (isArmed) NeonCyan else TextDim,
-                            modifier = Modifier.size(11.dp)
-                        )
-                        Text(
-                            text = if (isArmed) "ARM" else "Loop",
-                            fontSize = 8.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isArmed) NeonCyanLight else TextDim
-                        )
-                    }
-                }
-
-                // Studio REC Icon Button (Pro DrumPad Record)
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(
-                            if (isRecording) Color(0xFF3B0D14)
-                            else Color(0xFF1E2232)
-                        )
-                        .border(
-                            width = 1.dp,
-                            color = if (isRecording) MuteRed.copy(alpha = recPulseAlpha) else Color(0x33FFFFFF),
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                        .clickable {
-                            if (isRecording) {
-                                onStopRecording()
-                            } else {
-                                onStartRecording()
-                            }
-                        }
-                        .padding(horizontal = 7.dp, vertical = 4.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        if (isRendering) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(10.dp),
-                                color = NeonCyan,
-                                strokeWidth = 1.5.dp
-                            )
-                        } else {
-                            // Studio Record Glowing Dot
-                            Box(
-                                modifier = Modifier
-                                    .size(7.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (isRecording) MuteRed.copy(alpha = recPulseAlpha)
-                                        else MuteRed
-                                    )
-                            )
-                        }
-                        Text(
-                            text = if (isRecording) "REC..." else "REC",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (isRecording) MuteRed else Color.White
-                        )
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        // ================= TAB CONTENT =================
-        when (activeTab) {
-            "pad" -> {
-                // EXACTLY 8 PADS (2 Rows x 4 Columns) + Volume & Reverb Knobs
-                val currentPads = drumPads.take(8)
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // 2 rows x 4 columns Grid (8 Cases)
+            when (activeTab) {
+                "pad" -> {
+                    // MAIN PRO PAD VIEW: 6 PADS (2 Rows x 3 Columns) + PRO HARDWARE DECK
                     Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
+                        modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        (0..1).forEach { rowIndex ->
-                            Row(
+                        // --- 6 PRO PADS MATRIX (2 rows x 3 columns) ---
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            (0..1).forEach { rowIndex ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .weight(1f),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    (0..2).forEach { colIndex ->
+                                        val padIndex = rowIndex * 3 + colIndex
+                                        val pad = drumPads.getOrNull(padIndex)
+                                        ProDrumPadCell(
+                                            padIndex = padIndex,
+                                            pad = pad,
+                                            onPress = {
+                                                if (pad != null) onPadPressed(pad.id)
+                                                else onPadPressed(padIndex)
+                                            },
+                                            onRelease = {
+                                                if (pad != null) onPadReleased(pad.id)
+                                                else onPadReleased(padIndex)
+                                            },
+                                            onLongPress = {
+                                                if (pad != null) onLongPressPad(pad)
+                                            },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // --- BOTTOM PRO HARDWARE DECK ---
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(130.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFF0F121C))
+                                .border(1.dp, Color(0xFF202638), RoundedCornerShape(12.dp))
+                                .padding(6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // 1. LEFT: OLED DISPLAY & MODE BUTTONS
+                            Column(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .weight(1f),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    .weight(1.35f)
+                                    .fillMaxHeight(),
+                                verticalArrangement = Arrangement.SpaceBetween
                             ) {
-                                (0..3).forEach { colIndex ->
-                                    val padIndex = rowIndex * 4 + colIndex
-                                    val pad = currentPads.getOrNull(padIndex)
+                                // OLED Screen Box
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(82.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(
+                                            Brush.verticalGradient(
+                                                listOf(Color(0xFF0A0F1A), Color(0xFF050810))
+                                            )
+                                        )
+                                        .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(8.dp))
+                                        .padding(horizontal = 6.dp, vertical = 4.dp)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.fillMaxSize(),
+                                        verticalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        // Header: Kit Name
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = kitNames[selectedKitIndex % kitNames.size],
+                                                fontSize = 8.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF00E5FF),
+                                                letterSpacing = 0.5.sp
+                                            )
+                                            Text(
+                                                text = "$timeSignature • ${loopBars} BARS",
+                                                fontSize = 7.5.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Color(0xFF94A3B8)
+                                            )
+                                        }
+
+                                        // Center: Large BPM + Audio Waveform Canvas
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.Bottom,
+                                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                            ) {
+                                                Text(
+                                                    text = "$bpm",
+                                                    fontSize = 24.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = Color.White,
+                                                    letterSpacing = (-0.5).sp
+                                                )
+                                                Text(
+                                                    text = "BPM",
+                                                    fontSize = 8.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF00E5FF),
+                                                    modifier = Modifier.padding(bottom = 3.dp)
+                                                )
+                                            }
+
+                                            // Animated Cyan Waveform Canvas
+                                            val infiniteWave = rememberInfiniteTransition(label = "oled_wave")
+                                            val wavePhase by infiniteWave.animateFloat(
+                                                initialValue = 0f,
+                                                targetValue = (2 * Math.PI).toFloat(),
+                                                animationSpec = infiniteRepeatable(
+                                                    animation = tween(1200),
+                                                    repeatMode = RepeatMode.Restart
+                                                ),
+                                                label = "wave_phase"
+                                            )
+
+                                            androidx.compose.foundation.Canvas(
+                                                modifier = Modifier
+                                                    .width(62.dp)
+                                                    .height(20.dp)
+                                            ) {
+                                                val width = size.width
+                                                val height = size.height
+                                                val centerY = height / 2f
+                                                val points = 24
+                                                for (i in 0 until points - 1) {
+                                                    val x1 = (i.toFloat() / (points - 1)) * width
+                                                    val x2 = ((i + 1).toFloat() / (points - 1)) * width
+                                                    val y1 = centerY + (kotlin.math.sin(wavePhase + (i * 0.4f)) * (height * 0.35f)).toFloat()
+                                                    val y2 = centerY + (kotlin.math.sin(wavePhase + ((i + 1) * 0.4f)) * (height * 0.35f)).toFloat()
+                                                    drawLine(
+                                                        color = Color(0xFF00E5FF),
+                                                        start = androidx.compose.ui.geometry.Offset(x1, y1),
+                                                        end = androidx.compose.ui.geometry.Offset(x2, y2),
+                                                        strokeWidth = 1.5.dp.toPx()
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        // Bottom badges: FX ON | LOOP | REC
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(3.dp))
+                                                    .background(if (isFxEnabled) Color(0xFF00E5FF).copy(alpha = 0.2f) else Color(0x14FFFFFF))
+                                                    .border(0.5.dp, if (isFxEnabled) Color(0xFF00E5FF) else Color(0x22FFFFFF), RoundedCornerShape(3.dp))
+                                                    .clickable { isFxEnabled = !isFxEnabled }
+                                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                                            ) {
+                                                Text(
+                                                    text = if (isFxEnabled) "FX: ON" else "FX: OFF",
+                                                    fontSize = 7.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isFxEnabled) Color(0xFF00E5FF) else Color(0xFF64748B)
+                                                )
+                                            }
+
+                                            Text(
+                                                text = "LOOP ${loopBars * 4}b",
+                                                fontSize = 7.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF94A3B8)
+                                            )
+
+                                            Spacer(modifier = Modifier.weight(1f))
+
+                                            // REC indicator dot
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(5.dp)
+                                                        .clip(CircleShape)
+                                                        .background(
+                                                            if (isRecording) Color(0xFFF43F5E).copy(alpha = recPulseAlpha)
+                                                            else Color(0xFF64748B)
+                                                        )
+                                                )
+                                                Text(
+                                                    text = if (isRecording) "REC" else "IDLE",
+                                                    fontSize = 7.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isRecording) Color(0xFFF43F5E) else Color(0xFF64748B)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // 5 Mode Buttons below OLED
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(28.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // [Pads]
                                     Box(
                                         modifier = Modifier
                                             .weight(1f)
                                             .fillMaxHeight()
+                                            .clip(RoundedCornerShape(5.dp))
+                                            .background(Color(0xFF00E5FF))
+                                            .clickable { onTabChange("pad") },
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        if (pad != null) {
-                                            FluidSquareDrumPadCell(
-                                                pad = pad,
-                                                onPress = { onPadPressed(pad.id) },
-                                                onRelease = { onPadReleased(pad.id) },
-                                                onLongPress = { onLongPressPad(pad) }
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Vertical 3D Realistic Knobs Column on the right
-                    Column(
-                        modifier = Modifier
-                            .width(68.dp)
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFF181B26))
-                            .border(0.8.dp, Color(0x22FFFFFF), RoundedCornerShape(12.dp))
-                            .padding(vertical = 8.dp, horizontal = 4.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        Led3DKnob(
-                            value = volume,
-                            onValueChange = onVolumeChange,
-                            label = "VOLUME",
-                            showFloatingTooltipOnTouch = false,
-                            size = 34.dp,
-                            baseColor = NeonCyan
-                        )
-                    }
-                }
-            }
-            "files" -> {
-                // FILES TAB: Elements of /DrumPad in clean AOSP style list
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Éléments audio /DrumPad (Court = Jouer · Long = Assigner)",
-                            fontSize = 8.5.sp,
-                            color = TextDim2
-                        )
-                        if (onImportAudioFile != null) {
-                            Box(
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .clip(CircleShape)
-                                    .background(NeonCyan)
-                                    .clickable { isNativeBrowserOpen = true },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Folder,
-                                    contentDescription = "Parcourir Stockage / SD",
-                                    tint = Color(0xFF0F2537),
-                                    modifier = Modifier.size(15.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    if (isNativeBrowserOpen) {
-                        NativeFileBrowserDialog(
-                            isOpen = isNativeBrowserOpen,
-                            onClose = { isNativeBrowserOpen = false },
-                            initialPath = lastPath.ifEmpty { "/storage/emulated/0/SoundStage/DrumPad" },
-                            title = "Explorateur DrumPad (Stockage & SD)",
-                            onPathChanged = { newPath -> onUpdateLastPath(newPath) },
-                            onFileSelected = { file ->
-                                val sampleItem = StorageItem(name = file.name, path = file.absolutePath, isDirectory = false)
-                                onPlaySample(sampleItem)
-                                localAssignSample = sampleItem
-                                isNativeBrowserOpen = false
-                            }
-                        )
-                    }
-
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        if (audioFiles.isEmpty()) {
-                            item {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "Aucun fichier audio dans /LiveKeys/DrumPad",
-                                        fontSize = 10.sp,
-                                        color = TextDim
-                                    )
-                                }
-                            }
-                        } else {
-                            items(audioFiles) { file ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(Color(0xFF1E212E))
-                                        .border(0.8.dp, Color(0x1AFFFFFF), RoundedCornerShape(8.dp))
-                                        .combinedClickable(
-                                            onClick = { onPlaySample(file) },
-                                            onLongClick = { localAssignSample = file }
-                                        )
-                                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.PlayArrow,
-                                            contentDescription = null,
-                                            tint = NeonCyan,
-                                            modifier = Modifier.size(13.dp)
-                                        )
-                                        Column {
-                                            Text(
-                                                text = file.name,
-                                                fontSize = 10.5.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = Color.White,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            "loops" -> {
-                // LOOPS TAB: Recorded drum pad loops with Reveal Actions & Delete pattern
-                var revealedLoopName by remember { mutableStateOf<String?>(null) }
-                var fileToDelete by remember { mutableStateOf<StorageItem?>(null) }
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Boucles enregistrées (Court = Jouer · Long = Assigner / Supprimer)",
-                            fontSize = 8.5.sp,
-                            color = TextDim2
-                        )
-                        Text(
-                            text = "${loopFiles.size} boucle${if (loopFiles.size > 1) "s" else ""}",
-                            fontSize = 8.5.sp,
-                            color = NeonCyanLight
-                        )
-                    }
-
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        if (loopFiles.isEmpty()) {
-                            item {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "Aucune boucle enregistrée.",
-                                        fontSize = 10.sp,
-                                        color = TextDim
-                                    )
-                                }
-                            }
-                        } else {
-                            items(loopFiles) { file ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(Color(0xFF222533))
-                                        .border(
-                                            0.8.dp,
-                                            Color(0x18FFFFFF),
-                                            RoundedCornerShape(8.dp)
-                                        )
-                                        .combinedClickable(
-                                            onClick = { onPlaySample(file) },
-                                            onLongClick = { localAssignSample = file }
-                                        )
-                                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(24.dp)
-                                                .clip(CircleShape)
-                                                .background(Color(0xFF0F2537)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text("🔄", fontSize = 10.sp)
-                                        }
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = file.name,
-                                                fontSize = 10.5.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = Color.White,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
+                                        Text(text = "Pads", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color(0xFF041E28))
                                     }
 
-                                    // Delete Button (Trash icon)
+                                    // [Fichiers]
                                     Box(
                                         modifier = Modifier
-                                            .size(24.dp)
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .background(Color(0x22FB4570))
-                                            .border(1.dp, MuteRed.copy(alpha = 0.85f), RoundedCornerShape(6.dp))
+                                            .weight(1.1f)
+                                            .fillMaxHeight()
+                                            .clip(RoundedCornerShape(5.dp))
+                                            .background(Color(0xFF1E2232))
+                                            .border(0.8.dp, Color(0x22FFFFFF), RoundedCornerShape(5.dp))
+                                            .clickable { onTabChange("files") },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(text = "Fichiers", fontSize = 8.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                                    }
+
+                                    // [Loops]
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                            .clip(RoundedCornerShape(5.dp))
+                                            .background(Color(0xFF1E2232))
+                                            .border(0.8.dp, Color(0x22FFFFFF), RoundedCornerShape(5.dp))
+                                            .clickable { onTabChange("loops") },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(text = "Loops", fontSize = 8.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                                    }
+
+                                    // [→ LOOP]
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                            .clip(RoundedCornerShape(5.dp))
+                                            .background(if (isArmed) Color(0xFF00E5FF).copy(alpha = 0.25f) else Color(0xFF1E2232))
+                                            .border(0.8.dp, if (isArmed) Color(0xFF00E5FF) else Color(0x22FFFFFF), RoundedCornerShape(5.dp))
+                                            .clickable { onToggleArmLoop() },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "→ LOOP",
+                                            fontSize = 7.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isArmed) Color(0xFF00E5FF) else Color(0xFFCBD5E1)
+                                        )
+                                    }
+
+                                    // [● REC]
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                            .clip(RoundedCornerShape(5.dp))
+                                            .background(
+                                                if (isRecording) Color(0xFF4C0519)
+                                                else Color(0xFF2A121A)
+                                            )
+                                            .border(
+                                                0.8.dp,
+                                                if (isRecording) Color(0xFFF43F5E).copy(alpha = recPulseAlpha) else Color(0xFFF43F5E).copy(alpha = 0.6f),
+                                                RoundedCornerShape(5.dp)
+                                            )
                                             .clickable {
-                                                fileToDelete = file
+                                                if (isRecording) onStopRecording()
+                                                else onStartRecording()
                                             },
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Delete,
-                                            contentDescription = "Supprimer",
-                                            tint = MuteRed,
-                                            modifier = Modifier.size(13.dp)
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(5.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color(0xFFF43F5E))
+                                            )
+                                            Text(
+                                                text = if (isRecording) "REC" else "REC",
+                                                fontSize = 7.5.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFFF43F5E)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 2. CENTER: F1/F2/F3 + D-PAD + MENU/EXIT
+                            Row(
+                                modifier = Modifier
+                                    .weight(1.15f)
+                                    .fillMaxHeight(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Matrix: F-Keys + D-Pad
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight(),
+                                    verticalArrangement = Arrangement.SpaceBetween,
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    // F1, F2, F3 Row
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                    ) {
+                                        // F1: Cycle Kit
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(20.dp)
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(Color(0xFF1E2232))
+                                                .border(0.8.dp, Color(0x22FFFFFF), RoundedCornerShape(4.dp))
+                                                .clickable {
+                                                    selectedKitIndex = (selectedKitIndex + 1) % kitNames.size
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(text = "F1", fontSize = 7.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00E5FF))
+                                        }
+
+                                        // F2: Mute / Solo
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(20.dp)
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(if (isSoloEnabled) Color(0xFFF59E0B).copy(alpha = 0.3f) else Color(0xFF1E2232))
+                                                .border(0.8.dp, if (isSoloEnabled) Color(0xFFF59E0B) else Color(0x22FFFFFF), RoundedCornerShape(4.dp))
+                                                .clickable { isSoloEnabled = !isSoloEnabled },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(text = "F2", fontSize = 7.5.sp, fontWeight = FontWeight.Bold, color = if (isSoloEnabled) Color(0xFFF59E0B) else Color.White)
+                                        }
+
+                                        // F3: FX Toggle
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(20.dp)
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(if (isFxEnabled) Color(0xFF10B981).copy(alpha = 0.3f) else Color(0xFF1E2232))
+                                                .border(0.8.dp, if (isFxEnabled) Color(0xFF10B981) else Color(0x22FFFFFF), RoundedCornerShape(4.dp))
+                                                .clickable { isFxEnabled = !isFxEnabled },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(text = "F3", fontSize = 7.5.sp, fontWeight = FontWeight.Bold, color = if (isFxEnabled) Color(0xFF10B981) else Color.White)
+                                        }
+                                    }
+
+                                    // Hardware D-Pad Cross (Up, Down, Left, Right + OK)
+                                    Box(
+                                        modifier = Modifier
+                                            .size(86.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color(0xFF141724))
+                                            .border(1.dp, Color(0xFF23283B), RoundedCornerShape(8.dp)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        // UP: Loop Bars / Tempo increment
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.TopCenter)
+                                                .size(24.dp)
+                                                .clickable { onIncrementLoopBars() },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(text = "▲", fontSize = 9.sp, color = Color(0xFF94A3B8))
+                                        }
+
+                                        // DOWN: Loop Bars / Tempo decrement
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.BottomCenter)
+                                                .size(24.dp)
+                                                .clickable { onDecrementLoopBars() },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(text = "▼", fontSize = 9.sp, color = Color(0xFF94A3B8))
+                                        }
+
+                                        // LEFT: Toggle Time Signature
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.CenterStart)
+                                                .size(24.dp)
+                                                .clickable { onToggleTimeSignature() },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(text = "◀", fontSize = 9.sp, color = Color(0xFF94A3B8))
+                                        }
+
+                                        // RIGHT: Toggle Time Signature
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.CenterEnd)
+                                                .size(24.dp)
+                                                .clickable { onToggleTimeSignature() },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(text = "▶", fontSize = 9.sp, color = Color(0xFF94A3B8))
+                                        }
+
+                                        // CENTER OK BUTTON (Glowing Neon Cyan)
+                                        Box(
+                                            modifier = Modifier
+                                                .size(26.dp)
+                                                .clip(CircleShape)
+                                                .background(
+                                                    Brush.radialGradient(
+                                                        listOf(Color(0xFF00E5FF), Color(0xFF0891B2))
+                                                    )
+                                                )
+                                                .border(1.2.dp, Color(0xFFE0F2FE), CircleShape)
+                                                .clickable {
+                                                    onPadPressed(4)
+                                                    onPadReleased(4)
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "OK",
+                                                fontSize = 8.5.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = Color(0xFF082F49)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Side Buttons: MENU & EXIT
+                                Column(
+                                    modifier = Modifier
+                                        .width(28.dp)
+                                        .fillMaxHeight(),
+                                    verticalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(48.dp)
+                                            .clip(RoundedCornerShape(5.dp))
+                                            .background(Color(0xFF1E2232))
+                                            .border(0.8.dp, Color(0x22FFFFFF), RoundedCornerShape(5.dp))
+                                            .clickable { isNativeBrowserOpen = true },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(text = "MENU", fontSize = 7.sp, fontWeight = FontWeight.Bold, color = Color(0xFFCBD5E1))
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(48.dp)
+                                            .clip(RoundedCornerShape(5.dp))
+                                            .background(Color(0xFF1E2232))
+                                            .border(0.8.dp, Color(0x22FFFFFF), RoundedCornerShape(5.dp))
+                                            .clickable { onTabChange("pad") },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(text = "EXIT", fontSize = 7.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF43F5E))
+                                    }
+                                }
+                            }
+
+                            // 3. RIGHT: 3 ANALOG 3D ROTARY KNOBS WITH GLOWING LED RINGS
+                            Column(
+                                modifier = Modifier
+                                    .width(88.dp)
+                                    .fillMaxHeight(),
+                                verticalArrangement = Arrangement.SpaceBetween,
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                // Top row: CTRL 1 (Reverb/Red) & CTRL 2 (Tune/Cyan)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceEvenly,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // CTRL 1 (Red LED Knob) -> Reverb
+                                    Led3DKnob(
+                                        value = reverb,
+                                        onValueChange = onReverbChange,
+                                        label = "CTRL 1",
+                                        showFloatingTooltipOnTouch = false,
+                                        size = 32.dp,
+                                        baseColor = Color(0xFFF43F5E),
+                                        dynamicColorMorph = false
+                                    )
+
+                                    // CTRL 2 (Cyan LED Knob) -> Tune
+                                    Led3DKnob(
+                                        value = tuneKnobValue,
+                                        onValueChange = { tuneKnobValue = it },
+                                        label = "CTRL 2",
+                                        showFloatingTooltipOnTouch = false,
+                                        size = 32.dp,
+                                        baseColor = Color(0xFF00E5FF),
+                                        dynamicColorMorph = false
+                                    )
+                                }
+
+                                // Bottom row: MASTER VOL (Large Knob with Purple LED ring)
+                                Led3DKnob(
+                                    value = volume,
+                                    onValueChange = onVolumeChange,
+                                    label = "MASTER VOL",
+                                    showFloatingTooltipOnTouch = false,
+                                    size = 42.dp,
+                                    baseColor = Color(0xFFD946EF),
+                                    dynamicColorMorph = false
+                                )
+                            }
+                        }
+                    }
+                }
+
+                "files" -> {
+                    // IN-WINDOW FILE EXPLORER FOR INTERNAL STORAGE & SD
+                    val currentDir = remember(currentDirPath) {
+                        val f = java.io.File(currentDirPath)
+                        if (f.exists() && f.isDirectory) f else java.io.File("/storage/emulated/0")
+                    }
+                    val fileEntries = remember(currentDir) {
+                        try {
+                            currentDir.listFiles()?.filter { !it.name.startsWith(".") }?.sortedWith(
+                                compareBy<java.io.File> { !it.isDirectory }.thenBy { it.name.lowercase() }
+                            ) ?: emptyList()
+                        } catch (e: Exception) {
+                            emptyList()
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF10131F))
+                            .border(1.dp, Color(0xFF22283A), RoundedCornerShape(12.dp))
+                            .padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        // Header: Navigation and Back to Pads button
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFF00E5FF))
+                                    .clickable { onTabChange("pad") }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = "← Retour aux Pads",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF041E28)
+                                )
+                            }
+
+                            Text(
+                                text = "Court = Preview · Long = Assigner au Pad",
+                                fontSize = 8.sp,
+                                color = Color(0xFF94A3B8)
+                            )
+                        }
+
+                        // Storage Quick Jump Chips
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            listOf(
+                                "DrumPad" to "/storage/emulated/0/SoundStage/DrumPad",
+                                "SoundStage" to "/storage/emulated/0/SoundStage",
+                                "Interne" to "/storage/emulated/0",
+                                "Music" to "/storage/emulated/0/Music",
+                                "Download" to "/storage/emulated/0/Download"
+                            ).forEach { (lbl, pth) ->
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(5.dp))
+                                        .background(Color(0xFF1E2232))
+                                        .border(0.8.dp, Color(0x22FFFFFF), RoundedCornerShape(5.dp))
+                                        .clickable {
+                                            val targetF = java.io.File(pth)
+                                            if (targetF.exists()) {
+                                                currentDirPath = targetF.absolutePath
+                                                onUpdateLastPath(targetF.absolutePath)
+                                            }
+                                        }
+                                        .padding(vertical = 4.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(text = lbl, fontSize = 7.5.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                                }
+                            }
+                        }
+
+                        // Parent Directory Row
+                        val parent = currentDir.parentFile
+                        if (parent != null && parent.canRead()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFF181B26))
+                                    .clickable {
+                                        currentDirPath = parent.absolutePath
+                                        onUpdateLastPath(parent.absolutePath)
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(text = "📁 ..", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00E5FF))
+                                Text(
+                                    text = "Dossier parent (${currentDir.name.ifEmpty { "/" }})",
+                                    fontSize = 9.sp,
+                                    color = Color(0xFFCBD5E1)
+                                )
+                            }
+                        }
+
+                        // Files & Folders List
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            if (fileEntries.isEmpty()) {
+                                item {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(20.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "Aucun fichier audio trouvé dans ce dossier",
+                                            fontSize = 9.5.sp,
+                                            color = Color(0xFF64748B)
                                         )
+                                    }
+                                }
+                            } else {
+                                items(fileEntries) { file ->
+                                    val isAudio = file.extension.lowercase() in listOf("wav", "mp3", "ogg", "flac", "sf2", "aif", "m4a")
+                                    val storageItem = StorageItem(name = file.name, path = file.absolutePath, isDirectory = file.isDirectory)
+
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(7.dp))
+                                            .background(if (file.isDirectory) Color(0xFF161A28) else Color(0xFF1C2132))
+                                            .border(0.8.dp, if (file.isDirectory) Color(0x18FFFFFF) else Color(0x3300E5FF), RoundedCornerShape(7.dp))
+                                            .combinedClickable(
+                                                onClick = {
+                                                    if (file.isDirectory) {
+                                                        currentDirPath = file.absolutePath
+                                                        onUpdateLastPath(file.absolutePath)
+                                                    } else {
+                                                        // Instant Preview on Single Tap
+                                                        onPlaySample(storageItem)
+                                                    }
+                                                },
+                                                onLongClick = {
+                                                    if (!file.isDirectory) {
+                                                        localAssignSample = storageItem
+                                                    }
+                                                }
+                                            )
+                                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text(
+                                                text = if (file.isDirectory) "📁" else if (isAudio) "🎵" else "📄",
+                                                fontSize = 11.sp
+                                            )
+                                            Column {
+                                                Text(
+                                                    text = file.name,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = Color.White,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                if (!file.isDirectory) {
+                                                    Text(
+                                                        text = "${(file.length() / 1024)} KB · Appui court = Play · Long = Assigner",
+                                                        fontSize = 7.5.sp,
+                                                        color = Color(0xFF94A3B8)
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        if (!file.isDirectory) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(4.dp))
+                                                    .background(Color(0xFF00E5FF).copy(alpha = 0.2f))
+                                                    .border(0.8.dp, Color(0xFF00E5FF), RoundedCornerShape(4.dp))
+                                                    .clickable { localAssignSample = storageItem }
+                                                    .padding(horizontal = 6.dp, vertical = 3.dp)
+                                            ) {
+                                                Text(text = "Assigner", fontSize = 7.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00E5FF))
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
                     }
+                }
 
-                    // Delete Confirmation Dialog
-                    if (fileToDelete != null) {
-                        val target = fileToDelete!!
-                        AlertDialog(
-                            onDismissRequest = { fileToDelete = null },
-                            title = {
+                "loops" -> {
+                    // IN-WINDOW RECORDED LOOPS LIBRARY
+                    var fileToDelete by remember { mutableStateOf<StorageItem?>(null) }
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF10131F))
+                            .border(1.dp, Color(0xFF22283A), RoundedCornerShape(12.dp))
+                            .padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        // Header
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFF00E5FF))
+                                    .clickable { onTabChange("pad") }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
                                 Text(
-                                    text = "Supprimer la boucle ?",
+                                    text = "← Retour aux Pads",
+                                    fontSize = 9.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    fontSize = 13.sp
+                                    color = Color(0xFF041E28)
                                 )
-                            },
-                            text = {
-                                Text(
-                                    text = "Voulez-vous vraiment supprimer définitivement « ${target.name} » ?",
-                                    color = TextDim,
-                                    fontSize = 11.sp
-                                )
-                            },
-                            confirmButton = {
-                                TextButton(
-                                    onClick = {
-                                        onDeleteLoopFile(target)
-                                        fileToDelete = null
-                                        revealedLoopName = null
-                                    },
-                                    colors = ButtonDefaults.textButtonColors(contentColor = MuteRed)
-                                ) {
-                                    Text("Supprimer", fontWeight = FontWeight.Bold)
+                            }
+
+                            Text(
+                                text = "${loopFiles.size} boucle(s) enregistrée(s)",
+                                fontSize = 8.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF00E5FF)
+                            )
+                        }
+
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            if (loopFiles.isEmpty()) {
+                                item {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(30.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text(text = "🔄", fontSize = 24.sp)
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Text(
+                                                text = "Aucune boucle enregistrée pour le moment.",
+                                                fontSize = 10.sp,
+                                                color = Color(0xFF94A3B8)
+                                            )
+                                            Text(
+                                                text = "Appuyez sur [● REC] pour capturer votre rythme en direct.",
+                                                fontSize = 8.sp,
+                                                color = Color(0xFF64748B)
+                                            )
+                                        }
+                                    }
                                 }
-                            },
-                            dismissButton = {
-                                TextButton(onClick = { fileToDelete = null }) {
-                                    Text("Annuler", color = TextDim)
+                            } else {
+                                items(loopFiles) { file ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color(0xFF1E2232))
+                                            .border(0.8.dp, Color(0x22FFFFFF), RoundedCornerShape(8.dp))
+                                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(24.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color(0xFF00E5FF).copy(alpha = 0.2f))
+                                                    .clickable { onPlaySample(file) },
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(text = "▶", fontSize = 10.sp, color = Color(0xFF00E5FF))
+                                            }
+                                            Column {
+                                                Text(
+                                                    text = file.name,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = Color.White,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    text = "Boucle Audio WAV",
+                                                    fontSize = 7.5.sp,
+                                                    color = Color(0xFF94A3B8)
+                                                )
+                                            }
+                                        }
+
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(4.dp))
+                                                    .background(Color(0xFF00E5FF).copy(alpha = 0.2f))
+                                                    .border(0.8.dp, Color(0xFF00E5FF), RoundedCornerShape(4.dp))
+                                                    .clickable { localAssignSample = file }
+                                                    .padding(horizontal = 6.dp, vertical = 3.dp)
+                                            ) {
+                                                Text(text = "Assigner", fontSize = 7.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00E5FF))
+                                            }
+
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(22.dp)
+                                                    .clip(RoundedCornerShape(4.dp))
+                                                    .background(Color(0x22F43F5E))
+                                                    .border(0.8.dp, Color(0xFFF43F5E), RoundedCornerShape(4.dp))
+                                                    .clickable { fileToDelete = file },
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(text = "✕", fontSize = 10.sp, color = Color(0xFFF43F5E), fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
                                 }
-                            },
-                            containerColor = Color(0xFF222638),
-                            shape = RoundedCornerShape(16.dp)
-                        )
+                            }
+                        }
+
+                        if (fileToDelete != null) {
+                            val target = fileToDelete!!
+                            AlertDialog(
+                                onDismissRequest = { fileToDelete = null },
+                                title = {
+                                    Text(text = "Supprimer la boucle ?", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 12.sp)
+                                },
+                                text = {
+                                    Text(text = "Voulez-vous supprimer « ${target.name} » ?", color = Color(0xFFCBD5E1), fontSize = 10.sp)
+                                },
+                                confirmButton = {
+                                    TextButton(
+                                        onClick = {
+                                            onDeleteLoopFile(target)
+                                            fileToDelete = null
+                                        },
+                                        colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFF43F5E))
+                                    ) {
+                                        Text("Supprimer", fontWeight = FontWeight.Bold)
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { fileToDelete = null }) {
+                                        Text("Annuler", color = Color(0xFF94A3B8))
+                                    }
+                                },
+                                containerColor = Color(0xFF1E2232),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -964,6 +1366,187 @@ internal fun MainDrumPadSquareContent(
             },
             onDismiss = { localAssignSample = null }
         )
+    }
+}
+
+@Composable
+fun ProDrumPadCell(
+    padIndex: Int,
+    pad: DrumPadItem?,
+    onPress: () -> Unit,
+    onRelease: () -> Unit,
+    onLongPress: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var isPressed by remember { mutableStateOf(false) }
+
+    // Authentic SVG definitions for 6 pads:
+    val defaultTags = listOf("P 01", "P 02", "P 03", "P 04", "P 05 [ACTIVE]", "P 06")
+    val defaultColors = listOf(
+        Color(0xFF00E5FF),
+        Color(0xFF10B981),
+        Color(0xFFF59E0B),
+        Color(0xFFD946EF),
+        Color(0xFF00E5FF),
+        Color(0xFFF43F5E)
+    )
+    val defaultTitles = listOf(
+        "KICK DRY",
+        "SNARE VERB",
+        "HI-HAT CLSD",
+        "TAMBOURINE",
+        "CLAP 808 ST",
+        "CRASH CYMBAL"
+    )
+    val defaultSubtitles = listOf(
+        "909 Acoustic Bass",
+        "Fat Gated Trap 04",
+        "Crisp Bright Edge",
+        "Studio Natural Perc",
+        "Stereo Wide Spread",
+        "18\" Heavy Dark Ride"
+    )
+
+    val tagText = defaultTags.getOrElse(padIndex) { "P ${padIndex + 1}" }
+    val tagColor = defaultColors.getOrElse(padIndex) { Color(0xFF00E5FF) }
+
+    val titleText = if (pad != null && pad.sampleFileName.isNotEmpty() && !pad.sampleFileName.startsWith("kick_808")) {
+        pad.sampleFileName.substringBeforeLast(".").uppercase()
+    } else if (pad != null && pad.label.isNotEmpty() && !pad.label.startsWith("PAD")) {
+        pad.label.uppercase()
+    } else {
+        defaultTitles.getOrElse(padIndex) { "SAMPLE ${padIndex + 1}" }
+    }
+
+    val subtitleText = if (pad != null && pad.sampleFilePath.isNotEmpty()) {
+        "Custom Wave Sample"
+    } else {
+        defaultSubtitles.getOrElse(padIndex) { "Studio Percussion" }
+    }
+
+    val isActivePad = (padIndex == 4) || (pad?.isPressed == true) || isPressed
+
+    val backgroundGradient = if (isPressed || (pad?.isPressed == true)) {
+        Brush.radialGradient(
+            colors = listOf(
+                tagColor.copy(alpha = 0.4f),
+                Color(0xFF1E2235),
+                Color(0xFF12141F)
+            )
+        )
+    } else {
+        Brush.verticalGradient(
+            colors = listOf(
+                Color(0xFF1B1E2B),
+                Color(0xFF12141F),
+                Color(0xFF0D0F17)
+            )
+        )
+    }
+
+    val borderBrush = if (isPressed || (pad?.isPressed == true)) {
+        Brush.verticalGradient(listOf(tagColor, tagColor.copy(alpha = 0.6f)))
+    } else if (isActivePad) {
+        Brush.verticalGradient(listOf(Color(0xFF3B435C), Color(0xFF222636)))
+    } else {
+        Brush.verticalGradient(listOf(Color(0xFF2C3144), Color(0xFF181B26)))
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .clip(RoundedCornerShape(12.dp))
+            .background(backgroundGradient)
+            .border(1.2.dp, borderBrush, RoundedCornerShape(12.dp))
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        isPressed = true
+                        onPress()
+                        tryAwaitRelease()
+                        isPressed = false
+                        onRelease()
+                    },
+                    onLongPress = {
+                        onLongPress()
+                    }
+                )
+            }
+            .padding(horizontal = 10.dp, vertical = 8.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Top glowing horizontal LED lightbar
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.4f)
+                    .height(3.5.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(
+                        if (isPressed || isActivePad) {
+                            Brush.horizontalGradient(
+                                listOf(
+                                    Color(0xFF00E5FF).copy(alpha = 0.7f),
+                                    Color(0xFF00E5FF),
+                                    Color(0xFF00E5FF).copy(alpha = 0.7f)
+                                )
+                            )
+                        } else {
+                            Brush.horizontalGradient(
+                                listOf(
+                                    Color(0xFFF43F5E).copy(alpha = 0.6f),
+                                    Color(0xFFF43F5E),
+                                    Color(0xFFF43F5E).copy(alpha = 0.6f)
+                                )
+                            )
+                        }
+                    )
+            )
+
+            // Pad Identifier & Name
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = tagText,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = tagColor,
+                    letterSpacing = 0.5.sp
+                )
+                Text(
+                    text = titleText,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = subtitleText,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = Color(0xFF7E8B9B),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            // Subtle tactile center circle
+            Box(
+                modifier = Modifier
+                    .size(22.dp)
+                    .align(Alignment.CenterHorizontally)
+                    .clip(CircleShape)
+                    .background(
+                        if (isPressed || (pad?.isPressed == true)) tagColor.copy(alpha = 0.25f)
+                        else Color(0x08FFFFFF)
+                    )
+            )
+        }
     }
 }
 

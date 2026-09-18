@@ -40,6 +40,8 @@ class AppStatePersistence(context: Context) {
         private const val KEY_DRUM_REVERB = "drum_reverb"
         private const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
         private const val KEY_SELECTED_SCALE_MODE = "selected_scale_mode"
+        private const val KEY_SNAPSHOTS_JSON = "snapshots_json"
+        private const val KEY_ACTIVE_SNAPSHOT_SLOT = "active_snapshot_slot"
     }
 
     data class SavedTrackData(
@@ -100,7 +102,9 @@ class AppStatePersistence(context: Context) {
         val tonicShimmer: Float? = null,
         val drumReverb: Float? = null,
         val keepScreenOn: Boolean? = null,
-        val selectedScaleMode: String? = null
+        val selectedScaleMode: String? = null,
+        val snapshots: Map<String, SubSceneSnapshot> = emptyMap(),
+        val activeSnapshotSlot: String? = null
     )
 
     fun saveAppState(
@@ -124,7 +128,9 @@ class AppStatePersistence(context: Context) {
         tonicShimmer: Float = 0.15f,
         drumReverb: Float = 0.24f,
         keepScreenOn: Boolean = true,
-        selectedScaleMode: String = "Majeur"
+        selectedScaleMode: String = "Majeur",
+        snapshots: Map<String, SubSceneSnapshot> = emptyMap(),
+        activeSnapshotSlot: String? = null
     ) {
         try {
             val tracksArray = JSONArray()
@@ -156,6 +162,10 @@ class AppStatePersistence(context: Context) {
                     put("eqHigh", fx.eqHigh.toDouble())
                     put("eqGain", fx.eqGain.toDouble())
                     put("isReverbEnabled", fx.isReverbEnabled)
+                    put("isChorusEnabled", fx.isChorusEnabled)
+                    put("chorusRate", fx.chorusRate.toDouble())
+                    put("chorusDepth", fx.chorusDepth.toDouble())
+                    put("chorusMix", fx.chorusMix.toDouble())
                     put("isSgEnabled", fx.isSgEnabled)
                     put("sgAmount", fx.sgAmount.toDouble())
                     put("sgMode", fx.sgMode)
@@ -164,6 +174,7 @@ class AppStatePersistence(context: Context) {
                     put("reverbSize", fx.reverbSize.toDouble())
                     put("reverbDecay", fx.reverbDecay.toDouble())
                     put("reverbDamp", fx.reverbDamp.toDouble())
+                    put("isCompEnabled", fx.isCompEnabled)
                     put("compThresh", fx.compThresh.toDouble())
                     put("compRatio", fx.compRatio.toDouble())
                     put("compAttack", fx.compAttack.toDouble())
@@ -175,6 +186,38 @@ class AppStatePersistence(context: Context) {
                     put("delayPingPong", fx.delayPingPong.toDouble())
                 }
                 fxObject.put(trackId.toString(), o)
+            }
+
+            val snapshotsObject = JSONObject()
+            snapshots.forEach { (slotKey, snap) ->
+                val sObj = JSONObject().apply {
+                    put("slotName", snap.slotName)
+                    put("globalTranspose", snap.globalTranspose)
+                    put("globalOctaveShift", snap.globalOctaveShift)
+                    put("masterVolume", snap.masterVolume.toDouble())
+                    put("timestamp", snap.timestamp)
+                    val tArray = JSONArray()
+                    snap.tracks.forEach { t ->
+                        val to = JSONObject().apply {
+                            put("id", t.id)
+                            put("volume", t.volume.toDouble())
+                            put("pan", t.pan.toDouble())
+                            put("isMuted", t.isMuted)
+                            put("isSolo", t.isSolo)
+                            put("isEnabled", t.isEnabled)
+                            put("soundfontName", t.soundfontName)
+                            put("patchName", t.patchName)
+                            put("bank", t.bank)
+                            put("program", t.program)
+                            put("transpose", t.transpose)
+                            put("octave", t.octave)
+                            put("reverbSend", t.reverbSend.toDouble())
+                        }
+                        tArray.put(to)
+                    }
+                    put("tracks", tArray)
+                }
+                snapshotsObject.put(slotKey, sObj)
             }
 
             val slotsArray = JSONArray()
@@ -218,6 +261,8 @@ class AppStatePersistence(context: Context) {
                 putFloat(KEY_MASTER_VOLUME, masterVolume)
                 putString(KEY_TRACKS_JSON, tracksArray.toString())
                 putString(KEY_FX_PARAMETERS_JSON, fxObject.toString())
+                putString(KEY_SNAPSHOTS_JSON, snapshotsObject.toString())
+                putString(KEY_ACTIVE_SNAPSHOT_SLOT, activeSnapshotSlot)
                 putString(KEY_AUDIO_SLOTS_JSON, slotsArray.toString())
                 putString(KEY_DRUM_PADS_JSON, drumArray.toString())
                 putInt(KEY_ACTIVE_SF2_TRACK_ID, activeSf2TrackId)
@@ -301,14 +346,19 @@ class AppStatePersistence(context: Context) {
                             eqHigh = o.optDouble("eqHigh", 0.5).toFloat(),
                             eqGain = o.optDouble("eqGain", 0.5).toFloat(),
                             isReverbEnabled = o.optBoolean("isReverbEnabled", false),
-                            isSgEnabled = o.optBoolean("isSgEnabled", false),
-                            sgAmount = o.optDouble("sgAmount", 0.0).toFloat(),
-                            sgMode = o.optInt("sgMode", 0),
                             reverbPreset = o.optString("reverbPreset", "Concert Hall"),
                             reverbMix = o.optDouble("reverbMix", 0.24).toFloat(),
                             reverbSize = o.optDouble("reverbSize", 0.6).toFloat(),
                             reverbDecay = o.optDouble("reverbDecay", 0.45).toFloat(),
                             reverbDamp = o.optDouble("reverbDamp", 0.3).toFloat(),
+                            isChorusEnabled = o.optBoolean("isChorusEnabled", false),
+                            chorusRate = o.optDouble("chorusRate", 0.35).toFloat(),
+                            chorusDepth = o.optDouble("chorusDepth", 0.50).toFloat(),
+                            chorusMix = o.optDouble("chorusMix", 0.0).toFloat(),
+                            isSgEnabled = o.optBoolean("isSgEnabled", false),
+                            sgAmount = o.optDouble("sgAmount", 0.0).toFloat(),
+                            sgMode = o.optInt("sgMode", 0),
+                            isCompEnabled = o.optBoolean("isCompEnabled", false),
                             compThresh = o.optDouble("compThresh", 0.4).toFloat(),
                             compRatio = o.optDouble("compRatio", 0.5).toFloat(),
                             compAttack = o.optDouble("compAttack", 0.2).toFloat(),
@@ -322,6 +372,60 @@ class AppStatePersistence(context: Context) {
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error parsing saved fx parameters: ${e.message}")
+                }
+            }
+
+            val snapshotsMap = mutableMapOf<String, SubSceneSnapshot>()
+            val snapshotsJsonStr = prefs.getString(KEY_SNAPSHOTS_JSON, null)
+            val activeSnapshotSlot = prefs.getString(KEY_ACTIVE_SNAPSHOT_SLOT, null)
+            if (snapshotsJsonStr != null) {
+                try {
+                    val sObj = JSONObject(snapshotsJsonStr)
+                    val sKeys = sObj.keys()
+                    while (sKeys.hasNext()) {
+                        val slotKey = sKeys.next()
+                        val snapJson = sObj.getJSONObject(slotKey)
+                        val slotName = snapJson.optString("slotName", slotKey)
+                        val globalTranspose = snapJson.optInt("globalTranspose", 0)
+                        val globalOctaveShift = snapJson.optInt("globalOctaveShift", 0)
+                        val masterVol = snapJson.optDouble("masterVolume", 0.85).toFloat()
+                        val timestamp = snapJson.optLong("timestamp", System.currentTimeMillis())
+
+                        val trackSnapList = mutableListOf<TrackSnapshot>()
+                        val tArray = snapJson.optJSONArray("tracks")
+                        if (tArray != null) {
+                            for (ti in 0 until tArray.length()) {
+                                val to = tArray.getJSONObject(ti)
+                                trackSnapList.add(
+                                    TrackSnapshot(
+                                        id = to.optInt("id", ti + 1),
+                                        volume = to.optDouble("volume", 0.65).toFloat(),
+                                        pan = to.optDouble("pan", 0.0).toFloat(),
+                                        isMuted = to.optBoolean("isMuted", false),
+                                        isSolo = to.optBoolean("isSolo", false),
+                                        isEnabled = to.optBoolean("isEnabled", true),
+                                        soundfontName = to.optString("soundfontName", ""),
+                                        patchName = to.optString("patchName", ""),
+                                        bank = to.optInt("bank", 0),
+                                        program = to.optInt("program", 0),
+                                        transpose = to.optInt("transpose", 0),
+                                        octave = to.optInt("octave", 0),
+                                        reverbSend = to.optDouble("reverbSend", 0.0).toFloat()
+                                    )
+                                )
+                            }
+                        }
+                        snapshotsMap[slotKey] = SubSceneSnapshot(
+                            slotName = slotName,
+                            tracks = trackSnapList,
+                            globalTranspose = globalTranspose,
+                            globalOctaveShift = globalOctaveShift,
+                            masterVolume = masterVol,
+                            timestamp = timestamp
+                        )
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error parsing saved snapshots: ${e.message}")
                 }
             }
 
@@ -386,7 +490,9 @@ class AppStatePersistence(context: Context) {
                 tonicShimmer = tonicShimmer,
                 drumReverb = drumReverb,
                 keepScreenOn = keepScreenOn,
-                selectedScaleMode = selectedScaleMode
+                selectedScaleMode = selectedScaleMode,
+                snapshots = snapshotsMap,
+                activeSnapshotSlot = activeSnapshotSlot
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error loading app state: ${e.message}")

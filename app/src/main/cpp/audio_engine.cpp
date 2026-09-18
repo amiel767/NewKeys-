@@ -104,18 +104,21 @@ bool AudioEngine::openAndStartStream() {
 
     // Initialize all DSP blocks with active sample rate
     mMasterDelay.init(sampleRate);
+    mMasterChorus.init(sampleRate);
     mMasterReverb.init(sampleRate);
     mSoundGoodizer.init(sampleRate);
     mMasterPunch.init(sampleRate);
     mPadFilter.setLowPass(static_cast<float>(sampleRate), 400.0f * std::pow(45.0f, mPadBrightness), 0.707f);
     mDrumSampler.init(sampleRate);
-    mMasterCompressor.init(sampleRate, -12.0f, 2.0f, 10.0f, 100.0f, 3.5f); // 3.5dB makeup gain
+    mMasterCompressor.init(sampleRate, mMasterCompressorThreshDb, mMasterCompressorRatio, mMasterCompressorAttackMs, mMasterCompressorReleaseMs, mMasterCompressorMakeupDb);
     mSoftClipper.init(sampleRate);
 
     // Immediately re-apply all preserved DSP, Gain and Volume parameters
     // This ensures that when plugging in or unplugging a 3.5mm jack or BT device,
     // the audio output retains full power, master gain, punch, and dynamics without ducking!
     mMasterDelay.setParams(mMasterDelayEnabled, mMasterDelayTime, mMasterDelayFeedback, mMasterDelayMix, mMasterDelayPingPong);
+    mMasterChorus.setParams(mMasterChorusEnabled, mMasterChorusRateHz, mMasterChorusDepthMs, mMasterChorusMix);
+    mMasterCompressor.setParams(mMasterCompressorEnabled, mMasterCompressorThreshDb, mMasterCompressorRatio, mMasterCompressorAttackMs, mMasterCompressorReleaseMs, mMasterCompressorMakeupDb);
     mMasterReverb.setParams(mMasterReverbEnabled, mMasterReverbSize, mMasterReverbDecay, mMasterReverbDamp, mMasterReverbMix);
     mSoundGoodizer.setParams(mSoundGoodizerEnabled, mSoundGoodizerMode, mSoundGoodizerAmount);
     mSpatialWidener.setAmount(mSpatialWidenerAmount);
@@ -234,6 +237,24 @@ void AudioEngine::setMasterDelay(bool enabled, float timeSec, float feedback, fl
     mMasterDelayMix = mix;
     mMasterDelayPingPong = pingPong;
     mMasterDelay.setParams(enabled, timeSec, feedback, mix, pingPong);
+}
+
+void AudioEngine::setMasterChorus(bool enabled, float rateHz, float depthMs, float mix) {
+    mMasterChorusEnabled = enabled;
+    mMasterChorusRateHz = rateHz;
+    mMasterChorusDepthMs = depthMs;
+    mMasterChorusMix = mix;
+    mMasterChorus.setParams(enabled, rateHz, depthMs, mix);
+}
+
+void AudioEngine::setMasterCompressor(bool enabled, float thresholdDb, float ratio, float attackMs, float releaseMs, float makeupGainDb) {
+    mMasterCompressorEnabled = enabled;
+    mMasterCompressorThreshDb = thresholdDb;
+    mMasterCompressorRatio = ratio;
+    mMasterCompressorAttackMs = attackMs;
+    mMasterCompressorReleaseMs = releaseMs;
+    mMasterCompressorMakeupDb = makeupGainDb;
+    mMasterCompressor.setParams(enabled, thresholdDb, ratio, attackMs, releaseMs, makeupGainDb);
 }
 
 void AudioEngine::setSpatialWidener(float amount) {
@@ -377,7 +398,8 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
                 if (absVal > maxAbs) maxAbs = absVal;
             }
 
-            // 3. Apply Master Delay
+            // 3. Apply Master Delay & Chorus
+            mMasterChorus.process(floatBuf, numFrames);
             mMasterDelay.process(floatBuf, numFrames);
 
             // 4. Apply Master Reverb, SoundGoodizer & Punch (bypassed if silent)
@@ -421,7 +443,8 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
                 if (absVal > maxAbs) maxAbs = absVal;
             }
 
-            // 3. Apply Master Delay
+            // 3. Apply Master Delay & Chorus
+            mMasterChorus.process(outputBuffer, numFrames);
             mMasterDelay.process(outputBuffer, numFrames);
 
             // 4. Apply Master Reverb, SoundGoodizer & Punch (bypassed if silent)

@@ -53,6 +53,7 @@ fun TonicPadDialog(
     octaveRange: String,
     onOctaveMinus: () -> Unit,
     onOctavePlus: () -> Unit,
+    useFlats: Boolean = false,
     volume: Float = 0.80f,
     onVolumeChange: (Float) -> Unit = {},
     reverb: Float = 0.35f,
@@ -127,6 +128,7 @@ fun TonicPadDialog(
                 singleOctaveText = singleOctaveText,
                 onOctaveMinus = onOctaveMinus,
                 onOctavePlus = onOctavePlus,
+                useFlats = useFlats,
                 volume = volume,
                 onVolumeChange = onVolumeChange,
                 reverb = reverb,
@@ -186,6 +188,7 @@ internal fun TonicPadContent(
     singleOctaveText: String,
     onOctaveMinus: () -> Unit,
     onOctavePlus: () -> Unit,
+    useFlats: Boolean = false,
     volume: Float = 0.80f,
     onVolumeChange: (Float) -> Unit = {},
     reverb: Float = 0.35f,
@@ -207,7 +210,13 @@ internal fun TonicPadContent(
     onOpenSoundfontPicker: () -> Unit = {},
     onDragHeader: ((Float, Float) -> Unit)?
 ) {
-    val chromaticNotes = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+    val chromaticNotes = if (useFlats) {
+        listOf("C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B")
+    } else {
+        listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+    }
+    val sharpToFlat = mapOf("C#" to "Db", "D#" to "Eb", "F#" to "Gb", "G#" to "Ab", "A#" to "Bb")
+    val flatToSharp = mapOf("Db" to "C#", "Eb" to "D#", "Gb" to "F#", "Ab" to "G#", "Bb" to "A#")
     var soundTab by remember { mutableStateOf("presets") } // "presets" (SF2 chargé) or "files" (Dossier /Soundfonts)
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -546,7 +555,8 @@ internal fun TonicPadContent(
                         ) {
                             for (col in 0 until 4) {
                                 val note = chromaticNotes[row * 4 + col]
-                                val isActive = activeNotes.contains(note)
+                                val altNote = if (useFlats) (flatToSharp[note] ?: note) else (sharpToFlat[note] ?: note)
+                                val isActive = activeNotes.contains(note) || activeNotes.contains(altNote)
 
                                 val padBg = if (isActive) {
                                     Brush.verticalGradient(listOf(NeonPurpleLight, Color(0xFF7C3AED), Color(0xFF4C1D95)))
@@ -583,12 +593,12 @@ internal fun TonicPadContent(
                 // Vertical 3D Realistic Knobs Column on the right
                 Column(
                     modifier = Modifier
-                        .width(68.dp)
+                        .width(78.dp)
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color(0xFF181326))
                         .border(0.8.dp, Color(0x338B5CF6), RoundedCornerShape(12.dp))
-                        .padding(vertical = 4.dp, horizontal = 2.dp),
+                        .padding(vertical = 8.dp, horizontal = 4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.SpaceEvenly
                 ) {
@@ -597,25 +607,18 @@ internal fun TonicPadContent(
                         onValueChange = onVolumeChange,
                         label = "VOLUME",
                         showFloatingTooltipOnTouch = true,
-                        size = 28.dp,
+                        size = 32.dp,
                         baseColor = Color(0xFFC4B5FD)
                     )
 
-                    Led3DKnob(
-                        value = reverb,
-                        onValueChange = onReverbChange,
-                        label = "REVERB",
-                        showFloatingTooltipOnTouch = true,
-                        size = 28.dp,
-                        baseColor = Color(0xFFEC4899)
-                    )
+                    Spacer(modifier = Modifier.height(6.dp))
 
                     Led3DKnob(
                         value = shimmer,
                         onValueChange = onShimmerChange,
                         label = "SHIMMER",
                         showFloatingTooltipOnTouch = true,
-                        size = 28.dp,
+                        size = 32.dp,
                         baseColor = NeonCyan
                     )
                 }

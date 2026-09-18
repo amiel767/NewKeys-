@@ -50,6 +50,7 @@ fun TopBar(
     onTransposeChange: (Int) -> Unit,
     onOctaveChange: (Int) -> Unit,
     pressedKeys: Set<String> = emptySet(),
+    useFlats: Boolean = false,
     
     // Loops
     isLoopsOpen: Boolean,
@@ -239,8 +240,24 @@ fun TopBar(
             )
 
             // OLED Studio Chord Display Container (Section 1)
-            val detectedChord = androidx.compose.runtime.remember(pressedKeys) {
-                ChordCalculator.detect(pressedKeys)
+            val detectedChord = androidx.compose.runtime.remember(pressedKeys, useFlats) {
+                val raw = ChordCalculator.detect(pressedKeys)
+                if (useFlats && raw != null) {
+                    fun String.toFlats(): String = this
+                        .replace("C#", "Db")
+                        .replace("D#", "Eb")
+                        .replace("F#", "Gb")
+                        .replace("G#", "Ab")
+                        .replace("A#", "Bb")
+                    DetectedChord(
+                        primaryName = raw.primaryName.toFlats(),
+                        variantName = raw.variantName.toFlats(),
+                        alternateNames = raw.alternateNames.toFlats(),
+                        alternateName2 = raw.alternateName2.toFlats(),
+                        formula = raw.formula,
+                        notesList = raw.notesList.map { it.toFlats() }
+                    )
+                } else raw
             }
             Box(
                 modifier = Modifier

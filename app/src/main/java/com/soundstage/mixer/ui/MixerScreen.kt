@@ -143,6 +143,7 @@ fun MixerScreen(
                     onTransposeChange = { viewModel.updateTranspose(it) },
                     onOctaveChange = { viewModel.updateOctave(it) },
                     pressedKeys = uiState.pressedKeys,
+                    useFlats = uiState.useFlats,
                     isLoopsOpen = uiState.activePopup == ActivePopup.LOOPS,
                     onToggleLoops = { viewModel.toggleLoopsPanel() },
                     isLoopPlaying = uiState.isLoopPlaying,
@@ -289,8 +290,8 @@ fun MixerScreen(
                                 .shadow(16.dp, RoundedCornerShape(16.dp))
                                 .clip(RoundedCornerShape(16.dp))
                                 .background(Color(0xFF131622))
-                                .border(1.2.dp, Color(0x668B5CF6), RoundedCornerShape(16.dp))
-                                .padding(8.dp)
+                                .border(1.dp, Color(0x3300E5FF), RoundedCornerShape(16.dp))
+                                .padding(4.dp)
                         ) {
                             AnimatedContent(
                                 targetState = uiState.activePopup,
@@ -363,6 +364,7 @@ fun MixerScreen(
                                             singleOctaveText = singleOctaveText,
                                             onOctaveMinus = { viewModel.onTonicOctaveMinus() },
                                             onOctavePlus = { viewModel.onTonicOctavePlus() },
+                                            useFlats = uiState.useFlats,
                                             volume = uiState.audioSlots.getOrNull(9)?.volume ?: 0.8f,
                                             onVolumeChange = { viewModel.setTonicVolume(it) },
                                             reverb = viewModel.audioEngine.channelParams[9].reverb,
