@@ -640,7 +640,7 @@ private:
 // ================= DSP: MASTER COMPRESSOR =================
 class SimpleMasterCompressor {
 public:
-    void init(int sampleRate, float thresholdDb = -12.0f, float ratio = 2.0f, float attackMs = 10.0f, float releaseMs = 100.0f, float makeupGainDb = 3.5f) {
+    void init(int sampleRate, float thresholdDb = -15.0f, float ratio = 1.6f, float attackMs = 12.0f, float releaseMs = 120.0f, float makeupGainDb = 4.0f) {
         mSampleRate = sampleRate > 0 ? sampleRate : 48000;
         setParams(true, thresholdDb, ratio, attackMs, releaseMs, makeupGainDb);
     }
@@ -691,9 +691,9 @@ public:
 private:
     int mSampleRate = 48000;
     bool mEnabled = false;
-    float mThreshold = 0.25f;
-    float mRatio = 2.0f;
-    float mMakeupGain = 1.5f;
+    float mThreshold = 0.177f;
+    float mRatio = 1.6f;
+    float mMakeupGain = 1.585f;
     float mEnvelope = 0.0f;
     float mAttackCoef = 0.01f;
     float mReleaseCoef = 0.001f;
@@ -706,10 +706,10 @@ public:
         (void)sampleRate;
     }
 
-    // Studio-grade transparent mastering limiter with wide linear headroom (up to 0.88)
+    // Studio-grade transparent mastering limiter with wide linear headroom (up to 0.78)
     // and gentle analog soft-knee saturation on extreme transient peaks
     void process(float *buffer, int32_t numFrames) {
-        const float kneeStart = 0.85f;
+        const float kneeStart = 0.78f;
         const float maxOutput = 0.985f;
         const float headroom = maxOutput - kneeStart;
 
