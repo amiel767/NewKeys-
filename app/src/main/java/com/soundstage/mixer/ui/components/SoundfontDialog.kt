@@ -70,6 +70,8 @@ fun SoundfontDialog(
     onSelectPreset: (Int) -> Unit,
     onSelectPresetFull: ((SoundfontPreset) -> Unit)? = null,
     onSelectSf2File: ((StorageItem) -> Unit)? = null,
+    onUnloadSoundFont: (() -> Unit)? = null,
+    onDeleteSf2File: ((StorageItem) -> Unit)? = null,
     activeTab: String,
     onTabChange: (String) -> Unit,
     onImportSf2: (() -> Unit)? = null,
@@ -576,8 +578,12 @@ fun SoundfontDialog(
                                                 .combinedClickable(
                                                     onClick = {
                                                         if (!isDeletePrompt) {
-                                                            onSelectSf2File?.invoke(file)
-                                                            onTabChange("bank")
+                                                            if (isLoaded) {
+                                                                onUnloadSoundFont?.invoke()
+                                                            } else {
+                                                                onSelectSf2File?.invoke(file)
+                                                                onTabChange("bank")
+                                                            }
                                                         } else {
                                                             pendingDeleteFile = null
                                                         }
@@ -630,9 +636,13 @@ fun SoundfontDialog(
                                                         .clip(CircleShape)
                                                         .background(Color(0xFFFF2A55))
                                                         .clickable {
-                                                            val javaFile = java.io.File(file.path)
-                                                            if (javaFile.exists()) {
-                                                                javaFile.delete()
+                                                            if (onDeleteSf2File != null) {
+                                                                onDeleteSf2File.invoke(file)
+                                                            } else {
+                                                                val javaFile = java.io.File(file.path)
+                                                                if (javaFile.exists()) {
+                                                                    javaFile.delete()
+                                                                }
                                                             }
                                                             pendingDeleteFile = null
                                                         },
@@ -657,13 +667,21 @@ fun SoundfontDialog(
                                                             width = 1.2.dp,
                                                             color = if (isLoaded) Color(0xFF22D3EE) else Color(0x44FFFFFF),
                                                             shape = CircleShape
-                                                        ),
+                                                        )
+                                                        .clickable {
+                                                            if (isLoaded) {
+                                                                onUnloadSoundFont?.invoke()
+                                                            } else {
+                                                                onSelectSf2File?.invoke(file)
+                                                                onTabChange("bank")
+                                                            }
+                                                        },
                                                     contentAlignment = Alignment.Center
                                                 ) {
                                                     if (isLoaded) {
                                                         Icon(
                                                             imageVector = Icons.Default.Check,
-                                                            contentDescription = "Soundfont Chargée",
+                                                            contentDescription = "Soundfont Chargée (cliquer pour décharger)",
                                                             tint = Color(0xFF22D3EE),
                                                             modifier = Modifier.size(14.dp)
                                                         )

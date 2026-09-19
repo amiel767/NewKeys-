@@ -104,6 +104,9 @@ data class MixerUiState(
     val keyboardScrollOffset: Float = 0f,
     val pitchBend: Float = 0.0f,
     
+    // Fullscreen Pages Navigation
+    val currentPage: AppScreenPage = AppScreenPage.MIXER,
+    
     // Popups
     val activePopup: ActivePopup = ActivePopup.NONE,
     val isDrumPadPinned: Boolean = false,
@@ -126,6 +129,14 @@ data class MixerUiState(
     val drumReverb: Float = 0.24f,
     val drumActiveTab: String = "pad",
     val drumSubView: String = "main",
+    val isDrumPadMixMode: Boolean = false,
+    val drumFeelSwing: Int = 54,
+    val activeDrumKitName: String = "Drum Kit 1",
+    val activeTonicPadName: String = "Analog Pad",
+    val isDrumPadMiniBrowserOpen: Boolean = false,
+    val isDrumPadLoopsOpen: Boolean = false,
+    val isDrumPadFileExplorerOpen: Boolean = false,
+    val drumPadAssignTargetPadId: Int? = null,
     val isDrumLoopArmed: Boolean = false,
     val isDrumLoopRecording: Boolean = false,
     val drumLoopBars: Int = 2,
@@ -654,18 +665,36 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             DrumPadStyle.DUBSTEP_PURPLE, DrumPadStyle.DUBSTEP_GREEN, DrumPadStyle.DUBSTEP_YELLOW
         )
 
+        val svgDefaultNames = listOf("Kick 1", "Clap 1", "Wood 1", "Tumb 1", "Tom 1", "Tom 2", "Tom 3", "Sub Kick")
+        val svgDefaultVols = listOf(1.00f, 0.84f, 0.71f, 0.88f, 0.78f, 0.74f, 0.65f, 0.92f)
+        val svgDefaultColors = listOf(
+            androidx.compose.ui.graphics.Color(0xFFE11D48),
+            androidx.compose.ui.graphics.Color(0xFFD97706),
+            androidx.compose.ui.graphics.Color(0xFF881337),
+            androidx.compose.ui.graphics.Color(0xFF581C87),
+            androidx.compose.ui.graphics.Color(0xFFBE123C),
+            androidx.compose.ui.graphics.Color(0xFF9F1239),
+            androidx.compose.ui.graphics.Color(0xFFF43F5E),
+            androidx.compose.ui.graphics.Color(0xFF4C1D95)
+        )
+
         val initialDrumPads = (1..24).map { padIdx ->
             val style = if (padIdx <= 12) {
                 defaultPadStylesSideA.getOrElse(padIdx - 1) { DrumPadStyle.DUBSTEP_CORAL }
             } else {
                 defaultPadStylesSideB.getOrElse(padIdx - 13) { DrumPadStyle.DUBSTEP_BLUE }
             }
+            val label = if (padIdx <= 8) svgDefaultNames[padIdx - 1] else "Pad $padIdx"
+            val vol = if (padIdx <= 8) svgDefaultVols[padIdx - 1] else 0.80f
+            val color = if (padIdx <= 8) svgDefaultColors[padIdx - 1] else null
             DrumPadItem(
                 id = padIdx,
-                label = "",
+                label = label,
                 soundType = DrumSoundType.SAMPLE,
                 sampleFileName = "",
-                colorStyle = style
+                colorStyle = style,
+                volume = vol,
+                customColor = color
             )
         }
 
@@ -1956,19 +1985,27 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 // Toggle loop playback continuously
                 val willPlay = !pad.isLoopPlaying
                 if (willPlay) {
-                    val path = if (pad.sampleFilePath.isNotEmpty()) pad.sampleFilePath else {
-                        val f = File(getApplication<Application>().filesDir, "LiveKeys/DrumPad/${pad.sampleFileName}")
-                        if (f.exists()) f.absolutePath else ""
+                    val path = when {
+                        pad.sampleFilePath.isNotEmpty() && File(pad.sampleFilePath).exists() -> pad.sampleFilePath
+                        File(getApplication<Application>().filesDir, "LiveKeys/DrumPad/${pad.sampleFileName}").exists() -> File(getApplication<Application>().filesDir, "LiveKeys/DrumPad/${pad.sampleFileName}").absolutePath
+                        File(getApplication<Application>().filesDir, "LiveKeys/Loops/${pad.sampleFileName}").exists() -> File(getApplication<Application>().filesDir, "LiveKeys/Loops/${pad.sampleFileName}").absolutePath
+                        File(fileManager.loopsDir, pad.sampleFileName).exists() -> File(fileManager.loopsDir, pad.sampleFileName).absolutePath
+                        File(fileManager.drumPadDir, pad.sampleFileName).exists() -> File(fileManager.drumPadDir, pad.sampleFileName).absolutePath
+                        else -> ""
                     }
                     if (path.isNotEmpty() && File(path).exists()) {
+                        val effectiveBeats = when (pad.loopBeatsSetting) {
+                            "Auto" -> 0
+                            else -> pad.loopBeatsSetting.toIntOrNull() ?: 0
+                        }
                         audioEngine.playLoopFile(
                             filePath = path,
-                            volume = _uiState.value.drumVolume,
-                            beatCount = 4,
+                            volume = pad.volume * _uiState.value.drumVolume,
+                            beatCount = effectiveBeats,
                             bpm = _uiState.value.bpm
                         )
                     } else {
-                        audioEngine.playDrumPadSound(pad, _uiState.value.drumVolume)
+                        audioEngine.playDrumPadSound(pad, pad.volume * _uiState.value.drumVolume)
                     }
                 } else {
                     audioEngine.stopLoopPlayer()
@@ -1986,7 +2023,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             // High precision low-latency live drum hit
-            audioEngine.playDrumPadSound(pad, _uiState.value.drumVolume)
+            audioEngine.playDrumPadSound(pad, pad.volume * _uiState.value.drumVolume)
 
             // Auto-trigger recording on 1st pad hit when loop is armed!
             if (_uiState.value.isDrumLoopArmed && !_uiState.value.isDrumLoopRecording) {
@@ -2150,6 +2187,28 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun playDrumSample(sample: StorageItem) {
         audioEngine.playDrumSample(sample.name, sample.path, _uiState.value.drumVolume)
+    }
+
+    fun stopDrumPlayback() {
+        audioEngine.stopLoopPlayer()
+    }
+
+    fun previewFileInExplorer(sample: StorageItem, isLoopMode: Boolean = false) {
+        val isAudioLoop = isLoopMode || sample.path.contains("Loops", ignoreCase = true) || sample.name.contains("loop", ignoreCase = true) || sample.extension.equals("wav", ignoreCase = true) || sample.extension.equals("mp3", ignoreCase = true)
+        if (isAudioLoop) {
+            audioEngine.playLoopFile(
+                filePath = sample.path,
+                volume = _uiState.value.drumVolume,
+                beatCount = 0,
+                bpm = _uiState.value.bpm
+            )
+        } else {
+            audioEngine.playDrumSample(sample.name, sample.path, _uiState.value.drumVolume)
+        }
+    }
+
+    fun stopFileExplorerPreview() {
+        audioEngine.stopLoopPlayer()
     }
 
     // ================= DRUM PAD LOOPER CONTROLS =================
@@ -2453,9 +2512,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     } else state.tracks
 
+                    val newTonicPadName = if (slotId == 9) targetPreset.name else state.activeTonicPadName
                     state.copy(
                         audioSlots = updatedSlots,
-                        tracks = updatedTracks
+                        tracks = updatedTracks,
+                        activeTonicPadName = newTonicPadName
                     )
                 }
                 if (saveAfterLoad) {
@@ -2514,13 +2575,104 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } else state.tracks
 
-            state.copy(audioSlots = updatedSlots, tracks = updatedTracks)
+            val newTonicPadName = if (slotId == 9) preset.name else state.activeTonicPadName
+            state.copy(audioSlots = updatedSlots, tracks = updatedTracks, activeTonicPadName = newTonicPadName)
         }
         persistCurrentState()
     }
 
+    fun selectDrumKit(kitName: String) {
+        _uiState.update { it.copy(activeDrumKitName = kitName) }
+    }
+
     fun loadSoundfontFromStorage(file: StorageItem) {
         loadSoundFontForSlot(_uiState.value.activeSoundfontSlotId, file.path)
+    }
+
+    fun unloadSoundFontFromSlot(slotId: Int = _uiState.value.activeSoundfontSlotId) {
+        val slot = _uiState.value.audioSlots.getOrNull(slotId) ?: return
+        val targetChannel = AudioSlot.midiChannelForSlot(slotId)
+        val oldSfId = slot.soundFontId
+
+        viewModelScope.launch(Dispatchers.IO) {
+            soundFontLoadMutex.withLock {
+                // Cut any playing notes on this channel
+                audioEngine.allNotesOff()
+
+                // Safe native unload if not used by another slot
+                if (oldSfId > 0) {
+                    val inUse = _uiState.value.audioSlots.any { it.slotId != slotId && it.soundFontId == oldSfId }
+                    if (!inUse) {
+                        NativeAudioBridge.safeUnloadSoundFont(NativeAudioBridge.ENGINE_FADER, oldSfId)
+                        Log.d("SoundFontUnload", "Freed SoundFont ID=$oldSfId from RAM for slot $slotId")
+                    }
+                }
+
+                _uiState.update { state ->
+                    val updatedSlots = state.audioSlots.map { s ->
+                        if (s.slotId == slotId) {
+                            s.copy(
+                                soundFontId = -1,
+                                soundFontPath = "",
+                                patchName = "Aucun",
+                                bank = 0,
+                                preset = 0,
+                                presets = emptyList()
+                            )
+                        } else s
+                    }
+                    val updatedTracks = if (slotId in 0..7) {
+                        state.tracks.mapIndexed { idx, t ->
+                            if (idx == slotId) {
+                                t.copy(
+                                    soundfontName = "",
+                                    patchName = "Aucun",
+                                    bank = 0,
+                                    program = 0
+                                )
+                            } else t
+                        }
+                    } else state.tracks
+
+                    state.copy(
+                        audioSlots = updatedSlots,
+                        tracks = updatedTracks
+                    )
+                }
+                persistCurrentStateDebounced()
+                System.gc() // Reclaim memory
+            }
+        }
+    }
+
+    fun deleteSoundFontFile(file: StorageItem) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val f = File(file.path)
+                if (f.exists()) {
+                    f.delete()
+                }
+
+                // If any slot was using this soundfont, unload it
+                _uiState.value.audioSlots.forEach { slot ->
+                    if (slot.soundFontPath == file.path || slot.soundFontPath?.contains(file.name) == true) {
+                        unloadSoundFontFromSlot(slot.slotId)
+                    }
+                }
+
+                // Instantly filter out from UI lists
+                _uiState.update { state ->
+                    val updatedList = state.realSoundfonts.filterNot { it.path == file.path || it.name == file.name }
+                    val updatedBankFiles = state.soundfontBankFiles.filterNot { it.path == file.path || it.name == file.name }
+                    state.copy(
+                        realSoundfonts = updatedList,
+                        soundfontBankFiles = updatedBankFiles
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e("MixerViewModel", "Error deleting soundfont file: ${e.message}", e)
+            }
+        }
     }
 
     fun selectScene(sceneId: String) {
@@ -3000,8 +3152,138 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleUseFlats() {
-        _uiState.update { it.copy(useFlats = !it.useFlats) }
+        val sharpToFlat = mapOf("C#" to "Db", "D#" to "Eb", "F#" to "Gb", "G#" to "Ab", "A#" to "Bb")
+        val flatToSharp = mapOf("Db" to "C#", "Eb" to "D#", "Gb" to "F#", "Ab" to "G#", "Bb" to "A#")
+        _uiState.update { state ->
+            val nextUseFlats = !state.useFlats
+            val updatedNotes = state.activeTonicNotes.map { n ->
+                if (nextUseFlats) (sharpToFlat[n] ?: n) else (flatToSharp[n] ?: n)
+            }.toSet()
+            state.copy(useFlats = nextUseFlats, activeTonicNotes = updatedNotes)
+        }
         persistCurrentStateDebounced()
+    }
+
+    // ================= FULLSCREEN PAGE NAVIGATION & DRUMPAD PRO =================
+    fun navigateToPage(page: AppScreenPage) {
+        _uiState.update { it.copy(currentPage = page) }
+    }
+
+    fun navigateBackToMixer() {
+        _uiState.update { it.copy(currentPage = AppScreenPage.MIXER, isDrumPadMiniBrowserOpen = false) }
+    }
+
+    fun toggleDrumPadMixMode() {
+        _uiState.update { it.copy(isDrumPadMixMode = !it.isDrumPadMixMode) }
+    }
+
+    fun setDrumFeelSwing(swing: Int) {
+        _uiState.update { it.copy(drumFeelSwing = swing.coerceIn(0, 100)) }
+    }
+
+    fun toggleDrumPadMiniBrowser() {
+        _uiState.update { it.copy(isDrumPadMiniBrowserOpen = !it.isDrumPadMiniBrowserOpen) }
+    }
+
+    fun closeDrumPadMiniBrowser() {
+        _uiState.update { it.copy(isDrumPadMiniBrowserOpen = false) }
+    }
+
+    fun openDrumPadLoopsView(open: Boolean = true) {
+        _uiState.update { it.copy(isDrumPadLoopsOpen = open) }
+    }
+
+    fun openDrumPadFileExplorer(open: Boolean = true) {
+        _uiState.update { it.copy(isDrumPadFileExplorerOpen = open) }
+    }
+
+    fun setDrumPadVolumeDirect(padId: Int, volume: Float) {
+        val clamped = volume.coerceIn(0f, 1f)
+        _uiState.update { state ->
+            val updatedPads = state.drumPads.map { pad ->
+                if (pad.id == padId) pad.copy(volume = clamped) else pad
+            }
+            state.copy(drumPads = updatedPads)
+        }
+    }
+
+    fun setDrumPadLoopBeats(padId: Int, beatsSetting: String) {
+        _uiState.update { state ->
+            val updatedPads = state.drumPads.map { pad ->
+                if (pad.id == padId) pad.copy(loopBeatsSetting = beatsSetting) else pad
+            }
+            state.copy(drumPads = updatedPads)
+        }
+    }
+
+    fun createBlankScene(name: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val json = org.json.JSONObject().apply {
+                    put("name", name)
+                    put("bpm", 120)
+                    put("transpose", 0)
+                    put("octave", 0)
+                    put("tonicBrightness", 0.70f)
+                    put("tonicShimmer", 0.15f)
+                    put("tonicOctaveRange", "C3 — C4")
+                    put("drumVolume", 0.75f)
+                    put("drumReverb", 0.20f)
+                    put("tonicVolume", 0.80f)
+                    put("tonicReverb", 0.25f)
+                    put("masterVolume", 0.85f)
+
+                    val tracksArray = org.json.JSONArray()
+                    for (i in 1..8) {
+                        val tObj = org.json.JSONObject().apply {
+                            put("id", i)
+                            put("name", "Track $i")
+                            put("isEnabled", false)
+                            put("volume", 0.0f)
+                            put("pan", 0.0f)
+                            put("soundfontName", "")
+                            put("patchName", "")
+                            put("bank", 0)
+                            put("program", 0)
+                            put("reverbPreset", "Concert Hall")
+                            put("reverbMix", 0.25f)
+                        }
+                        tracksArray.put(tObj)
+                    }
+                    put("tracks", tracksArray)
+
+                    val slotsArray = org.json.JSONArray()
+                    for (i in 0..9) {
+                        val sObj = org.json.JSONObject().apply {
+                            put("slotId", i)
+                            put("soundFontPath", "")
+                            put("bank", 0)
+                            put("preset", 0)
+                            put("patchName", "")
+                            put("volume", if (i == 0) 0.85f else 0.0f)
+                            put("pan", 0.0f)
+                        }
+                        slotsArray.put(sObj)
+                    }
+                    put("audioSlots", slotsArray)
+                }
+
+                fileManager.saveSceneFile(name, json.toString())
+                val sceneFiles = fileManager.getSceneFiles()
+                val updatedScenes = sceneFiles.map { f ->
+                    ScenePreset(id = f.name, name = f.name, timestamp = f.formattedSize, color = NeonCyan)
+                }
+                _uiState.update { it.copy(scenes = updatedScenes, activeSceneId = name) }
+                // Appliquer immédiatement cette scène vierge
+                selectScene(name)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun duplicateCurrentScene(name: String) {
+        saveCurrentScene(name)
     }
 
     fun setSoundGoodizer(v: Float) {

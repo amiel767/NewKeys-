@@ -10,6 +10,10 @@ enum class ActivePopup {
     NONE, DRUM_PAD, TONIC_PAD, NOTES, SCENE, EFFECTS, SOUNDFONT, STYLE, MIDI, LOOPS
 }
 
+enum class AppScreenPage {
+    MIXER, DRUMPAD, SHEETS
+}
+
 enum class AppLanguage(val code: String, val displayName: String) {
     ENGLISH("en", "English"),
     FRENCH("fr", "Français"),
@@ -139,7 +143,7 @@ data class TrackChannel(
 
 data class DrumPadItem(
     val id: Int,
-    val label: String,
+    val label: String = "Pad",
     val soundType: DrumSoundType = DrumSoundType.SAMPLE,
     val sampleFileName: String = "kick_808.wav",
     val sampleFilePath: String = "",
@@ -149,7 +153,10 @@ data class DrumPadItem(
     val isPressed: Boolean = false,
     val colorStyle: DrumPadStyle = DrumPadStyle.GRADIENT_CYAN,
     val isLoopMode: Boolean = false,
-    val isLoopPlaying: Boolean = false
+    val isLoopPlaying: Boolean = false,
+    val volume: Float = 1.0f,
+    val loopBeatsSetting: String = "Auto",
+    val customColor: Color? = null
 )
 
 data class LoopFile(

@@ -30,8 +30,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soundstage.mixer.model.ActivePopup
+import com.soundstage.mixer.model.AppScreenPage
 import com.soundstage.mixer.model.FxParameters
 import com.soundstage.mixer.ui.components.*
+import com.soundstage.mixer.ui.pages.DrumPadPage
+import com.soundstage.mixer.ui.pages.FileExplorerPage
+import com.soundstage.mixer.ui.pages.SheetsPage
 import com.soundstage.mixer.ui.theme.*
 import com.soundstage.mixer.viewmodel.MixerViewModel
 
@@ -117,21 +121,99 @@ fun MixerScreen(
             )
             .testTag("mixer_screen_root")
     ) {
-        // Device Chassis Card
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .shadow(16.dp, RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomStart = if (isKeyboardVisible) 0.dp else 14.dp, bottomEnd = if (isKeyboardVisible) 0.dp else 14.dp))
-                .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomStart = if (isKeyboardVisible) 0.dp else 14.dp, bottomEnd = if (isKeyboardVisible) 0.dp else 14.dp))
-                .background(Color(0xFF1B1E2B))
-                .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomStart = if (isKeyboardVisible) 0.dp else 14.dp, bottomEnd = if (isKeyboardVisible) 0.dp else 14.dp))
-                .padding(
-                    start = 8.dp,
-                    end = 8.dp,
-                    top = 6.dp,
-                    bottom = safeBottomPadding
-                )
-        ) {
+        AnimatedContent(
+            targetState = uiState.currentPage,
+            transitionSpec = {
+                fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(220))
+            },
+            label = "screen_page_switch",
+            modifier = Modifier.fillMaxSize()
+        ) { currentPage ->
+            when (currentPage) {
+                AppScreenPage.DRUMPAD -> {
+                    if (uiState.isDrumPadFileExplorerOpen || uiState.isDrumPadLoopsOpen) {
+                        FileExplorerPage(
+                            title = if (uiState.isDrumPadLoopsOpen) "Explorateur de loops audio" else "Explorateur de fichiers audio",
+                            audioFiles = if (uiState.isDrumPadLoopsOpen) uiState.loopAudioFiles else uiState.drumPadAudioFiles,
+                            isLoopMode = uiState.isDrumPadLoopsOpen,
+                            onPreviewAudioFile = { viewModel.previewFileInExplorer(it, uiState.isDrumPadLoopsOpen) },
+                            onStopPreview = { viewModel.stopFileExplorerPreview() },
+                            onAssignToPad = { padId, sample, isLoop ->
+                                viewModel.assignDrumSampleOrLoop(padId, sample.name, sample.path, isLoop = isLoop)
+                            },
+                            onClose = {
+                                viewModel.openDrumPadFileExplorer(false)
+                                viewModel.openDrumPadLoopsView(false)
+                            }
+                        )
+                    } else {
+                        DrumPadPage(
+                            drumPads = uiState.drumPads,
+                            isMixMode = uiState.isDrumPadMixMode,
+                            onToggleMixMode = { viewModel.toggleDrumPadMixMode() },
+                            feelSwing = uiState.drumFeelSwing,
+                            onFeelSwingChange = { viewModel.setDrumFeelSwing(it) },
+                            bpm = uiState.bpm,
+                            onBpmChange = { viewModel.setGlobalBpm(it) },
+                            scenes = uiState.scenes,
+                            activeSceneId = uiState.activeSceneId,
+                            onSelectScene = { viewModel.selectScene(it) },
+                            onCreateBlankScene = { viewModel.createBlankScene(it) },
+                            onDuplicateScene = { viewModel.duplicateCurrentScene(it) },
+                            activeTonicNotes = uiState.activeTonicNotes,
+                            onTonicNoteClick = { viewModel.onTonicNoteClick(it) },
+                            useFlats = uiState.useFlats,
+                            onToggleUseFlats = { viewModel.toggleUseFlats() },
+                            activeTonicPadName = uiState.activeTonicPadName,
+                            onOpenTonicSoundPicker = {
+                                viewModel.openSoundfontForSlot(9)
+                            },
+                            activeDrumKitName = uiState.activeDrumKitName,
+                            onOpenDrumKitPicker = { viewModel.toggleDrumPadMiniBrowser() },
+                            onStopTonicDrone = { viewModel.onTonicNoteClick("") },
+                            isMiniBrowserOpen = uiState.isDrumPadMiniBrowserOpen,
+                            onToggleMiniBrowser = { viewModel.toggleDrumPadMiniBrowser() },
+                            onCloseMiniBrowser = { viewModel.closeDrumPadMiniBrowser() },
+                            audioFiles = uiState.drumPadAudioFiles,
+                            onPreviewAudioFile = { viewModel.playDrumSample(it) },
+                            onAssignSampleToPad = { padId, sample ->
+                                viewModel.assignDrumSampleOrLoop(padId, sample.name, sample.path, isLoop = false)
+                            },
+                            onPadPressed = { viewModel.onDrumPadPressed(it) },
+                            onPadReleased = { viewModel.onDrumPadReleased(it) },
+                            onPadVolumeChange = { padId, vol -> viewModel.setDrumPadVolumeDirect(padId, vol) },
+                            onLoopBeatsChange = { padId, beats -> viewModel.setDrumPadLoopBeats(padId, beats) },
+                            onOpenFileExplorer = { viewModel.openDrumPadFileExplorer(true) },
+                            onOpenLoopsView = { viewModel.openDrumPadLoopsView(true) },
+                            onBackToMixer = { viewModel.navigateBackToMixer() }
+                        )
+                    }
+                }
+                AppScreenPage.SHEETS -> {
+                    SheetsPage(
+                        notesText = uiState.notesText,
+                        onNotesChange = { viewModel.updateNotesText(it) },
+                        transpose = uiState.transpose,
+                        onTransposeChange = { viewModel.updateTranspose(it) },
+                        onBackToMixer = { viewModel.navigateBackToMixer() }
+                    )
+                }
+                AppScreenPage.MIXER -> {
+                    // Device Chassis Card
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .shadow(16.dp, RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomStart = if (isKeyboardVisible) 0.dp else 14.dp, bottomEnd = if (isKeyboardVisible) 0.dp else 14.dp))
+                            .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomStart = if (isKeyboardVisible) 0.dp else 14.dp, bottomEnd = if (isKeyboardVisible) 0.dp else 14.dp))
+                            .background(Color(0xFF1B1E2B))
+                            .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomStart = if (isKeyboardVisible) 0.dp else 14.dp, bottomEnd = if (isKeyboardVisible) 0.dp else 14.dp))
+                            .padding(
+                                start = 8.dp,
+                                end = 8.dp,
+                                top = 6.dp,
+                                bottom = safeBottomPadding
+                            )
+                    ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -160,10 +242,10 @@ fun MixerScreen(
                     isMidiPedalPressed = uiState.isMidiPedalPressed,
                     onToggleSustain = { viewModel.toggleSustain() },
                     onOpenNotes = {
-                        if (uiState.activePopup == ActivePopup.NOTES) viewModel.closePopup() else viewModel.openPopup(ActivePopup.NOTES)
+                        viewModel.navigateToPage(AppScreenPage.SHEETS)
                     },
                     onOpenDrumPad = {
-                        if (uiState.activePopup == ActivePopup.DRUM_PAD) viewModel.closePopup() else viewModel.openPopup(ActivePopup.DRUM_PAD)
+                        viewModel.navigateToPage(AppScreenPage.DRUMPAD)
                     },
                     onOpenTonicPad = {
                         if (uiState.activePopup == ActivePopup.TONIC_PAD) viewModel.closePopup() else viewModel.openPopup(ActivePopup.TONIC_PAD)
@@ -628,10 +710,14 @@ fun MixerScreen(
                     activeSceneId = uiState.activeSceneId,
                     onSelectScene = { viewModel.selectScene(it) },
                     onSaveCurrentScene = { viewModel.saveCurrentScene(it) },
+                    onCreateBlankScene = { viewModel.createBlankScene(it) },
                     onUpdateActiveScene = { viewModel.updateActiveScene() },
                     onDeleteScene = { viewModel.deleteScene(it) },
                     onClose = { viewModel.closePopup() }
                 )
+            }
+                    }
+                }
             }
         }
 
@@ -669,6 +755,8 @@ fun MixerScreen(
                     onSelectPreset = { viewModel.selectSf2Preset(it) },
                     onSelectPresetFull = { viewModel.selectSf2Preset(it) },
                     onSelectSf2File = { viewModel.loadSoundfontFromStorage(it) },
+                    onUnloadSoundFont = { viewModel.unloadSoundFontFromSlot() },
+                    onDeleteSf2File = { viewModel.deleteSoundFontFile(it) },
                     activeTab = uiState.activeSf2Tab,
                     onTabChange = { viewModel.setSf2Tab(it) },
                     onImportSf2 = { sf2PickerLauncher.launch(arrayOf("*/*")) },

@@ -58,6 +58,7 @@ fun SceneDialog(
     activeSceneId: String,
     onSelectScene: (String) -> Unit,
     onSaveCurrentScene: (String) -> Unit = {},
+    onCreateBlankScene: (String) -> Unit = {},
     onUpdateActiveScene: () -> Unit = {},
     onDeleteScene: (String) -> Unit = {},
     onClose: () -> Unit,
@@ -269,19 +270,23 @@ fun SceneDialog(
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .height(26.dp)
+                                .height(28.dp)
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(Color(0x1FFFFFFF))
-                                .clickable { isNamingOpen = false },
+                                .background(Color(0xFF0284C7))
+                                .clickable {
+                                    val finalName = sceneNameInput.trim().ifEmpty { "Scène ${scenes.size + 1}" }
+                                    onCreateBlankScene(finalName)
+                                    isNamingOpen = false
+                                },
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(text = "Annuler", fontSize = 10.sp, color = TextDim)
+                            Text(text = "✨ Vierge", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
 
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .height(26.dp)
+                                .height(28.dp)
                                 .clip(RoundedCornerShape(6.dp))
                                 .background(NeonCyan)
                                 .clickable {
@@ -291,7 +296,7 @@ fun SceneDialog(
                                 },
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(text = "Valider", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF002B33))
+                            Text(text = "📋 Dupliquer", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF002B33))
                         }
                     }
                 }
