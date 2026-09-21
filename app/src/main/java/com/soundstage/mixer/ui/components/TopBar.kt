@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.R
 import com.soundstage.mixer.model.LoopFile
 import com.soundstage.mixer.model.LoopFolder
+import com.soundstage.mixer.model.AppTheme
 import com.soundstage.mixer.ui.theme.*
 
 @Composable
@@ -74,10 +75,13 @@ fun TopBar(
     // Launchers
     onOpenNotes: () -> Unit = {},
     onOpenDrumPad: () -> Unit,
+    onOpenStepDrum: () -> Unit = {},
     onOpenTonicPad: () -> Unit,
     onPanic: () -> Unit,
     onOpenScenes: () -> Unit,
     onOpenSettings: () -> Unit,
+    currentTheme: AppTheme = AppTheme.CYBER_NEON,
+    onCycleTheme: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val topBarHeight = 38.dp

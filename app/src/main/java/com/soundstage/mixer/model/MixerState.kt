@@ -11,7 +11,7 @@ enum class ActivePopup {
 }
 
 enum class AppScreenPage {
-    MIXER, DRUMPAD, SHEETS
+    MIXER, DRUMPAD, STEPDRUM, SHEETS
 }
 
 enum class AppLanguage(val code: String, val displayName: String) {
@@ -27,12 +27,28 @@ enum class SoundGoodizerMode(val label: String, val description: String) {
     D("D - Hard Limiter", "Maximum impact, brickwall & punchy loudness")
 }
 
-enum class AppTheme(val displayName: String, val description: String) {
-    CYBER_NEON("Cyber Neon (Default)", "Dark canvas with cyan & violet neon accents"),
-    OBSIDIAN_GOLD("Obsidian Gold", "Deep black with luxury amber & gold accents"),
-    TOKYO_NIGHT("Tokyo Night", "Deep night blue with magenta & indigo touches"),
-    STUDIO_SLATE("Studio Slate", "Clean professional studio slate gray"),
-    OLED_BLACK("OLED Pure Black", "Absolute pitch black for maximum contrast")
+enum class AppTheme(
+    val displayName: String,
+    val description: String,
+    val primaryColor: Color = Color(0xFF00E5FF),
+    val canvasDark: Color = Color(0xFF1B1E2B),
+    val canvasDarkEnd: Color = Color(0xFF11131C),
+    val cardBg: Color = Color(0x22FFFFFF),
+    val cardBorder: Color = Color(0x1AFFFFFF)
+) {
+    CYBER_VIOLET("Cyber Violet", "Dark canvas with cyan & violet neon accents", Color(0xFF00E5FF), Color(0xFF1B1E2B), Color(0xFF11131C)),
+    RUBY_VELVET("Ruby Velvet", "Rich burgundy & warm coral StepDrum palette", Color(0xFFC92A45), Color(0xFF4C0E1A), Color(0xFF330912)),
+    NEON_AMBER("Neon Amber", "Warm amber, gold & sunset glow", Color(0xFFF59E0B), Color(0xFF1F1608), Color(0xFF120C04)),
+    EMERALD_SYNTH("Emerald Synth", "Electric emerald, mint & acid green", Color(0xFF10B981), Color(0xFF061A14), Color(0xFF030D0A)),
+    DEEP_OCEAN("Deep Ocean", "Deep sapphire ocean & vibrant cyan", Color(0xFF0284C7), Color(0xFF0A192F), Color(0xFF050C17));
+
+    companion object {
+        val CYBER_NEON get() = CYBER_VIOLET
+        val OBSIDIAN_GOLD get() = NEON_AMBER
+        val TOKYO_NIGHT get() = CYBER_VIOLET
+        val STUDIO_SLATE get() = DEEP_OCEAN
+        val OLED_BLACK get() = CYBER_VIOLET
+    }
 }
 
 enum class DrumSoundType {
@@ -156,7 +172,8 @@ data class DrumPadItem(
     val isLoopPlaying: Boolean = false,
     val volume: Float = 1.0f,
     val loopBeatsSetting: String = "Auto",
-    val customColor: Color? = null
+    val customColor: Color? = null,
+    val playProgress: Float = 0f
 )
 
 data class LoopFile(
@@ -270,3 +287,87 @@ data class FxParameters(
     val delayMix: Float = 0.0f,
     val delayPingPong: Float = 0.0f
 )
+
+enum class StepDrumMode(val label: String) {
+    STEP("Pas"),
+    VELOCITY("Vélocité"),
+    REPEAT("Répétition"),
+    CHANCE("Chance"),
+    LOOP("Boucle")
+}
+
+enum class StepDrumViewMode(val label: String) {
+    GRID("Grille"),
+    SEQUENCE("Séquence")
+}
+
+data class StepCell(
+    val enabled: Boolean = false,
+    val velocity: Int = 100, // 1..127
+    val repeatCount: Int = 1, // 1..4 (Ratchet)
+    val chance: Int = 100, // 0..100%
+    val isFlam: Boolean = false
+)
+
+data class PatternTrack(
+    val trackIndex: Int,
+    val name: String,
+    val color: Color,
+    val steps: List<StepCell> = List(16) { StepCell() },
+    val loopLength: Int = 16,
+    val isMuted: Boolean = false,
+    val isSolo: Boolean = false
+)
+
+data class PatternVariation(
+    val id: String, // "A", "B", "C", "D", "E", "F", "G", "H"
+    val tracks: List<PatternTrack>
+)
+
+data class SequenceBlock(
+    val id: String,
+    val measure: Int, // 1..8
+    val variationId: String, // "A", "B", "C", ...
+    val isFill: Boolean = false,
+    val isBreak: Boolean = false
+)
+
+fun createDefaultStepDrumTracks(): List<PatternTrack> = listOf(
+    PatternTrack(0, "KICK", Color(0xFFF43F5E), List(16) { StepCell(enabled = it % 4 == 0) }),
+    PatternTrack(1, "SNARE", Color(0xFFFFD166), List(16) { StepCell(enabled = it % 8 == 4) }),
+    PatternTrack(2, "CLAP", Color(0xFFFF9F1C), List(16) { StepCell(enabled = it == 4 || it == 12) }),
+    PatternTrack(3, "CH", Color(0xFF00E5FF), List(16) { StepCell(enabled = it % 2 == 0) }),
+    PatternTrack(4, "OH", Color(0xFF00E676), List(16) { StepCell(enabled = it % 4 == 2) }),
+    PatternTrack(5, "LOW TOM", Color(0xFFA855F7), List(16) { StepCell() }),
+    PatternTrack(6, "MID TOM", Color(0xFFEC4899), List(16) { StepCell() }),
+    PatternTrack(7, "HIGH TOM", Color(0xFF38BDF8), List(16) { StepCell() })
+)
+
+data class StepDrumUiState(
+    val variations: Map<String, PatternVariation> = mapOf("A" to PatternVariation("A", createDefaultStepDrumTracks())),
+    val activeVariationId: String = "A",
+    val sequenceBlocks: List<SequenceBlock> = (1..8).map { SequenceBlock(id = "m$it", measure = it, variationId = "A") },
+    val activeMeasureIndex: Int = 0,
+    val currentStepIndex: Int = 0,
+    val isPlaying: Boolean = false,
+    val isRecording: Boolean = false,
+    val recordMode: String = "REPLACE", // "REPLACE" or "ADD"
+    val viewMode: StepDrumViewMode = StepDrumViewMode.GRID,
+    val editMode: StepDrumMode = StepDrumMode.STEP,
+    val fillAutoEvery4: Boolean = true,
+    val isFillActive: Boolean = false,
+    val isBreakActive: Boolean = false,
+    val isLooping: Boolean = true,
+    val resolution: String = "1/16",
+    val patternLength: Int = 16,
+    val pendingNextVariation: String? = null,
+    val activeDrumKitName: String = "Drum Kit 1",
+    val swing: Int = 54
+)
+
+data class GospelChord(
+    val mainChord: String,
+    val slashDecomp1: String,
+    val slashDecomp2: String
+)
+

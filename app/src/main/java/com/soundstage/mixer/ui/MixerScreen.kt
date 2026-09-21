@@ -34,6 +34,7 @@ import com.soundstage.mixer.model.AppScreenPage
 import com.soundstage.mixer.model.FxParameters
 import com.soundstage.mixer.ui.components.*
 import com.soundstage.mixer.ui.pages.DrumPadPage
+import com.soundstage.mixer.ui.pages.StepDrumPage
 import com.soundstage.mixer.ui.pages.FileExplorerPage
 import com.soundstage.mixer.ui.pages.SheetsPage
 import com.soundstage.mixer.ui.theme.*
@@ -147,10 +148,14 @@ fun MixerScreen(
                             }
                         )
                     } else {
+                        val tonicSlot = uiState.audioSlots.find { it.slotId == 9 }
+                        val tonicVol = tonicSlot?.volume ?: 0.85f
                         DrumPadPage(
                             drumPads = uiState.drumPads,
                             isMixMode = uiState.isDrumPadMixMode,
                             onToggleMixMode = { viewModel.toggleDrumPadMixMode() },
+                            currentTheme = uiState.currentTheme,
+                            onCycleTheme = { viewModel.cycleTheme() },
                             feelSwing = uiState.drumFeelSwing,
                             onFeelSwingChange = { viewModel.setDrumFeelSwing(it) },
                             bpm = uiState.bpm,
@@ -171,6 +176,15 @@ fun MixerScreen(
                             activeDrumKitName = uiState.activeDrumKitName,
                             onOpenDrumKitPicker = { viewModel.toggleDrumPadMiniBrowser() },
                             onStopTonicDrone = { viewModel.onTonicNoteClick("") },
+                            tonicOctaveRange = uiState.tonicOctaveRange,
+                            onTonicOctaveMinus = { viewModel.onTonicOctaveMinus() },
+                            onTonicOctavePlus = { viewModel.onTonicOctavePlus() },
+                            isMultiPadEnabled = uiState.isMultiPadEnabled,
+                            onToggleMultiPad = { viewModel.toggleMultiPad() },
+                            tonicVolume = tonicVol,
+                            onTonicVolumeChange = { viewModel.setTonicVolume(it) },
+                            tonicShimmer = uiState.tonicShimmer,
+                            onTonicShimmerChange = { viewModel.setTonicShimmer(it) },
                             isMiniBrowserOpen = uiState.isDrumPadMiniBrowserOpen,
                             onToggleMiniBrowser = { viewModel.toggleDrumPadMiniBrowser() },
                             onCloseMiniBrowser = { viewModel.closeDrumPadMiniBrowser() },
@@ -185,6 +199,7 @@ fun MixerScreen(
                             onLoopBeatsChange = { padId, beats -> viewModel.setDrumPadLoopBeats(padId, beats) },
                             onOpenFileExplorer = { viewModel.openDrumPadFileExplorer(true) },
                             onOpenLoopsView = { viewModel.openDrumPadLoopsView(true) },
+                            onOpenStepDrum = { viewModel.navigateToPage(AppScreenPage.STEPDRUM) },
                             onBackToMixer = { viewModel.navigateBackToMixer() }
                         )
                     }
@@ -196,6 +211,41 @@ fun MixerScreen(
                         transpose = uiState.transpose,
                         onTransposeChange = { viewModel.updateTranspose(it) },
                         onBackToMixer = { viewModel.navigateBackToMixer() }
+                    )
+                }
+                AppScreenPage.STEPDRUM -> {
+                    StepDrumPage(
+                        state = uiState.stepDrumState,
+                        bpm = uiState.bpm,
+                        isMetronomeOn = uiState.isMetronomeOn,
+                        onPlayPause = { viewModel.toggleStepDrumPlay() },
+                        onRecordToggle = { viewModel.toggleStepDrumRecord() },
+                        onRecordModeToggle = { viewModel.toggleStepDrumRecordMode() },
+                        onViewModeChange = { viewModel.setStepDrumViewMode(it) },
+                        onEditModeChange = { viewModel.setStepDrumEditMode(it) },
+                        onVariationSelect = { viewModel.selectStepDrumVariation(it) },
+                        onAddVariation = { viewModel.addStepDrumVariation() },
+                        onDuplicateVariation = { viewModel.duplicateStepDrumVariation(it) },
+                        onClearPattern = { viewModel.clearStepDrumPattern() },
+                        onStepToggle = { trackIdx, stepIdx -> viewModel.toggleStepDrumStep(trackIdx, stepIdx) },
+                        onStepVelocityChange = { trackIdx, stepIdx, vel -> viewModel.setStepDrumStepVelocity(trackIdx, stepIdx, vel) },
+                        onStepRepeatChange = { trackIdx, stepIdx, rep -> viewModel.setStepDrumStepRepeat(trackIdx, stepIdx, rep) },
+                        onStepChanceChange = { trackIdx, stepIdx, chance -> viewModel.setStepDrumStepChance(trackIdx, stepIdx, chance) },
+                        onTrackLoopLengthChange = { trackIdx, len -> viewModel.setStepDrumTrackLoopLength(trackIdx, len) },
+                        onTrackPreview = { trackIdx -> viewModel.onDrumPadPressed(trackIdx % 16) },
+                        onTrackMuteToggle = { trackIdx -> viewModel.toggleStepDrumTrackMute(trackIdx) },
+                        onTrackSoloToggle = { trackIdx -> viewModel.toggleStepDrumTrackSolo(trackIdx) },
+                        onFillToggle = { viewModel.triggerStepDrumFill() },
+                        onBreakToggle = { viewModel.triggerStepDrumBreak() },
+                        onAutoFillToggle = { viewModel.toggleStepDrumAutoFill() },
+                        onSequenceMeasureSelect = { measureIdx -> viewModel.selectSequenceMeasure(measureIdx) },
+                        onSequenceBlockVariationChange = { measureIdx, varId -> viewModel.setSequenceBlockVariation(measureIdx, varId) },
+                        onSequenceBlockFillToggle = { measureIdx -> viewModel.toggleSequenceBlockFill(measureIdx) },
+                        onSequenceBlockBreakToggle = { measureIdx -> viewModel.toggleSequenceBlockBreak(measureIdx) },
+                        onBpmChange = { viewModel.setGlobalBpm(it) },
+                        onSwingChange = { viewModel.setDrumFeelSwing(it) },
+                        onKitSelect = { viewModel.openDrumPadFileExplorer(true) },
+                        onBackToMixer = { viewModel.navigateToPage(AppScreenPage.DRUMPAD) }
                     )
                 }
                 AppScreenPage.MIXER -> {
@@ -247,6 +297,9 @@ fun MixerScreen(
                     onOpenDrumPad = {
                         viewModel.navigateToPage(AppScreenPage.DRUMPAD)
                     },
+                    onOpenStepDrum = {
+                        viewModel.navigateToPage(AppScreenPage.STEPDRUM)
+                    },
                     onOpenTonicPad = {
                         if (uiState.activePopup == ActivePopup.TONIC_PAD) viewModel.closePopup() else viewModel.openPopup(ActivePopup.TONIC_PAD)
                     },
@@ -254,7 +307,9 @@ fun MixerScreen(
                     onOpenScenes = {
                         if (uiState.activePopup == ActivePopup.SCENE) viewModel.closePopup() else viewModel.openPopup(ActivePopup.SCENE)
                     },
-                    onOpenSettings = { viewModel.openSettingsDrawer() }
+                    onOpenSettings = { viewModel.openSettingsDrawer() },
+                    currentTheme = uiState.currentTheme,
+                    onCycleTheme = { viewModel.cycleTheme() }
                 )
 
                 Spacer(modifier = Modifier.height(4.dp))

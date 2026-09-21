@@ -1,5 +1,7 @@
 package com.soundstage.mixer.ui.pages
 
+import android.media.MediaPlayer
+import android.os.Environment
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,8 +24,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -31,15 +33,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.model.StorageItem
 import com.soundstage.mixer.ui.theme.*
+import kotlinx.coroutines.delay
+import java.io.File
 
-// Palettes fidèles à soundstage_explorateur_dossiers.svg et soundstage_explorateur_fichiers.svg
 private val ExplorerDarkBg = Color(0xFF0E1416)
 private val CardExplorerBg = Color(0xFF141B1E)
 private val SidebarItemActive = Color(0xFF004D40)
 private val CyanPrimary = Color(0xFF26C6DA)
 private val CyanDark = Color(0xFF00838F)
 
-// Tuiles exactes du SVG
 private val FolderColorDrumPad = Color(0xFF283593)
 private val FolderColorLogs = Color(0xFF37474F)
 private val FolderColorLoops = Color(0xFF00695C)
@@ -51,8 +53,16 @@ data class ExplorerFolderItem(
     val name: String,
     val count: Int,
     val color: Color,
-    val icon: androidx.compose.ui.graphics.vector.ImageVector
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val path: String? = null
 )
+
+private fun formatTime(ms: Int): String {
+    val totalSeconds = (ms / 1000).coerceAtLeast(0)
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return "%d:%02d".format(minutes, seconds)
+}
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -66,38 +76,173 @@ fun FileExplorerPage(
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var searchQuery by remember { mutableStateOf("") }
-    var selectedTab by remember { mutableStateOf(if (isLoopMode) "Fichiers" else "Dossiers") }
-    var currentSubFolder by remember { mutableStateOf<String?>(if (isLoopMode) "Loops" else null) }
+    var activeSidebarTab by remember { mutableStateOf(if (isLoopMode) "SoundStage" else "DrumPad") }
+    var currentSubFolder by remember { mutableStateOf<String?>(if (isLoopMode) "Loops" else "DrumPad") }
+    var currentCustomDirectory by remember { mutableStateOf<File?>(null) }
+
     var currentlyPlayingFile by remember { mutableStateOf<StorageItem?>(null) }
     var isLooping by remember { mutableStateOf(true) }
     var isPlaying by remember { mutableStateOf(false) }
-    var selectedTargetPadId by remember { mutableIntStateOf(1) }
+    var currentPlaybackPositionMs by remember { mutableIntStateOf(0) }
+    var currentDurationMs by remember { mutableIntStateOf(0) }
 
-    // Dialogue d'assignation au pad par appui long
+    val selectedTargetPadId by remember { mutableIntStateOf(1) }
     var fileToAssign by remember { mutableStateOf<StorageItem?>(null) }
-
-    // Dialogue de réglage de tonalité
     var fileForKeyEdit by remember { mutableStateOf<StorageItem?>(null) }
     val fileKeysMap = remember { mutableStateMapOf<String, String>() }
-
-    // BPM par fichier
     val fileBpmMap = remember { mutableStateMapOf<String, Int>() }
 
-    val folders = listOf(
-        ExplorerFolderItem("DrumPad", 8, FolderColorDrumPad, Icons.Default.Apps),
-        ExplorerFolderItem("Logs", 3, FolderColorLogs, Icons.Default.Description),
-        ExplorerFolderItem("Loops", audioFiles.size.coerceAtLeast(24), FolderColorLoops, Icons.Default.GraphicEq),
-        ExplorerFolderItem("Notes", 5, FolderColorNotes, Icons.Default.MusicNote),
-        ExplorerFolderItem("Presets", 12, FolderColorPresets, Icons.Default.Tune),
-        ExplorerFolderItem("Recordings", 7, FolderColorRecordings, Icons.Default.Mic)
-    )
+    // Lecteur local ultra réactif avec mise à jour continue du temps
+    val localPlayer = remember { MediaPlayer() }
 
-    val filteredFiles = remember(audioFiles, searchQuery, currentSubFolder) {
-        audioFiles.filter { file ->
-            val matchesQuery = searchQuery.isEmpty() || file.name.contains(searchQuery, ignoreCase = true)
-            matchesQuery
+    DisposableEffect(Unit) {
+        onDispose {
+            try {
+                if (localPlayer.isPlaying) {
+                    localPlayer.stop()
+                }
+                localPlayer.release()
+            } catch (_: Exception) {}
+            onStopPreview()
         }
+    }
+
+    LaunchedEffect(isPlaying, currentlyPlayingFile) {
+        while (isPlaying && currentlyPlayingFile != null) {
+            try {
+                if (localPlayer.isPlaying) {
+                    currentPlaybackPositionMs = localPlayer.currentPosition
+                    val dur = localPlayer.duration
+                    if (dur > 0) currentDurationMs = dur
+                }
+            } catch (_: Exception) {}
+            delay(150)
+        }
+    }
+
+    fun playFileLocally(file: StorageItem) {
+        try {
+            localPlayer.reset()
+            val f = File(file.path)
+            if (f.exists()) {
+                localPlayer.setDataSource(f.absolutePath)
+                localPlayer.isLooping = isLooping
+                localPlayer.prepare()
+                localPlayer.start()
+                currentDurationMs = localPlayer.duration.coerceAtLeast(1000)
+                currentPlaybackPositionMs = 0
+                currentlyPlayingFile = file
+                isPlaying = true
+                localPlayer.setOnCompletionListener {
+                    if (!isLooping) {
+                        isPlaying = false
+                        currentPlaybackPositionMs = 0
+                    }
+                }
+            } else {
+                onPreviewAudioFile(file)
+                currentlyPlayingFile = file
+                isPlaying = true
+            }
+        } catch (e: Exception) {
+            onPreviewAudioFile(file)
+            currentlyPlayingFile = file
+            isPlaying = true
+        }
+    }
+
+    fun stopLocalPlayback() {
+        try {
+            if (localPlayer.isPlaying) {
+                localPlayer.pause()
+            }
+        } catch (_: Exception) {}
+        isPlaying = false
+        onStopPreview()
+    }
+
+    // Calcul des dossiers SoundStage
+    val baseFolders = remember(audioFiles) {
+        listOf(
+            ExplorerFolderItem("DrumPad", audioFiles.count { it.path.contains("DrumPad", ignoreCase = true) }.coerceAtLeast(8), FolderColorDrumPad, Icons.Default.Apps),
+            ExplorerFolderItem("Loops", audioFiles.count { it.path.contains("Loop", ignoreCase = true) || !it.path.contains("DrumPad", ignoreCase = true) }.coerceAtLeast(12), FolderColorLoops, Icons.Default.GraphicEq),
+            ExplorerFolderItem("Recordings", 4, FolderColorRecordings, Icons.Default.Mic),
+            ExplorerFolderItem("Presets", 8, FolderColorPresets, Icons.Default.Tune),
+            ExplorerFolderItem("Notes", 3, FolderColorNotes, Icons.Default.MusicNote),
+            ExplorerFolderItem("Logs", 2, FolderColorLogs, Icons.Default.Description)
+        )
+    }
+
+    // Récupération des fichiers selon l'onglet actif et le dossier
+    val displayedFiles = remember(audioFiles, activeSidebarTab, currentSubFolder, currentCustomDirectory, searchQuery) {
+        val rawList: List<StorageItem> = when (activeSidebarTab) {
+            "DrumPad" -> {
+                audioFiles.filter { it.path.contains("DrumPad", ignoreCase = true) || it.name.contains("Drum", ignoreCase = true) || it.name.contains("Kick", ignoreCase = true) || it.name.contains("Snare", ignoreCase = true) || it.name.contains("Hat", ignoreCase = true) }.ifEmpty { audioFiles }
+            }
+            "SoundStage" -> {
+                when (currentSubFolder) {
+                    "DrumPad" -> audioFiles.filter { it.path.contains("DrumPad", ignoreCase = true) }.ifEmpty { audioFiles }
+                    "Loops" -> audioFiles.filter { it.path.contains("Loop", ignoreCase = true) || !it.path.contains("DrumPad", ignoreCase = true) }.ifEmpty { audioFiles }
+                    else -> audioFiles
+                }
+            }
+            "Interne", "Downloads", "Music" -> {
+                val targetDir = currentCustomDirectory ?: when (activeSidebarTab) {
+                    "Downloads" -> Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                    "Music" -> Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
+                    else -> Environment.getExternalStorageDirectory()
+                }
+                val dirFiles = try {
+                    if (targetDir.exists() && targetDir.isDirectory) {
+                        targetDir.listFiles()?.filter { f ->
+                            f.isFile && (f.name.endsWith(".wav", ignoreCase = true) || f.name.endsWith(".mp3", ignoreCase = true) || f.name.endsWith(".m4a", ignoreCase = true) || f.name.endsWith(".aac", ignoreCase = true) || f.name.endsWith(".mid", ignoreCase = true))
+                        }?.map { f ->
+                            val ext = f.extension.uppercase()
+                            val sz = f.length()
+                            val formatted = when {
+                                sz >= 1024 * 1024 -> "%.1f MB".format(sz / (1024f * 1024f))
+                                sz >= 1024 -> "%d KB".format(sz / 1024)
+                                else -> "$sz B"
+                            }
+                            StorageItem(name = f.name, path = f.absolutePath, isDirectory = false, size = sz, extension = ext, formattedSize = formatted)
+                        } ?: emptyList()
+                    } else emptyList()
+                } catch (_: Exception) {
+                    emptyList()
+                }
+                if (dirFiles.isNotEmpty()) dirFiles else audioFiles
+            }
+            else -> audioFiles
+        }
+
+        if (searchQuery.isBlank()) {
+            rawList
+        } else {
+            rawList.filter { it.name.contains(searchQuery, ignoreCase = true) }
+        }
+    }
+
+    // Sous-dossiers pour la navigation interne
+    val customSubDirs = remember(activeSidebarTab, currentCustomDirectory) {
+        if (activeSidebarTab in listOf("Interne", "Downloads", "Music")) {
+            val targetDir = currentCustomDirectory ?: when (activeSidebarTab) {
+                "Downloads" -> Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                "Music" -> Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
+                else -> Environment.getExternalStorageDirectory()
+            }
+            try {
+                if (targetDir.exists() && targetDir.isDirectory) {
+                    targetDir.listFiles()?.filter { it.isDirectory && !it.name.startsWith(".") }?.map { dir ->
+                        val count = dir.listFiles()?.size ?: 0
+                        ExplorerFolderItem(name = dir.name, count = count, color = CardExplorerBg, icon = Icons.Default.Folder, path = dir.absolutePath)
+                    } ?: emptyList()
+                } else emptyList()
+            } catch (_: Exception) {
+                emptyList()
+            }
+        } else emptyList()
     }
 
     Box(
@@ -108,7 +253,7 @@ fun FileExplorerPage(
             .testTag("file_explorer_page_root")
     ) {
         Row(modifier = Modifier.fillMaxSize()) {
-            // ================= 1. BARRE LATÉRALE GAUCHE (SVG MATCH) =================
+            // ================= 1. BARRE LATÉRALE GAUCHE =================
             Column(
                 modifier = Modifier
                     .width(68.dp)
@@ -117,58 +262,58 @@ fun FileExplorerPage(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Item DrumPad
                 SidebarIconItem(
                     icon = Icons.Default.Apps,
                     label = "DrumPad",
-                    isSelected = selectedTab == "DrumPad",
+                    isSelected = activeSidebarTab == "DrumPad",
                     onClick = {
-                        selectedTab = "Dossiers"
+                        activeSidebarTab = "DrumPad"
                         currentSubFolder = "DrumPad"
+                        currentCustomDirectory = null
                     }
                 )
 
-                // Item SoundStage
                 SidebarIconItem(
                     icon = Icons.Default.Piano,
                     label = "SoundStage",
-                    isSelected = selectedTab == "SoundStage",
+                    isSelected = activeSidebarTab == "SoundStage",
                     onClick = {
-                        selectedTab = "Dossiers"
+                        activeSidebarTab = "SoundStage"
                         currentSubFolder = null
+                        currentCustomDirectory = null
                     }
                 )
 
-                // Item Interne
                 SidebarIconItem(
                     icon = Icons.Default.Smartphone,
                     label = "Interne",
-                    isSelected = false,
+                    isSelected = activeSidebarTab == "Interne",
                     onClick = {
-                        selectedTab = "Fichiers"
+                        activeSidebarTab = "Interne"
                         currentSubFolder = "Interne"
+                        currentCustomDirectory = Environment.getExternalStorageDirectory()
                     }
                 )
 
-                // Item Downloads
                 SidebarIconItem(
                     icon = Icons.Default.FileDownload,
                     label = "Downloads",
-                    isSelected = selectedTab == "Downloads",
+                    isSelected = activeSidebarTab == "Downloads",
                     onClick = {
-                        selectedTab = "Fichiers"
+                        activeSidebarTab = "Downloads"
                         currentSubFolder = "Downloads"
+                        currentCustomDirectory = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
                     }
                 )
 
-                // Item Music
                 SidebarIconItem(
                     icon = Icons.Default.MusicNote,
                     label = "Music",
-                    isSelected = selectedTab == "Music",
+                    isSelected = activeSidebarTab == "Music",
                     onClick = {
-                        selectedTab = "Fichiers"
+                        activeSidebarTab = "Music"
                         currentSubFolder = "Music"
+                        currentCustomDirectory = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
                     }
                 )
             }
@@ -199,18 +344,6 @@ fun FileExplorerPage(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // Bouton Recherche
-                        Box(
-                            modifier = Modifier
-                                .size(34.dp)
-                                .clip(CircleShape)
-                                .background(Color(0x22FFFFFF))
-                                .clickable { },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.Search, contentDescription = "Recherche", tint = Color.White, modifier = Modifier.size(16.dp))
-                        }
-
                         // Bouton Fermer
                         Box(
                             modifier = Modifier
@@ -218,7 +351,7 @@ fun FileExplorerPage(
                                 .clip(CircleShape)
                                 .background(Color(0x22FFFFFF))
                                 .clickable {
-                                    onStopPreview()
+                                    stopLocalPlayback()
                                     onClose()
                                 }
                                 .testTag("btn_close_file_explorer"),
@@ -229,7 +362,7 @@ fun FileExplorerPage(
                     }
                 }
 
-                // Fil d'ariane & Filtre
+                // Fil d'Ariane & Compteurs
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -241,15 +374,19 @@ fun FileExplorerPage(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        if (currentSubFolder != null) {
+                        if (currentSubFolder != null || currentCustomDirectory != null) {
                             Box(
                                 modifier = Modifier
-                                    .size(24.dp)
+                                    .size(26.dp)
                                     .clip(CircleShape)
                                     .background(Color(0x22FFFFFF))
                                     .clickable {
-                                        currentSubFolder = null
-                                        selectedTab = "Dossiers"
+                                        if (currentCustomDirectory != null && currentCustomDirectory?.parentFile != null) {
+                                            currentCustomDirectory = currentCustomDirectory?.parentFile
+                                        } else {
+                                            currentSubFolder = null
+                                            currentCustomDirectory = null
+                                        }
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
@@ -272,7 +409,7 @@ fun FileExplorerPage(
                             ) {
                                 Icon(Icons.Default.Folder, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
                                 Text(
-                                    text = currentSubFolder ?: "SoundStage",
+                                    text = currentCustomDirectory?.name ?: (currentSubFolder ?: activeSidebarTab),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
@@ -282,23 +419,23 @@ fun FileExplorerPage(
                     }
 
                     Text(
-                        text = if (selectedTab == "Dossiers") "${folders.size} dossiers" else "${filteredFiles.size} fichiers",
+                        text = "${displayedFiles.size} fichiers",
                         fontSize = 11.sp,
                         color = Color(0x88FFFFFF)
                     )
                 }
 
-                // Vue Dossiers ou Vue Fichiers
+                // Affichage Contenu (Grille de dossiers OU Liste de fichiers)
                 Box(modifier = Modifier.weight(1f)) {
-                    if (selectedTab == "Dossiers") {
-                        // GRILLE DES DOSSIERS (soundstage_explorateur_dossiers.svg)
+                    if (activeSidebarTab == "SoundStage" && currentSubFolder == null) {
+                        // GRILLE DES DOSSIERS SOUNDSTAGE
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(3),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                             modifier = Modifier.fillMaxSize()
                         ) {
-                            items(folders) { folder ->
+                            items(baseFolders) { folder ->
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -307,7 +444,6 @@ fun FileExplorerPage(
                                         .background(folder.color)
                                         .clickable {
                                             currentSubFolder = folder.name
-                                            selectedTab = "Fichiers"
                                         }
                                         .padding(10.dp)
                                 ) {
@@ -329,15 +465,50 @@ fun FileExplorerPage(
                             }
                         }
                     } else {
-                        // LISTE DES FICHIERS (soundstage_explorateur_fichiers.svg)
+                        // LISTE DES FICHIERS AUDIO & SOUS-DOSSIERS
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            items(filteredFiles) { file ->
+                            // Sous-dossiers éventuels
+                            if (customSubDirs.isNotEmpty()) {
+                                items(customSubDirs) { subDir ->
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(44.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(Color(0xFF1B2428))
+                                            .clickable {
+                                                if (subDir.path != null) {
+                                                    currentCustomDirectory = File(subDir.path)
+                                                }
+                                            }
+                                            .padding(horizontal = 12.dp),
+                                        contentAlignment = Alignment.CenterStart
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Icon(Icons.Default.Folder, contentDescription = null, tint = CyanPrimary, modifier = Modifier.size(18.dp))
+                                                Text(subDir.name, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                            }
+                                            Text("${subDir.count} items", fontSize = 10.sp, color = Color(0x88FFFFFF))
+                                        }
+                                    }
+                                }
+                            }
+
+                            items(displayedFiles) { file ->
                                 val isThisPlaying = currentlyPlayingFile?.path == file.path && isPlaying
                                 val detected = remember(file.path) {
-                                    com.soundstage.mixer.audio.AudioKeyBpmDetector.detectKeyAndBpm(file.name, java.io.File(file.path))
+                                    com.soundstage.mixer.audio.AudioKeyBpmDetector.detectKeyAndBpm(file.name, File(file.path))
                                 }
                                 val currentKey = fileKeysMap[file.path] ?: (if (detected.key.isNotEmpty()) detected.key else "C")
                                 val currentBpm = fileBpmMap[file.path] ?: (if (detected.bpm > 0) detected.bpm else 120)
@@ -356,16 +527,12 @@ fun FileExplorerPage(
                                         .combinedClickable(
                                             onClick = {
                                                 if (isThisPlaying) {
-                                                    isPlaying = false
-                                                    onStopPreview()
+                                                    stopLocalPlayback()
                                                 } else {
-                                                    currentlyPlayingFile = file
-                                                    isPlaying = true
-                                                    onPreviewAudioFile(file)
+                                                    playFileLocally(file)
                                                 }
                                             },
                                             onLongClick = {
-                                                // Appui long : popup pour assigner à un pad D1..D8
                                                 fileToAssign = file
                                             }
                                         )
@@ -391,7 +558,7 @@ fun FileExplorerPage(
                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 Icon(
-                                                    imageVector = if (isThisPlaying) Icons.Default.Check else Icons.Default.GraphicEq,
+                                                    imageVector = if (isThisPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                                                     contentDescription = null,
                                                     tint = if (isThisPlaying) Color.Black else Color.White,
                                                     modifier = Modifier.size(16.dp)
@@ -415,12 +582,12 @@ fun FileExplorerPage(
                                             }
                                         }
 
-                                        // Badges interactifs Signature Rythmique, Tonalité et BPM à droite du fichier
+                                        // Badges interactifs Signature Rythmique, Tonalité et BPM
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(5.dp)
                                         ) {
-                                            // 1. Badge Signature Rythmique (4/4, 3/4, 6/8...)
+                                            // 1. Badge Signature Rythmique
                                             Box(
                                                 modifier = Modifier
                                                     .clip(RoundedCornerShape(6.dp))
@@ -436,7 +603,7 @@ fun FileExplorerPage(
                                                 )
                                             }
 
-                                            // 2. Badge Tonalité (clic pour modifier en pop-up avec choix Majeur / Mineur)
+                                            // 2. Badge Tonalité modifiable
                                             Box(
                                                 modifier = Modifier
                                                     .clip(RoundedCornerShape(6.dp))
@@ -458,7 +625,7 @@ fun FileExplorerPage(
                                                 }
                                             }
 
-                                            // Badge BPM avec boutons [-] et [+] centrés géométriquement
+                                            // 3. Badge BPM avec boutons [-] et [+]
                                             Row(
                                                 modifier = Modifier
                                                     .clip(RoundedCornerShape(6.dp))
@@ -511,7 +678,7 @@ fun FileExplorerPage(
                     }
                 }
 
-                // ================= 3. LECTEUR PERSISTANT EN BAS (SVG MATCH) =================
+                // ================= 3. LECTEUR PERSISTANT EN BAS AVEC VRAI TIMER =================
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -535,8 +702,13 @@ fun FileExplorerPage(
                                 .background(CyanPrimary)
                                 .clickable {
                                     if (currentlyPlayingFile != null) {
-                                        isPlaying = !isPlaying
-                                        if (!isPlaying) onStopPreview() else onPreviewAudioFile(currentlyPlayingFile!!)
+                                        if (isPlaying) {
+                                            stopLocalPlayback()
+                                        } else {
+                                            playFileLocally(currentlyPlayingFile!!)
+                                        }
+                                    } else if (displayedFiles.isNotEmpty()) {
+                                        playFileLocally(displayedFiles.first())
                                     }
                                 },
                             contentAlignment = Alignment.Center
@@ -549,7 +721,7 @@ fun FileExplorerPage(
                             )
                         }
 
-                        // Nom du fichier & Waveform cyan
+                        // Nom du fichier, Vraie position de lecture & Waveform
                         Column(
                             modifier = Modifier
                                 .weight(1f)
@@ -569,25 +741,34 @@ fun FileExplorerPage(
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f)
                                 )
-                                Text("0:12 / 0:38", fontSize = 9.sp, color = Color(0x88FFFFFF))
+                                Text(
+                                    text = "${formatTime(currentPlaybackPositionMs)} / ${formatTime(currentDurationMs)}",
+                                    fontSize = 9.sp,
+                                    color = Color(0xAAFFFFFF)
+                                )
                             }
 
                             Spacer(modifier = Modifier.height(4.dp))
 
-                            // Waveform simulée
+                            // Waveform animée selon la progression réelle
+                            val progressRatio = if (currentDurationMs > 0) {
+                                (currentPlaybackPositionMs.toFloat() / currentDurationMs.toFloat()).coerceIn(0f, 1f)
+                            } else 0f
+
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 val heights = listOf(4, 8, 12, 16, 14, 10, 6, 12, 18, 15, 8, 5, 11, 14, 8, 12, 16, 10, 6, 14, 18, 12, 8, 5)
+                                val activeBars = (progressRatio * heights.size).toInt()
                                 heights.forEachIndexed { i, h ->
                                     Box(
                                         modifier = Modifier
                                             .weight(1f)
                                             .height(h.dp)
                                             .clip(RoundedCornerShape(1.dp))
-                                            .background(if (i < 10) CyanPrimary else Color(0x44FFFFFF))
+                                            .background(if (i <= activeBars && isPlaying) CyanPrimary else Color(0x33FFFFFF))
                                     )
                                 }
                             }
@@ -599,7 +780,12 @@ fun FileExplorerPage(
                                 .size(30.dp)
                                 .clip(CircleShape)
                                 .background(if (isLooping) CyanDark else Color(0x22FFFFFF))
-                                .clickable { isLooping = !isLooping },
+                                .clickable {
+                                    isLooping = !isLooping
+                                    try {
+                                        localPlayer.isLooping = isLooping
+                                    } catch (_: Exception) {}
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(Icons.Default.Repeat, contentDescription = "Loop", tint = Color.White, modifier = Modifier.size(16.dp))
@@ -614,9 +800,9 @@ fun FileExplorerPage(
                                 .clip(RoundedCornerShape(16.dp))
                                 .background(CyanPrimary)
                                 .clickable {
-                                    if (currentlyPlayingFile != null) {
-                                        onAssignToPad?.invoke(selectedTargetPadId, currentlyPlayingFile!!, isLoopMode)
-                                        onClose()
+                                    val target = currentlyPlayingFile ?: displayedFiles.firstOrNull()
+                                    if (target != null) {
+                                        fileToAssign = target
                                     }
                                 }
                                 .padding(horizontal = 10.dp),
@@ -727,7 +913,6 @@ fun FileExplorerPage(
                 },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        // Choix de la note fondamentale
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(4),
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -754,7 +939,6 @@ fun FileExplorerPage(
                             }
                         }
 
-                        // Choix Majeur / Mineur
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -850,3 +1034,4 @@ private fun SidebarIconItem(
         )
     }
 }
+

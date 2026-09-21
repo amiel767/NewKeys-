@@ -47,6 +47,7 @@ bool SoundfontEngine::init(int sampleRate, int polyphony, const char* instanceNa
     fluid_synth_chorus_on(mSynth, -1, 1);
 
     for (int ch = 0; ch < kMaxChannels; ++ch) {
+        fluid_synth_set_channel_type(mSynth, ch, CHANNEL_TYPE_MELODIC);
         mTransposeSemitones[ch].store(0, std::memory_order_relaxed);
         fluid_synth_cc(mSynth, ch, 7, 127);  // Volume max
         fluid_synth_cc(mSynth, ch, 10, 64);  // Pan Center
@@ -97,6 +98,7 @@ int SoundfontEngine::loadSoundFont(const std::string &absolutePath) {
                 fluid_synth_reverb_on(mSynth, -1, 0);
                 fluid_synth_chorus_on(mSynth, -1, 1);
                 for (int ch = 0; ch < kMaxChannels; ++ch) {
+                    fluid_synth_set_channel_type(mSynth, ch, CHANNEL_TYPE_MELODIC);
                     mTransposeSemitones[ch].store(0, std::memory_order_relaxed);
                     fluid_synth_cc(mSynth, ch, 7, 127);
                     fluid_synth_cc(mSynth, ch, 10, 64);
