@@ -30,24 +30,25 @@ enum class SoundGoodizerMode(val label: String, val description: String) {
 enum class AppTheme(
     val displayName: String,
     val description: String,
-    val primaryColor: Color = Color(0xFF00E5FF),
-    val canvasDark: Color = Color(0xFF1B1E2B),
-    val canvasDarkEnd: Color = Color(0xFF11131C),
-    val cardBg: Color = Color(0x22FFFFFF),
-    val cardBorder: Color = Color(0x1AFFFFFF)
+    val primaryColor: Color = Color(0xFFE2B4BD),
+    val canvasDark: Color = Color(0xFF13131C),
+    val canvasDarkEnd: Color = Color(0xFF161722),
+    val cardBg: Color = Color(0xFF1E202C),
+    val cardBorder: Color = Color(0xFF282A3A)
 ) {
-    CYBER_VIOLET("Cyber Violet", "Dark canvas with cyan & violet neon accents", Color(0xFF00E5FF), Color(0xFF1B1E2B), Color(0xFF11131C)),
+    MATERIAL_YOU("Material You", "Modern dark studio canvas with soft diffused glowing tracks & pastel accents", Color(0xFFE2B4BD), Color(0xFF13131C), Color(0xFF161722), Color(0xFF1E202C), Color(0xFF282A3A)),
+    CYBER_NEON("Cyber Neon", "Dark canvas with electric cyan & neon accents", Color(0xFF00E5FF), Color(0xFF1B1E2B), Color(0xFF11131C), Color(0x22FFFFFF), Color(0x1AFFFFFF)),
     RUBY_VELVET("Ruby Velvet", "Rich burgundy & warm coral StepDrum palette", Color(0xFFC92A45), Color(0xFF4C0E1A), Color(0xFF330912)),
     NEON_AMBER("Neon Amber", "Warm amber, gold & sunset glow", Color(0xFFF59E0B), Color(0xFF1F1608), Color(0xFF120C04)),
     EMERALD_SYNTH("Emerald Synth", "Electric emerald, mint & acid green", Color(0xFF10B981), Color(0xFF061A14), Color(0xFF030D0A)),
     DEEP_OCEAN("Deep Ocean", "Deep sapphire ocean & vibrant cyan", Color(0xFF0284C7), Color(0xFF0A192F), Color(0xFF050C17));
 
     companion object {
-        val CYBER_NEON get() = CYBER_VIOLET
+        val CYBER_VIOLET get() = CYBER_NEON
         val OBSIDIAN_GOLD get() = NEON_AMBER
-        val TOKYO_NIGHT get() = CYBER_VIOLET
+        val TOKYO_NIGHT get() = CYBER_NEON
         val STUDIO_SLATE get() = DEEP_OCEAN
-        val OLED_BLACK get() = CYBER_VIOLET
+        val OLED_BLACK get() = MATERIAL_YOU
     }
 }
 

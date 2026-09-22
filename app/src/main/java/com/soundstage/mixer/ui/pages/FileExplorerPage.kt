@@ -468,7 +468,7 @@ fun FileExplorerPage(
                         // LISTE DES FICHIERS AUDIO & SOUS-DOSSIERS
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             // Sous-dossiers éventuels
                             if (customSubDirs.isNotEmpty()) {
@@ -476,7 +476,7 @@ fun FileExplorerPage(
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .height(44.dp)
+                                            .height(48.dp)
                                             .clip(RoundedCornerShape(12.dp))
                                             .background(Color(0xFF1B2428))
                                             .clickable {
@@ -484,7 +484,7 @@ fun FileExplorerPage(
                                                     currentCustomDirectory = File(subDir.path)
                                                 }
                                             }
-                                            .padding(horizontal = 12.dp),
+                                            .padding(horizontal = 14.dp),
                                         contentAlignment = Alignment.CenterStart
                                     ) {
                                         Row(
@@ -494,12 +494,12 @@ fun FileExplorerPage(
                                         ) {
                                             Row(
                                                 verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                                             ) {
-                                                Icon(Icons.Default.Folder, contentDescription = null, tint = CyanPrimary, modifier = Modifier.size(18.dp))
-                                                Text(subDir.name, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                                Icon(Icons.Default.Folder, contentDescription = null, tint = CyanPrimary, modifier = Modifier.size(20.dp))
+                                                Text(subDir.name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
                                             }
-                                            Text("${subDir.count} items", fontSize = 10.sp, color = Color(0x88FFFFFF))
+                                            Text("${subDir.count} items", fontSize = 11.sp, color = Color(0x88FFFFFF))
                                         }
                                     }
                                 }
@@ -516,7 +516,7 @@ fun FileExplorerPage(
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(52.dp)
+                                        .height(56.dp)
                                         .clip(RoundedCornerShape(14.dp))
                                         .background(if (isThisPlaying) Color(0xFF003844) else CardExplorerBg)
                                         .border(
@@ -536,7 +536,7 @@ fun FileExplorerPage(
                                                 fileToAssign = file
                                             }
                                         )
-                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                        .padding(horizontal = 14.dp, vertical = 8.dp)
                                         .testTag("file_item_${file.name}")
                                 ) {
                                     Row(
@@ -544,15 +544,15 @@ fun FileExplorerPage(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        // Icône / Statut
+                                        // Icône / Statut & Nom du fichier (uniquement le nom, aéré, sans la taille)
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
                                             modifier = Modifier.weight(1f)
                                         ) {
                                             Box(
                                                 modifier = Modifier
-                                                    .size(28.dp)
+                                                    .size(32.dp)
                                                     .clip(CircleShape)
                                                     .background(if (isThisPlaying) CyanPrimary else CyanDark),
                                                 contentAlignment = Alignment.Center
@@ -561,31 +561,24 @@ fun FileExplorerPage(
                                                     imageVector = if (isThisPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                                                     contentDescription = null,
                                                     tint = if (isThisPlaying) Color.Black else Color.White,
-                                                    modifier = Modifier.size(16.dp)
+                                                    modifier = Modifier.size(18.dp)
                                                 )
                                             }
 
-                                            Column {
-                                                Text(
-                                                    text = file.name,
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color.White,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                    Text(file.name.substringAfterLast('.', "WAV").uppercase(), fontSize = 9.sp, color = Color(0x88FFFFFF))
-                                                    Text(file.formattedSize, fontSize = 9.sp, color = Color(0x88FFFFFF))
-                                                    Text(detected.timeSignature, fontSize = 9.sp, color = Color(0x88FFFFFF))
-                                                }
-                                            }
+                                            Text(
+                                                text = file.name,
+                                                fontSize = 13.5.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Color.White,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
                                         }
 
                                         // Badges interactifs Signature Rythmique, Tonalité et BPM
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
                                             // 1. Badge Signature Rythmique
                                             Box(
@@ -813,7 +806,7 @@ fun FileExplorerPage(
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 Icon(Icons.Default.Apps, contentDescription = null, tint = Color.Black, modifier = Modifier.size(13.dp))
-                                Text("Charger", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = Color.Black)
+                                Text("Assign", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = Color.Black)
                             }
                         }
                     }
@@ -827,7 +820,7 @@ fun FileExplorerPage(
                 onDismissRequest = { fileToAssign = null },
                 title = {
                     Text(
-                        text = "Assigner à quel pad ?",
+                        text = "Assign to Pad",
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -884,7 +877,7 @@ fun FileExplorerPage(
                 confirmButton = {},
                 dismissButton = {
                     TextButton(onClick = { fileToAssign = null }) {
-                        Text("Annuler", color = Color.White)
+                        Text("Cancel", color = Color.White)
                     }
                 },
                 containerColor = Color(0xFF1E2330)

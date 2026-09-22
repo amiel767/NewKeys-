@@ -32,6 +32,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soundstage.mixer.model.ActivePopup
 import com.soundstage.mixer.model.AppScreenPage
 import com.soundstage.mixer.model.FxParameters
+import com.soundstage.mixer.model.LocalDynamicPalette
+import com.soundstage.mixer.model.computeDynamicPalette
 import com.soundstage.mixer.ui.components.*
 import com.soundstage.mixer.ui.pages.DrumPadPage
 import com.soundstage.mixer.ui.pages.StepDrumPage
@@ -99,6 +101,20 @@ fun MixerScreen(
 
     val isKeyboardVisible = uiState.keyboardHeightFraction > 0f
 
+    val dynamicPalette = remember(
+        uiState.materialYouStyle,
+        uiState.accentSaturation,
+        uiState.bgSaturation,
+        uiState.bgBrightness
+    ) {
+        computeDynamicPalette(
+            uiState.materialYouStyle,
+            uiState.accentSaturation,
+            uiState.bgSaturation,
+            uiState.bgBrightness
+        )
+    }
+
     val animatedBottomPadding by animateDpAsState(
         targetValue = if (isKeyboardVisible) 0.dp else 6.dp,
         animationSpec = tween(
@@ -109,19 +125,20 @@ fun MixerScreen(
     )
     val safeBottomPadding = animatedBottomPadding.coerceAtLeast(0.dp)
 
-    // Fullscreen Stage Container
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(DarkBg)
-            .padding(
-                start = 6.dp,
-                end = 6.dp,
-                top = 6.dp,
-                bottom = safeBottomPadding
-            )
-            .testTag("mixer_screen_root")
-    ) {
+    CompositionLocalProvider(LocalDynamicPalette provides dynamicPalette) {
+        // Fullscreen Stage Container
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .background(if (uiState.currentTheme == com.soundstage.mixer.model.AppTheme.MATERIAL_YOU) dynamicPalette.background else DarkBg)
+                .padding(
+                    start = 6.dp,
+                    end = 6.dp,
+                    top = 6.dp,
+                    bottom = safeBottomPadding
+                )
+                .testTag("mixer_screen_root")
+        ) {
         AnimatedContent(
             targetState = uiState.currentPage,
             transitionSpec = {
@@ -361,6 +378,7 @@ fun MixerScreen(
                                         onTrackNameClick = { viewModel.openSoundfontForSlot(track.id - 1) },
                                         onFxClick = { viewModel.openEffectsForTrack(track.id) },
                                         showTicks = showTicks,
+                                        theme = uiState.currentTheme,
                                         modifier = Modifier
                                             .width(trackItemWidth)
                                             .fillMaxHeight()
@@ -889,7 +907,15 @@ fun MixerScreen(
             velocityMax = uiState.globalVelocityMax,
             onVelocityRangeChange = { min, max -> viewModel.setGlobalVelocityRange(min, max) },
             useFlats = uiState.useFlats,
-            onToggleUseFlats = { viewModel.toggleUseFlats() }
+            onToggleUseFlats = { viewModel.toggleUseFlats() },
+            currentTheme = uiState.currentTheme,
+            onSelectTheme = { viewModel.selectTheme(it) },
+            selectedPaletteColorIndex = uiState.selectedPaletteIndex,
+            onSelectPaletteColorIndex = { viewModel.setSelectedPaletteIndex(it) },
+            saturation = uiState.themeSaturation,
+            onSaturationChange = { viewModel.setThemeSaturation(it) },
+            nuance = uiState.themeNuance,
+            onNuanceChange = { viewModel.setThemeNuance(it) }
         )
 
         // Material 3 Storage Permission Explanation Dialog
@@ -937,4 +963,5 @@ fun MixerScreen(
             )
         }
     }
+}
 }

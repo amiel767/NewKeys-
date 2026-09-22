@@ -5,8 +5,11 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -46,7 +49,11 @@ private val StopButtonRed = Color(0xFFDC2626)
 
 // Palettes dynamiques des 8 pads selon le thème sélectionné
 private fun getThemePadColors(theme: AppTheme): List<Color> = when (theme) {
-    AppTheme.CYBER_VIOLET -> listOf(
+    AppTheme.MATERIAL_YOU -> listOf(
+        Color(0xFFE09F3E), Color(0xFF84CC16), Color(0xFF10B981), Color(0xFF06B6D4),
+        Color(0xFF3B82F6), Color(0xFF8B5CF6), Color(0xFFEC4899), Color(0xFFF97316)
+    )
+    AppTheme.CYBER_NEON -> listOf(
         Color(0xFF8B5CF6), Color(0xFF06B6D4), Color(0xFFEC4899), Color(0xFF6366F1),
         Color(0xFF3B82F6), Color(0xFFA855F7), Color(0xFFF43F5E), Color(0xFF14B8A6)
     )
@@ -230,62 +237,22 @@ fun DrumPadPage(
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                // Sélecteur Scène 1 2 3 4 + bouton '+'
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text("Scène", fontSize = 11.sp, color = Color(0xCCFFFFFF), fontWeight = FontWeight.Medium)
-                    listOf("1", "2", "3", "4").forEach { sceneNum ->
-                        val isSelected = activeSceneId.contains(sceneNum) || (activeSceneId.isEmpty() && sceneNum == "1")
-                        Box(
-                            modifier = Modifier
-                                .size(24.dp)
-                                .clip(CircleShape)
-                                .background(if (isSelected) Color.White else Color(0x22FFFFFF))
-                                .clickable { onSelectScene("scene_$sceneNum") },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = sceneNum,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isSelected) Color.Black else Color.White
-                            )
-                        }
-                    }
-
-                    // Bouton '+' pour ajouter/dupliquer une scène
-                    Box(
-                        modifier = Modifier
-                            .size(24.dp)
-                            .clip(CircleShape)
-                            .background(Color(0x33FFFFFF))
-                            .clickable {
-                                newSceneName = "Scène ${scenes.size + 1}"
-                                showNewSceneDialog = true
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = "Nouvelle scène", tint = Color.White, modifier = Modifier.size(14.dp))
-                    }
-                }
-
-                // Bouton Thème Dynamique (Icône fixe 32dp x 32dp, taille stable sans texte)
-                IconButton(
-                    onClick = onCycleTheme,
+                // Bouton Thème épuré (icône seule sans cercle, ni bordure, ni fond)
+                Box(
                     modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(Color(0x22FFFFFF))
-                        .border(1.dp, currentTheme.primaryColor.copy(alpha = 0.7f), CircleShape)
-                        .testTag("btn_drumpad_theme")
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { onCycleTheme() }
+                        .padding(4.dp)
+                        .testTag("btn_drumpad_theme"),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Palette,
                         contentDescription = "Thème ${currentTheme.displayName}",
                         tint = currentTheme.primaryColor,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 
@@ -352,19 +319,6 @@ fun DrumPadPage(
                             color = if (isMixMode) Color.Black else Color.White
                         )
                     }
-                }
-
-                // Bouton Thème rapide
-                IconButton(
-                    onClick = { onCycleTheme() },
-                    modifier = Modifier.size(28.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Palette,
-                        contentDescription = "Changer Thème",
-                        tint = currentTheme.primaryColor,
-                        modifier = Modifier.size(18.dp)
-                    )
                 }
             }
 
@@ -475,16 +429,26 @@ fun DrumPadPage(
                                     val index = row * 3 + col
                                     val note = currentChromaticNotes.getOrElse(index) { "C" }
                                     val isActive = activeTonicNotes.contains(note)
+                                    val activeNoteBrush = Brush.verticalGradient(
+                                        listOf(
+                                            Color.White.copy(alpha = 0.95f),
+                                            TonicPadKeyActive.copy(alpha = 0.90f),
+                                            TonicPadKeyActive
+                                        )
+                                    )
 
                                     Box(
                                         modifier = Modifier
                                             .weight(1f)
                                             .fillMaxHeight()
                                             .clip(RoundedCornerShape(10.dp))
-                                            .background(if (isActive) TonicPadKeyActive else TonicPadKeyDark)
+                                            .then(
+                                                if (isActive) Modifier.background(activeNoteBrush)
+                                                else Modifier.background(TonicPadKeyDark)
+                                            )
                                             .border(
-                                                1.dp,
-                                                if (isActive) Color.White.copy(alpha = 0.5f) else Color(0x1AFFFFFF),
+                                                if (isActive) 1.5.dp else 1.dp,
+                                                if (isActive) Color.White else Color(0x1AFFFFFF),
                                                 RoundedCornerShape(10.dp)
                                             )
                                             .clickable { onTonicNoteClick(note) }
@@ -495,7 +459,7 @@ fun DrumPadPage(
                                             text = note,
                                             fontSize = 13.sp,
                                             fontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.Bold,
-                                            color = Color.White
+                                            color = if (isActive) Color.Black else Color.White
                                         )
                                     }
                                 }
@@ -503,47 +467,132 @@ fun DrumPadPage(
                         }
                     }
 
-                    // Panneau d'état & Cartes dynamiques de sons
+                    // 1. SLIDERS VOLUME & SHIMMER JUSTE AU DESSOUS DES TOUCHES TONICPAD
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0x18FFFFFF))
+                            .padding(horizontal = 6.dp, vertical = 3.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        // Slider Volume
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Vol ${(tonicVolume * 100).toInt()}%", fontSize = 8.5.sp, color = Color(0xCCFFFFFF), fontWeight = FontWeight.Bold)
+                            Slider(
+                                value = tonicVolume,
+                                onValueChange = { onTonicVolumeChange(it) },
+                                colors = SliderDefaults.colors(
+                                    thumbColor = Color.White,
+                                    activeTrackColor = TonicPadKeyActive,
+                                    inactiveTrackColor = Color(0x33FFFFFF)
+                                ),
+                                modifier = Modifier.height(18.dp)
+                            )
+                        }
+
+                        // Slider Shimmer
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Shimmer ${(tonicShimmer * 100).toInt()}%", fontSize = 8.5.sp, color = Color(0xCCFFFFFF), fontWeight = FontWeight.Bold)
+                            Slider(
+                                value = tonicShimmer,
+                                onValueChange = { onTonicShimmerChange(it) },
+                                colors = SliderDefaults.colors(
+                                    thumbColor = Color.White,
+                                    activeTrackColor = Color(0xFFF59E0B),
+                                    inactiveTrackColor = Color(0x33FFFFFF)
+                                ),
+                                modifier = Modifier.height(18.dp)
+                            )
+                        }
+                    }
+
+                    // 2. AFFICHAGE DE LA NOTE JOUÉE (UNIQUEMENT LA NOTE SEULE : C, D, E...) + BOUTON STOP
+                    val singleNotePlayed = remember(activeTonicNotes) {
+                        val first = activeTonicNotes.firstOrNull() ?: return@remember "---"
+                        // Garde strictement le nom de note sans chiffre d'octave ni suffixe d'accord
+                        first.replace(Regex("[0-9]"), "").trim().ifEmpty { "---" }
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(30.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0x18FFFFFF))
+                            .padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = singleNotePlayed,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (activeTonicNotes.isNotEmpty()) Color(0xFFFFD166) else Color.White
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(if (activeTonicNotes.isNotEmpty()) TonicPadLedGreen else Color(0x44FFFFFF))
+                            )
+                        }
+
+                        // Bouton rouge carré arrondi Stop ⏹
+                        Box(
+                            modifier = Modifier
+                                .size(22.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(StopButtonRed)
+                                .clickable { onStopTonicDrone() }
+                                .testTag("btn_stop_tonic_drone"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .background(Color.White)
+                            )
+                        }
+                    }
+
+                    // 3. CASES DRUMKIT ET PAD DESCENDUES TOUT EN BAS SANS NOMS GÉNÉRIQUES
+                    val cleanDrumKitName = remember(activeDrumKitName) {
+                        val raw = activeDrumKitName
+                            .removePrefix("Kit:")
+                            .removePrefix("Kit :")
+                            .removePrefix("Kit")
+                            .trim()
+                        if (raw.isBlank() || raw.equals("Drumkit 1", ignoreCase = true) || raw.equals("Drum Kit 1", ignoreCase = true) || raw.equals("Kit 1", ignoreCase = true) || raw.equals("Default", ignoreCase = true)) {
+                            "Drumkit"
+                        } else {
+                            raw
+                        }
+                    }
+
+                    val cleanPadName = remember(activeTonicPadName) {
+                        val raw = activeTonicPadName
+                            .removePrefix("Pad:")
+                            .removePrefix("Pad :")
+                            .removePrefix("Pad")
+                            .trim()
+                        if (raw.isBlank() || raw.equals("Default", ignoreCase = true)) "Pad" else raw
+                    }
+
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0x1FFFFFFF))
-                            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(12.dp))
-                            .padding(6.dp),
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0x14FFFFFF))
+                            .border(1.dp, Color(0x1EFFFFFF), RoundedCornerShape(10.dp))
+                            .padding(5.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        // Carte Pad : [Nom dynamique du preset soundfont]
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(26.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Color(0x14FFFFFF))
-                                .clickable { onOpenTonicSoundPicker() }
-                                .padding(horizontal = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Default.Waves, contentDescription = null, tint = Color.White, modifier = Modifier.size(11.dp))
-                                Text(
-                                    text = "Pad: $activeTonicPadName",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = Color.White,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color(0x88FFFFFF), modifier = Modifier.size(13.dp))
-                        }
-
-                        // Carte Kit : [Nom dynamique du drum kit] -> Clic ouvre le sélecteur inline / DrumPad
+                        // Carte Drumkit descendue en bas
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -562,7 +611,7 @@ fun DrumPadPage(
                             ) {
                                 Icon(Icons.Default.Apps, contentDescription = null, tint = Color.White, modifier = Modifier.size(11.dp))
                                 Text(
-                                    text = "Kit: $activeDrumKitName",
+                                    text = cleanDrumKitName,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = Color.White,
@@ -573,121 +622,34 @@ fun DrumPadPage(
                             Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color(0x88FFFFFF), modifier = Modifier.size(13.dp))
                         }
 
-                        // Ligne Note active + Double Dénomination Accords Gospel/Jazz + Bouton Stop rouge
-                        val displayNote = activeTonicNotes.firstOrNull() ?: "---"
-                        val gospelChordInfo = remember(displayNote) {
-                            when (displayNote) {
-                                "C" -> GospelChord("C Maj9 (Drone)", "C / C", "G / C")
-                                "C#", "Db" -> GospelChord("Db min9", "Ab min \\ Db min", "E Maj7 \\ Db")
-                                "D" -> GospelChord("D min11", "A min \\ D min", "F Maj7 \\ D")
-                                "D#", "Eb" -> GospelChord("Eb Maj9", "Bb min \\ Eb min", "Gb Maj7 \\ Eb")
-                                "E" -> GospelChord("E min9", "B min \\ E min", "G Maj7 \\ E")
-                                "F" -> GospelChord("F Maj9", "C min \\ F min", "Ab Maj7 \\ F")
-                                "F#", "Gb" -> GospelChord("Gb min11", "Db min \\ Gb min", "A Maj7 \\ Gb")
-                                "G" -> GospelChord("G Maj9", "D min \\ G min", "Bb Maj7 \\ G")
-                                "G#", "Ab" -> GospelChord("Ab Maj9", "Eb min \\ Ab min", "B Maj7 \\ Ab")
-                                "A" -> GospelChord("A min9", "E min \\ A min", "C Maj7 \\ A")
-                                "A#", "Bb" -> GospelChord("Bb min9", "F min \\ Bb min", "C# Maj7 \\ Bb")
-                                "B" -> GospelChord("B min9", "F# min \\ B min", "D Maj7 \\ B")
-                                else -> GospelChord("---", "---", "---")
-                            }
-                        }
-
+                        // Carte Pad descendue en bas
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(40.dp)
+                                .height(26.dp)
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(Color(0x18FFFFFF))
-                                .padding(horizontal = 6.dp, vertical = 3.dp),
+                                .background(Color(0x14FFFFFF))
+                                .clickable { onOpenTonicSoundPicker() }
+                                .padding(horizontal = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.Center
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.weight(1f)
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                ) {
-                                    Text(
-                                        text = if (activeTonicNotes.isNotEmpty()) gospelChordInfo.mainChord else "---",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = if (activeTonicNotes.isNotEmpty()) Color(0xFFFFD166) else Color.White
-                                    )
-                                    Box(
-                                        modifier = Modifier
-                                            .size(6.dp)
-                                            .clip(CircleShape)
-                                            .background(if (activeTonicNotes.isNotEmpty()) TonicPadLedGreen else Color(0x44FFFFFF))
-                                    )
-                                }
-                                if (activeTonicNotes.isNotEmpty()) {
-                                    Text(
-                                        text = "${gospelChordInfo.slashDecomp1} • ${gospelChordInfo.slashDecomp2}",
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = Color.White.copy(alpha = 0.75f),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-
-                            // Bouton rouge carré arrondi Stop ⏹
-                            Box(
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(StopButtonRed)
-                                    .clickable { onStopTonicDrone() }
-                                    .testTag("btn_stop_tonic_drone"),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(8.dp)
-                                        .background(Color.White)
+                                Icon(Icons.Default.Waves, contentDescription = null, tint = Color.White, modifier = Modifier.size(11.dp))
+                                Text(
+                                    text = cleanPadName,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
-                        }
-
-                        // Deux petits sliders : Volume et Shimmer (prise d'effet immédiate)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            // Slider Volume
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Vol ${(tonicVolume * 100).toInt()}%", fontSize = 8.5.sp, color = Color(0xCCFFFFFF))
-                                Slider(
-                                    value = tonicVolume,
-                                    onValueChange = { onTonicVolumeChange(it) },
-                                    colors = SliderDefaults.colors(
-                                        thumbColor = Color.White,
-                                        activeTrackColor = TonicPadKeyActive,
-                                        inactiveTrackColor = Color(0x33FFFFFF)
-                                    ),
-                                    modifier = Modifier.height(18.dp)
-                                )
-                            }
-
-                            // Slider Shimmer
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Shimmer ${(tonicShimmer * 100).toInt()}%", fontSize = 8.5.sp, color = Color(0xCCFFFFFF))
-                                Slider(
-                                    value = tonicShimmer,
-                                    onValueChange = { onTonicShimmerChange(it) },
-                                    colors = SliderDefaults.colors(
-                                        thumbColor = Color.White,
-                                        activeTrackColor = Color(0xFFF59E0B),
-                                        inactiveTrackColor = Color(0x33FFFFFF)
-                                    ),
-                                    modifier = Modifier.height(18.dp)
-                                )
-                            }
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color(0x88FFFFFF), modifier = Modifier.size(13.dp))
                         }
                     }
                 }
@@ -1015,55 +977,49 @@ private fun InlineDrumKitBrowserView(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 items(filteredFiles.size) { idx ->
                     val file = filteredFiles[idx]
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(38.dp)
+                            .height(40.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0x18FFFFFF))
+                            .background(Color(0x22FFFFFF))
                             .padding(horizontal = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.weight(1f)
                         ) {
                             IconButton(
                                 onClick = { onPreviewAudioFile(file) },
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(26.dp)
                             ) {
-                                Icon(Icons.Default.PlayArrow, contentDescription = "Écouter", tint = Color(0xFF4ADE80), modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.PlayArrow, contentDescription = "Preview", tint = Color(0xFF4ADE80), modifier = Modifier.size(18.dp))
                             }
-                            Column {
-                                Text(
-                                    text = file.name,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    text = if (file.isDirectory) "Dossier DrumKit" else "Sample Audio (${file.formattedSize})",
-                                    fontSize = 8.sp,
-                                    color = Color(0x88FFFFFF)
-                                )
-                            }
+                            Text(
+                                text = file.name,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
 
                         Button(
                             onClick = { onAssignSampleToPad(selectedPadTarget, file) },
-                            modifier = Modifier.height(26.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier.height(28.dp),
+                            shape = RoundedCornerShape(6.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE11D48))
                         ) {
-                            Text("Assigner à D$selectedPadTarget", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("LOAD", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
                         }
                     }
                 }
@@ -1087,6 +1043,15 @@ private fun SingleDrumPadBox(
     val onVolChangeUpdated by rememberUpdatedState(onVolumeChange)
     val isPadPressed by rememberUpdatedState(pad.isPressed)
     val isPadLooping by rememberUpdatedState(pad.isLoopPlaying)
+
+    val isActivePad = isPadPressed || isPadLooping
+    val padActiveBrush = Brush.verticalGradient(
+        listOf(
+            Color.White.copy(alpha = 0.55f),
+            padColor.copy(alpha = 0.95f),
+            padColor
+        )
+    )
 
     // Barre de progression lumineuse animée (0f à 1f)
     val playProgressAnim = remember { Animatable(0f) }
@@ -1113,10 +1078,13 @@ private fun SingleDrumPadBox(
         modifier = Modifier
             .fillMaxSize()
             .clip(RoundedCornerShape(16.dp))
-            .background(padColor)
+            .then(
+                if (isActivePad) Modifier.background(padActiveBrush)
+                else Modifier.background(padColor)
+            )
             .border(
-                1.5.dp,
-                if (pad.isPressed) Color.White else Color.White.copy(alpha = 0.18f),
+                if (isActivePad) 2.dp else 1.5.dp,
+                if (isActivePad) Color.White else Color.White.copy(alpha = 0.18f),
                 RoundedCornerShape(16.dp)
             )
             .pointerInput(pad.id, isMixMode) {
@@ -1138,13 +1106,12 @@ private fun SingleDrumPadBox(
                         }
                     )
                 } else {
-                    detectTapGestures(
-                        onPress = {
-                            onPadPressed()
-                            tryAwaitRelease()
-                            onPadReleased()
-                        }
-                    )
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        onPadPressed()
+                        waitForUpOrCancellation()
+                        onPadReleased()
+                    }
                 }
             }
             .padding(10.dp)

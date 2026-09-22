@@ -39,6 +39,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.soundstage.mixer.model.AppTheme
+import com.soundstage.mixer.model.LocalDynamicPalette
 import com.soundstage.mixer.model.TrackChannel
 import com.soundstage.mixer.ui.theme.*
 import kotlin.math.PI
@@ -121,17 +123,26 @@ fun VerticalTrackChannel(
     onTrackNameClick: () -> Unit = {},
     onFxClick: () -> Unit = {},
     showTicks: Boolean = true,
+    theme: AppTheme = AppTheme.MATERIAL_YOU,
+    trackColor: Color? = null,
     modifier: Modifier = Modifier
 ) {
     val isMaster = track.isMaster
     val isEnabled = track.isEnabled
 
-    // Ultra-slow 10-minute dynamic hue
-    val (baseSubtleColor, vibrantLedColor) = rememberDynamicFaderHue(track.id)
+    val dynamicPalette = LocalDynamicPalette.current
+    val (defaultSubtle, defaultVibrant) = rememberDynamicFaderHue(track.id)
+    val isMaterialYou = theme == AppTheme.MATERIAL_YOU
+    val vibrantLedColor = trackColor ?: if (isMaterialYou && track.id in 1..dynamicPalette.trackColors.size) {
+        dynamicPalette.trackColors[track.id - 1]
+    } else {
+        defaultVibrant
+    }
+    val baseSubtleColor = if (trackColor != null) trackColor.copy(alpha = 0.6f) else defaultSubtle
 
-    // Base body color: #25293A matching user spec (Slot background)
-    val faderBodyColor = Color(0xFF25293A)
-    val subtleDarkBorder = Color(0x18FFFFFF)
+    // Base body color and borders according to theme (Material You vs Cyber Neon)
+    val faderBodyColor = if (isMaterialYou) dynamicPalette.surface else Color(0xFF25293A)
+    val subtleDarkBorder = if (isMaterialYou) dynamicPalette.outlineVariant else Color(0x18FFFFFF)
 
     // Sound-reactive audio activity (Peak Meter) with guaranteed base visibility
     val audioActivity = if (isEnabled) maxOf(track.peakMeterL, track.peakMeterR).coerceIn(0f, 1f) else 0f
@@ -147,46 +158,61 @@ fun VerticalTrackChannel(
             .testTag("track_${track.id}")
     ) {
         // 1. Ambient & Reactive Neon Aura at the bottom of the fader (visible from start, pulses with sound)
+        val auraGradient = if (isMaterialYou) {
+            Brush.verticalGradient(
+                0.0f to Color.Transparent,
+                0.35f to vibrantLedColor.copy(alpha = reactiveAlpha * 0.16f),
+                0.70f to vibrantLedColor.copy(alpha = reactiveAlpha * 0.42f),
+                1.0f to vibrantLedColor.copy(alpha = reactiveAlpha * 0.82f)
+            )
+        } else {
+            Brush.verticalGradient(
+                0.0f to Color.Transparent,
+                0.45f to vibrantLedColor.copy(alpha = reactiveAlpha * 0.25f),
+                0.80f to vibrantLedColor.copy(alpha = reactiveAlpha * 0.60f),
+                1.0f to vibrantLedColor.copy(alpha = reactiveAlpha * 0.95f)
+            )
+        }
+
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(0.60f)
-                .background(
-                    Brush.verticalGradient(
-                        0.0f to Color.Transparent,
-                        0.45f to vibrantLedColor.copy(alpha = reactiveAlpha * 0.25f),
-                        0.80f to vibrantLedColor.copy(alpha = reactiveAlpha * 0.60f),
-                        1.0f to vibrantLedColor.copy(alpha = reactiveAlpha * 0.95f)
-                    )
-                )
+                .background(auraGradient)
         )
 
         // 2. Radial bottom floor glow
+        val radialGlowColors = if (isMaterialYou) {
+            listOf(
+                vibrantLedColor.copy(alpha = reactiveAlpha * 0.55f),
+                vibrantLedColor.copy(alpha = reactiveAlpha * 0.15f),
+                Color.Transparent
+            )
+        } else {
+            listOf(
+                vibrantLedColor.copy(alpha = reactiveAlpha * 0.70f),
+                vibrantLedColor.copy(alpha = reactiveAlpha * 0.20f),
+                Color.Transparent
+            )
+        }
+
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .height(48.dp)
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            vibrantLedColor.copy(alpha = reactiveAlpha * 0.70f),
-                            vibrantLedColor.copy(alpha = reactiveAlpha * 0.20f),
-                            Color.Transparent
-                        )
-                    )
-                )
+                .background(Brush.radialGradient(colors = radialGlowColors))
         )
 
-        // 3. Crisp luminous bottom LED strip accent
+        // 3. Crisp luminous bottom LED strip accent faithful to mixer_material_you.svg
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .fillMaxWidth(0.85f)
-                .height(2.5.dp)
+                .fillMaxWidth(0.92f)
+                .height(3.5.dp)
                 .clip(RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp))
-                .background(vibrantLedColor.copy(alpha = reactiveAlpha))
+                .background(vibrantLedColor)
         )
 
         Column(

@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -388,20 +389,8 @@ fun CustomVerticalFader(
             }
         }
 
-        // ================= 2. CAP / THUMB BONNET AUTHENTIC PNG ELEMENT =================
-        // Lightened ColorMatrix: subtly lighter grey while preserving 100% texture, ridges, and bevels
-        val lightenedBonnetMatrix = remember {
-            ColorMatrix(
-                floatArrayOf(
-                    1.24f, 0f, 0f, 0f, 24f,
-                    0f, 1.24f, 0f, 0f, 24f,
-                    0f, 0f, 1.26f, 0f, 24f,
-                    0f, 0f, 0f, 1.0f, 0f
-                )
-            )
-        }
-
-        // Fader Thumb Bonnet (exact PNG with baked-in drop shadow, bevels & colors)
+        // ================= 2. CAP / THUMB BONNET FAITHFUL TO mixer_material_you.svg =================
+        // Precise dark anthracite/slate body with tactile grip grooves and dynamic illuminated indicator notch
         Box(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -410,31 +399,94 @@ fun CustomVerticalFader(
                 .height(thumbHeight),
             contentAlignment = Alignment.Center
         ) {
-            // Authentic Bonnet PNG element with lighter grey metallic color matrix
-            Image(
-                painter = painterResource(id = R.drawable.ic_fader_thumb),
-                contentDescription = "Fader Thumb Cap",
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize(),
-                colorFilter = ColorFilter.colorMatrix(lightenedBonnetMatrix)
-            )
-
-            // Central neon indicator slit following dynamic fader aura color
             Box(
                 modifier = Modifier
-                    .width(thumbWidth * 0.44f)
-                    .height(3.2.dp)
-                    .clip(RoundedCornerShape(1.6.dp))
+                    .fillMaxSize()
+                    .shadow(elevation = 5.dp, shape = RoundedCornerShape(7.dp))
+                    .clip(RoundedCornerShape(7.dp))
                     .background(
-                        Brush.horizontalGradient(
-                            listOf(
-                                dynamicAura.copy(alpha = 0.85f),
-                                Color.White.copy(alpha = 0.95f),
-                                dynamicAura.copy(alpha = 0.85f)
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color(0xFF383C4F), // Slate top highlight bevel
+                                Color(0xFF262837), // Dark anthracite body
+                                Color(0xFF1B1D28)  // Deep shadow bottom
                             )
                         )
                     )
-            )
+                    .border(
+                        1.dp,
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color(0xFF4C546E),
+                                Color(0xFF2A2E3E),
+                                Color(0xFF12141D)
+                            )
+                        ),
+                        RoundedCornerShape(7.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                // Tactile Machined Grip Grooves
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val w = size.width
+                    val h = size.height
+                    val grooveW = w * 0.68f
+                    val startX = (w - grooveW) / 2f
+                    val endX = startX + grooveW
+
+                    val y1 = h * 0.20f
+                    val y2 = h * 0.32f
+                    val y3 = h * 0.68f
+                    val y4 = h * 0.80f
+
+                    val darkGroove = Color(0xFF12141E)
+                    val lightBevel = Color(0x28FFFFFF)
+
+                    listOf(y1, y2, y3, y4).forEach { y ->
+                        drawLine(
+                            color = darkGroove,
+                            start = Offset(startX, y),
+                            end = Offset(endX, y),
+                            strokeWidth = 1.2.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                        drawLine(
+                            color = lightBevel,
+                            start = Offset(startX, y + 1.dp.toPx()),
+                            end = Offset(endX, y + 1.dp.toPx()),
+                            strokeWidth = 0.8.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    }
+                }
+
+                // Central Illuminated Indicator Notch Slot
+                Box(
+                    modifier = Modifier
+                        .width(thumbWidth * 0.50f)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(Color(0xFF0F1118))
+                        .border(0.6.dp, Color(0x33FFFFFF), RoundedCornerShape(2.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(thumbWidth * 0.44f)
+                            .height(2.6.dp)
+                            .clip(RoundedCornerShape(1.3.dp))
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(
+                                        dynamicAura.copy(alpha = 0.85f),
+                                        Color.White.copy(alpha = 0.98f),
+                                        dynamicAura.copy(alpha = 0.85f)
+                                    )
+                                )
+                            )
+                    )
+                }
+            }
         }
     }
 }

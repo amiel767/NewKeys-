@@ -112,19 +112,44 @@ private val DeepOceanColorScheme = darkColorScheme(
     onError = Color.White
 )
 
+private val MaterialYouColorScheme = darkColorScheme(
+    primary = Color(0xFFE2B4BD),
+    onPrimary = Color(0xFF451926),
+    primaryContainer = Color(0xFF5D2D3C),
+    onPrimaryContainer = Color(0xFFFFD9E2),
+    secondary = Color(0xFFDDA2AF),
+    onSecondary = Color(0xFF3F1B25),
+    secondaryContainer = Color(0xFF57303B),
+    onSecondaryContainer = Color(0xFFFFD9E2),
+    tertiary = Color(0xFFE7B9A5),
+    background = Color(0xFF13131C),
+    onBackground = Color(0xFFE5E1E6),
+    surface = Color(0xFF1E202C),
+    onSurface = Color(0xFFE5E1E6),
+    surfaceVariant = Color(0xFF282A3A),
+    onSurfaceVariant = Color(0xFFC7C5D0),
+    outline = Color(0xFF908F9B),
+    error = MuteRed,
+    onError = Color.White
+)
+
+private val CyberNeonColorScheme = CyberVioletColorScheme
+
 @Composable
 fun SoundfontLiveMixerTheme(
-    appTheme: AppTheme = AppTheme.CYBER_VIOLET,
+    appTheme: AppTheme = AppTheme.MATERIAL_YOU,
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when (appTheme) {
-        AppTheme.CYBER_VIOLET -> CyberVioletColorScheme
+        AppTheme.MATERIAL_YOU -> MaterialYouColorScheme
+        AppTheme.CYBER_NEON -> CyberNeonColorScheme
         AppTheme.RUBY_VELVET -> RubyVelvetColorScheme
         AppTheme.NEON_AMBER -> NeonAmberColorScheme
         AppTheme.EMERALD_SYNTH -> EmeraldSynthColorScheme
         AppTheme.DEEP_OCEAN -> DeepOceanColorScheme
+        else -> MaterialYouColorScheme
     }
 
     MaterialTheme(
@@ -140,6 +165,6 @@ fun MyApplicationTheme(
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    SoundfontLiveMixerTheme(AppTheme.CYBER_VIOLET, darkTheme, dynamicColor, content)
+    SoundfontLiveMixerTheme(AppTheme.MATERIAL_YOU, darkTheme, dynamicColor, content)
 }
 

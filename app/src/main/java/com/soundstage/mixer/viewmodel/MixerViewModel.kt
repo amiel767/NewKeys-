@@ -24,7 +24,14 @@ import kotlinx.coroutines.withContext
 import kotlin.random.Random
 
 data class MixerUiState(
-    val currentTheme: AppTheme = AppTheme.CYBER_NEON,
+    val currentTheme: AppTheme = AppTheme.MATERIAL_YOU,
+    val materialYouStyle: MaterialYouStyle = MaterialYouStyle.VIBRANT,
+    val accentSaturation: Float = 1.0f,
+    val bgSaturation: Float = 1.0f,
+    val bgBrightness: Float = 1.0f,
+    val themeSaturation: Float = 1.0f,
+    val themeNuance: Float = 0.5f,
+    val selectedPaletteIndex: Int = 0,
     val transpose: Int = 0,
     val octave: Int = 0,
     val bpm: Int = 120,
@@ -711,7 +718,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             drumPads = initialDrumPads,
             scenes = initialScenes,
             fxParameters = defaultFx,
-            currentTheme = AppTheme.CYBER_NEON
+            currentTheme = AppTheme.MATERIAL_YOU
         )
     }
 
@@ -3899,6 +3906,49 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     fun selectTheme(theme: AppTheme) {
         _uiState.update { it.copy(currentTheme = theme) }
         persistCurrentStateDebounced()
+    }
+
+    fun setTheme(theme: AppTheme) = selectTheme(theme)
+
+    fun setMaterialYouStyle(style: MaterialYouStyle) {
+        _uiState.update { it.copy(materialYouStyle = style) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setAccentSaturation(value: Float) {
+        _uiState.update { it.copy(accentSaturation = value.coerceIn(0.50f, 2.00f)) }
+    }
+
+    fun setBgSaturation(value: Float) {
+        _uiState.update { it.copy(bgSaturation = value.coerceIn(0.50f, 2.00f)) }
+    }
+
+    fun setBgBrightness(value: Float) {
+        _uiState.update { it.copy(bgBrightness = value.coerceIn(0.60f, 1.40f)) }
+    }
+
+    fun resetAccentSaturation() {
+        _uiState.update { it.copy(accentSaturation = 1.0f) }
+    }
+
+    fun resetBgSaturation() {
+        _uiState.update { it.copy(bgSaturation = 1.0f) }
+    }
+
+    fun resetBgBrightness() {
+        _uiState.update { it.copy(bgBrightness = 1.0f) }
+    }
+
+    fun setThemeSaturation(saturation: Float) {
+        _uiState.update { it.copy(themeSaturation = saturation.coerceIn(0f, 1f)) }
+    }
+
+    fun setThemeNuance(nuance: Float) {
+        _uiState.update { it.copy(themeNuance = nuance.coerceIn(0f, 1f)) }
+    }
+
+    fun setSelectedPaletteIndex(index: Int) {
+        _uiState.update { it.copy(selectedPaletteIndex = index.coerceIn(0, 5)) }
     }
 
     fun cycleTheme() {
