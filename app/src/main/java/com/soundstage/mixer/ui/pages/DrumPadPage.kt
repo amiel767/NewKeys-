@@ -43,8 +43,10 @@ private val DrumPadCanvasDarkEnd = Color(0xFF330912)
 private val TopBarCardBg = Color(0x33FFFFFF)
 private val TopBarCardBorder = Color(0x22FFFFFF)
 private val TonicPadKeyDark = Color(0xFF1E1418)
-private val TonicPadKeyActive = Color(0xFFC44066)
-private val TonicPadLedGreen = Color(0xFF4ADE80)
+private val TonicPadKeyActive = Color(0xFFFF9800)
+private val TonicPadKeyGradientTop = Color(0xFFFFD54F)
+private val TonicPadKeyGradientBottom = Color(0xFFFF5722)
+private val TonicPadLedGreen = Color(0xFFFFB300)
 private val StopButtonRed = Color(0xFFDC2626)
 
 // Palettes dynamiques des 8 pads selon le thème sélectionné
@@ -431,9 +433,9 @@ fun DrumPadPage(
                                     val isActive = activeTonicNotes.contains(note)
                                     val activeNoteBrush = Brush.verticalGradient(
                                         listOf(
-                                            Color.White.copy(alpha = 0.95f),
-                                            TonicPadKeyActive.copy(alpha = 0.90f),
-                                            TonicPadKeyActive
+                                            TonicPadKeyGradientTop,
+                                            TonicPadKeyActive,
+                                            TonicPadKeyGradientBottom
                                         )
                                     )
 

@@ -162,16 +162,17 @@ fun BottomBar(
         Row(
             modifier = Modifier
                 .height(barHeight)
-                .clip(RoundedCornerShape(9.dp))
-                .background(DarkSurface)
-                .border(1.dp, BorderSubtle, RoundedCornerShape(9.dp))
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF161924))
+                .border(1.dp, Color(0xFF1E2232), RoundedCornerShape(12.dp))
                 .testTag("bpm_box"),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .width(22.dp)
+                    .width(24.dp)
                     .fillMaxHeight()
+                    .background(Color(0xFF1F2333))
                     .pointerInput(Unit) {
                         detectTapGestures(
                             onPress = {
@@ -190,11 +191,11 @@ fun BottomBar(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = "−", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(text = "−", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE2E8F0))
             }
 
             Box(
-                modifier = Modifier.padding(horizontal = 4.dp),
+                modifier = Modifier.padding(horizontal = 5.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -202,14 +203,14 @@ fun BottomBar(
                         text = "$bpm",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = NeonCyanLight,
+                        color = Color.White,
                         lineHeight = 13.sp
                     )
                     Text(
                         text = "BPM",
                         fontSize = 7.5.sp,
                         fontWeight = FontWeight.Bold,
-                        color = TextDim,
+                        color = Color(0xFF7A8096),
                         lineHeight = 8.sp
                     )
                 }
@@ -217,8 +218,9 @@ fun BottomBar(
 
             Box(
                 modifier = Modifier
-                    .width(22.dp)
+                    .width(24.dp)
                     .fillMaxHeight()
+                    .background(Color(0xFF1F2333))
                     .pointerInput(Unit) {
                         detectTapGestures(
                             onPress = {
@@ -237,26 +239,26 @@ fun BottomBar(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = "+", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(text = "+", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE2E8F0))
             }
         }
 
         // ================= 3. FUSED METRONOME & SIGNATURE/KEY BUTTON =================
         val metroBg by animateColorAsState(
-            targetValue = if (isMetronomeOn) Color(0xFF0F394A) else DarkSurface,
+            targetValue = if (isMetronomeOn) Color(0xFF0F394A) else Color(0xFF161924),
             label = "metro_bg"
         )
         val metroBorder by animateColorAsState(
-            targetValue = if (isMetronomeOn) NeonCyan else BorderSubtle,
+            targetValue = if (isMetronomeOn) NeonCyan else Color(0xFF1E2232),
             label = "metro_border"
         )
 
         Row(
             modifier = Modifier
                 .height(barHeight)
-                .clip(RoundedCornerShape(9.dp))
+                .clip(RoundedCornerShape(12.dp))
                 .background(metroBg)
-                .border(1.dp, metroBorder, RoundedCornerShape(9.dp))
+                .border(1.dp, metroBorder, RoundedCornerShape(12.dp))
                 .clickable { onToggleMetroPanel() }
                 .padding(horizontal = 8.dp)
                 .testTag("btn_metronome"),
@@ -426,14 +428,14 @@ fun BottomBar(
             modifier = Modifier
                 .weight(1f)
                 .height(barHeight)
-                .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFF0C101A))
-                .border(1.dp, Color(0x3300E5FF), RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF13151F))
+                .border(1.dp, Color(0xFF1E2232), RoundedCornerShape(12.dp))
                 .padding(horizontal = 4.dp, vertical = 3.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(3.dp)
         ) {
-            // REC (ARM) Material You Floppy Disk Save Button (matching save.jpg)
+            // Floppy Disk Save Button (SVG exact #4F6BF7)
             val armBlinkAlpha by animateFloatAsState(
                 targetValue = if (isSnapshotArmMode) 1.0f else 0.40f,
                 animationSpec = infiniteRepeatable(
@@ -449,31 +451,28 @@ fun BottomBar(
                     .clip(RoundedCornerShape(8.dp))
                     .background(
                         if (isSnapshotArmMode) {
-                            Brush.radialGradient(
-                                colors = listOf(Color(0xFFFF2A55), Color(0xFF4A0014)),
-                                radius = 45f
-                            )
+                            Color(0xFFFF2A55)
                         } else {
-                            SolidColor(Color(0xFF161A26))
+                            Color(0xFF4F6BF7)
                         }
                     )
                     .border(
-                        1.2.dp,
-                        if (isSnapshotArmMode) Color(0xFFFF2A55).copy(alpha = armBlinkAlpha) else Color(0x33FFFFFF),
+                        1.dp,
+                        if (isSnapshotArmMode) Color(0xFFFF2A55).copy(alpha = armBlinkAlpha) else Color(0xFF4F6BF7),
                         RoundedCornerShape(8.dp)
                     )
                     .clickable { onToggleSnapshotArm() }
                     .testTag("btn_snapshot_arm"),
                 contentAlignment = Alignment.Center
             ) {
-                // Material You Floppy Disk (Save) Icon - flat colors, geometric forms, no textures
+                // Material You Floppy Disk (Save) Icon - crisp white
                 FloppyDiskIcon(
                     isArmed = isSnapshotArmMode,
                     modifier = Modifier.size(20.dp)
                 )
             }
 
-            // 5 Snapshot Slots: Défaut, Snapshot 1, Snapshot 2, Snapshot 3, END (renamable on long press)
+            // 5 Snapshot Slots: Défaut, Snapshot 1, Snapshot 2, Snapshot 3, END
             val slotKeys = listOf("slot_default", "slot_1", "slot_2", "slot_3", "slot_end")
             slotKeys.forEach { slotKey ->
                 val defaultLabel = when (slotKey) {
@@ -486,7 +485,6 @@ fun BottomBar(
                 }
                 val displayName = snapshotCustomNames[slotKey] ?: defaultLabel
 
-                // Key aliases for backward compatibility with previously saved snapshots
                 val keyAliases = when (slotKey) {
                     "slot_default" -> listOf("slot_default", "INTRO", "Intro", "Défaut", "Default")
                     "slot_1" -> listOf("slot_1", "Snapshot 1", "S2")
@@ -498,16 +496,12 @@ fun BottomBar(
                 val isActive = keyAliases.any { activeSnapshotSlot == it }
                 val isSaved = keyAliases.any { snapshots.containsKey(it) }
 
-                val slotBgBrush = if (isActive) {
-                    Brush.verticalGradient(listOf(Color(0xFF00E5FF), Color(0xFF0088FF)))
-                } else {
-                    Brush.verticalGradient(listOf(Color(0xFF111522), Color(0xFF111522)))
-                }
-
+                val slotBg = if (isActive) Color(0xFF1B1E2B) else Color(0xFF13151F)
+                val slotBorder = if (isActive) Color(0xFF343B52) else Color(0xFF1E2232)
                 val slotTextColor = when {
-                    isActive -> Color(0xFF001E36)
+                    isActive -> Color(0xFFE2E8F0)
                     isSaved -> Color(0xFFE2E8F0)
-                    else -> TextDim
+                    else -> Color(0xFF5B6175)
                 }
                 val slotFontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
 
@@ -516,7 +510,8 @@ fun BottomBar(
                         .weight(1f)
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(7.dp))
-                        .background(slotBgBrush)
+                        .background(slotBg)
+                        .border(1.dp, slotBorder, RoundedCornerShape(7.dp))
                         .pointerInput(slotKey, displayName) {
                             detectTapGestures(
                                 onTap = { onSnapshotSlotClick(slotKey) },
@@ -526,57 +521,12 @@ fun BottomBar(
                                 }
                             )
                         }
-                        .drawWithContent {
-                            drawContent()
-                            val w = this@drawWithContent.size.width
-                            val h = this@drawWithContent.size.height
-                            val r = 7.dp.toPx()
-                            val rrect = androidx.compose.ui.geometry.RoundRect(
-                                left = 1f, top = 1f, right = w - 1f, bottom = h - 1f,
-                                radiusX = r, radiusY = r
-                            )
-                            val p = Path().apply { addRoundRect(rrect) }
-
-                            if (isActive) {
-                                if (snapshotTransitionProgress < 1.0f) {
-                                    val pm = PathMeasure()
-                                    pm.setPath(p, false)
-                                    val totalLen = pm.length
-                                    val curLen = (totalLen * snapshotTransitionProgress.coerceIn(0.01f, 1.0f))
-                                    val seg = Path()
-                                    pm.getSegment(0f, curLen, seg, true)
-                                    drawPath(
-                                        path = seg,
-                                        color = Color.White,
-                                        style = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round)
-                                    )
-                                } else {
-                                    drawPath(
-                                        path = p,
-                                        color = Color.White,
-                                        style = Stroke(width = 1.5.dp.toPx())
-                                    )
-                                }
-                            } else if (isSaved) {
-                                drawPath(
-                                    path = p,
-                                    color = Color.White.copy(alpha = 0.3f),
-                                    style = Stroke(width = 1.dp.toPx())
-                                )
-                            } else {
-                                drawPath(
-                                    path = p,
-                                    color = Color(0x22FFFFFF),
-                                    style = Stroke(width = 1.dp.toPx())
-                                )
-                            }
-                        }
                         .testTag("btn_snapshot_$slotKey"),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = displayName,
-                        fontSize = if (displayName.length > 7) 7.5.sp else 9.5.sp,
+                        fontSize = if (displayName.length > 7) 7.5.sp else 9.sp,
                         fontWeight = slotFontWeight,
                         color = slotTextColor,
                         maxLines = 1,
@@ -586,19 +536,19 @@ fun BottomBar(
             }
         }
 
-        // ================= 5. MASTER FADER (COMPACT FIXED WIDTH) =================
+        // ================= 5. MASTER FADER (SVG EXACT SOFT LAVENDER #A4B8FF) =================
         Row(
             modifier = Modifier
-                .width(150.dp)
+                .width(155.dp)
                 .height(barHeight)
-                .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFF0A0E15))
-                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(10.dp))
-                .padding(horizontal = 4.dp),
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF12141E))
+                .border(1.dp, Color(0xFF1E2232), RoundedCornerShape(12.dp))
+                .padding(horizontal = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("M", color = Color(0xFF8E95A5), fontSize = 9.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.width(2.dp))
+            Text("M", color = Color(0xFF8E95A5), fontSize = 9.5.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.width(3.dp))
             Slider(
                 value = masterTrack.volume,
                 onValueChange = onMasterVolumeChange,
@@ -606,22 +556,22 @@ fun BottomBar(
                     .weight(1f)
                     .height(24.dp),
                 colors = SliderDefaults.colors(
-                    thumbColor = NeonCyan,
-                    activeTrackColor = NeonCyan,
+                    thumbColor = Color(0xFFA4B8FF),
+                    activeTrackColor = Color(0xFFA4B8FF),
                     inactiveTrackColor = Color(0xFF1E2238)
                 )
             )
-            Spacer(modifier = Modifier.width(2.dp))
+            Spacer(modifier = Modifier.width(4.dp))
             Box(
                 modifier = Modifier
-                    .size(22.dp)
-                    .clip(RoundedCornerShape(4.dp))
+                    .size(24.dp)
+                    .clip(RoundedCornerShape(6.dp))
                     .background(Color(0xFF161C28))
-                    .border(1.dp, Color(0xFF2C3242), RoundedCornerShape(4.dp))
+                    .border(1.dp, Color(0xFF2C3242), RoundedCornerShape(6.dp))
                     .clickable { onMasterFxClick() },
                 contentAlignment = Alignment.Center
             ) {
-                Text("FX", color = NeonCyan, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                Text("FX", color = Color(0xFF8E94A8), fontSize = 8.5.sp, fontWeight = FontWeight.Bold)
             }
         }
 

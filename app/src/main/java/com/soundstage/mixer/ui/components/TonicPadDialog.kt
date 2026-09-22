@@ -559,7 +559,7 @@ internal fun TonicPadContent(
                                 val isActive = activeNotes.contains(note) || activeNotes.contains(altNote)
 
                                 val padBg = if (isActive) {
-                                    Brush.verticalGradient(listOf(NeonPurpleLight, Color(0xFF7C3AED), Color(0xFF4C1D95)))
+                                    Brush.verticalGradient(listOf(Color(0xFFFFD54F), Color(0xFFFF9800), Color(0xFFFF5722)))
                                 } else {
                                     Brush.verticalGradient(listOf(Color(0xFF282038), Color(0xFF1A1426)))
                                 }

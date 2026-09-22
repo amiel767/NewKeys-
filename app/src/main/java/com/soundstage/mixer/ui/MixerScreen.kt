@@ -915,7 +915,18 @@ fun MixerScreen(
             saturation = uiState.themeSaturation,
             onSaturationChange = { viewModel.setThemeSaturation(it) },
             nuance = uiState.themeNuance,
-            onNuanceChange = { viewModel.setThemeNuance(it) }
+            onNuanceChange = { viewModel.setThemeNuance(it) },
+            materialYouStyle = uiState.materialYouStyle,
+            onSelectMaterialYouStyle = { viewModel.setMaterialYouStyle(it) },
+            accentSaturation = uiState.accentSaturation,
+            onAccentSaturationChange = { viewModel.setAccentSaturation(it) },
+            onResetAccentSaturation = { viewModel.resetAccentSaturation() },
+            bgSaturation = uiState.bgSaturation,
+            onBgSaturationChange = { viewModel.setBgSaturation(it) },
+            onResetBgSaturation = { viewModel.resetBgSaturation() },
+            bgBrightness = uiState.bgBrightness,
+            onBgBrightnessChange = { viewModel.setBgBrightness(it) },
+            onResetBgBrightness = { viewModel.resetBgBrightness() }
         )
 
         // Material 3 Storage Permission Explanation Dialog

@@ -225,15 +225,15 @@ fun VerticalTrackChannel(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(24.dp)
-                .clip(RoundedCornerShape(7.dp))
+                .height(26.dp)
+                .clip(RoundedCornerShape(8.dp))
                 .background(
-                    if (isMaster) Color(0xFF162132) else if (isEnabled) Color(0xFF162132) else Color(0x14FFFFFF)
+                    if (isMaster) Color(0xFF161822) else if (isEnabled) Color(0xFF161822) else Color(0x14FFFFFF)
                 )
                 .border(
                     1.dp,
-                    if (isMaster) Color(0x4422D3EE) else Color(0x18FFFFFF),
-                    RoundedCornerShape(7.dp)
+                    if (isMaster) Color(0x4422D3EE) else Color(0xFF1E2230),
+                    RoundedCornerShape(8.dp)
                 )
                 .clickable { if (!isMaster) onTrackNameClick() },
             contentAlignment = Alignment.Center
@@ -289,16 +289,16 @@ fun VerticalTrackChannel(
                     horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     val isSolo = track.isSolo
-                    val soloBg = if (!isEnabled) Color(0x14FFFFFF) else if (isSolo) Color(0xFFFFD600) else Color(0x22FFFFFF)
-                    val soloBorder = if (!isEnabled) Color(0x12FFFFFF) else if (isSolo) Color(0xFFFFF176) else Color(0x12FFFFFF)
+                    val soloBg = if (!isEnabled) Color(0x14FFFFFF) else if (isSolo) Color(0xFFFFD600) else Color(0xFF1B1E2B)
+                    val soloBorder = if (!isEnabled) Color(0x12FFFFFF) else if (isSolo) Color(0xFFFFF176) else Color(0xFF262A3A)
                     
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .height(22.dp)
-                            .clip(RoundedCornerShape(4.dp))
+                            .clip(RoundedCornerShape(5.dp))
                             .background(soloBg)
-                            .border(1.dp, soloBorder, RoundedCornerShape(4.dp))
+                            .border(1.dp, soloBorder, RoundedCornerShape(5.dp))
                             .clickable { onSoloClick() },
                         contentAlignment = Alignment.Center
                     ) {
@@ -306,16 +306,16 @@ fun VerticalTrackChannel(
                     }
 
                     val isMuted = track.isMuted
-                    val muteBg = if (!isEnabled) Color(0x14FFFFFF) else if (isMuted) Color(0xFFFF1E40) else Color(0x22FFFFFF)
-                    val muteBorder = if (!isEnabled) Color(0x12FFFFFF) else if (isMuted) Color(0xFFFF8A80) else Color(0x12FFFFFF)
+                    val muteBg = if (!isEnabled) Color(0x14FFFFFF) else if (isMuted) Color(0xFFFF1E40) else Color(0xFF1B1E2B)
+                    val muteBorder = if (!isEnabled) Color(0x12FFFFFF) else if (isMuted) Color(0xFFFF8A80) else Color(0xFF262A3A)
 
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .height(22.dp)
-                            .clip(RoundedCornerShape(4.dp))
+                            .clip(RoundedCornerShape(5.dp))
                             .background(muteBg)
-                            .border(1.dp, muteBorder, RoundedCornerShape(4.dp))
+                            .border(1.dp, muteBorder, RoundedCornerShape(5.dp))
                             .clickable { onMuteClick() },
                         contentAlignment = Alignment.Center
                     ) {
@@ -357,46 +357,38 @@ fun VerticalTrackChannel(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .height(23.dp)
+                        .height(22.dp)
                         .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0xFF162132))
-                        .border(1.dp, Color(0x3322D3EE), RoundedCornerShape(6.dp))
+                        .background(Color(0xFF1C202C))
+                        .border(1.dp, Color(0xFF262A3A), RoundedCornerShape(6.dp))
                         .clickable { onFxClick() },
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = "FX",
                         fontSize = 8.5.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = NeonCyanLight
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF8E94A8)
                     )
                 }
 
                 Spacer(modifier = Modifier.width(3.dp))
 
-                // Power Square Button
-                val powerBg by animateColorAsState(
-                    targetValue = if (isEnabled) Color(0xFF0077B6) else Color(0xFF1A1F2C),
-                    animationSpec = tween(100),
-                    label = "power_bg"
-                )
-                val powerBorder = if (isEnabled) NeonCyan else Color(0x1EFFFFFF)
-                val powerDotColor = if (isEnabled) Color(0xFF90E0EF) else Color(0x44FFFFFF)
-
+                // Track Assignment Dot / Power Indicator
                 Box(
                     modifier = Modifier
-                        .size(23.dp)
+                        .size(22.dp)
                         .clip(RoundedCornerShape(6.dp))
-                        .background(powerBg)
-                        .border(1.dp, powerBorder, RoundedCornerShape(6.dp))
+                        .background(Color(0xFF1C202C))
+                        .border(1.dp, Color(0xFF262A3A), RoundedCornerShape(6.dp))
                         .clickable { onPowerToggle() },
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(7.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(powerDotColor)
+                            .size(8.dp)
+                            .clip(RoundedCornerShape(2.5.dp))
+                            .background(if (isEnabled) vibrantLedColor else Color(0x33FFFFFF))
                     )
                 }
             }
