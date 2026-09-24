@@ -2,15 +2,15 @@ package com.soundstage.mixer.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Base Dark Hardware Surfaces
-val DarkBg = Color(0xFF1B1E2B)
-val DarkSurface = Color(0xFF202434)
-val DarkSurface2 = Color(0xFF25293A)
-val DarkSurface3 = Color(0xFF2E3347)
-val DarkTrackBg = Color(0xFF25293A)
-val DarkTrackEnd = Color(0xFF161B28)
-val MasterTrackBg = Color(0xFF281F38)
-val MasterTrackEnd = Color(0xFF161220)
+// Base Dark Hardware Surfaces (User dark #141722 background & clearer #2C3246 cases/bodies)
+val DarkBg = Color(0xFF141722)
+val DarkSurface = Color(0xFF2C3246)
+val DarkSurface2 = Color(0xFF383F57)
+val DarkSurface3 = Color(0xFF454D6B)
+val DarkTrackBg = Color(0xFF2C3246)
+val DarkTrackEnd = Color(0xFF2C3246)
+val MasterTrackBg = Color(0xFF352B44)
+val MasterTrackEnd = Color(0xFF271F33)
 
 // Neon & Brand Accents
 val NeonCyan = Color(0xFF22D3EE)

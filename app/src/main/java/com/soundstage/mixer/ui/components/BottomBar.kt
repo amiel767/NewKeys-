@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
@@ -35,6 +36,7 @@ import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -435,7 +437,7 @@ fun BottomBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(3.dp)
         ) {
-            // Floppy Disk Save Button (SVG exact #4F6BF7)
+            // Floppy Disk Save Button (Studio Dark)
             val armBlinkAlpha by animateFloatAsState(
                 targetValue = if (isSnapshotArmMode) 1.0f else 0.40f,
                 animationSpec = infiniteRepeatable(
@@ -445,27 +447,24 @@ fun BottomBar(
                 label = "arm_blink"
             )
 
+            val diskBg = if (isSnapshotArmMode) Color(0x33FF2A55) else Color(0xFF1C202C)
+            val diskBorder = if (isSnapshotArmMode) Color(0xFFFF2A55).copy(alpha = armBlinkAlpha) else Color(0xFF282E40)
+
             Box(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(
-                        if (isSnapshotArmMode) {
-                            Color(0xFFFF2A55)
-                        } else {
-                            Color(0xFF4F6BF7)
-                        }
-                    )
+                    .background(diskBg)
                     .border(
                         1.dp,
-                        if (isSnapshotArmMode) Color(0xFFFF2A55).copy(alpha = armBlinkAlpha) else Color(0xFF4F6BF7),
+                        diskBorder,
                         RoundedCornerShape(8.dp)
                     )
                     .clickable { onToggleSnapshotArm() }
                     .testTag("btn_snapshot_arm"),
                 contentAlignment = Alignment.Center
             ) {
-                // Material You Floppy Disk (Save) Icon - crisp white
+                // Material You Floppy Disk (Save) Icon - crisp studio white/silver
                 FloppyDiskIcon(
                     isArmed = isSnapshotArmMode,
                     modifier = Modifier.size(20.dp)
@@ -496,8 +495,8 @@ fun BottomBar(
                 val isActive = keyAliases.any { activeSnapshotSlot == it }
                 val isSaved = keyAliases.any { snapshots.containsKey(it) }
 
-                val slotBg = if (isActive) Color(0xFF1B1E2B) else Color(0xFF13151F)
-                val slotBorder = if (isActive) Color(0xFF343B52) else Color(0xFF1E2232)
+                val slotBg = if (isActive) Color(0xFF384058) else Color(0xFF2C3246)
+                val slotBorder = if (isActive) Color(0xFF4A5578) else Color(0xFF363E56)
                 val slotTextColor = when {
                     isActive -> Color(0xFFE2E8F0)
                     isSaved -> Color(0xFFE2E8F0)
@@ -536,10 +535,10 @@ fun BottomBar(
             }
         }
 
-        // ================= 5. MASTER FADER (SVG EXACT SOFT LAVENDER #A4B8FF) =================
+        // ================= 5. MASTER FADER (CLEAN STUDIO SLIDER & FX) =================
         Row(
             modifier = Modifier
-                .width(155.dp)
+                .width(150.dp)
                 .height(barHeight)
                 .clip(RoundedCornerShape(12.dp))
                 .background(Color(0xFF12141E))
@@ -548,20 +547,89 @@ fun BottomBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("M", color = Color(0xFF8E95A5), fontSize = 9.5.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.width(3.dp))
-            Slider(
-                value = masterTrack.volume,
-                onValueChange = onMasterVolumeChange,
+            Spacer(modifier = Modifier.width(4.dp))
+
+            // Studio Horizontal Master Fader
+            BoxWithConstraints(
                 modifier = Modifier
                     .weight(1f)
-                    .height(24.dp),
-                colors = SliderDefaults.colors(
-                    thumbColor = Color(0xFFA4B8FF),
-                    activeTrackColor = Color(0xFFA4B8FF),
-                    inactiveTrackColor = Color(0xFF1E2238)
-                )
-            )
+                    .height(26.dp)
+                    .padding(vertical = 3.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                val trackWidthPx = with(LocalDensity.current) { maxWidth.toPx() }
+                val thumbWidthDp = 10.dp
+                val thumbWidthPx = with(LocalDensity.current) { thumbWidthDp.toPx() }
+                val usableWidthPx = (trackWidthPx - thumbWidthPx).coerceAtLeast(1f)
+                val masterVol = masterTrack.volume.coerceIn(0f, 1f)
+                val thumbOffsetXDp = with(LocalDensity.current) { (masterVol * usableWidthPx).toDp() }
+
+                // Groove Track
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(Color(0xFF1A1E2C))
+                        .border(0.8.dp, Color(0x33FFFFFF), RoundedCornerShape(3.dp))
+                        .pointerInput(usableWidthPx) {
+                            detectTapGestures { offset ->
+                                val newVol = ((offset.x - thumbWidthPx / 2f) / usableWidthPx).coerceIn(0f, 1f)
+                                onMasterVolumeChange(newVol)
+                            }
+                        }
+                ) {
+                    // Active Fill
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .width(thumbOffsetXDp + 5.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(Color(0xFF6366F1), Color(0xFFA4B8FF))
+                                )
+                            )
+                    )
+                }
+
+                // Precision Studio Thumb Knob
+                Box(
+                    modifier = Modifier
+                        .offset(x = thumbOffsetXDp)
+                        .width(thumbWidthDp)
+                        .height(20.dp)
+                        .shadow(3.dp, RoundedCornerShape(3.dp))
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color(0xFFE2E8F0), Color(0xFFCBD5E1), Color(0xFF94A3B8))
+                            )
+                        )
+                        .border(1.dp, Color(0x66FFFFFF), RoundedCornerShape(3.dp))
+                        .pointerInput(usableWidthPx) {
+                            detectHorizontalDragGestures { change, dragAmount ->
+                                change.consume()
+                                val deltaFraction = dragAmount / usableWidthPx
+                                val newVol = (masterTrack.volume + deltaFraction).coerceIn(0f, 1f)
+                                onMasterVolumeChange(newVol)
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    // Center slit indicator
+                    Box(
+                        modifier = Modifier
+                            .width(1.5.dp)
+                            .height(10.dp)
+                            .clip(RoundedCornerShape(0.5.dp))
+                            .background(Color(0xFF334155))
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.width(4.dp))
+
             Box(
                 modifier = Modifier
                     .size(24.dp)
@@ -571,7 +639,7 @@ fun BottomBar(
                     .clickable { onMasterFxClick() },
                 contentAlignment = Alignment.Center
             ) {
-                Text("FX", color = Color(0xFF8E94A8), fontSize = 8.5.sp, fontWeight = FontWeight.Bold)
+                Text("FX", color = Color(0xFF8E94A8), fontSize = 8.sp, fontWeight = FontWeight.Bold)
             }
         }
 
@@ -587,21 +655,21 @@ fun BottomBar(
                 exit = fadeOut(tween(180)) + shrinkHorizontally(tween(180)) + scaleOut()
             ) {
                 val layerBg by animateColorAsState(
-                    targetValue = if (isLayerActive) Color(0xFF0F394A) else DarkSurface,
+                    targetValue = if (isLayerActive) Color(0xFF0F394A) else Color(0xFF161924),
                     label = "layer_bg"
                 )
                 val layerBorder by animateColorAsState(
-                    targetValue = if (isLayerActive) NeonCyan else BorderSubtle,
+                    targetValue = if (isLayerActive) NeonCyan else Color(0xFF1E2232),
                     label = "layer_border"
                 )
 
                 Box(
                     modifier = Modifier
-                        .width(42.dp)
+                        .width(40.dp)
                         .height(barHeight)
-                        .clip(RoundedCornerShape(9.dp))
+                        .clip(RoundedCornerShape(10.dp))
                         .background(layerBg)
-                        .border(1.dp, layerBorder, RoundedCornerShape(9.dp))
+                        .border(1.dp, layerBorder, RoundedCornerShape(10.dp))
                         .clickable { onToggleLayer() }
                         .testTag("btn_toggle_layer"),
                     contentAlignment = Alignment.Center
@@ -609,7 +677,7 @@ fun BottomBar(
                     Canvas(modifier = Modifier.size(20.dp, 16.dp)) {
                         val w = size.width
                         val h = size.height
-                        val strokeCol = if (isLayerActive) NeonCyan else TextDim
+                        val strokeCol = if (isLayerActive) NeonCyan else Color(0xFF94A3B8)
 
                         // Top Layer
                         val p1 = Path().apply {
@@ -640,23 +708,18 @@ fun BottomBar(
                 }
             }
 
-            // Keyboard Toggle Button
-            val keyboardBg by animateColorAsState(
-                targetValue = if (isKeyboardActive) Color(0xFF0F394A) else DarkSurface,
-                label = "kb_bg"
-            )
-            val keyboardBorder by animateColorAsState(
-                targetValue = if (isKeyboardActive) NeonCyan else BorderSubtle,
-                label = "kb_border"
-            )
+            // Keyboard Toggle Button - Sleek Dark Studio Button with Piano Keys
+            val (_, activeSlotLedColor) = rememberDynamicFaderHue(1)
+            val kbdBg = if (isKeyboardActive) Color(0xFF1E2333) else Color(0xFF161922)
+            val kbdBorder = if (isKeyboardActive) Color(0xFF4F6BF7) else Color(0xFF242938)
 
             Box(
                 modifier = Modifier
-                    .width(44.dp)
+                    .width(42.dp)
                     .height(barHeight)
-                    .clip(RoundedCornerShape(9.dp))
-                    .background(keyboardBg)
-                    .border(1.dp, keyboardBorder, RoundedCornerShape(9.dp))
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(kbdBg)
+                    .border(1.2.dp, kbdBorder, RoundedCornerShape(10.dp))
                     .clickable { onToggleKeyboard() }
                     .testTag("btn_toggle_keyboard"),
                 contentAlignment = Alignment.Center
@@ -665,40 +728,52 @@ fun BottomBar(
                     val w = size.width
                     val h = size.height
 
-                    val keyOutlineColor = if (isKeyboardActive) NeonCyan else TextDim
+                    // Outline of piano keyboard bed (White / Studio Ivory)
                     drawRoundRect(
-                        color = keyOutlineColor,
-                        topLeft = Offset(1f, 2f),
-                        size = Size(w - 2f, h - 4f),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.dp.toPx()),
-                        style = Stroke(width = 1.4f)
+                        color = if (isKeyboardActive) Color(0xFFE2E8F0) else Color(0xFF94A3B8),
+                        topLeft = Offset(1f, 1f),
+                        size = Size(w - 2f, h - 2f),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()),
+                        style = Stroke(width = 1.2f)
                     )
 
-                    val keySpacing = (w - 2f) / 4f
+                    // Fill white keys bed
+                    drawRoundRect(
+                        color = if (isKeyboardActive) Color(0xFFF1F5F9) else Color(0xFFCBD5E1),
+                        topLeft = Offset(1.5f, 1.5f),
+                        size = Size(w - 3f, h - 3f),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(1.8.dp.toPx())
+                    )
+
+                    val keySpacing = (w - 3f) / 4f
                     for (i in 1..3) {
                         drawLine(
-                            color = keyOutlineColor.copy(alpha = 0.7f),
-                            start = Offset(1f + i * keySpacing, 2f),
-                            end = Offset(1f + i * keySpacing, h - 2f),
+                            color = Color(0xFF475569),
+                            start = Offset(1.5f + i * keySpacing, 1.5f),
+                            end = Offset(1.5f + i * keySpacing, h - 1.5f),
                             strokeWidth = 1f
                         )
                     }
 
-                    val blackKeyColor = if (isKeyboardActive) NeonCyan else Color.White
-                    drawRect(
+                    // Black keys
+                    val blackKeyColor = Color(0xFF0F172A)
+                    drawRoundRect(
                         color = blackKeyColor,
-                        topLeft = Offset(1f + keySpacing * 0.7f, 2f),
-                        size = Size(keySpacing * 0.6f, (h - 4f) * 0.55f)
+                        topLeft = Offset(1.5f + keySpacing * 0.65f, 1.5f),
+                        size = Size(keySpacing * 0.7f, (h - 3f) * 0.58f),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(1.dp.toPx())
                     )
-                    drawRect(
+                    drawRoundRect(
                         color = blackKeyColor,
-                        topLeft = Offset(1f + keySpacing * 1.7f, 2f),
-                        size = Size(keySpacing * 0.6f, (h - 4f) * 0.55f)
+                        topLeft = Offset(1.5f + keySpacing * 1.65f, 1.5f),
+                        size = Size(keySpacing * 0.7f, (h - 3f) * 0.58f),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(1.dp.toPx())
                     )
-                    drawRect(
+                    drawRoundRect(
                         color = blackKeyColor,
-                        topLeft = Offset(1f + keySpacing * 2.7f, 2f),
-                        size = Size(keySpacing * 0.6f, (h - 4f) * 0.55f)
+                        topLeft = Offset(1.5f + keySpacing * 2.65f, 1.5f),
+                        size = Size(keySpacing * 0.7f, (h - 3f) * 0.58f),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(1.dp.toPx())
                     )
                 }
             }
@@ -953,9 +1028,9 @@ fun FloppyDiskIcon(
     isArmed: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val diskColor = if (isArmed) Color(0xFFFF2A55) else Color(0xFF8E95A5)
-    val innerCutoutColor = Color(0xFF0C101A)
-    val labelColor = if (isArmed) Color(0xFFFFB3BA) else Color(0xFFECEFF1)
+    val diskColor = if (isArmed) Color(0xFFFF2A55) else Color(0xFFE2E8F0)
+    val innerCutoutColor = Color(0xFF161924)
+    val labelColor = if (isArmed) Color(0xFFFFB3BA) else Color(0xFF94A3B8)
 
     Canvas(modifier = modifier) {
         val w = size.width

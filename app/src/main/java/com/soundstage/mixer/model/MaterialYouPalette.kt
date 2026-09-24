@@ -182,9 +182,13 @@ data class DynamicPalette(
 )
 
 /**
- * Adjust saturation and lightness via HSL color space.
+ * Adjust hue, saturation and lightness via HSL color space.
  */
-fun Color.adjustSaturationAndLightness(satMultiplier: Float, lightMultiplier: Float): Color {
+fun Color.adjustSaturationAndLightness(
+    satMultiplier: Float,
+    lightMultiplier: Float,
+    hueShiftDegrees: Float = 0f
+): Color {
     val r = red
     val g = green
     val b = blue
@@ -202,10 +206,12 @@ fun Color.adjustSaturationAndLightness(satMultiplier: Float, lightMultiplier: Fl
     } * 60f
     if (h < 0f) h += 360f
 
+    val finalH = (h + hueShiftDegrees) % 360f
+    val normalizedH = if (finalH < 0f) finalH + 360f else finalH
     val finalS = (s * satMultiplier).coerceIn(0f, 1f)
     val finalL = (l * lightMultiplier).coerceIn(0f, 1f)
 
-    return hslToComposeColor(h, finalS, finalL, alpha)
+    return hslToComposeColor(normalizedH, finalS, finalL, alpha)
 }
 
 fun hslToComposeColor(h: Float, s: Float, l: Float, a: Float = 1f): Color {
@@ -230,29 +236,33 @@ fun hslToComposeColor(h: Float, s: Float, l: Float, a: Float = 1f): Color {
 
 /**
  * Computes a coherent dynamic palette based on the selected MaterialYouStyle
- * and the 3 user multipliers from the ColorBlendr interface:
+ * and the user multipliers from the Theme settings:
  * - accentSaturation (0.50x to 2.00x)
  * - backgroundSaturation (0.50x to 2.00x)
  * - backgroundBrightness (0.60x to 1.40x)
+ * - nuance (0.0f to 1.0f -> -60deg to +60deg hue shift)
  */
 fun computeDynamicPalette(
     style: MaterialYouStyle,
     accentSaturation: Float = 1.0f,
     backgroundSaturation: Float = 1.0f,
-    backgroundBrightness: Float = 1.0f
+    backgroundBrightness: Float = 1.0f,
+    nuance: Float = 0.5f
 ): DynamicPalette {
-    val adjPrimary = style.primary.adjustSaturationAndLightness(accentSaturation, 1.0f)
-    val adjSecondary = style.secondary.adjustSaturationAndLightness(accentSaturation, 1.0f)
-    val adjTertiary = style.tertiary.adjustSaturationAndLightness(accentSaturation, 1.0f)
+    val hueShift = (nuance - 0.5f) * 120f // +/- 60 degrees
 
-    // Base dark canvas colors matching mixer_material_you.svg
-    val baseBg = Color(0xFF13131C).adjustSaturationAndLightness(backgroundSaturation, backgroundBrightness)
-    val baseSurface = Color(0xFF1E202C).adjustSaturationAndLightness(backgroundSaturation, backgroundBrightness)
-    val baseSurfaceVariant = Color(0xFF282A3A).adjustSaturationAndLightness(backgroundSaturation, backgroundBrightness)
-    val baseSurfaceContainer = Color(0xFF191B26).adjustSaturationAndLightness(backgroundSaturation, backgroundBrightness)
+    val adjPrimary = style.primary.adjustSaturationAndLightness(accentSaturation, 1.0f, hueShift)
+    val adjSecondary = style.secondary.adjustSaturationAndLightness(accentSaturation, 1.0f, hueShift)
+    val adjTertiary = style.tertiary.adjustSaturationAndLightness(accentSaturation, 1.0f, hueShift)
+
+    // Base dark canvas colors: background #141722, cases and fader bodies #2C3246
+    val baseBg = Color(0xFF141722).adjustSaturationAndLightness(backgroundSaturation, backgroundBrightness, hueShift * 0.3f)
+    val baseSurface = Color(0xFF2C3246).adjustSaturationAndLightness(backgroundSaturation, backgroundBrightness, hueShift * 0.3f)
+    val baseSurfaceVariant = Color(0xFF383F57).adjustSaturationAndLightness(backgroundSaturation, backgroundBrightness, hueShift * 0.3f)
+    val baseSurfaceContainer = Color(0xFF22273A).adjustSaturationAndLightness(backgroundSaturation, backgroundBrightness, hueShift * 0.3f)
 
     val adjTrackColors = style.trackColors.map {
-        it.adjustSaturationAndLightness(accentSaturation, 1.0f)
+        it.adjustSaturationAndLightness(accentSaturation, 1.0f, hueShift)
     }
 
     return DynamicPalette(

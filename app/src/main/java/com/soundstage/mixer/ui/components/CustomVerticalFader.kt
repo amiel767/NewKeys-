@@ -1,8 +1,8 @@
 package com.soundstage.mixer.ui.components
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -11,29 +11,33 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.soundstage.mixer.R
 import kotlin.math.roundToInt
 
 /**
- * CustomVerticalFader Composable 100% faithful to mixer_material_you.svg:
- * - Clean oblong dark slot track (#0A0C12, stroke #1B1F2C)
- * - Track color gauge & audio-reactive aura
- * - Pristine Matte Slate Fader Cap (34dp x 24dp, rx=8dp) with a SINGLE vibrant horizontal indicator slot (14dp x 3dp, rx=1.5dp)
- * - Reference dB ticks (0 dB and -∞)
+ * CustomVerticalFader Composable:
+ * - Direct integration of user PNG assets (ic_fader_track.png for rail, ic_fader_thumb.png for knob)
+ * - Exact proportions matching user reference mockup (thumb width 42dp approx 3x track rail width 14dp)
+ * - Native bottom shadow on knob preserved untouched from PNG
+ * - Dynamic color LED bar replacing violet area with current track dynamic palette
  */
 @Composable
 fun CustomVerticalFader(
@@ -43,10 +47,10 @@ fun CustomVerticalFader(
     audioActivity: Float = 0f,
     isEnabled: Boolean = true,
     showTicks: Boolean = true,
-    trackWidth: Dp = 16.dp,
+    trackWidth: Dp = 25.dp,
     trackHeight: Dp = 220.dp,
-    thumbWidth: Dp = 34.dp,
-    thumbHeight: Dp = 24.dp,
+    thumbWidth: Dp = 58.dp,
+    thumbHeight: Dp = 60.dp,
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
@@ -67,7 +71,7 @@ fun CustomVerticalFader(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(trackHeight)
+            .heightIn(min = 60.dp, max = trackHeight)
             .onSizeChanged { size ->
                 if (size.height > 0) {
                     containerHeightPx = size.height.toFloat()
@@ -111,16 +115,16 @@ fun CustomVerticalFader(
                     // Left tick mark
                     drawLine(
                         color = tickColor,
-                        start = Offset(4.dp.toPx(), y),
-                        end = Offset(w * 0.28f, y),
+                        start = Offset(2.dp.toPx(), y),
+                        end = Offset(w * 0.22f, y),
                         strokeWidth = 1.dp.toPx(),
                         cap = StrokeCap.Round
                     )
                     // Right tick mark
                     drawLine(
                         color = tickColor,
-                        start = Offset(w * 0.72f, y),
-                        end = Offset(w - 4.dp.toPx(), y),
+                        start = Offset(w * 0.78f, y),
+                        end = Offset(w - 2.dp.toPx(), y),
                         strokeWidth = 1.dp.toPx(),
                         cap = StrokeCap.Round
                     )
@@ -129,7 +133,6 @@ fun CustomVerticalFader(
 
             // dB Text labels
             Box(modifier = Modifier.fillMaxSize()) {
-                // "0 dB" label
                 Text(
                     text = "0 dB",
                     color = Color(0xFF6B7280),
@@ -137,17 +140,16 @@ fun CustomVerticalFader(
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(top = 26.dp, end = 2.dp)
+                        .padding(top = 28.dp, end = 2.dp)
                 )
-                // "-∞" label
                 Text(
                     text = "-∞",
-                    color = Color(0xFF6B7280),
-                    fontSize = 8.sp,
+                    color = Color(0xFF4B5563),
+                    fontSize = 7.5.sp,
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(bottom = 14.dp, end = 2.dp)
+                        .padding(bottom = 12.dp, end = 2.dp)
                 )
             }
         }
@@ -157,99 +159,103 @@ fun CustomVerticalFader(
         val offsetYPx = ((1f - localValue.coerceIn(0f, 1f)) * usableHeightPx).roundToInt()
         val bonnetCenterYPx = offsetYPx + thumbHeightPx / 2f
 
-        // ================= 1. PRECISION OBLONG RAIL & AUDIO REACTION =================
+        // ================= 1. DIRECT PNG FADER RAIL (ic_fader_track.png) =================
         val isAudioSoundActive = isEnabled && audioActivity > 0.015f
         val dynamicAura = auraColor.copy(alpha = 1.0f)
+
+        // Clean exposure gain for the rail PNG so metal graduations and groove are clearly visible
+        val trackColorFilter = remember {
+            val offset = 48f
+            val matrix = ColorMatrix(
+                floatArrayOf(
+                    1.22f, 0f, 0f, 0f, offset,
+                    0f, 1.22f, 0f, 0f, offset,
+                    0f, 0f, 1.22f, 0f, offset,
+                    0f, 0f, 0f, 1f, 0f
+                )
+            )
+            ColorFilter.colorMatrix(matrix)
+        }
 
         Box(
             modifier = Modifier
                 .width(trackWidth)
-                .fillMaxHeight(),
+                .fillMaxHeight(0.96f),
             contentAlignment = Alignment.Center
         ) {
-            // Dark Oblong Slot Track
-            Canvas(
-                modifier = Modifier
-                    .width(8.dp)
-                    .fillMaxHeight(0.96f)
-            ) {
-                val h = size.height
-                val w = size.width
-                val corner = CornerRadius(w / 2f, w / 2f)
+            Image(
+                painter = painterResource(id = R.drawable.ic_fader_track),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.FillBounds,
+                colorFilter = trackColorFilter
+            )
 
-                // 1. Dark Slot Cavity
-                drawRoundRect(
-                    color = Color(0xFF0A0C12),
-                    topLeft = Offset(0f, 0f),
-                    size = Size(w, h),
-                    cornerRadius = corner
-                )
-
-                // 2. Stroke Border
-                drawRoundRect(
-                    color = Color(0xFF1B1F2C),
-                    topLeft = Offset(0.5f, 0.5f),
-                    size = Size(w - 1f, h - 1f),
-                    cornerRadius = corner,
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx())
-                )
-            }
-
-            // Central Track Color Gauge Line
+            // Dynamic LED Line in the central groove of the rail
             if (isEnabled) {
                 Canvas(
                     modifier = Modifier
-                        .width(4.5.dp)
-                        .fillMaxHeight(0.96f)
+                        .width(6.dp)
+                        .fillMaxHeight()
                 ) {
                     val h = size.height
                     val w = size.width
                     val railTopPx = (containerHeightPx - h) / 2f
-                    val relativeBonnetY = (bonnetCenterYPx - railTopPx).coerceIn(3.dp.toPx(), h - 3.dp.toPx())
-                    val activeHeight = (h - 3.dp.toPx()) - relativeBonnetY
-                    val lineWidthPx = 4.dp.toPx()
+                    // Clamp strictly within physical groove stops to never exceed the bottom/top
+                    val grooveTopPx = 10.dp.toPx()
+                    val grooveBottomPx = h - 10.dp.toPx()
+                    val relativeBonnetY = (bonnetCenterYPx - railTopPx).coerceIn(grooveTopPx, grooveBottomPx)
+                    val activeHeight = grooveBottomPx - relativeBonnetY
+                    val lineWidthPx = 3.2.dp.toPx()
                     val lineLeft = (w - lineWidthPx) / 2f
-                    val lineCorner = CornerRadius(lineWidthPx / 2f, lineWidthPx / 2f)
 
                     if (activeHeight > 0f) {
-                        // Saturated track color fill
+                        // Sound-reactive outer glow bloom when audio is playing
+                        if (isAudioSoundActive) {
+                            val glowWidthPx = 5.2.dp.toPx()
+                            val glowLeft = (w - glowWidthPx) / 2f
+                            drawRoundRect(
+                                color = dynamicAura.copy(alpha = (0.45f + audioActivity * 0.45f).coerceIn(0.2f, 0.85f)),
+                                topLeft = Offset(glowLeft, relativeBonnetY),
+                                size = Size(glowWidthPx, activeHeight),
+                                cornerRadius = CornerRadius(glowWidthPx / 2f, glowWidthPx / 2f)
+                            )
+                        }
+
+                        // Core brilliant LED line
                         drawRoundRect(
                             brush = Brush.verticalGradient(
                                 colors = listOf(
-                                    dynamicAura.copy(alpha = 0.95f),
-                                    dynamicAura.copy(alpha = 0.80f)
+                                    if (isAudioSoundActive) Color.White.copy(alpha = 0.95f) else dynamicAura.copy(alpha = 0.95f),
+                                    dynamicAura.copy(alpha = if (isAudioSoundActive) 1.0f else 0.85f)
                                 ),
                                 startY = relativeBonnetY,
-                                endY = h - 3.dp.toPx()
+                                endY = grooveBottomPx
                             ),
                             topLeft = Offset(lineLeft, relativeBonnetY),
                             size = Size(lineWidthPx, activeHeight),
-                            cornerRadius = lineCorner
+                            cornerRadius = CornerRadius(lineWidthPx / 2f, lineWidthPx / 2f)
                         )
-
-                        // Audio reactive glow bloom when playing sound
-                        if (isAudioSoundActive) {
-                            val intensity = audioActivity.coerceIn(0f, 1f)
-                            drawRoundRect(
-                                brush = Brush.horizontalGradient(
-                                    colors = listOf(
-                                        dynamicAura.copy(alpha = 0.1f * intensity),
-                                        dynamicAura.copy(alpha = 0.7f * intensity),
-                                        dynamicAura.copy(alpha = 0.1f * intensity)
-                                    )
-                                ),
-                                topLeft = Offset(0f, relativeBonnetY),
-                                size = Size(w, activeHeight),
-                                cornerRadius = CornerRadius(w / 2f, w / 2f)
-                            )
-                        }
                     }
                 }
             }
         }
 
-        // ================= 2. FADER CAP (BONNET) 100% SVG EXACT =================
-        // Smooth Matte Slate rectangle (34dp x 24dp, rx=8dp) with single glowing pill slot (14dp x 3dp, rx=1.5dp)
+        // ================= 2. DIRECT PNG FADER KNOB (ic_fader_thumb.png) =================
+        // Lighten the dark knob PNG cleanly so brushed metal and bevels are visible without darkness
+        val knobColorFilter = remember {
+            val offset = 44f
+            val matrix = ColorMatrix(
+                floatArrayOf(
+                    1.22f, 0f, 0f, 0f, offset,
+                    0f, 1.22f, 0f, 0f, offset,
+                    0f, 0f, 1.22f, 0f, offset,
+                    0f, 0f, 0f, 1f, 0f
+                )
+            )
+            ColorFilter.colorMatrix(matrix)
+        }
+
         Box(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -258,36 +264,25 @@ fun CustomVerticalFader(
                 .height(thumbHeight),
             contentAlignment = Alignment.Center
         ) {
+            Image(
+                painter = painterResource(id = R.drawable.ic_fader_thumb),
+                contentDescription = "Fader Handle",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+                colorFilter = knobColorFilter
+            )
+
+            // Dynamic LED Line on the knob's indicator slit
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .shadow(elevation = 6.dp, shape = RoundedCornerShape(8.dp), spotColor = Color.Black)
-                    .clip(RoundedCornerShape(8.dp))
+                    .fillMaxWidth(0.50f)
+                    .height(2.5.dp)
+                    .offset(y = (-1.0).dp)
+                    .clip(RoundedCornerShape(1.dp))
                     .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                Color(0xFF383F50), // Top satin bevel
-                                Color(0xFF222735), // Matte dark slate body
-                                Color(0xFF181B24)  // Shadow bottom
-                            )
-                        )
+                        if (isAudioSoundActive) Color.White.copy(alpha = 0.95f) else dynamicAura
                     )
-                    .border(
-                        1.dp,
-                        Color(0xFF2E3547),
-                        RoundedCornerShape(8.dp)
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                // The SINGLE illuminated horizontal indicator slot from the SVG
-                Box(
-                    modifier = Modifier
-                        .width(14.dp)
-                        .height(3.dp)
-                        .clip(RoundedCornerShape(1.5.dp))
-                        .background(dynamicAura)
-                )
-            }
+            )
         }
     }
 }

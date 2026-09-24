@@ -140,8 +140,8 @@ fun VerticalTrackChannel(
     }
     val baseSubtleColor = if (trackColor != null) trackColor.copy(alpha = 0.6f) else defaultSubtle
 
-    // Base body color and borders according to theme (Material You vs Cyber Neon)
-    val faderBodyColor = if (isMaterialYou) dynamicPalette.surface else Color(0xFF25293A)
+    // Base body color and borders according to theme (Clearer #2C3246 as requested)
+    val faderBodyColor = if (isMaterialYou) dynamicPalette.surface else Color(0xFF2C3246)
     val subtleDarkBorder = if (isMaterialYou) dynamicPalette.outlineVariant else Color(0x18FFFFFF)
 
     // Sound-reactive audio activity (Peak Meter) with guaranteed base visibility
@@ -157,60 +157,28 @@ fun VerticalTrackChannel(
             .border(1.dp, subtleDarkBorder, RoundedCornerShape(8.dp))
             .testTag("track_${track.id}")
     ) {
-        // 1. Ambient & Reactive Neon Aura at the bottom of the fader (visible from start, pulses with sound)
-        val auraGradient = if (isMaterialYou) {
-            Brush.verticalGradient(
-                0.0f to Color.Transparent,
-                0.35f to vibrantLedColor.copy(alpha = reactiveAlpha * 0.16f),
-                0.70f to vibrantLedColor.copy(alpha = reactiveAlpha * 0.42f),
-                1.0f to vibrantLedColor.copy(alpha = reactiveAlpha * 0.82f)
-            )
-        } else {
-            Brush.verticalGradient(
-                0.0f to Color.Transparent,
-                0.45f to vibrantLedColor.copy(alpha = reactiveAlpha * 0.25f),
-                0.80f to vibrantLedColor.copy(alpha = reactiveAlpha * 0.60f),
-                1.0f to vibrantLedColor.copy(alpha = reactiveAlpha * 0.95f)
-            )
-        }
+        // 1. Ambient & Reactive Neon Aura at the bottom of the fader
+        val auraGradient = Brush.verticalGradient(
+            0.0f to Color.Transparent,
+            0.45f to vibrantLedColor.copy(alpha = reactiveAlpha * 0.15f),
+            0.75f to vibrantLedColor.copy(alpha = reactiveAlpha * 0.45f),
+            1.0f to vibrantLedColor.copy(alpha = (reactiveAlpha * 0.85f).coerceIn(0.15f, 0.90f))
+        )
 
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .fillMaxHeight(0.60f)
+                .fillMaxHeight(0.35f)
                 .background(auraGradient)
         )
 
-        // 2. Radial bottom floor glow
-        val radialGlowColors = if (isMaterialYou) {
-            listOf(
-                vibrantLedColor.copy(alpha = reactiveAlpha * 0.55f),
-                vibrantLedColor.copy(alpha = reactiveAlpha * 0.15f),
-                Color.Transparent
-            )
-        } else {
-            listOf(
-                vibrantLedColor.copy(alpha = reactiveAlpha * 0.70f),
-                vibrantLedColor.copy(alpha = reactiveAlpha * 0.20f),
-                Color.Transparent
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(48.dp)
-                .background(Brush.radialGradient(colors = radialGlowColors))
-        )
-
-        // 3. Crisp luminous bottom LED strip accent faithful to mixer_material_you.svg
+        // Crisp luminous bottom LED strip accent
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth(0.92f)
-                .height(3.5.dp)
+                .height(3.dp)
                 .clip(RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp))
                 .background(vibrantLedColor)
         )
@@ -327,7 +295,7 @@ fun VerticalTrackChannel(
 
         Spacer(modifier = Modifier.height(3.dp))
 
-        // ================= 3. VERTICAL FADER WITH REALISTIC 3D BONNET & AUDIO-REACTIVE VU =================
+        // ================= 3. VERTICAL FADER WITH REALISTIC MATTE SLATE BONNET & AUDIO-REACTIVE VU =================
         FaderSliderWithVuMeter(
             value = track.volume,
             peakMeterL = track.peakMeterL,
@@ -349,7 +317,7 @@ fun VerticalTrackChannel(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(24.dp),
+                    .height(22.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -357,16 +325,16 @@ fun VerticalTrackChannel(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .height(22.dp)
-                        .clip(RoundedCornerShape(6.dp))
+                        .height(20.dp)
+                        .clip(RoundedCornerShape(5.dp))
                         .background(Color(0xFF1C202C))
-                        .border(1.dp, Color(0xFF262A3A), RoundedCornerShape(6.dp))
+                        .border(1.dp, Color(0xFF262A3A), RoundedCornerShape(5.dp))
                         .clickable { onFxClick() },
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = "FX",
-                        fontSize = 8.5.sp,
+                        fontSize = 8.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF8E94A8)
                     )
@@ -377,10 +345,10 @@ fun VerticalTrackChannel(
                 // Track Assignment Dot / Power Indicator
                 Box(
                     modifier = Modifier
-                        .size(22.dp)
-                        .clip(RoundedCornerShape(6.dp))
+                        .size(20.dp)
+                        .clip(RoundedCornerShape(5.dp))
                         .background(Color(0xFF1C202C))
-                        .border(1.dp, Color(0xFF262A3A), RoundedCornerShape(6.dp))
+                        .border(1.dp, Color(0xFF262A3A), RoundedCornerShape(5.dp))
                         .clickable { onPowerToggle() },
                     contentAlignment = Alignment.Center
                 ) {
@@ -397,20 +365,16 @@ fun VerticalTrackChannel(
             Box(
                 modifier = Modifier
                     .fillMaxWidth(0.92f)
-                    .height(26.dp)
-                    .clip(RoundedCornerShape(7.dp))
-                .background(
-                    Brush.horizontalGradient(
-                        listOf(Color(0xFFFF7A00), Color(0xFFE65100))
-                    )
-                )
-                .border(1.2.dp, Color(0x66FFB74D), RoundedCornerShape(7.dp))
-                .clickable { onFxClick() },
+                    .height(24.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xFF1C202C))
+                    .border(1.dp, Color(0xFF262A3A), RoundedCornerShape(6.dp))
+                    .clickable { onFxClick() },
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = "FX",
-                    fontSize = 10.sp,
+                    fontSize = 9.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = Color.White
                 )
@@ -436,7 +400,7 @@ fun MicroPanKnob(
 
     Box(
         modifier = modifier
-            .size(24.dp)
+            .size(22.dp)
             .pointerInput(isEnabled) {
                 if (isEnabled) {
                     detectTapGestures(
@@ -460,7 +424,7 @@ fun MicroPanKnob(
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val center = Offset(size.width / 2f, size.height / 2f)
-            val outerRadius = size.minDimension / 2f - 1.5f
+            val outerRadius = size.minDimension / 2f - 1f
             val innerRadius = outerRadius - 2f
 
             // Outer ring
@@ -510,7 +474,7 @@ fun MicroPanKnob(
  * Fader Slider with:
  * - Vertical black column with rounded transparent grey fade border
  * - Light in the black column appears ONLY when audio is actively playing on that track
- * - 3D Realistic White/Silver Fader Cap (Bonnet) from user image (larger, wider, center black line + 2 wavy grooves above/below)
+ * - Sleek Matte Slate Fader Cap (Bonnet) from user image (26dp x 18dp, rx=4.5dp)
  */
 @Composable
 fun FaderSliderWithVuMeter(
@@ -536,10 +500,10 @@ fun FaderSliderWithVuMeter(
             audioActivity = audioActivity,
             isEnabled = isEnabled,
             showTicks = showTicks,
-            trackWidth = 22.dp,
+            trackWidth = 23.dp,
             trackHeight = 220.dp,
-            thumbWidth = 40.dp,
-            thumbHeight = 51.dp,
+            thumbWidth = 54.dp,
+            thumbHeight = 56.dp,
             modifier = Modifier.fillMaxHeight()
         )
     }

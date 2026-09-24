@@ -90,12 +90,8 @@ fun EffectsDialog(
                 .fillMaxHeight(0.90f)
                 .shadow(28.dp, RoundedCornerShape(16.dp))
                 .clip(RoundedCornerShape(16.dp))
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(Color(0xFF141722), Color(0xFF0C0E17), Color(0xFF080A10))
-                    )
-                )
-                .border(1.5.dp, Color(0x3322D3EE), RoundedCornerShape(16.dp))
+                .background(Color(0xFF141722))
+                .border(1.dp, Color(0xFF1E2232), RoundedCornerShape(16.dp))
                 .clickable(enabled = false) {}
                 .padding(14.dp)
                 .testTag("dialog_effects")
@@ -114,8 +110,7 @@ fun EffectsDialog(
                             modifier = Modifier
                                 .size(8.dp)
                                 .clip(CircleShape)
-                                .background(NeonCyan)
-                                .shadow(6.dp, CircleShape, spotColor = NeonCyan)
+                                .background(Color(0xFF4F6BF7))
                         )
                         Text(
                             text = title.uppercase(),
@@ -130,8 +125,8 @@ fun EffectsDialog(
                         modifier = Modifier
                             .size(26.dp)
                             .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0x14FFFFFF))
-                            .border(1.dp, Color(0x26FFFFFF), RoundedCornerShape(6.dp))
+                            .background(Color(0xFF1F2333))
+                            .border(1.dp, Color(0xFF2C3242), RoundedCornerShape(6.dp))
                             .clickable { onClose() },
                         contentAlignment = Alignment.Center
                     ) {
@@ -152,11 +147,11 @@ fun EffectsDialog(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(
-                                    if (isSelected) Brush.verticalGradient(listOf(Color(0xFF00E5FF), Color(0xFF00B8D4))) else Brush.linearGradient(listOf(Color(0x14FFFFFF), Color(0x0AFFFFFF)))
+                                    if (isSelected) Color(0xFF4F6BF7) else Color(0xFF1B1E2B)
                                 )
                                 .border(
                                     1.dp,
-                                    if (isSelected) Color.Transparent else Color(0x14FFFFFF),
+                                    if (isSelected) Color(0xFF6B82FA) else Color(0xFF222738),
                                     RoundedCornerShape(8.dp)
                                 )
                                 .clickable { onTabChange(tabKey) }
@@ -167,7 +162,7 @@ fun EffectsDialog(
                                 text = tabLabel,
                                 fontSize = 10.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isSelected) Color(0xFF002233) else TextDim
+                                color = if (isSelected) Color.White else TextDim
                             )
                         }
                     }

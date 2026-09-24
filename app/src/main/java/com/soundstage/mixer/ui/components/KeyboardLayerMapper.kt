@@ -240,58 +240,46 @@ fun KeyboardLayerMapper(
     )
 
     val safeExpand = expandProgress.coerceIn(0f, 1f)
-    val verticalScrollState = rememberScrollState()
-    val rowSpacingDp = lerp(1.2.dp, 6.dp, safeExpand)
-
-    LaunchedEffect(isExpanded) {
-        if (!isExpanded) {
-            verticalScrollState.scrollTo(0)
-        }
-    }
+    val rowSpacingDp = lerp(1.2.dp, 4.dp, safeExpand)
 
     val currentOnToggleExpanded by rememberUpdatedState(onToggleExpanded)
+    val verticalScrollState = rememberScrollState()
 
     Column(
         modifier = modifier
             .width(totalWidthDp)
-            .fillMaxHeight()
+            .then(if (isExpanded) Modifier.verticalScroll(verticalScrollState) else Modifier.fillMaxHeight())
             .background(Color.Transparent)
-            .padding(horizontal = 0.dp, vertical = lerp(0.dp, 4.dp, safeExpand))
-            .testTag("keyboard_layer_mapper")
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(verticalScrollState, enabled = isExpanded)
-                .clickable(
-                    enabled = !isExpanded,
-                    onClick = { currentOnToggleExpanded() }
-                ),
-            verticalArrangement = Arrangement.spacedBy(
-                rowSpacingDp,
-                Alignment.Top
+            .padding(horizontal = 0.dp, vertical = lerp(0.dp, 2.dp, safeExpand))
+            .clickable(
+                enabled = !isExpanded,
+                onClick = { currentOnToggleExpanded() }
             )
-        ) {
-            visibleTracks.forEach { track ->
-                key(track.id) {
-                    val trackColor = KeyPositionMapper.getTrackNeonColor(track.id)
-                    val patchTitle = when {
-                        track.patchName.isNotBlank() -> track.patchName
-                        track.soundfontName.isNotBlank() -> track.soundfontName
-                        else -> track.name
-                    }
-
-                    TrackRangeBarRow(
-                        track = track,
-                        trackColor = trackColor,
-                        patchTitle = patchTitle,
-                        whiteWidthDp = whiteWidthDp,
-                        expandProgress = safeExpand,
-                        onToggleExpanded = onToggleExpanded,
-                        onRangeChanged = onRangeChanged,
-                        onDragSelectionChange = onDragSelectionChange
-                    )
+            .testTag("keyboard_layer_mapper"),
+        verticalArrangement = Arrangement.spacedBy(
+            rowSpacingDp,
+            Alignment.Top
+        )
+    ) {
+        visibleTracks.forEach { track ->
+            key(track.id) {
+                val trackColor = KeyPositionMapper.getTrackNeonColor(track.id)
+                val patchTitle = when {
+                    track.patchName.isNotBlank() -> track.patchName
+                    track.soundfontName.isNotBlank() -> track.soundfontName
+                    else -> track.name
                 }
+
+                TrackRangeBarRow(
+                    track = track,
+                    trackColor = trackColor,
+                    patchTitle = patchTitle,
+                    whiteWidthDp = whiteWidthDp,
+                    expandProgress = safeExpand,
+                    onToggleExpanded = onToggleExpanded,
+                    onRangeChanged = onRangeChanged,
+                    onDragSelectionChange = onDragSelectionChange
+                )
             }
         }
     }
@@ -322,8 +310,8 @@ private fun TrackRangeBarRow(
     val endXDp = (rightFrac * whiteWidthDp.value).dp
 
     // Dynamic animated height and corner radius
-    val rowHeightDp = lerp(2.2.dp, 28.dp, expandProgress)
-    val cornerRadiusDp = lerp(1.dp, 8.dp, expandProgress)
+    val rowHeightDp = lerp(2.2.dp, 24.dp, expandProgress)
+    val cornerRadiusDp = lerp(1.dp, 7.dp, expandProgress)
     val minBarWidth = lerp(6.dp, 18.dp, expandProgress)
     val rawBarWidthDp = (endXDp - startXDp).coerceAtLeast(minBarWidth)
 
