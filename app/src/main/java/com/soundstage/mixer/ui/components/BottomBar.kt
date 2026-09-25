@@ -6,13 +6,20 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -553,78 +560,87 @@ fun BottomBar(
             BoxWithConstraints(
                 modifier = Modifier
                     .weight(1f)
-                    .height(26.dp)
-                    .padding(vertical = 3.dp),
+                    .height(28.dp)
+                    .padding(vertical = 2.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
                 val trackWidthPx = with(LocalDensity.current) { maxWidth.toPx() }
-                val thumbWidthDp = 10.dp
+                val thumbWidthDp = 12.dp
                 val thumbWidthPx = with(LocalDensity.current) { thumbWidthDp.toPx() }
                 val usableWidthPx = (trackWidthPx - thumbWidthPx).coerceAtLeast(1f)
                 val masterVol = masterTrack.volume.coerceIn(0f, 1f)
                 val thumbOffsetXDp = with(LocalDensity.current) { (masterVol * usableWidthPx).toDp() }
 
-                // Groove Track
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(Color(0xFF1A1E2C))
-                        .border(0.8.dp, Color(0x33FFFFFF), RoundedCornerShape(3.dp))
-                        .pointerInput(usableWidthPx) {
-                            detectTapGestures { offset ->
-                                val newVol = ((offset.x - thumbWidthPx / 2f) / usableWidthPx).coerceIn(0f, 1f)
-                                onMasterVolumeChange(newVol)
-                            }
-                        }
-                ) {
-                    // Active Fill
-                    Box(
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .width(thumbOffsetXDp + 5.dp)
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(
-                                Brush.horizontalGradient(
-                                    listOf(Color(0xFF6366F1), Color(0xFFA4B8FF))
-                                )
-                            )
-                    )
+                val updateMasterVolume: (Float) -> Unit = { rawX ->
+                    val newVol = ((rawX - thumbWidthPx / 2f) / usableWidthPx).coerceIn(0f, 1f)
+                    onMasterVolumeChange(newVol)
                 }
 
-                // Precision Studio Thumb Knob
+                // Master Track Container with unified, jitter-free tap & drag gesture
                 Box(
                     modifier = Modifier
-                        .offset(x = thumbOffsetXDp)
-                        .width(thumbWidthDp)
-                        .height(20.dp)
-                        .shadow(3.dp, RoundedCornerShape(3.dp))
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color(0xFFE2E8F0), Color(0xFFCBD5E1), Color(0xFF94A3B8))
-                            )
-                        )
-                        .border(1.dp, Color(0x66FFFFFF), RoundedCornerShape(3.dp))
+                        .fillMaxSize()
                         .pointerInput(usableWidthPx) {
-                            detectHorizontalDragGestures { change, dragAmount ->
-                                change.consume()
-                                val deltaFraction = dragAmount / usableWidthPx
-                                val newVol = (masterTrack.volume + deltaFraction).coerceIn(0f, 1f)
-                                onMasterVolumeChange(newVol)
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                down.consume()
+                                updateMasterVolume(down.position.x)
+
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    if (!change.pressed) break
+                                    change.consume()
+                                    updateMasterVolume(change.position.x)
+                                }
                             }
                         },
-                    contentAlignment = Alignment.Center
+                    contentAlignment = Alignment.CenterStart
                 ) {
-                    // Center slit indicator
+                    // Groove Track
                     Box(
                         modifier = Modifier
-                            .width(1.5.dp)
-                            .height(10.dp)
-                            .clip(RoundedCornerShape(0.5.dp))
-                            .background(Color(0xFF334155))
-                    )
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(Color(0xFF141724))
+                            .border(0.8.dp, Color(0x33FFFFFF), RoundedCornerShape(3.dp))
+                    ) {
+                        // Active Solid Studio Fill (clean sky blue, no generic multi-color gradient)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .width(thumbOffsetXDp + 6.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(Color(0xFF38BDF8))
+                        )
+                    }
+
+                    // Precision Studio Metal Thumb Knob
+                    Box(
+                        modifier = Modifier
+                            .offset(x = thumbOffsetXDp)
+                            .width(thumbWidthDp)
+                            .height(22.dp)
+                            .shadow(3.dp, RoundedCornerShape(3.dp))
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color(0xFFE2E8F0), Color(0xFFCBD5E1), Color(0xFF94A3B8))
+                                )
+                            )
+                            .border(1.dp, Color(0x77FFFFFF), RoundedCornerShape(3.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        // Center slit indicator
+                        Box(
+                            modifier = Modifier
+                                .width(1.5.dp)
+                                .height(12.dp)
+                                .clip(RoundedCornerShape(0.5.dp))
+                                .background(Color(0xFF1E293B))
+                        )
+                    }
                 }
             }
 
@@ -708,7 +724,7 @@ fun BottomBar(
                 }
             }
 
-            // Keyboard Toggle Button - Sleek Dark Studio Button with Piano Keys
+            // Keyboard Toggle Button - Sleek Studio Button with 4 white notes and 3 black notes
             val (_, activeSlotLedColor) = rememberDynamicFaderHue(1)
             val kbdBg = if (isKeyboardActive) Color(0xFF1E2333) else Color(0xFF161922)
             val kbdBorder = if (isKeyboardActive) Color(0xFF4F6BF7) else Color(0xFF242938)
@@ -724,56 +740,56 @@ fun BottomBar(
                     .testTag("btn_toggle_keyboard"),
                 contentAlignment = Alignment.Center
             ) {
-                Canvas(modifier = Modifier.size(24.dp, 18.dp)) {
+                // Precise 4 White Keys + 3 Black Keys Studio Piano Icon
+                Canvas(modifier = Modifier.size(24.dp, 16.dp)) {
                     val w = size.width
                     val h = size.height
+                    val cornerRadius = 2.dp.toPx()
 
-                    // Outline of piano keyboard bed (White / Studio Ivory)
+                    // Piano Frame Base (4 White Keys background)
                     drawRoundRect(
-                        color = if (isKeyboardActive) Color(0xFFE2E8F0) else Color(0xFF94A3B8),
-                        topLeft = Offset(1f, 1f),
-                        size = Size(w - 2f, h - 2f),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()),
-                        style = Stroke(width = 1.2f)
+                        color = if (isKeyboardActive) Color(0xFFF8FAFC) else Color(0xFFCBD5E1),
+                        topLeft = Offset(0f, 0f),
+                        size = Size(w, h),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerRadius, cornerRadius)
                     )
 
-                    // Fill white keys bed
-                    drawRoundRect(
-                        color = if (isKeyboardActive) Color(0xFFF1F5F9) else Color(0xFFCBD5E1),
-                        topLeft = Offset(1.5f, 1.5f),
-                        size = Size(w - 3f, h - 3f),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(1.8.dp.toPx())
-                    )
-
-                    val keySpacing = (w - 3f) / 4f
-                    for (i in 1..3) {
+                    // 4 White keys dividers (3 internal lines)
+                    val numWhiteKeys = 4
+                    val whiteKeyWidth = w / numWhiteKeys.toFloat()
+                    for (i in 1 until numWhiteKeys) {
+                        val x = i * whiteKeyWidth
                         drawLine(
-                            color = Color(0xFF475569),
-                            start = Offset(1.5f + i * keySpacing, 1.5f),
-                            end = Offset(1.5f + i * keySpacing, h - 1.5f),
+                            color = Color(0xFF64748B),
+                            start = Offset(x, 0f),
+                            end = Offset(x, h),
                             strokeWidth = 1f
                         )
                     }
 
-                    // Black keys
+                    // Exactly 3 Black keys placed centered over the 3 white key dividing lines
+                    val blackKeyWidth = whiteKeyWidth * 0.55f
+                    val blackKeyHeight = h * 0.58f
                     val blackKeyColor = Color(0xFF0F172A)
+                    val blackKeyDividers = listOf(1, 2, 3)
+
+                    blackKeyDividers.forEach { dividerIdx ->
+                        val x = dividerIdx * whiteKeyWidth - (blackKeyWidth / 2f)
+                        drawRoundRect(
+                            color = blackKeyColor,
+                            topLeft = Offset(x, 0f),
+                            size = Size(blackKeyWidth, blackKeyHeight),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(1f, 1f)
+                        )
+                    }
+
+                    // Outer border
                     drawRoundRect(
-                        color = blackKeyColor,
-                        topLeft = Offset(1.5f + keySpacing * 0.65f, 1.5f),
-                        size = Size(keySpacing * 0.7f, (h - 3f) * 0.58f),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(1.dp.toPx())
-                    )
-                    drawRoundRect(
-                        color = blackKeyColor,
-                        topLeft = Offset(1.5f + keySpacing * 1.65f, 1.5f),
-                        size = Size(keySpacing * 0.7f, (h - 3f) * 0.58f),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(1.dp.toPx())
-                    )
-                    drawRoundRect(
-                        color = blackKeyColor,
-                        topLeft = Offset(1.5f + keySpacing * 2.65f, 1.5f),
-                        size = Size(keySpacing * 0.7f, (h - 3f) * 0.58f),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(1.dp.toPx())
+                        color = if (isKeyboardActive) Color(0xFF93C5FD) else Color(0xFF475569),
+                        topLeft = Offset(0f, 0f),
+                        size = Size(w, h),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerRadius, cornerRadius),
+                        style = Stroke(width = 1.2f)
                     )
                 }
             }
@@ -781,6 +797,9 @@ fun BottomBar(
     }
 }
 
+/**
+ * Modern Metronome & Tonalité Floating Widget (Compact, Studio Minimalist)
+ */
 @Composable
 fun MetronomeFloatingPanel(
     isOpen: Boolean,
@@ -798,223 +817,271 @@ fun MetronomeFloatingPanel(
     useFlats: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val allSignatures = listOf(
-        "2/4", "3/4", "4/4", "5/4",
-        "6/4", "7/4", "3/8", "5/8",
-        "6/8", "7/8", "9/8", "12/8"
-    )
-    val chromaticKeys = listOf(
-        "C", "C#", "D", "D#", "E", "F",
-        "F#", "G", "G#", "A", "A#", "B"
-    )
-    val displayedKeys = listOf(
-        "C", if (useFlats) "Db" else "C#", "D", if (useFlats) "Eb" else "D#", "E", "F",
-        if (useFlats) "Gb" else "F#", "G", if (useFlats) "Ab" else "G#", "A", if (useFlats) "Bb" else "A#", "B"
-    )
+    val signatures = listOf("2/4", "3/4", "4/4", "5/4", "6/8", "7/8", "12/8")
+    val rawKeys = if (useFlats) {
+        listOf("Ab", "A", "Bb", "B", "C", "Db", "D", "Eb", "E", "F", "Gb", "G")
+    } else {
+        listOf("G#", "A", "A#", "B", "C", "C#", "D", "D#", "E", "F", "F#", "G")
+    }
+
+    val isMajor = selectedScaleMode.equals("Majeur", ignoreCase = true)
 
     AnimatedVisibility(
         visible = isOpen,
-        enter = fadeIn(tween(180)) + expandVertically(tween(220)),
-        exit = fadeOut(tween(150)) + shrinkVertically(tween(180)),
+        enter = fadeIn(tween(200)) + expandVertically(tween(220)),
+        exit = fadeOut(tween(160)) + shrinkVertically(tween(180)),
         modifier = modifier
     ) {
-        Column(
+        Box(
             modifier = Modifier
-                .width(288.dp)
-                .shadow(20.dp, RoundedCornerShape(16.dp))
-                .clip(RoundedCornerShape(16.dp))
-                .background(
-                    Brush.linearGradient(listOf(Color(0xFF1C2A38), Color(0xFF101820)))
-                )
-                .border(1.dp, Color(0x4D22D3EE), RoundedCornerShape(16.dp))
-                .padding(14.dp)
+                .width(270.dp)
+                .shadow(16.dp, RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color(0xFF0F141C))
+                .border(1.dp, Color(0x3322D3EE), RoundedCornerShape(14.dp))
+                .padding(10.dp)
+                .testTag("metronome_widget_panel")
         ) {
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text(
-                    text = "Métronome & Tonalité",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
-
-                Box(
-                    modifier = Modifier
-                        .width(38.dp)
-                        .height(22.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (isMetronomeOn) Brush.horizontalGradient(listOf(NeonCyanLight, NeonCyan)) else Brush.linearGradient(listOf(Color(0x1AFFFFFF), Color(0x1AFFFFFF))))
-                        .clickable { onToggleMetronome() }
-                        .padding(2.dp),
-                    contentAlignment = if (isMetronomeOn) Alignment.CenterEnd else Alignment.CenterStart
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(18.dp)
-                            .clip(CircleShape)
-                            .background(Color.White)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // TONALITÉ (ROOT KEY)
-            Text(
-                text = "TONALITÉ (ROOT KEY)",
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextDim,
-                letterSpacing = 0.6.sp
-            )
-
-            Spacer(modifier = Modifier.height(5.dp))
-
-            chromaticKeys.zip(displayedKeys).chunked(6).forEach { rowPairs ->
+                // ================= TOP ROW: SIGNATURE (LEFT) + SEPARATOR + TONALITÉ (RIGHT) =================
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        .height(64.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    rowPairs.forEach { (actualNote, displayedNote) ->
-                        val isSelected = selectedKey.equals(actualNote, ignoreCase = true)
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(26.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(
-                                    if (isSelected) Brush.verticalGradient(listOf(NeonCyanLight, NeonCyanDark))
-                                    else Brush.linearGradient(listOf(Color(0x0DFFFFFF), Color(0x08FFFFFF)))
-                                )
-                                .border(
-                                    1.dp,
-                                    if (isSelected) Color.Transparent else Color(0x1AFFFFFF),
-                                    RoundedCornerShape(6.dp)
-                                )
-                                .clickable { onSelectKey(actualNote) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = displayedNote,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isSelected) Color(0xFF00232B) else TextDim
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // MODE TONALITÉ (MAJEUR / MINEUR)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                listOf("Majeur", "Mineur").forEach { mode ->
-                    val isModeSelected = selectedScaleMode.equals(mode, ignoreCase = true)
-                    Box(
+                    // LEFT COLUMN: Signature Horizontal Scroll / Selector
+                    Column(
                         modifier = Modifier
                             .weight(1f)
-                            .height(26.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(
-                                if (isModeSelected) Brush.verticalGradient(listOf(NeonCyanLight, NeonCyanDark))
-                                else Brush.linearGradient(listOf(Color(0x0DFFFFFF), Color(0x08FFFFFF)))
-                            )
-                            .border(
-                                1.dp,
-                                if (isModeSelected) Color.Transparent else Color(0x1AFFFFFF),
-                                RoundedCornerShape(6.dp)
-                            )
-                            .clickable { onSelectScaleMode(mode) },
-                        contentAlignment = Alignment.Center
+                            .fillMaxHeight(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.SpaceBetween
                     ) {
+                        // Horizontal scrollable signatures
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            signatures.forEach { sig ->
+                                val isSelected = selectedSignature == sig
+                                Text(
+                                    text = sig,
+                                    fontSize = if (isSelected) 22.sp else 14.sp,
+                                    fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
+                                    color = if (isSelected) Color.White else Color(0xFF475569),
+                                    modifier = Modifier
+                                        .clickable { onSelectSignature(sig) }
+                                        .padding(horizontal = 6.dp)
+                                )
+                            }
+                        }
+
                         Text(
-                            text = mode.uppercase(),
+                            text = "Signature",
                             fontSize = 9.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isModeSelected) Color(0xFF00232B) else TextDim
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF94A3B8)
+                        )
+                    }
+
+                    // Vertical Separator Line
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .fillMaxHeight(0.7f)
+                            .background(Color(0x33FFFFFF))
+                    )
+
+                    // RIGHT COLUMN: Tonalité Horizontal Scroll / Selector
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        // Horizontal scrollable keys
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            rawKeys.forEach { note ->
+                                val isSelected = selectedKey.equals(note, ignoreCase = true)
+                                Text(
+                                    text = note,
+                                    fontSize = if (isSelected) 24.sp else 14.sp,
+                                    fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
+                                    color = if (isSelected) NeonCyan else Color(0xFF475569),
+                                    modifier = Modifier
+                                        .clickable { onSelectKey(note) }
+                                        .padding(horizontal = 6.dp)
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = "Tonalité",
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF94A3B8)
                         )
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Text(
-                text = "SIGNATURE RYTHMIQUE (TOUTES SIGNATURES)",
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextDim,
-                letterSpacing = 0.6.sp
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // 3 Rows x 4 Columns Grid of Signatures
-            allSignatures.chunked(4).forEach { rowList ->
+                // ================= BOTTOM ROW: MODE PILL (LEFT) + VOLUME SLIDER & METRO BTN (RIGHT) =================
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        .height(34.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    rowList.forEach { sig ->
-                        val isSelected = selectedSignature == sig
+                    // Maj / Min Pill Switch
+                    Row(
+                        modifier = Modifier
+                            .height(28.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0xFF1E2433))
+                            .padding(2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Majeur Pill
                         Box(
                             modifier = Modifier
-                                .weight(1f)
-                                .height(26.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(
-                                    if (isSelected) Brush.verticalGradient(listOf(NeonCyanLight, NeonCyanDark)) else Brush.linearGradient(listOf(Color(0x0DFFFFFF), Color(0x08FFFFFF)))
-                                )
-                                .border(
-                                    1.dp,
-                                    if (isSelected) Color.Transparent else Color(0x1AFFFFFF),
-                                    RoundedCornerShape(6.dp)
-                                )
-                                .clickable { onSelectSignature(sig) },
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isMajor) NeonCyan else Color.Transparent)
+                                .clickable { onSelectScaleMode("Majeur") }
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = sig,
+                                text = "Majeur",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isSelected) Color(0xFF00232B) else TextDim
+                                color = if (isMajor) Color(0xFF032830) else Color(0xFF64748B)
+                            )
+                        }
+
+                        // Mineur Pill
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (!isMajor) NeonCyan else Color.Transparent)
+                                .clickable { onSelectScaleMode("Mineur") }
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Mineur",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (!isMajor) Color(0xFF032830) else Color(0xFF64748B)
+                            )
+                        }
+                    }
+
+                    // Speaker Volume Icon + Slider
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        // Speaker Icon
+                        Canvas(modifier = Modifier.size(16.dp, 14.dp)) {
+                            val w = size.width
+                            val h = size.height
+                            val p = Path().apply {
+                                moveTo(0f, h * 0.35f)
+                                lineTo(w * 0.35f, h * 0.35f)
+                                lineTo(w * 0.70f, h * 0.05f)
+                                lineTo(w * 0.70f, h * 0.95f)
+                                lineTo(w * 0.35f, h * 0.65f)
+                                lineTo(0f, h * 0.65f)
+                                close()
+                            }
+                            drawPath(p, color = Color(0xFF94A3B8))
+                            // Sound waves
+                            drawArc(
+                                color = Color(0xFF94A3B8),
+                                startAngle = -45f,
+                                sweepAngle = 90f,
+                                useCenter = false,
+                                topLeft = Offset(w * 0.45f, h * 0.20f),
+                                size = Size(w * 0.50f, h * 0.60f),
+                                style = Stroke(width = 1.4f, cap = StrokeCap.Round)
+                            )
+                        }
+
+                        // Stable teal slider
+                        Slider(
+                            value = volume,
+                            onValueChange = onVolumeChange,
+                            colors = SliderDefaults.colors(
+                                thumbColor = Color.White,
+                                activeTrackColor = NeonCyan,
+                                inactiveTrackColor = Color(0xFF242C3D)
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(20.dp)
+                        )
+                    }
+
+                    // Dedicated Metronome Toggle Button (Small icon button to turn click ON/OFF)
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isMetronomeOn) NeonCyan else Color(0xFF1E2433))
+                            .border(1.dp, if (isMetronomeOn) NeonCyanLight else Color(0xFF333E56), RoundedCornerShape(8.dp))
+                            .clickable { onToggleMetronome() }
+                            .testTag("btn_metronome_widget_power"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Canvas(modifier = Modifier.size(14.dp)) {
+                            val w = size.width
+                            val h = size.height
+                            val iconColor = if (isMetronomeOn) Color(0xFF022830) else Color(0xFF94A3B8)
+                            
+                            // Body triangle
+                            val body = Path().apply {
+                                moveTo(w * 0.35f, 0f)
+                                lineTo(w * 0.65f, 0f)
+                                lineTo(w * 0.90f, h)
+                                lineTo(w * 0.10f, h)
+                                close()
+                            }
+                            drawPath(body, color = iconColor, style = Stroke(width = 1.2f))
+                            
+                            // Swinging pendulum arm
+                            val armAngle = if (isMetronomeOn) 0.38f else 0.0f
+                            val pivotX = w * 0.50f
+                            val pivotY = h * 0.85f
+                            val topX = pivotX + kotlin.math.sin(armAngle) * (h * 0.65f)
+                            val topY = pivotY - kotlin.math.cos(armAngle) * (h * 0.65f)
+                            drawLine(
+                                color = iconColor,
+                                start = Offset(pivotX, pivotY),
+                                end = Offset(topX, topY),
+                                strokeWidth = 1.4f,
+                                cap = StrokeCap.Round
                             )
                         }
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Text(
-                text = "VOLUME DU CLIC",
-                fontSize = 9.5.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextDim,
-                letterSpacing = 0.6.sp
-            )
-
-            Slider(
-                value = volume,
-                onValueChange = onVolumeChange,
-                colors = SliderDefaults.colors(
-                    thumbColor = NeonCyan,
-                    activeTrackColor = NeonCyan,
-                    inactiveTrackColor = Color(0x1AFFFFFF)
-                ),
-                modifier = Modifier.fillMaxWidth()
-            )
         }
     }
 }

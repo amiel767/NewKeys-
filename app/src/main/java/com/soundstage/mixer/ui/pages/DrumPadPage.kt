@@ -36,6 +36,9 @@ import com.soundstage.mixer.model.ScenePreset
 import com.soundstage.mixer.model.StorageItem
 import com.soundstage.mixer.model.AppTheme
 import com.soundstage.mixer.ui.theme.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 // Palettes Material You fidèles aux maquettes SVG (soundstage_drumpad.svg et soundstage_drumpad_mix.svg)
 private val DrumPadCanvasDark = Color(0xFF4C0E1A)
@@ -258,7 +261,8 @@ fun DrumPadPage(
                     )
                 }
 
-                // BPM avec boutons - et +
+                // BPM avec boutons - et + (avec maintien speed-run fluide)
+                val coroutineScope = rememberCoroutineScope()
                 Row(
                     modifier = Modifier
                         .height(28.dp)
@@ -273,7 +277,24 @@ fun DrumPadPage(
                             .size(22.dp)
                             .clip(CircleShape)
                             .background(Color(0x22FFFFFF))
-                            .clickable { onBpmChange((bpm - 1).coerceAtLeast(40)) },
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onPress = {
+                                        val job = coroutineScope.launch {
+                                            onBpmChange((bpm - 1).coerceAtLeast(40))
+                                            delay(380)
+                                            var currentDelay = 90L
+                                            while (isActive) {
+                                                onBpmChange((bpm - 1).coerceAtLeast(40))
+                                                delay(currentDelay)
+                                                if (currentDelay > 35L) currentDelay -= 6L
+                                            }
+                                        }
+                                        tryAwaitRelease()
+                                        job.cancel()
+                                    }
+                                )
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(Icons.Default.Remove, contentDescription = "BPM moins", tint = Color.White, modifier = Modifier.size(12.dp))
@@ -286,7 +307,24 @@ fun DrumPadPage(
                             .size(22.dp)
                             .clip(CircleShape)
                             .background(Color(0x22FFFFFF))
-                            .clickable { onBpmChange((bpm + 1).coerceAtMost(240)) },
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onPress = {
+                                        val job = coroutineScope.launch {
+                                            onBpmChange((bpm + 1).coerceAtMost(240))
+                                            delay(380)
+                                            var currentDelay = 90L
+                                            while (isActive) {
+                                                onBpmChange((bpm + 1).coerceAtMost(240))
+                                                delay(currentDelay)
+                                                if (currentDelay > 35L) currentDelay -= 6L
+                                            }
+                                        }
+                                        tryAwaitRelease()
+                                        job.cancel()
+                                    }
+                                )
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(Icons.Default.Add, contentDescription = "BPM plus", tint = Color.White, modifier = Modifier.size(12.dp))

@@ -2,6 +2,10 @@ package com.soundstage.mixer.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.TextButton
@@ -91,6 +95,7 @@ fun MixerScreen(
             
             com.soundstage.mixer.ui.components.DetectedChord(
                 primaryName = rawChord.primaryName.toFlats(),
+                equivalentName = rawChord.equivalentName.toFlats(),
                 variantName = rawChord.variantName.toFlats(),
                 alternateNames = rawChord.alternateNames.toFlats(),
                 alternateName2 = rawChord.alternateName2.toFlats(),
@@ -407,7 +412,9 @@ fun MixerScreen(
                                 exit = shrinkVertically(
                                     animationSpec = tween(250, easing = FastOutSlowInEasing)
                                 ) + fadeOut(tween(180)),
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .zIndex(120f)
                             ) {
                                 VirtualPianoKeyboard(
                                     heightFraction = 1f,
@@ -434,29 +441,6 @@ fun MixerScreen(
                                 )
                             }
                         }
-
-                // Dimmer Scrim when Keyboard Layer Mapper is expanded:
-                // Dims the upper area (faders & top) and clicking anywhere outside collapses the layer mapper back to resting size
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = isKeyboardVisible && uiState.isKeyboardLayerExpanded,
-                    enter = fadeIn(tween(200)),
-                    exit = fadeOut(tween(160)),
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .zIndex(75f)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color.Black.copy(alpha = 0.45f))
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) {
-                                viewModel.toggleKeyboardLayer()
-                            }
-                    )
-                }
 
                 // Inline DrumPad / TonicPad overlay panel covering the 4 last faders area with bouncy spring animation
                 val isPadOpen = uiState.activePopup == ActivePopup.DRUM_PAD || uiState.activePopup == ActivePopup.TONIC_PAD || uiState.activePopup == ActivePopup.NOTES
@@ -615,28 +599,30 @@ fun MixerScreen(
                 }
             }
 
-            // Outside touch scrim for quick closing of floating dropdowns
-            if (uiState.isLoopsPanelOpen || uiState.isMetroPanelOpen || uiState.isMidiPanelOpen || uiState.activePopup == ActivePopup.SCENE) {
+            // Outside touch dismiss for quick closing of floating dropdowns (zero dark overlay residue)
+            if (uiState.isLoopsPanelOpen || uiState.isMetroPanelOpen || uiState.isMidiPanelOpen) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color(0x22000000))
-                        .clickable {
+                        .background(Color.Transparent)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
                             if (uiState.isLoopsPanelOpen) viewModel.closeLoopsPanel()
                             if (uiState.isMetroPanelOpen) viewModel.closeMetroPanel()
                             if (uiState.isMidiPanelOpen) viewModel.closeMidiPanel()
-                            if (uiState.activePopup == ActivePopup.SCENE) viewModel.closePopup()
                         }
                 )
             }
 
-            // Floating Metronome Dropdown Panel
+            // Floating Metronome Dropdown Panel (Compact studio widget)
             AnimatedVisibility(
                 visible = uiState.isMetroPanelOpen,
                 enter = fadeIn(tween(180)) + slideInVertically(initialOffsetY = { 20 }, animationSpec = tween(200)),
                 exit = fadeOut(tween(150)) + slideOutVertically(targetOffsetY = { 20 }, animationSpec = tween(150)),
                 modifier = Modifier
-                    .padding(bottom = 40.dp, start = 120.dp)
+                    .padding(bottom = 48.dp, start = 80.dp)
                     .align(Alignment.BottomStart)
             ) {
                 MetronomeFloatingPanel(
@@ -662,7 +648,7 @@ fun MixerScreen(
                 enter = fadeIn(tween(180)) + slideInVertically(initialOffsetY = { 20 }, animationSpec = tween(200)),
                 exit = fadeOut(tween(150)) + slideOutVertically(targetOffsetY = { 20 }, animationSpec = tween(150)),
                 modifier = Modifier
-                    .padding(bottom = 40.dp, start = 220.dp)
+                    .padding(bottom = 48.dp, start = 200.dp)
                     .align(Alignment.BottomStart)
             ) {
                 MidiFloatingPanel(
@@ -676,46 +662,6 @@ fun MixerScreen(
                     onToggleFolder = { viewModel.toggleMidiFolder(it) },
                     onSelectMidiFile = { viewModel.playMidiFile(it) },
                     onClose = { viewModel.closeMidiPanel() }
-                )
-            }
-
-            // Scene In-Place Expanding View: 0.5s seamless fluid high-resolution expansion from scene button square
-            AnimatedVisibility(
-                visible = uiState.activePopup == ActivePopup.SCENE,
-                enter = fadeIn(animationSpec = tween(500, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
-                        scaleIn(
-                            initialScale = 0.08f,
-                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.92f, 0.05f),
-                            animationSpec = tween(500, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-                        ) +
-                        expandIn(
-                            expandFrom = Alignment.TopEnd,
-                            animationSpec = tween(500, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-                        ),
-                exit = fadeOut(animationSpec = tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
-                        scaleOut(
-                            targetScale = 0.08f,
-                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.92f, 0.05f),
-                            animationSpec = tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-                        ) +
-                        shrinkOut(
-                            shrinkTowards = Alignment.TopEnd,
-                            animationSpec = tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-                        ),
-                modifier = Modifier
-                    .padding(top = 44.dp, end = 12.dp)
-                    .align(Alignment.TopEnd)
-            ) {
-                SceneDialog(
-                    isOpen = true,
-                    scenes = uiState.scenes,
-                    activeSceneId = uiState.activeSceneId,
-                    onSelectScene = { viewModel.selectScene(it) },
-                    onSaveCurrentScene = { viewModel.saveCurrentScene(it) },
-                    onCreateBlankScene = { viewModel.createBlankScene(it) },
-                    onUpdateActiveScene = { viewModel.updateActiveScene() },
-                    onDeleteScene = { viewModel.deleteScene(it) },
-                    onClose = { viewModel.closePopup() }
                 )
             }
                     }
@@ -856,6 +802,19 @@ fun MixerScreen(
             bgBrightness = uiState.bgBrightness,
             onBgBrightnessChange = { viewModel.setBgBrightness(it) },
             onResetBgBrightness = { viewModel.resetBgBrightness() }
+        )
+
+        // Scene Drawer (Side sheet sliding from the right)
+        SceneDialog(
+            isOpen = uiState.activePopup == ActivePopup.SCENE,
+            scenes = uiState.scenes,
+            activeSceneId = uiState.activeSceneId,
+            onSelectScene = { viewModel.selectScene(it) },
+            onSaveCurrentScene = { viewModel.saveCurrentScene(it) },
+            onCreateBlankScene = { viewModel.createBlankScene(it) },
+            onUpdateActiveScene = { viewModel.updateActiveScene() },
+            onDeleteScene = { viewModel.deleteScene(it) },
+            onClose = { viewModel.closePopup() }
         )
 
         // Material 3 Storage Permission Explanation Dialog

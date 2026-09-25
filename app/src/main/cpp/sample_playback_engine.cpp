@@ -467,16 +467,17 @@ void SamplePlaybackEngine::processCommands() {
                         v.isFadingOut = false;
                         v.fadeMultiplier = 1.0f;
 
-                        // Constant-power panning law
-                        float panNorm = (cmd.pan + 1.0f) * 0.5f;
-                        float leftPan = std::cos(panNorm * static_cast<float>(M_PI_2));
-                        float rightPan = std::sin(panNorm * static_cast<float>(M_PI_2));
+                        // Linear stereo panning with center unity (no -6dB center cut)
+                        float panNorm = std::clamp((cmd.pan + 1.0f) * 0.5f, 0.0f, 1.0f);
+                        float leftPan = std::min(1.0f, 2.0f * (1.0f - panNorm));
+                        float rightPan = std::min(1.0f, 2.0f * panNorm);
 
-                        // Logarithmic velocity curve (gives punch to soft hits, hits 1.0 at max)
-                        float logVel = std::log10(9.0f * cmd.velocity + 1.0f);
+                        // Dynamic velocity curve with punchy presence (1.0 at max, energetic punch across all hits)
+                        float vel = std::clamp(cmd.velocity, 0.05f, 1.0f);
+                        float punchGain = (vel < 0.9f) ? (0.25f + 0.75f * vel) : vel;
                         
-                        v.gainLeft = logVel * leftPan;
-                        v.gainRight = logVel * rightPan;
+                        v.gainLeft = punchGain * leftPan;
+                        v.gainRight = punchGain * rightPan;
                         v.active = true;
 
                         mTriggersExecuted.fetch_add(1, std::memory_order_relaxed);
@@ -533,9 +534,9 @@ void SamplePlaybackEngine::renderStereo(float* outputBuffer, int32_t numFrames, 
 
     float masterVol = mMasterVolume.load(std::memory_order_relaxed);
     float masterPan = mMasterPan.load(std::memory_order_relaxed);
-    float masterPanNorm = (masterPan + 1.0f) * 0.5f;
-    float masterGainL = masterVol * std::cos(masterPanNorm * static_cast<float>(M_PI_2));
-    float masterGainR = masterVol * std::sin(masterPanNorm * static_cast<float>(M_PI_2));
+    float masterPanNorm = std::clamp((masterPan + 1.0f) * 0.5f, 0.0f, 1.0f);
+    float masterGainL = masterVol * std::min(1.0f, 2.0f * (1.0f - masterPanNorm));
+    float masterGainR = masterVol * std::min(1.0f, 2.0f * masterPanNorm);
 
     int activeCount = 0;
     const float kFadeStep = 1.0f / (mSampleRate * 0.005f); // 5ms micro-fade for choked voices

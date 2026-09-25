@@ -147,7 +147,7 @@ fun TopBar(
                 modifier = Modifier.testTag("stepper_oct")
             )
 
-            // OLED Studio Chord Display Container (Section 1)
+            // OLED Studio Chord Display Container (Double Chord Interpretation, Prominent Readability)
             val detectedChord = androidx.compose.runtime.remember(pressedKeys, useFlats) {
                 val raw = ChordCalculator.detect(pressedKeys)
                 if (useFlats && raw != null) {
@@ -159,6 +159,7 @@ fun TopBar(
                         .replace("A#", "Bb")
                     DetectedChord(
                         primaryName = raw.primaryName.toFlats(),
+                        equivalentName = raw.equivalentName.toFlats(),
                         variantName = raw.variantName.toFlats(),
                         alternateNames = raw.alternateNames.toFlats(),
                         alternateName2 = raw.alternateName2.toFlats(),
@@ -171,34 +172,70 @@ fun TopBar(
             val chordBoxBorder = if (isMaterialYou) Color(0xFF1E2232) else Color(0x3300E5FF)
             Box(
                 modifier = Modifier
-                    .weight(1f)
+                    .weight(1.8f)
                     .height(38.dp)
                     .clip(RoundedCornerShape(9.dp))
                     .background(chordBoxBg)
                     .border(1.dp, chordBoxBorder, RoundedCornerShape(9.dp))
-                    .padding(horizontal = 6.dp, vertical = 1.dp)
+                    .padding(horizontal = 8.dp, vertical = 2.dp)
                     .testTag("topbar_chord_display"),
                 contentAlignment = Alignment.Center
             ) {
                 if (detectedChord != null) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
+                    val hasEquivalent = detectedChord.equivalentName.isNotBlank() && detectedChord.equivalentName != detectedChord.primaryName
+                    if (hasEquivalent) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            // Left: Primary / Slash chord
+                            Text(
+                                text = detectedChord.primaryName,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+
+                            // Clean subtle divider
+                            Box(
+                                modifier = Modifier
+                                    .width(1.dp)
+                                    .height(18.dp)
+                                    .background(Color(0x33FFFFFF))
+                            )
+
+                            // Right: Functional Equivalent / Alternate nature chord
+                            Text(
+                                text = detectedChord.equivalentName,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = NeonCyanLight,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    } else {
                         Text(
                             text = detectedChord.primaryName,
-                            fontSize = 13.5.sp,
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White,
                             maxLines = 1,
-                            lineHeight = 14.sp,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                     }
                 } else {
                     Text(
                         text = "---",
-                        fontSize = 12.sp,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (isMaterialYou) Color(0xFF5B6175) else TextDim,
                         letterSpacing = 2.sp

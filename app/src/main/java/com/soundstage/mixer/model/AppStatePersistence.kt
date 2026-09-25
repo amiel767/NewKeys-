@@ -212,6 +212,8 @@ class AppStatePersistence(context: Context) {
                             put("transpose", t.transpose)
                             put("octave", t.octave)
                             put("reverbSend", t.reverbSend.toDouble())
+                            put("splitNoteMin", t.splitNoteMin)
+                            put("splitNoteMax", t.splitNoteMax)
                         }
                         tArray.put(to)
                     }
@@ -410,7 +412,9 @@ class AppStatePersistence(context: Context) {
                                         program = to.optInt("program", 0),
                                         transpose = to.optInt("transpose", 0),
                                         octave = to.optInt("octave", 0),
-                                        reverbSend = to.optDouble("reverbSend", 0.0).toFloat()
+                                        reverbSend = to.optDouble("reverbSend", 0.0).toFloat(),
+                                        splitNoteMin = to.optInt("splitNoteMin", 24),
+                                        splitNoteMax = to.optInt("splitNoteMax", 108)
                                     )
                                 )
                             }

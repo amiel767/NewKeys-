@@ -10,7 +10,8 @@ package com.soundstage.mixer.ui.components
  */
 data class DetectedChord(
     val primaryName: String,
-    val variantName: String,
+    val equivalentName: String,
+    val variantName: String = "",
     val alternateNames: String = "",
     val alternateName2: String = "",
     val formula: String,
@@ -110,8 +111,8 @@ object ChordCalculator {
 
         // --- 9. Dyads / Open Power Chords ---
         listOf(0, 7) to Triple("5", "Power Chord (1-5)", "1 - 5"),
-        listOf(0, 4) to Triple("(no5)", "Tierce Maj (1-3)", "1 - 3"),
-        listOf(0, 3) to Triple("m(no5)", "Tierce Min (1-b3)", "1 - b3")
+        listOf(0, 4) to Triple("M3", "Tierce Maj", "1 - 3"),
+        listOf(0, 3) to Triple("m3", "Tierce Min", "1 - b3")
     )
 
     fun parsePitchClass(noteStr: String): Int? {
@@ -138,7 +139,9 @@ object ChordCalculator {
 
     /**
      * Detects chord from polyphonic collection of notes.
-     * Guaranteed sub-millisecond execution.
+     * Computes BOTH:
+     * - Primary Name (e.g. Slash / Bass representation or direct name like F/D)
+     * - Equivalent Name (e.g. Functional root chord like Dm7)
      */
     fun detect(notes: Collection<String>): DetectedChord? {
         if (notes.isEmpty()) return null
@@ -161,45 +164,68 @@ object ChordCalculator {
             val rootName = NOTE_NAMES[uniquePitchClasses.first()]
             return DetectedChord(
                 primaryName = rootName,
-                variantName = "Note Fondamentale (Root)",
-                alternateNames = "Note fondamentale",
+                equivalentName = "$rootName Note",
+                variantName = "Fondamentale",
                 formula = "1",
                 notesList = listOf(rootName)
             )
         }
 
-        // Test each unique pitch as potential chord root
+        // Test potential chord roots and collect candidate interpretations
+        val candidateChords = mutableListOf<Triple<Int, String, String>>() // (rootPc, chordName, formula)
+
         for (rootPc in uniquePitchClasses) {
             val rootName = NOTE_NAMES[rootPc]
             val intervals = uniquePitchClasses.map { (it - rootPc + 12) % 12 }.sorted()
 
-            CHORD_DEFINITIONS[intervals]?.let { (suffix, variantFormat, formula) ->
-                val isSlash = rootPc != lowestPitchClass
-                val baseChord = "$rootName$suffix"
-                val finalPrimary = if (isSlash) "$baseChord/$lowestNoteName" else baseChord
-                
-                // Formulate clear, distinct variant name (e.g. "Cmaj7" -> "Em/C", "Am7" -> "C6/A", "C" -> "Cmaj (Δ)")
-                val variantBase = if (variantFormat.startsWith("maj") || variantFormat.startsWith("min") || variantFormat.startsWith("M") || variantFormat.startsWith("°") || variantFormat.startsWith("+") || variantFormat.startsWith("sus") || variantFormat.startsWith("dom") || variantFormat.startsWith("ø") || variantFormat.startsWith("6") || variantFormat.startsWith("Power")) {
-                    "$rootName $variantFormat"
-                } else {
-                    variantFormat
-                }
-                val finalVariant = if (isSlash) "$variantBase / $lowestNoteName" else variantBase
-
-                val notesFormatted = uniquePitchClasses.map { NOTE_NAMES[it] }.joinToString(" · ")
-
-                return DetectedChord(
-                    primaryName = finalPrimary,
-                    variantName = finalVariant,
-                    alternateNames = "$finalVariant — [$formula]",
-                    alternateName2 = formula,
-                    formula = notesFormatted,
-                    notesList = uniquePitchClasses.map { NOTE_NAMES[it] }
-                )
+            CHORD_DEFINITIONS[intervals]?.let { (suffix, _, formula) ->
+                candidateChords.add(Triple(rootPc, "$rootName$suffix", formula))
             }
         }
 
-        // Partial Match / Voicing detection if 3+ notes
+        if (candidateChords.isNotEmpty()) {
+            // Find root-based chord matching the lowest bass note if possible
+            val bassCandidate = candidateChords.firstOrNull { it.first == lowestPitchClass }
+            // Find inverted candidate (where root != lowest bass)
+            val nonBassCandidate = candidateChords.firstOrNull { it.first != lowestPitchClass }
+
+            val primaryName: String
+            val equivalentName: String
+
+            if (nonBassCandidate != null && bassCandidate != null) {
+                // e.g. [D, F, A, C] -> nonBass is F (F/D) and bass is Dm7
+                primaryName = "${nonBassCandidate.second}/$lowestNoteName"
+                equivalentName = bassCandidate.second
+            } else if (bassCandidate != null) {
+                primaryName = bassCandidate.second
+                // Create an alternate functional voicing name for right side
+                equivalentName = when {
+                    bassCandidate.second.endsWith("maj7") -> "${NOTE_NAMES[(lowestPitchClass + 4) % 12]}m/$lowestNoteName"
+                    bassCandidate.second.endsWith("m7") -> "${NOTE_NAMES[(lowestPitchClass + 3) % 12]}/$lowestNoteName"
+                    bassCandidate.second.endsWith("7") -> "${NOTE_NAMES[(lowestPitchClass + 4) % 12]}dim/$lowestNoteName"
+                    bassCandidate.second.endsWith("6") -> "${NOTE_NAMES[(lowestPitchClass + 9) % 12]}m7"
+                    bassCandidate.second.endsWith("m6") -> "${NOTE_NAMES[(lowestPitchClass + 9) % 12]}m7b5"
+                    else -> "${bassCandidate.second} Maj"
+                }
+            } else {
+                // Only non-bass candidates exist
+                val topCandidate = candidateChords.first()
+                primaryName = "${topCandidate.second}/$lowestNoteName"
+                val inferredRoot = NOTE_NAMES[lowestPitchClass]
+                equivalentName = "$inferredRoot Chord"
+            }
+
+            val notesFormatted = uniquePitchClasses.map { NOTE_NAMES[it] }.joinToString(" · ")
+            return DetectedChord(
+                primaryName = primaryName,
+                equivalentName = equivalentName,
+                variantName = equivalentName,
+                formula = notesFormatted,
+                notesList = uniquePitchClasses.map { NOTE_NAMES[it] }
+            )
+        }
+
+        // Voicing approximation for 3+ notes
         if (uniquePitchClasses.size >= 3) {
             val rootName = NOTE_NAMES[lowestPitchClass]
             val intervals = uniquePitchClasses.map { (it - lowestPitchClass + 12) % 12 }.sorted()
@@ -214,17 +240,17 @@ object ChordCalculator {
             val has13th = intervals.contains(9)
 
             val inferredSuffix = when {
-                hasMaj3 && hasDom7 && has13th -> "13(voic)"
-                hasMaj3 && hasMaj7 && has13th -> "maj13(voic)"
-                hasMin3 && hasDom7 && has11th -> "m11(voic)"
-                hasMaj3 && hasDom7 && has9th -> "9(voic)"
-                hasMaj3 && hasMaj7 && has9th -> "maj9(voic)"
-                hasMin3 && hasDom7 && has9th -> "m9(voic)"
-                hasMaj3 && hasPerf5 && hasMaj7 -> "maj7(voic)"
-                hasMaj3 && hasPerf5 && hasDom7 -> "7(voic)"
-                hasMin3 && hasPerf5 && hasDom7 -> "m7(voic)"
-                hasMaj3 && hasPerf5 -> "(voic)"
-                hasMin3 && hasPerf5 -> "m(voic)"
+                hasMaj3 && hasDom7 && has13th -> "13"
+                hasMaj3 && hasMaj7 && has13th -> "maj13"
+                hasMin3 && hasDom7 && has11th -> "m11"
+                hasMaj3 && hasDom7 && has9th -> "9"
+                hasMaj3 && hasMaj7 && has9th -> "maj9"
+                hasMin3 && hasDom7 && has9th -> "m9"
+                hasMaj3 && hasPerf5 && hasMaj7 -> "maj7"
+                hasMaj3 && hasPerf5 && hasDom7 -> "7"
+                hasMin3 && hasPerf5 && hasDom7 -> "m7"
+                hasMaj3 && hasPerf5 -> ""
+                hasMin3 && hasPerf5 -> "m"
                 else -> ""
             }
 
@@ -232,21 +258,21 @@ object ChordCalculator {
                 val notesFormatted = uniquePitchClasses.map { NOTE_NAMES[it] }.joinToString(" · ")
                 return DetectedChord(
                     primaryName = "$rootName$inferredSuffix",
-                    variantName = "Voicing Ouvert ($rootName)",
-                    alternateNames = "Voicing harmonique ouvert",
+                    equivalentName = "$rootName Voicing",
+                    variantName = "Voicing Ouvert",
                     formula = notesFormatted,
                     notesList = uniquePitchClasses.map { NOTE_NAMES[it] }
                 )
             }
         }
 
-        // Fallback for unclassified multi-note clusters
+        // Fallback
         val rootName = NOTE_NAMES[lowestPitchClass]
         val clusterStr = uniquePitchClasses.map { NOTE_NAMES[it] }.joinToString(" · ")
         return DetectedChord(
             primaryName = rootName,
-            variantName = "Harmonie / Cluster",
-            alternateNames = "Cluster harmonique",
+            equivalentName = "Harmonie",
+            variantName = "Cluster",
             formula = clusterStr,
             notesList = uniquePitchClasses.map { NOTE_NAMES[it] }
         )

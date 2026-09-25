@@ -240,7 +240,7 @@ fun KeyboardLayerMapper(
     )
 
     val safeExpand = expandProgress.coerceIn(0f, 1f)
-    val rowSpacingDp = lerp(1.2.dp, 4.dp, safeExpand)
+    val rowSpacingDp = lerp(1.2.dp, 3.dp, safeExpand)
 
     val currentOnToggleExpanded by rememberUpdatedState(onToggleExpanded)
     val verticalScrollState = rememberScrollState()
@@ -310,8 +310,8 @@ private fun TrackRangeBarRow(
     val endXDp = (rightFrac * whiteWidthDp.value).dp
 
     // Dynamic animated height and corner radius
-    val rowHeightDp = lerp(2.2.dp, 24.dp, expandProgress)
-    val cornerRadiusDp = lerp(1.dp, 7.dp, expandProgress)
+    val rowHeightDp = lerp(2.2.dp, 22.dp, expandProgress)
+    val cornerRadiusDp = lerp(1.dp, 6.dp, expandProgress)
     val minBarWidth = lerp(6.dp, 18.dp, expandProgress)
     val rawBarWidthDp = (endXDp - startXDp).coerceAtLeast(minBarWidth)
 

@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.model.AppTheme
@@ -172,8 +173,12 @@ fun SettingsDrawer(
                             onBack = { onNavigateSubPage("main") }
                         )
                     }
-                    "theme_selection", "material_you_studio" -> {
-                        NuancesSettingsSubPage(
+                    "theme_selection", "material_you_studio", "theme" -> {
+                        ThemeSettingsSubPage(
+                            currentTheme = currentTheme,
+                            onSelectTheme = onSelectTheme,
+                            materialYouStyle = materialYouStyle,
+                            onSelectMaterialYouStyle = onSelectMaterialYouStyle,
                             accentSaturation = accentSaturation,
                             onAccentSaturationChange = onAccentSaturationChange,
                             onResetAccentSaturation = onResetAccentSaturation,
@@ -300,15 +305,15 @@ private fun AospMainSettingsPage(
                 .weight(1f),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // CARD 0: NUANCES & APPARENCE
+            // CARD 0: THEME
             item {
-                AospCard(title = "Apparence") {
+                AospCard(title = "Theme") {
                     AospSettingItem(
                         icon = Icons.Default.Palette,
                         iconTint = Color(0xFFFCD34D),
                         iconBg = Color(0x28FCD34D),
-                        title = "Nuances & Auras",
-                        subtitle = "Saturation, teinte chromatique et luminosité du châssis",
+                        title = "Theme",
+                        subtitle = "Colors, palettes, nuances & chassis styling",
                         onClick = { onNavigateSubPage("theme_selection") }
                     )
                 }
@@ -910,10 +915,14 @@ private fun LanguageSelectorSubPage(
 }
 
 /**
- * Page Réglages Nuances & Couleurs (Design studio unique avec réglages fins)
+ * Page Réglages Theme & Couleurs Studio (Câblage immédiat des couleurs et styles)
  */
 @Composable
-private fun NuancesSettingsSubPage(
+private fun ThemeSettingsSubPage(
+    currentTheme: AppTheme,
+    onSelectTheme: (AppTheme) -> Unit,
+    materialYouStyle: MaterialYouStyle,
+    onSelectMaterialYouStyle: (MaterialYouStyle) -> Unit,
     accentSaturation: Float,
     onAccentSaturationChange: (Float) -> Unit,
     onResetAccentSaturation: () -> Unit,
@@ -946,14 +955,14 @@ private fun NuancesSettingsSubPage(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Retour",
+                    contentDescription = "Back",
                     tint = Color(0xFFFCD34D),
                     modifier = Modifier.size(16.dp)
                 )
-                Text(text = "Retour", fontSize = 11.sp, color = Color(0xFFFCD34D))
+                Text(text = "Back", fontSize = 11.sp, color = Color(0xFFFCD34D))
             }
             Spacer(modifier = Modifier.width(12.dp))
-            Text(text = "Nuances & Auras", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Text(text = "Theme", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
         }
 
         LazyColumn(
@@ -962,12 +971,129 @@ private fun NuancesSettingsSubPage(
         ) {
             item {
                 Text(
-                    text = "Ajustez la saturation des témoins lumineux, les nuances chromatiques et la luminosité du châssis ardoise studio.",
+                    text = "Sélectionnez immédiatement le thème chromatique du mixer et ajustez la vivacité des LED et du châssis.",
                     fontSize = 11.sp,
                     color = TextDim,
                     lineHeight = 15.sp,
                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                 )
+            }
+
+            // SECTION 1: THÈMES DE CHÂSSIS & ACCENTS IMMÉDIATS
+            item {
+                AospCard(title = "Thème d'accentuation") {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        AppTheme.values().forEach { theme ->
+                            val isSelected = (theme == currentTheme)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (isSelected) Color(0xFF262D3E) else Color(0x10FFFFFF))
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (isSelected) theme.primaryColor else Color.Transparent,
+                                        shape = RoundedCornerShape(10.dp)
+                                    )
+                                    .clickable { onSelectTheme(theme) }
+                                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .clip(CircleShape)
+                                        .background(theme.primaryColor)
+                                        .border(1.2.dp, Color.White.copy(alpha = 0.5f), CircleShape)
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = theme.displayName,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        text = theme.description,
+                                        fontSize = 8.5.sp,
+                                        color = TextDim,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                if (isSelected) {
+                                    Text(
+                                        text = "✓",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = theme.primaryColor
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // SECTION 2: HARMONIES DYNAMIQUES STUDIO
+            item {
+                AospCard(title = "Harmonies Dynamiques Studio") {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        MaterialYouStyle.values().forEach { style ->
+                            val isSelected = (style == materialYouStyle)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (isSelected) Color(0xFF262D3E) else Color(0x10FFFFFF))
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (isSelected) style.primary else Color.Transparent,
+                                        shape = RoundedCornerShape(10.dp)
+                                    )
+                                    .clickable { onSelectMaterialYouStyle(style) }
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                SplitQuadrantCircle(
+                                    colors = style.quadrantColors,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = style.title,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        text = style.description,
+                                        fontSize = 8.5.sp,
+                                        color = TextDim,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                if (isSelected) {
+                                    Text(
+                                        text = "✓",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = style.primary
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             // Slider 1: Saturation des accents et LED

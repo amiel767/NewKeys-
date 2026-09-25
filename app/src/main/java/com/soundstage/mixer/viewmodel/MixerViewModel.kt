@@ -2739,7 +2739,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                                 bank = tObj.optInt("bank", originalTrack.bank),
                                 program = tObj.optInt("program", originalTrack.program),
                                 reverbPreset = tObj.optString("reverbPreset", originalTrack.reverbPreset),
-                                reverbMix = tObj.optDouble("reverbMix", originalTrack.reverbMix.toDouble()).toFloat()
+                                reverbMix = tObj.optDouble("reverbMix", originalTrack.reverbMix.toDouble()).toFloat(),
+                                splitNoteMin = tObj.optInt("splitNoteMin", originalTrack.splitNoteMin),
+                                splitNoteMax = tObj.optInt("splitNoteMax", originalTrack.splitNoteMax)
                             )
                         )
                     }
@@ -2846,6 +2848,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                             put("program", t.program)
                             put("reverbPreset", t.reverbPreset)
                             put("reverbMix", t.reverbMix)
+                            put("splitNoteMin", t.splitNoteMin)
+                            put("splitNoteMax", t.splitNoteMax)
                         }
                         tracksArray.put(tObj)
                     }
@@ -2960,7 +2964,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     patchName = t.patchName,
                     bank = t.bank,
                     program = t.program,
-                    reverbSend = t.reverbMix
+                    transpose = 0,
+                    octave = 0,
+                    reverbSend = t.reverbMix,
+                    splitNoteMin = t.splitNoteMin,
+                    splitNoteMax = t.splitNoteMax
                 )
             }
             val newSubScene = SubSceneSnapshot(
@@ -3012,7 +3020,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                                     pan = startTr.pan + (targetTr.pan - startTr.pan) * eased,
                                     isMuted = if (eased >= 0.5f) targetTr.isMuted else startTr.isMuted,
                                     isSolo = if (eased >= 0.5f) targetTr.isSolo else startTr.isSolo,
-                                    isEnabled = if (eased >= 0.5f) targetTr.isEnabled else startTr.isEnabled
+                                    isEnabled = if (eased >= 0.5f) targetTr.isEnabled else startTr.isEnabled,
+                                    splitNoteMin = if (eased >= 0.5f) targetTr.splitNoteMin else startTr.splitNoteMin,
+                                    splitNoteMax = if (eased >= 0.5f) targetTr.splitNoteMax else startTr.splitNoteMax
                                 )
                             }
                             _uiState.update {
@@ -3047,7 +3057,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                                 pan = snap.pan,
                                 isMuted = snap.isMuted,
                                 isSolo = snap.isSolo,
-                                isEnabled = snap.isEnabled
+                                isEnabled = snap.isEnabled,
+                                splitNoteMin = snap.splitNoteMin,
+                                splitNoteMax = snap.splitNoteMax
                             )
                         } else tr
                     }

@@ -47,7 +47,7 @@ fun CustomVerticalFader(
     audioActivity: Float = 0f,
     isEnabled: Boolean = true,
     showTicks: Boolean = true,
-    trackWidth: Dp = 25.dp,
+    trackWidth: Dp = 24.dp,
     trackHeight: Dp = 220.dp,
     thumbWidth: Dp = 58.dp,
     thumbHeight: Dp = 60.dp,
@@ -180,7 +180,7 @@ fun CustomVerticalFader(
         Box(
             modifier = Modifier
                 .width(trackWidth)
-                .fillMaxHeight(0.96f),
+                .fillMaxHeight(),
             contentAlignment = Alignment.Center
         ) {
             Image(
@@ -195,30 +195,39 @@ fun CustomVerticalFader(
             if (isEnabled) {
                 Canvas(
                     modifier = Modifier
-                        .width(6.dp)
+                        .width(8.dp)
                         .fillMaxHeight()
                 ) {
                     val h = size.height
                     val w = size.width
                     val railTopPx = (containerHeightPx - h) / 2f
-                    // Clamp strictly within physical groove stops to never exceed the bottom/top
-                    val grooveTopPx = 10.dp.toPx()
-                    val grooveBottomPx = h - 10.dp.toPx()
+                    val grooveTopPx = 8.dp.toPx()
+                    val grooveBottomPx = h - 8.dp.toPx()
                     val relativeBonnetY = (bonnetCenterYPx - railTopPx).coerceIn(grooveTopPx, grooveBottomPx)
-                    val activeHeight = grooveBottomPx - relativeBonnetY
-                    val lineWidthPx = 3.2.dp.toPx()
+                    val activeHeight = (grooveBottomPx - relativeBonnetY).coerceAtLeast(0f)
+                    val lineWidthPx = 3.5.dp.toPx()
                     val lineLeft = (w - lineWidthPx) / 2f
 
                     if (activeHeight > 0f) {
-                        // Sound-reactive outer glow bloom when audio is playing
+                        // High-intensity Sound-reactive Outer Glow Bloom (strictly bounded inside rail groove)
                         if (isAudioSoundActive) {
-                            val glowWidthPx = 5.2.dp.toPx()
+                            val glowWidthPx = 7.dp.toPx()
                             val glowLeft = (w - glowWidthPx) / 2f
+                            // Layer 1: Wide soft neon dispersion
                             drawRoundRect(
-                                color = dynamicAura.copy(alpha = (0.45f + audioActivity * 0.45f).coerceIn(0.2f, 0.85f)),
+                                color = dynamicAura.copy(alpha = (0.45f + audioActivity * 0.45f).coerceIn(0.25f, 0.90f)),
                                 topLeft = Offset(glowLeft, relativeBonnetY),
                                 size = Size(glowWidthPx, activeHeight),
                                 cornerRadius = CornerRadius(glowWidthPx / 2f, glowWidthPx / 2f)
+                            )
+                            // Layer 2: Core intense neon flare
+                            val flareWidthPx = 5.dp.toPx()
+                            val flareLeft = (w - flareWidthPx) / 2f
+                            drawRoundRect(
+                                color = Color.White.copy(alpha = (0.35f + audioActivity * 0.45f).coerceIn(0.2f, 0.85f)),
+                                topLeft = Offset(flareLeft, relativeBonnetY),
+                                size = Size(flareWidthPx, activeHeight),
+                                cornerRadius = CornerRadius(flareWidthPx / 2f, flareWidthPx / 2f)
                             )
                         }
 
@@ -226,8 +235,9 @@ fun CustomVerticalFader(
                         drawRoundRect(
                             brush = Brush.verticalGradient(
                                 colors = listOf(
-                                    if (isAudioSoundActive) Color.White.copy(alpha = 0.95f) else dynamicAura.copy(alpha = 0.95f),
-                                    dynamicAura.copy(alpha = if (isAudioSoundActive) 1.0f else 0.85f)
+                                    if (isAudioSoundActive) Color.White else dynamicAura.copy(alpha = 1.0f),
+                                    dynamicAura.copy(alpha = if (isAudioSoundActive) 1.0f else 0.90f),
+                                    dynamicAura.copy(alpha = if (isAudioSoundActive) 0.95f else 0.75f)
                                 ),
                                 startY = relativeBonnetY,
                                 endY = grooveBottomPx
@@ -242,7 +252,6 @@ fun CustomVerticalFader(
         }
 
         // ================= 2. DIRECT PNG FADER KNOB (ic_fader_thumb.png) =================
-        // Lighten the dark knob PNG cleanly so brushed metal and bevels are visible without darkness
         val knobColorFilter = remember {
             val offset = 44f
             val matrix = ColorMatrix(
@@ -272,16 +281,14 @@ fun CustomVerticalFader(
                 colorFilter = knobColorFilter
             )
 
-            // Dynamic LED Line on the knob's indicator slit
+            // Dynamic LED Line on the knob's indicator slit (la puce élargie pour boucher le vide)
             Box(
                 modifier = Modifier
-                    .fillMaxWidth(0.50f)
-                    .height(2.5.dp)
+                    .width(34.dp)
+                    .height(3.5.dp)
                     .offset(y = (-1.0).dp)
-                    .clip(RoundedCornerShape(1.dp))
-                    .background(
-                        if (isAudioSoundActive) Color.White.copy(alpha = 0.95f) else dynamicAura
-                    )
+                    .clip(RoundedCornerShape(50))
+                    .background(if (isAudioSoundActive) Color.White else dynamicAura)
             )
         }
     }

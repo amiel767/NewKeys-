@@ -103,12 +103,21 @@ fun VirtualPianoKeyboard(
     val activeTracksCount = remember(tracks) { tracks.count { it.isEnabled }.coerceAtLeast(1) }
     val keysHeight = 48.dp
     val visibleTracksCount = remember(tracks) { tracks.count { it.isEnabled }.coerceIn(1, 8) }
+    val expandedTargetHeight = (24.dp * visibleTracksCount + 16.dp).coerceIn(58.dp, 160.dp)
+
+    // Continuous smooth iOS-style growth animation: lines expand directly from resting strip into deployed layer
+    val animatedLayerHeight by animateDpAsState(
+        targetValue = if (isLayerMapperExpanded) expandedTargetHeight else 12.dp,
+        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+        label = "layer_growth_animation"
+    )
 
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .height(66.dp)
             .background(Color(0xFF141722))
-            .padding(horizontal = 4.dp, vertical = 2.dp)
+            .padding(start = 2.dp, end = 2.dp, top = 1.dp, bottom = 2.dp)
             .testTag("virtual_piano_keyboard")
     ) {
         // ================= KEYBOARD BODY (LAYER MAPPER + PITCH BEND & A1-C8 KEYS) =================
@@ -121,9 +130,9 @@ fun VirtualPianoKeyboard(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 1.dp)
+                .padding(horizontal = 2.dp, vertical = 1.dp)
         ) {
-            val availableWidthDp = (maxWidth - 44.dp).coerceAtLeast(100.dp)
+            val availableWidthDp = (maxWidth - 42.dp).coerceAtLeast(100.dp)
             val baseWhiteWidthDp = (availableWidthDp / totalWhiteKeys.toFloat()) * currentScale.coerceIn(0.7f, 3.0f)
             val whiteWidthPx = with(density) { baseWhiteWidthDp.toPx() }
             val blackKeyWidthPx = whiteWidthPx * 0.60f
@@ -144,27 +153,68 @@ fun VirtualPianoKeyboard(
             val physicalScreenTouches = pointerKeyMap.values.toSet()
             val displayedPressedKeys = if (physicalScreenTouches.isNotEmpty()) physicalScreenTouches else pressedKeys
 
-            // Continuous animated height for upward expanding layer drawer
-            val targetDrawerHeight = if (isLayerMapperExpanded && tracks.isNotEmpty()) {
-                (24.dp * visibleTracksCount.coerceAtMost(5) + 14.dp).coerceIn(46.dp, 130.dp)
-            } else {
-                12.dp
-            }
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // 1. Single Continuous Growing Layer Mapper: anchored above the keys, expands upwards without pushing faders
+                if (tracks.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(12.dp)
+                            .wrapContentHeight(align = Alignment.Bottom, unbounded = true)
+                            .zIndex(100f)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(animatedLayerHeight)
+                                .shadow(if (isLayerMapperExpanded) 16.dp else 0.dp, RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+                                .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+                                .background(if (isLayerMapperExpanded) Color(0xF2121520) else Color(0xFF181B26))
+                                .border(
+                                    width = if (isLayerMapperExpanded) 1.dp else 0.8.dp,
+                                    color = if (isLayerMapperExpanded) Color(0x6060A5FA) else Color(0x22FFFFFF),
+                                    shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)
+                                )
+                                .padding(start = 42.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .horizontalScroll(scrollState)
+                            ) {
+                                KeyboardLayerMapper(
+                                    tracks = tracks,
+                                    whiteWidthDp = baseWhiteWidthDp,
+                                    totalWhiteKeys = totalWhiteKeys,
+                                    isExpanded = isLayerMapperExpanded,
+                                    onToggleExpanded = { toggleMapperExpanded() },
+                                    onRangeChanged = onRangeChanged,
+                                    onDragSelectionChange = { range -> activeDragSelectionRange = range },
+                                    modifier = Modifier.padding(top = 1.dp, bottom = 1.dp, end = if (isLayerMapperExpanded) 28.dp else 0.dp)
+                                )
+                            }
 
-            val animatedDrawerHeight by animateDpAsState(
-                targetValue = targetDrawerHeight,
-                animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing),
-                label = "layer_drawer_height"
-            )
-
-            Box(modifier = Modifier.fillMaxWidth()) {
-                // Main in-flow column: Reserves strictly 12dp for layer strip + 48dp for keys (ZERO PUSH on faders or top bar)
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    // In-flow spacer placeholder keeping layout permanently fixed
-                    if (tracks.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Spacer(modifier = Modifier.height(2.dp))
+                            if (isLayerMapperExpanded) {
+                                IconButton(
+                                    onClick = { toggleMapperExpanded() },
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .size(24.dp)
+                                        .padding(2.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Fermer Layer Mapper",
+                                        tint = Color.White.copy(alpha = 0.80f),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
+                        }
                     }
+
+                    Spacer(modifier = Modifier.height(2.dp))
+                }
 
                     // Piano Keys Row (Pitch bend + Keys)
                     Row(
@@ -301,9 +351,11 @@ fun VirtualPianoKeyboard(
 
                             // Computer mouse-style live blue translucent selection overlay over the Virtual Keyboard
                             activeDragSelectionRange?.let { (startFrac, endFrac) ->
-                                val overlayStartXDp = (startFrac * baseWhiteWidthDp.value).dp
-                                val overlayEndXDp = (endFrac * baseWhiteWidthDp.value).dp
-                                val overlayWidthDp = (overlayEndXDp - overlayStartXDp).coerceAtLeast(1.dp)
+                                val minFrac = minOf(startFrac, endFrac)
+                                val maxFrac = maxOf(startFrac, endFrac)
+                                val overlayStartXDp = (minFrac * baseWhiteWidthDp.value).dp
+                                val overlayEndXDp = (maxFrac * baseWhiteWidthDp.value).dp
+                                val overlayWidthDp = (overlayEndXDp - overlayStartXDp).coerceAtLeast(2.dp)
 
                                 Box(
                                     modifier = Modifier
@@ -311,76 +363,12 @@ fun VirtualPianoKeyboard(
                                         .width(overlayWidthDp)
                                         .height(keysHeight)
                                         .clip(RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp))
-                                        .background(Color(0x353B82F6))
+                                        .background(Color(0x403B82F6))
                                         .border(
-                                            width = 1.dp,
-                                            color = Color(0x9960A5FA),
+                                            width = 1.2.dp,
+                                            color = Color(0xCC60A5FA),
                                             shape = RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)
                                         )
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // ================= SINGLE-INSTANCE ZERO-PUSH LAYER DRAWER =================
-                // Extends upward directly from above the piano keys over the interface with pure dark studio finish
-                if (tracks.isNotEmpty()) {
-                    val isDrawerExpanded = isLayerMapperExpanded
-                    val drawerElevation = if (isDrawerExpanded) 16.dp else 0.dp
-                    val drawerCorner = if (isDrawerExpanded) 8.dp else 4.dp
-                    val drawerBgColor = if (isDrawerExpanded) Color(0xFA141722) else Color(0xFF181B26)
-                    val drawerBorderColor = if (isDrawerExpanded) Color(0x3DFFFFFF) else Color(0x22FFFFFF)
-
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .offset(y = -(keysHeight + 2.dp))
-                            .fillMaxWidth()
-                            .height(animatedDrawerHeight)
-                            .zIndex(120f)
-                            .shadow(elevation = drawerElevation, shape = RoundedCornerShape(topStart = drawerCorner, topEnd = drawerCorner))
-                            .background(drawerBgColor, RoundedCornerShape(topStart = drawerCorner, topEnd = drawerCorner))
-                            .border(1.dp, drawerBorderColor, RoundedCornerShape(topStart = drawerCorner, topEnd = drawerCorner))
-                            .padding(start = 42.dp)
-                            .clickable(enabled = !isDrawerExpanded) {
-                                toggleMapperExpanded()
-                            }
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .horizontalScroll(scrollState)
-                        ) {
-                            KeyboardLayerMapper(
-                                tracks = tracks,
-                                whiteWidthDp = baseWhiteWidthDp,
-                                totalWhiteKeys = totalWhiteKeys,
-                                isExpanded = isDrawerExpanded,
-                                onToggleExpanded = { toggleMapperExpanded() },
-                                onRangeChanged = onRangeChanged,
-                                onDragSelectionChange = { activeDragSelectionRange = it },
-                                modifier = Modifier.padding(
-                                    top = if (isDrawerExpanded) 4.dp else 1.dp,
-                                    end = if (isDrawerExpanded) 28.dp else 0.dp
-                                )
-                            )
-                        }
-
-                        // Close Button at top right when expanded
-                        if (isDrawerExpanded) {
-                            IconButton(
-                                onClick = { toggleMapperExpanded() },
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .size(22.dp)
-                                    .padding(2.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Fermer Layer Mapper",
-                                    tint = Color.White.copy(alpha = 0.65f),
-                                    modifier = Modifier.size(14.dp)
                                 )
                             }
                         }
@@ -389,7 +377,6 @@ fun VirtualPianoKeyboard(
             }
         }
     }
-}
 
 /**
  * Spring-Loaded Pitch Bend Wheel with center détente (0.0).

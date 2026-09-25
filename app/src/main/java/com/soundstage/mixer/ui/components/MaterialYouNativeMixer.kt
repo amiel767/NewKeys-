@@ -993,12 +993,12 @@ private fun MaterialYouVerticalFader(
                         .background(Color(0x0DFFFFFF))
                 )
 
-                // Horizontal glowing indicator LED bar (SVG strip0-strip7, rx=5.5)
+                // Horizontal glowing indicator LED bar (small rounded horizontal pill centered in the handle)
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(0.68f)
+                        .width(18.dp)
                         .height(3.dp)
-                        .clip(RoundedCornerShape(1.5.dp))
+                        .clip(RoundedCornerShape(50))
                         .background(accentColor)
                 )
             }

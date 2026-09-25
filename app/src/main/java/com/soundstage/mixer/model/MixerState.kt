@@ -36,7 +36,7 @@ enum class AppTheme(
     val cardBg: Color = Color(0xFF1E202C),
     val cardBorder: Color = Color(0xFF282A3A)
 ) {
-    MATERIAL_YOU("Material You", "Modern dark studio canvas with soft diffused glowing tracks & pastel accents", Color(0xFFE2B4BD), Color(0xFF13131C), Color(0xFF161722), Color(0xFF1E202C), Color(0xFF282A3A)),
+    MATERIAL_YOU("Dynamic Studio", "Modern dark studio canvas with reactive glowing tracks & vibrant accents", Color(0xFFE2B4BD), Color(0xFF13131C), Color(0xFF161722), Color(0xFF1E202C), Color(0xFF282A3A)),
     CYBER_NEON("Cyber Neon", "Dark canvas with electric cyan & neon accents", Color(0xFF00E5FF), Color(0xFF1B1E2B), Color(0xFF11131C), Color(0x22FFFFFF), Color(0x1AFFFFFF)),
     RUBY_VELVET("Ruby Velvet", "Rich burgundy & warm coral StepDrum palette", Color(0xFFC92A45), Color(0xFF4C0E1A), Color(0xFF330912)),
     NEON_AMBER("Neon Amber", "Warm amber, gold & sunset glow", Color(0xFFF59E0B), Color(0xFF1F1608), Color(0xFF120C04)),
@@ -212,7 +212,9 @@ data class TrackSnapshot(
     val program: Int = 0,
     val transpose: Int = 0,
     val octave: Int = 0,
-    val reverbSend: Float = 0f
+    val reverbSend: Float = 0f,
+    val splitNoteMin: Int = 24,
+    val splitNoteMax: Int = 108
 )
 
 data class SubSceneSnapshot(
