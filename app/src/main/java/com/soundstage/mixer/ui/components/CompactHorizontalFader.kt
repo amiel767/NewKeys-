@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -44,7 +45,7 @@ fun CompactHorizontalFaderStrip(
 ) {
     val isMaster = track.isMaster
     val isEnabled = track.isEnabled
-    val (baseColor, vibrantLedColor) = rememberDynamicFaderHue(track.id)
+    val vibrantLedColor = getTrackThemeColor(track.id, isMaster)
 
     val audioActivity = if (isEnabled) maxOf(track.peakMeterL, track.peakMeterR).coerceIn(0f, 1f) else 0f
     val auraAlpha = (0.25f + audioActivity * 0.60f).coerceIn(0.25f, 0.85f)
@@ -54,7 +55,7 @@ fun CompactHorizontalFaderStrip(
             .width(228.dp)
             .height(58.dp)
             .clip(RoundedCornerShape(10.dp))
-            .background(Color(0xFF1B202D))
+            .background(MaterialTheme.colorScheme.surface)
             .background(
                 Brush.horizontalGradient(
                     0.0f to Color.Transparent,
@@ -62,7 +63,7 @@ fun CompactHorizontalFaderStrip(
                     1.0f to vibrantLedColor.copy(alpha = auraAlpha * 0.55f)
                 )
             )
-            .border(1.dp, if (isMaster) Color(0x6622D3EE) else Color(0x1EFFFFFF), RoundedCornerShape(10.dp))
+            .border(1.dp, if (isMaster) Color(0x6622D3EE) else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f), RoundedCornerShape(10.dp))
             .padding(horizontal = 7.dp, vertical = 4.dp)
             .testTag("compact_track_${track.id}"),
         verticalAlignment = Alignment.CenterVertically,

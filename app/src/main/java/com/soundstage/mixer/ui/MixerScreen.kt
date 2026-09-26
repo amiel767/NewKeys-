@@ -2,10 +2,6 @@ package com.soundstage.mixer.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.TextButton
@@ -16,7 +12,6 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
@@ -37,11 +32,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soundstage.mixer.model.ActivePopup
 import com.soundstage.mixer.model.AppScreenPage
 import com.soundstage.mixer.model.FxParameters
-import com.soundstage.mixer.model.LocalDynamicPalette
-import com.soundstage.mixer.model.computeDynamicPalette
 import com.soundstage.mixer.ui.components.*
 import com.soundstage.mixer.ui.pages.DrumPadPage
-import com.soundstage.mixer.ui.pages.StepDrumPage
 import com.soundstage.mixer.ui.pages.FileExplorerPage
 import com.soundstage.mixer.ui.pages.SheetsPage
 import com.soundstage.mixer.ui.theme.*
@@ -95,7 +87,6 @@ fun MixerScreen(
             
             com.soundstage.mixer.ui.components.DetectedChord(
                 primaryName = rawChord.primaryName.toFlats(),
-                equivalentName = rawChord.equivalentName.toFlats(),
                 variantName = rawChord.variantName.toFlats(),
                 alternateNames = rawChord.alternateNames.toFlats(),
                 alternateName2 = rawChord.alternateName2.toFlats(),
@@ -107,22 +98,6 @@ fun MixerScreen(
 
     val isKeyboardVisible = uiState.keyboardHeightFraction > 0f
 
-    val dynamicPalette = remember(
-        uiState.materialYouStyle,
-        uiState.accentSaturation,
-        uiState.bgSaturation,
-        uiState.bgBrightness,
-        uiState.themeNuance
-    ) {
-        computeDynamicPalette(
-            uiState.materialYouStyle,
-            uiState.accentSaturation,
-            uiState.bgSaturation,
-            uiState.bgBrightness,
-            uiState.themeNuance
-        )
-    }
-
     val animatedBottomPadding by animateDpAsState(
         targetValue = if (isKeyboardVisible) 0.dp else 6.dp,
         animationSpec = tween(
@@ -133,20 +108,19 @@ fun MixerScreen(
     )
     val safeBottomPadding = animatedBottomPadding.coerceAtLeast(0.dp)
 
-    CompositionLocalProvider(LocalDynamicPalette provides dynamicPalette) {
-        // Fullscreen Stage Container
-        Box(
-            modifier = modifier
-                .fillMaxSize()
-                .background(if (uiState.currentTheme == com.soundstage.mixer.model.AppTheme.MATERIAL_YOU) dynamicPalette.background else DarkBg)
-                .padding(
-                    start = 6.dp,
-                    end = 6.dp,
-                    top = 6.dp,
-                    bottom = safeBottomPadding
-                )
-                .testTag("mixer_screen_root")
-        ) {
+    // Fullscreen Stage Container
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(
+                start = 6.dp,
+                end = 6.dp,
+                top = 6.dp,
+                bottom = safeBottomPadding
+            )
+            .testTag("mixer_screen_root")
+    ) {
         AnimatedContent(
             targetState = uiState.currentPage,
             transitionSpec = {
@@ -179,8 +153,6 @@ fun MixerScreen(
                             drumPads = uiState.drumPads,
                             isMixMode = uiState.isDrumPadMixMode,
                             onToggleMixMode = { viewModel.toggleDrumPadMixMode() },
-                            currentTheme = uiState.currentTheme,
-                            onCycleTheme = { viewModel.cycleTheme() },
                             feelSwing = uiState.drumFeelSwing,
                             onFeelSwingChange = { viewModel.setDrumFeelSwing(it) },
                             bpm = uiState.bpm,
@@ -224,7 +196,6 @@ fun MixerScreen(
                             onLoopBeatsChange = { padId, beats -> viewModel.setDrumPadLoopBeats(padId, beats) },
                             onOpenFileExplorer = { viewModel.openDrumPadFileExplorer(true) },
                             onOpenLoopsView = { viewModel.openDrumPadLoopsView(true) },
-                            onOpenStepDrum = { viewModel.navigateToPage(AppScreenPage.STEPDRUM) },
                             onBackToMixer = { viewModel.navigateBackToMixer() }
                         )
                     }
@@ -238,105 +209,104 @@ fun MixerScreen(
                         onBackToMixer = { viewModel.navigateBackToMixer() }
                     )
                 }
-                AppScreenPage.STEPDRUM -> {
-                    StepDrumPage(
-                        state = uiState.stepDrumState,
-                        bpm = uiState.bpm,
-                        isMetronomeOn = uiState.isMetronomeOn,
-                        onPlayPause = { viewModel.toggleStepDrumPlay() },
-                        onRecordToggle = { viewModel.toggleStepDrumRecord() },
-                        onRecordModeToggle = { viewModel.toggleStepDrumRecordMode() },
-                        onViewModeChange = { viewModel.setStepDrumViewMode(it) },
-                        onEditModeChange = { viewModel.setStepDrumEditMode(it) },
-                        onVariationSelect = { viewModel.selectStepDrumVariation(it) },
-                        onAddVariation = { viewModel.addStepDrumVariation() },
-                        onDuplicateVariation = { viewModel.duplicateStepDrumVariation(it) },
-                        onClearPattern = { viewModel.clearStepDrumPattern() },
-                        onStepToggle = { trackIdx, stepIdx -> viewModel.toggleStepDrumStep(trackIdx, stepIdx) },
-                        onStepVelocityChange = { trackIdx, stepIdx, vel -> viewModel.setStepDrumStepVelocity(trackIdx, stepIdx, vel) },
-                        onStepRepeatChange = { trackIdx, stepIdx, rep -> viewModel.setStepDrumStepRepeat(trackIdx, stepIdx, rep) },
-                        onStepChanceChange = { trackIdx, stepIdx, chance -> viewModel.setStepDrumStepChance(trackIdx, stepIdx, chance) },
-                        onTrackLoopLengthChange = { trackIdx, len -> viewModel.setStepDrumTrackLoopLength(trackIdx, len) },
-                        onTrackPreview = { trackIdx -> viewModel.onDrumPadPressed(trackIdx % 16) },
-                        onTrackMuteToggle = { trackIdx -> viewModel.toggleStepDrumTrackMute(trackIdx) },
-                        onTrackSoloToggle = { trackIdx -> viewModel.toggleStepDrumTrackSolo(trackIdx) },
-                        onFillToggle = { viewModel.triggerStepDrumFill() },
-                        onBreakToggle = { viewModel.triggerStepDrumBreak() },
-                        onAutoFillToggle = { viewModel.toggleStepDrumAutoFill() },
-                        onSequenceMeasureSelect = { measureIdx -> viewModel.selectSequenceMeasure(measureIdx) },
-                        onSequenceBlockVariationChange = { measureIdx, varId -> viewModel.setSequenceBlockVariation(measureIdx, varId) },
-                        onSequenceBlockFillToggle = { measureIdx -> viewModel.toggleSequenceBlockFill(measureIdx) },
-                        onSequenceBlockBreakToggle = { measureIdx -> viewModel.toggleSequenceBlockBreak(measureIdx) },
-                        onBpmChange = { viewModel.setGlobalBpm(it) },
-                        onSwingChange = { viewModel.setDrumFeelSwing(it) },
-                        onKitSelect = { viewModel.openDrumPadFileExplorer(true) },
-                        onBackToMixer = { viewModel.navigateToPage(AppScreenPage.DRUMPAD) }
-                    )
-                }
                 AppScreenPage.MIXER -> {
                     // Device Chassis Card
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(dynamicPalette.background)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = 6.dp, vertical = 4.dp),
-                            verticalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            // 1. TOP BAR (ORIGINALE)
-                            TopBar(
-                                transpose = uiState.transpose,
-                                octave = uiState.octave,
-                                onTransposeChange = { viewModel.updateTranspose(it) },
-                                onOctaveChange = { viewModel.updateOctave(it) },
-                                pressedKeys = uiState.pressedKeys,
-                                useFlats = uiState.useFlats,
-                                isLoopsOpen = uiState.isLoopsPanelOpen,
-                                onToggleLoops = { viewModel.toggleLoopsPanel() },
-                                isLoopPlaying = uiState.isLoopPlaying,
-                                onToggleLoopPlayPause = { viewModel.toggleLoopPlayPause() },
-                                loopVolume = uiState.loopVolume,
-                                onLoopVolumeChange = { viewModel.setLoopVolume(it) },
-                                selectedBeats = uiState.selectedBeatCount,
-                                onSelectBeats = { viewModel.selectBeatCount(it) },
-                                loopFolders = uiState.loopFolders,
-                                activeLoopFile = uiState.activeLoopFile,
-                                onToggleLoopFolder = { viewModel.toggleLoopFolder(it) },
-                                onSelectLoopFile = { viewModel.selectAndToggleLoopFile(it) },
-                                isSustainActive = uiState.isSustainActive,
-                                isMidiPedalPressed = uiState.isMidiPedalPressed,
-                                onToggleSustain = { viewModel.toggleSustain() },
-                                onOpenNotes = { viewModel.navigateToPage(AppScreenPage.SHEETS) },
-                                onOpenDrumPad = { viewModel.navigateToPage(AppScreenPage.DRUMPAD) },
-                                onOpenStepDrum = { viewModel.navigateToPage(AppScreenPage.STEPDRUM) },
-                                onOpenTonicPad = {
-                                    if (uiState.activePopup == ActivePopup.TONIC_PAD) viewModel.closePopup() else viewModel.openPopup(ActivePopup.TONIC_PAD)
-                                },
-                                onPanic = { viewModel.triggerPanic() },
-                                onOpenScenes = {
-                                    if (uiState.activePopup == ActivePopup.SCENE) viewModel.closePopup() else viewModel.openPopup(ActivePopup.SCENE)
-                                },
-                                onOpenSettings = { viewModel.openSettingsDrawer() },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(38.dp)
+                            .shadow(16.dp, RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomStart = if (isKeyboardVisible) 0.dp else 14.dp, bottomEnd = if (isKeyboardVisible) 0.dp else 14.dp))
+                            .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomStart = if (isKeyboardVisible) 0.dp else 14.dp, bottomEnd = if (isKeyboardVisible) 0.dp else 14.dp))
+                            .background(MaterialTheme.colorScheme.background)
+                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f), RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomStart = if (isKeyboardVisible) 0.dp else 14.dp, bottomEnd = if (isKeyboardVisible) 0.dp else 14.dp))
+                            .padding(
+                                start = 8.dp,
+                                end = 8.dp,
+                                top = 6.dp,
+                                bottom = safeBottomPadding
                             )
+                    ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+            ) {
+                // 1. TOP BAR
+                TopBar(
+                    transpose = uiState.transpose,
+                    octave = uiState.octave,
+                    onTransposeChange = { viewModel.updateTranspose(it) },
+                    onOctaveChange = { viewModel.updateOctave(it) },
+                    pressedKeys = uiState.pressedKeys,
+                    useFlats = uiState.useFlats,
+                    isLoopsOpen = uiState.activePopup == ActivePopup.LOOPS,
+                    onToggleLoops = { viewModel.toggleLoopsPanel() },
+                    isLoopPlaying = uiState.isLoopPlaying,
+                    onToggleLoopPlayPause = { viewModel.toggleLoopPlayPause() },
+                    loopVolume = uiState.loopVolume,
+                    onLoopVolumeChange = { viewModel.setLoopVolume(it) },
+                    selectedBeats = uiState.selectedBeatCount,
+                    onSelectBeats = { viewModel.selectBeatCount(it) },
+                    loopFolders = uiState.loopFolders,
+                    activeLoopFile = uiState.activeLoopFile,
+                    onToggleLoopFolder = { viewModel.toggleLoopFolder(it) },
+                    onSelectLoopFile = { viewModel.selectAndToggleLoopFile(it) },
+                    isSustainActive = uiState.isSustainActive,
+                    isMidiPedalPressed = uiState.isMidiPedalPressed,
+                    onToggleSustain = { viewModel.toggleSustain() },
+                    onOpenNotes = {
+                        viewModel.navigateToPage(AppScreenPage.SHEETS)
+                    },
+                    onOpenDrumPad = {
+                        viewModel.navigateToPage(AppScreenPage.DRUMPAD)
+                    },
+                    onOpenTonicPad = {
+                        if (uiState.activePopup == ActivePopup.TONIC_PAD) viewModel.closePopup() else viewModel.openPopup(ActivePopup.TONIC_PAD)
+                    },
+                    onPanic = { viewModel.triggerPanic() },
+                    onOpenScenes = {
+                        if (uiState.activePopup == ActivePopup.SCENE) viewModel.closePopup() else viewModel.openPopup(ActivePopup.SCENE)
+                    },
+                    onOpenSettings = { viewModel.openSettingsDrawer() }
+                )
 
-                            Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(4.dp))
 
-                            // 2. 8 CHANNEL FADERS STRIPS (ORIGINAUX)
+                // 2. MIXER TRACKS SECTION (8 Tracks + 1 Master)
+                val defaultSfName = uiState.tracks.firstOrNull { it.soundfontName.isNotEmpty() }?.soundfontName ?: "FluidR3_GM.sf2"
+                val isPadOpen = uiState.activePopup == ActivePopup.DRUM_PAD || uiState.activePopup == ActivePopup.TONIC_PAD || uiState.activePopup == ActivePopup.NOTES
+
+                BoxWithConstraints(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                ) {
+                    val availableH = maxHeight
+                    val isVerticalMode = availableH >= 85.dp
+                    val showTicks = true
+
+                    AnimatedContent(
+                        targetState = isVerticalMode,
+                        transitionSpec = {
+                            fadeIn(animationSpec = tween(220)) togetherWith
+                                fadeOut(animationSpec = tween(180))
+                        },
+                        label = "fader_mode_transition"
+                    ) { verticalMode ->
+                        if (verticalMode) {
+                            val trackScrollState = rememberScrollState()
+                            val overlayWidth = if (isPadOpen) (this@BoxWithConstraints.maxWidth * 0.50f) else 0.dp
+                            val trackItemWidth = if (isPadOpen) {
+                                ((this@BoxWithConstraints.maxWidth * 0.50f - 16.dp) / 4f).coerceAtLeast(68.dp)
+                            } else {
+                                ((this@BoxWithConstraints.maxWidth - 28.dp) / 8f).coerceAtLeast(65.dp)
+                            }
+
                             Row(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .weight(1f),
-                                horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .fillMaxSize()
+                                    .horizontalScroll(trackScrollState),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                val displayTracks = uiState.tracks.take(8)
-                                displayTracks.forEachIndexed { index, track ->
+                                uiState.tracks.forEach { track ->
                                     VerticalTrackChannel(
                                         track = track,
                                         onVolumeChange = { vol -> viewModel.setTrackVolume(track.id, vol) },
@@ -346,283 +316,336 @@ fun MixerScreen(
                                         onSoloClick = { viewModel.onTrackSoloClick(track.id) },
                                         onTrackNameClick = { viewModel.openSoundfontForSlot(track.id - 1) },
                                         onFxClick = { viewModel.openEffectsForTrack(track.id) },
+                                        showTicks = showTicks,
                                         modifier = Modifier
-                                            .weight(1f)
+                                            .width(trackItemWidth)
                                             .fillMaxHeight()
                                     )
                                 }
+                                if (isPadOpen) {
+                                    Spacer(modifier = Modifier.width(overlayWidth))
+                                }
                             }
-
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            // 3. BOTTOM BAR (ORIGINALE)
-                            BottomBar(
+                        } else {
+                            CompactHorizontalFadersRack(
+                                tracks = uiState.tracks,
                                 masterTrack = uiState.masterTrack,
-                                onMasterVolumeChange = { vol -> viewModel.setTrackVolume(0, vol) },
-                                onMasterFxClick = { viewModel.openEffectsForTrack(0) },
-                                isRecording = uiState.isRecording,
-                                recordingDuration = uiState.recordingDuration,
-                                lastRecordedFile = uiState.lastRecordedFile,
-                                onToggleRecording = { viewModel.toggleRecording() },
-                                bpm = uiState.bpm,
-                                onBpmChange = { viewModel.updateBpm(it) },
-                                isMetronomeOn = uiState.isMetronomeOn,
-                                onToggleMetronome = { viewModel.toggleMetronome() },
-                                isMetroPanelOpen = uiState.isMetroPanelOpen,
-                                onToggleMetroPanel = { viewModel.toggleMetroPanel() },
-                                metroSignature = "4/4",
-                                onSelectSignature = {},
-                                metroVolume = 0.8f,
-                                onMetroVolumeChange = {},
-                                selectedKey = "C",
-                                onSelectKey = {},
-                                selectedScaleMode = uiState.selectedScaleMode,
-                                onSelectScaleMode = {},
-                                useFlats = uiState.useFlats,
-                                isSnapshotArmMode = uiState.isSnapshotArmMode,
-                                onToggleSnapshotArm = { viewModel.toggleSnapshotArm() },
-                                activeSnapshotSlot = uiState.activeSnapshotSlot,
-                                snapshots = uiState.snapshots,
-                                onSnapshotSlotClick = { slotKey -> viewModel.onSnapshotSlotClick(slotKey) },
-                                snapshotCustomNames = uiState.snapshotCustomNames,
-                                onRenameSnapshotSlot = { slotKey, newName -> viewModel.renameSnapshotSlot(slotKey, newName) },
-                                snapshotTransitionProgress = uiState.snapshotTransitionProgress,
-                                detectedChord = detectedChord,
-                                isKeyboardActive = isKeyboardVisible,
-                                onToggleKeyboard = { viewModel.cycleKeyboardExpansion() },
-                                isLayerActive = uiState.isKeyboardLayerExpanded,
-                                onToggleLayer = { viewModel.toggleKeyboardLayer() },
-                                onKeyboardHandleClick = { viewModel.cycleKeyboardExpansion() },
-                                onKeyboardDrag = { delta ->
-                                    val fractionDelta = -delta / 200f
-                                    viewModel.setKeyboardHeightFraction(uiState.keyboardHeightFraction + fractionDelta)
-                                },
+                                onVolumeChange = { id, vol -> viewModel.setTrackVolume(id, vol) },
+                                onPowerToggle = { id -> viewModel.toggleTrackPower(id) },
+                                onPanChange = { id, pan -> viewModel.setTrackPan(id, pan) },
+                                onMuteClick = { id -> viewModel.onTrackMuteClick(id) },
+                                onSoloClick = { id -> viewModel.onTrackSoloClick(id) },
+                                onTrackNameClick = { id -> viewModel.openSoundfontForSlot(id - 1) },
+                                onFxClick = { id -> viewModel.openEffectsForTrack(id) },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(44.dp)
+                                    .align(Alignment.Center)
                             )
-
-                            // 4. RETRACTABLE VIRTUAL PIANO KEYBOARD (Smooth animated height directly in-flow below BottomBar)
-                            val (_, activeSlotLedColor) = rememberDynamicFaderHue(uiState.activeSoundfontSlotId + 1)
-                            AnimatedVisibility(
-                                visible = isKeyboardVisible,
-                                enter = expandVertically(
-                                    animationSpec = tween(300, easing = FastOutSlowInEasing)
-                                ) + fadeIn(tween(220)),
-                                exit = shrinkVertically(
-                                    animationSpec = tween(250, easing = FastOutSlowInEasing)
-                                ) + fadeOut(tween(180)),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .zIndex(120f)
-                            ) {
-                                VirtualPianoKeyboard(
-                                    heightFraction = 1f,
-                                    pressedKeys = uiState.pressedKeys,
-                                    octave = uiState.octave,
-                                    tracks = uiState.tracks,
-                                    isLayerExpanded = uiState.isKeyboardLayerExpanded,
-                                    onToggleLayerExpanded = { viewModel.toggleKeyboardLayer() },
-                                    onRangeChanged = { trackId, minN, maxN -> viewModel.updateTrackKeyRange(trackId, minN, maxN) },
-                                    onKeyDown = { viewModel.onKeyDown(it) },
-                                    onKeyUp = { viewModel.onKeyUp(it) },
-                                    onKeyDownWithVelocity = { key, vel -> viewModel.onKeyDown(key, vel) },
-                                    onGrabberDrag = { deltaY ->
-                                        val fractionDelta = -deltaY / 200f
-                                        viewModel.setKeyboardHeightFraction(uiState.keyboardHeightFraction + fractionDelta)
-                                    },
-                                    onGrabberClick = { viewModel.cycleKeyboardExpansion() },
-                                    isSustainActive = uiState.isSustainActive,
-                                    onToggleSustain = { viewModel.toggleSustain() },
-                                    pitchBend = uiState.pitchBend,
-                                    onPitchBendChange = { viewModel.setPitchBend(it) },
-                                    onOctaveChange = { delta -> viewModel.updateOctave(delta) },
-                                    activeAuraColor = activeSlotLedColor
-                                )
-                            }
                         }
+                    }
 
-                // Inline DrumPad / TonicPad overlay panel covering the 4 last faders area with bouncy spring animation
-                val isPadOpen = uiState.activePopup == ActivePopup.DRUM_PAD || uiState.activePopup == ActivePopup.TONIC_PAD || uiState.activePopup == ActivePopup.NOTES
-                val defaultSfName = uiState.tracks.firstOrNull { it.soundfontName.isNotEmpty() }?.soundfontName ?: "FluidR3_GM.sf2"
-
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = isPadOpen,
-                    enter = scaleIn(
-                        initialScale = 0.85f,
-                        transformOrigin = TransformOrigin(0.95f, 0.5f),
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                            stiffness = Spring.StiffnessMediumLow
-                        )
-                    ) + slideInHorizontally(
-                        initialOffsetX = { it / 2 },
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                            stiffness = Spring.StiffnessMediumLow
-                        )
-                    ) + fadeIn(tween(180)),
-                    exit = scaleOut(
-                        targetScale = 0.90f,
-                        transformOrigin = TransformOrigin(0.95f, 0.5f),
-                        animationSpec = tween(150)
-                    ) + slideOutHorizontally(
-                        targetOffsetX = { it / 2 },
-                        animationSpec = tween(150)
-                    ) + fadeOut(tween(150)),
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .widthIn(max = 500.dp)
-                        .fillMaxHeight()
-                        .zIndex(40f)
-                ) {
-                    var isTonicSoundPickerOpen by remember { mutableStateOf(false) }
-
-                    Box(
+                    // Fluid non-modal DrumPad & TonicPad overlay panel covering the 4 last faders area with bouncy spring animation
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = isPadOpen,
+                        enter = scaleIn(
+                            initialScale = 0.85f,
+                            transformOrigin = TransformOrigin(0.95f, 0.5f),
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        ) + slideInHorizontally(
+                            initialOffsetX = { it / 2 },
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        ) + fadeIn(tween(180)),
+                        exit = scaleOut(
+                            targetScale = 0.90f,
+                            transformOrigin = TransformOrigin(0.95f, 0.5f),
+                            animationSpec = tween(150)
+                        ) + slideOutHorizontally(
+                            targetOffsetX = { it / 2 },
+                            animationSpec = tween(150)
+                        ) + fadeOut(tween(150)),
                         modifier = Modifier
-                            .fillMaxSize()
-                            .shadow(16.dp, RoundedCornerShape(16.dp))
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(Color(0xFF131622))
-                            .border(1.dp, Color(0x3300E5FF), RoundedCornerShape(16.dp))
-                            .padding(4.dp)
+                            .align(Alignment.CenterEnd)
+                            .width((this@BoxWithConstraints.maxWidth * 0.50f).coerceIn(310.dp, 480.dp))
+                            .fillMaxHeight()
+                            .zIndex(40f)
                     ) {
-                        AnimatedContent(
-                            targetState = uiState.activePopup,
-                            transitionSpec = {
-                                (scaleIn(
-                                    initialScale = 0.90f,
-                                    animationSpec = spring(
-                                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                                        stiffness = Spring.StiffnessMediumLow
-                                    )
-                                ) + fadeIn(tween(160)))
-                                    .togetherWith(scaleOut(targetScale = 0.95f, animationSpec = tween(120)) + fadeOut(tween(120)))
-                            },
-                            label = "inline_pad_view_switch"
-                        ) { popup ->
-                            when (popup) {
-                                ActivePopup.DRUM_PAD -> {
-                                    MainDrumPadSquareContent(
-                                        drumPads = uiState.drumPads,
-                                        volume = uiState.drumVolume,
-                                        onVolumeChange = { viewModel.setDrumVolume(it) },
-                                        reverb = uiState.drumReverb,
-                                        onReverbChange = { viewModel.setDrumReverb(it) },
-                                        activeTab = uiState.drumActiveTab,
-                                        onTabChange = { viewModel.setDrumTab(it) },
-                                        isPinned = false,
-                                        onTogglePin = {},
-                                        onClose = { viewModel.closePopup() },
-                                        onDragWindow = { _, _ -> },
-                                        onPadPressed = { viewModel.onDrumPadPressed(it) },
-                                        onPadReleased = { viewModel.onDrumPadReleased(it) },
-                                        onLongPressPad = {},
-                                        audioFiles = uiState.drumPadAudioFiles,
-                                        loopFiles = uiState.drumPadLoopAudioFiles,
-                                        onPlaySample = { viewModel.playDrumSample(it) },
-                                        onLongPressSample = { file -> viewModel.assignDrumSampleOrLoop(1, file.name, file.path, isLoop = true) },
-                                        onDeleteLoopFile = { viewModel.deleteDrumPadLoopFile(it) },
-                                        onAssignPadSampleOrLoop = { padId, sample, isLoop ->
-                                            viewModel.assignDrumSampleOrLoop(padId, sample.name, sample.path, isLoop)
-                                        },
-                                        onImportAudioFile = { drumPadPickerLauncher.launch(arrayOf("audio/*", "*/*")) },
-                                        isRecording = uiState.isDrumLoopRecording,
-                                        isArmed = uiState.isDrumLoopArmed,
-                                        onToggleArmLoop = { viewModel.toggleArmDrumLoop() },
-                                        bpm = uiState.bpm,
-                                        timeSignature = uiState.drumTimeSignature,
-                                        onToggleTimeSignature = { viewModel.toggleDrumTimeSignature() },
-                                        loopBars = uiState.drumLoopBars,
-                                        onSetLoopBars = { viewModel.setDrumLoopBars(it) },
-                                        onIncrementLoopBars = { viewModel.incrementDrumLoopBars() },
-                                        onDecrementLoopBars = { viewModel.decrementDrumLoopBars() },
-                                        onStartRecording = { viewModel.startDrumLoopRecording() },
-                                        onStopRecording = { viewModel.stopAndRenderDrumLoop(onFinished = {}) },
-                                        onCancelRecording = { viewModel.cancelDrumLoopRecording() },
-                                        isRendering = uiState.isDrumLoopRendering,
-                                        lastPath = uiState.lastDrumPadPath,
-                                        onUpdateLastPath = { viewModel.updateLastDrumPadPath(it) }
-                                    )
-                                }
-                                ActivePopup.TONIC_PAD -> {
-                                    val singleOctaveText = remember(uiState.tonicOctaveRange) {
-                                        val match = Regex("C[0-8]").findAll(uiState.tonicOctaveRange).map { it.value }.toList()
-                                        if (match.isNotEmpty()) match.last() else "C4"
+                        var isTonicSoundPickerOpen by remember { mutableStateOf(false) }
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .shadow(16.dp, RoundedCornerShape(16.dp))
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                                .padding(4.dp)
+                        ) {
+                            AnimatedContent(
+                                targetState = uiState.activePopup,
+                                transitionSpec = {
+                                    (scaleIn(
+                                        initialScale = 0.90f,
+                                        animationSpec = spring(
+                                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                                            stiffness = Spring.StiffnessMediumLow
+                                        )
+                                    ) + fadeIn(tween(160)))
+                                        .togetherWith(scaleOut(targetScale = 0.95f, animationSpec = tween(120)) + fadeOut(tween(120)))
+                                },
+                                label = "inline_pad_view_switch"
+                            ) { popup ->
+                                when (popup) {
+                                    ActivePopup.DRUM_PAD -> {
+                                        MainDrumPadSquareContent(
+                                            drumPads = uiState.drumPads,
+                                            volume = uiState.drumVolume,
+                                            onVolumeChange = { viewModel.setDrumVolume(it) },
+                                            reverb = uiState.drumReverb,
+                                            onReverbChange = { viewModel.setDrumReverb(it) },
+                                            activeTab = uiState.drumActiveTab,
+                                            onTabChange = { viewModel.setDrumTab(it) },
+                                            isPinned = false,
+                                            onTogglePin = {},
+                                            onClose = { viewModel.closePopup() },
+                                            onDragWindow = { _, _ -> },
+                                            onPadPressed = { viewModel.onDrumPadPressed(it) },
+                                            onPadReleased = { viewModel.onDrumPadReleased(it) },
+                                            onLongPressPad = {},
+                                            audioFiles = uiState.drumPadAudioFiles,
+                                            loopFiles = uiState.drumPadLoopAudioFiles,
+                                            onPlaySample = { viewModel.playDrumSample(it) },
+                                            onLongPressSample = { file -> viewModel.assignDrumSampleOrLoop(1, file.name, file.path, isLoop = true) },
+                                            onDeleteLoopFile = { viewModel.deleteDrumPadLoopFile(it) },
+                                            onAssignPadSampleOrLoop = { padId, sample, isLoop ->
+                                                viewModel.assignDrumSampleOrLoop(padId, sample.name, sample.path, isLoop)
+                                            },
+                                            onImportAudioFile = { drumPadPickerLauncher.launch(arrayOf("audio/*", "*/*")) },
+                                            isRecording = uiState.isDrumLoopRecording,
+                                            isArmed = uiState.isDrumLoopArmed,
+                                            onToggleArmLoop = { viewModel.toggleArmDrumLoop() },
+                                            bpm = uiState.bpm,
+                                            timeSignature = uiState.drumTimeSignature,
+                                            onToggleTimeSignature = { viewModel.toggleDrumTimeSignature() },
+                                            loopBars = uiState.drumLoopBars,
+                                            onSetLoopBars = { viewModel.setDrumLoopBars(it) },
+                                            onIncrementLoopBars = { viewModel.incrementDrumLoopBars() },
+                                            onDecrementLoopBars = { viewModel.decrementDrumLoopBars() },
+                                            onStartRecording = { viewModel.startDrumLoopRecording() },
+                                            onStopRecording = { viewModel.stopAndRenderDrumLoop(onFinished = {}) },
+                                            onCancelRecording = { viewModel.cancelDrumLoopRecording() },
+                                            isRendering = uiState.isDrumLoopRendering,
+                                            lastPath = uiState.lastDrumPadPath,
+                                            onUpdateLastPath = { viewModel.updateLastDrumPadPath(it) }
+                                        )
                                     }
-                                    TonicPadContent(
-                                        activeNotes = uiState.activeTonicNotes,
-                                        onNoteClick = { viewModel.onTonicNoteClick(it) },
-                                        isMultiPadEnabled = uiState.isMultiPadEnabled,
-                                        onToggleMultiPad = { viewModel.toggleMultiPad() },
-                                        singleOctaveText = singleOctaveText,
-                                        onOctaveMinus = { viewModel.onTonicOctaveMinus() },
-                                        onOctavePlus = { viewModel.onTonicOctavePlus() },
-                                        useFlats = uiState.useFlats,
-                                        volume = uiState.audioSlots.getOrNull(9)?.volume ?: 0.8f,
-                                        onVolumeChange = { viewModel.setTonicVolume(it) },
-                                        reverb = viewModel.audioEngine.channelParams[9].reverb,
-                                        onReverbChange = { viewModel.setTonicReverb(it) },
-                                        brightness = uiState.tonicBrightness,
-                                        onBrightnessChange = { viewModel.setTonicBrightness(it) },
-                                        shimmer = uiState.tonicShimmer,
-                                        onShimmerChange = { viewModel.setTonicShimmer(it) },
-                                        isPinned = false,
-                                        onTogglePin = {},
-                                        onClose = { viewModel.closePopup() },
-                                        isSoundPickerOpen = isTonicSoundPickerOpen,
-                                        onToggleSoundPicker = { isTonicSoundPickerOpen = it },
-                                        soundfonts = uiState.soundfontFiles,
-                                        currentLoadedSf2Name = uiState.audioSlots.getOrNull(9)?.soundFontPath?.substringAfterLast("/") ?: defaultSfName,
-                                        loadedSf2Presets = uiState.audioSlots.getOrNull(9)?.presets ?: emptyList(),
-                                        onSelectPreset = { viewModel.selectSf2Preset(9, it) },
-                                        onSelectSf2File = { viewModel.loadSoundFontForSlot(9, it.path) },
-                                        onOpenSoundfontPicker = { viewModel.openSoundfontForSlot(9) },
-                                        onDragHeader = null
-                                    )
+                                    ActivePopup.TONIC_PAD -> {
+                                        val singleOctaveText = remember(uiState.tonicOctaveRange) {
+                                            val match = Regex("C[0-8]").findAll(uiState.tonicOctaveRange).map { it.value }.toList()
+                                            if (match.isNotEmpty()) match.last() else "C4"
+                                        }
+                                        TonicPadContent(
+                                            activeNotes = uiState.activeTonicNotes,
+                                            onNoteClick = { viewModel.onTonicNoteClick(it) },
+                                            isMultiPadEnabled = uiState.isMultiPadEnabled,
+                                            onToggleMultiPad = { viewModel.toggleMultiPad() },
+                                            singleOctaveText = singleOctaveText,
+                                            onOctaveMinus = { viewModel.onTonicOctaveMinus() },
+                                            onOctavePlus = { viewModel.onTonicOctavePlus() },
+                                            useFlats = uiState.useFlats,
+                                            volume = uiState.audioSlots.getOrNull(9)?.volume ?: 0.8f,
+                                            onVolumeChange = { viewModel.setTonicVolume(it) },
+                                            reverb = viewModel.audioEngine.channelParams[9].reverb,
+                                            onReverbChange = { viewModel.setTonicReverb(it) },
+                                            brightness = uiState.tonicBrightness,
+                                            onBrightnessChange = { viewModel.setTonicBrightness(it) },
+                                            shimmer = uiState.tonicShimmer,
+                                            onShimmerChange = { viewModel.setTonicShimmer(it) },
+                                            isPinned = false,
+                                            onTogglePin = {},
+                                            onClose = { viewModel.closePopup() },
+                                            isSoundPickerOpen = isTonicSoundPickerOpen,
+                                            onToggleSoundPicker = { isTonicSoundPickerOpen = it },
+                                            soundfonts = uiState.soundfontFiles,
+                                            currentLoadedSf2Name = uiState.audioSlots.getOrNull(9)?.soundFontPath?.substringAfterLast("/") ?: defaultSfName,
+                                            loadedSf2Presets = uiState.audioSlots.getOrNull(9)?.presets ?: emptyList(),
+                                            onSelectPreset = { viewModel.selectSf2Preset(9, it) },
+                                            onSelectSf2File = { viewModel.loadSoundFontForSlot(9, it.path) },
+                                            onOpenSoundfontPicker = { viewModel.openSoundfontForSlot(9) },
+                                            onDragHeader = null
+                                        )
+                                    }
+                                    ActivePopup.NOTES -> {
+                                        NotesDialog(
+                                            isOpen = true,
+                                            onClose = { viewModel.closePopup() },
+                                            detectedChord = detectedChord,
+                                            selectedRootKey = uiState.selectedRootKey,
+                                            useFlats = uiState.useFlats,
+                                            notesDir = viewModel.fileManager.notesDir,
+                                            fileManager = viewModel.fileManager
+                                        )
+                                    }
+                                    else -> {}
                                 }
-                                ActivePopup.NOTES -> {
-                                    NotesDialog(
-                                        isOpen = true,
-                                        onClose = { viewModel.closePopup() },
-                                        detectedChord = detectedChord,
-                                        selectedRootKey = uiState.selectedRootKey,
-                                        useFlats = uiState.useFlats,
-                                        notesDir = viewModel.fileManager.notesDir,
-                                        fileManager = viewModel.fileManager
-                                    )
-                                }
-                                else -> {}
                             }
                         }
                     }
                 }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // 3. BOTTOM BAR (With MIDI Player, Real Chord Detector & Piano Toggle)
+                BottomBar(
+                    masterTrack = uiState.masterTrack,
+                    onMasterVolumeChange = { vol -> viewModel.setTrackVolume(0, vol) },
+                    onMasterFxClick = { viewModel.openEffectsForTrack(0) },
+                    isRecording = uiState.isRecording,
+                    recordingDuration = uiState.recordingDuration,
+                    lastRecordedFile = uiState.lastRecordedFile,
+                    onToggleRecording = { viewModel.toggleRecording() },
+                    bpm = uiState.bpm,
+                    onBpmChange = { viewModel.updateBpm(it) },
+                    isMetronomeOn = uiState.isMetronomeOn,
+                    onToggleMetronome = { viewModel.toggleMetronome() },
+                    isMetroPanelOpen = uiState.isMetroPanelOpen,
+                    onToggleMetroPanel = { viewModel.toggleMetroPanel() },
+                    metroSignature = uiState.metronomeSignature,
+                    onSelectSignature = { viewModel.setMetronomeSignature(it) },
+                    metroVolume = uiState.metronomeVolume,
+                    onMetroVolumeChange = { viewModel.setMetronomeVolume(it) },
+                    selectedKey = uiState.selectedRootKey,
+                    onSelectKey = { viewModel.setSelectedRootKey(it) },
+                    selectedScaleMode = uiState.selectedScaleMode,
+                    onSelectScaleMode = { viewModel.setScaleMode(it) },
+                    useFlats = uiState.useFlats,
+                    
+                    // Real-time Detected Chord
+                    detectedChord = detectedChord,
+
+                    // Snapshots / Sub-Scenes (Section 2)
+                    isSnapshotArmMode = uiState.isSnapshotArmMode,
+                    onToggleSnapshotArm = { viewModel.toggleSnapshotArm() },
+                    activeSnapshotSlot = uiState.activeSnapshotSlot,
+                    snapshots = uiState.snapshots,
+                    onSnapshotSlotClick = { slotKey -> viewModel.onSnapshotSlotClick(slotKey) },
+                    snapshotCustomNames = uiState.snapshotCustomNames,
+                    onRenameSnapshotSlot = { slotKey, newName -> viewModel.renameSnapshotSlot(slotKey, newName) },
+                    snapshotTransitionProgress = uiState.snapshotTransitionProgress,
+                    
+                    isKeyboardActive = isKeyboardVisible,
+                    onToggleKeyboard = { viewModel.cycleKeyboardExpansion() },
+                    isLayerActive = uiState.isKeyboardLayerExpanded,
+                    onToggleLayer = { viewModel.toggleKeyboardLayer() },
+                    onKeyboardHandleClick = { viewModel.cycleKeyboardExpansion() },
+                    onKeyboardDrag = { deltaY ->
+                        val fractionDelta = -deltaY / 200f
+                        viewModel.setKeyboardHeightFraction(uiState.keyboardHeightFraction + fractionDelta)
+                    }
+                )
+
+                // 4. FIXED LAYOUT SLOT FOR RETRACTABLE PIANO (so faders/BottomBar get pushed up cleanly when keyboard is visible)
+                val keyboardHeight by animateDpAsState(
+                    targetValue = if (isKeyboardVisible) 76.dp else 0.dp,
+                    animationSpec = tween(300, easing = EaseOutExpo),
+                    label = "keyboardHeight"
+                )
+                
+                if (keyboardHeight > 0.dp) {
+                    Spacer(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(keyboardHeight)
+                    )
+                }
             }
 
-            // Outside touch dismiss for quick closing of floating dropdowns (zero dark overlay residue)
-            if (uiState.isLoopsPanelOpen || uiState.isMetroPanelOpen || uiState.isMidiPanelOpen) {
+            // Outside tap dismisser & subtle dark background scrim for expanded keyboard layer lines
+            if (isKeyboardVisible && uiState.isKeyboardLayerExpanded) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Transparent)
+                        .background(Color(0x88000000))
+                        .zIndex(60f)
                         .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                             indication = null
                         ) {
-                            if (uiState.isLoopsPanelOpen) viewModel.closeLoopsPanel()
-                            if (uiState.isMetroPanelOpen) viewModel.closeMetroPanel()
-                            if (uiState.isMidiPanelOpen) viewModel.closeMidiPanel()
+                            viewModel.toggleKeyboardLayer()
                         }
                 )
             }
 
-            // Floating Metronome Dropdown Panel (Compact studio widget)
+            // 5. RETRACTABLE MULTI-TOUCH VIRTUAL PIANO KEYBOARD (Smooth 380ms transition)
+            val activeSlotLedColor = getTrackThemeColor(uiState.activeSoundfontSlotId + 1)
+            AnimatedVisibility(
+                visible = isKeyboardVisible,
+                enter = slideInVertically(
+                    initialOffsetY = { it },
+                    animationSpec = tween(380, easing = FastOutSlowInEasing)
+                ) + fadeIn(tween(280)),
+                exit = slideOutVertically(
+                    targetOffsetY = { it },
+                    animationSpec = tween(280, easing = FastOutSlowInEasing)
+                ) + fadeOut(tween(200)),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .zIndex(100f)
+            ) {
+                VirtualPianoKeyboard(
+                    heightFraction = 1f,
+                    pressedKeys = uiState.pressedKeys,
+                    octave = uiState.octave,
+                    tracks = uiState.tracks,
+                    isLayerExpanded = uiState.isKeyboardLayerExpanded,
+                    onToggleLayerExpanded = { viewModel.toggleKeyboardLayer() },
+                    onRangeChanged = { trackId, minN, maxN -> viewModel.updateTrackKeyRange(trackId, minN, maxN) },
+                    onKeyDown = { viewModel.onKeyDown(it) },
+                    onKeyUp = { viewModel.onKeyUp(it) },
+                    onKeyDownWithVelocity = { key, vel -> viewModel.onKeyDown(key, vel) },
+                    onGrabberDrag = { deltaY ->
+                        val fractionDelta = -deltaY / 200f
+                        viewModel.setKeyboardHeightFraction(uiState.keyboardHeightFraction + fractionDelta)
+                    },
+                    onGrabberClick = { viewModel.cycleKeyboardExpansion() },
+                    isSustainActive = uiState.isSustainActive,
+                    onToggleSustain = { viewModel.toggleSustain() },
+                    pitchBend = uiState.pitchBend,
+                    onPitchBendChange = { viewModel.setPitchBend(it) },
+                    onOctaveChange = { delta -> viewModel.updateOctave(delta) },
+                    activeAuraColor = activeSlotLedColor
+                )
+            }
+
+
+            // Outside touch scrim for quick closing of floating dropdowns
+            if (uiState.isLoopsPanelOpen || uiState.isMetroPanelOpen || uiState.isMidiPanelOpen || uiState.activePopup == ActivePopup.SCENE) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0x22000000))
+                        .clickable {
+                            if (uiState.isLoopsPanelOpen) viewModel.closeLoopsPanel()
+                            if (uiState.isMetroPanelOpen) viewModel.closeMetroPanel()
+                            if (uiState.isMidiPanelOpen) viewModel.closeMidiPanel()
+                            if (uiState.activePopup == ActivePopup.SCENE) viewModel.closePopup()
+                        }
+                )
+            }
+
+            // Floating Metronome Dropdown Panel
             AnimatedVisibility(
                 visible = uiState.isMetroPanelOpen,
                 enter = fadeIn(tween(180)) + slideInVertically(initialOffsetY = { 20 }, animationSpec = tween(200)),
                 exit = fadeOut(tween(150)) + slideOutVertically(targetOffsetY = { 20 }, animationSpec = tween(150)),
                 modifier = Modifier
-                    .padding(bottom = 48.dp, start = 80.dp)
+                    .padding(bottom = 40.dp, start = 120.dp)
                     .align(Alignment.BottomStart)
             ) {
                 MetronomeFloatingPanel(
@@ -648,7 +671,7 @@ fun MixerScreen(
                 enter = fadeIn(tween(180)) + slideInVertically(initialOffsetY = { 20 }, animationSpec = tween(200)),
                 exit = fadeOut(tween(150)) + slideOutVertically(targetOffsetY = { 20 }, animationSpec = tween(150)),
                 modifier = Modifier
-                    .padding(bottom = 48.dp, start = 200.dp)
+                    .padding(bottom = 40.dp, start = 220.dp)
                     .align(Alignment.BottomStart)
             ) {
                 MidiFloatingPanel(
@@ -662,6 +685,46 @@ fun MixerScreen(
                     onToggleFolder = { viewModel.toggleMidiFolder(it) },
                     onSelectMidiFile = { viewModel.playMidiFile(it) },
                     onClose = { viewModel.closeMidiPanel() }
+                )
+            }
+
+            // Scene In-Place Expanding View: 0.5s seamless fluid high-resolution expansion from scene button square
+            AnimatedVisibility(
+                visible = uiState.activePopup == ActivePopup.SCENE,
+                enter = fadeIn(animationSpec = tween(500, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
+                        scaleIn(
+                            initialScale = 0.08f,
+                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.92f, 0.05f),
+                            animationSpec = tween(500, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+                        ) +
+                        expandIn(
+                            expandFrom = Alignment.TopEnd,
+                            animationSpec = tween(500, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+                        ),
+                exit = fadeOut(animationSpec = tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
+                        scaleOut(
+                            targetScale = 0.08f,
+                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.92f, 0.05f),
+                            animationSpec = tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+                        ) +
+                        shrinkOut(
+                            shrinkTowards = Alignment.TopEnd,
+                            animationSpec = tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+                        ),
+                modifier = Modifier
+                    .padding(top = 44.dp, end = 12.dp)
+                    .align(Alignment.TopEnd)
+            ) {
+                SceneDialog(
+                    isOpen = true,
+                    scenes = uiState.scenes,
+                    activeSceneId = uiState.activeSceneId,
+                    onSelectScene = { viewModel.selectScene(it) },
+                    onSaveCurrentScene = { viewModel.saveCurrentScene(it) },
+                    onCreateBlankScene = { viewModel.createBlankScene(it) },
+                    onUpdateActiveScene = { viewModel.updateActiveScene() },
+                    onDeleteScene = { viewModel.deleteScene(it) },
+                    onClose = { viewModel.closePopup() }
                 )
             }
                     }
@@ -783,38 +846,15 @@ fun MixerScreen(
             onVelocityRangeChange = { min, max -> viewModel.setGlobalVelocityRange(min, max) },
             useFlats = uiState.useFlats,
             onToggleUseFlats = { viewModel.toggleUseFlats() },
-            currentTheme = uiState.currentTheme,
-            onSelectTheme = { viewModel.selectTheme(it) },
-            selectedPaletteColorIndex = uiState.selectedPaletteIndex,
-            onSelectPaletteColorIndex = { viewModel.setSelectedPaletteIndex(it) },
-            saturation = uiState.themeSaturation,
-            onSaturationChange = { viewModel.setThemeSaturation(it) },
-            nuance = uiState.themeNuance,
-            onNuanceChange = { viewModel.setThemeNuance(it) },
-            materialYouStyle = uiState.materialYouStyle,
-            onSelectMaterialYouStyle = { viewModel.setMaterialYouStyle(it) },
-            accentSaturation = uiState.accentSaturation,
-            onAccentSaturationChange = { viewModel.setAccentSaturation(it) },
-            onResetAccentSaturation = { viewModel.resetAccentSaturation() },
-            bgSaturation = uiState.bgSaturation,
-            onBgSaturationChange = { viewModel.setBgSaturation(it) },
-            onResetBgSaturation = { viewModel.resetBgSaturation() },
-            bgBrightness = uiState.bgBrightness,
-            onBgBrightnessChange = { viewModel.setBgBrightness(it) },
-            onResetBgBrightness = { viewModel.resetBgBrightness() }
-        )
-
-        // Scene Drawer (Side sheet sliding from the right)
-        SceneDialog(
-            isOpen = uiState.activePopup == ActivePopup.SCENE,
-            scenes = uiState.scenes,
-            activeSceneId = uiState.activeSceneId,
-            onSelectScene = { viewModel.selectScene(it) },
-            onSaveCurrentScene = { viewModel.saveCurrentScene(it) },
-            onCreateBlankScene = { viewModel.createBlankScene(it) },
-            onUpdateActiveScene = { viewModel.updateActiveScene() },
-            onDeleteScene = { viewModel.deleteScene(it) },
-            onClose = { viewModel.closePopup() }
+            themeHue = uiState.themeHue,
+            onThemeHueChange = { viewModel.setThemeHue(it) },
+            themeSaturation = uiState.themeSaturation,
+            onThemeSaturationChange = { viewModel.setThemeSaturation(it) },
+            themeNuance = uiState.themeNuance,
+            onThemeNuanceChange = { viewModel.setThemeNuance(it) },
+            themePaletteName = uiState.themePaletteName,
+            onSelectThemePalette = { viewModel.setThemePalette(it) },
+            onResetTheme = { viewModel.resetThemeToDefault() }
         )
 
         // Material 3 Storage Permission Explanation Dialog

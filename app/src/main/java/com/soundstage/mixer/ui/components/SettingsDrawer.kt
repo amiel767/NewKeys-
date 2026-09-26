@@ -2,7 +2,6 @@ package com.soundstage.mixer.ui.components
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,7 +12,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Palette
@@ -38,11 +36,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.model.AppTheme
-import com.soundstage.mixer.model.MaterialYouStyle
 import com.soundstage.mixer.model.MidiDeviceItem
 import com.soundstage.mixer.model.SoundGoodizerMode
 import com.soundstage.mixer.ui.theme.*
@@ -99,28 +95,16 @@ fun SettingsDrawer(
     useFlats: Boolean = false,
     onToggleUseFlats: () -> Unit = {},
 
-    // Theme & Palettes
-    currentTheme: AppTheme = AppTheme.MATERIAL_YOU,
-    onSelectTheme: (AppTheme) -> Unit = {},
-    selectedPaletteColorIndex: Int = 0,
-    onSelectPaletteColorIndex: (Int) -> Unit = {},
-    saturation: Float = 1.0f,
-    onSaturationChange: (Float) -> Unit = {},
-    nuance: Float = 0.5f,
-    onNuanceChange: (Float) -> Unit = {},
-
-    // Material You Studio Controls
-    materialYouStyle: MaterialYouStyle = MaterialYouStyle.VIBRANT,
-    onSelectMaterialYouStyle: (MaterialYouStyle) -> Unit = {},
-    accentSaturation: Float = 1.0f,
-    onAccentSaturationChange: (Float) -> Unit = {},
-    onResetAccentSaturation: () -> Unit = {},
-    bgSaturation: Float = 1.0f,
-    onBgSaturationChange: (Float) -> Unit = {},
-    onResetBgSaturation: () -> Unit = {},
-    bgBrightness: Float = 1.0f,
-    onBgBrightnessChange: (Float) -> Unit = {},
-    onResetBgBrightness: () -> Unit = {},
+    // Theme Customization
+    themeHue: Float = 185f,
+    onThemeHueChange: (Float) -> Unit = {},
+    themeSaturation: Float = 0.85f,
+    onThemeSaturationChange: (Float) -> Unit = {},
+    themeNuance: Float = 0.50f,
+    onThemeNuanceChange: (Float) -> Unit = {},
+    themePaletteName: String = "Cyber Neon",
+    onSelectThemePalette: (ThemePalettePreset) -> Unit = {},
+    onResetTheme: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     AnimatedVisibility(
@@ -173,23 +157,17 @@ fun SettingsDrawer(
                             onBack = { onNavigateSubPage("main") }
                         )
                     }
-                    "theme_selection", "material_you_studio", "theme" -> {
+                    "theme" -> {
                         ThemeSettingsSubPage(
-                            currentTheme = currentTheme,
-                            onSelectTheme = onSelectTheme,
-                            materialYouStyle = materialYouStyle,
-                            onSelectMaterialYouStyle = onSelectMaterialYouStyle,
-                            accentSaturation = accentSaturation,
-                            onAccentSaturationChange = onAccentSaturationChange,
-                            onResetAccentSaturation = onResetAccentSaturation,
-                            nuance = nuance,
-                            onNuanceChange = onNuanceChange,
-                            bgSaturation = bgSaturation,
-                            onBgSaturationChange = onBgSaturationChange,
-                            onResetBgSaturation = onResetBgSaturation,
-                            bgBrightness = bgBrightness,
-                            onBgBrightnessChange = onBgBrightnessChange,
-                            onResetBgBrightness = onResetBgBrightness,
+                            themeHue = themeHue,
+                            onThemeHueChange = onThemeHueChange,
+                            themeSaturation = themeSaturation,
+                            onThemeSaturationChange = onThemeSaturationChange,
+                            themeNuance = themeNuance,
+                            onThemeNuanceChange = onThemeNuanceChange,
+                            themePaletteName = themePaletteName,
+                            onSelectThemePalette = onSelectThemePalette,
+                            onResetTheme = onResetTheme,
                             onBack = { onNavigateSubPage("main") }
                         )
                     }
@@ -211,9 +189,7 @@ fun SettingsDrawer(
                             velocityMax = velocityMax,
                             onVelocityRangeChange = onVelocityRangeChange,
                             useFlats = useFlats,
-                            onToggleUseFlats = onToggleUseFlats,
-                            currentTheme = currentTheme,
-                            materialYouStyle = materialYouStyle
+                            onToggleUseFlats = onToggleUseFlats
                         )
                     }
                 }
@@ -241,9 +217,7 @@ private fun AospMainSettingsPage(
     velocityMax: Float,
     onVelocityRangeChange: (Float, Float) -> Unit,
     useFlats: Boolean = false,
-    onToggleUseFlats: () -> Unit = {},
-    currentTheme: AppTheme = AppTheme.MATERIAL_YOU,
-    materialYouStyle: MaterialYouStyle = MaterialYouStyle.VIBRANT
+    onToggleUseFlats: () -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         // AOSP Header
@@ -305,19 +279,6 @@ private fun AospMainSettingsPage(
                 .weight(1f),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // CARD 0: THEME
-            item {
-                AospCard(title = "Theme") {
-                    AospSettingItem(
-                        icon = Icons.Default.Palette,
-                        iconTint = Color(0xFFFCD34D),
-                        iconBg = Color(0x28FCD34D),
-                        title = "Theme",
-                        subtitle = "Colors, palettes, nuances & chassis styling",
-                        onClick = { onNavigateSubPage("theme_selection") }
-                    )
-                }
-            }
             // CARD 1: PÉRIPHÉRIQUES & AUDIO
             item {
                 AospCard(title = "Périphériques & Audio") {
@@ -346,6 +307,20 @@ private fun AospMainSettingsPage(
             }
 
             // CARD 2: LANGUE & SYSTÈME
+            item {
+                AospCard(title = "Thème & Ambiance") {
+                    AospSettingItem(
+                        icon = Icons.Default.Palette,
+                        iconTint = Color(0xFFA855F7),
+                        iconBg = Color(0x18A855F7),
+                        title = "Thème",
+                        subtitle = "Teinte, saturation, nuance et palettes harmonieuses",
+                        onClick = { onNavigateSubPage("theme") }
+                    )
+                }
+            }
+
+            // CARD 3: LANGUE & SYSTÈME
             item {
                 AospCard(title = "Langue & Système") {
                     Column {
@@ -914,30 +889,20 @@ private fun LanguageSelectorSubPage(
     }
 }
 
-/**
- * Page Réglages Theme & Couleurs Studio (Câblage immédiat des couleurs et styles)
- */
 @Composable
 private fun ThemeSettingsSubPage(
-    currentTheme: AppTheme,
-    onSelectTheme: (AppTheme) -> Unit,
-    materialYouStyle: MaterialYouStyle,
-    onSelectMaterialYouStyle: (MaterialYouStyle) -> Unit,
-    accentSaturation: Float,
-    onAccentSaturationChange: (Float) -> Unit,
-    onResetAccentSaturation: () -> Unit,
-    nuance: Float,
-    onNuanceChange: (Float) -> Unit,
-    bgSaturation: Float,
-    onBgSaturationChange: (Float) -> Unit,
-    onResetBgSaturation: () -> Unit,
-    bgBrightness: Float,
-    onBgBrightnessChange: (Float) -> Unit,
-    onResetBgBrightness: () -> Unit,
+    themeHue: Float,
+    onThemeHueChange: (Float) -> Unit,
+    themeSaturation: Float,
+    onThemeSaturationChange: (Float) -> Unit,
+    themeNuance: Float,
+    onThemeNuanceChange: (Float) -> Unit,
+    themePaletteName: String,
+    onSelectThemePalette: (ThemePalettePreset) -> Unit,
+    onResetTheme: () -> Unit,
     onBack: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
-        // Header
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -947,313 +912,189 @@ private fun ThemeSettingsSubPage(
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0x18FFFFFF))
+                    .background(Color(0x14FFFFFF))
                     .clickable { onBack() }
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = Color(0xFFFCD34D),
-                    modifier = Modifier.size(16.dp)
+                    contentDescription = "Retour",
+                    tint = NeonCyan,
+                    modifier = Modifier.size(14.dp)
                 )
-                Text(text = "Back", fontSize = 11.sp, color = Color(0xFFFCD34D))
+                Text(text = "Retour", fontSize = 11.sp, color = NeonCyan)
             }
             Spacer(modifier = Modifier.width(12.dp))
-            Text(text = "Theme", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
-        }
-
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            item {
-                Text(
-                    text = "Sélectionnez immédiatement le thème chromatique du mixer et ajustez la vivacité des LED et du châssis.",
-                    fontSize = 11.sp,
-                    color = TextDim,
-                    lineHeight = 15.sp,
-                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                )
-            }
-
-            // SECTION 1: THÈMES DE CHÂSSIS & ACCENTS IMMÉDIATS
-            item {
-                AospCard(title = "Thème d'accentuation") {
-                    Column(
-                        modifier = Modifier.padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        AppTheme.values().forEach { theme ->
-                            val isSelected = (theme == currentTheme)
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(if (isSelected) Color(0xFF262D3E) else Color(0x10FFFFFF))
-                                    .border(
-                                        width = 1.dp,
-                                        color = if (isSelected) theme.primaryColor else Color.Transparent,
-                                        shape = RoundedCornerShape(10.dp)
-                                    )
-                                    .clickable { onSelectTheme(theme) }
-                                    .padding(horizontal = 10.dp, vertical = 7.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(20.dp)
-                                        .clip(CircleShape)
-                                        .background(theme.primaryColor)
-                                        .border(1.2.dp, Color.White.copy(alpha = 0.5f), CircleShape)
-                                )
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = theme.displayName,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White
-                                    )
-                                    Text(
-                                        text = theme.description,
-                                        fontSize = 8.5.sp,
-                                        color = TextDim,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                if (isSelected) {
-                                    Text(
-                                        text = "✓",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = theme.primaryColor
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // SECTION 2: HARMONIES DYNAMIQUES STUDIO
-            item {
-                AospCard(title = "Harmonies Dynamiques Studio") {
-                    Column(
-                        modifier = Modifier.padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        MaterialYouStyle.values().forEach { style ->
-                            val isSelected = (style == materialYouStyle)
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(if (isSelected) Color(0xFF262D3E) else Color(0x10FFFFFF))
-                                    .border(
-                                        width = 1.dp,
-                                        color = if (isSelected) style.primary else Color.Transparent,
-                                        shape = RoundedCornerShape(10.dp)
-                                    )
-                                    .clickable { onSelectMaterialYouStyle(style) }
-                                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                SplitQuadrantCircle(
-                                    colors = style.quadrantColors,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = style.title,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = Color.White
-                                    )
-                                    Text(
-                                        text = style.description,
-                                        fontSize = 8.5.sp,
-                                        color = TextDim,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                if (isSelected) {
-                                    Text(
-                                        text = "✓",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = style.primary
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Slider 1: Saturation des accents et LED
-            item {
-                SliderAdjustCard(
-                    title = "Saturation des accents & LED",
-                    value = accentSaturation,
-                    onValueChange = onAccentSaturationChange,
-                    onReset = onResetAccentSaturation,
-                    valueRange = 0.50f..2.00f,
-                    thumbColor = Color(0xFFFCD34D)
-                )
-            }
-
-            // Slider 2: Nuance & Teinte chromatique
-            item {
-                SliderAdjustCard(
-                    title = "Nuance chromatique globale",
-                    value = nuance,
-                    onValueChange = onNuanceChange,
-                    onReset = { onNuanceChange(0.5f) },
-                    valueRange = 0.00f..1.00f,
-                    thumbColor = Color(0xFFA3E635)
-                )
-            }
-
-            // Slider 3: Saturation de l'arrière-plan
-            item {
-                SliderAdjustCard(
-                    title = "Saturation de l'arrière-plan",
-                    value = bgSaturation,
-                    onValueChange = onBgSaturationChange,
-                    onReset = onResetBgSaturation,
-                    valueRange = 0.50f..2.00f,
-                    thumbColor = Color(0xFF38BDF8)
-                )
-            }
-
-            // Slider 4: Luminosité du fond de châssis
-            item {
-                SliderAdjustCard(
-                    title = "Luminosité du châssis ardoise",
-                    value = bgBrightness,
-                    onValueChange = onBgBrightnessChange,
-                    onReset = onResetBgBrightness,
-                    valueRange = 0.60f..1.40f,
-                    thumbColor = Color(0xFFA4B8FF)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SplitQuadrantCircle(
-    colors: List<Color>,
-    modifier: Modifier = Modifier
-) {
-    androidx.compose.foundation.Canvas(modifier = modifier) {
-        val c1 = colors.getOrElse(0) { Color(0xFFE2B4BD) }
-        val c2 = colors.getOrElse(1) { Color(0xFF00E5FF) }
-        val c3 = colors.getOrElse(2) { Color(0xFFF59E0B) }
-        val c4 = colors.getOrElse(3) { Color(0xFF10B981) }
-
-        // Top-left quadrant
-        drawArc(
-            color = c1,
-            startAngle = 180f,
-            sweepAngle = 90f,
-            useCenter = true
-        )
-        // Top-right quadrant
-        drawArc(
-            color = c2,
-            startAngle = 270f,
-            sweepAngle = 90f,
-            useCenter = true
-        )
-        // Bottom-right quadrant
-        drawArc(
-            color = c3,
-            startAngle = 0f,
-            sweepAngle = 90f,
-            useCenter = true
-        )
-        // Bottom-left quadrant
-        drawArc(
-            color = c4,
-            startAngle = 90f,
-            sweepAngle = 90f,
-            useCenter = true
-        )
-    }
-}
-
-@Composable
-private fun SliderAdjustCard(
-    title: String,
-    value: Float,
-    onValueChange: (Float) -> Unit,
-    onReset: () -> Unit,
-    valueRange: ClosedFloatingPointRange<Float>,
-    thumbColor: Color
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFF1E212E))
-            .border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(16.dp))
-            .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column {
-                Text(
-                    text = title,
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color.White
-                )
-                Text(
-                    text = "Sélection: ${String.format(java.util.Locale.US, "%.2fx", value)}",
-                    fontSize = 10.sp,
-                    color = thumbColor,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-
-            // Circular Reset Button
-            Box(
+            Text(
+                text = "Thème",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Row(
                 modifier = Modifier
-                    .size(28.dp)
-                    .clip(CircleShape)
-                    .background(Color(0x22FFFFFF))
-                    .clickable { onReset() },
-                contentAlignment = Alignment.Center
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0x14FFFFFF))
+                    .clickable { onResetTheme() }
+                    .padding(horizontal = 8.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Refresh,
-                    contentDescription = "Réinitialiser",
-                    tint = Color.White,
-                    modifier = Modifier.size(15.dp)
+                    contentDescription = "Rétablir",
+                    tint = TextDim,
+                    modifier = Modifier.size(12.dp)
                 )
+                Text(text = "Défaut", fontSize = 10.sp, color = TextDim)
             }
         }
 
-        Slider(
-            value = value,
-            onValueChange = onValueChange,
-            valueRange = valueRange,
-            colors = SliderDefaults.colors(
-                thumbColor = thumbColor,
-                activeTrackColor = thumbColor,
-                inactiveTrackColor = Color(0x28FFFFFF)
-            )
-        )
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Section 1: Palettes harmonieuses complètes
+            item {
+                Text(
+                    text = "Palettes Harmonieuses",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = NeonCyan,
+                    modifier = Modifier.padding(bottom = 6.dp)
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    HarmoniousPalettes.forEach { preset ->
+                        val isSelected = preset.name == themePaletteName ||
+                            (kotlin.math.abs(preset.hue - themeHue) < 4f && kotlin.math.abs(preset.saturation - themeSaturation) < 0.08f)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isSelected) Color(0xFF1E2C3D) else Color(0xFF1E212E))
+                                .border(1.dp, if (isSelected) NeonCyan else Color(0x14FFFFFF), RoundedCornerShape(12.dp))
+                                .clickable { onSelectThemePalette(preset) }
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            // Dual color chip preview
+                            Row(
+                                modifier = Modifier
+                                    .size(width = 34.dp, height = 20.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                            ) {
+                                Box(modifier = Modifier.weight(1f).fillMaxHeight().background(preset.primaryPreview))
+                                Box(modifier = Modifier.weight(1f).fillMaxHeight().background(preset.secondaryPreview))
+                            }
+                            Text(
+                                text = preset.name,
+                                fontSize = 12.5.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = Color.White,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (isSelected) {
+                                Text(text = "✓", fontSize = 13.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Section 2: Réglages spectraux précis (Hue, Saturation, Nuance)
+            item {
+                AospCard(title = "Réglages Précis") {
+                    Column(
+                        modifier = Modifier.padding(vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        // Slider Teinte (Hue 0..360)
+                        Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Teinte (Hue)", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Medium)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(14.dp)
+                                            .clip(CircleShape)
+                                            .background(hsvToColor(themeHue, 1f, 1f))
+                                            .border(1.dp, Color.White, CircleShape)
+                                    )
+                                    Text("${themeHue.toInt()}°", fontSize = 11.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Slider(
+                                value = themeHue,
+                                onValueChange = onThemeHueChange,
+                                valueRange = 0f..360f,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = Color.White,
+                                    activeTrackColor = hsvToColor(themeHue, 0.9f, 0.9f),
+                                    inactiveTrackColor = Color(0x33FFFFFF)
+                                ),
+                                modifier = Modifier.height(28.dp)
+                            )
+                        }
+
+                        // Slider Saturation (0..100%)
+                        Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Saturation", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Medium)
+                                Text("${(themeSaturation * 100).toInt()}%", fontSize = 11.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
+                            }
+                            Slider(
+                                value = themeSaturation,
+                                onValueChange = onThemeSaturationChange,
+                                valueRange = 0.05f..1f,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = Color.White,
+                                    activeTrackColor = hsvToColor(themeHue, themeSaturation, 0.9f),
+                                    inactiveTrackColor = Color(0x33FFFFFF)
+                                ),
+                                modifier = Modifier.height(28.dp)
+                            )
+                        }
+
+                        // Slider Nuance / Contraste (0..100%)
+                        Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Nuance & Contraste", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Medium)
+                                Text("${(themeNuance * 100).toInt()}%", fontSize = 11.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
+                            }
+                            Slider(
+                                value = themeNuance,
+                                onValueChange = onThemeNuanceChange,
+                                valueRange = 0.15f..0.85f,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = Color.White,
+                                    activeTrackColor = hsvToColor(themeHue, themeSaturation * 0.4f, 0.7f),
+                                    inactiveTrackColor = Color(0x33FFFFFF)
+                                ),
+                                modifier = Modifier.height(28.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }

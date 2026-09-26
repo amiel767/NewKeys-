@@ -1032,27 +1032,20 @@ class AudioEngine(private val context: Context) {
             } else {
                 val newId = nextNativeSampleId.getAndIncrement()
                 nativeDrumSampleIds[sampleFile.absolutePath] = newId
-                if (sampleFile.extension.equals("wav", ignoreCase = true)) {
-                    // Ultra-fast instant C++ memory mapped WAV load without pre-sound
-                    NativeAudioBridge.safeLoadDrumWavFile(newId, sampleFile.absolutePath)
-                    NativeAudioBridge.safeTriggerDrumSample(newId, volume, 0.0f)
-                } else {
-                    coroutineScope.launch(Dispatchers.IO) {
-                        val decoded = com.soundstage.mixer.audio.AudioDecoder.decodeAudioFile(sampleFile)
-                        if (decoded != null) {
-                            NativeAudioBridge.safeLoadDrumSamplePcm(
-                                sampleId = newId,
-                                sampleName = sampleFile.name,
-                                pcmData = decoded.pcmData,
-                                totalFrames = decoded.totalFrames,
-                                sampleRate = decoded.sampleRate
-                            )
-                            NativeAudioBridge.safeTriggerDrumSample(newId, volume, 0.0f)
-                        } else {
-                            val defaultId = ((drumPad.id - 1) % 8) + 1
-                            NativeAudioBridge.safeTriggerDrumSample(defaultId, volume, 0.0f)
-                        }
+                coroutineScope.launch(Dispatchers.IO) {
+                    val decoded = com.soundstage.mixer.audio.AudioDecoder.decodeAudioFile(sampleFile)
+                    if (decoded != null) {
+                        NativeAudioBridge.safeLoadDrumSamplePcm(
+                            sampleId = newId,
+                            sampleName = sampleFile.name,
+                            pcmData = decoded.pcmData,
+                            totalFrames = decoded.totalFrames,
+                            sampleRate = decoded.sampleRate
+                        )
+                    } else if (sampleFile.extension.equals("wav", ignoreCase = true)) {
+                        NativeAudioBridge.safeLoadDrumWavFile(newId, sampleFile.absolutePath)
                     }
+                    NativeAudioBridge.safeTriggerDrumSample(newId, volume, 0.0f)
                 }
             }
         } else {
@@ -1060,10 +1053,17 @@ class AudioEngine(private val context: Context) {
             val defaultId = ((drumPad.id - 1) % 8) + 1
             NativeAudioBridge.safeTriggerDrumSample(defaultId, volume, 0.0f)
         }
+
+        // Native C++ Oboe engine directly renders low-latency drum synthesis into the main mix.
+        // Direct AudioTrack playback is strictly a fallback only if native Oboe stream is not active.
+        if (!NativeAudioBridge.isNativeReady() || !NativeAudioBridge.safeIsOboeActive()) {
+            playDirectDrumPcm(drumPad, volume)
+        }
     }
 
     private fun playDirectDrumPcm(pad: DrumPadItem, volume: Float) {
         coroutineScope.launch(Dispatchers.Default) {
+            var track: AudioTrack? = null
             try {
                 val pcm = com.soundstage.mixer.audio.DrumPadSampleProvider.getOrGeneratePadPcm(context, pad)
                 if (pcm.isNotEmpty()) {
@@ -1074,7 +1074,7 @@ class AudioEngine(private val context: Context) {
                     for (i in 0 until numSamples) {
                         scaledPcm[i] = (pcm[i] * gain).toInt().coerceIn(-32768, 32767).toShort()
                     }
-                    val track = AudioTrack.Builder()
+                    val createdTrack = AudioTrack.Builder()
                         .setAudioAttributes(
                             AudioAttributes.Builder()
                                 .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -1091,14 +1091,18 @@ class AudioEngine(private val context: Context) {
                         .setBufferSizeInBytes(scaledPcm.size * 2)
                         .setTransferMode(AudioTrack.MODE_STATIC)
                         .build()
-                    track.write(scaledPcm, 0, scaledPcm.size)
-                    track.play()
-                    kotlinx.coroutines.delay((numSamples * 1000L) / (sampleRate * 2) + 80)
-                    track.stop()
-                    track.release()
+                    track = createdTrack
+                    createdTrack.write(scaledPcm, 0, scaledPcm.size)
+                    createdTrack.play()
+                    kotlinx.coroutines.delay((numSamples * 1000L) / (sampleRate * 2) + 60)
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Direct drum playback exception: ${e.message}")
+            } finally {
+                try {
+                    track?.stop()
+                    track?.release()
+                } catch (_: Exception) {}
             }
         }
     }
@@ -1118,8 +1122,6 @@ class AudioEngine(private val context: Context) {
             } else {
                 val newId = nextNativeSampleId.getAndIncrement()
                 nativeDrumSampleIds[sampleFile.absolutePath] = newId
-                val dummyPad = DrumPadItem(id = 1, sampleFileName = sampleFile.name, sampleFilePath = sampleFile.absolutePath)
-                playDirectDrumPcm(dummyPad, volume)
                 coroutineScope.launch(Dispatchers.IO) {
                     val decoded = com.soundstage.mixer.audio.AudioDecoder.decodeAudioFile(sampleFile)
                     if (decoded != null) {
@@ -1133,10 +1135,16 @@ class AudioEngine(private val context: Context) {
                     } else if (sampleFile.extension.equals("wav", ignoreCase = true)) {
                         NativeAudioBridge.safeLoadDrumWavFile(newId, sampleFile.absolutePath)
                     }
+                    NativeAudioBridge.safeTriggerDrumSample(newId, volume, 0.0f)
                 }
             }
+            // Also play via Direct PCM
+            val dummyPad = DrumPadItem(id = 1, sampleFileName = sampleFile.name, sampleFilePath = sampleFile.absolutePath)
+            playDirectDrumPcm(dummyPad, volume)
         } else {
             NativeAudioBridge.safeTriggerDrumSample(1, volume, 0.0f)
+            val dummyPad = DrumPadItem(id = 1)
+            playDirectDrumPcm(dummyPad, volume)
         }
     }
 

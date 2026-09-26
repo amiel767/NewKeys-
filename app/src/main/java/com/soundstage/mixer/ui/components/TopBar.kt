@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -41,8 +42,6 @@ import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.R
 import com.soundstage.mixer.model.LoopFile
 import com.soundstage.mixer.model.LoopFolder
-import com.soundstage.mixer.model.AppTheme
-import com.soundstage.mixer.model.LocalDynamicPalette
 import com.soundstage.mixer.ui.theme.*
 
 @Composable
@@ -76,13 +75,10 @@ fun TopBar(
     // Launchers
     onOpenNotes: () -> Unit = {},
     onOpenDrumPad: () -> Unit,
-    onOpenStepDrum: () -> Unit = {},
     onOpenTonicPad: () -> Unit,
     onPanic: () -> Unit,
     onOpenScenes: () -> Unit,
     onOpenSettings: () -> Unit,
-    currentTheme: AppTheme = AppTheme.CYBER_NEON,
-    onCycleTheme: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val topBarHeight = 38.dp
@@ -111,12 +107,6 @@ fun TopBar(
         NeonPurple.copy(alpha = 0.6f)
     }
 
-    val isMaterialYou = currentTheme == AppTheme.MATERIAL_YOU
-    val dynamicPalette = LocalDynamicPalette.current
-
-    val barItemBg = if (isMaterialYou) Color(0xFF1B1E2B) else DarkSurface
-    val barItemBorder = if (isMaterialYou) Color(0xFF1E2232) else BorderSubtle
-
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -133,7 +123,6 @@ fun TopBar(
                 value = if (transpose > 0) "+$transpose" else "$transpose",
                 onMinus = { onTransposeChange(-1) },
                 onPlus = { onTransposeChange(1) },
-                isMaterialYou = isMaterialYou,
                 modifier = Modifier.testTag("stepper_trans")
             )
 
@@ -143,11 +132,10 @@ fun TopBar(
                 value = if (octave > 0) "+$octave" else "$octave",
                 onMinus = { onOctaveChange(-1) },
                 onPlus = { onOctaveChange(1) },
-                isMaterialYou = isMaterialYou,
                 modifier = Modifier.testTag("stepper_oct")
             )
 
-            // OLED Studio Chord Display Container (Double Chord Interpretation, Prominent Readability)
+            // OLED Studio Chord Display Container (Section 1)
             val detectedChord = androidx.compose.runtime.remember(pressedKeys, useFlats) {
                 val raw = ChordCalculator.detect(pressedKeys)
                 if (useFlats && raw != null) {
@@ -159,7 +147,6 @@ fun TopBar(
                         .replace("A#", "Bb")
                     DetectedChord(
                         primaryName = raw.primaryName.toFlats(),
-                        equivalentName = raw.equivalentName.toFlats(),
                         variantName = raw.variantName.toFlats(),
                         alternateNames = raw.alternateNames.toFlats(),
                         alternateName2 = raw.alternateName2.toFlats(),
@@ -168,76 +155,38 @@ fun TopBar(
                     )
                 } else raw
             }
-            val chordBoxBg = if (isMaterialYou) Color(0xFF12141E) else Color(0xFF0C101B)
-            val chordBoxBorder = if (isMaterialYou) Color(0xFF1E2232) else Color(0x3300E5FF)
             Box(
                 modifier = Modifier
-                    .weight(1.8f)
+                    .weight(1f)
                     .height(38.dp)
                     .clip(RoundedCornerShape(9.dp))
-                    .background(chordBoxBg)
-                    .border(1.dp, chordBoxBorder, RoundedCornerShape(9.dp))
-                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                    .background(Color(0xFF0C101B))
+                    .border(1.dp, Color(0x3300E5FF), RoundedCornerShape(9.dp))
+                    .padding(horizontal = 6.dp, vertical = 1.dp)
                     .testTag("topbar_chord_display"),
                 contentAlignment = Alignment.Center
             ) {
                 if (detectedChord != null) {
-                    val hasEquivalent = detectedChord.equivalentName.isNotBlank() && detectedChord.equivalentName != detectedChord.primaryName
-                    if (hasEquivalent) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            // Left: Primary / Slash chord
-                            Text(
-                                text = detectedChord.primaryName,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color.White,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f),
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
-
-                            // Clean subtle divider
-                            Box(
-                                modifier = Modifier
-                                    .width(1.dp)
-                                    .height(18.dp)
-                                    .background(Color(0x33FFFFFF))
-                            )
-
-                            // Right: Functional Equivalent / Alternate nature chord
-                            Text(
-                                text = detectedChord.equivalentName,
-                                fontSize = 13.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = NeonCyanLight,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f),
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
-                        }
-                    } else {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
                         Text(
                             text = detectedChord.primaryName,
-                            fontSize = 16.sp,
+                            fontSize = 13.5.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White,
                             maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            lineHeight = 14.sp,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                         )
                     }
                 } else {
                     Text(
                         text = "---",
-                        fontSize = 14.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isMaterialYou) Color(0xFF5B6175) else TextDim,
+                        color = TextDim,
                         letterSpacing = 2.sp
                     )
                 }
@@ -258,17 +207,15 @@ fun TopBar(
             val isSustainLit = isSustainActive || isMidiPedalPressed
             val sustainAlpha = if (isMidiPedalPressed) pedalBlinkAlpha else if (isSustainActive) 1.0f else 0.4f
             val sustainGreen = Color(0xFF10B981)
-            val sustainBg = if (isSustainLit) Color(0x2610B981) else if (isMaterialYou) Color(0xFF161924) else DarkSurface
-            val sustainBorder = if (isSustainLit) sustainGreen.copy(alpha = sustainAlpha) else barItemBorder
 
             Box(
                 modifier = Modifier
                     .height(38.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(sustainBg)
+                    .background(if (isSustainLit) Color(0x2610B981) else DarkSurface)
                     .border(
                         1.dp,
-                        sustainBorder,
+                        if (isSustainLit) sustainGreen.copy(alpha = sustainAlpha) else BorderSubtle,
                         RoundedCornerShape(12.dp)
                     )
                     .clickable { onToggleSustain() }
@@ -284,13 +231,13 @@ fun TopBar(
                         modifier = Modifier
                             .size(7.dp)
                             .clip(CircleShape)
-                            .background(if (isSustainLit) sustainGreen.copy(alpha = sustainAlpha) else if (isMaterialYou) Color(0xFF4B5162) else TextDim2)
+                            .background(if (isSustainLit) sustainGreen.copy(alpha = sustainAlpha) else TextDim2)
                     )
                     Text(
                         text = "SUSTAIN",
                         fontSize = 9.5.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = if (isSustainLit) sustainGreen else if (isMaterialYou) Color(0xFF7A8096) else TextDim
+                        color = if (isSustainLit) sustainGreen else TextDim
                     )
                 }
             }
@@ -300,8 +247,8 @@ fun TopBar(
                 modifier = Modifier
                     .size(38.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(barItemBg)
-                    .border(1.dp, barItemBorder, RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .border(1.dp, BorderSubtle, RoundedCornerShape(12.dp))
                     .clickable { onOpenNotes() }
                     .testTag("btn_notes"),
                 contentAlignment = Alignment.Center
@@ -309,7 +256,7 @@ fun TopBar(
                 Icon(
                     painter = painterResource(id = R.drawable.ic_quill),
                     contentDescription = "Notes & Grilles d'accords",
-                    tint = if (isMaterialYou) Color(0xFFD1D5DB) else Color.White,
+                    tint = Color.White,
                     modifier = Modifier.size(19.dp)
                 )
             }
@@ -319,8 +266,8 @@ fun TopBar(
                 modifier = Modifier
                     .size(38.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(barItemBg)
-                    .border(1.dp, barItemBorder, RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .border(1.dp, BorderSubtle, RoundedCornerShape(12.dp))
                     .clickable { onOpenDrumPad() }
                     .testTag("btn_drum_pad"),
                 contentAlignment = Alignment.Center
@@ -347,7 +294,7 @@ fun TopBar(
                 }
             }
 
-            // 8. Panic Button (All Notes Off)
+            // 8. Panic Button (All Notes Off - Rouge clignotant / vibrant)
             val panicAlpha by infiniteTransition.animateFloat(
                 initialValue = 0.82f,
                 targetValue = 1.0f,
@@ -357,23 +304,14 @@ fun TopBar(
                 ),
                 label = "panic_pulse"
             )
-            val panicBg = if (isMaterialYou) {
-                Color(0xFFF8B4B4)
-            } else {
-                Brush.verticalGradient(listOf(PanicRed.copy(alpha = panicAlpha), PanicRedDark))
-            }
-            val panicBorder = if (isMaterialYou) Color(0xFFF8B4B4) else PanicRed.copy(alpha = panicAlpha)
-            val panicIconColor = if (isMaterialYou) Color(0xFF3D1418) else Color.White
-
             Box(
                 modifier = Modifier
                     .size(38.dp)
                     .clip(RoundedCornerShape(19.dp))
-                    .then(
-                        if (isMaterialYou) Modifier.background(panicBg as Color)
-                        else Modifier.background(panicBg as Brush)
+                    .background(
+                        Brush.verticalGradient(listOf(PanicRed.copy(alpha = panicAlpha), PanicRedDark))
                     )
-                    .border(1.dp, panicBorder, RoundedCornerShape(19.dp))
+                    .border(1.dp, PanicRed.copy(alpha = panicAlpha), RoundedCornerShape(19.dp))
                     .clickable { onPanic() }
                     .testTag("btn_panic"),
                 contentAlignment = Alignment.Center
@@ -381,7 +319,7 @@ fun TopBar(
                 Icon(
                     painter = painterResource(id = R.drawable.ic_midi_panic),
                     contentDescription = "MIDI Panic",
-                    tint = panicIconColor,
+                    tint = Color.White,
                     modifier = Modifier.size(24.dp)
                 )
             }
@@ -391,8 +329,8 @@ fun TopBar(
                 modifier = Modifier
                     .size(38.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(barItemBg)
-                    .border(1.dp, barItemBorder, RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .border(1.dp, BorderSubtle, RoundedCornerShape(12.dp))
                     .clickable { onOpenScenes() }
                     .testTag("btn_scene"),
                 contentAlignment = Alignment.Center
@@ -400,7 +338,7 @@ fun TopBar(
                 Icon(
                     imageVector = Icons.Default.Menu,
                     contentDescription = "Scenes",
-                    tint = if (isMaterialYou) Color(0xFFD1D5DB) else NeonCyan,
+                    tint = NeonCyan,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -410,8 +348,8 @@ fun TopBar(
                 modifier = Modifier
                     .size(38.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(barItemBg)
-                    .border(1.dp, barItemBorder, RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .border(1.dp, BorderSubtle, RoundedCornerShape(12.dp))
                     .clickable { onOpenSettings() }
                     .testTag("btn_settings"),
                 contentAlignment = Alignment.Center
@@ -419,7 +357,7 @@ fun TopBar(
                 Icon(
                     imageVector = Icons.Default.Settings,
                     contentDescription = "Réglages",
-                    tint = if (isMaterialYou) Color(0xFFD1D5DB) else TextDim,
+                    tint = TextDim,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -433,22 +371,14 @@ fun StepperControl(
     value: String,
     onMinus: () -> Unit,
     onPlus: () -> Unit,
-    isMaterialYou: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val containerBg = if (isMaterialYou) Color(0xFF161924) else DarkSurface
-    val borderCol = if (isMaterialYou) Color(0xFF1E2232) else BorderSubtle
-    val buttonBg = if (isMaterialYou) Color(0xFF1F2333) else Color(0x1022D3EE)
-    val btnTextCol = if (isMaterialYou) Color(0xFFE2E8F0) else NeonCyan
-    val labelCol = if (isMaterialYou) Color(0xFF7A8096) else TextDim2
-    val valueCol = if (isMaterialYou) Color.White else TextPrimary
-
     Row(
         modifier = modifier
             .height(38.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(containerBg)
-            .border(1.dp, borderCol, RoundedCornerShape(12.dp)),
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, BorderSubtle, RoundedCornerShape(12.dp)),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Minus Button
@@ -456,7 +386,7 @@ fun StepperControl(
             modifier = Modifier
                 .width(28.dp)
                 .fillMaxHeight()
-                .background(buttonBg)
+                .background(Color(0x1022D3EE))
                 .clickable { onMinus() },
             contentAlignment = Alignment.Center
         ) {
@@ -464,7 +394,7 @@ fun StepperControl(
                 text = "−",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.ExtraBold,
-                color = btnTextCol
+                color = NeonCyan
             )
         }
 
@@ -480,7 +410,7 @@ fun StepperControl(
                 text = label,
                 fontSize = 8.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = labelCol,
+                color = TextDim2,
                 letterSpacing = 0.5.sp,
                 lineHeight = 9.sp
             )
@@ -488,7 +418,7 @@ fun StepperControl(
                 text = value,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
-                color = valueCol,
+                color = TextPrimary,
                 lineHeight = 14.sp
             )
         }
@@ -498,7 +428,7 @@ fun StepperControl(
             modifier = Modifier
                 .width(28.dp)
                 .fillMaxHeight()
-                .background(buttonBg)
+                .background(Color(0x1022D3EE))
                 .clickable { onPlus() },
             contentAlignment = Alignment.Center
         ) {
@@ -506,7 +436,7 @@ fun StepperControl(
                 text = "+",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.ExtraBold,
-                color = btnTextCol
+                color = NeonCyan
             )
         }
     }

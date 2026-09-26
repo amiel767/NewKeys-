@@ -42,6 +42,10 @@ class AppStatePersistence(context: Context) {
         private const val KEY_SELECTED_SCALE_MODE = "selected_scale_mode"
         private const val KEY_SNAPSHOTS_JSON = "snapshots_json"
         private const val KEY_ACTIVE_SNAPSHOT_SLOT = "active_snapshot_slot"
+        private const val KEY_THEME_HUE = "theme_hue"
+        private const val KEY_THEME_SATURATION = "theme_saturation"
+        private const val KEY_THEME_NUANCE = "theme_nuance"
+        private const val KEY_THEME_PALETTE = "theme_palette"
     }
 
     data class SavedTrackData(
@@ -104,7 +108,11 @@ class AppStatePersistence(context: Context) {
         val keepScreenOn: Boolean? = null,
         val selectedScaleMode: String? = null,
         val snapshots: Map<String, SubSceneSnapshot> = emptyMap(),
-        val activeSnapshotSlot: String? = null
+        val activeSnapshotSlot: String? = null,
+        val themeHue: Float? = null,
+        val themeSaturation: Float? = null,
+        val themeNuance: Float? = null,
+        val themePalette: String? = null
     )
 
     fun saveAppState(
@@ -130,7 +138,11 @@ class AppStatePersistence(context: Context) {
         keepScreenOn: Boolean = true,
         selectedScaleMode: String = "Majeur",
         snapshots: Map<String, SubSceneSnapshot> = emptyMap(),
-        activeSnapshotSlot: String? = null
+        activeSnapshotSlot: String? = null,
+        themeHue: Float = 185f,
+        themeSaturation: Float = 0.85f,
+        themeNuance: Float = 0.50f,
+        themePalette: String = "Cyber Neon"
     ) {
         try {
             val tracksArray = JSONArray()
@@ -212,8 +224,6 @@ class AppStatePersistence(context: Context) {
                             put("transpose", t.transpose)
                             put("octave", t.octave)
                             put("reverbSend", t.reverbSend.toDouble())
-                            put("splitNoteMin", t.splitNoteMin)
-                            put("splitNoteMax", t.splitNoteMax)
                         }
                         tArray.put(to)
                     }
@@ -274,6 +284,10 @@ class AppStatePersistence(context: Context) {
                 putFloat(KEY_DRUM_REVERB, drumReverb)
                 putBoolean(KEY_KEEP_SCREEN_ON, keepScreenOn)
                 putString(KEY_SELECTED_SCALE_MODE, selectedScaleMode)
+                putFloat(KEY_THEME_HUE, themeHue)
+                putFloat(KEY_THEME_SATURATION, themeSaturation)
+                putFloat(KEY_THEME_NUANCE, themeNuance)
+                putString(KEY_THEME_PALETTE, themePalette)
                 apply()
             }
         } catch (e: Exception) {
@@ -304,6 +318,10 @@ class AppStatePersistence(context: Context) {
             val drumReverb = if (prefs.contains(KEY_DRUM_REVERB)) prefs.getFloat(KEY_DRUM_REVERB, 0.24f) else null
             val keepScreenOn = if (prefs.contains(KEY_KEEP_SCREEN_ON)) prefs.getBoolean(KEY_KEEP_SCREEN_ON, true) else null
             val selectedScaleMode = prefs.getString(KEY_SELECTED_SCALE_MODE, null)
+            val themeHue = if (prefs.contains(KEY_THEME_HUE)) prefs.getFloat(KEY_THEME_HUE, 185f) else null
+            val themeSaturation = if (prefs.contains(KEY_THEME_SATURATION)) prefs.getFloat(KEY_THEME_SATURATION, 0.85f) else null
+            val themeNuance = if (prefs.contains(KEY_THEME_NUANCE)) prefs.getFloat(KEY_THEME_NUANCE, 0.50f) else null
+            val themePalette = prefs.getString(KEY_THEME_PALETTE, null)
 
             val tracksList = mutableListOf<SavedTrackData>()
             val tracksJson = prefs.getString(KEY_TRACKS_JSON, null)
@@ -412,9 +430,7 @@ class AppStatePersistence(context: Context) {
                                         program = to.optInt("program", 0),
                                         transpose = to.optInt("transpose", 0),
                                         octave = to.optInt("octave", 0),
-                                        reverbSend = to.optDouble("reverbSend", 0.0).toFloat(),
-                                        splitNoteMin = to.optInt("splitNoteMin", 24),
-                                        splitNoteMax = to.optInt("splitNoteMax", 108)
+                                        reverbSend = to.optDouble("reverbSend", 0.0).toFloat()
                                     )
                                 )
                             }
@@ -495,6 +511,10 @@ class AppStatePersistence(context: Context) {
                 drumReverb = drumReverb,
                 keepScreenOn = keepScreenOn,
                 selectedScaleMode = selectedScaleMode,
+                themeHue = themeHue,
+                themeSaturation = themeSaturation,
+                themeNuance = themeNuance,
+                themePalette = themePalette,
                 snapshots = snapshotsMap,
                 activeSnapshotSlot = activeSnapshotSlot
             )

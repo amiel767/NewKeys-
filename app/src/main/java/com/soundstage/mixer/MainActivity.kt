@@ -85,7 +85,12 @@ class MainActivity : ComponentActivity() {
           }
         } catch (_: Throwable) {}
       }
-      SoundfontLiveMixerTheme(appTheme = uiState.currentTheme) {
+      SoundfontLiveMixerTheme(
+          appTheme = uiState.currentTheme,
+          hue = uiState.themeHue,
+          saturation = uiState.themeSaturation,
+          nuance = uiState.themeNuance
+      ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background

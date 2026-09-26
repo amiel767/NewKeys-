@@ -1,13 +1,115 @@
 package com.soundstage.mixer.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import com.soundstage.mixer.model.AppTheme
+import kotlin.math.abs
 
-private val CyberVioletColorScheme = darkColorScheme(
+/**
+ * Pure Kotlin HSV to Compose Color converter.
+ * Deterministic, zero-dependency, compatible with all Android API levels.
+ */
+fun hsvToColor(hue: Float, saturation: Float, value: Float, alpha: Float = 1f): Color {
+    val h = (hue % 360f + 360f) % 360f
+    val s = saturation.coerceIn(0f, 1f)
+    val v = value.coerceIn(0f, 1f)
+    val c = v * s
+    val x = c * (1f - abs((h / 60f) % 2f - 1f))
+    val m = v - c
+    val (r1, g1, b1) = when ((h / 60f).toInt()) {
+        0 -> Triple(c, x, 0f)
+        1 -> Triple(x, c, 0f)
+        2 -> Triple(0f, c, x)
+        3 -> Triple(0f, x, c)
+        4 -> Triple(x, 0f, c)
+        else -> Triple(c, 0f, x)
+    }
+    return Color(
+        red = (r1 + m).coerceIn(0f, 1f),
+        green = (g1 + m).coerceIn(0f, 1f),
+        blue = (b1 + m).coerceIn(0f, 1f),
+        alpha = alpha.coerceIn(0f, 1f)
+    )
+}
+
+data class ThemePalettePreset(
+    val id: String,
+    val name: String,
+    val hue: Float,
+    val saturation: Float,
+    val nuance: Float,
+    val primaryPreview: Color,
+    val secondaryPreview: Color
+)
+
+val HarmoniousPalettes = listOf(
+    ThemePalettePreset("midnight_slate", "Midnight Slate (Défaut)", 220f, 0.40f, 0.45f, Color(0xFF4A5F7E), Color(0xFF36B37E)),
+    ThemePalettePreset("cyber_neon", "Cyber Neon", 185f, 0.85f, 0.50f, Color(0xFF00E5FF), Color(0xFF8B5CF6)),
+    ThemePalettePreset("electric_ocean", "Océan Électrique", 210f, 0.90f, 0.50f, Color(0xFF0091FF), Color(0xFF00E5FF)),
+    ThemePalettePreset("dusk_purple", "Violet Crépuscule", 275f, 0.85f, 0.48f, Color(0xFFA855F7), Color(0xFFEC4899)),
+    ThemePalettePreset("analog_amber", "Ambre Analogique", 38f, 0.95f, 0.52f, Color(0xFFFFB300), Color(0xFFFF6D00)),
+    ThemePalettePreset("studio_emerald", "Émeraude Studio", 155f, 0.85f, 0.46f, Color(0xFF10B981), Color(0xFF06B6D4)),
+    ThemePalettePreset("synthwave_ruby", "Rubis Synthwave", 345f, 0.90f, 0.48f, Color(0xFFF43F5E), Color(0xFF9333EA)),
+    ThemePalettePreset("pure_titanium", "Titane Pur", 215f, 0.15f, 0.50f, Color(0xFFCBD5E1), Color(0xFF64748B))
+)
+
+/**
+ * Dynamically computes a natural, high-end dark color scheme from spectral parameters.
+ * Automatically adapts the dark background, surface cards, and accent highlights.
+ */
+fun generateDynamicColorScheme(
+    hue: Float,
+    saturation: Float,
+    nuance: Float
+): ColorScheme {
+    val normSat = saturation.coerceIn(0.05f, 1.0f)
+    val normNuance = nuance.coerceIn(0.1f, 0.9f)
+
+    val primaryColor = hsvToColor(hue, normSat * 0.70f, 0.88f)
+    val secondaryColor = hsvToColor((hue + 40f) % 360f, normSat * 0.65f, 0.82f)
+    val tertiaryColor = hsvToColor((hue + 140f) % 360f, normSat * 0.60f, 0.80f)
+
+    // Deep natural midnight background (#0E121A tuned by hue)
+    val bgVal = (0.055f + (normNuance - 0.5f) * 0.03f).coerceIn(0.03f, 0.08f)
+    val bgColor = hsvToColor(hue, (normSat * 0.18f).coerceAtMost(0.12f), bgVal)
+
+    // Smooth slate surface cards (#161A26)
+    val surfVal = (0.11f + (normNuance - 0.5f) * 0.05f).coerceIn(0.08f, 0.16f)
+    val surfaceColor = hsvToColor(hue, (normSat * 0.20f).coerceAtMost(0.15f), surfVal)
+
+    val surfVarVal = (0.15f + (normNuance - 0.5f) * 0.06f).coerceIn(0.11f, 0.20f)
+    val surfaceVariantColor = hsvToColor(hue, (normSat * 0.18f).coerceAtMost(0.14f), surfVarVal)
+    
+    // Subtle discrete border (#222838)
+    val outlineColor = hsvToColor(hue, (normSat * 0.25f).coerceAtMost(0.18f), 0.22f)
+
+    return darkColorScheme(
+        primary = primaryColor,
+        onPrimary = Color.Black,
+        primaryContainer = hsvToColor(hue, normSat * 0.50f, 0.30f),
+        onPrimaryContainer = Color.White,
+        secondary = secondaryColor,
+        onSecondary = Color.Black,
+        secondaryContainer = hsvToColor((hue + 40f) % 360f, normSat * 0.45f, 0.28f),
+        onSecondaryContainer = Color.White,
+        tertiary = tertiaryColor,
+        background = bgColor,
+        onBackground = Color(0xFFF1F5F9),
+        surface = surfaceColor,
+        onSurface = Color(0xFFF1F5F9),
+        surfaceVariant = surfaceVariantColor,
+        onSurfaceVariant = Color(0xFF8C96A8),
+        outline = outlineColor,
+        error = MuteRed,
+        onError = Color.White
+    )
+}
+
+private val CyberNeonColorScheme = darkColorScheme(
     primary = NeonCyan,
     onPrimary = Color(0xFF003844),
     primaryContainer = NeonCyanDark,
@@ -28,128 +130,24 @@ private val CyberVioletColorScheme = darkColorScheme(
     onError = Color.White
 )
 
-private val RubyVelvetColorScheme = darkColorScheme(
-    primary = Color(0xFFF43F5E),
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFF881337),
-    onPrimaryContainer = Color(0xFFFFE4E6),
-    secondary = Color(0xFFFB7185),
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFF4C0519),
-    onSecondaryContainer = Color(0xFFFECDD3),
-    tertiary = Color(0xFFFF7A8A),
-    background = Color(0xFF28070F),
-    onBackground = Color(0xFFFFF1F2),
-    surface = Color(0xFF3F0B18),
-    onSurface = Color(0xFFFFF1F2),
-    surfaceVariant = Color(0xFF1F040B),
-    onSurfaceVariant = Color(0xFFFDA4AF),
-    outline = Color(0x33F43F5E),
-    error = Color(0xFFFF5252),
-    onError = Color.White
-)
-
-private val NeonAmberColorScheme = darkColorScheme(
-    primary = Color(0xFFFFB300),
-    onPrimary = Color(0xFF3B2A00),
-    primaryContainer = Color(0xFF5E4500),
-    onPrimaryContainer = Color(0xFFFFDF9E),
-    secondary = Color(0xFFFFA000),
-    onSecondary = Color.Black,
-    secondaryContainer = Color(0xFF42310A),
-    onSecondaryContainer = Color(0xFFFFDE99),
-    tertiary = Color(0xFFFFD54F),
-    background = Color(0xFF140F04),
-    onBackground = Color(0xFFFFF8E1),
-    surface = Color(0xFF241A06),
-    onSurface = Color(0xFFFFF8E1),
-    surfaceVariant = Color(0xFF191205),
-    onSurfaceVariant = Color(0xFFFFE082),
-    outline = Color(0x33FFB300),
-    error = MuteRed,
-    onError = Color.White
-)
-
-private val EmeraldSynthColorScheme = darkColorScheme(
-    primary = Color(0xFF10B981),
-    onPrimary = Color(0xFF003822),
-    primaryContainer = Color(0xFF065F46),
-    onPrimaryContainer = Color(0xFFA7F3D0),
-    secondary = Color(0xFF34D399),
-    onSecondary = Color.Black,
-    secondaryContainer = Color(0xFF047857),
-    onSecondaryContainer = Color(0xFFD1FAE5),
-    tertiary = Color(0xFF6EE7B7),
-    background = Color(0xFF061A14),
-    onBackground = Color(0xFFECFDF5),
-    surface = Color(0xFF0F2D24),
-    onSurface = Color(0xFFECFDF5),
-    surfaceVariant = Color(0xFF05130E),
-    onSurfaceVariant = Color(0xFFA7F3D0),
-    outline = Color(0x3310B981),
-    error = MuteRed,
-    onError = Color.White
-)
-
-private val DeepOceanColorScheme = darkColorScheme(
-    primary = Color(0xFF38BDF8),
-    onPrimary = Color(0xFF082F49),
-    primaryContainer = Color(0xFF0369A1),
-    onPrimaryContainer = Color(0xFFE0F2FE),
-    secondary = Color(0xFF0284C7),
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFF075985),
-    onSecondaryContainer = Color(0xFFBAE6FD),
-    tertiary = Color(0xFF7DD3FC),
-    background = Color(0xFF0A192F),
-    onBackground = Color(0xFFF0F9FF),
-    surface = Color(0xFF112240),
-    onSurface = Color(0xFFF0F9FF),
-    surfaceVariant = Color(0xFF071224),
-    onSurfaceVariant = Color(0xFFBAE6FD),
-    outline = Color(0x3338BDF8),
-    error = MuteRed,
-    onError = Color.White
-)
-
-private val MaterialYouColorScheme = darkColorScheme(
-    primary = Color(0xFFE2B4BD),
-    onPrimary = Color(0xFF451926),
-    primaryContainer = Color(0xFF5D2D3C),
-    onPrimaryContainer = Color(0xFFFFD9E2),
-    secondary = Color(0xFFDDA2AF),
-    onSecondary = Color(0xFF3F1B25),
-    secondaryContainer = Color(0xFF57303B),
-    onSecondaryContainer = Color(0xFFFFD9E2),
-    tertiary = Color(0xFFE7B9A5),
-    background = Color(0xFF13131C),
-    onBackground = Color(0xFFE5E1E6),
-    surface = Color(0xFF1E202C),
-    onSurface = Color(0xFFE5E1E6),
-    surfaceVariant = Color(0xFF282A3A),
-    onSurfaceVariant = Color(0xFFC7C5D0),
-    outline = Color(0xFF908F9B),
-    error = MuteRed,
-    onError = Color.White
-)
-
-private val CyberNeonColorScheme = CyberVioletColorScheme
-
 @Composable
 fun SoundfontLiveMixerTheme(
-    appTheme: AppTheme = AppTheme.MATERIAL_YOU,
+    appTheme: AppTheme = AppTheme.CYBER_NEON,
+    hue: Float = 185f,
+    saturation: Float = 0.85f,
+    nuance: Float = 0.50f,
+    useCustomDynamicTheme: Boolean = true,
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when (appTheme) {
-        AppTheme.MATERIAL_YOU -> MaterialYouColorScheme
-        AppTheme.CYBER_NEON -> CyberNeonColorScheme
-        AppTheme.RUBY_VELVET -> RubyVelvetColorScheme
-        AppTheme.NEON_AMBER -> NeonAmberColorScheme
-        AppTheme.EMERALD_SYNTH -> EmeraldSynthColorScheme
-        AppTheme.DEEP_OCEAN -> DeepOceanColorScheme
-        else -> MaterialYouColorScheme
+    val colorScheme = if (useCustomDynamicTheme) {
+        generateDynamicColorScheme(hue, saturation, nuance)
+    } else {
+        when (appTheme) {
+            AppTheme.CYBER_NEON -> CyberNeonColorScheme
+            else -> generateDynamicColorScheme(hue, saturation, nuance)
+        }
     }
 
     MaterialTheme(
@@ -165,6 +163,5 @@ fun MyApplicationTheme(
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    SoundfontLiveMixerTheme(AppTheme.MATERIAL_YOU, darkTheme, dynamicColor, content)
+    SoundfontLiveMixerTheme(AppTheme.CYBER_NEON, darkTheme = darkTheme, dynamicColor = dynamicColor, content = content)
 }
-

@@ -24,14 +24,7 @@ import kotlinx.coroutines.withContext
 import kotlin.random.Random
 
 data class MixerUiState(
-    val currentTheme: AppTheme = AppTheme.MATERIAL_YOU,
-    val materialYouStyle: MaterialYouStyle = MaterialYouStyle.VIBRANT,
-    val accentSaturation: Float = 1.0f,
-    val bgSaturation: Float = 1.0f,
-    val bgBrightness: Float = 1.0f,
-    val themeSaturation: Float = 1.0f,
-    val themeNuance: Float = 0.5f,
-    val selectedPaletteIndex: Int = 0,
+    val currentTheme: AppTheme = AppTheme.CYBER_NEON,
     val transpose: Int = 0,
     val octave: Int = 0,
     val bpm: Int = 120,
@@ -138,7 +131,7 @@ data class MixerUiState(
     val drumSubView: String = "main",
     val isDrumPadMixMode: Boolean = false,
     val drumFeelSwing: Int = 54,
-    val activeDrumKitName: String = "Drum Kit 1",
+    val activeDrumKitName: String = "DrumKit",
     val activeTonicPadName: String = "Analog Pad",
     val isDrumPadMiniBrowserOpen: Boolean = false,
     val isDrumPadLoopsOpen: Boolean = false,
@@ -219,8 +212,11 @@ data class MixerUiState(
     val lastDrumPadPath: String = "",
     val showStoragePermissionDialog: Boolean = false,
 
-    // StepDrum Sequencer State (Module 1)
-    val stepDrumState: StepDrumUiState = StepDrumUiState()
+    // Dynamic Theme Customization (Spectral Hue, Saturation, Nuance & Palette)
+    val themeHue: Float = 220f,
+    val themeSaturation: Float = 0.40f,
+    val themeNuance: Float = 0.45f,
+    val themePaletteName: String = "Midnight Slate (Défaut)"
 ) {
     val soundfontFiles: List<StorageItem> get() = realSoundfonts
     val loopAudioFiles: List<StorageItem> get() = realLoopFiles
@@ -257,6 +253,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             NativeAudioBridge.safeStartEngine()
             audioEngine.setBufferSize(_uiState.value.audioBufferSize)
             audioEngine.setPolyphony(_uiState.value.polyphony)
+            val masterVol = _uiState.value.masterTrack.volume
+            audioEngine.masterVolume = masterVol
+            NativeAudioBridge.safeSetMasterVolume(masterVol)
             _uiState.value.tracks.forEachIndexed { index, track ->
                 NativeAudioBridge.safeSetTrackVolume(index, track.volume)
                 NativeAudioBridge.safeSetTrackPan(index, track.pan)
@@ -443,7 +442,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         tonicShimmer = saved.tonicShimmer ?: state.tonicShimmer,
                         drumReverb = saved.drumReverb ?: state.drumReverb,
                         keepScreenOn = saved.keepScreenOn ?: state.keepScreenOn,
-                        selectedScaleMode = saved.selectedScaleMode ?: state.selectedScaleMode
+                        selectedScaleMode = saved.selectedScaleMode ?: state.selectedScaleMode,
+                        themeHue = saved.themeHue ?: state.themeHue,
+                        themeSaturation = saved.themeSaturation ?: state.themeSaturation,
+                        themeNuance = saved.themeNuance ?: state.themeNuance,
+                        themePaletteName = saved.themePalette ?: state.themePaletteName
                     )
                 }
 
@@ -624,7 +627,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             keepScreenOn = state.keepScreenOn,
             selectedScaleMode = state.selectedScaleMode,
             snapshots = state.snapshots,
-            activeSnapshotSlot = state.activeSnapshotSlot
+            activeSnapshotSlot = state.activeSnapshotSlot,
+            themeHue = state.themeHue,
+            themeSaturation = state.themeSaturation,
+            themeNuance = state.themeNuance,
+            themePalette = state.themePaletteName
         )
     }
 
@@ -718,7 +725,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             drumPads = initialDrumPads,
             scenes = initialScenes,
             fxParameters = defaultFx,
-            currentTheme = AppTheme.MATERIAL_YOU
+            currentTheme = AppTheme.CYBER_NEON
         )
     }
 
@@ -1311,6 +1318,38 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setAppLanguage(language: AppLanguage) {
         _uiState.update { it.copy(selectedAppLanguage = language, selectedLanguage = language.displayName) }
+    }
+
+    fun setThemeHue(hue: Float) {
+        _uiState.update { it.copy(themeHue = hue.coerceIn(0f, 360f)) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setThemeSaturation(saturation: Float) {
+        _uiState.update { it.copy(themeSaturation = saturation.coerceIn(0.05f, 1f)) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setThemeNuance(nuance: Float) {
+        _uiState.update { it.copy(themeNuance = nuance.coerceIn(0.15f, 0.85f)) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setThemePalette(preset: ThemePalettePreset) {
+        _uiState.update {
+            it.copy(
+                themeHue = preset.hue,
+                themeSaturation = preset.saturation,
+                themeNuance = preset.nuance,
+                themePaletteName = preset.name
+            )
+        }
+        persistCurrentStateDebounced()
+    }
+
+    fun resetThemeToDefault() {
+        val defaultPreset = HarmoniousPalettes.firstOrNull() ?: ThemePalettePreset("cyber_neon", "Cyber Neon", 185f, 0.85f, 0.50f, Color(0xFF00E5FF), Color(0xFF8B5CF6))
+        setThemePalette(defaultPreset)
     }
 
     // ================= PEAK METERS SIMULATION =================
@@ -2739,9 +2778,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                                 bank = tObj.optInt("bank", originalTrack.bank),
                                 program = tObj.optInt("program", originalTrack.program),
                                 reverbPreset = tObj.optString("reverbPreset", originalTrack.reverbPreset),
-                                reverbMix = tObj.optDouble("reverbMix", originalTrack.reverbMix.toDouble()).toFloat(),
-                                splitNoteMin = tObj.optInt("splitNoteMin", originalTrack.splitNoteMin),
-                                splitNoteMax = tObj.optInt("splitNoteMax", originalTrack.splitNoteMax)
+                                reverbMix = tObj.optDouble("reverbMix", originalTrack.reverbMix.toDouble()).toFloat()
                             )
                         )
                     }
@@ -2848,8 +2885,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                             put("program", t.program)
                             put("reverbPreset", t.reverbPreset)
                             put("reverbMix", t.reverbMix)
-                            put("splitNoteMin", t.splitNoteMin)
-                            put("splitNoteMax", t.splitNoteMax)
                         }
                         tracksArray.put(tObj)
                     }
@@ -2964,11 +2999,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     patchName = t.patchName,
                     bank = t.bank,
                     program = t.program,
-                    transpose = 0,
-                    octave = 0,
-                    reverbSend = t.reverbMix,
-                    splitNoteMin = t.splitNoteMin,
-                    splitNoteMax = t.splitNoteMax
+                    reverbSend = t.reverbMix
                 )
             }
             val newSubScene = SubSceneSnapshot(
@@ -3020,9 +3051,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                                     pan = startTr.pan + (targetTr.pan - startTr.pan) * eased,
                                     isMuted = if (eased >= 0.5f) targetTr.isMuted else startTr.isMuted,
                                     isSolo = if (eased >= 0.5f) targetTr.isSolo else startTr.isSolo,
-                                    isEnabled = if (eased >= 0.5f) targetTr.isEnabled else startTr.isEnabled,
-                                    splitNoteMin = if (eased >= 0.5f) targetTr.splitNoteMin else startTr.splitNoteMin,
-                                    splitNoteMax = if (eased >= 0.5f) targetTr.splitNoteMax else startTr.splitNoteMax
+                                    isEnabled = if (eased >= 0.5f) targetTr.isEnabled else startTr.isEnabled
                                 )
                             }
                             _uiState.update {
@@ -3057,9 +3086,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                                 pan = snap.pan,
                                 isMuted = snap.isMuted,
                                 isSolo = snap.isSolo,
-                                isEnabled = snap.isEnabled,
-                                splitNoteMin = snap.splitNoteMin,
-                                splitNoteMax = snap.splitNoteMax
+                                isEnabled = snap.isEnabled
                             )
                         } else tr
                     }
@@ -3626,399 +3653,5 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleKeyboardLayer() {
         _uiState.update { it.copy(isKeyboardLayerExpanded = !it.isKeyboardLayerExpanded) }
-    }
-
-    // ================= STEPDRUM SEQUENCER ENGINE =================
-    private var stepDrumJob: kotlinx.coroutines.Job? = null
-    private var copiedVariation: com.soundstage.mixer.model.PatternVariation? = null
-
-    fun toggleStepDrumPlay() {
-        val willPlay = !_uiState.value.stepDrumState.isPlaying
-        _uiState.update {
-            it.copy(
-                stepDrumState = it.stepDrumState.copy(isPlaying = willPlay)
-            )
-        }
-        if (willPlay) {
-            startStepDrumClock()
-        } else {
-            stepDrumJob?.cancel()
-            stepDrumJob = null
-            _uiState.update {
-                it.copy(stepDrumState = it.stepDrumState.copy(currentStepIndex = 0))
-            }
-        }
-    }
-
-    fun toggleStepDrumRecord() {
-        _uiState.update {
-            it.copy(
-                stepDrumState = it.stepDrumState.copy(isRecording = !it.stepDrumState.isRecording)
-            )
-        }
-    }
-
-    fun toggleStepDrumRecordMode() {
-        _uiState.update {
-            val nextMode = if (it.stepDrumState.recordMode == "REPLACE") "ADD" else "REPLACE"
-            it.copy(stepDrumState = it.stepDrumState.copy(recordMode = nextMode))
-        }
-    }
-
-    fun selectStepDrumVariation(variationId: String) {
-        _uiState.update { state ->
-            val curr = state.stepDrumState
-            val targetVar = curr.variations[variationId] ?: com.soundstage.mixer.model.PatternVariation(id = variationId, tracks = com.soundstage.mixer.model.createDefaultStepDrumTracks())
-            val updatedMap = curr.variations.toMutableMap()
-            updatedMap[variationId] = targetVar
-            state.copy(
-                stepDrumState = curr.copy(
-                    variations = updatedMap,
-                    activeVariationId = variationId
-                )
-            )
-        }
-    }
-
-    fun addStepDrumVariation() {
-        val currState = _uiState.value.stepDrumState
-        val availableIds = listOf("A", "B", "C", "D", "E", "F", "G", "H")
-        val nextId = availableIds.firstOrNull { it !in currState.variations.keys } ?: return
-        val newVar = com.soundstage.mixer.model.PatternVariation(id = nextId, tracks = com.soundstage.mixer.model.createDefaultStepDrumTracks())
-        _uiState.update { state ->
-            val updatedMap = state.stepDrumState.variations.toMutableMap()
-            updatedMap[nextId] = newVar
-            state.copy(stepDrumState = state.stepDrumState.copy(variations = updatedMap, activeVariationId = nextId))
-        }
-    }
-
-    fun duplicateStepDrumVariation(sourceId: String) {
-        val currState = _uiState.value.stepDrumState
-        val sourceVar = currState.variations[sourceId] ?: return
-        val availableIds = listOf("A", "B", "C", "D", "E", "F", "G", "H")
-        val nextId = availableIds.firstOrNull { it !in currState.variations.keys } ?: return
-        val duplicatedVar = sourceVar.copy(id = nextId)
-        _uiState.update { state ->
-            val updatedMap = state.stepDrumState.variations.toMutableMap()
-            updatedMap[nextId] = duplicatedVar
-            state.copy(stepDrumState = state.stepDrumState.copy(variations = updatedMap, activeVariationId = nextId))
-        }
-    }
-
-    fun toggleStepDrumStep(trackIndex: Int, stepIndex: Int) {
-        _uiState.update { state ->
-            val currState = state.stepDrumState
-            val curVar = currState.variations[currState.activeVariationId] ?: com.soundstage.mixer.model.PatternVariation(id = currState.activeVariationId, tracks = com.soundstage.mixer.model.createDefaultStepDrumTracks())
-            val updatedTracks = curVar.tracks.mapIndexed { tIdx, track ->
-                if (tIdx == trackIndex) {
-                    val updatedSteps = track.steps.mapIndexed { sIdx, step ->
-                        if (sIdx == stepIndex) {
-                            step.copy(enabled = !step.enabled)
-                        } else step
-                    }
-                    track.copy(steps = updatedSteps)
-                } else track
-            }
-            val updatedVar = curVar.copy(tracks = updatedTracks)
-            val updatedMap = currState.variations.toMutableMap()
-            updatedMap[currState.activeVariationId] = updatedVar
-            state.copy(stepDrumState = currState.copy(variations = updatedMap))
-        }
-    }
-
-    fun setStepDrumStepVelocity(trackIndex: Int, stepIndex: Int, velocity: Int) {
-        _uiState.update { state ->
-            val currState = state.stepDrumState
-            val curVar = currState.variations[currState.activeVariationId] ?: return@update state
-            val updatedTracks = curVar.tracks.mapIndexed { tIdx, track ->
-                if (tIdx == trackIndex) {
-                    val updatedSteps = track.steps.mapIndexed { sIdx, step ->
-                        if (sIdx == stepIndex) step.copy(velocity = velocity.coerceIn(1, 127), enabled = true) else step
-                    }
-                    track.copy(steps = updatedSteps)
-                } else track
-            }
-            val updatedVar = curVar.copy(tracks = updatedTracks)
-            val updatedMap = currState.variations.toMutableMap()
-            updatedMap[currState.activeVariationId] = updatedVar
-            state.copy(stepDrumState = currState.copy(variations = updatedMap))
-        }
-    }
-
-    fun setStepDrumStepRepeat(trackIndex: Int, stepIndex: Int, repeat: Int) {
-        _uiState.update { state ->
-            val currState = state.stepDrumState
-            val curVar = currState.variations[currState.activeVariationId] ?: return@update state
-            val updatedTracks = curVar.tracks.mapIndexed { tIdx, track ->
-                if (tIdx == trackIndex) {
-                    val updatedSteps = track.steps.mapIndexed { sIdx, step ->
-                        if (sIdx == stepIndex) step.copy(repeatCount = repeat.coerceIn(1, 4)) else step
-                    }
-                    track.copy(steps = updatedSteps)
-                } else track
-            }
-            val updatedVar = curVar.copy(tracks = updatedTracks)
-            val updatedMap = currState.variations.toMutableMap()
-            updatedMap[currState.activeVariationId] = updatedVar
-            state.copy(stepDrumState = currState.copy(variations = updatedMap))
-        }
-    }
-
-    fun setStepDrumStepChance(trackIndex: Int, stepIndex: Int, chance: Int) {
-        _uiState.update { state ->
-            val currState = state.stepDrumState
-            val curVar = currState.variations[currState.activeVariationId] ?: return@update state
-            val updatedTracks = curVar.tracks.mapIndexed { tIdx, track ->
-                if (tIdx == trackIndex) {
-                    val updatedSteps = track.steps.mapIndexed { sIdx, step ->
-                        if (sIdx == stepIndex) step.copy(chance = chance.coerceIn(0, 100)) else step
-                    }
-                    track.copy(steps = updatedSteps)
-                } else track
-            }
-            val updatedVar = curVar.copy(tracks = updatedTracks)
-            val updatedMap = currState.variations.toMutableMap()
-            updatedMap[currState.activeVariationId] = updatedVar
-            state.copy(stepDrumState = currState.copy(variations = updatedMap))
-        }
-    }
-
-    fun setStepDrumTrackLoopLength(trackIndex: Int, length: Int) {
-        _uiState.update { state ->
-            val currState = state.stepDrumState
-            val curVar = currState.variations[currState.activeVariationId] ?: return@update state
-            val updatedTracks = curVar.tracks.mapIndexed { tIdx, track ->
-                if (tIdx == trackIndex) track.copy(loopLength = length.coerceIn(1, 16)) else track
-            }
-            val updatedVar = curVar.copy(tracks = updatedTracks)
-            val updatedMap = currState.variations.toMutableMap()
-            updatedMap[currState.activeVariationId] = updatedVar
-            state.copy(stepDrumState = currState.copy(variations = updatedMap))
-        }
-    }
-
-    fun toggleStepDrumTrackMute(trackIndex: Int) {
-        _uiState.update { state ->
-            val currState = state.stepDrumState
-            val curVar = currState.variations[currState.activeVariationId] ?: return@update state
-            val updatedTracks = curVar.tracks.mapIndexed { tIdx, track ->
-                if (tIdx == trackIndex) track.copy(isMuted = !track.isMuted) else track
-            }
-            val updatedVar = curVar.copy(tracks = updatedTracks)
-            val updatedMap = currState.variations.toMutableMap()
-            updatedMap[currState.activeVariationId] = updatedVar
-            state.copy(stepDrumState = currState.copy(variations = updatedMap))
-        }
-    }
-
-    fun toggleStepDrumTrackSolo(trackIndex: Int) {
-        _uiState.update { state ->
-            val currState = state.stepDrumState
-            val curVar = currState.variations[currState.activeVariationId] ?: return@update state
-            val updatedTracks = curVar.tracks.mapIndexed { tIdx, track ->
-                if (tIdx == trackIndex) track.copy(isSolo = !track.isSolo) else track
-            }
-            val updatedVar = curVar.copy(tracks = updatedTracks)
-            val updatedMap = currState.variations.toMutableMap()
-            updatedMap[currState.activeVariationId] = updatedVar
-            state.copy(stepDrumState = currState.copy(variations = updatedMap))
-        }
-    }
-
-    fun setStepDrumEditMode(mode: com.soundstage.mixer.model.StepDrumMode) {
-        _uiState.update { it.copy(stepDrumState = it.stepDrumState.copy(editMode = mode)) }
-    }
-
-    fun setStepDrumViewMode(mode: com.soundstage.mixer.model.StepDrumViewMode) {
-        _uiState.update { it.copy(stepDrumState = it.stepDrumState.copy(viewMode = mode)) }
-    }
-
-    fun triggerStepDrumFill() {
-        _uiState.update {
-            it.copy(stepDrumState = it.stepDrumState.copy(isFillActive = !it.stepDrumState.isFillActive))
-        }
-    }
-
-    fun triggerStepDrumBreak() {
-        _uiState.update {
-            it.copy(stepDrumState = it.stepDrumState.copy(isBreakActive = !it.stepDrumState.isBreakActive))
-        }
-    }
-
-    fun toggleStepDrumAutoFill() {
-        _uiState.update {
-            it.copy(stepDrumState = it.stepDrumState.copy(fillAutoEvery4 = !it.stepDrumState.fillAutoEvery4))
-        }
-    }
-
-    fun selectSequenceMeasure(measureIdx: Int) {
-        _uiState.update {
-            it.copy(stepDrumState = it.stepDrumState.copy(activeMeasureIndex = measureIdx))
-        }
-    }
-
-    fun setSequenceBlockVariation(measureIdx: Int, varId: String) {
-        _uiState.update { state ->
-            val blocks = state.stepDrumState.sequenceBlocks.mapIndexed { idx, block ->
-                if (idx == measureIdx) block.copy(variationId = varId) else block
-            }
-            state.copy(stepDrumState = state.stepDrumState.copy(sequenceBlocks = blocks))
-        }
-    }
-
-    fun toggleSequenceBlockFill(measureIdx: Int) {
-        _uiState.update { state ->
-            val blocks = state.stepDrumState.sequenceBlocks.mapIndexed { idx, block ->
-                if (idx == measureIdx) block.copy(isFill = !block.isFill) else block
-            }
-            state.copy(stepDrumState = state.stepDrumState.copy(sequenceBlocks = blocks))
-        }
-    }
-
-    fun toggleSequenceBlockBreak(measureIdx: Int) {
-        _uiState.update { state ->
-            val blocks = state.stepDrumState.sequenceBlocks.mapIndexed { idx, block ->
-                if (idx == measureIdx) block.copy(isBreak = !block.isBreak) else block
-            }
-            state.copy(stepDrumState = state.stepDrumState.copy(sequenceBlocks = blocks))
-        }
-    }
-
-    fun clearStepDrumPattern() {
-        _uiState.update { state ->
-            val currState = state.stepDrumState
-            val curVar = currState.variations[currState.activeVariationId] ?: return@update state
-            val clearedTracks = curVar.tracks.map { track ->
-                track.copy(steps = List(16) { com.soundstage.mixer.model.StepCell() })
-            }
-            val updatedVar = curVar.copy(tracks = clearedTracks)
-            val updatedMap = currState.variations.toMutableMap()
-            updatedMap[currState.activeVariationId] = updatedVar
-            state.copy(stepDrumState = currState.copy(variations = updatedMap))
-        }
-    }
-
-    fun copyStepDrumPattern() {
-        val currState = _uiState.value.stepDrumState
-        copiedVariation = currState.variations[currState.activeVariationId]
-    }
-
-    fun pasteStepDrumPattern() {
-        val copied = copiedVariation ?: return
-        _uiState.update { state ->
-            val currState = state.stepDrumState
-            val updatedVar = copied.copy(id = currState.activeVariationId)
-            val updatedMap = currState.variations.toMutableMap()
-            updatedMap[currState.activeVariationId] = updatedVar
-            state.copy(stepDrumState = currState.copy(variations = updatedMap))
-        }
-    }
-
-    // ================= THEME SELECTION =================
-    fun selectTheme(theme: AppTheme) {
-        _uiState.update { it.copy(currentTheme = theme) }
-        persistCurrentStateDebounced()
-    }
-
-    fun setTheme(theme: AppTheme) = selectTheme(theme)
-
-    fun setMaterialYouStyle(style: MaterialYouStyle) {
-        _uiState.update { it.copy(materialYouStyle = style) }
-        persistCurrentStateDebounced()
-    }
-
-    fun setAccentSaturation(value: Float) {
-        _uiState.update { it.copy(accentSaturation = value.coerceIn(0.50f, 2.00f)) }
-    }
-
-    fun setBgSaturation(value: Float) {
-        _uiState.update { it.copy(bgSaturation = value.coerceIn(0.50f, 2.00f)) }
-    }
-
-    fun setBgBrightness(value: Float) {
-        _uiState.update { it.copy(bgBrightness = value.coerceIn(0.60f, 1.40f)) }
-    }
-
-    fun resetAccentSaturation() {
-        _uiState.update { it.copy(accentSaturation = 1.0f) }
-    }
-
-    fun resetBgSaturation() {
-        _uiState.update { it.copy(bgSaturation = 1.0f) }
-    }
-
-    fun resetBgBrightness() {
-        _uiState.update { it.copy(bgBrightness = 1.0f) }
-    }
-
-    fun setThemeSaturation(saturation: Float) {
-        _uiState.update { it.copy(themeSaturation = saturation.coerceIn(0f, 1f)) }
-    }
-
-    fun setThemeNuance(nuance: Float) {
-        _uiState.update { it.copy(themeNuance = nuance.coerceIn(0f, 1f)) }
-    }
-
-    fun setSelectedPaletteIndex(index: Int) {
-        _uiState.update { it.copy(selectedPaletteIndex = index.coerceIn(0, 5)) }
-    }
-
-    fun cycleTheme() {
-        val themes = AppTheme.values()
-        val currentIndex = themes.indexOf(_uiState.value.currentTheme)
-        val nextTheme = themes[(currentIndex + 1) % themes.size]
-        selectTheme(nextTheme)
-    }
-
-    private fun startStepDrumClock() {
-        stepDrumJob?.cancel()
-        stepDrumJob = viewModelScope.launch(Dispatchers.Default) {
-            var step = 0
-            while (coroutineContext[kotlinx.coroutines.Job]?.isActive == true && _uiState.value.stepDrumState.isPlaying) {
-                val bpm = _uiState.value.bpm.coerceIn(40, 300)
-                val baseStepDurationMs = ((60000.0 / bpm) / 4.0)
-                val swingPercent = _uiState.value.drumFeelSwing.coerceIn(0, 100)
-                // Swing delay calculation: swing offsets even steps (off-beats)
-                val swingFactor = (swingPercent - 50) / 100.0 // -0.5 to +0.5
-                val currentStepDurationMs = if (step % 2 == 0) {
-                    (baseStepDurationMs * (1.0 + swingFactor * 0.5)).toLong().coerceAtLeast(10L)
-                } else {
-                    (baseStepDurationMs * (1.0 - swingFactor * 0.5)).toLong().coerceAtLeast(10L)
-                }
-
-                val state = _uiState.value
-                val drumState = state.stepDrumState
-                val activeVar = drumState.variations[drumState.activeVariationId]
-
-                _uiState.update {
-                    it.copy(stepDrumState = it.stepDrumState.copy(currentStepIndex = step))
-                }
-
-                if (activeVar != null && !drumState.isBreakActive) {
-                    val anySolo = activeVar.tracks.any { it.isSolo }
-                    activeVar.tracks.forEach { track ->
-                        val shouldAudition = if (anySolo) track.isSolo else !track.isMuted
-                        if (shouldAudition) {
-                            val activeStepIndex = step % track.loopLength
-                            val cell = track.steps.getOrNull(activeStepIndex)
-                            if (cell != null && cell.enabled) {
-                                val shouldPlay = if (cell.chance >= 100) true else (kotlin.random.Random.nextInt(100) < cell.chance)
-                                if (shouldPlay) {
-                                    val padId = track.trackIndex % 16
-                                    onDrumPadPressed(padId)
-                                    viewModelScope.launch {
-                                        kotlinx.coroutines.delay(80)
-                                        onDrumPadReleased(padId)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                step = (step + 1) % 16
-                kotlinx.coroutines.delay(currentStepDurationMs)
-            }
-        }
     }
 }
