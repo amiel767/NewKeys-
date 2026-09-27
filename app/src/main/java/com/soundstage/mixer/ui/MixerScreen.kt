@@ -87,6 +87,7 @@ fun MixerScreen(
             
             com.soundstage.mixer.ui.components.DetectedChord(
                 primaryName = rawChord.primaryName.toFlats(),
+                equivalentName = rawChord.equivalentName.toFlats(),
                 variantName = rawChord.variantName.toFlats(),
                 alternateNames = rawChord.alternateNames.toFlats(),
                 alternateName2 = rawChord.alternateName2.toFlats(),

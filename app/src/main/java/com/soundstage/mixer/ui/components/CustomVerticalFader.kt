@@ -54,8 +54,8 @@ fun CustomVerticalFader(
     showTicks: Boolean = true,
     trackWidth: Dp = 28.dp,
     trackHeight: Dp = 220.dp,
-    thumbWidth: Dp = 46.dp,
-    thumbHeight: Dp = 58.dp,
+    thumbWidth: Dp = 52.dp,
+    thumbHeight: Dp = 66.dp,
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current

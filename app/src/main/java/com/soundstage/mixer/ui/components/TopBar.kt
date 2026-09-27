@@ -147,6 +147,7 @@ fun TopBar(
                         .replace("A#", "Bb")
                     DetectedChord(
                         primaryName = raw.primaryName.toFlats(),
+                        equivalentName = raw.equivalentName.toFlats(),
                         variantName = raw.variantName.toFlats(),
                         alternateNames = raw.alternateNames.toFlats(),
                         alternateName2 = raw.alternateName2.toFlats(),

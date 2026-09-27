@@ -20,67 +20,75 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: 'gradle'
 
-      - name: Setup Gradle Environment & Dummy Env
+      - name: Setup Android SDK, NDK & CMake
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-36 build-tools;36.0.0 ndk;26.1.10909125 cmake;3.22.1'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Setup Environment Files & Keystore
         run: |
           touch .env
           touch .env.example
-          if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
-          fi
-
-      - name: Ensure Debug Keystore Exists
-        run: |
           if [ -f "debug.keystore.base64" ]; then
             base64 -d debug.keystore.base64 > debug.keystore 2>/dev/null || true
-            cp debug.keystore app/debug.keystore 2>/dev/null || true
           fi
           if [ ! -f "debug.keystore" ]; then
             echo "Generating debug keystore..."
             keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-            cp debug.keystore app/debug.keystore 2>/dev/null || true
+          fi
+          mkdir -p app
+          cp debug.keystore app/debug.keystore 2>/dev/null || true
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
           fi
 
       - name: Build Debug APK
         run: |
-          export GRADLE_OPTS="-Djava.awt.headless=true"
+          export GRADLE_OPTS="-Djava.awt.headless=true -Xmx4096m"
           if [ -f "./gradlew" ]; then
-            ./gradlew assembleDebug --no-daemon --no-configuration-cache -Djava.awt.headless=true
+            ./gradlew assembleDebug --stacktrace --no-daemon -Djava.awt.headless=true
           else
-            gradle assembleDebug --no-daemon --no-configuration-cache -Djava.awt.headless=true
+            gradle assembleDebug --stacktrace --no-daemon -Djava.awt.headless=true
           fi
 
       - name: Locate Debug APK
         id: find_apk
         run: |
-          APK_PATH=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -n 1)
+          APK_PATH=$(find app/build/outputs/apk/debug/ -name "*.apk" 2>/dev/null | head -n 1)
           if [ -z "$APK_PATH" ]; then
-            APK_PATH=$(find .build-outputs/ -name "*.apk" | head -n 1)
+            APK_PATH=$(find .build-outputs/ -name "*.apk" 2>/dev/null | head -n 1)
+          fi
+          if [ -z "$APK_PATH" ]; then
+            APK_PATH=$(find . -name "*.apk" 2>/dev/null | head -n 1)
           fi
           echo "Found APK at: $APK_PATH"
           echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
+        if: steps.find_apk.outputs.apk_path != ''
         with:
           name: app-debug
           path: ${{ steps.find_apk.outputs.apk_path }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
+        if: (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch') && steps.find_apk.outputs.apk_path != ''
         with:
           tag_name: release-${{ github.run_number }}
           name: "Release v${{ github.run_number }} (Debug APK)"
           body: |
-            ## Automated Build Release
+            ## SoundStage Live Mixer
             - **Commit**: `${{ github.sha }}`
-            - **Direct Download**: Download `app-debug.apk` attached below.
+            - **Build**: Automated Debug APK
           files: ${{ steps.find_apk.outputs.apk_path }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
