@@ -742,8 +742,10 @@ public:
     void stop();
     void setDriver(int driverType);
     void setMasterGain(float gain) {
-        mMasterGain = gain;
-        mSynthEngine.setGain(gain);
+        float clamped = std::clamp(gain, 0.0f, 2.0f);
+        // Map 0..1 volume linearly to the full SoundFont 1.85f synthesis gain
+        mMasterGain = clamped * 1.85f;
+        mSynthEngine.setGain(mMasterGain);
     }
     void setDrumMasterVolume(float vol) {
         mDrumMasterVolume = vol;
@@ -822,7 +824,7 @@ private:
 
     // Preserved parameters across stream reconnections (Jack plug/unplug, routing events)
     std::atomic<bool> mIsReconnecting{false};
-    float mMasterGain = 0.90f;
+    float mMasterGain = 1.85f;
     float mDrumMasterVolume = 0.80f;
     float mMasterPunchAmount = 0.50f;
     float mSpatialWidenerAmount = 0.35f;

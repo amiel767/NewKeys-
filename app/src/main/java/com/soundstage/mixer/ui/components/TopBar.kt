@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
@@ -37,6 +38,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.R
@@ -79,6 +81,7 @@ fun TopBar(
     onPanic: () -> Unit,
     onOpenScenes: () -> Unit,
     onOpenSettings: () -> Unit,
+    onBackToProjects: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val topBarHeight = 38.dp
@@ -117,6 +120,27 @@ fun TopBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            // 1. Return to Projects button
+            if (onBackToProjects != null) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(Color(0xFF141824))
+                        .border(1.dp, Color(0xFF222838), RoundedCornerShape(9.dp))
+                        .clickable { onBackToProjects() }
+                        .testTag("btn_back_to_projects"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Projets",
+                        tint = Color(0xFFCBD5E1),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
             // 2. Transpose Stepper (Left)
             StepperControl(
                 label = "TRANS",
@@ -161,33 +185,46 @@ fun TopBar(
                     .weight(1f)
                     .height(38.dp)
                     .clip(RoundedCornerShape(9.dp))
-                    .background(Color(0xFF0C101B))
-                    .border(1.dp, Color(0x3300E5FF), RoundedCornerShape(9.dp))
-                    .padding(horizontal = 6.dp, vertical = 1.dp)
-                    .testTag("topbar_chord_display"),
+                    .background(Color(0xFF141722))
+                    .border(1.dp, Color(0xFF262E40), RoundedCornerShape(9.dp))
+                    .padding(horizontal = 10.dp),
                 contentAlignment = Alignment.Center
             ) {
                 if (detectedChord != null) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                    val variant = detectedChord.equivalentName.takeIf { it.isNotBlank() && it != detectedChord.primaryName }
+                        ?: detectedChord.variantName.takeIf { it.isNotBlank() && it != detectedChord.primaryName }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = if (variant != null) Arrangement.SpaceBetween else Arrangement.Center
                     ) {
                         Text(
                             text = detectedChord.primaryName,
-                            fontSize = 13.5.sp,
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White,
+                            letterSpacing = 0.2.sp,
                             maxLines = 1,
-                            lineHeight = 14.sp,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis
                         )
+                        if (variant != null) {
+                            Text(
+                                text = variant,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF38BDF8),
+                                letterSpacing = 0.2.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 } else {
                     Text(
                         text = "---",
-                        fontSize = 12.sp,
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
-                        color = TextDim,
+                        color = Color(0xFF5B647A),
                         letterSpacing = 2.sp
                     )
                 }

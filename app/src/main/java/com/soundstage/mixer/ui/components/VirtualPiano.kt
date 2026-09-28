@@ -103,11 +103,12 @@ fun VirtualPianoKeyboard(
     val activeTracksCount = remember(tracks) { tracks.count { it.isEnabled }.coerceAtLeast(1) }
     val keysHeight = 48.dp
     val visibleTracksCount = remember(tracks) { tracks.count { it.isEnabled }.coerceIn(1, 8) }
-    val expandedTargetHeight = (24.dp * visibleTracksCount + 16.dp).coerceIn(58.dp, 160.dp)
+    val restStripHeight = remember(visibleTracksCount) { (4.5f * visibleTracksCount + 2f).dp.coerceIn(7.dp, 38.dp) }
+    val expandedTargetHeight = (23 * visibleTracksCount + 14).dp.coerceIn(46.dp, 205.dp)
 
     // Continuous smooth iOS-style growth animation: lines expand directly from resting strip into deployed layer
     val animatedLayerHeight by animateDpAsState(
-        targetValue = if (isLayerMapperExpanded) expandedTargetHeight else 12.dp,
+        targetValue = if (isLayerMapperExpanded) expandedTargetHeight else restStripHeight,
         animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
         label = "layer_growth_animation"
     )
@@ -115,8 +116,8 @@ fun VirtualPianoKeyboard(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .height(66.dp)
-            .background(Color(0xFF141722))
+            .wrapContentHeight()
+            .background(Color(0xFF111420))
             .padding(start = 2.dp, end = 2.dp, top = 1.dp, bottom = 2.dp)
             .testTag("virtual_piano_keyboard")
     ) {
@@ -159,7 +160,7 @@ fun VirtualPianoKeyboard(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(12.dp)
+                            .height(restStripHeight)
                             .wrapContentHeight(align = Alignment.Bottom, unbounded = true)
                             .zIndex(100f)
                     ) {
@@ -167,13 +168,20 @@ fun VirtualPianoKeyboard(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(animatedLayerHeight)
-                                .shadow(if (isLayerMapperExpanded) 16.dp else 0.dp, RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
-                                .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
-                                .background(if (isLayerMapperExpanded) Color(0xF2121520) else Color(0xFF181B26))
+                                .shadow(if (isLayerMapperExpanded) 18.dp else 4.dp, RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
+                                .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(
+                                            if (isLayerMapperExpanded) Color(0xF5161B28) else Color(0xFF141824),
+                                            if (isLayerMapperExpanded) Color(0xF50E121B) else Color(0xFF0F121C)
+                                        )
+                                    )
+                                )
                                 .border(
-                                    width = if (isLayerMapperExpanded) 1.dp else 0.8.dp,
-                                    color = if (isLayerMapperExpanded) Color(0x6060A5FA) else Color(0x22FFFFFF),
-                                    shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)
+                                    width = 1.dp,
+                                    color = if (isLayerMapperExpanded) Color(0xFF2B3448) else Color(0xFF1E2536),
+                                    shape = RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp)
                                 )
                                 .padding(start = 42.dp)
                         ) {

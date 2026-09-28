@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.soundstage.mixer.model.TrackChannel
 import com.soundstage.mixer.ui.theme.*
 import kotlin.math.PI
@@ -103,6 +104,7 @@ fun VerticalTrackChannel(
     track: TrackChannel,
     onVolumeChange: (Float) -> Unit,
     onPowerToggle: () -> Unit = {},
+    onDeleteTrack: () -> Unit = {},
     onPanChange: (Float) -> Unit = {},
     onMuteClick: () -> Unit = {},
     onSoloClick: () -> Unit = {},
@@ -113,6 +115,7 @@ fun VerticalTrackChannel(
 ) {
     val isMaster = track.isMaster
     val isEnabled = track.isEnabled
+    var showDeleteBubble by remember { mutableStateOf(false) }
 
     val vibrantLedColor = remember(track.id, isMaster) {
         getTrackThemeColor(track.id, isMaster)
@@ -135,48 +138,23 @@ fun VerticalTrackChannel(
             .border(1.dp, subtleDarkBorder, RoundedCornerShape(8.dp))
             .testTag("track_${track.id}")
     ) {
-        // 1. Ambient & Reactive Neon Aura at the bottom of the fader (visible from start, pulses with sound)
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .fillMaxHeight(0.55f)
-                .background(
-                    Brush.verticalGradient(
-                        0.0f to Color.Transparent,
-                        0.50f to vibrantLedColor.copy(alpha = reactiveAlpha * 0.18f),
-                        0.85f to vibrantLedColor.copy(alpha = reactiveAlpha * 0.45f),
-                        1.0f to vibrantLedColor.copy(alpha = reactiveAlpha * 0.70f)
-                    )
-                )
-        )
-
-        // 2. Radial bottom floor glow
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(42.dp)
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            vibrantLedColor.copy(alpha = reactiveAlpha * 0.50f),
-                            vibrantLedColor.copy(alpha = reactiveAlpha * 0.15f),
-                            Color.Transparent
+        // Dynamic bottom ambient color halo (permanent soft glow when track is enabled, pulses with audio)
+        if (isEnabled) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(34.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                vibrantLedColor.copy(alpha = (0.10f + audioActivity * 0.28f).coerceIn(0.10f, 0.40f))
+                            )
                         )
                     )
-                )
-        )
-
-        // 3. Crisp luminous bottom LED strip accent
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth(0.80f)
-                .height(2.0.dp)
-                .clip(RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp))
-                .background(vibrantLedColor.copy(alpha = reactiveAlpha * 0.85f))
-        )
+            )
+        }
 
         Column(
             modifier = Modifier
@@ -337,7 +315,7 @@ fun VerticalTrackChannel(
 
                 Spacer(modifier = Modifier.width(3.dp))
 
-                // Power Square Button
+                // Power Square Button with Long-press for Delete Channel bubble
                 val powerBg by animateColorAsState(
                     targetValue = if (isEnabled) Color(0xFF0077B6) else Color(0xFF1A1F2C),
                     animationSpec = tween(100),
@@ -352,7 +330,13 @@ fun VerticalTrackChannel(
                         .clip(RoundedCornerShape(6.dp))
                         .background(powerBg)
                         .border(1.dp, powerBorder, RoundedCornerShape(6.dp))
-                        .clickable { onPowerToggle() },
+                        .pointerInput(track.id) {
+                            detectTapGestures(
+                                onTap = { onPowerToggle() },
+                                onLongPress = { showDeleteBubble = true }
+                            )
+                        }
+                        .testTag("power_btn_${track.id}"),
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
@@ -386,6 +370,35 @@ fun VerticalTrackChannel(
                     color = Color.White
                 )
             }
+        }
+    }
+
+    // Bouncy Bubble "Delete channel" micro popup on long-press
+    if (showDeleteBubble && !isMaster) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 32.dp)
+                .zIndex(100f)
+                .shadow(12.dp, RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFFE11D48))
+                .border(1.dp, Color(0xFFFF6B8B), RoundedCornerShape(10.dp))
+                .clickable {
+                    showDeleteBubble = false
+                    onDeleteTrack()
+                }
+                .padding(horizontal = 8.dp, vertical = 5.dp)
+                .testTag("btn_delete_channel_${track.id}"),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "Delete channel",
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                maxLines = 1
+            )
         }
     }
 }
@@ -507,11 +520,11 @@ fun FaderSliderWithVuMeter(
             audioActivity = audioActivity,
             isEnabled = isEnabled,
             showTicks = showTicks,
-            trackWidth = 28.dp,
+            trackWidth = 20.dp,
             trackHeight = 220.dp,
-            thumbWidth = 52.dp,
-            thumbHeight = 66.dp,
-            modifier = Modifier.fillMaxHeight()
+            thumbWidth = 46.dp,
+            thumbHeight = 58.dp,
+            modifier = Modifier.fillMaxSize()
         )
     }
 }

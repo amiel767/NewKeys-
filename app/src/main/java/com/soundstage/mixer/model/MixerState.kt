@@ -11,7 +11,7 @@ enum class ActivePopup {
 }
 
 enum class AppScreenPage {
-    MIXER, DRUMPAD, SHEETS
+    PROJECTS, MIXER, DRUMPAD, SHEETS
 }
 
 enum class AppLanguage(val code: String, val displayName: String) {

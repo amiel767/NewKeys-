@@ -89,7 +89,11 @@ class MainActivity : ComponentActivity() {
           appTheme = uiState.currentTheme,
           hue = uiState.themeHue,
           saturation = uiState.themeSaturation,
-          nuance = uiState.themeNuance
+          nuance = uiState.themeNuance,
+          accentSaturation = uiState.themeAccentSaturation,
+          bgSaturation = uiState.themeBgSaturation,
+          bgLightness = uiState.themeBgLightness,
+          modulesLightness = uiState.themeModulesLightness
       ) {
         Surface(
             modifier = Modifier.fillMaxSize(),

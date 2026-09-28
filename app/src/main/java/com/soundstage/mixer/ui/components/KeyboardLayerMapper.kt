@@ -240,7 +240,7 @@ fun KeyboardLayerMapper(
     )
 
     val safeExpand = expandProgress.coerceIn(0f, 1f)
-    val rowSpacingDp = lerp(1.2.dp, 3.dp, safeExpand)
+    val rowSpacingDp = lerp(1.dp, 3.dp, safeExpand)
 
     val currentOnToggleExpanded by rememberUpdatedState(onToggleExpanded)
     val verticalScrollState = rememberScrollState()
@@ -248,7 +248,7 @@ fun KeyboardLayerMapper(
     Column(
         modifier = modifier
             .width(totalWidthDp)
-            .then(if (isExpanded) Modifier.verticalScroll(verticalScrollState) else Modifier.fillMaxHeight())
+            .wrapContentHeight()
             .background(Color.Transparent)
             .padding(horizontal = 0.dp, vertical = lerp(0.dp, 2.dp, safeExpand))
             .clickable(
@@ -309,10 +309,11 @@ private fun TrackRangeBarRow(
     val startXDp = (leftFrac * whiteWidthDp.value).dp
     val endXDp = (rightFrac * whiteWidthDp.value).dp
 
-    // Dynamic animated height and corner radius
-    val rowHeightDp = lerp(2.2.dp, 22.dp, expandProgress)
-    val cornerRadiusDp = lerp(1.dp, 6.dp, expandProgress)
-    val minBarWidth = lerp(6.dp, 18.dp, expandProgress)
+    // Dynamic animated height and corner radius (3.5dp at rest, 20dp when deployed)
+    val rowHeightDp = lerp(3.5.dp, 20.dp, expandProgress)
+    val cornerRadiusStartDp = lerp(1.5.dp, 5.dp, expandProgress)
+    val cornerRadiusEndDp = lerp(3.5.dp, 5.dp, expandProgress)
+    val minBarWidth = lerp(8.dp, 22.dp, expandProgress)
     val rawBarWidthDp = (endXDp - startXDp).coerceAtLeast(minBarWidth)
 
     var dragMinOffsetPx by remember { mutableFloatStateOf(0f) }
@@ -371,18 +372,27 @@ private fun TrackRangeBarRow(
 
         val safeExpand = if (expandProgress.isNaN()) 0f else expandProgress.coerceIn(0f, 1f)
 
+        val capsuleShape = RoundedCornerShape(
+            topStart = cornerRadiusStartDp,
+            bottomStart = cornerRadiusStartDp,
+            topEnd = cornerRadiusEndDp,
+            bottomEnd = cornerRadiusEndDp
+        )
+
         Box(
             modifier = Modifier
                 .offset(x = animatedStartX)
                 .width(animatedWidth.coerceAtLeast(4.dp))
                 .height(rowHeightDp.coerceAtLeast(2.dp))
-                .shadow(
-                    elevation = if (isActivelyDragging) 4.dp else (1.5.dp * safeExpand),
-                    shape = RoundedCornerShape(cornerRadiusDp)
-                )
+                .clip(capsuleShape)
                 .background(
-                    color = trackColor.copy(alpha = if (isActivelyDragging) 1.0f else 0.96f),
-                    shape = RoundedCornerShape(cornerRadiusDp)
+                    color = trackColor,
+                    shape = capsuleShape
+                )
+                .border(
+                    width = 1.dp,
+                    color = if (safeExpand > 0.3f) Color(0x33FFFFFF) else Color.Transparent,
+                    shape = capsuleShape
                 )
                 .pointerInput(Unit) {
                     detectTapGestures(

@@ -76,7 +76,10 @@ fun BottomBar(
     onToggleSnapshotArm: () -> Unit = {},
     activeSnapshotSlot: String? = null,
     snapshots: Map<String, com.soundstage.mixer.model.SubSceneSnapshot> = emptyMap(),
+    configuredSnapshotSlots: List<String> = listOf("slot_default"),
     onSnapshotSlotClick: (String) -> Unit = {},
+    onAddSnapshot: (String) -> Unit = {},
+    onDeleteSnapshot: (String) -> Unit = {},
     snapshotCustomNames: Map<String, String> = emptyMap(),
     onRenameSnapshotSlot: (String, String) -> Unit = { _, _ -> },
     snapshotTransitionProgress: Float = 1.0f,
@@ -361,13 +364,15 @@ fun BottomBar(
 
         var renamingSlotKey by remember { mutableStateOf<String?>(null) }
         var renamingSlotCurrentName by remember { mutableStateOf("") }
+        var isAddSnapshotDialogOpen by remember { mutableStateOf(false) }
+        var newSnapshotNameInput by remember { mutableStateOf("") }
 
-        if (renamingSlotKey != null) {
+        if (isAddSnapshotDialogOpen) {
             AlertDialog(
-                onDismissRequest = { renamingSlotKey = null },
+                onDismissRequest = { isAddSnapshotDialogOpen = false },
                 title = {
                     Text(
-                        text = "Renommer la case",
+                        text = "Nouveau Snapshot",
                         color = Color.White,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold
@@ -376,7 +381,67 @@ fun BottomBar(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            text = "Entrez le nouveau nom pour ce snapshot :",
+                            text = "Entrez le nom du nouveau snapshot :",
+                            color = Color(0xFFB0BEC5),
+                            fontSize = 12.sp
+                        )
+                        OutlinedTextField(
+                            value = newSnapshotNameInput,
+                            onValueChange = { newSnapshotNameInput = it },
+                            singleLine = true,
+                            placeholder = { Text("Ex: Intro, Chorus, Pont...", color = Color(0xFF64748B)) },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedBorderColor = NeonCyan,
+                                unfocusedBorderColor = Color(0x66FFFFFF),
+                                cursorColor = NeonCyan
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("input_add_snapshot")
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            if (newSnapshotNameInput.isNotBlank()) {
+                                onAddSnapshot(newSnapshotNameInput.trim())
+                            }
+                            isAddSnapshotDialogOpen = false
+                        },
+                        modifier = Modifier.testTag("btn_confirm_add_snapshot")
+                    ) {
+                        Text("Ajouter", color = NeonCyan, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { isAddSnapshotDialogOpen = false }) {
+                        Text("Annuler", color = Color(0xFF8E95A5))
+                    }
+                },
+                containerColor = Color(0xFF161B29),
+                shape = RoundedCornerShape(16.dp)
+            )
+        }
+
+        if (renamingSlotKey != null) {
+            val isCustomSlot = renamingSlotKey != "slot_default"
+            AlertDialog(
+                onDismissRequest = { renamingSlotKey = null },
+                title = {
+                    Text(
+                        text = "Gérer le Snapshot",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "Nom du snapshot :",
                             color = Color(0xFFB0BEC5),
                             fontSize = 12.sp
                         )
@@ -395,6 +460,20 @@ fun BottomBar(
                                 .fillMaxWidth()
                                 .testTag("input_rename_snapshot")
                         )
+                        if (isCustomSlot) {
+                            TextButton(
+                                onClick = {
+                                    val key = renamingSlotKey
+                                    if (key != null) {
+                                        onDeleteSnapshot(key)
+                                    }
+                                    renamingSlotKey = null
+                                },
+                                modifier = Modifier.align(Alignment.End)
+                            ) {
+                                Text("Supprimer ce snapshot", color = Color(0xFFEF4444), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 },
                 confirmButton = {
@@ -415,7 +494,7 @@ fun BottomBar(
                     TextButton(
                         onClick = { renamingSlotKey = null }
                     ) {
-                        Text("Annuler", color = Color(0xFF8E95A5))
+                        Text("Fermer", color = Color(0xFF8E95A5))
                     }
                 },
                 containerColor = Color(0xFF161B29),
@@ -429,7 +508,7 @@ fun BottomBar(
                 .height(barHeight)
                 .clip(RoundedCornerShape(10.dp))
                 .background(Color(0xFF0C101A))
-                .border(1.dp, Color(0x3300E5FF), RoundedCornerShape(10.dp))
+                .border(1.dp, Color(0xFF222838), RoundedCornerShape(10.dp))
                 .padding(horizontal = 4.dp, vertical = 3.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(3.dp)
@@ -474,50 +553,41 @@ fun BottomBar(
                 )
             }
 
-            // 5 Snapshot Slots: Défaut, Snapshot 1, Snapshot 2, Snapshot 3, END (renamable on long press)
-            val slotKeys = listOf("slot_default", "slot_1", "slot_2", "slot_3", "slot_end")
+            // Configured Dynamic Snapshot Slots (Starts with "Défaut", up to 5 max)
+            val slotKeys = configuredSnapshotSlots
             slotKeys.forEach { slotKey ->
                 val defaultLabel = when (slotKey) {
                     "slot_default" -> "Défaut"
-                    "slot_1" -> "Snapshot 1"
-                    "slot_2" -> "Snapshot 2"
-                    "slot_3" -> "Snapshot 3"
-                    "slot_end" -> "END"
-                    else -> slotKey
+                    else -> snapshotCustomNames[slotKey] ?: "Snapshot"
                 }
                 val displayName = snapshotCustomNames[slotKey] ?: defaultLabel
 
-                // Key aliases for backward compatibility with previously saved snapshots
-                val keyAliases = when (slotKey) {
-                    "slot_default" -> listOf("slot_default", "INTRO", "Intro", "Défaut", "Default")
-                    "slot_1" -> listOf("slot_1", "Snapshot 1", "S2")
-                    "slot_2" -> listOf("slot_2", "Snapshot 2", "S3")
-                    "slot_3" -> listOf("slot_3", "Snapshot 3", "S4")
-                    "slot_end" -> listOf("slot_end", "END", "End")
-                    else -> listOf(slotKey)
-                }
-                val isActive = keyAliases.any { activeSnapshotSlot == it }
-                val isSaved = keyAliases.any { snapshots.containsKey(it) }
+                // Strict single active selection: only ONE slot is active
+                val isActive = (activeSnapshotSlot == slotKey) || (activeSnapshotSlot == null && slotKey == "slot_default")
+                val isSaved = snapshots.containsKey(slotKey) || (slotKey == "slot_default" && snapshots.isNotEmpty())
 
+                // Sunday Sound Hardware Palette: sleek studio slate when active, matte dark charcoal when inactive
                 val slotBgBrush = if (isActive) {
-                    Brush.verticalGradient(listOf(Color(0xFF00E5FF), Color(0xFF0088FF)))
+                    Brush.verticalGradient(listOf(Color(0xFF2E384D), Color(0xFF232B3B)))
                 } else {
-                    Brush.verticalGradient(listOf(Color(0xFF111522), Color(0xFF111522)))
+                    Brush.verticalGradient(listOf(Color(0xFF1A1E29), Color(0xFF141720)))
                 }
 
                 val slotTextColor = when {
-                    isActive -> Color(0xFF001E36)
-                    isSaved -> Color(0xFFE2E8F0)
-                    else -> TextDim
+                    isActive -> Color.White
+                    isSaved -> Color(0xFFCBD5E1)
+                    else -> Color(0xFF828D9F)
                 }
                 val slotFontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
 
                 Box(
                     modifier = Modifier
-                        .weight(1f)
+                        .wrapContentWidth()
+                        .defaultMinSize(minWidth = 62.dp)
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(7.dp))
                         .background(slotBgBrush)
+                        .padding(horizontal = 4.dp)
                         .pointerInput(slotKey, displayName) {
                             detectTapGestures(
                                 onTap = { onSnapshotSlotClick(slotKey) },
@@ -577,12 +647,32 @@ fun BottomBar(
                 ) {
                     Text(
                         text = displayName,
-                        fontSize = if (displayName.length > 7) 7.5.sp else 9.5.sp,
+                        fontSize = if (displayName.length > 7) 8.sp else 9.5.sp,
                         fontWeight = slotFontWeight,
                         color = slotTextColor,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 6.dp)
                     )
+                }
+            }
+
+            // [+] Add Snapshot button (up to 5 max)
+            if (configuredSnapshotSlots.size < 5) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(RoundedCornerShape(7.dp))
+                        .background(Color(0xFF141824))
+                        .border(1.dp, Color(0xFF262D3D), RoundedCornerShape(7.dp))
+                        .clickable {
+                            newSnapshotNameInput = "Snapshot ${configuredSnapshotSlots.size}"
+                            isAddSnapshotDialogOpen = true
+                        }
+                        .testTag("btn_add_snapshot"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("+", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF93C5FD))
                 }
             }
         }

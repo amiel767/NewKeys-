@@ -87,7 +87,7 @@ data class MixerUiState(
         id = 0,
         name = "MASTER",
         isMaster = true,
-        volume = 0.70f,
+        volume = 0.85f,
         fxSummary = "Master Processing",
         soundfontName = "",
         patchName = "MASTER",
@@ -105,7 +105,9 @@ data class MixerUiState(
     val pitchBend: Float = 0.0f,
     
     // Fullscreen Pages Navigation
-    val currentPage: AppScreenPage = AppScreenPage.MIXER,
+    val currentPage: AppScreenPage = AppScreenPage.PROJECTS,
+    val visibleTracksCount: Int = 1,
+    val activeProjectName: String = "Projet 1",
     
     // Popups
     val activePopup: ActivePopup = ActivePopup.NONE,
@@ -203,6 +205,7 @@ data class MixerUiState(
     val isSnapshotArmMode: Boolean = false,
     val activeSnapshotSlot: String? = null,
     val snapshots: Map<String, SubSceneSnapshot> = emptyMap(),
+    val configuredSnapshotSlots: List<String> = listOf("slot_default"),
     val customLibreTracks: List<TrackChannel>? = null,
     val snapshotTransitionProgress: Float = 1.0f,
     val snapshotCustomNames: Map<String, String> = emptyMap(),
@@ -212,10 +215,14 @@ data class MixerUiState(
     val lastDrumPadPath: String = "",
     val showStoragePermissionDialog: Boolean = false,
 
-    // Dynamic Theme Customization (Spectral Hue, Saturation, Nuance & Palette)
+    // Dynamic Theme Customization (Spectral Hue, Accent, Background & Modules)
     val themeHue: Float = 220f,
     val themeSaturation: Float = 0.40f,
     val themeNuance: Float = 0.45f,
+    val themeAccentSaturation: Float = 1.0f,
+    val themeBgSaturation: Float = 1.0f,
+    val themeBgLightness: Float = 1.0f,
+    val themeModulesLightness: Float = 1.0f,
     val themePaletteName: String = "Midnight Slate (Défaut)"
 ) {
     val soundfontFiles: List<StorageItem> get() = realSoundfonts
@@ -653,8 +660,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             TrackChannel(
                 id = i,
                 name = "Track $i",
-                isEnabled = i <= 4, // Tracks 1-4 enabled, 5-8 disabled by default
-                volume = 0.65f,
+                isEnabled = i == 1, // Only Track 1 enabled by default at startup
+                volume = 0.85f,
                 pan = 0.0f,
                 fxSummary = "Fx, EQ...",
                 reverbPreset = "Concert Hall",
@@ -1335,12 +1342,36 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         persistCurrentStateDebounced()
     }
 
+    fun setThemeAccentSaturation(sat: Float) {
+        _uiState.update { it.copy(themeAccentSaturation = sat.coerceIn(0.5f, 2.0f)) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setThemeBgSaturation(sat: Float) {
+        _uiState.update { it.copy(themeBgSaturation = sat.coerceIn(0.0f, 2.0f)) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setThemeBgLightness(lightness: Float) {
+        _uiState.update { it.copy(themeBgLightness = lightness.coerceIn(0.7f, 1.4f)) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setThemeModulesLightness(lightness: Float) {
+        _uiState.update { it.copy(themeModulesLightness = lightness.coerceIn(0.8f, 1.5f)) }
+        persistCurrentStateDebounced()
+    }
+
     fun setThemePalette(preset: ThemePalettePreset) {
         _uiState.update {
             it.copy(
                 themeHue = preset.hue,
                 themeSaturation = preset.saturation,
                 themeNuance = preset.nuance,
+                themeAccentSaturation = 1.0f,
+                themeBgSaturation = 1.0f,
+                themeBgLightness = 1.0f,
+                themeModulesLightness = 1.0f,
                 themePaletteName = preset.name
             )
         }
@@ -1348,8 +1379,19 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun resetThemeToDefault() {
-        val defaultPreset = HarmoniousPalettes.firstOrNull() ?: ThemePalettePreset("cyber_neon", "Cyber Neon", 185f, 0.85f, 0.50f, Color(0xFF00E5FF), Color(0xFF8B5CF6))
-        setThemePalette(defaultPreset)
+        _uiState.update {
+            it.copy(
+                themeHue = 220f,
+                themeSaturation = 0.40f,
+                themeNuance = 0.45f,
+                themeAccentSaturation = 1.0f,
+                themeBgSaturation = 1.0f,
+                themeBgLightness = 1.0f,
+                themeModulesLightness = 1.0f,
+                themePaletteName = "Midnight Slate (Défaut)"
+            )
+        }
+        persistCurrentStateDebounced()
     }
 
     // ================= PEAK METERS SIMULATION =================
@@ -2935,17 +2977,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 fileManager.deleteSceneFile(sceneId)
-                val sceneFiles = fileManager.getSceneFiles()
-                val updatedScenes = sceneFiles.map { f ->
-                    ScenePreset(
-                        id = f.name,
-                        name = f.name,
-                        timestamp = f.formattedSize,
-                        color = NeonCyan
-                    )
-                }
                 withContext(Dispatchers.Main) {
                     _uiState.update { state ->
+                        val updatedScenes = state.scenes.filter { it.id != sceneId && it.name != sceneId }
                         val nextActive = if (state.activeSceneId == sceneId) {
                             updatedScenes.firstOrNull()?.id ?: ""
                         } else state.activeSceneId
@@ -2959,6 +2993,127 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 e.printStackTrace()
             }
         }
+    }
+
+    fun addSoundTrack() {
+        _uiState.update { current ->
+            if (current.visibleTracksCount < 8) {
+                val nextTrackIdx = current.visibleTracksCount
+                val updatedTracks = current.tracks.mapIndexed { idx, track ->
+                    if (idx == nextTrackIdx) track.copy(isEnabled = true) else track
+                }
+                current.copy(
+                    visibleTracksCount = current.visibleTracksCount + 1,
+                    tracks = updatedTracks
+                )
+            } else current
+        }
+    }
+
+    fun removeTrack(trackId: Int) {
+        _uiState.update { current ->
+            if (current.visibleTracksCount > 1) {
+                val newCount = current.visibleTracksCount - 1
+                val targetIdx = trackId - 1
+                val updatedTracks = current.tracks.mapIndexed { idx, track ->
+                    if (track.id == trackId) {
+                        track.copy(isEnabled = false, volume = 0.65f, soundfontName = "", patchName = "")
+                    } else if (idx >= newCount) {
+                        track.copy(isEnabled = false)
+                    } else track
+                }
+                current.copy(
+                    visibleTracksCount = newCount,
+                    tracks = updatedTracks
+                )
+            } else current
+        }
+    }
+
+    fun addSnapshotSlot(name: String) {
+        val cleanName = name.trim().ifEmpty { "Snapshot ${_uiState.value.configuredSnapshotSlots.size}" }
+        _uiState.update { current ->
+            if (current.configuredSnapshotSlots.size < 5) {
+                val newSlotKey = "slot_${System.currentTimeMillis()}"
+                val updatedSlots = current.configuredSnapshotSlots + newSlotKey
+                val updatedNames = current.snapshotCustomNames + (newSlotKey to cleanName)
+                val currentSnapshot = SubSceneSnapshot(
+                    slotName = cleanName,
+                    tracks = current.tracks.map { t ->
+                        TrackSnapshot(
+                            id = t.id,
+                            volume = t.volume,
+                            pan = t.pan,
+                            isMuted = t.isMuted,
+                            isSolo = t.isSolo,
+                            isEnabled = t.isEnabled,
+                            soundfontName = t.soundfontName,
+                            patchName = t.patchName,
+                            bank = t.bank,
+                            program = t.program
+                        )
+                    },
+                    globalTranspose = current.transpose,
+                    globalOctaveShift = current.octave,
+                    masterVolume = current.masterTrack.volume
+                )
+                val updatedSnapshots = current.snapshots + (newSlotKey to currentSnapshot)
+                current.copy(
+                    configuredSnapshotSlots = updatedSlots,
+                    snapshotCustomNames = updatedNames,
+                    snapshots = updatedSnapshots,
+                    activeSnapshotSlot = newSlotKey
+                )
+            } else current
+        }
+    }
+
+    fun removeSnapshotSlot(slotKey: String) {
+        if (slotKey == "slot_default") return
+        _uiState.update { current ->
+            val updatedSlots = current.configuredSnapshotSlots.filter { it != slotKey }
+            val updatedNames = current.snapshotCustomNames - slotKey
+            val updatedSnapshots = current.snapshots - slotKey
+            val newActive = if (current.activeSnapshotSlot == slotKey) "slot_default" else current.activeSnapshotSlot
+            current.copy(
+                configuredSnapshotSlots = updatedSlots,
+                snapshotCustomNames = updatedNames,
+                snapshots = updatedSnapshots,
+                activeSnapshotSlot = newActive
+            )
+        }
+    }
+
+    fun openProject(projectName: String) {
+        selectScene(projectName)
+        _uiState.update {
+            it.copy(
+                activeProjectName = projectName,
+                currentPage = AppScreenPage.MIXER
+            )
+        }
+    }
+
+    fun deleteProject(projectName: String) {
+        deleteScene(projectName)
+    }
+
+    fun createNewProject(projectName: String = "Nouveau Projet") {
+        val cleanName = projectName.trim().ifEmpty { "Nouveau Projet" }
+        _uiState.update { current ->
+            current.copy(
+                activeProjectName = cleanName,
+                visibleTracksCount = 1,
+                configuredSnapshotSlots = listOf("slot_default"),
+                activeSnapshotSlot = "slot_default",
+                currentPage = AppScreenPage.MIXER
+            )
+        }
+        saveCurrentScene(cleanName)
+    }
+
+    fun navigateToProjectsHome() {
+        _uiState.update { it.copy(currentPage = AppScreenPage.PROJECTS) }
     }
 
     fun updateActiveScene() {

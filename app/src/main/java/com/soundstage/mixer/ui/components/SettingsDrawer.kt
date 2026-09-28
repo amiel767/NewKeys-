@@ -1,10 +1,15 @@
 package com.soundstage.mixer.ui.components
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,6 +26,7 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
@@ -34,8 +40,10 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.model.AppTheme
@@ -96,17 +104,36 @@ fun SettingsDrawer(
     onToggleUseFlats: () -> Unit = {},
 
     // Theme Customization
-    themeHue: Float = 185f,
+    themeHue: Float = 220f,
     onThemeHueChange: (Float) -> Unit = {},
-    themeSaturation: Float = 0.85f,
-    onThemeSaturationChange: (Float) -> Unit = {},
-    themeNuance: Float = 0.50f,
-    onThemeNuanceChange: (Float) -> Unit = {},
-    themePaletteName: String = "Cyber Neon",
+    themeAccentSaturation: Float = 1.0f,
+    onThemeAccentSaturationChange: (Float) -> Unit = {},
+    themeBgSaturation: Float = 1.0f,
+    onThemeBgSaturationChange: (Float) -> Unit = {},
+    themeBgLightness: Float = 1.0f,
+    onThemeBgLightnessChange: (Float) -> Unit = {},
+    themeModulesLightness: Float = 1.0f,
+    onThemeModulesLightnessChange: (Float) -> Unit = {},
+    themePaletteName: String = "Midnight Slate (Défaut)",
     onSelectThemePalette: (ThemePalettePreset) -> Unit = {},
     onResetTheme: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    if (isOpen) {
+        val scrimAlpha by animateFloatAsState(
+            targetValue = 0.55f,
+            animationSpec = tween(260),
+            label = "settings_scrim_fade"
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = scrimAlpha))
+                .clickable { onClose() }
+                .testTag("settings_drawer_scrim")
+        )
+    }
+
     AnimatedVisibility(
         visible = isOpen,
         enter = slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(280)) + fadeIn(tween(200)),
@@ -114,10 +141,7 @@ fun SettingsDrawer(
         modifier = modifier
     ) {
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color(0x77000000))
-                .clickable { onClose() },
+            modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.CenterEnd
         ) {
             Box(
@@ -127,8 +151,8 @@ fun SettingsDrawer(
                     .fillMaxWidth(0.58f)
                     .shadow(32.dp, RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp))
                     .clip(RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp))
-                    .background(Color(0xFF141722))
-                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp))
+                    .background(Color(0xFF181C28))
+                    .border(1.dp, Color(0xFF2C3549), RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp))
                     .clickable(enabled = false) {}
                     .padding(horizontal = 18.dp, vertical = 14.dp)
                     .testTag("settings_drawer_content")
@@ -161,12 +185,14 @@ fun SettingsDrawer(
                         ThemeSettingsSubPage(
                             themeHue = themeHue,
                             onThemeHueChange = onThemeHueChange,
-                            themeSaturation = themeSaturation,
-                            onThemeSaturationChange = onThemeSaturationChange,
-                            themeNuance = themeNuance,
-                            onThemeNuanceChange = onThemeNuanceChange,
-                            themePaletteName = themePaletteName,
-                            onSelectThemePalette = onSelectThemePalette,
+                            themeAccentSaturation = themeAccentSaturation,
+                            onThemeAccentSaturationChange = onThemeAccentSaturationChange,
+                            themeBgSaturation = themeBgSaturation,
+                            onThemeBgSaturationChange = onThemeBgSaturationChange,
+                            themeBgLightness = themeBgLightness,
+                            onThemeBgLightnessChange = onThemeBgLightnessChange,
+                            themeModulesLightness = themeModulesLightness,
+                            onThemeModulesLightnessChange = onThemeModulesLightnessChange,
                             onResetTheme = onResetTheme,
                             onBack = { onNavigateSubPage("main") }
                         )
@@ -893,12 +919,14 @@ private fun LanguageSelectorSubPage(
 private fun ThemeSettingsSubPage(
     themeHue: Float,
     onThemeHueChange: (Float) -> Unit,
-    themeSaturation: Float,
-    onThemeSaturationChange: (Float) -> Unit,
-    themeNuance: Float,
-    onThemeNuanceChange: (Float) -> Unit,
-    themePaletteName: String,
-    onSelectThemePalette: (ThemePalettePreset) -> Unit,
+    themeAccentSaturation: Float,
+    onThemeAccentSaturationChange: (Float) -> Unit,
+    themeBgSaturation: Float,
+    onThemeBgSaturationChange: (Float) -> Unit,
+    themeBgLightness: Float,
+    onThemeBgLightnessChange: (Float) -> Unit,
+    themeModulesLightness: Float,
+    onThemeModulesLightnessChange: (Float) -> Unit,
     onResetTheme: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -957,143 +985,269 @@ private fun ThemeSettingsSubPage(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Section 1: Palettes harmonieuses complètes
+            // 1. ColorBlendr Tonal Palettes Header Card
             item {
-                Text(
-                    text = "Palettes Harmonieuses",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = NeonCyan,
-                    modifier = Modifier.padding(bottom = 6.dp)
-                )
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    HarmoniousPalettes.forEach { preset ->
-                        val isSelected = preset.name == themePaletteName ||
-                            (kotlin.math.abs(preset.hue - themeHue) < 4f && kotlin.math.abs(preset.saturation - themeSaturation) < 0.08f)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Color(0xFF1E2435))
+                        .border(1.dp, Color(0xFF2C354B), RoundedCornerShape(20.dp))
+                        .padding(horizontal = 16.dp, vertical = 18.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        // Row 1: Primaire, Secondaire, Tertiaire
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (isSelected) Color(0xFF1E2C3D) else Color(0xFF1E212E))
-                                .border(1.dp, if (isSelected) NeonCyan else Color(0x14FFFFFF), RoundedCornerShape(12.dp))
-                                .clickable { onSelectThemePalette(preset) }
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly
                         ) {
-                            // Dual color chip preview
-                            Row(
-                                modifier = Modifier
-                                    .size(width = 34.dp, height = 20.dp)
-                                    .clip(RoundedCornerShape(6.dp))
-                            ) {
-                                Box(modifier = Modifier.weight(1f).fillMaxHeight().background(preset.primaryPreview))
-                                Box(modifier = Modifier.weight(1f).fillMaxHeight().background(preset.secondaryPreview))
-                            }
-                            Text(
-                                text = preset.name,
-                                fontSize = 12.5.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = Color.White,
-                                modifier = Modifier.weight(1f)
+                            TonalSwatch(
+                                label = "Primaire",
+                                topColor = hsvToColor(themeHue, 0.70f, 0.90f),
+                                bottomColor = hsvToColor(themeHue, 0.60f, 0.45f)
                             )
-                            if (isSelected) {
-                                Text(text = "✓", fontSize = 13.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
-                            }
+                            TonalSwatch(
+                                label = "Secondaire",
+                                topColor = hsvToColor((themeHue + 40f) % 360f, 0.65f, 0.85f),
+                                bottomColor = hsvToColor((themeHue + 40f) % 360f, 0.50f, 0.40f)
+                            )
+                            TonalSwatch(
+                                label = "Tertiaire",
+                                topColor = hsvToColor((themeHue + 140f) % 360f, 0.60f, 0.82f),
+                                bottomColor = hsvToColor((themeHue + 140f) % 360f, 0.45f, 0.38f)
+                            )
+                        }
+
+                        // Row 2: Neutre 1, Neutre 2
+                        Row(
+                            modifier = Modifier.fillMaxWidth(0.72f),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            TonalSwatch(
+                                label = "Neutre 1",
+                                topColor = Color(0xFF94A3B8),
+                                bottomColor = Color(0xFF334155)
+                            )
+                            TonalSwatch(
+                                label = "Neutre 2",
+                                topColor = Color(0xFF64748B),
+                                bottomColor = Color(0xFF1E293B)
+                            )
                         }
                     }
                 }
             }
 
-            // Section 2: Réglages spectraux précis (Hue, Saturation, Nuance)
+            // 2. Horizontal Slide-to-Adjust Cards (Exact ColorBlendr Interaction)
             item {
-                AospCard(title = "Réglages Précis") {
-                    Column(
-                        modifier = Modifier.padding(vertical = 4.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        // Slider Teinte (Hue 0..360)
-                        Column {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("Teinte (Hue)", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Medium)
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(14.dp)
-                                            .clip(CircleShape)
-                                            .background(hsvToColor(themeHue, 1f, 1f))
-                                            .border(1.dp, Color.White, CircleShape)
-                                    )
-                                    Text("${themeHue.toInt()}°", fontSize = 11.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                            Slider(
-                                value = themeHue,
-                                onValueChange = onThemeHueChange,
-                                valueRange = 0f..360f,
-                                colors = SliderDefaults.colors(
-                                    thumbColor = Color.White,
-                                    activeTrackColor = hsvToColor(themeHue, 0.9f, 0.9f),
-                                    inactiveTrackColor = Color(0x33FFFFFF)
-                                ),
-                                modifier = Modifier.height(28.dp)
-                            )
-                        }
+                ThemeSliderCard(
+                    title = "Saturation de la couleur d'accentuation",
+                    valueText = String.format(java.util.Locale.US, "Sélection: %.2fx", themeAccentSaturation),
+                    progress = ((themeAccentSaturation - 0.5f) / 1.5f).coerceIn(0f, 1f),
+                    onProgressChange = { p -> onThemeAccentSaturationChange(0.5f + p * 1.5f) },
+                    onReset = { onThemeAccentSaturationChange(1.0f) }
+                )
+            }
 
-                        // Slider Saturation (0..100%)
-                        Column {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("Saturation", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Medium)
-                                Text("${(themeSaturation * 100).toInt()}%", fontSize = 11.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
-                            }
-                            Slider(
-                                value = themeSaturation,
-                                onValueChange = onThemeSaturationChange,
-                                valueRange = 0.05f..1f,
-                                colors = SliderDefaults.colors(
-                                    thumbColor = Color.White,
-                                    activeTrackColor = hsvToColor(themeHue, themeSaturation, 0.9f),
-                                    inactiveTrackColor = Color(0x33FFFFFF)
-                                ),
-                                modifier = Modifier.height(28.dp)
-                            )
-                        }
+            item {
+                ThemeSliderCard(
+                    title = "Saturation de l'arrière-plan",
+                    valueText = String.format(java.util.Locale.US, "Sélection: %.2fx", themeBgSaturation),
+                    progress = (themeBgSaturation / 2.0f).coerceIn(0f, 1f),
+                    onProgressChange = { p -> onThemeBgSaturationChange(p * 2.0f) },
+                    onReset = { onThemeBgSaturationChange(1.0f) }
+                )
+            }
 
-                        // Slider Nuance / Contraste (0..100%)
-                        Column {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("Nuance & Contraste", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Medium)
-                                Text("${(themeNuance * 100).toInt()}%", fontSize = 11.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
-                            }
-                            Slider(
-                                value = themeNuance,
-                                onValueChange = onThemeNuanceChange,
-                                valueRange = 0.15f..0.85f,
-                                colors = SliderDefaults.colors(
-                                    thumbColor = Color.White,
-                                    activeTrackColor = hsvToColor(themeHue, themeSaturation * 0.4f, 0.7f),
-                                    inactiveTrackColor = Color(0x33FFFFFF)
-                                ),
-                                modifier = Modifier.height(28.dp)
-                            )
+            item {
+                ThemeSliderCard(
+                    title = "Luminosité du fond",
+                    valueText = String.format(java.util.Locale.US, "Sélection: %.2fx", themeBgLightness),
+                    progress = ((themeBgLightness - 0.7f) / 0.7f).coerceIn(0f, 1f),
+                    onProgressChange = { p -> onThemeBgLightnessChange(0.7f + p * 0.7f) },
+                    onReset = { onThemeBgLightnessChange(1.0f) }
+                )
+            }
+
+            item {
+                ThemeSliderCard(
+                    title = "Luminosité & contraste des modules",
+                    valueText = String.format(java.util.Locale.US, "Sélection: %.2fx", themeModulesLightness),
+                    progress = ((themeModulesLightness - 0.8f) / 0.7f).coerceIn(0f, 1f),
+                    onProgressChange = { p -> onThemeModulesLightnessChange(0.8f + p * 0.7f) },
+                    onReset = { onThemeModulesLightnessChange(1.0f) }
+                )
+            }
+
+            item {
+                ThemeSliderCard(
+                    title = "Teinte principale de l'interface",
+                    valueText = "Sélection: ${themeHue.toInt()}°",
+                    progress = (themeHue / 360f).coerceIn(0f, 1f),
+                    onProgressChange = { p -> onThemeHueChange(p * 360f) },
+                    onReset = { onThemeHueChange(220f) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TonalSwatch(
+    label: String,
+    topColor: Color,
+    bottomColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(46.dp)
+                .clip(CircleShape)
+                .background(topColor)
+                .border(1.2.dp, Color(0x33FFFFFF), CircleShape)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.5f)
+                    .align(Alignment.BottomCenter)
+                    .background(bottomColor)
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.5f)
+                    .fillMaxHeight()
+                    .align(Alignment.CenterEnd)
+                    .background(bottomColor.copy(alpha = 0.35f))
+            )
+        }
+        Text(
+            text = label,
+            fontSize = 11.sp,
+            color = Color(0xFF94A3B8),
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+private fun ThemeSliderCard(
+    title: String,
+    valueText: String,
+    progress: Float,
+    onProgressChange: (Float) -> Unit,
+    onReset: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val currentOnProgressChange by rememberUpdatedState(onProgressChange)
+
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(68.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color(0xFF1E2435))
+            .border(1.dp, Color(0xFF2C354B), RoundedCornerShape(18.dp))
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val width = size.width.toFloat()
+                    if (width > 0f) {
+                        currentOnProgressChange((down.position.x / width).coerceIn(0f, 1f))
+                    }
+                    val pointerId = down.id
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == pointerId } ?: break
+                        if (!change.pressed) break
+                        if (width > 0f) {
+                            change.consume()
+                            currentOnProgressChange((change.position.x / width).coerceIn(0f, 1f))
                         }
                     }
                 }
+            }
+    ) {
+        val fillWidth = maxWidth * progress.coerceIn(0f, 1f)
+
+        // ColorBlendr filled progress gauge from left to right
+        if (progress > 0.01f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(fillWidth)
+                    .clip(
+                        RoundedCornerShape(
+                            topStart = 18.dp,
+                            bottomStart = 18.dp,
+                            topEnd = if (progress >= 0.96f) 18.dp else 4.dp,
+                            bottomEnd = if (progress >= 0.96f) 18.dp else 4.dp
+                        )
+                    )
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+                            )
+                        )
+                    )
+            )
+        }
+
+        // Foreground content
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = title,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = valueText,
+                    fontSize = 11.5.sp,
+                    color = Color(0xFF94A3B8)
+                )
+            }
+
+            // Circular reset button
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .clickable { onReset() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = "Réinitialiser",
+                    tint = Color(0xFFCBD5E1),
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
     }

@@ -2,6 +2,7 @@ package com.soundstage.mixer.ui.components
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -72,6 +73,21 @@ fun SceneDialog(
     var renamingSceneNameInput by remember { mutableStateOf("") }
     var pendingDeleteSceneId by remember { mutableStateOf<String?>(null) }
 
+    if (isOpen) {
+        val scrimAlpha by animateFloatAsState(
+            targetValue = 0.55f,
+            animationSpec = tween(durationMillis = 260),
+            label = "scene_scrim_fade"
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = scrimAlpha))
+                .clickable { onClose() }
+                .testTag("scene_side_drawer_scrim")
+        )
+    }
+
     AnimatedVisibility(
         visible = isOpen,
         enter = slideInHorizontally(
@@ -85,22 +101,18 @@ fun SceneDialog(
         modifier = modifier
     ) {
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.50f))
-                .clickable { onClose() }
-                .testTag("scene_side_drawer_scrim")
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.CenterEnd
         ) {
             Box(
                 modifier = Modifier
-                    .align(Alignment.CenterEnd)
                     .fillMaxHeight()
                     .widthIn(min = 300.dp, max = 380.dp)
                     .fillMaxWidth(0.38f)
                     .shadow(24.dp, RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp))
                     .clip(RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp))
                     .background(Color(0xFF0F131A))
-                    .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp))
+                    .border(1.dp, Color(0xFF222838), RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp))
                     .clickable(enabled = false) {}
                     .padding(horizontal = 18.dp, vertical = 16.dp)
                     .testTag("scene_side_drawer_content")
@@ -109,7 +121,7 @@ fun SceneDialog(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // ================= 1. HEADER: "Scène" + Diskette Icon + Close (X) =================
+                    // ================= 1. HEADER: "Projets" + Diskette Icon + Close (X) =================
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -118,7 +130,7 @@ fun SceneDialog(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "Scène",
+                            text = "Projets",
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
@@ -370,7 +382,7 @@ fun SceneDialog(
                                 )
                             }
                             .clickable {
-                                newSceneNameInput = "Scène ${scenes.size + 1}"
+                                newSceneNameInput = "Projet ${scenes.size + 1}"
                                 isNewSceneDialogOpen = true
                             }
                             .testTag("btn_new_scene_dashed"),
@@ -387,7 +399,7 @@ fun SceneDialog(
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
-                                text = "Nouvelle scène",
+                                text = "Nouveau projet",
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color(0xFF94A3B8)
@@ -405,7 +417,7 @@ fun SceneDialog(
             onDismissRequest = { isNewSceneDialogOpen = false },
             title = {
                 Text(
-                    text = "Créer une nouvelle scène",
+                    text = "Créer un nouveau projet",
                     color = Color.White,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
@@ -414,7 +426,7 @@ fun SceneDialog(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "Donnez un nom à votre nouvelle scène :",
+                        text = "Donnez un nom à votre nouveau projet :",
                         color = Color(0xFF94A3B8),
                         fontSize = 12.sp
                     )
@@ -462,7 +474,7 @@ fun SceneDialog(
             onDismissRequest = { renamingSceneId = null },
             title = {
                 Text(
-                    text = "Renommer la scène",
+                    text = "Renommer le projet",
                     color = Color.White,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold

@@ -4,9 +4,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -15,6 +18,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,7 +30,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soundstage.mixer.model.ActivePopup
@@ -35,6 +41,7 @@ import com.soundstage.mixer.model.FxParameters
 import com.soundstage.mixer.ui.components.*
 import com.soundstage.mixer.ui.pages.DrumPadPage
 import com.soundstage.mixer.ui.pages.FileExplorerPage
+import com.soundstage.mixer.ui.pages.ProjectsPage
 import com.soundstage.mixer.ui.pages.SheetsPage
 import com.soundstage.mixer.ui.theme.*
 import com.soundstage.mixer.viewmodel.MixerViewModel
@@ -131,6 +138,15 @@ fun MixerScreen(
             modifier = Modifier.fillMaxSize()
         ) { currentPage ->
             when (currentPage) {
+                AppScreenPage.PROJECTS -> {
+                    ProjectsPage(
+                        projects = uiState.scenes,
+                        onOpenProject = { viewModel.openProject(it) },
+                        onCreateNewProject = { viewModel.createNewProject(it) },
+                        onDeleteProject = { viewModel.deleteProject(it) },
+                        onOpenSettings = { viewModel.openSettingsDrawer() }
+                    )
+                }
                 AppScreenPage.DRUMPAD -> {
                     if (uiState.isDrumPadFileExplorerOpen || uiState.isDrumPadLoopsOpen) {
                         FileExplorerPage(
@@ -266,7 +282,8 @@ fun MixerScreen(
                     onOpenScenes = {
                         if (uiState.activePopup == ActivePopup.SCENE) viewModel.closePopup() else viewModel.openPopup(ActivePopup.SCENE)
                     },
-                    onOpenSettings = { viewModel.openSettingsDrawer() }
+                    onOpenSettings = { viewModel.openSettingsDrawer() },
+                    onBackToProjects = { viewModel.navigateToProjectsHome() }
                 )
 
                 Spacer(modifier = Modifier.height(4.dp))
@@ -305,13 +322,15 @@ fun MixerScreen(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .horizontalScroll(trackScrollState),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
                             ) {
-                                uiState.tracks.forEach { track ->
+                                val visibleTracks = uiState.tracks.take(uiState.visibleTracksCount.coerceIn(1, 8))
+                                visibleTracks.forEach { track ->
                                     VerticalTrackChannel(
                                         track = track,
                                         onVolumeChange = { vol -> viewModel.setTrackVolume(track.id, vol) },
                                         onPowerToggle = { viewModel.toggleTrackPower(track.id) },
+                                        onDeleteTrack = { viewModel.removeTrack(track.id) },
                                         onPanChange = { pan -> viewModel.setTrackPan(track.id, pan) },
                                         onMuteClick = { viewModel.onTrackMuteClick(track.id) },
                                         onSoloClick = { viewModel.onTrackSoloClick(track.id) },
@@ -323,6 +342,55 @@ fun MixerScreen(
                                             .fillMaxHeight()
                                     )
                                 }
+
+                                // "+ (Add sound)" Button next to faders
+                                if (uiState.visibleTracksCount < 8) {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(trackItemWidth.coerceIn(64.dp, 88.dp))
+                                            .fillMaxHeight()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color(0xFF161A26))
+                                            .border(
+                                                width = 1.2.dp,
+                                                color = Color(0xFF2E374D),
+                                                shape = RoundedCornerShape(8.dp)
+                                            )
+                                            .clickable { viewModel.addSoundTrack() }
+                                            .padding(8.dp)
+                                            .testTag("btn_add_sound_track"),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(40.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color(0xFF1F2536))
+                                                    .border(1.2.dp, Color(0xFF38435E), CircleShape),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Add,
+                                                    contentDescription = "Add Track",
+                                                    tint = Color(0xFF93C5FD),
+                                                    modifier = Modifier.size(22.dp)
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Text(
+                                                text = "+ Add sound",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF94A3B8)
+                                            )
+                                        }
+                                    }
+                                }
+
                                 if (isPadOpen) {
                                     Spacer(modifier = Modifier.width(overlayWidth))
                                 }
@@ -534,7 +602,10 @@ fun MixerScreen(
                     onToggleSnapshotArm = { viewModel.toggleSnapshotArm() },
                     activeSnapshotSlot = uiState.activeSnapshotSlot,
                     snapshots = uiState.snapshots,
+                    configuredSnapshotSlots = uiState.configuredSnapshotSlots,
                     onSnapshotSlotClick = { slotKey -> viewModel.onSnapshotSlotClick(slotKey) },
+                    onAddSnapshot = { name -> viewModel.addSnapshotSlot(name) },
+                    onDeleteSnapshot = { slotKey -> viewModel.removeSnapshotSlot(slotKey) },
                     snapshotCustomNames = uiState.snapshotCustomNames,
                     onRenameSnapshotSlot = { slotKey, newName -> viewModel.renameSnapshotSlot(slotKey, newName) },
                     snapshotTransitionProgress = uiState.snapshotTransitionProgress,
@@ -550,9 +621,14 @@ fun MixerScreen(
                     }
                 )
 
-                // 4. FIXED LAYOUT SLOT FOR RETRACTABLE PIANO (so faders/BottomBar get pushed up cleanly when keyboard is visible)
+                // 4. FIXED LAYOUT SLOT FOR RETRACTABLE PIANO (pushes BottomBar cleanly without overlapping)
+                val activePianoTracksCount = remember(uiState.tracks, uiState.visibleTracksCount) {
+                    uiState.tracks.take(uiState.visibleTracksCount.coerceIn(1, 8)).count { it.isEnabled }.coerceIn(1, 8)
+                }
+                val pianoRestStripHeight = (activePianoTracksCount * 2.5f + 1f).dp.coerceIn(4.dp, 18.dp)
+                val targetKeyboardSlotHeight = if (isKeyboardVisible) 56.dp + pianoRestStripHeight else 0.dp
                 val keyboardHeight by animateDpAsState(
-                    targetValue = if (isKeyboardVisible) 76.dp else 0.dp,
+                    targetValue = targetKeyboardSlotHeight,
                     animationSpec = tween(300, easing = EaseOutExpo),
                     label = "keyboardHeight"
                 )
@@ -584,6 +660,9 @@ fun MixerScreen(
 
             // 5. RETRACTABLE MULTI-TOUCH VIRTUAL PIANO KEYBOARD (Smooth 380ms transition)
             val activeSlotLedColor = getTrackThemeColor(uiState.activeSoundfontSlotId + 1)
+            val activePianoTracks = remember(uiState.tracks, uiState.visibleTracksCount) {
+                uiState.tracks.take(uiState.visibleTracksCount.coerceIn(1, 8)).filter { it.isEnabled }
+            }
             AnimatedVisibility(
                 visible = isKeyboardVisible,
                 enter = slideInVertically(
@@ -603,7 +682,7 @@ fun MixerScreen(
                     heightFraction = 1f,
                     pressedKeys = uiState.pressedKeys,
                     octave = uiState.octave,
-                    tracks = uiState.tracks,
+                    tracks = activePianoTracks,
                     isLayerExpanded = uiState.isKeyboardLayerExpanded,
                     onToggleLayerExpanded = { viewModel.toggleKeyboardLayer() },
                     onRangeChanged = { trackId, minN, maxN -> viewModel.updateTrackKeyRange(trackId, minN, maxN) },
@@ -686,46 +765,6 @@ fun MixerScreen(
                     onToggleFolder = { viewModel.toggleMidiFolder(it) },
                     onSelectMidiFile = { viewModel.playMidiFile(it) },
                     onClose = { viewModel.closeMidiPanel() }
-                )
-            }
-
-            // Scene In-Place Expanding View: 0.5s seamless fluid high-resolution expansion from scene button square
-            AnimatedVisibility(
-                visible = uiState.activePopup == ActivePopup.SCENE,
-                enter = fadeIn(animationSpec = tween(500, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
-                        scaleIn(
-                            initialScale = 0.08f,
-                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.92f, 0.05f),
-                            animationSpec = tween(500, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-                        ) +
-                        expandIn(
-                            expandFrom = Alignment.TopEnd,
-                            animationSpec = tween(500, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-                        ),
-                exit = fadeOut(animationSpec = tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
-                        scaleOut(
-                            targetScale = 0.08f,
-                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.92f, 0.05f),
-                            animationSpec = tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-                        ) +
-                        shrinkOut(
-                            shrinkTowards = Alignment.TopEnd,
-                            animationSpec = tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-                        ),
-                modifier = Modifier
-                    .padding(top = 44.dp, end = 12.dp)
-                    .align(Alignment.TopEnd)
-            ) {
-                SceneDialog(
-                    isOpen = true,
-                    scenes = uiState.scenes,
-                    activeSceneId = uiState.activeSceneId,
-                    onSelectScene = { viewModel.selectScene(it) },
-                    onSaveCurrentScene = { viewModel.saveCurrentScene(it) },
-                    onCreateBlankScene = { viewModel.createBlankScene(it) },
-                    onUpdateActiveScene = { viewModel.updateActiveScene() },
-                    onDeleteScene = { viewModel.deleteScene(it) },
-                    onClose = { viewModel.closePopup() }
                 )
             }
                     }
@@ -849,13 +888,33 @@ fun MixerScreen(
             onToggleUseFlats = { viewModel.toggleUseFlats() },
             themeHue = uiState.themeHue,
             onThemeHueChange = { viewModel.setThemeHue(it) },
-            themeSaturation = uiState.themeSaturation,
-            onThemeSaturationChange = { viewModel.setThemeSaturation(it) },
-            themeNuance = uiState.themeNuance,
-            onThemeNuanceChange = { viewModel.setThemeNuance(it) },
+            themeAccentSaturation = uiState.themeAccentSaturation,
+            onThemeAccentSaturationChange = { viewModel.setThemeAccentSaturation(it) },
+            themeBgSaturation = uiState.themeBgSaturation,
+            onThemeBgSaturationChange = { viewModel.setThemeBgSaturation(it) },
+            themeBgLightness = uiState.themeBgLightness,
+            onThemeBgLightnessChange = { viewModel.setThemeBgLightness(it) },
+            themeModulesLightness = uiState.themeModulesLightness,
+            onThemeModulesLightnessChange = { viewModel.setThemeModulesLightness(it) },
             themePaletteName = uiState.themePaletteName,
             onSelectThemePalette = { viewModel.setThemePalette(it) },
             onResetTheme = { viewModel.resetThemeToDefault() }
+        )
+
+        // Projects / Scenes Sliding Side Drawer (Exact sliding drawer from right matching Settings)
+        SceneDialog(
+            isOpen = uiState.activePopup == ActivePopup.SCENE,
+            scenes = uiState.scenes,
+            activeSceneId = uiState.activeSceneId,
+            onSelectScene = { viewModel.selectScene(it) },
+            onSaveCurrentScene = { viewModel.saveCurrentScene(it) },
+            onCreateBlankScene = { viewModel.createBlankScene(it) },
+            onUpdateActiveScene = { viewModel.updateActiveScene() },
+            onDeleteScene = { viewModel.deleteScene(it) },
+            onClose = { viewModel.closePopup() },
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(120f)
         )
 
         // Material 3 Storage Permission Explanation Dialog

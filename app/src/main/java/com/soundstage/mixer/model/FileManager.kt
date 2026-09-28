@@ -74,7 +74,8 @@ class FileManager(private val context: Context) {
     val loopsDir: File get() = File(baseDir, "Loops")
     val drumPadDir: File get() = File(baseDir, "DrumPad")
     val drumPadLoopDir: File get() = File(drumPadDir, "DrumPad loop")
-    val scenesDir: File get() = File(baseDir, "Scenes")
+    val projectsDir: File get() = File(baseDir, "Projects")
+    val scenesDir: File get() = projectsDir
     val recordingsDir: File get() = File(baseDir, "Recordings")
     val presetsDir: File get() = File(baseDir, "Presets")
     val logsDir: File get() = File(baseDir, "Logs")
@@ -111,10 +112,23 @@ class FileManager(private val context: Context) {
             if (!loopsDir.exists()) loopsDir.mkdirs()
             if (!drumPadDir.exists()) drumPadDir.mkdirs()
             if (!drumPadLoopDir.exists()) drumPadLoopDir.mkdirs()
-            if (!scenesDir.exists()) scenesDir.mkdirs()
+            if (!projectsDir.exists()) projectsDir.mkdirs()
             if (!presetsDir.exists()) presetsDir.mkdirs()
             if (!logsDir.exists()) logsDir.mkdirs()
             if (!recordingsDir.exists()) recordingsDir.mkdirs()
+
+            // Migrate legacy Scenes directory to Projects if present
+            try {
+                val oldScenes = File(baseDir, "Scenes")
+                if (oldScenes.exists() && oldScenes.isDirectory) {
+                    oldScenes.listFiles()?.forEach { file ->
+                        val target = File(projectsDir, file.name)
+                        if (!target.exists()) {
+                            file.copyTo(target, overwrite = true)
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
 
             // Remove deprecated Midi and Styles subfolders completely per user request
             try {

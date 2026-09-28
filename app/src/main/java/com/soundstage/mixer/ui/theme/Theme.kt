@@ -58,43 +58,55 @@ val HarmoniousPalettes = listOf(
 )
 
 /**
- * Dynamically computes a natural, high-end dark color scheme from spectral parameters.
- * Automatically adapts the dark background, surface cards, and accent highlights.
+ * Dynamically computes a natural, high-end Sunday Sound studio color scheme from spectral parameters.
+ * Anchors the background and channel cards to clean studio slate-navy, eliminating muddy brown and pitch black.
  */
 fun generateDynamicColorScheme(
     hue: Float,
     saturation: Float,
-    nuance: Float
+    nuance: Float,
+    accentSaturation: Float = 1.0f,
+    bgSaturation: Float = 1.0f,
+    bgLightness: Float = 1.0f,
+    modulesLightness: Float = 1.0f
 ): ColorScheme {
-    val normSat = saturation.coerceIn(0.05f, 1.0f)
+    val normSat = (saturation * accentSaturation).coerceIn(0.05f, 1.2f)
     val normNuance = nuance.coerceIn(0.1f, 0.9f)
 
-    val primaryColor = hsvToColor(hue, normSat * 0.70f, 0.88f)
-    val secondaryColor = hsvToColor((hue + 40f) % 360f, normSat * 0.65f, 0.82f)
-    val tertiaryColor = hsvToColor((hue + 140f) % 360f, normSat * 0.60f, 0.80f)
+    // Dynamic vivid accent colors matching user-selected hue
+    val primaryColor = hsvToColor(hue, (normSat * 0.75f).coerceIn(0.10f, 1f), 0.92f)
+    val secondaryColor = hsvToColor((hue + 40f) % 360f, (normSat * 0.70f).coerceIn(0.10f, 1f), 0.86f)
+    val tertiaryColor = hsvToColor((hue + 140f) % 360f, (normSat * 0.65f).coerceIn(0.10f, 1f), 0.84f)
 
-    // Deep natural midnight background (#0E121A tuned by hue)
-    val bgVal = (0.055f + (normNuance - 0.5f) * 0.03f).coerceIn(0.03f, 0.08f)
-    val bgColor = hsvToColor(hue, (normSat * 0.18f).coerceAtMost(0.12f), bgVal)
+    // Cool Sunday Sound Studio Slate base hue (222° slate-navy ensures zero brown/sepia tint)
+    val slateBaseHue = 222f
+    val subtleHueBlend = (slateBaseHue * 0.85f + (hue % 360f) * 0.15f)
 
-    // Smooth slate surface cards (#161A26)
-    val surfVal = (0.11f + (normNuance - 0.5f) * 0.05f).coerceIn(0.08f, 0.16f)
-    val surfaceColor = hsvToColor(hue, (normSat * 0.20f).coerceAtMost(0.15f), surfVal)
+    // Deep natural studio slate background (#181C27: clearly separated, never pitch black)
+    val bgVal = ((0.14f + (normNuance - 0.5f) * 0.03f) * bgLightness).coerceIn(0.09f, 0.22f)
+    val bgSat = (0.12f * bgSaturation).coerceIn(0.03f, 0.20f)
+    val bgColor = hsvToColor(subtleHueBlend, bgSat, bgVal)
 
-    val surfVarVal = (0.15f + (normNuance - 0.5f) * 0.06f).coerceIn(0.11f, 0.20f)
-    val surfaceVariantColor = hsvToColor(hue, (normSat * 0.18f).coerceAtMost(0.14f), surfVarVal)
+    // Smooth slate channel cards & racks (#22293A: distinct contrast against background)
+    val surfVal = ((0.21f + (normNuance - 0.5f) * 0.04f) * modulesLightness).coerceIn(0.15f, 0.32f)
+    val surfSat = (0.14f * bgSaturation).coerceIn(0.03f, 0.22f)
+    val surfaceColor = hsvToColor(subtleHueBlend, surfSat, surfVal)
+
+    val surfVarVal = ((0.25f + (normNuance - 0.5f) * 0.05f) * modulesLightness).coerceIn(0.18f, 0.36f)
+    val surfaceVariantColor = hsvToColor(subtleHueBlend, surfSat, surfVarVal)
     
-    // Subtle discrete border (#222838)
-    val outlineColor = hsvToColor(hue, (normSat * 0.25f).coerceAtMost(0.18f), 0.22f)
+    // Crisp studio hardware border (#2E374D)
+    val outlineVal = (0.30f * modulesLightness).coerceIn(0.20f, 0.42f)
+    val outlineColor = hsvToColor(subtleHueBlend, (0.16f * bgSaturation).coerceIn(0.04f, 0.24f), outlineVal)
 
     return darkColorScheme(
         primary = primaryColor,
         onPrimary = Color.Black,
-        primaryContainer = hsvToColor(hue, normSat * 0.50f, 0.30f),
+        primaryContainer = hsvToColor(hue, (normSat * 0.50f).coerceIn(0.05f, 1f), 0.30f),
         onPrimaryContainer = Color.White,
         secondary = secondaryColor,
         onSecondary = Color.Black,
-        secondaryContainer = hsvToColor((hue + 40f) % 360f, normSat * 0.45f, 0.28f),
+        secondaryContainer = hsvToColor((hue + 40f) % 360f, (normSat * 0.45f).coerceIn(0.05f, 1f), 0.28f),
         onSecondaryContainer = Color.White,
         tertiary = tertiaryColor,
         background = bgColor,
@@ -133,20 +145,40 @@ private val CyberNeonColorScheme = darkColorScheme(
 @Composable
 fun SoundfontLiveMixerTheme(
     appTheme: AppTheme = AppTheme.CYBER_NEON,
-    hue: Float = 185f,
+    hue: Float = 220f,
     saturation: Float = 0.85f,
     nuance: Float = 0.50f,
+    accentSaturation: Float = 1.0f,
+    bgSaturation: Float = 1.0f,
+    bgLightness: Float = 1.0f,
+    modulesLightness: Float = 1.0f,
     useCustomDynamicTheme: Boolean = true,
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = if (useCustomDynamicTheme) {
-        generateDynamicColorScheme(hue, saturation, nuance)
+        generateDynamicColorScheme(
+            hue = hue,
+            saturation = saturation,
+            nuance = nuance,
+            accentSaturation = accentSaturation,
+            bgSaturation = bgSaturation,
+            bgLightness = bgLightness,
+            modulesLightness = modulesLightness
+        )
     } else {
         when (appTheme) {
             AppTheme.CYBER_NEON -> CyberNeonColorScheme
-            else -> generateDynamicColorScheme(hue, saturation, nuance)
+            else -> generateDynamicColorScheme(
+                hue = hue,
+                saturation = saturation,
+                nuance = nuance,
+                accentSaturation = accentSaturation,
+                bgSaturation = bgSaturation,
+                bgLightness = bgLightness,
+                modulesLightness = modulesLightness
+            )
         }
     }
 

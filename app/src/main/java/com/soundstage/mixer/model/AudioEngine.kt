@@ -127,9 +127,7 @@ class AudioEngine(private val context: Context) {
     fun reconnectAudioStream() {
         reconnectJob?.cancel()
         reconnectJob = coroutineScope.launch(Dispatchers.IO) {
-            kotlinx.coroutines.delay(250)
             NativeAudioBridge.safeStartEngine(0)
-            kotlinx.coroutines.delay(60)
             restoreAllEngineParameters()
         }
     }

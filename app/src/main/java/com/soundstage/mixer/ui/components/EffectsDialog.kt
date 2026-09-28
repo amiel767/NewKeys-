@@ -69,13 +69,11 @@ fun EffectsDialog(
         )
     } else {
         listOf(
-            "reverb" to "Reverb",
-            "chorus" to "Chorus",
-            "delay" to "Delay",
-            "comp" to "Compressor",
             "velocity" to "Velocity"
         )
     }
+
+    val effectiveTab = if (trackId != 0) "velocity" else activeTab
 
     Box(
         modifier = modifier
@@ -142,7 +140,7 @@ fun EffectsDialog(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     items(tabs) { (tabKey, tabLabel) ->
-                        val isSelected = activeTab == tabKey
+                        val isSelected = effectiveTab == tabKey
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
@@ -171,7 +169,7 @@ fun EffectsDialog(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 // TAB CONTENTS
-                when (activeTab) {
+                when (effectiveTab) {
                     "reverb" -> {
                         val reverbPresets = listOf(
                             "Concert Hall", "Warm Room", "Plate 80s", "Cathedral", "Ambient Shimmer", "Vocal Chamber", "Studio Room"
@@ -876,13 +874,6 @@ private fun SoundGoodizerMasterView(
                         .clip(CircleShape)
                         .background(if (isEnabled) modeColor else Color(0x44FFFFFF))
                         .shadow(if (isEnabled) 6.dp else 0.dp, CircleShape, spotColor = modeColor)
-                )
-                Text(
-                    text = "MAXIMISER",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isEnabled) Color.White else TextDim,
-                    letterSpacing = 1.sp
                 )
             }
 
