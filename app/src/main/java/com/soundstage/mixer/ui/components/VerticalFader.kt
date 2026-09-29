@@ -144,12 +144,12 @@ fun VerticalTrackChannel(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .height(34.dp)
+                    .height(76.dp)
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
                                 Color.Transparent,
-                                vibrantLedColor.copy(alpha = (0.10f + audioActivity * 0.28f).coerceIn(0.10f, 0.40f))
+                                vibrantLedColor.copy(alpha = (0.16f + audioActivity * 0.35f).coerceIn(0.16f, 0.52f))
                             )
                         )
                     )
@@ -373,32 +373,61 @@ fun VerticalTrackChannel(
         }
     }
 
-    // Bouncy Bubble "Delete channel" micro popup on long-press
+    // Bouncy Bubble "Delete channel" micro popup on long-press with touch-outside dismissal
     if (showDeleteBubble && !isMaster) {
+        // Transparent touch-outside dismissal interceptor
         Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(99f)
+                .pointerInput(Unit) {
+                    detectTapGestures {
+                        showDeleteBubble = false
+                    }
+                }
+        )
+
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showDeleteBubble,
+            enter = androidx.compose.animation.scaleIn(
+                initialScale = 0.5f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMediumLow
+                )
+            ) + androidx.compose.animation.fadeIn(tween(180)),
+            exit = androidx.compose.animation.scaleOut(targetScale = 0.6f) + androidx.compose.animation.fadeOut(tween(140)),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 32.dp)
                 .zIndex(100f)
-                .shadow(12.dp, RoundedCornerShape(10.dp))
-                .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFFE11D48))
-                .border(1.dp, Color(0xFFFF6B8B), RoundedCornerShape(10.dp))
-                .clickable {
-                    showDeleteBubble = false
-                    onDeleteTrack()
-                }
-                .padding(horizontal = 8.dp, vertical = 5.dp)
-                .testTag("btn_delete_channel_${track.id}"),
-            contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = "Delete channel",
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                maxLines = 1
-            )
+            Box(
+                modifier = Modifier
+                    .shadow(14.dp, RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(0xFFF43F5E), Color(0xFFBE123C))
+                        )
+                    )
+                    .border(1.dp, Color(0xFFFF8FA3), RoundedCornerShape(10.dp))
+                    .clickable {
+                        showDeleteBubble = false
+                        onDeleteTrack()
+                    }
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                    .testTag("btn_delete_channel_${track.id}"),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Delete channel",
+                    fontSize = 9.5.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White,
+                    maxLines = 1
+                )
+            }
         }
     }
 }

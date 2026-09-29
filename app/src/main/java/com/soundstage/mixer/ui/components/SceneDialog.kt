@@ -29,6 +29,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,12 +48,19 @@ import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.model.ScenePreset
 import com.soundstage.mixer.ui.theme.*
 
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.RadioButtonChecked
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
+
 /**
  * Modern Global Scene Side Panel:
  * - Fluid sliding side drawer from the right (identical to SettingsDrawer)
- * - Clean Diskette save icon in header for 1-click global scene save/overwrite
+ * - Clean Diskette save icon in header for 1-click global scene save/overwrite with visual pulse
+ * - Home icon to return to Projects Page
+ * - Dual-mode New Project Dialog (Blank Project vs Duplicate Current)
  * - Real Scene files list with sound wave icon, selected badge, rename & animated delete
- * - Dotted/Dashed "+ Nouvelle scène" bottom card
  */
 @Composable
 fun SceneDialog(
@@ -61,17 +69,22 @@ fun SceneDialog(
     activeSceneId: String,
     onSelectScene: (String) -> Unit,
     onSaveCurrentScene: (String) -> Unit = {},
-    onCreateBlankScene: (String) -> Unit = {},
+    onCreateNewProject: (name: String, isBlank: Boolean) -> Unit = { _, _ -> },
     onUpdateActiveScene: () -> Unit = {},
     onDeleteScene: (String) -> Unit = {},
+    onNavigateHome: () -> Unit = {},
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var isNewSceneDialogOpen by remember { mutableStateOf(false) }
     var newSceneNameInput by remember { mutableStateOf("") }
+    var isBlankProjectMode by remember { mutableStateOf(true) }
+    var isSavePulsing by remember { mutableStateOf(false) }
     var renamingSceneId by remember { mutableStateOf<String?>(null) }
     var renamingSceneNameInput by remember { mutableStateOf("") }
     var pendingDeleteSceneId by remember { mutableStateOf<String?>(null) }
+
+    val coroutineScope = rememberCoroutineScope()
 
     if (isOpen) {
         val scrimAlpha by animateFloatAsState(
@@ -140,19 +153,50 @@ fun SceneDialog(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            // Floppy Disk (Save) Icon - exactly identical to Snapshots Floppy Disk
+                            // Home Button
                             Box(
                                 modifier = Modifier
                                     .size(34.dp)
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(Color(0xFF19202E))
                                     .border(1.dp, Color(0xFF28344A), RoundedCornerShape(8.dp))
-                                    .clickable { onUpdateActiveScene() }
+                                    .clickable {
+                                        onClose()
+                                        onNavigateHome()
+                                    }
+                                    .testTag("btn_scene_home"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Home,
+                                    contentDescription = "Home",
+                                    tint = NeonCyan,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
+                            // Floppy Disk (Save) Icon with shine feedback
+                            val diskBorderColor = if (isSavePulsing) NeonCyan else Color(0xFF28344A)
+                            val diskBgColor = if (isSavePulsing) Color(0x3322D3EE) else Color(0xFF19202E)
+                            Box(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(diskBgColor)
+                                    .border(if (isSavePulsing) 1.5.dp else 1.dp, diskBorderColor, RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        isSavePulsing = true
+                                        onUpdateActiveScene()
+                                        coroutineScope.launch {
+                                            kotlinx.coroutines.delay(650)
+                                            isSavePulsing = false
+                                        }
+                                    }
                                     .testTag("btn_save_scene_diskette"),
                                 contentAlignment = Alignment.Center
                             ) {
                                 FloppyDiskIcon(
-                                    isArmed = false,
+                                    isArmed = isSavePulsing,
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
@@ -167,7 +211,7 @@ fun SceneDialog(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Close,
-                                    contentDescription = "Fermer",
+                                    contentDescription = "Close",
                                     tint = Color(0xFF94A3B8),
                                     modifier = Modifier.size(18.dp)
                                 )
@@ -261,7 +305,7 @@ fun SceneDialog(
                                                 overflow = TextOverflow.Ellipsis
                                             )
                                             Text(
-                                                text = if (scene.timestamp.isNotEmpty()) scene.timestamp else "Scène active",
+                                                text = if (scene.timestamp.isNotEmpty()) scene.timestamp else "Active Project",
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Normal,
                                                 color = Color(0xFF64748B),
@@ -286,7 +330,7 @@ fun SceneDialog(
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.Edit,
-                                                contentDescription = "Renommer",
+                                                contentDescription = "Rename",
                                                 tint = Color(0xFF64748B),
                                                 modifier = Modifier.size(15.dp)
                                             )
@@ -312,7 +356,7 @@ fun SceneDialog(
                                                             }
                                                             .padding(horizontal = 6.dp, vertical = 3.dp)
                                                     ) {
-                                                        Text("Suppr", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                                        Text("Delete", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                                     }
                                                     Box(
                                                         modifier = Modifier
@@ -331,7 +375,7 @@ fun SceneDialog(
                                                 ) {
                                                     Icon(
                                                         imageVector = Icons.Default.Delete,
-                                                        contentDescription = "Supprimer",
+                                                        contentDescription = "Delete",
                                                         tint = Color(0xFF64748B),
                                                         modifier = Modifier.size(15.dp)
                                                     )
@@ -399,7 +443,7 @@ fun SceneDialog(
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
-                                text = "Nouveau projet",
+                                text = "New Project",
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color(0xFF94A3B8)
@@ -411,22 +455,22 @@ fun SceneDialog(
         }
     }
 
-    // New Scene Dialog
+    // New Project Dialog
     if (isNewSceneDialogOpen) {
         AlertDialog(
             onDismissRequest = { isNewSceneDialogOpen = false },
             title = {
                 Text(
-                    text = "Créer un nouveau projet",
+                    text = "New Project",
                     color = Color.White,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "Donnez un nom à votre nouveau projet :",
+                        text = "Enter project name:",
                         color = Color(0xFF94A3B8),
                         fontSize = 12.sp
                     )
@@ -443,24 +487,91 @@ fun SceneDialog(
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )
+
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Project Mode:",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    // Option 1: Blank Project
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { isBlankProjectMode = true }
+                            .padding(vertical = 4.dp)
+                    ) {
+                        RadioButton(
+                            selected = isBlankProjectMode,
+                            onClick = { isBlankProjectMode = true },
+                            colors = RadioButtonDefaults.colors(selectedColor = NeonCyan, unselectedColor = Color(0xFF64748B))
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Column {
+                            Text(
+                                text = "New Blank Project",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Start fresh with default settings",
+                                color = Color(0xFF64748B),
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+
+                    // Option 2: Duplicate Current Project
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { isBlankProjectMode = false }
+                            .padding(vertical = 4.dp)
+                    ) {
+                        RadioButton(
+                            selected = !isBlankProjectMode,
+                            onClick = { isBlankProjectMode = false },
+                            colors = RadioButtonDefaults.colors(selectedColor = NeonCyan, unselectedColor = Color(0xFF64748B))
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Column {
+                            Text(
+                                text = "Duplicate Current Project",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Clone all current tracks & soundfonts",
+                                color = Color(0xFF64748B),
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        if (newSceneNameInput.isNotBlank()) {
-                            onSaveCurrentScene(newSceneNameInput.trim())
-                        }
+                        val name = newSceneNameInput.trim().ifEmpty { "Project ${scenes.size + 1}" }
+                        onCreateNewProject(name, isBlankProjectMode)
                         isNewSceneDialogOpen = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = NeonCyan)
                 ) {
-                    Text("Enregistrer", color = Color(0xFF032830), fontWeight = FontWeight.Bold)
+                    Text("Create Project", color = Color(0xFF032830), fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { isNewSceneDialogOpen = false }) {
-                    Text("Annuler", color = Color(0xFF94A3B8))
+                    Text("Cancel", color = Color(0xFF94A3B8))
                 }
             },
             containerColor = Color(0xFF161B29),
@@ -474,7 +585,7 @@ fun SceneDialog(
             onDismissRequest = { renamingSceneId = null },
             title = {
                 Text(
-                    text = "Renommer le projet",
+                    text = "Rename Project",
                     color = Color.White,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
@@ -506,12 +617,12 @@ fun SceneDialog(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = NeonCyan)
                 ) {
-                    Text("Valider", color = Color(0xFF032830), fontWeight = FontWeight.Bold)
+                    Text("Save", color = Color(0xFF032830), fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { renamingSceneId = null }) {
-                    Text("Annuler", color = Color(0xFF94A3B8))
+                    Text("Cancel", color = Color(0xFF94A3B8))
                 }
             },
             containerColor = Color(0xFF161B29),

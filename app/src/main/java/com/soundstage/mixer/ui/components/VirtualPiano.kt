@@ -86,6 +86,7 @@ fun VirtualPianoKeyboard(
     keyScale: Float = 1.0f,
     onOctaveChange: (Int) -> Unit = {},
     activeAuraColor: Color = NeonCyan,
+    trackSaturation: Float = 1.0f,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
@@ -133,7 +134,7 @@ fun VirtualPianoKeyboard(
                 .fillMaxWidth()
                 .padding(horizontal = 2.dp, vertical = 1.dp)
         ) {
-            val availableWidthDp = (maxWidth - 42.dp).coerceAtLeast(100.dp)
+            val availableWidthDp = (maxWidth - 38.dp).coerceAtLeast(100.dp)
             val baseWhiteWidthDp = (availableWidthDp / totalWhiteKeys.toFloat()) * currentScale.coerceIn(0.7f, 3.0f)
             val whiteWidthPx = with(density) { baseWhiteWidthDp.toPx() }
             val blackKeyWidthPx = whiteWidthPx * 0.60f
@@ -155,35 +156,39 @@ fun VirtualPianoKeyboard(
             val displayedPressedKeys = if (physicalScreenTouches.isNotEmpty()) physicalScreenTouches else pressedKeys
 
             Column(modifier = Modifier.fillMaxWidth()) {
-                // 1. Single Continuous Growing Layer Mapper: anchored above the keys, expands upwards without pushing faders
+                // 1. Single Continuous Growing Layer Mapper: anchored strictly above the keys (offset by 38dp pitch bend width)
                 if (tracks.isNotEmpty()) {
-                    Box(
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(restStripHeight)
                             .wrapContentHeight(align = Alignment.Bottom, unbounded = true)
-                            .zIndex(100f)
+                            .zIndex(100f),
+                        verticalAlignment = Alignment.Bottom
                     ) {
+                        // Spacer matching PitchBendWheel width (38.dp)
+                        Spacer(modifier = Modifier.width(38.dp))
+
+                        // Piano Keys-aligned Layer Box
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth()
+                                .weight(1f)
                                 .height(animatedLayerHeight)
-                                .shadow(if (isLayerMapperExpanded) 18.dp else 4.dp, RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
-                                .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
+                                .shadow(if (isLayerMapperExpanded) 18.dp else 4.dp, RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+                                .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
                                 .background(
                                     Brush.verticalGradient(
                                         listOf(
-                                            if (isLayerMapperExpanded) Color(0xF5161B28) else Color(0xFF141824),
-                                            if (isLayerMapperExpanded) Color(0xF50E121B) else Color(0xFF0F121C)
+                                            if (isLayerMapperExpanded) Color(0xF5161B28) else Color(0xDD141824),
+                                            if (isLayerMapperExpanded) Color(0xF50E121B) else Color(0xDD0F121C)
                                         )
                                     )
                                 )
                                 .border(
                                     width = 1.dp,
-                                    color = if (isLayerMapperExpanded) Color(0xFF2B3448) else Color(0xFF1E2536),
-                                    shape = RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp)
+                                    color = if (isLayerMapperExpanded) Color(0xFF2B3448) else Color(0x4420283C),
+                                    shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)
                                 )
-                                .padding(start = 42.dp)
                         ) {
                             Box(
                                 modifier = Modifier
@@ -194,11 +199,12 @@ fun VirtualPianoKeyboard(
                                     tracks = tracks,
                                     whiteWidthDp = baseWhiteWidthDp,
                                     totalWhiteKeys = totalWhiteKeys,
+                                    trackSaturation = trackSaturation,
                                     isExpanded = isLayerMapperExpanded,
                                     onToggleExpanded = { toggleMapperExpanded() },
                                     onRangeChanged = onRangeChanged,
                                     onDragSelectionChange = { range -> activeDragSelectionRange = range },
-                                    modifier = Modifier.padding(top = 1.dp, bottom = 1.dp, end = if (isLayerMapperExpanded) 28.dp else 0.dp)
+                                    modifier = Modifier.padding(top = 1.dp, bottom = 1.dp)
                                 )
                             }
 

@@ -194,7 +194,10 @@ data class TrackSnapshot(
     val program: Int = 0,
     val transpose: Int = 0,
     val octave: Int = 0,
-    val reverbSend: Float = 0f
+    val reverbSend: Float = 0f,
+    val splitNoteMin: Int = 24,
+    val splitNoteMax: Int = 108,
+    val velocityCurve: Float = 0.5f
 )
 
 data class SubSceneSnapshot(
@@ -203,6 +206,7 @@ data class SubSceneSnapshot(
     val globalTranspose: Int = 0,
     val globalOctaveShift: Int = 0,
     val masterVolume: Float = 0.85f,
+    val visibleTracksCount: Int = 8,
     val fxParameters: FxParameters? = null,
     val timestamp: Long = System.currentTimeMillis()
 )

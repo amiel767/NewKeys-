@@ -114,6 +114,8 @@ fun SettingsDrawer(
     onThemeBgLightnessChange: (Float) -> Unit = {},
     themeModulesLightness: Float = 1.0f,
     onThemeModulesLightnessChange: (Float) -> Unit = {},
+    trackColorSaturation: Float = 1.0f,
+    onTrackColorSaturationChange: (Float) -> Unit = {},
     themePaletteName: String = "Midnight Slate (Défaut)",
     onSelectThemePalette: (ThemePalettePreset) -> Unit = {},
     onResetTheme: () -> Unit = {},
@@ -193,6 +195,8 @@ fun SettingsDrawer(
                             onThemeBgLightnessChange = onThemeBgLightnessChange,
                             themeModulesLightness = themeModulesLightness,
                             onThemeModulesLightnessChange = onThemeModulesLightnessChange,
+                            trackColorSaturation = trackColorSaturation,
+                            onTrackColorSaturationChange = onTrackColorSaturationChange,
                             onResetTheme = onResetTheme,
                             onBack = { onNavigateSubPage("main") }
                         )
@@ -927,6 +931,8 @@ private fun ThemeSettingsSubPage(
     onThemeBgLightnessChange: (Float) -> Unit,
     themeModulesLightness: Float,
     onThemeModulesLightnessChange: (Float) -> Unit,
+    trackColorSaturation: Float = 1.0f,
+    onTrackColorSaturationChange: (Float) -> Unit = {},
     onResetTheme: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -948,36 +954,37 @@ private fun ThemeSettingsSubPage(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Retour",
-                    tint = NeonCyan,
+                    contentDescription = "Back",
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(14.dp)
                 )
-                Text(text = "Retour", fontSize = 11.sp, color = NeonCyan)
+                Text(text = "Back", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
             }
             Spacer(modifier = Modifier.width(12.dp))
             Text(
-                text = "Thème",
+                text = "Theme",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White
             )
             Spacer(modifier = Modifier.weight(1f))
-            Row(
+            // Custom circular Reset Button (small curved reset arrow)
+            Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0x14FFFFFF))
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x18FFFFFF))
+                    .border(1.dp, Color(0x33FFFFFF), CircleShape)
                     .clickable { onResetTheme() }
-                    .padding(horizontal = 8.dp, vertical = 5.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    .testTag("btn_reset_theme"),
+                contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.Refresh,
-                    contentDescription = "Rétablir",
-                    tint = TextDim,
-                    modifier = Modifier.size(12.dp)
+                    contentDescription = "Reset Theme",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp)
                 )
-                Text(text = "Défaut", fontSize = 10.sp, color = TextDim)
             }
         }
 
@@ -985,159 +992,74 @@ private fun ThemeSettingsSubPage(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // 1. ColorBlendr Tonal Palettes Header Card
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(Color(0xFF1E2435))
-                        .border(1.dp, Color(0xFF2C354B), RoundedCornerShape(20.dp))
-                        .padding(horizontal = 16.dp, vertical = 18.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        // Row 1: Primaire, Secondaire, Tertiaire
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            TonalSwatch(
-                                label = "Primaire",
-                                topColor = hsvToColor(themeHue, 0.70f, 0.90f),
-                                bottomColor = hsvToColor(themeHue, 0.60f, 0.45f)
-                            )
-                            TonalSwatch(
-                                label = "Secondaire",
-                                topColor = hsvToColor((themeHue + 40f) % 360f, 0.65f, 0.85f),
-                                bottomColor = hsvToColor((themeHue + 40f) % 360f, 0.50f, 0.40f)
-                            )
-                            TonalSwatch(
-                                label = "Tertiaire",
-                                topColor = hsvToColor((themeHue + 140f) % 360f, 0.60f, 0.82f),
-                                bottomColor = hsvToColor((themeHue + 140f) % 360f, 0.45f, 0.38f)
-                            )
-                        }
-
-                        // Row 2: Neutre 1, Neutre 2
-                        Row(
-                            modifier = Modifier.fillMaxWidth(0.72f),
-                            horizontalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            TonalSwatch(
-                                label = "Neutre 1",
-                                topColor = Color(0xFF94A3B8),
-                                bottomColor = Color(0xFF334155)
-                            )
-                            TonalSwatch(
-                                label = "Neutre 2",
-                                topColor = Color(0xFF64748B),
-                                bottomColor = Color(0xFF1E293B)
-                            )
-                        }
-                    }
-                }
-            }
-
-            // 2. Horizontal Slide-to-Adjust Cards (Exact ColorBlendr Interaction)
+            // 1. Primary UI Hue Spectrum Slider
             item {
                 ThemeSliderCard(
-                    title = "Saturation de la couleur d'accentuation",
-                    valueText = String.format(java.util.Locale.US, "Sélection: %.2fx", themeAccentSaturation),
+                    title = "Primary Interface Hue",
+                    valueText = "${themeHue.toInt()}°",
+                    progress = (themeHue / 360f).coerceIn(0f, 1f),
+                    onProgressChange = { p -> onThemeHueChange(p * 360f) },
+                    onReset = { onThemeHueChange(220f) }
+                )
+            }
+
+            // 2. Accent Color Saturation
+            item {
+                ThemeSliderCard(
+                    title = "Accent Color Saturation",
+                    valueText = String.format(java.util.Locale.US, "%.2fx", themeAccentSaturation),
                     progress = ((themeAccentSaturation - 0.5f) / 1.5f).coerceIn(0f, 1f),
                     onProgressChange = { p -> onThemeAccentSaturationChange(0.5f + p * 1.5f) },
                     onReset = { onThemeAccentSaturationChange(1.0f) }
                 )
             }
 
+            // 3. Background Tone Saturation
             item {
                 ThemeSliderCard(
-                    title = "Saturation de l'arrière-plan",
-                    valueText = String.format(java.util.Locale.US, "Sélection: %.2fx", themeBgSaturation),
+                    title = "Background Tone Saturation",
+                    valueText = String.format(java.util.Locale.US, "%.2fx", themeBgSaturation),
                     progress = (themeBgSaturation / 2.0f).coerceIn(0f, 1f),
                     onProgressChange = { p -> onThemeBgSaturationChange(p * 2.0f) },
                     onReset = { onThemeBgSaturationChange(1.0f) }
                 )
             }
 
+            // 4. Background Lightness
             item {
                 ThemeSliderCard(
-                    title = "Luminosité du fond",
-                    valueText = String.format(java.util.Locale.US, "Sélection: %.2fx", themeBgLightness),
+                    title = "Background Lightness",
+                    valueText = String.format(java.util.Locale.US, "%.2fx", themeBgLightness),
                     progress = ((themeBgLightness - 0.7f) / 0.7f).coerceIn(0f, 1f),
                     onProgressChange = { p -> onThemeBgLightnessChange(0.7f + p * 0.7f) },
                     onReset = { onThemeBgLightnessChange(1.0f) }
                 )
             }
 
+            // 5. Modules Lightness & Contrast
             item {
                 ThemeSliderCard(
-                    title = "Luminosité & contraste des modules",
-                    valueText = String.format(java.util.Locale.US, "Sélection: %.2fx", themeModulesLightness),
+                    title = "Modules Lightness & Contrast",
+                    valueText = String.format(java.util.Locale.US, "%.2fx", themeModulesLightness),
                     progress = ((themeModulesLightness - 0.8f) / 0.7f).coerceIn(0f, 1f),
                     onProgressChange = { p -> onThemeModulesLightnessChange(0.8f + p * 0.7f) },
                     onReset = { onThemeModulesLightnessChange(1.0f) }
                 )
             }
 
+            // 6. Dynamic Tracks Neon Color Saturation
             item {
                 ThemeSliderCard(
-                    title = "Teinte principale de l'interface",
-                    valueText = "Sélection: ${themeHue.toInt()}°",
-                    progress = (themeHue / 360f).coerceIn(0f, 1f),
-                    onProgressChange = { p -> onThemeHueChange(p * 360f) },
-                    onReset = { onThemeHueChange(220f) }
+                    title = "Saturation des Pistes (Faders & Layers)",
+                    valueText = String.format(java.util.Locale.US, "%.2fx", trackColorSaturation),
+                    progress = ((trackColorSaturation - 0.2f) / 1.8f).coerceIn(0f, 1f),
+                    onProgressChange = { p -> onTrackColorSaturationChange(0.2f + p * 1.8f) },
+                    onReset = { onTrackColorSaturationChange(1.0f) }
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun TonalSwatch(
-    label: String,
-    topColor: Color,
-    bottomColor: Color,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(46.dp)
-                .clip(CircleShape)
-                .background(topColor)
-                .border(1.2.dp, Color(0x33FFFFFF), CircleShape)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.5f)
-                    .align(Alignment.BottomCenter)
-                    .background(bottomColor)
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(0.5f)
-                    .fillMaxHeight()
-                    .align(Alignment.CenterEnd)
-                    .background(bottomColor.copy(alpha = 0.35f))
-            )
-        }
-        Text(
-            text = label,
-            fontSize = 11.sp,
-            color = Color(0xFF94A3B8),
-            fontWeight = FontWeight.Medium
-        )
     }
 }
 
@@ -1155,23 +1077,33 @@ private fun ThemeSliderCard(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
-            .height(68.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(Color(0xFF1E2435))
-            .border(1.dp, Color(0xFF2C354B), RoundedCornerShape(18.dp))
+            .height(64.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
             .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     val width = size.width.toFloat()
-                    if (width > 0f) {
-                        currentOnProgressChange((down.position.x / width).coerceIn(0f, 1f))
-                    }
+                    val downTime = System.currentTimeMillis()
+                    val startX = down.position.x
+                    var hasUnlocked = false
                     val pointerId = down.id
+
                     while (true) {
                         val event = awaitPointerEvent()
                         val change = event.changes.firstOrNull { it.id == pointerId } ?: break
                         if (!change.pressed) break
-                        if (width > 0f) {
+
+                        val elapsed = System.currentTimeMillis() - downTime
+                        val dragDistance = kotlin.math.abs(change.position.x - startX)
+
+                        // Unlock slide modification only after holding briefly (> 160ms) or an intentional horizontal drag (> 10px)
+                        if (!hasUnlocked && (elapsed > 160L || dragDistance > 10f)) {
+                            hasUnlocked = true
+                        }
+
+                        if (hasUnlocked && width > 0f) {
                             change.consume()
                             currentOnProgressChange((change.position.x / width).coerceIn(0f, 1f))
                         }
@@ -1181,7 +1113,7 @@ private fun ThemeSliderCard(
     ) {
         val fillWidth = maxWidth * progress.coerceIn(0f, 1f)
 
-        // ColorBlendr filled progress gauge from left to right
+        // Filled progress gauge from left to right matching dynamic primary color
         if (progress > 0.01f) {
             Box(
                 modifier = Modifier
@@ -1189,17 +1121,17 @@ private fun ThemeSliderCard(
                     .width(fillWidth)
                     .clip(
                         RoundedCornerShape(
-                            topStart = 18.dp,
-                            bottomStart = 18.dp,
-                            topEnd = if (progress >= 0.96f) 18.dp else 4.dp,
-                            bottomEnd = if (progress >= 0.96f) 18.dp else 4.dp
+                            topStart = 16.dp,
+                            bottomStart = 16.dp,
+                            topEnd = if (progress >= 0.96f) 16.dp else 4.dp,
+                            bottomEnd = if (progress >= 0.96f) 16.dp else 4.dp
                         )
                     )
                     .background(
                         Brush.horizontalGradient(
                             listOf(
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.38f),
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.20f)
                             )
                         )
                     )
@@ -1210,7 +1142,7 @@ private fun ThemeSliderCard(
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -1220,7 +1152,7 @@ private fun ThemeSliderCard(
             ) {
                 Text(
                     text = title,
-                    fontSize = 13.sp,
+                    fontSize = 12.5.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = Color.White,
                     maxLines = 1,
@@ -1229,24 +1161,24 @@ private fun ThemeSliderCard(
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = valueText,
-                    fontSize = 11.5.sp,
-                    color = Color(0xFF94A3B8)
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
 
             // Circular reset button
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(32.dp)
                     .clip(CircleShape)
                     .clickable { onReset() },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.Refresh,
-                    contentDescription = "Réinitialiser",
+                    contentDescription = "Reset",
                     tint = Color(0xFFCBD5E1),
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(16.dp)
                 )
             }
         }

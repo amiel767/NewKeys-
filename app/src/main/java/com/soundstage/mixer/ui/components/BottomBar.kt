@@ -372,7 +372,7 @@ fun BottomBar(
                 onDismissRequest = { isAddSnapshotDialogOpen = false },
                 title = {
                     Text(
-                        text = "Nouveau Snapshot",
+                        text = "New Snapshot",
                         color = Color.White,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold
@@ -381,7 +381,7 @@ fun BottomBar(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            text = "Entrez le nom du nouveau snapshot :",
+                            text = "Enter snapshot name:",
                             color = Color(0xFFB0BEC5),
                             fontSize = 12.sp
                         )
@@ -389,7 +389,7 @@ fun BottomBar(
                             value = newSnapshotNameInput,
                             onValueChange = { newSnapshotNameInput = it },
                             singleLine = true,
-                            placeholder = { Text("Ex: Intro, Chorus, Pont...", color = Color(0xFF64748B)) },
+                            placeholder = { Text("Ex: Intro, Chorus, Bridge...", color = Color(0xFF64748B)) },
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = Color.White,
                                 unfocusedTextColor = Color.White,
@@ -413,12 +413,12 @@ fun BottomBar(
                         },
                         modifier = Modifier.testTag("btn_confirm_add_snapshot")
                     ) {
-                        Text("Ajouter", color = NeonCyan, fontWeight = FontWeight.Bold)
+                        Text("Add", color = NeonCyan, fontWeight = FontWeight.Bold)
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { isAddSnapshotDialogOpen = false }) {
-                        Text("Annuler", color = Color(0xFF8E95A5))
+                        Text("Cancel", color = Color(0xFF8E95A5))
                     }
                 },
                 containerColor = Color(0xFF161B29),
@@ -432,7 +432,7 @@ fun BottomBar(
                 onDismissRequest = { renamingSlotKey = null },
                 title = {
                     Text(
-                        text = "Gérer le Snapshot",
+                        text = "Manage Snapshot",
                         color = Color.White,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold
@@ -441,7 +441,7 @@ fun BottomBar(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(
-                            text = "Nom du snapshot :",
+                            text = "Snapshot name:",
                             color = Color(0xFFB0BEC5),
                             fontSize = 12.sp
                         )
@@ -471,7 +471,7 @@ fun BottomBar(
                                 },
                                 modifier = Modifier.align(Alignment.End)
                             ) {
-                                Text("Supprimer ce snapshot", color = Color(0xFFEF4444), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("Delete snapshot", color = Color(0xFFEF4444), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -487,14 +487,14 @@ fun BottomBar(
                         },
                         modifier = Modifier.testTag("btn_confirm_rename_snapshot")
                     ) {
-                        Text("Valider", color = NeonCyan, fontWeight = FontWeight.Bold)
+                        Text("Save", color = NeonCyan, fontWeight = FontWeight.Bold)
                     }
                 },
                 dismissButton = {
                     TextButton(
                         onClick = { renamingSlotKey = null }
                     ) {
-                        Text("Fermer", color = Color(0xFF8E95A5))
+                        Text("Close", color = Color(0xFF8E95A5))
                     }
                 },
                 containerColor = Color(0xFF161B29),
@@ -587,6 +587,15 @@ fun BottomBar(
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(7.dp))
                         .background(slotBgBrush)
+                        .border(
+                            width = 1.dp,
+                            color = when {
+                                isActive -> Color(0x6638BDF8)
+                                isSaved -> Color(0x1A38BDF8)
+                                else -> Color(0x0CFFFFFF)
+                            },
+                            shape = RoundedCornerShape(7.dp)
+                        )
                         .padding(horizontal = 4.dp)
                         .pointerInput(slotKey, displayName) {
                             detectTapGestures(
@@ -608,37 +617,26 @@ fun BottomBar(
                             )
                             val p = Path().apply { addRoundRect(rrect) }
 
-                            if (isActive) {
-                                if (snapshotTransitionProgress < 1.0f) {
-                                    val pm = PathMeasure()
-                                    pm.setPath(p, false)
-                                    val totalLen = pm.length
-                                    val curLen = (totalLen * snapshotTransitionProgress.coerceIn(0.01f, 1.0f))
-                                    val seg = Path()
-                                    pm.getSegment(0f, curLen, seg, true)
-                                    drawPath(
-                                        path = seg,
-                                        color = Color.White,
-                                        style = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round)
-                                    )
-                                } else {
-                                    drawPath(
-                                        path = p,
-                                        color = Color.White,
-                                        style = Stroke(width = 1.5.dp.toPx())
-                                    )
-                                }
-                            } else if (isSaved) {
+                            if (isActive && snapshotTransitionProgress < 1.0f) {
+                                val pm = PathMeasure()
+                                pm.setPath(p, false)
+                                val totalLen = pm.length
+                                val curLen = (totalLen * snapshotTransitionProgress.coerceIn(0.01f, 1.0f))
+                                val seg = Path()
+                                val tailLen = totalLen * 0.45f
+                                val startLen = (curLen - tailLen).coerceAtLeast(0f)
+                                pm.getSegment(startLen, curLen, seg, true)
+                                // Soft atmospheric halo outer aura
                                 drawPath(
-                                    path = p,
-                                    color = Color.White.copy(alpha = 0.3f),
-                                    style = Stroke(width = 1.dp.toPx())
+                                    path = seg,
+                                    color = Color(0x3538BDF8),
+                                    style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
                                 )
-                            } else {
+                                // Precise subtle glow trace
                                 drawPath(
-                                    path = p,
-                                    color = Color(0x22FFFFFF),
-                                    style = Stroke(width = 1.dp.toPx())
+                                    path = seg,
+                                    color = Color(0x7738BDF8),
+                                    style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
                                 )
                             }
                         }

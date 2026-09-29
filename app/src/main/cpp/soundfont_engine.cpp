@@ -32,6 +32,7 @@ bool SoundfontEngine::init(int sampleRate, int polyphony, const char* instanceNa
     fluid_settings_setint(mSettings, "synth.midi-channels", kMaxChannels);
     fluid_settings_setint(mSettings, "synth.reverb.active", 0);
     fluid_settings_setint(mSettings, "synth.chorus.active", 1);
+    fluid_settings_setint(mSettings, "synth.dynamic-sample-loading", 1);
 
     mSynth = new_fluid_synth(mSettings);
     if (!mSynth) {
@@ -91,6 +92,7 @@ int SoundfontEngine::loadSoundFont(const std::string &absolutePath) {
             fluid_settings_setint(mSettings, "synth.midi-channels", kMaxChannels);
             fluid_settings_setint(mSettings, "synth.reverb.active", 0);
             fluid_settings_setint(mSettings, "synth.chorus.active", 1);
+            fluid_settings_setint(mSettings, "synth.dynamic-sample-loading", 1);
             mSynth = new_fluid_synth(mSettings);
             if (mSynth) {
                 fluid_synth_set_gain(mSynth, 1.85f);

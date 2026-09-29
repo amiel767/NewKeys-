@@ -107,7 +107,7 @@ data class MixerUiState(
     // Fullscreen Pages Navigation
     val currentPage: AppScreenPage = AppScreenPage.PROJECTS,
     val visibleTracksCount: Int = 1,
-    val activeProjectName: String = "Projet 1",
+    val activeProjectName: String = "",
     
     // Popups
     val activePopup: ActivePopup = ActivePopup.NONE,
@@ -165,7 +165,7 @@ data class MixerUiState(
     val activeSf2Tab: String = "bank",
     val soundfontBankFiles: List<SoundfontBankFile> = emptyList(),
     val scenes: List<ScenePreset> = emptyList(),
-    val activeSceneId: String = "intro",
+    val activeSceneId: String = "",
     
     // Settings Drawer (Material Expressive AOSP style)
     val isSettingsDrawerOpen: Boolean = false,
@@ -223,7 +223,8 @@ data class MixerUiState(
     val themeBgSaturation: Float = 1.0f,
     val themeBgLightness: Float = 1.0f,
     val themeModulesLightness: Float = 1.0f,
-    val themePaletteName: String = "Midnight Slate (Défaut)"
+    val themePaletteName: String = "Midnight Slate (Défaut)",
+    val trackColorSaturation: Float = 1.0f
 ) {
     val soundfontFiles: List<StorageItem> get() = realSoundfonts
     val loopAudioFiles: List<StorageItem> get() = realLoopFiles
@@ -352,6 +353,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             val saved = appStatePersistence.loadAppState()
             if (saved != null) {
                 val drumPreloadList = mutableListOf<String>()
+                val restoredProjectName = (saved.activeProjectName ?: saved.activeSceneId ?: "").trim()
+                val hasActive = restoredProjectName.isNotEmpty() && restoredProjectName != "None"
 
                 _uiState.update { state ->
                     val restoredTheme = saved.themeName?.let { name ->
@@ -428,12 +431,19 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         } else slot
                     }
 
+                    val restoredVisibleTracks = saved.visibleTracksCount ?: saved.tracks.count { it.isEnabled }.coerceIn(1, 8)
+                    val restoredConfiguredSlots = if (saved.configuredSnapshotSlots.isNotEmpty()) saved.configuredSnapshotSlots else state.configuredSnapshotSlots
+                    val restoredCustomNames = if (saved.snapshotCustomNames.isNotEmpty()) saved.snapshotCustomNames else state.snapshotCustomNames
+
                     state.copy(
                         currentTheme = restoredTheme,
+                        currentPage = if (hasActive) AppScreenPage.MIXER else AppScreenPage.PROJECTS,
                         bpm = saved.bpm ?: state.bpm,
                         transpose = saved.transpose ?: state.transpose,
                         octave = saved.octave ?: state.octave,
-                        activeSceneId = saved.activeSceneId ?: state.activeSceneId,
+                        activeSceneId = if (hasActive) restoredProjectName else "",
+                        activeProjectName = if (hasActive) restoredProjectName else "",
+                        visibleTracksCount = restoredVisibleTracks,
                         soundGoodizer = saved.soundGoodizerAmount ?: state.soundGoodizer,
                         soundGoodizerMode = restoredMode,
                         masterPunch = saved.masterPunch ?: state.masterPunch,
@@ -445,6 +455,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         fxParameters = restoredFx,
                         snapshots = saved.snapshots.ifEmpty { state.snapshots },
                         activeSnapshotSlot = saved.activeSnapshotSlot,
+                        configuredSnapshotSlots = restoredConfiguredSlots,
+                        snapshotCustomNames = restoredCustomNames,
                         tonicBrightness = saved.tonicBrightness ?: state.tonicBrightness,
                         tonicShimmer = saved.tonicShimmer ?: state.tonicShimmer,
                         drumReverb = saved.drumReverb ?: state.drumReverb,
@@ -453,13 +465,16 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         themeHue = saved.themeHue ?: state.themeHue,
                         themeSaturation = saved.themeSaturation ?: state.themeSaturation,
                         themeNuance = saved.themeNuance ?: state.themeNuance,
-                        themePaletteName = saved.themePalette ?: state.themePaletteName
+                        themePaletteName = saved.themePalette ?: state.themePaletteName,
+                        trackColorSaturation = saved.trackColorSaturation ?: state.trackColorSaturation
                     )
                 }
 
-                // Preload drums safely outside state update
-                drumPreloadList.forEach { path ->
-                    try { audioEngine.preloadDrumSample(path) } catch (_: Exception) {}
+                // Preload drums safely outside state update only if active project
+                if (!saved.activeProjectName.isNullOrBlank()) {
+                    drumPreloadList.forEach { path ->
+                        try { audioEngine.preloadDrumSample(path) } catch (_: Exception) {}
+                    }
                 }
 
                 // Apply restored parameters to native DSP
@@ -543,56 +558,40 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 var hasLoadedAnySlot = false
-                if (saved.audioSlots.isNotEmpty()) {
-                    saved.audioSlots.forEach { savedSlot ->
-                        val savedTrack = saved.tracks.find { it.id == (savedSlot.slotId + 1) }
-                        val candidatePath = when {
-                            !savedSlot.soundFontPath.isNullOrEmpty() && File(savedSlot.soundFontPath).exists() -> savedSlot.soundFontPath
-                            savedTrack != null && savedTrack.soundfontName.isNotEmpty() && File(fileManager.soundfontsDir, savedTrack.soundfontName).exists() -> File(fileManager.soundfontsDir, savedTrack.soundfontName).absolutePath
-                            !savedSlot.soundFontPath.isNullOrEmpty() && File(fileManager.soundfontsDir, File(savedSlot.soundFontPath).name).exists() -> File(fileManager.soundfontsDir, File(savedSlot.soundFontPath).name).absolutePath
-                            !savedSlot.patchName.isNullOrEmpty() && File(fileManager.soundfontsDir, savedSlot.patchName).exists() -> File(fileManager.soundfontsDir, savedSlot.patchName).absolutePath
-                            else -> null
-                        }
-                        if (candidatePath != null) {
-                            loadSoundFontForSlot(savedSlot.slotId, candidatePath, savedSlot.bank, savedSlot.preset, savedSlot.patchName, saveAfterLoad = false)
-                            hasLoadedAnySlot = true
-                        }
-                    }
-                }
-
-                // If audioSlots were empty or missing paths, check saved tracks for soundfont names
-                if (!hasLoadedAnySlot && saved.tracks.isNotEmpty()) {
-                    saved.tracks.forEachIndexed { index, track ->
-                        if (track.soundfontName.isNotEmpty()) {
-                            val candidate = File(fileManager.soundfontsDir, track.soundfontName)
-                            if (candidate.exists()) {
-                                loadSoundFontForSlot(index, candidate.absolutePath, bank = track.bank, preset = track.program, patchName = track.patchName, saveAfterLoad = false)
+                if (hasActive) {
+                    if (saved.audioSlots.isNotEmpty()) {
+                        saved.audioSlots.forEach { savedSlot ->
+                            val savedTrack = saved.tracks.find { it.id == (savedSlot.slotId + 1) }
+                            val candidatePath = when {
+                                !savedSlot.soundFontPath.isNullOrEmpty() && File(savedSlot.soundFontPath).exists() -> savedSlot.soundFontPath
+                                savedTrack != null && savedTrack.soundfontName.isNotEmpty() && File(fileManager.soundfontsDir, savedTrack.soundfontName).exists() -> File(fileManager.soundfontsDir, savedTrack.soundfontName).absolutePath
+                                !savedSlot.soundFontPath.isNullOrEmpty() && File(fileManager.soundfontsDir, File(savedSlot.soundFontPath).name).exists() -> File(fileManager.soundfontsDir, File(savedSlot.soundFontPath).name).absolutePath
+                                !savedSlot.patchName.isNullOrEmpty() && File(fileManager.soundfontsDir, savedSlot.patchName).exists() -> File(fileManager.soundfontsDir, savedSlot.patchName).absolutePath
+                                else -> null
+                            }
+                            if (candidatePath != null) {
+                                loadSoundFontForSlot(savedSlot.slotId, candidatePath, savedSlot.bank, savedSlot.preset, savedSlot.patchName, saveAfterLoad = false)
                                 hasLoadedAnySlot = true
                             }
                         }
                     }
-                }
 
-                // If nothing was loaded at all and Slot 0 is empty, load default SoundFont ONLY on Slot 0
-                if (!hasLoadedAnySlot) {
-                    val defaultSf = File(fileManager.soundfontsDir, "VintageDreamsWaves-v2.sf2")
-                    val fallbackSf = File(getApplication<Application>().filesDir, "LiveKeys/SoundFonts/VintageDreamsWaves-v2.sf2")
-                    val sfToLoad = if (defaultSf.exists()) defaultSf else if (fallbackSf.exists()) fallbackSf else null
-                    if (sfToLoad != null) {
-                        val slot0Path = _uiState.value.audioSlots.getOrNull(0)?.soundFontPath
-                        if (slot0Path.isNullOrEmpty() || !File(slot0Path).exists()) {
-                            loadSoundFontForSlot(0, sfToLoad.absolutePath, bank = 0, preset = 0)
+                    // If audioSlots were empty or missing paths, check saved tracks for soundfont names
+                    if (!hasLoadedAnySlot && saved.tracks.isNotEmpty()) {
+                        saved.tracks.forEachIndexed { index, track ->
+                            if (track.soundfontName.isNotEmpty()) {
+                                val candidate = File(fileManager.soundfontsDir, track.soundfontName)
+                                if (candidate.exists()) {
+                                    loadSoundFontForSlot(index, candidate.absolutePath, bank = track.bank, preset = track.program, patchName = track.patchName, saveAfterLoad = false)
+                                    hasLoadedAnySlot = true
+                                }
+                            }
                         }
                     }
                 }
             } else {
-                // First run / no saved state: load default soundfont on Slot 0 (Track 1) ONLY
-                val defaultSf = File(fileManager.soundfontsDir, "VintageDreamsWaves-v2.sf2")
-                val fallbackSf = File(getApplication<Application>().filesDir, "LiveKeys/SoundFonts/VintageDreamsWaves-v2.sf2")
-                val sfToLoad = if (defaultSf.exists()) defaultSf else if (fallbackSf.exists()) fallbackSf else null
-                if (sfToLoad != null) {
-                    loadSoundFontForSlot(0, sfToLoad.absolutePath, bank = 0, preset = 0)
-                }
+                // First run / no saved state: do not preload anything, stay clean on PROJECTS page
+                _uiState.update { it.copy(currentPage = AppScreenPage.PROJECTS, activeProjectName = "", activeSceneId = "") }
             }
         } catch (e: Exception) {
             Log.e("MixerViewModel", "Error restoring saved app state: ${e.message}", e)
@@ -635,11 +634,20 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             selectedScaleMode = state.selectedScaleMode,
             snapshots = state.snapshots,
             activeSnapshotSlot = state.activeSnapshotSlot,
+            configuredSnapshotSlots = state.configuredSnapshotSlots,
+            snapshotCustomNames = state.snapshotCustomNames,
+            visibleTracksCount = state.visibleTracksCount,
+            activeProjectName = state.activeProjectName,
             themeHue = state.themeHue,
             themeSaturation = state.themeSaturation,
             themeNuance = state.themeNuance,
-            themePalette = state.themePaletteName
+            themePalette = state.themePaletteName,
+            trackColorSaturation = state.trackColorSaturation
         )
+        // Full auto-save: automatically sync to the current project's .scene file if a project is actively open
+        if (state.activeProjectName.isNotEmpty() && state.activeProjectName != "None") {
+            saveCurrentScene(state.activeProjectName)
+        }
     }
 
     override fun onCleared() {
@@ -1359,6 +1367,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setThemeModulesLightness(lightness: Float) {
         _uiState.update { it.copy(themeModulesLightness = lightness.coerceIn(0.8f, 1.5f)) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setTrackColorSaturation(saturation: Float) {
+        _uiState.update { it.copy(trackColorSaturation = saturation.coerceIn(0.2f, 2.0f)) }
         persistCurrentStateDebounced()
     }
 
@@ -2788,7 +2801,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val sceneFiles = fileManager.getSceneFiles()
-                val targetFile = sceneFiles.find { it.name.equals(sceneId, ignoreCase = true) } ?: return@launch
+                val targetFile = sceneFiles.find { 
+                    it.name.equals(sceneId, ignoreCase = true) || 
+                    it.name.substringBeforeLast('.').equals(sceneId, ignoreCase = true) || 
+                    it.name.startsWith(sceneId, ignoreCase = true) 
+                } ?: return@launch
                 val jsonStr = fileManager.loadSceneFile(targetFile.path) ?: return@launch
                 val obj = org.json.JSONObject(jsonStr)
 
@@ -2802,6 +2819,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 val drumRev = obj.optDouble("drumReverb", _uiState.value.drumReverb.toDouble()).toFloat()
                 val tonicVol = obj.optDouble("tonicVolume", 0.8).toFloat()
                 val tonicRev = obj.optDouble("tonicReverb", 0.25).toFloat()
+                val masterVol = obj.optDouble("masterVolume", _uiState.value.masterTrack.volume.toDouble()).toFloat()
 
                 val tracksArr = obj.optJSONArray("tracks")
                 val updatedTracks = if (tracksArr != null) {
@@ -2820,7 +2838,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                                 bank = tObj.optInt("bank", originalTrack.bank),
                                 program = tObj.optInt("program", originalTrack.program),
                                 reverbPreset = tObj.optString("reverbPreset", originalTrack.reverbPreset),
-                                reverbMix = tObj.optDouble("reverbMix", originalTrack.reverbMix.toDouble()).toFloat()
+                                reverbMix = tObj.optDouble("reverbMix", originalTrack.reverbMix.toDouble()).toFloat(),
+                                velocityCurve = tObj.optDouble("velocityCurve", originalTrack.velocityCurve.toDouble()).toFloat(),
+                                splitNoteMin = tObj.optInt("splitNoteMin", originalTrack.splitNoteMin),
+                                splitNoteMax = tObj.optInt("splitNoteMax", originalTrack.splitNoteMax)
                             )
                         )
                     }
@@ -2849,10 +2870,85 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     list
                 } else _uiState.value.audioSlots
 
+                val enabledCount = if (obj.has("visibleTracksCount")) obj.optInt("visibleTracksCount", updatedTracks.count { it.isEnabled }.coerceIn(1, 8)) else updatedTracks.count { it.isEnabled }.coerceIn(1, 8)
+                val restoredDrumKit = obj.optString("activeDrumKitName", _uiState.value.activeDrumKitName)
+                val restoredTonicPad = obj.optString("activeTonicPadName", _uiState.value.activeTonicPadName)
+                val restoredThemeHue = obj.optDouble("themeHue", _uiState.value.themeHue.toDouble()).toFloat()
+                val restoredThemeSat = obj.optDouble("themeSaturation", _uiState.value.themeSaturation.toDouble()).toFloat()
+                val restoredThemeNuance = obj.optDouble("themeNuance", _uiState.value.themeNuance.toDouble()).toFloat()
+                val restoredThemePalette = obj.optString("themePalette", _uiState.value.themePaletteName)
+                val restoredTrackSaturation = obj.optDouble("trackColorSaturation", _uiState.value.trackColorSaturation.toDouble()).toFloat()
+
+                // Restore Drum Pads
+                val drumArr = obj.optJSONArray("drumPads")
+                val updatedDrumPads = if (drumArr != null) {
+                    val list = mutableListOf<DrumPadItem>()
+                    for (di in 0 until drumArr.length()) {
+                        val dObj = drumArr.getJSONObject(di)
+                        val id = dObj.optInt("id", di + 1)
+                        val origPad = _uiState.value.drumPads.find { it.id == id } ?: continue
+                        val styleName = dObj.optString("styleName", origPad.colorStyle.name)
+                        val matchedStyle = DrumPadStyle.entries.find { it.name.equals(styleName, ignoreCase = true) } ?: origPad.colorStyle
+                        list.add(
+                            origPad.copy(
+                                label = dObj.optString("label", origPad.label),
+                                sampleFileName = dObj.optString("sampleFileName", origPad.sampleFileName),
+                                sampleFilePath = dObj.optString("sampleFilePath", origPad.sampleFilePath),
+                                volume = dObj.optDouble("volume", origPad.volume.toDouble()).toFloat(),
+                                colorStyle = matchedStyle
+                            )
+                        )
+                    }
+                    if (list.isNotEmpty()) list else _uiState.value.drumPads
+                } else _uiState.value.drumPads
+
+                // Restore FX Parameters
+                val fxObj = obj.optJSONObject("fxParameters")
+                val updatedFx = if (fxObj != null) {
+                    val map = _uiState.value.fxParameters.toMutableMap()
+                    val keys = fxObj.keys()
+                    while (keys.hasNext()) {
+                        val k = keys.next()
+                        val chId = k.toIntOrNull() ?: continue
+                        val fo = fxObj.getJSONObject(k)
+                        map[chId] = FxParameters(
+                            eqLow = fo.optDouble("eqLow", 0.5).toFloat(),
+                            eqMid = fo.optDouble("eqMid", 0.5).toFloat(),
+                            eqHigh = fo.optDouble("eqHigh", 0.5).toFloat(),
+                            eqGain = fo.optDouble("eqGain", 0.5).toFloat(),
+                            isReverbEnabled = fo.optBoolean("isReverbEnabled", false),
+                            reverbPreset = fo.optString("reverbPreset", "Concert Hall"),
+                            reverbMix = fo.optDouble("reverbMix", 0.24).toFloat(),
+                            reverbSize = fo.optDouble("reverbSize", 0.6).toFloat(),
+                            reverbDecay = fo.optDouble("reverbDecay", 0.45).toFloat(),
+                            reverbDamp = fo.optDouble("reverbDamp", 0.3).toFloat(),
+                            isChorusEnabled = fo.optBoolean("isChorusEnabled", false),
+                            chorusRate = fo.optDouble("chorusRate", 0.35).toFloat(),
+                            chorusDepth = fo.optDouble("chorusDepth", 0.50).toFloat(),
+                            chorusMix = fo.optDouble("chorusMix", 0.0).toFloat(),
+                            isSgEnabled = fo.optBoolean("isSgEnabled", false),
+                            sgAmount = fo.optDouble("sgAmount", 0.0).toFloat(),
+                            sgMode = fo.optInt("sgMode", 0),
+                            isCompEnabled = fo.optBoolean("isCompEnabled", false),
+                            compThresh = fo.optDouble("compThresh", 0.4).toFloat(),
+                            compRatio = fo.optDouble("compRatio", 0.5).toFloat(),
+                            compAttack = fo.optDouble("compAttack", 0.2).toFloat(),
+                            compRelease = fo.optDouble("compRelease", 0.35).toFloat(),
+                            isDelayEnabled = fo.optBoolean("isDelayEnabled", false),
+                            delayTime = fo.optDouble("delayTime", 0.35).toFloat(),
+                            delayFeedback = fo.optDouble("delayFeedback", 0.4).toFloat(),
+                            delayMix = fo.optDouble("delayMix", 0.0).toFloat(),
+                            delayPingPong = fo.optDouble("delayPingPong", 0.0).toFloat()
+                        )
+                    }
+                    map
+                } else _uiState.value.fxParameters
+
                 withContext(Dispatchers.Main) {
                     _uiState.update { state ->
                         state.copy(
                             activeSceneId = sceneId,
+                            activeProjectName = sceneId,
                             bpm = bpm,
                             transpose = transpose,
                             octave = octave,
@@ -2861,8 +2957,19 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                             tonicOctaveRange = tonicOctaveRange,
                             drumVolume = drumVol,
                             drumReverb = drumRev,
+                            masterTrack = state.masterTrack.copy(volume = masterVol),
                             tracks = updatedTracks,
-                            audioSlots = updatedSlots
+                            audioSlots = updatedSlots,
+                            drumPads = updatedDrumPads,
+                            fxParameters = updatedFx,
+                            activeDrumKitName = restoredDrumKit,
+                            activeTonicPadName = restoredTonicPad,
+                            themeHue = restoredThemeHue,
+                            themeSaturation = restoredThemeSat,
+                            themeNuance = restoredThemeNuance,
+                            themePaletteName = restoredThemePalette,
+                            trackColorSaturation = restoredTrackSaturation,
+                            visibleTracksCount = enabledCount
                         )
                     }
                     applyTrackVolumes(_uiState.value)
@@ -2870,8 +2977,33 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     setTonicReverb(tonicRev)
                     setDrumVolume(drumVol)
                     setDrumReverb(drumRev)
+                    audioEngine.masterVolume = masterVol
+                    NativeAudioBridge.safeSetMasterVolume(masterVol)
                     audioEngine.globalTranspose = transpose
                     audioEngine.globalOctaveShift = octave
+
+                    // Apply Master FX from restored settings
+                    val masterFx = updatedFx[0]
+                    if (masterFx != null) {
+                        val lowDb = (masterFx.eqLow - 0.5f) * 24.0f
+                        val midDb = (masterFx.eqMid - 0.5f) * 24.0f
+                        val highDb = (masterFx.eqHigh - 0.5f) * 24.0f
+                        audioEngine.setMasterEq(lowDb, midDb, highDb)
+                        audioEngine.setMasterReverb(
+                            enabled = masterFx.isReverbEnabled,
+                            size = masterFx.reverbSize,
+                            decay = masterFx.reverbDecay,
+                            damp = masterFx.reverbDamp,
+                            mix = masterFx.reverbMix
+                        )
+                        audioEngine.setMasterDelay(
+                            enabled = masterFx.isDelayEnabled && masterFx.delayMix > 0.005f,
+                            timeSec = 0.05f + masterFx.delayTime * 0.95f,
+                            feedback = if (masterFx.isDelayEnabled) masterFx.delayFeedback else 0f,
+                            mix = if (masterFx.isDelayEnabled) masterFx.delayMix else 0f,
+                            pingPong = masterFx.delayPingPong > 0.5f
+                        )
+                    }
                 }
 
                 // Re-apply soundfonts into native engine
@@ -2889,6 +3021,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
                 }
+                persistCurrentStateDebounced()
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -2912,6 +3045,68 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     put("tonicVolume", state.audioSlots.getOrNull(9)?.volume ?: 0.8f)
                     put("tonicReverb", 0.25f)
                     put("masterVolume", state.masterTrack.volume)
+                    put("visibleTracksCount", state.visibleTracksCount)
+                    put("activeDrumKitName", state.activeDrumKitName)
+                    put("activeTonicPadName", state.activeTonicPadName)
+                    put("themeHue", state.themeHue)
+                    put("themeSaturation", state.themeSaturation)
+                    put("themeNuance", state.themeNuance)
+                    put("themePalette", state.themePaletteName)
+                    put("trackColorSaturation", state.trackColorSaturation)
+
+                    val tonicNotesArr = org.json.JSONArray()
+                    state.activeTonicNotes.forEach { tonicNotesArr.put(it) }
+                    put("activeTonicNotes", tonicNotesArr)
+
+                    val drumArray = org.json.JSONArray()
+                    state.drumPads.forEach { d ->
+                        val dObj = org.json.JSONObject().apply {
+                            put("id", d.id)
+                            put("label", d.label)
+                            put("soundType", d.soundType.name)
+                            put("sampleFileName", d.sampleFileName)
+                            put("sampleFilePath", d.sampleFilePath)
+                            put("volume", d.volume)
+                            put("styleName", d.colorStyle.name)
+                        }
+                        drumArray.put(dObj)
+                    }
+                    put("drumPads", drumArray)
+
+                    val fxObj = org.json.JSONObject()
+                    state.fxParameters.forEach { (slot, fx) ->
+                        val o = org.json.JSONObject().apply {
+                            put("eqLow", fx.eqLow)
+                            put("eqMid", fx.eqMid)
+                            put("eqHigh", fx.eqHigh)
+                            put("eqGain", fx.eqGain)
+                            put("isReverbEnabled", fx.isReverbEnabled)
+                            put("reverbPreset", fx.reverbPreset)
+                            put("reverbMix", fx.reverbMix)
+                            put("reverbSize", fx.reverbSize)
+                            put("reverbDecay", fx.reverbDecay)
+                            put("reverbDamp", fx.reverbDamp)
+                            put("isChorusEnabled", fx.isChorusEnabled)
+                            put("chorusRate", fx.chorusRate)
+                            put("chorusDepth", fx.chorusDepth)
+                            put("chorusMix", fx.chorusMix)
+                            put("isSgEnabled", fx.isSgEnabled)
+                            put("sgAmount", fx.sgAmount)
+                            put("sgMode", fx.sgMode)
+                            put("isCompEnabled", fx.isCompEnabled)
+                            put("compThresh", fx.compThresh)
+                            put("compRatio", fx.compRatio)
+                            put("compAttack", fx.compAttack)
+                            put("compRelease", fx.compRelease)
+                            put("isDelayEnabled", fx.isDelayEnabled)
+                            put("delayTime", fx.delayTime)
+                            put("delayFeedback", fx.delayFeedback)
+                            put("delayMix", fx.delayMix)
+                            put("delayPingPong", fx.delayPingPong)
+                        }
+                        fxObj.put(slot.toString(), o)
+                    }
+                    put("fxParameters", fxObj)
 
                     val tracksArray = org.json.JSONArray()
                     state.tracks.forEach { t ->
@@ -2927,6 +3122,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                             put("program", t.program)
                             put("reverbPreset", t.reverbPreset)
                             put("reverbMix", t.reverbMix)
+                            put("velocityCurve", t.velocityCurve)
+                            put("splitNoteMin", t.splitNoteMin)
+                            put("splitNoteMax", t.splitNoteMax)
                         }
                         tracksArray.put(tObj)
                     }
@@ -2967,27 +3165,51 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     }
                 }
+                persistCurrentStateDebounced()
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
     }
 
+    fun saveCurrentProjectDirect() {
+        val current = _uiState.value.activeProjectName.ifEmpty {
+            _uiState.value.activeSceneId.ifEmpty {
+                "Project ${_uiState.value.scenes.size + 1}"
+            }
+        }
+        saveCurrentScene(current)
+        persistCurrentState()
+    }
+
     fun deleteScene(sceneId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 fileManager.deleteSceneFile(sceneId)
+                val refreshedFiles = fileManager.getSceneFiles()
+                val updatedScenes = refreshedFiles.map { f ->
+                    ScenePreset(
+                        id = f.name,
+                        name = f.name,
+                        timestamp = f.formattedSize,
+                        color = NeonCyan
+                    )
+                }
                 withContext(Dispatchers.Main) {
                     _uiState.update { state ->
-                        val updatedScenes = state.scenes.filter { it.id != sceneId && it.name != sceneId }
-                        val nextActive = if (state.activeSceneId == sceneId) {
-                            updatedScenes.firstOrNull()?.id ?: ""
+                        val nextActive = if (state.activeSceneId.equals(sceneId, ignoreCase = true) || 
+                                             state.activeSceneId.equals("$sceneId.scene", ignoreCase = true) || 
+                                             state.activeProjectName.equals(sceneId, ignoreCase = true)) {
+                            updatedScenes.firstOrNull()?.id ?: "Project 1"
                         } else state.activeSceneId
+                        val nextProjectName = if (state.activeProjectName.equals(sceneId, ignoreCase = true)) nextActive else state.activeProjectName
                         state.copy(
                             scenes = updatedScenes,
-                            activeSceneId = nextActive
+                            activeSceneId = nextActive,
+                            activeProjectName = nextProjectName
                         )
                     }
+                    persistCurrentState()
                 }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
                 e.printStackTrace()
@@ -3098,18 +3320,36 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         deleteScene(projectName)
     }
 
-    fun createNewProject(projectName: String = "Nouveau Projet") {
-        val cleanName = projectName.trim().ifEmpty { "Nouveau Projet" }
-        _uiState.update { current ->
-            current.copy(
-                activeProjectName = cleanName,
-                visibleTracksCount = 1,
-                configuredSnapshotSlots = listOf("slot_default"),
-                activeSnapshotSlot = "slot_default",
-                currentPage = AppScreenPage.MIXER
-            )
+    fun createNewProject(projectName: String = "Project", isBlank: Boolean = true) {
+        val cleanName = projectName.trim().ifEmpty { "Project ${_uiState.value.scenes.size + 1}" }
+        if (isBlank) {
+            val fresh = createInitialState()
+            _uiState.update { current ->
+                current.copy(
+                    activeProjectName = cleanName,
+                    activeSceneId = cleanName,
+                    tracks = fresh.tracks,
+                    audioSlots = fresh.audioSlots,
+                    drumPads = fresh.drumPads,
+                    visibleTracksCount = 1,
+                    transpose = 0,
+                    octave = 0,
+                    configuredSnapshotSlots = listOf("slot_default"),
+                    activeSnapshotSlot = "slot_default",
+                    currentPage = AppScreenPage.MIXER
+                )
+            }
+            saveCurrentScene(cleanName)
+        } else {
+            _uiState.update { current ->
+                current.copy(
+                    activeProjectName = cleanName,
+                    activeSceneId = cleanName,
+                    currentPage = AppScreenPage.MIXER
+                )
+            }
+            saveCurrentScene(cleanName)
         }
-        saveCurrentScene(cleanName)
     }
 
     fun navigateToProjectsHome() {
@@ -3117,12 +3357,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateActiveScene() {
-        val currentActiveId = _uiState.value.activeSceneId
-        if (currentActiveId.isNotEmpty()) {
-            saveCurrentScene(currentActiveId)
-        } else {
-            saveCurrentScene("Scène ${_uiState.value.scenes.size + 1}")
+        val currentActiveId = _uiState.value.activeSceneId.ifEmpty {
+            _uiState.value.activeProjectName.ifEmpty { "Project 1" }
         }
+        saveCurrentScene(currentActiveId)
     }
 
     // ================= SNAPSHOTS / SUB-SCENES (SECTION 2) =================
@@ -3154,7 +3392,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     patchName = t.patchName,
                     bank = t.bank,
                     program = t.program,
-                    reverbSend = t.reverbMix
+                    reverbSend = t.reverbMix,
+                    splitNoteMin = t.splitNoteMin,
+                    splitNoteMax = t.splitNoteMax,
+                    velocityCurve = t.velocityCurve
                 )
             }
             val newSubScene = SubSceneSnapshot(
@@ -3163,6 +3404,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 globalTranspose = currentState.transpose,
                 globalOctaveShift = currentState.octave,
                 masterVolume = currentState.tracks.find { it.isMaster }?.volume ?: 0.85f,
+                visibleTracksCount = currentState.visibleTracksCount,
                 fxParameters = currentState.fxParameters[0]
             )
             val updatedSnapshots = currentState.snapshots + (slotName to newSubScene)
@@ -3174,7 +3416,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     snapshotTransitionProgress = 1.0f
                 )
             }
-            persistCurrentStateDebounced()
+            persistCurrentState()
         } else {
             snapshotTransitionJob?.cancel()
             val startTracks = currentState.tracks
@@ -3196,7 +3438,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         val stepDelay = totalDurationMs / steps
                         for (step in 1..steps) {
                             val linearProgress = step.toFloat() / steps
-                            // Cosine progressive interpolation
                             val eased = (1f - kotlin.math.cos(linearProgress * kotlin.math.PI.toFloat())) / 2f
 
                             val interpolated = startTracks.mapIndexed { idx, startTr ->
@@ -3222,11 +3463,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         _uiState.update {
                             it.copy(tracks = freeTracks, snapshotTransitionProgress = 1.0f)
                         }
-                        persistCurrentStateDebounced()
+                        persistCurrentState()
                     }
                 } else {
                     _uiState.update { it.copy(activeSnapshotSlot = null, snapshotTransitionProgress = 1.0f) }
-                    persistCurrentStateDebounced()
+                    persistCurrentState()
                 }
             } else {
                 // 1st tap (or switching slot)
@@ -3241,7 +3482,14 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                                 pan = snap.pan,
                                 isMuted = snap.isMuted,
                                 isSolo = snap.isSolo,
-                                isEnabled = snap.isEnabled
+                                isEnabled = snap.isEnabled,
+                                soundfontName = snap.soundfontName,
+                                patchName = snap.patchName,
+                                bank = snap.bank,
+                                program = snap.program,
+                                splitNoteMin = snap.splitNoteMin,
+                                splitNoteMax = snap.splitNoteMax,
+                                velocityCurve = snap.velocityCurve
                             )
                         } else tr
                     }
@@ -3250,6 +3498,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     targetTracks.forEachIndexed { idx, track ->
                         if (!track.isEnabled || track.isMuted) {
                             audioEngine.setChannelEnabled(idx, false)
+                        }
+                        if (track.soundfontName.isNotEmpty()) {
+                            val candidate = File(fileManager.soundfontsDir, track.soundfontName)
+                            if (candidate.exists()) {
+                                loadSoundFontForSlot(idx, candidate.absolutePath, track.bank, track.program, track.patchName, saveAfterLoad = false)
+                            }
                         }
                     }
 
@@ -3263,10 +3517,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                             activeSnapshotSlot = slotName,
                             snapshotTransitionProgress = 0.0f,
                             transpose = targetSnapshot.globalTranspose,
-                            octave = targetSnapshot.globalOctaveShift
+                            octave = targetSnapshot.globalOctaveShift,
+                            visibleTracksCount = targetSnapshot.visibleTracksCount.coerceIn(1, 8)
                         )
                     }
-                    persistCurrentStateDebounced()
+                    persistCurrentState()
 
                     snapshotTransitionJob = viewModelScope.launch {
                         val totalDurationMs = 1200L

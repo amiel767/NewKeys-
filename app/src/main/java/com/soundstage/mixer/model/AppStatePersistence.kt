@@ -42,10 +42,15 @@ class AppStatePersistence(context: Context) {
         private const val KEY_SELECTED_SCALE_MODE = "selected_scale_mode"
         private const val KEY_SNAPSHOTS_JSON = "snapshots_json"
         private const val KEY_ACTIVE_SNAPSHOT_SLOT = "active_snapshot_slot"
+        private const val KEY_CONFIGURED_SNAPSHOT_SLOTS = "configured_snapshot_slots"
+        private const val KEY_SNAPSHOT_CUSTOM_NAMES = "snapshot_custom_names"
+        private const val KEY_VISIBLE_TRACKS_COUNT = "visible_tracks_count"
+        private const val KEY_ACTIVE_PROJECT_NAME = "active_project_name"
         private const val KEY_THEME_HUE = "theme_hue"
         private const val KEY_THEME_SATURATION = "theme_saturation"
         private const val KEY_THEME_NUANCE = "theme_nuance"
         private const val KEY_THEME_PALETTE = "theme_palette"
+        private const val KEY_TRACK_COLOR_SATURATION = "track_color_saturation"
     }
 
     data class SavedTrackData(
@@ -91,6 +96,8 @@ class AppStatePersistence(context: Context) {
         val transpose: Int?,
         val octave: Int?,
         val activeSceneId: String?,
+        val activeProjectName: String? = null,
+        val visibleTracksCount: Int? = null,
         val soundGoodizerAmount: Float?,
         val soundGoodizerMode: String?,
         val masterPunch: Float?,
@@ -109,10 +116,13 @@ class AppStatePersistence(context: Context) {
         val selectedScaleMode: String? = null,
         val snapshots: Map<String, SubSceneSnapshot> = emptyMap(),
         val activeSnapshotSlot: String? = null,
+        val configuredSnapshotSlots: List<String> = emptyList(),
+        val snapshotCustomNames: Map<String, String> = emptyMap(),
         val themeHue: Float? = null,
         val themeSaturation: Float? = null,
         val themeNuance: Float? = null,
-        val themePalette: String? = null
+        val themePalette: String? = null,
+        val trackColorSaturation: Float? = null
     )
 
     fun saveAppState(
@@ -139,10 +149,15 @@ class AppStatePersistence(context: Context) {
         selectedScaleMode: String = "Majeur",
         snapshots: Map<String, SubSceneSnapshot> = emptyMap(),
         activeSnapshotSlot: String? = null,
+        configuredSnapshotSlots: List<String> = listOf("slot_default"),
+        snapshotCustomNames: Map<String, String> = emptyMap(),
+        visibleTracksCount: Int = 1,
+        activeProjectName: String = "Project 1",
         themeHue: Float = 185f,
         themeSaturation: Float = 0.85f,
         themeNuance: Float = 0.50f,
-        themePalette: String = "Cyber Neon"
+        themePalette: String = "Cyber Neon",
+        trackColorSaturation: Float = 1.0f
     ) {
         try {
             val tracksArray = JSONArray()
@@ -260,12 +275,20 @@ class AppStatePersistence(context: Context) {
                 drumArray.put(obj)
             }
 
+            val configuredSlotsArray = JSONArray()
+            configuredSnapshotSlots.forEach { configuredSlotsArray.put(it) }
+
+            val snapshotNamesObj = JSONObject()
+            snapshotCustomNames.forEach { (k, v) -> snapshotNamesObj.put(k, v) }
+
             prefs.edit().apply {
                 putString(KEY_THEME, currentTheme.name)
                 putInt(KEY_BPM, bpm)
                 putInt(KEY_TRANSPOSE, transpose)
                 putInt(KEY_OCTAVE, octave)
                 putString(KEY_ACTIVE_SCENE_ID, activeSceneId)
+                putString(KEY_ACTIVE_PROJECT_NAME, activeProjectName)
+                putInt(KEY_VISIBLE_TRACKS_COUNT, visibleTracksCount)
                 putFloat(KEY_SOUNDGOODIZER_AMOUNT, soundGoodizerAmount)
                 putString(KEY_SOUNDGOODIZER_MODE, soundGoodizerMode.name)
                 putFloat(KEY_MASTER_PUNCH, masterPunch)
@@ -275,6 +298,8 @@ class AppStatePersistence(context: Context) {
                 putString(KEY_FX_PARAMETERS_JSON, fxObject.toString())
                 putString(KEY_SNAPSHOTS_JSON, snapshotsObject.toString())
                 putString(KEY_ACTIVE_SNAPSHOT_SLOT, activeSnapshotSlot)
+                putString(KEY_CONFIGURED_SNAPSHOT_SLOTS, configuredSlotsArray.toString())
+                putString(KEY_SNAPSHOT_CUSTOM_NAMES, snapshotNamesObj.toString())
                 putString(KEY_AUDIO_SLOTS_JSON, slotsArray.toString())
                 putString(KEY_DRUM_PADS_JSON, drumArray.toString())
                 putInt(KEY_ACTIVE_SF2_TRACK_ID, activeSf2TrackId)
@@ -288,6 +313,7 @@ class AppStatePersistence(context: Context) {
                 putFloat(KEY_THEME_SATURATION, themeSaturation)
                 putFloat(KEY_THEME_NUANCE, themeNuance)
                 putString(KEY_THEME_PALETTE, themePalette)
+                putFloat(KEY_TRACK_COLOR_SATURATION, trackColorSaturation)
                 apply()
             }
         } catch (e: Exception) {
@@ -306,6 +332,8 @@ class AppStatePersistence(context: Context) {
             val transpose = if (prefs.contains(KEY_TRANSPOSE)) prefs.getInt(KEY_TRANSPOSE, 0) else null
             val octave = if (prefs.contains(KEY_OCTAVE)) prefs.getInt(KEY_OCTAVE, 0) else null
             val activeSceneId = prefs.getString(KEY_ACTIVE_SCENE_ID, null)
+            val activeProjectName = prefs.getString(KEY_ACTIVE_PROJECT_NAME, null)
+            val visibleTracksCount = if (prefs.contains(KEY_VISIBLE_TRACKS_COUNT)) prefs.getInt(KEY_VISIBLE_TRACKS_COUNT, 1) else null
             val soundGoodizerAmount = if (prefs.contains(KEY_SOUNDGOODIZER_AMOUNT)) prefs.getFloat(KEY_SOUNDGOODIZER_AMOUNT, 0.45f) else null
             val soundGoodizerMode = prefs.getString(KEY_SOUNDGOODIZER_MODE, null)
             val masterPunch = if (prefs.contains(KEY_MASTER_PUNCH)) prefs.getFloat(KEY_MASTER_PUNCH, 0.55f) else null
@@ -322,6 +350,7 @@ class AppStatePersistence(context: Context) {
             val themeSaturation = if (prefs.contains(KEY_THEME_SATURATION)) prefs.getFloat(KEY_THEME_SATURATION, 0.85f) else null
             val themeNuance = if (prefs.contains(KEY_THEME_NUANCE)) prefs.getFloat(KEY_THEME_NUANCE, 0.50f) else null
             val themePalette = prefs.getString(KEY_THEME_PALETTE, null)
+            val trackColorSaturation = if (prefs.contains(KEY_TRACK_COLOR_SATURATION)) prefs.getFloat(KEY_TRACK_COLOR_SATURATION, 1.0f) else null
 
             val tracksList = mutableListOf<SavedTrackData>()
             val tracksJson = prefs.getString(KEY_TRACKS_JSON, null)
@@ -449,6 +478,30 @@ class AppStatePersistence(context: Context) {
                 }
             }
 
+            val configuredSlotsList = mutableListOf<String>()
+            val configuredSlotsJsonStr = prefs.getString(KEY_CONFIGURED_SNAPSHOT_SLOTS, null)
+            if (configuredSlotsJsonStr != null) {
+                try {
+                    val arr = JSONArray(configuredSlotsJsonStr)
+                    for (i in 0 until arr.length()) {
+                        configuredSlotsList.add(arr.getString(i))
+                    }
+                } catch (_: Exception) {}
+            }
+
+            val customNamesMap = mutableMapOf<String, String>()
+            val customNamesJsonStr = prefs.getString(KEY_SNAPSHOT_CUSTOM_NAMES, null)
+            if (customNamesJsonStr != null) {
+                try {
+                    val obj = JSONObject(customNamesJsonStr)
+                    val keys = obj.keys()
+                    while (keys.hasNext()) {
+                        val k = keys.next()
+                        customNamesMap[k] = obj.getString(k)
+                    }
+                } catch (_: Exception) {}
+            }
+
             val slotsList = mutableListOf<SavedAudioSlotData>()
             val slotsJson = prefs.getString(KEY_AUDIO_SLOTS_JSON, null)
             if (slotsJson != null) {
@@ -495,6 +548,8 @@ class AppStatePersistence(context: Context) {
                 transpose = transpose,
                 octave = octave,
                 activeSceneId = activeSceneId,
+                activeProjectName = activeProjectName,
+                visibleTracksCount = visibleTracksCount,
                 soundGoodizerAmount = soundGoodizerAmount,
                 soundGoodizerMode = soundGoodizerMode,
                 masterPunch = masterPunch,
@@ -515,8 +570,11 @@ class AppStatePersistence(context: Context) {
                 themeSaturation = themeSaturation,
                 themeNuance = themeNuance,
                 themePalette = themePalette,
+                trackColorSaturation = trackColorSaturation,
                 snapshots = snapshotsMap,
-                activeSnapshotSlot = activeSnapshotSlot
+                activeSnapshotSlot = activeSnapshotSlot,
+                configuredSnapshotSlots = configuredSlotsList,
+                snapshotCustomNames = customNamesMap
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error loading app state: ${e.message}")

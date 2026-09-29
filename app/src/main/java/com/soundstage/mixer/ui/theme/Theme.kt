@@ -72,41 +72,38 @@ fun generateDynamicColorScheme(
 ): ColorScheme {
     val normSat = (saturation * accentSaturation).coerceIn(0.05f, 1.2f)
     val normNuance = nuance.coerceIn(0.1f, 0.9f)
+    val effectiveHue = ((hue % 360f) + 360f) % 360f
 
     // Dynamic vivid accent colors matching user-selected hue
-    val primaryColor = hsvToColor(hue, (normSat * 0.75f).coerceIn(0.10f, 1f), 0.92f)
-    val secondaryColor = hsvToColor((hue + 40f) % 360f, (normSat * 0.70f).coerceIn(0.10f, 1f), 0.86f)
-    val tertiaryColor = hsvToColor((hue + 140f) % 360f, (normSat * 0.65f).coerceIn(0.10f, 1f), 0.84f)
+    val primaryColor = hsvToColor(effectiveHue, (normSat * 0.85f).coerceIn(0.15f, 1f), 0.95f)
+    val secondaryColor = hsvToColor((effectiveHue + 35f) % 360f, (normSat * 0.75f).coerceIn(0.15f, 1f), 0.90f)
+    val tertiaryColor = hsvToColor((effectiveHue + 160f) % 360f, (normSat * 0.70f).coerceIn(0.15f, 1f), 0.88f)
 
-    // Cool Sunday Sound Studio Slate base hue (222° slate-navy ensures zero brown/sepia tint)
-    val slateBaseHue = 222f
-    val subtleHueBlend = (slateBaseHue * 0.85f + (hue % 360f) * 0.15f)
+    // Deep natural studio background matching selected theme hue
+    val bgVal = ((0.14f + (normNuance - 0.5f) * 0.03f) * bgLightness).coerceIn(0.08f, 0.24f)
+    val bgSat = (0.28f * bgSaturation).coerceIn(0.05f, 0.55f)
+    val bgColor = hsvToColor(effectiveHue, bgSat, bgVal)
 
-    // Deep natural studio slate background (#181C27: clearly separated, never pitch black)
-    val bgVal = ((0.14f + (normNuance - 0.5f) * 0.03f) * bgLightness).coerceIn(0.09f, 0.22f)
-    val bgSat = (0.12f * bgSaturation).coerceIn(0.03f, 0.20f)
-    val bgColor = hsvToColor(subtleHueBlend, bgSat, bgVal)
+    // Smooth harmonious channel cards & racks
+    val surfVal = ((0.21f + (normNuance - 0.5f) * 0.04f) * modulesLightness).coerceIn(0.13f, 0.35f)
+    val surfSat = (0.32f * bgSaturation).coerceIn(0.06f, 0.60f)
+    val surfaceColor = hsvToColor(effectiveHue, surfSat, surfVal)
 
-    // Smooth slate channel cards & racks (#22293A: distinct contrast against background)
-    val surfVal = ((0.21f + (normNuance - 0.5f) * 0.04f) * modulesLightness).coerceIn(0.15f, 0.32f)
-    val surfSat = (0.14f * bgSaturation).coerceIn(0.03f, 0.22f)
-    val surfaceColor = hsvToColor(subtleHueBlend, surfSat, surfVal)
-
-    val surfVarVal = ((0.25f + (normNuance - 0.5f) * 0.05f) * modulesLightness).coerceIn(0.18f, 0.36f)
-    val surfaceVariantColor = hsvToColor(subtleHueBlend, surfSat, surfVarVal)
+    val surfVarVal = ((0.26f + (normNuance - 0.5f) * 0.05f) * modulesLightness).coerceIn(0.16f, 0.40f)
+    val surfaceVariantColor = hsvToColor(effectiveHue, surfSat, surfVarVal)
     
-    // Crisp studio hardware border (#2E374D)
-    val outlineVal = (0.30f * modulesLightness).coerceIn(0.20f, 0.42f)
-    val outlineColor = hsvToColor(subtleHueBlend, (0.16f * bgSaturation).coerceIn(0.04f, 0.24f), outlineVal)
+    // Crisp studio hardware border
+    val outlineVal = (0.34f * modulesLightness).coerceIn(0.20f, 0.48f)
+    val outlineColor = hsvToColor(effectiveHue, (0.35f * bgSaturation).coerceIn(0.08f, 0.65f), outlineVal)
 
     return darkColorScheme(
         primary = primaryColor,
         onPrimary = Color.Black,
-        primaryContainer = hsvToColor(hue, (normSat * 0.50f).coerceIn(0.05f, 1f), 0.30f),
+        primaryContainer = hsvToColor(effectiveHue, (normSat * 0.55f).coerceIn(0.10f, 1f), 0.32f),
         onPrimaryContainer = Color.White,
         secondary = secondaryColor,
         onSecondary = Color.Black,
-        secondaryContainer = hsvToColor((hue + 40f) % 360f, (normSat * 0.45f).coerceIn(0.05f, 1f), 0.28f),
+        secondaryContainer = hsvToColor((effectiveHue + 35f) % 360f, (normSat * 0.50f).coerceIn(0.10f, 1f), 0.30f),
         onSecondaryContainer = Color.White,
         tertiary = tertiaryColor,
         background = bgColor,
@@ -114,7 +111,7 @@ fun generateDynamicColorScheme(
         surface = surfaceColor,
         onSurface = Color(0xFFF1F5F9),
         surfaceVariant = surfaceVariantColor,
-        onSurfaceVariant = Color(0xFF8C96A8),
+        onSurfaceVariant = Color(0xFF94A3B8),
         outline = outlineColor,
         error = MuteRed,
         onError = Color.White

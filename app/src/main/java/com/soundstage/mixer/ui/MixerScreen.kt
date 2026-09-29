@@ -139,10 +139,12 @@ fun MixerScreen(
         ) { currentPage ->
             when (currentPage) {
                 AppScreenPage.PROJECTS -> {
+                    val hasActive = !uiState.activeProjectName.isNullOrBlank() && uiState.activeProjectName != "None" && !uiState.activeSceneId.isNullOrBlank() && uiState.activeSceneId != "None"
                     ProjectsPage(
                         projects = uiState.scenes,
+                        hasActiveProject = hasActive,
                         onOpenProject = { viewModel.openProject(it) },
-                        onCreateNewProject = { viewModel.createNewProject(it) },
+                        onCreateNewProject = { name, isBlank -> viewModel.createNewProject(name, isBlank) },
                         onDeleteProject = { viewModel.deleteProject(it) },
                         onOpenSettings = { viewModel.openSettingsDrawer() }
                     )
@@ -283,7 +285,8 @@ fun MixerScreen(
                         if (uiState.activePopup == ActivePopup.SCENE) viewModel.closePopup() else viewModel.openPopup(ActivePopup.SCENE)
                     },
                     onOpenSettings = { viewModel.openSettingsDrawer() },
-                    onBackToProjects = { viewModel.navigateToProjectsHome() }
+                    onBackToProjects = { viewModel.navigateToProjectsHome() },
+                    onSaveProjectDirect = { viewModel.saveCurrentProjectDirect() }
                 )
 
                 Spacer(modifier = Modifier.height(4.dp))
@@ -312,17 +315,19 @@ fun MixerScreen(
                         if (verticalMode) {
                             val trackScrollState = rememberScrollState()
                             val overlayWidth = if (isPadOpen) (this@BoxWithConstraints.maxWidth * 0.50f) else 0.dp
-                            val trackItemWidth = if (isPadOpen) {
-                                ((this@BoxWithConstraints.maxWidth * 0.50f - 16.dp) / 4f).coerceAtLeast(68.dp)
-                            } else {
-                                ((this@BoxWithConstraints.maxWidth - 28.dp) / 8f).coerceAtLeast(65.dp)
-                            }
+                            val availableWidth = (this@BoxWithConstraints.maxWidth - overlayWidth).coerceAtLeast(100.dp)
+                            // Base width for 8 tracks filling 100% of the available width with 6.dp spacing (Reference size)
+                            val baseTrackWidth = ((availableWidth - (6.dp * 7)) / 8).coerceAtLeast(64.dp)
+                            val count = uiState.visibleTracksCount.coerceIn(1, 8)
+                            // +25% larger when only 1 track, adapting smoothly down to 1.0x (reference size) at 8 tracks
+                            val scaleFactor = 1.0f + 0.25f * ((8 - count) / 7f)
+                            val standardTrackWidth = (baseTrackWidth * scaleFactor).coerceAtMost(availableWidth)
 
                             Row(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .horizontalScroll(trackScrollState),
-                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 val visibleTracks = uiState.tracks.take(uiState.visibleTracksCount.coerceIn(1, 8))
                                 visibleTracks.forEach { track ->
@@ -338,26 +343,26 @@ fun MixerScreen(
                                         onFxClick = { viewModel.openEffectsForTrack(track.id) },
                                         showTicks = showTicks,
                                         modifier = Modifier
-                                            .width(trackItemWidth)
+                                            .width(standardTrackWidth)
                                             .fillMaxHeight()
                                     )
                                 }
 
-                                // "+ (Add sound)" Button next to faders
-                                if (uiState.visibleTracksCount < 8) {
+                                // "+ (Add Sound)" Button next to faders: studio square layout with thick professional border
+                                if (uiState.visibleTracksCount < 8 && !isPadOpen) {
                                     Box(
                                         modifier = Modifier
-                                            .width(trackItemWidth.coerceIn(64.dp, 88.dp))
+                                            .width(standardTrackWidth)
                                             .fillMaxHeight()
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(Color(0xFF161A26))
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(Color(0xFF131722))
                                             .border(
-                                                width = 1.2.dp,
-                                                color = Color(0xFF2E374D),
-                                                shape = RoundedCornerShape(8.dp)
+                                                width = 2.dp,
+                                                color = Color(0xFF2C394E),
+                                                shape = RoundedCornerShape(10.dp)
                                             )
                                             .clickable { viewModel.addSoundTrack() }
-                                            .padding(8.dp)
+                                            .padding(6.dp)
                                             .testTag("btn_add_sound_track"),
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -367,24 +372,24 @@ fun MixerScreen(
                                         ) {
                                             Box(
                                                 modifier = Modifier
-                                                    .size(40.dp)
-                                                    .clip(CircleShape)
-                                                    .background(Color(0xFF1F2536))
-                                                    .border(1.2.dp, Color(0xFF38435E), CircleShape),
+                                                    .size(38.dp)
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(Color(0xFF1A2232))
+                                                    .border(2.dp, Color(0xFF3B4864), RoundedCornerShape(8.dp)),
                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 Icon(
                                                     imageVector = Icons.Default.Add,
-                                                    contentDescription = "Add Track",
+                                                    contentDescription = "Add Sound",
                                                     tint = Color(0xFF93C5FD),
                                                     modifier = Modifier.size(22.dp)
                                                 )
                                             }
                                             Spacer(modifier = Modifier.height(6.dp))
                                             Text(
-                                                text = "+ Add sound",
+                                                text = "Add Sound",
                                                 fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
+                                                fontWeight = FontWeight.SemiBold,
                                                 color = Color(0xFF94A3B8)
                                             )
                                         }
@@ -908,9 +913,10 @@ fun MixerScreen(
             activeSceneId = uiState.activeSceneId,
             onSelectScene = { viewModel.selectScene(it) },
             onSaveCurrentScene = { viewModel.saveCurrentScene(it) },
-            onCreateBlankScene = { viewModel.createBlankScene(it) },
+            onCreateNewProject = { name, isBlank -> viewModel.createNewProject(name, isBlank) },
             onUpdateActiveScene = { viewModel.updateActiveScene() },
             onDeleteScene = { viewModel.deleteScene(it) },
+            onNavigateHome = { viewModel.navigateToProjectsHome() },
             onClose = { viewModel.closePopup() },
             modifier = Modifier
                 .fillMaxSize()

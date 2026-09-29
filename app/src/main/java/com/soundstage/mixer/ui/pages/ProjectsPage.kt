@@ -42,13 +42,15 @@ private val AccentBlue = Color(0xFF3B82F6)
 fun ProjectsPage(
     projects: List<ScenePreset>,
     onOpenProject: (String) -> Unit,
-    onCreateNewProject: (String) -> Unit,
+    onCreateNewProject: (name: String, isBlank: Boolean) -> Unit,
     onDeleteProject: (String) -> Unit,
     onOpenSettings: () -> Unit,
+    hasActiveProject: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var isNewProjectDialogOpen by remember { mutableStateOf(false) }
     var newProjectNameInput by remember { mutableStateOf("") }
+    var isBlankProjectMode by remember { mutableStateOf(true) }
     var pendingDeleteProjectName by remember { mutableStateOf<String?>(null) }
 
     // Dialog for creating a new project
@@ -57,16 +59,16 @@ fun ProjectsPage(
             onDismissRequest = { isNewProjectDialogOpen = false },
             title = {
                 Text(
-                    text = "Nouveau Projet",
+                    text = if (hasActiveProject && projects.isNotEmpty()) "Nouveau ou Dupliquer Projet" else "Nouveau Projet",
                     color = Color.White,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "Donnez un nom à votre nouveau projet :",
+                        text = "Nom du projet :",
                         color = Color(0xFF94A3B8),
                         fontSize = 12.sp
                     )
@@ -74,7 +76,7 @@ fun ProjectsPage(
                         value = newProjectNameInput,
                         onValueChange = { newProjectNameInput = it },
                         singleLine = true,
-                        placeholder = { Text("Ex: Dimmed Lights, Sunday Praise...", color = Color(0xFF64748B)) },
+                        placeholder = { Text("Ex: Live Worship, Dimmed Lights...", color = Color(0xFF64748B)) },
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = Color.White,
                             unfocusedTextColor = Color.White,
@@ -86,23 +88,99 @@ fun ProjectsPage(
                             .fillMaxWidth()
                             .testTag("input_new_project_name")
                     )
+
+                    if (hasActiveProject && projects.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Mode de création :",
+                            color = Color(0xFF94A3B8),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+
+                        // Option 1: Blank Project
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { isBlankProjectMode = true }
+                                .padding(vertical = 4.dp)
+                        ) {
+                            RadioButton(
+                                selected = isBlankProjectMode,
+                                onClick = { isBlankProjectMode = true },
+                                colors = RadioButtonDefaults.colors(selectedColor = AccentBlue, unselectedColor = Color(0xFF64748B))
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Column {
+                                Text(
+                                    text = "Nouveau Projet Vierge",
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = "Démarre avec une console propre",
+                                    color = Color(0xFF64748B),
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+
+                        // Option 2: Duplicate Current Project
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { isBlankProjectMode = false }
+                                .padding(vertical = 4.dp)
+                        ) {
+                            RadioButton(
+                                selected = !isBlankProjectMode,
+                                onClick = { isBlankProjectMode = false },
+                                colors = RadioButtonDefaults.colors(selectedColor = AccentBlue, unselectedColor = Color(0xFF64748B))
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Column {
+                                Text(
+                                    text = "Dupliquer le Projet en Cours",
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = "Clone toutes les pistes, soundfonts et réglages actuels",
+                                    color = Color(0xFF64748B),
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                    } else {
+                        Text(
+                            text = "Démarre un projet vierge avec une console propre prête à l'emploi.",
+                            color = Color(0xFF64748B),
+                            fontSize = 11.sp
+                        )
+                    }
                 }
             },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        val name = newProjectNameInput.trim().ifEmpty { "Projet ${projects.size + 1}" }
-                        onCreateNewProject(name)
+                        val name = newProjectNameInput.trim().ifEmpty { "Project ${projects.size + 1}" }
+                        onCreateNewProject(name, if (hasActiveProject && projects.isNotEmpty()) isBlankProjectMode else true)
                         isNewProjectDialogOpen = false
                     },
                     modifier = Modifier.testTag("btn_confirm_create_project")
                 ) {
-                    Text("Créer et Ouvrir", color = AccentBlue, fontWeight = FontWeight.Bold)
+                    Text("Créer & Ouvrir", color = AccentBlue, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { isNewProjectDialogOpen = false }) {
-                    Text("Annuler", color = Color(0xFF8E95A5))
+                    Text("Cancel", color = Color(0xFF8E95A5))
                 }
             },
             containerColor = Color(0xFF161B29),
@@ -117,7 +195,7 @@ fun ProjectsPage(
             onDismissRequest = { pendingDeleteProjectName = null },
             title = {
                 Text(
-                    text = "Supprimer le projet ?",
+                    text = "Delete Project?",
                     color = Color.White,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold
@@ -125,7 +203,7 @@ fun ProjectsPage(
             },
             text = {
                 Text(
-                    text = "Êtes-vous sûr de vouloir supprimer définitivement « $projName » ?",
+                    text = "Are you sure you want to permanently delete « $projName »?",
                     color = Color(0xFFCBD5E1),
                     fontSize = 13.sp
                 )
@@ -138,12 +216,12 @@ fun ProjectsPage(
                     },
                     modifier = Modifier.testTag("btn_confirm_delete_project")
                 ) {
-                    Text("Supprimer", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
+                    Text("Delete", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { pendingDeleteProjectName = null }) {
-                    Text("Annuler", color = Color(0xFF8E95A5))
+                    Text("Cancel", color = Color(0xFF8E95A5))
                 }
             },
             containerColor = Color(0xFF161B29),

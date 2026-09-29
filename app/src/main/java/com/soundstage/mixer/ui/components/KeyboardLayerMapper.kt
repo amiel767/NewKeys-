@@ -176,8 +176,8 @@ object KeyPositionMapper {
         return closestMidi
     }
 
-    fun getTrackNeonColor(trackId: Int): Color {
-        return when (trackId) {
+    fun getTrackNeonColor(trackId: Int, saturationMultiplier: Float = 1.0f): Color {
+        val base = when (trackId) {
             1 -> Color(0xFF00F5FF) // Electric Bright Cyan
             2 -> Color(0xFF10F59B) // Radiant Mint Emerald
             3 -> Color(0xFFC084FC) // Radiant Bright Violet
@@ -188,20 +188,34 @@ object KeyPositionMapper {
             8 -> Color(0xFFFF5252) // Radiant Coral Flame
             else -> Color(0xFF00F5FF)
         }
+        if (saturationMultiplier == 1.0f) return base
+        val hsv = FloatArray(3)
+        android.graphics.Color.colorToHSV(
+            android.graphics.Color.rgb(
+                (base.red * 255).toInt(),
+                (base.green * 255).toInt(),
+                (base.blue * 255).toInt()
+            ),
+            hsv
+        )
+        hsv[1] = (hsv[1] * saturationMultiplier).coerceIn(0f, 1f)
+        return Color(android.graphics.Color.HSVToColor(hsv))
     }
 
-    fun getTrackNeonGradient(trackId: Int): Pair<Color, Color> {
-        return when (trackId) {
-            1 -> Color(0xFF00F5FF) to Color(0xFF00B4D8) // Electric Cyan to Azure
-            2 -> Color(0xFF10F59B) to Color(0xFF059669) // Radiant Mint to Emerald
-            3 -> Color(0xFFC084FC) to Color(0xFF9333EA) // Bright Violet to Purple
-            4 -> Color(0xFFFFD128) to Color(0xFFFF7A00) // Bright Gold to Amber
-            5 -> Color(0xFFFF2E93) to Color(0xFFE11D48) // Hot Pink to Bright Rose
-            6 -> Color(0xFF38BDF8) to Color(0xFF2563EB) // Sky Blue to Electric Indigo
-            7 -> Color(0xFFA3E635) to Color(0xFF65A30D) // Electric Lime to Green
-            8 -> Color(0xFFFF5E57) to Color(0xFFE11D48) // Vivid Flame to Crimson
-            else -> Color(0xFF00F5FF) to Color(0xFF00B4D8)
-        }
+    fun getTrackNeonGradient(trackId: Int, saturationMultiplier: Float = 1.0f): Pair<Color, Color> {
+        val c1 = getTrackNeonColor(trackId, saturationMultiplier)
+        val hsv = FloatArray(3)
+        android.graphics.Color.colorToHSV(
+            android.graphics.Color.rgb(
+                (c1.red * 255).toInt(),
+                (c1.green * 255).toInt(),
+                (c1.blue * 255).toInt()
+            ),
+            hsv
+        )
+        hsv[2] = (hsv[2] * 0.75f).coerceIn(0f, 1f)
+        val c2 = Color(android.graphics.Color.HSVToColor(hsv))
+        return c1 to c2
     }
 }
 
@@ -214,7 +228,8 @@ object KeyPositionMapper {
 fun KeyboardLayerMapper(
     tracks: List<TrackChannel>,
     whiteWidthDp: Dp,
-    totalWhiteKeys: Int = 50,
+    totalWhiteKeys: Int = 45,
+    trackSaturation: Float = 1.0f,
     isExpanded: Boolean,
     onToggleExpanded: () -> Unit,
     onRangeChanged: (trackId: Int, minNote: Int, maxNote: Int) -> Unit,
@@ -263,7 +278,7 @@ fun KeyboardLayerMapper(
     ) {
         visibleTracks.forEach { track ->
             key(track.id) {
-                val trackColor = KeyPositionMapper.getTrackNeonColor(track.id)
+                val trackColor = KeyPositionMapper.getTrackNeonColor(track.id, trackSaturation)
                 val patchTitle = when {
                     track.patchName.isNotBlank() -> track.patchName
                     track.soundfontName.isNotBlank() -> track.soundfontName
@@ -309,8 +324,8 @@ private fun TrackRangeBarRow(
     val startXDp = (leftFrac * whiteWidthDp.value).dp
     val endXDp = (rightFrac * whiteWidthDp.value).dp
 
-    // Dynamic animated height and corner radius (3.5dp at rest, 20dp when deployed)
-    val rowHeightDp = lerp(3.5.dp, 20.dp, expandProgress)
+    // Dynamic animated height and corner radius (3.5dp at rest, 23dp when deployed)
+    val rowHeightDp = lerp(3.5.dp, 23.dp, expandProgress)
     val cornerRadiusStartDp = lerp(1.5.dp, 5.dp, expandProgress)
     val cornerRadiusEndDp = lerp(3.5.dp, 5.dp, expandProgress)
     val minBarWidth = lerp(8.dp, 22.dp, expandProgress)
@@ -387,11 +402,6 @@ private fun TrackRangeBarRow(
                 .clip(capsuleShape)
                 .background(
                     color = trackColor,
-                    shape = capsuleShape
-                )
-                .border(
-                    width = 1.dp,
-                    color = if (safeExpand > 0.3f) Color(0x33FFFFFF) else Color.Transparent,
                     shape = capsuleShape
                 )
                 .pointerInput(Unit) {
