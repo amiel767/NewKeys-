@@ -134,7 +134,7 @@ fun SceneDialog(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // ================= 1. HEADER: "Projets" + Diskette Icon + Close (X) =================
+                    // ================= 1. HEADER: "Projects" + Diskette Icon + Close (X) =================
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -143,7 +143,7 @@ fun SceneDialog(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "Projets",
+                            text = "Projects",
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
@@ -426,7 +426,7 @@ fun SceneDialog(
                                 )
                             }
                             .clickable {
-                                newSceneNameInput = "Projet ${scenes.size + 1}"
+                                newSceneNameInput = "Project ${scenes.size + 1}"
                                 isNewSceneDialogOpen = true
                             }
                             .testTag("btn_new_scene_dashed"),

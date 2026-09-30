@@ -1323,10 +1323,10 @@ internal fun MainDrumPadSquareContent(
                             AlertDialog(
                                 onDismissRequest = { fileToDelete = null },
                                 title = {
-                                    Text(text = "Supprimer la boucle ?", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 12.sp)
+                                    Text(text = "Delete loop?", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 12.sp)
                                 },
                                 text = {
-                                    Text(text = "Voulez-vous supprimer « ${target.name} » ?", color = Color(0xFFCBD5E1), fontSize = 10.sp)
+                                    Text(text = "Do you want to delete « ${target.name} »?", color = Color(0xFFCBD5E1), fontSize = 10.sp)
                                 },
                                 confirmButton = {
                                     TextButton(
@@ -1336,12 +1336,12 @@ internal fun MainDrumPadSquareContent(
                                         },
                                         colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFF43F5E))
                                     ) {
-                                        Text("Supprimer", fontWeight = FontWeight.Bold)
+                                        Text("Delete", fontWeight = FontWeight.Bold)
                                     }
                                 },
                                 dismissButton = {
                                     TextButton(onClick = { fileToDelete = null }) {
-                                        Text("Annuler", color = Color(0xFF94A3B8))
+                                        Text("Cancel", color = Color(0xFF94A3B8))
                                     }
                                 },
                                 containerColor = Color(0xFF1E2232),

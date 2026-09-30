@@ -250,14 +250,14 @@ fun LoopsDialog(
             onDismissRequest = { fileToDelete = null },
             title = {
                 Text(
-                    text = "Supprimer la boucle ?",
+                    text = "Delete loop?",
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
             },
             text = {
                 Text(
-                    text = "Voulez-vous vraiment supprimer définitivement « ${target.name} » ?",
+                    text = "Are you sure you want to permanently delete « ${target.name} »?",
                     color = TextDim,
                     fontSize = 13.sp
                 )
@@ -271,12 +271,12 @@ fun LoopsDialog(
                     },
                     colors = ButtonDefaults.textButtonColors(contentColor = MuteRed)
                 ) {
-                    Text("Supprimer", fontWeight = FontWeight.Bold)
+                    Text("Delete", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { fileToDelete = null }) {
-                    Text("Annuler", color = TextDim)
+                    Text("Cancel", color = TextDim)
                 }
             },
             containerColor = Color(0xFF222638),
@@ -488,7 +488,7 @@ private fun LoopListContent(
                     )
                 }
 
-                // Bouton x (Fermer) en carré bordure néon petit et adapté
+                // Close Button
                 Box(
                     modifier = Modifier
                         .padding(horizontal = 2.dp)
@@ -501,7 +501,7 @@ private fun LoopListContent(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "Fermer",
+                        contentDescription = "Close",
                         tint = Color.White,
                         modifier = Modifier.size(15.dp)
                     )
@@ -815,7 +815,7 @@ private fun LoopListContent(
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.Delete,
-                                                contentDescription = "Supprimer",
+                                                contentDescription = "Delete",
                                                 tint = MuteRed,
                                                 modifier = Modifier.size(13.dp)
                                             )
@@ -1092,7 +1092,7 @@ private fun LoopEditorContent(
                     )
                 }
 
-                // Bouton Fermer
+                // Close Button
                 Box(
                     modifier = Modifier
                         .size(28.dp)
@@ -1104,7 +1104,7 @@ private fun LoopEditorContent(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "Fermer",
+                        contentDescription = "Close",
                         tint = Color.White,
                         modifier = Modifier.size(15.dp)
                     )
@@ -1528,12 +1528,12 @@ private fun LoopEditorContent(
                             }
                         }
                     ) {
-                        Text("Renommer", color = NeonCyan, fontWeight = FontWeight.Bold)
+                        Text("Rename", color = NeonCyan, fontWeight = FontWeight.Bold)
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { showRenameDialog = false }) {
-                        Text("Annuler", color = Color(0x88FFFFFF))
+                        Text("Cancel", color = Color(0x88FFFFFF))
                     }
                 }
             )

@@ -138,18 +138,20 @@ fun VerticalTrackChannel(
             .border(1.dp, subtleDarkBorder, RoundedCornerShape(8.dp))
             .testTag("track_${track.id}")
     ) {
-        // Dynamic bottom ambient color halo (permanent soft glow when track is enabled, pulses with audio)
+        // Dynamic bottom ambient color halo (rounded organic dome glow when track is enabled, pulses with audio)
         if (isEnabled) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(76.dp)
+                    .fillMaxWidth(0.92f)
+                    .height(82.dp)
+                    .clip(RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp, bottomStart = 8.dp, bottomEnd = 8.dp))
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
                                 Color.Transparent,
-                                vibrantLedColor.copy(alpha = (0.16f + audioActivity * 0.35f).coerceIn(0.16f, 0.52f))
+                                vibrantLedColor.copy(alpha = (0.08f + audioActivity * 0.20f).coerceIn(0.08f, 0.32f)),
+                                vibrantLedColor.copy(alpha = (0.22f + audioActivity * 0.40f).coerceIn(0.22f, 0.60f))
                             )
                         )
                     )

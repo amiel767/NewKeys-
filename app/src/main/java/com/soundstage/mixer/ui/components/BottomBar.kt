@@ -1,5 +1,7 @@
 package com.soundstage.mixer.ui.components
 
+import android.app.ActivityManager
+import android.content.Context
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
@@ -36,6 +38,7 @@ import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -43,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.ui.theme.*
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -106,59 +110,101 @@ fun BottomBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp)
     ) {
-        // ================= 1. REC BUTTON =================
-        val infiniteTransition = rememberInfiniteTransition(label = "rec_pulse")
-        val recPulseAlpha by infiniteTransition.animateFloat(
-            initialValue = 0.35f,
-            targetValue = 1.0f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 500, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "rec_pulse_alpha"
-        )
+        // ================= 1. DAW PRO REAL SYSTEM RESOURCE MONITOR (CPU & RAM) =================
+        val context = LocalContext.current
+        val activityManager = remember { context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager }
+        val runtime = remember { Runtime.getRuntime() }
+        var memoryMb by remember { mutableIntStateOf(145) }
+        var cpuPercent by remember { mutableIntStateOf(14) }
 
-        val recBrush = if (isRecording) {
-            Brush.verticalGradient(listOf(Color(0xFFFF1E1E), Color(0xFFB30000)))
-        } else {
-            Brush.verticalGradient(listOf(Color(0xFFFF4B4B), RecRed))
+        LaunchedEffect(Unit) {
+            val memInfo = ActivityManager.MemoryInfo()
+            val cores = runtime.availableProcessors().coerceAtLeast(1)
+            var prevCpuTime = android.os.Process.getElapsedCpuTime()
+            var prevWallTime = System.currentTimeMillis()
+
+            while (true) {
+                try {
+                    activityManager?.getMemoryInfo(memInfo)
+                    val totalMb = (memInfo.totalMem / (1024 * 1024)).toInt()
+                    val availMb = (memInfo.availMem / (1024 * 1024)).toInt()
+                    val usedMb = (totalMb - availMb).coerceAtLeast(0)
+                    memoryMb = if (usedMb > 0) usedMb else ((runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024)).toInt()
+                } catch (_: Exception) {
+                    val usedMem = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024)
+                    memoryMb = usedMem.toInt().coerceIn(10, 9999)
+                }
+
+                val curCpuTime = android.os.Process.getElapsedCpuTime()
+                val curWallTime = System.currentTimeMillis()
+                val deltaCpu = curCpuTime - prevCpuTime
+                val deltaWall = curWallTime - prevWallTime
+
+                if (deltaWall > 0) {
+                    val rawLoad = ((deltaCpu.toFloat() / (deltaWall * cores)) * 100f).roundToInt()
+                    cpuPercent = rawLoad.coerceIn(3, 99)
+                }
+
+                prevCpuTime = curCpuTime
+                prevWallTime = curWallTime
+                delay(1500)
+            }
         }
 
         Box(
             modifier = Modifier
-                .width(if (isRecording) 78.dp else 50.dp)
-                .fillMaxHeight()
+                .width(104.dp)
+                .height(barHeight)
                 .clip(RoundedCornerShape(9.dp))
-                .background(recBrush)
-                .border(1.dp, Color(0x4DFFFFFF), RoundedCornerShape(9.dp))
-                .clickable { onToggleRecording() }
-                .testTag("btn_rec"),
+                .background(Color(0xFF141824))
+                .border(1.dp, Color(0xFF222838), RoundedCornerShape(9.dp))
+                .padding(horizontal = 7.dp, vertical = 2.dp),
             contentAlignment = Alignment.Center
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            Column(
+                modifier = Modifier.fillMaxHeight(),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.Start
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(7.dp)
-                        .shadow(if (isRecording) 6.dp else 0.dp, CircleShape)
-                        .clip(CircleShape)
-                        .background(
-                            if (isRecording) Color.White.copy(alpha = recPulseAlpha) else Color.White
-                        )
-                )
-
-                val mins = recordingDuration / 60
-                val secs = recordingDuration % 60
-                val timeStr = String.format("%02d:%02d", mins, secs)
-
-                Text(
-                    text = if (isRecording) timeStr else "REC",
-                    fontSize = 10.5.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color.White
-                )
+                // CPU indicator
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(5.dp)
+                            .clip(CircleShape)
+                            .background(if (cpuPercent > 65) Color(0xFFF59E0B) else Color(0xFF10B981))
+                    )
+                    Text(
+                        text = "CPU $cpuPercent%",
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFE2E8F0),
+                        maxLines = 1
+                    )
+                }
+                Spacer(modifier = Modifier.height(1.dp))
+                // RAM indicator
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(5.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF38BDF8))
+                    )
+                    Text(
+                        text = "RAM ${memoryMb}M",
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFCBD5E1),
+                        maxLines = 1
+                    )
+                }
             }
         }
 
@@ -502,62 +548,27 @@ fun BottomBar(
             )
         }
 
+        // ================= 4. DYNAMIC SNAPSHOTS RACK =================
+        // Floppy Disk arm blinking animation
+        val armBlinkAlpha by animateFloatAsState(
+            targetValue = if (isSnapshotArmMode) 1.0f else 0.40f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(450),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "arm_blink"
+        )
+
         Row(
-            modifier = Modifier
-                .weight(1f)
-                .height(barHeight)
-                .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFF0C101A))
-                .border(1.dp, Color(0xFF222838), RoundedCornerShape(10.dp))
-                .padding(horizontal = 4.dp, vertical = 3.dp),
+            modifier = Modifier.wrapContentWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(3.dp)
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {
-            // REC (ARM) Material You Floppy Disk Save Button (matching save.jpg)
-            val armBlinkAlpha by animateFloatAsState(
-                targetValue = if (isSnapshotArmMode) 1.0f else 0.40f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(450),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = "arm_blink"
-            )
-
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(
-                        if (isSnapshotArmMode) {
-                            Brush.radialGradient(
-                                colors = listOf(Color(0xFFFF2A55), Color(0xFF4A0014)),
-                                radius = 45f
-                            )
-                        } else {
-                            SolidColor(Color(0xFF161A26))
-                        }
-                    )
-                    .border(
-                        1.2.dp,
-                        if (isSnapshotArmMode) Color(0xFFFF2A55).copy(alpha = armBlinkAlpha) else Color(0x33FFFFFF),
-                        RoundedCornerShape(8.dp)
-                    )
-                    .clickable { onToggleSnapshotArm() }
-                    .testTag("btn_snapshot_arm"),
-                contentAlignment = Alignment.Center
-            ) {
-                // Material You Floppy Disk (Save) Icon - flat colors, geometric forms, no textures
-                FloppyDiskIcon(
-                    isArmed = isSnapshotArmMode,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            // Configured Dynamic Snapshot Slots (Starts with "Défaut", up to 5 max)
+            // Configured Dynamic Snapshot Slots (Starts with "Default", up to 5 max)
             val slotKeys = configuredSnapshotSlots
             slotKeys.forEach { slotKey ->
                 val defaultLabel = when (slotKey) {
-                    "slot_default" -> "Défaut"
+                    "slot_default" -> "Default"
                     else -> snapshotCustomNames[slotKey] ?: "Snapshot"
                 }
                 val displayName = snapshotCustomNames[slotKey] ?: defaultLabel
@@ -566,37 +577,36 @@ fun BottomBar(
                 val isActive = (activeSnapshotSlot == slotKey) || (activeSnapshotSlot == null && slotKey == "slot_default")
                 val isSaved = snapshots.containsKey(slotKey) || (slotKey == "slot_default" && snapshots.isNotEmpty())
 
-                // Sunday Sound Hardware Palette: sleek studio slate when active, matte dark charcoal when inactive
-                val slotBgBrush = if (isActive) {
-                    Brush.verticalGradient(listOf(Color(0xFF2E384D), Color(0xFF232B3B)))
-                } else {
-                    Brush.verticalGradient(listOf(Color(0xFF1A1E29), Color(0xFF141720)))
+                // Sunday Keys Hardware Palette: soft slate steel blue when inactive, soft luminous ice-blue when active
+                val slotBg = when {
+                    isActive -> Color(0xFFB8D2F8)
+                    else -> Color(0xFF384458)
                 }
-
+                val slotBorderColor = when {
+                    isSnapshotArmMode && !isActive -> Color(0xFFFF2A55).copy(alpha = armBlinkAlpha)
+                    isActive -> Color(0xFFD6E6FD)
+                    else -> Color(0xFF4C5D77)
+                }
                 val slotTextColor = when {
-                    isActive -> Color.White
-                    isSaved -> Color(0xFFCBD5E1)
-                    else -> Color(0xFF828D9F)
+                    isActive -> Color(0xFF0F172A)
+                    isSaved -> Color.White
+                    else -> Color(0xFFE2E8F0)
                 }
-                val slotFontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
+                val slotFontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.Bold
 
                 Box(
                     modifier = Modifier
                         .wrapContentWidth()
-                        .defaultMinSize(minWidth = 62.dp)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(7.dp))
-                        .background(slotBgBrush)
+                        .defaultMinSize(minWidth = 64.dp)
+                        .height(barHeight)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(slotBg)
                         .border(
-                            width = 1.dp,
-                            color = when {
-                                isActive -> Color(0x6638BDF8)
-                                isSaved -> Color(0x1A38BDF8)
-                                else -> Color(0x0CFFFFFF)
-                            },
-                            shape = RoundedCornerShape(7.dp)
+                            width = if (isActive || isSnapshotArmMode) 1.2.dp else 1.dp,
+                            color = slotBorderColor,
+                            shape = RoundedCornerShape(10.dp)
                         )
-                        .padding(horizontal = 4.dp)
+                        .padding(horizontal = 12.dp)
                         .pointerInput(slotKey, displayName) {
                             detectTapGestures(
                                 onTap = { onSnapshotSlotClick(slotKey) },
@@ -606,63 +616,28 @@ fun BottomBar(
                                 }
                             )
                         }
-                        .drawWithContent {
-                            drawContent()
-                            val w = this@drawWithContent.size.width
-                            val h = this@drawWithContent.size.height
-                            val r = 7.dp.toPx()
-                            val rrect = androidx.compose.ui.geometry.RoundRect(
-                                left = 1f, top = 1f, right = w - 1f, bottom = h - 1f,
-                                radiusX = r, radiusY = r
-                            )
-                            val p = Path().apply { addRoundRect(rrect) }
-
-                            if (isActive && snapshotTransitionProgress < 1.0f) {
-                                val pm = PathMeasure()
-                                pm.setPath(p, false)
-                                val totalLen = pm.length
-                                val curLen = (totalLen * snapshotTransitionProgress.coerceIn(0.01f, 1.0f))
-                                val seg = Path()
-                                val tailLen = totalLen * 0.45f
-                                val startLen = (curLen - tailLen).coerceAtLeast(0f)
-                                pm.getSegment(startLen, curLen, seg, true)
-                                // Soft atmospheric halo outer aura
-                                drawPath(
-                                    path = seg,
-                                    color = Color(0x3538BDF8),
-                                    style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
-                                )
-                                // Precise subtle glow trace
-                                drawPath(
-                                    path = seg,
-                                    color = Color(0x7738BDF8),
-                                    style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
-                                )
-                            }
-                        }
                         .testTag("btn_snapshot_$slotKey"),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = displayName,
-                        fontSize = if (displayName.length > 7) 8.sp else 9.5.sp,
+                        fontSize = if (displayName.length > 7) 10.5.sp else 11.5.sp,
                         fontWeight = slotFontWeight,
                         color = slotTextColor,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(horizontal = 6.dp)
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
 
-            // [+] Add Snapshot button (up to 5 max)
+            // [+] Add Snapshot button (up to 5 max) - attached directly to the right of snapshot slots, same barHeight (44dp)
             if (configuredSnapshotSlots.size < 5) {
                 Box(
                     modifier = Modifier
-                        .size(32.dp)
-                        .clip(RoundedCornerShape(7.dp))
-                        .background(Color(0xFF141824))
-                        .border(1.dp, Color(0xFF262D3D), RoundedCornerShape(7.dp))
+                        .size(38.dp, barHeight)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF384458))
+                        .border(1.dp, Color(0xFF4C5D77), RoundedCornerShape(10.dp))
                         .clickable {
                             newSnapshotNameInput = "Snapshot ${configuredSnapshotSlots.size}"
                             isAddSnapshotDialogOpen = true
@@ -670,10 +645,42 @@ fun BottomBar(
                         .testTag("btn_add_snapshot"),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("+", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF93C5FD))
+                    Text("+", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE2E8F0))
                 }
             }
+
+            // Floppy Disk (Save) Icon - placed immediately to the RIGHT of [+] button, exact matching 44dp barHeight
+            Box(
+                modifier = Modifier
+                    .size(38.dp, barHeight)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(
+                        if (isSnapshotArmMode) {
+                            Brush.radialGradient(
+                                colors = listOf(Color(0xFFFF2A55), Color(0xFF4A0014)),
+                                radius = 45f
+                            )
+                        } else {
+                            SolidColor(Color(0xFF384458))
+                        }
+                    )
+                    .border(
+                        1.2.dp,
+                        if (isSnapshotArmMode) Color(0xFFFF2A55).copy(alpha = armBlinkAlpha) else Color(0xFF4C5D77),
+                        RoundedCornerShape(10.dp)
+                    )
+                    .clickable { onToggleSnapshotArm() }
+                    .testTag("btn_snapshot_arm"),
+                contentAlignment = Alignment.Center
+            ) {
+                FloppyDiskIcon(
+                    isArmed = isSnapshotArmMode,
+                    modifier = Modifier.size(19.dp)
+                )
+            }
         }
+
+        Spacer(modifier = Modifier.weight(1f))
 
         // ================= 5. MASTER FADER (COMPACT FIXED WIDTH) =================
         Row(

@@ -1307,7 +1307,7 @@ private fun MaterialYouBottomBar(
 
             // 5 Snapshot Slots (SVG fill #0B0C11, text #C6C5D0)
             val slotKeys = listOf("slot_default", "slot_1", "slot_2", "slot_3", "slot_end")
-            val slotNames = listOf("Défaut", "Snap 1", "Snap 2", "Snap 3", "END")
+            val slotNames = listOf("Default", "Snap 1", "Snap 2", "Snap 3", "END")
 
             slotKeys.forEachIndexed { i, slotKey ->
                 val isActive = activeSnapshotSlot == slotKey

@@ -382,7 +382,7 @@ fun NotesDialog(
                                         )
                                         Icon(
                                             imageVector = Icons.Default.Delete,
-                                            contentDescription = "Supprimer",
+                                            contentDescription = "Delete",
                                             tint = TextDim2,
                                             modifier = Modifier
                                                 .size(15.dp)
@@ -813,12 +813,12 @@ fun NotesDialog(
                             fileToRename = null
                         }
                     ) {
-                        Text("Renommer", color = NeonCyan)
+                        Text("Rename", color = NeonCyan)
                     }
                 },
                 dismissButton = {
                     androidx.compose.material3.TextButton(onClick = { fileToRename = null }) {
-                        Text("Annuler", color = TextDim)
+                        Text("Cancel", color = TextDim)
                     }
                 },
                 containerColor = Color(0xFF111522)

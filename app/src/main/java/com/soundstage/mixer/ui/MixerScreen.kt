@@ -630,8 +630,8 @@ fun MixerScreen(
                 val activePianoTracksCount = remember(uiState.tracks, uiState.visibleTracksCount) {
                     uiState.tracks.take(uiState.visibleTracksCount.coerceIn(1, 8)).count { it.isEnabled }.coerceIn(1, 8)
                 }
-                val pianoRestStripHeight = (activePianoTracksCount * 2.5f + 1f).dp.coerceIn(4.dp, 18.dp)
-                val targetKeyboardSlotHeight = if (isKeyboardVisible) 56.dp + pianoRestStripHeight else 0.dp
+                val pianoRestStripHeight = (activePianoTracksCount * 2.7f + 1.2f).dp.coerceIn(4.dp, 24.dp)
+                val targetKeyboardSlotHeight = if (isKeyboardVisible) 58.dp + pianoRestStripHeight + 18.dp else 0.dp
                 val keyboardHeight by animateDpAsState(
                     targetValue = targetKeyboardSlotHeight,
                     animationSpec = tween(300, easing = EaseOutExpo),

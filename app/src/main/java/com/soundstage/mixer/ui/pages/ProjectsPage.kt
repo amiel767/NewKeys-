@@ -59,7 +59,7 @@ fun ProjectsPage(
             onDismissRequest = { isNewProjectDialogOpen = false },
             title = {
                 Text(
-                    text = if (hasActiveProject && projects.isNotEmpty()) "Nouveau ou Dupliquer Projet" else "Nouveau Projet",
+                    text = if (hasActiveProject && projects.isNotEmpty()) "New or Duplicate Project" else "New Project",
                     color = Color.White,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
@@ -68,7 +68,7 @@ fun ProjectsPage(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "Nom du projet :",
+                        text = "Project Name:",
                         color = Color(0xFF94A3B8),
                         fontSize = 12.sp
                     )
@@ -92,7 +92,7 @@ fun ProjectsPage(
                     if (hasActiveProject && projects.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Mode de création :",
+                            text = "Creation Mode:",
                             color = Color(0xFF94A3B8),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold
@@ -115,13 +115,13 @@ fun ProjectsPage(
                             Spacer(modifier = Modifier.width(6.dp))
                             Column {
                                 Text(
-                                    text = "Nouveau Projet Vierge",
+                                    text = "New Blank Project",
                                     color = Color.White,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold
                                 )
                                 Text(
-                                    text = "Démarre avec une console propre",
+                                    text = "Starts with a fresh clean console",
                                     color = Color(0xFF64748B),
                                     fontSize = 11.sp
                                 )
@@ -145,13 +145,13 @@ fun ProjectsPage(
                             Spacer(modifier = Modifier.width(6.dp))
                             Column {
                                 Text(
-                                    text = "Dupliquer le Projet en Cours",
+                                    text = "Duplicate Current Project",
                                     color = Color.White,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold
                                 )
                                 Text(
-                                    text = "Clone toutes les pistes, soundfonts et réglages actuels",
+                                    text = "Clones all current tracks, soundfonts and settings",
                                     color = Color(0xFF64748B),
                                     fontSize = 11.sp
                                 )
@@ -159,7 +159,7 @@ fun ProjectsPage(
                         }
                     } else {
                         Text(
-                            text = "Démarre un projet vierge avec une console propre prête à l'emploi.",
+                            text = "Start a fresh project with a clean console ready for live play.",
                             color = Color(0xFF64748B),
                             fontSize = 11.sp
                         )
@@ -175,7 +175,7 @@ fun ProjectsPage(
                     },
                     modifier = Modifier.testTag("btn_confirm_create_project")
                 ) {
-                    Text("Créer & Ouvrir", color = AccentBlue, fontWeight = FontWeight.Bold)
+                    Text("Create & Open", color = AccentBlue, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -272,7 +272,7 @@ fun ProjectsPage(
                         letterSpacing = 0.5.sp
                     )
                     Text(
-                        text = "${projects.size} projet(s) enregistré(s)",
+                        text = "${projects.size} saved project(s)",
                         fontSize = 11.sp,
                         color = Color(0xFF8C96A8)
                     )
@@ -286,7 +286,7 @@ fun ProjectsPage(
                 // New Project button
                 Button(
                     onClick = {
-                        newProjectNameInput = "Projet ${projects.size + 1}"
+                        newProjectNameInput = "Project ${projects.size + 1}"
                         isNewProjectDialogOpen = true
                     },
                     colors = ButtonDefaults.buttonColors(
@@ -314,7 +314,7 @@ fun ProjectsPage(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Settings,
-                        contentDescription = "Paramètres",
+                        contentDescription = "Settings",
                         tint = Color(0xFF94A3B8),
                         modifier = Modifier.size(18.dp)
                     )
@@ -339,7 +339,7 @@ fun ProjectsPage(
                         .background(CardBg)
                         .border(1.dp, CardBorder, RoundedCornerShape(16.dp))
                         .clickable {
-                            newProjectNameInput = "Projet 1"
+                            newProjectNameInput = "Project 1"
                             isNewProjectDialogOpen = true
                         }
                         .padding(32.dp)
@@ -372,7 +372,7 @@ fun ProjectsPage(
                             color = Color.White
                         )
                         Text(
-                            text = "Créer votre première session de mixage live",
+                            text = "Create your first live performance session",
                             fontSize = 12.sp,
                             color = Color(0xFF8C96A8)
                         )
@@ -397,7 +397,7 @@ fun ProjectsPage(
                             .background(Color(0xFF121622))
                             .border(1.dp, Color(0xFF252D40), RoundedCornerShape(14.dp))
                             .clickable {
-                                newProjectNameInput = "Projet ${projects.size + 1}"
+                                newProjectNameInput = "Project ${projects.size + 1}"
                                 isNewProjectDialogOpen = true
                             }
                             .testTag("grid_item_new_project"),
@@ -409,9 +409,9 @@ fun ProjectsPage(
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF1B2232)),
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF1B2232)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
@@ -464,7 +464,7 @@ fun ProjectsPage(
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = project.timestamp.ifEmpty { "Modifié récemment" },
+                                        text = project.timestamp.ifEmpty { "Recently modified" },
                                         fontSize = 10.5.sp,
                                         color = Color(0xFF7A869C)
                                     )
@@ -477,7 +477,7 @@ fun ProjectsPage(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Delete,
-                                        contentDescription = "Supprimer",
+                                        contentDescription = "Delete",
                                         tint = Color(0xFF6B7280),
                                         modifier = Modifier.size(16.dp)
                                     )
@@ -501,7 +501,7 @@ fun ProjectsPage(
                                             .background(AccentBlue)
                                     )
                                     Text(
-                                        text = "Session Live",
+                                        text = "Live Session",
                                         fontSize = 10.sp,
                                         color = Color(0xFF8C96A8)
                                     )
@@ -522,7 +522,7 @@ fun ProjectsPage(
                                         modifier = Modifier.size(12.dp)
                                     )
                                     Text(
-                                        text = "Ouvrir",
+                                        text = "Open",
                                         fontSize = 10.5.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color.White

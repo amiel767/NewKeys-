@@ -152,7 +152,7 @@ fun NativeFileBrowserDialog(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Close,
-                                contentDescription = "Fermer",
+                                contentDescription = "Close",
                                 tint = Color.White,
                                 modifier = Modifier.size(18.dp)
                             )

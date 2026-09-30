@@ -7,6 +7,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -27,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -177,16 +179,17 @@ object KeyPositionMapper {
     }
 
     fun getTrackNeonColor(trackId: Int, saturationMultiplier: Float = 1.0f): Color {
-        val base = when (trackId) {
-            1 -> Color(0xFF00F5FF) // Electric Bright Cyan
-            2 -> Color(0xFF10F59B) // Radiant Mint Emerald
-            3 -> Color(0xFFC084FC) // Radiant Bright Violet
-            4 -> Color(0xFFFFC000) // Solar Gold Amber
-            5 -> Color(0xFFFF2E93) // Hot Neon Pink
-            6 -> Color(0xFF38BDF8) // Bright Sky Blue
-            7 -> Color(0xFFA3E635) // Radiant Electric Lime
-            8 -> Color(0xFFFF5252) // Radiant Coral Flame
-            else -> Color(0xFF00F5FF)
+        // Sunday Keys Palette: Strictly matching mixer track channel colors
+        val base = when ((trackId - 1) % 8) {
+            0 -> Color(0xFFE58929) // Track 1: Amber
+            1 -> Color(0xFF36B37E) // Track 2: Emerald Green
+            2 -> Color(0xFF3B82F6) // Track 3: Cobalt Sky Blue
+            3 -> Color(0xFF9333EA) // Track 4: Violet / Purple
+            4 -> Color(0xFFEC4899) // Track 5: Rose
+            5 -> Color(0xFF14B8A6) // Track 6: Teal
+            6 -> Color(0xFFF59E0B) // Track 7: Gold
+            7 -> Color(0xFF6366F1) // Track 8: Indigo
+            else -> Color(0xFF3B82F6)
         }
         if (saturationMultiplier == 1.0f) return base
         val hsv = FloatArray(3)
@@ -233,7 +236,7 @@ fun KeyboardLayerMapper(
     isExpanded: Boolean,
     onToggleExpanded: () -> Unit,
     onRangeChanged: (trackId: Int, minNote: Int, maxNote: Int) -> Unit,
-    onDragSelectionChange: ((range: Pair<Float, Float>?) -> Unit)? = null,
+    onDragSelectionChange: ((range: Triple<Float, Float, Color>?) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val visibleTracks = remember(tracks) {
@@ -255,46 +258,66 @@ fun KeyboardLayerMapper(
     )
 
     val safeExpand = expandProgress.coerceIn(0f, 1f)
-    val rowSpacingDp = lerp(1.dp, 3.dp, safeExpand)
+    val rowSpacingDp = lerp(0.8.dp, 3.dp, safeExpand)
 
     val currentOnToggleExpanded by rememberUpdatedState(onToggleExpanded)
     val verticalScrollState = rememberScrollState()
 
-    Column(
+    Box(
         modifier = modifier
             .width(totalWidthDp)
             .wrapContentHeight()
-            .background(Color.Transparent)
-            .padding(horizontal = 0.dp, vertical = lerp(0.dp, 2.dp, safeExpand))
             .clickable(
                 enabled = !isExpanded,
                 onClick = { currentOnToggleExpanded() }
             )
-            .testTag("keyboard_layer_mapper"),
-        verticalArrangement = Arrangement.spacedBy(
-            rowSpacingDp,
-            Alignment.Top
-        )
+            .testTag("keyboard_layer_mapper")
     ) {
-        visibleTracks.forEach { track ->
-            key(track.id) {
-                val trackColor = KeyPositionMapper.getTrackNeonColor(track.id, trackSaturation)
-                val patchTitle = when {
-                    track.patchName.isNotBlank() -> track.patchName
-                    track.soundfontName.isNotBlank() -> track.soundfontName
-                    else -> track.name
-                }
-
-                TrackRangeBarRow(
-                    track = track,
-                    trackColor = trackColor,
-                    patchTitle = patchTitle,
-                    whiteWidthDp = whiteWidthDp,
-                    expandProgress = safeExpand,
-                    onToggleExpanded = onToggleExpanded,
-                    onRangeChanged = onRangeChanged,
-                    onDragSelectionChange = onDragSelectionChange
+        // Visible vertical octave dividers (Sunday Keys DAW aesthetic)
+        Canvas(modifier = Modifier.matchParentSize()) {
+            val whitePx = whiteWidthDp.toPx()
+            for (oct in 0..6) {
+                val keyIndex = 2 + oct * 7
+                val x = keyIndex * whitePx
+                drawLine(
+                    color = Color(0x38FFFFFF),
+                    start = Offset(x, 0f),
+                    end = Offset(x, size.height),
+                    strokeWidth = 1.2f
                 )
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .wrapContentHeight()
+                .padding(start = 2.dp, end = 2.dp, top = lerp(1.dp, 2.dp, safeExpand), bottom = lerp(2.dp, 6.dp, safeExpand)),
+            verticalArrangement = Arrangement.spacedBy(
+                rowSpacingDp,
+                Alignment.Top
+            )
+        ) {
+            visibleTracks.forEach { track ->
+                key(track.id) {
+                    val trackColor = KeyPositionMapper.getTrackNeonColor(track.id, trackSaturation)
+                    val patchTitle = when {
+                        track.patchName.isNotBlank() -> track.patchName
+                        track.soundfontName.isNotBlank() -> track.soundfontName
+                        else -> track.name
+                    }
+
+                    TrackRangeBarRow(
+                        track = track,
+                        trackColor = trackColor,
+                        patchTitle = patchTitle,
+                        whiteWidthDp = whiteWidthDp,
+                        expandProgress = safeExpand,
+                        onToggleExpanded = onToggleExpanded,
+                        onRangeChanged = onRangeChanged,
+                        onDragSelectionChange = onDragSelectionChange
+                    )
+                }
             }
         }
     }
@@ -309,7 +332,7 @@ private fun TrackRangeBarRow(
     expandProgress: Float,
     onToggleExpanded: () -> Unit,
     onRangeChanged: (trackId: Int, minNote: Int, maxNote: Int) -> Unit,
-    onDragSelectionChange: ((range: Pair<Float, Float>?) -> Unit)? = null
+    onDragSelectionChange: ((range: Triple<Float, Float, Color>?) -> Unit)? = null
 ) {
     val density = LocalDensity.current
     val whiteWidthPx = with(density) { whiteWidthDp.toPx() }
@@ -324,8 +347,8 @@ private fun TrackRangeBarRow(
     val startXDp = (leftFrac * whiteWidthDp.value).dp
     val endXDp = (rightFrac * whiteWidthDp.value).dp
 
-    // Dynamic animated height and corner radius (3.5dp at rest, 23dp when deployed)
-    val rowHeightDp = lerp(3.5.dp, 23.dp, expandProgress)
+    // Dynamic animated height and corner radius (2.1dp at rest - reduced by 40%, 22dp when deployed)
+    val rowHeightDp = lerp(2.1.dp, 22.dp, expandProgress)
     val cornerRadiusStartDp = lerp(1.5.dp, 5.dp, expandProgress)
     val cornerRadiusEndDp = lerp(3.5.dp, 5.dp, expandProgress)
     val minBarWidth = lerp(8.dp, 22.dp, expandProgress)
@@ -358,11 +381,11 @@ private fun TrackRangeBarRow(
         label = "layer_width"
     )
 
-    val dotSize = 7.dp
-    val dotInset = 5.dp
+    val dotSize = 10.dp
+    val dotInset = 4.dp
     val leftDotX = animatedStartX + dotInset
     val rightDotX = (animatedStartX + animatedWidth - dotInset - dotSize).coerceAtLeast(leftDotX + dotSize + 2.dp)
-    val touchHitboxWidth = 36.dp
+    val touchHitboxWidth = 38.dp
 
     // Smooth Updated State References to prevent gesture reset/glue during recomposition
     val currentMinNote by rememberUpdatedState(minNote)
@@ -429,16 +452,16 @@ private fun TrackRangeBarRow(
                             horizontalArrangement = Arrangement.Center,
                             modifier = Modifier.wrapContentWidth()
                         ) {
-                            // Low Note Indicator Badge
+                            // Low Note Indicator Badge (Sunday Keys dark pill)
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(3.dp))
-                                    .background(Color(0x45000000))
-                                    .padding(horizontal = 3.dp, vertical = 0.5.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(Color(0xD90F172A))
+                                    .padding(horizontal = 4.dp, vertical = 1.dp)
                             ) {
                                 Text(
                                     text = minNoteName,
-                                    fontSize = 8.sp,
+                                    fontSize = 8.5.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
                                 )
@@ -449,8 +472,8 @@ private fun TrackRangeBarRow(
                             // Track / Patch Name centered in the middle
                             Text(
                                 text = patchTitle,
-                                fontSize = 8.5.sp,
-                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
                                 color = Color.White,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -462,16 +485,16 @@ private fun TrackRangeBarRow(
 
                             Spacer(modifier = Modifier.width(4.dp))
 
-                            // High Note Indicator Badge
+                            // High Note Indicator Badge (Sunday Keys dark pill)
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(3.dp))
-                                    .background(Color(0x45000000))
-                                    .padding(horizontal = 3.dp, vertical = 0.5.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(Color(0xD90F172A))
+                                    .padding(horizontal = 4.dp, vertical = 1.dp)
                             ) {
                                 Text(
                                     text = maxNoteName,
-                                    fontSize = 8.sp,
+                                    fontSize = 8.5.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
                                 )
@@ -518,7 +541,7 @@ private fun TrackRangeBarRow(
                                 dragMinOffsetPx = 0f
                                 initialMinFrac = currentLeftFrac
                                 isDraggingMin = true
-                                currentOnDragSelectionChange?.invoke(currentLeftFrac to currentRightFrac)
+                                currentOnDragSelectionChange?.invoke(Triple(currentLeftFrac, currentRightFrac, trackColor))
                             },
                             onDragEnd = {
                                 isDraggingMin = false
@@ -543,18 +566,20 @@ private fun TrackRangeBarRow(
                                 }
                                 val updatedLeft = KeyPositionMapper.midiToKeyLeftEdgeFraction(newMidi)
                                 val updatedRight = KeyPositionMapper.midiToKeyRightEdgeFraction(currentMaxNote)
-                                currentOnDragSelectionChange?.invoke(updatedLeft to updatedRight)
+                                currentOnDragSelectionChange?.invoke(Triple(updatedLeft, updatedRight, trackColor))
                             }
                         )
                     },
                 contentAlignment = Alignment.Center
             ) {
+                // Sunday Sounds White Ring Drag Handle with Dark Center
                 Box(
                     modifier = Modifier
                         .size(dotSize)
-                        .shadow(1.dp, CircleShape)
+                        .shadow(2.dp, CircleShape)
                         .clip(CircleShape)
-                        .background(Color.White)
+                        .background(Color(0xFF0F172A))
+                        .border(2.2.dp, Color.White, CircleShape)
                 )
             }
 
@@ -574,7 +599,7 @@ private fun TrackRangeBarRow(
                                 dragMaxOffsetPx = 0f
                                 initialMaxFrac = currentRightFrac
                                 isDraggingMax = true
-                                currentOnDragSelectionChange?.invoke(currentLeftFrac to currentRightFrac)
+                                currentOnDragSelectionChange?.invoke(Triple(currentLeftFrac, currentRightFrac, trackColor))
                             },
                             onDragEnd = {
                                 isDraggingMax = false
@@ -599,18 +624,20 @@ private fun TrackRangeBarRow(
                                 }
                                 val updatedLeft = KeyPositionMapper.midiToKeyLeftEdgeFraction(currentMinNote)
                                 val updatedRight = KeyPositionMapper.midiToKeyRightEdgeFraction(newMidi)
-                                currentOnDragSelectionChange?.invoke(updatedLeft to updatedRight)
+                                currentOnDragSelectionChange?.invoke(Triple(updatedLeft, updatedRight, trackColor))
                             }
                         )
                     },
                 contentAlignment = Alignment.Center
             ) {
+                // Sunday Sounds White Ring Drag Handle with Dark Center
                 Box(
                     modifier = Modifier
                         .size(dotSize)
-                        .shadow(1.dp, CircleShape)
+                        .shadow(2.dp, CircleShape)
                         .clip(CircleShape)
-                        .background(Color.White)
+                        .background(Color(0xFF0F172A))
+                        .border(2.2.dp, Color.White, CircleShape)
                 )
             }
         }

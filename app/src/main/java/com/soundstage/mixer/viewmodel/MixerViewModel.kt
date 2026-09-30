@@ -223,7 +223,7 @@ data class MixerUiState(
     val themeBgSaturation: Float = 1.0f,
     val themeBgLightness: Float = 1.0f,
     val themeModulesLightness: Float = 1.0f,
-    val themePaletteName: String = "Midnight Slate (Défaut)",
+    val themePaletteName: String = "Midnight Slate (Default)",
     val trackColorSaturation: Float = 1.0f
 ) {
     val soundfontFiles: List<StorageItem> get() = realSoundfonts
@@ -1401,7 +1401,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 themeBgSaturation = 1.0f,
                 themeBgLightness = 1.0f,
                 themeModulesLightness = 1.0f,
-                themePaletteName = "Midnight Slate (Défaut)"
+                themePaletteName = "Midnight Slate (Default)"
             )
         }
         persistCurrentStateDebounced()
@@ -3272,12 +3272,17 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                             soundfontName = t.soundfontName,
                             patchName = t.patchName,
                             bank = t.bank,
-                            program = t.program
+                            program = t.program,
+                            reverbSend = t.reverbMix,
+                            splitNoteMin = t.splitNoteMin,
+                            splitNoteMax = t.splitNoteMax,
+                            velocityCurve = t.velocityCurve
                         )
                     },
                     globalTranspose = current.transpose,
                     globalOctaveShift = current.octave,
-                    masterVolume = current.masterTrack.volume
+                    masterVolume = current.masterTrack.volume,
+                    visibleTracksCount = current.visibleTracksCount
                 )
                 val updatedSnapshots = current.snapshots + (newSlotKey to currentSnapshot)
                 current.copy(

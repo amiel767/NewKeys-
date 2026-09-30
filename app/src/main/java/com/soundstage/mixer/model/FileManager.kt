@@ -113,9 +113,7 @@ class FileManager(private val context: Context) {
             if (!drumPadDir.exists()) drumPadDir.mkdirs()
             if (!drumPadLoopDir.exists()) drumPadLoopDir.mkdirs()
             if (!projectsDir.exists()) projectsDir.mkdirs()
-            if (!presetsDir.exists()) presetsDir.mkdirs()
             if (!logsDir.exists()) logsDir.mkdirs()
-            if (!recordingsDir.exists()) recordingsDir.mkdirs()
 
             // Migrate legacy Scenes directory to Projects once if present, then cleanup
             try {
@@ -139,8 +137,8 @@ class FileManager(private val context: Context) {
                 if (oldStyles.exists()) oldStyles.deleteRecursively()
             } catch (_: Exception) {}
 
-            // Create index marker files in each folder so Android MTP and file explorers list them immediately
-            listOf(baseDir, soundfontsDir, loopsDir, drumPadDir, drumPadLoopDir, scenesDir, presetsDir, logsDir, recordingsDir).forEach { dir ->
+            // Create index marker files in strictly necessary folders (SoundFonts, Loops, DrumPad, Projects)
+            listOf(baseDir, soundfontsDir, loopsDir, drumPadDir, drumPadLoopDir, projectsDir, logsDir).forEach { dir ->
                 try {
                     val marker = File(dir, ".soundstage")
                     if (!marker.exists()) {
@@ -163,10 +161,8 @@ class FileManager(private val context: Context) {
                 pathsToScan.add(soundfontsDir.absolutePath)
                 pathsToScan.add(loopsDir.absolutePath)
                 pathsToScan.add(drumPadDir.absolutePath)
-                pathsToScan.add(scenesDir.absolutePath)
-                pathsToScan.add(presetsDir.absolutePath)
+                pathsToScan.add(projectsDir.absolutePath)
                 pathsToScan.add(logsDir.absolutePath)
-                pathsToScan.add(recordingsDir.absolutePath)
                 soundfontsDir.listFiles()?.forEach { pathsToScan.add(it.absolutePath) }
                 loopsDir.listFiles()?.forEach { pathsToScan.add(it.absolutePath) }
 
@@ -706,7 +702,7 @@ class FileManager(private val context: Context) {
         val result = mutableListOf<StorageItem>()
         try {
             if (scenesDir.exists() && scenesDir.canRead()) {
-                scenesDir.listFiles { file -> file.isFile && (file.extension.equals("scene", ignoreCase = true) || file.extension.equals("json", ignoreCase = true)) }
+                scenesDir.listFiles { file -> file.isFile && (file.extension.equals("lkproj", ignoreCase = true) || file.extension.equals("scene", ignoreCase = true) || file.extension.equals("json", ignoreCase = true)) }
                     ?.forEach { file ->
                         result.add(
                             StorageItem(
@@ -730,7 +726,7 @@ class FileManager(private val context: Context) {
         try {
             if (!scenesDir.exists()) scenesDir.mkdirs()
             val cleanName = sceneName.trim().replace(Regex("[^a-zA-Z0-9_\\-\\sÀ-ÿ]"), "_")
-            val targetFile = File(scenesDir, "$cleanName.scene")
+            val targetFile = File(scenesDir, "$cleanName.lkproj")
             targetFile.writeText(jsonContent, Charsets.UTF_8)
             targetFile
         } catch (e: Exception) {
@@ -811,7 +807,7 @@ class FileManager(private val context: Context) {
 
     suspend fun deleteSceneFile(sceneIdentifier: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            val baseName = sceneIdentifier.removeSuffix(".scene").removeSuffix(".json").trim()
+            val baseName = sceneIdentifier.removeSuffix(".lkproj").removeSuffix(".scene").removeSuffix(".json").trim()
             var deleted = false
 
             val file = File(sceneIdentifier)
@@ -829,6 +825,7 @@ class FileManager(private val context: Context) {
 
             for (dir in candidateDirs) {
                 if (dir.exists()) {
+                    File(dir, "$baseName.lkproj").let { if (it.exists()) deleted = it.delete() || deleted }
                     File(dir, "$baseName.scene").let { if (it.exists()) deleted = it.delete() || deleted }
                     File(dir, "$baseName.json").let { if (it.exists()) deleted = it.delete() || deleted }
                     File(dir, sceneIdentifier).let { if (it.exists()) deleted = it.delete() || deleted }

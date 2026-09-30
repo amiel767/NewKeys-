@@ -2,6 +2,7 @@ package com.soundstage.mixer.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -104,7 +105,8 @@ fun VirtualPianoKeyboard(
     val activeTracksCount = remember(tracks) { tracks.count { it.isEnabled }.coerceAtLeast(1) }
     val keysHeight = 48.dp
     val visibleTracksCount = remember(tracks) { tracks.count { it.isEnabled }.coerceIn(1, 8) }
-    val restStripHeight = remember(visibleTracksCount) { (4.5f * visibleTracksCount + 2f).dp.coerceIn(7.dp, 38.dp) }
+    // Reduced resting height by 40% for ultra-clean minimalist profile
+    val restStripHeight = remember(visibleTracksCount) { (2.7f * visibleTracksCount + 1.2f).dp.coerceIn(4.dp, 24.dp) }
     val expandedTargetHeight = (23 * visibleTracksCount + 14).dp.coerceIn(46.dp, 205.dp)
 
     // Continuous smooth iOS-style growth animation: lines expand directly from resting strip into deployed layer
@@ -148,120 +150,98 @@ fun VirtualPianoKeyboard(
             val currentWhiteWidthPx by rememberUpdatedState(whiteWidthPx)
             val currentBlackKeyWidthPx by rememberUpdatedState(blackKeyWidthPx)
 
-            // Computer mouse style live blue translucent selection overlay range over the keyboard
-            var activeDragSelectionRange by remember { mutableStateOf<Pair<Float, Float>?>(null) }
+            // Computer mouse style live translucent selection overlay range over the keyboard matching the active track color
+            var activeDragSelectionRange by remember { mutableStateOf<Triple<Float, Float, Color>?>(null) }
 
             // Filter pressed keys for visualization: display only keys with active physical touch or USB MIDI press
             val physicalScreenTouches = pointerKeyMap.values.toSet()
             val displayedPressedKeys = if (physicalScreenTouches.isNotEmpty()) physicalScreenTouches else pressedKeys
 
-            Column(modifier = Modifier.fillMaxWidth()) {
-                // 1. Single Continuous Growing Layer Mapper: anchored strictly above the keys (offset by 38dp pitch bend width)
-                if (tracks.isNotEmpty()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(restStripHeight)
-                            .wrapContentHeight(align = Alignment.Bottom, unbounded = true)
-                            .zIndex(100f),
-                        verticalAlignment = Alignment.Bottom
-                    ) {
-                        // Spacer matching PitchBendWheel width (38.dp)
-                        Spacer(modifier = Modifier.width(38.dp))
+            // Pitch bend wheel expands by only +50% in height when layers deploy (48dp * 1.5 = 72dp)
+            val pitchBendTargetHeight = if (isLayerMapperExpanded) (keysHeight * 1.50f) else keysHeight
+            val animatedPitchBendHeight by animateDpAsState(
+                targetValue = pitchBendTargetHeight,
+                animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+                label = "pitch_bend_growth"
+            )
 
-                        // Piano Keys-aligned Layer Box
+            // ================= UNIFIED STUDIO CHASSIS (SUNDAY KEYS MONOBLOC ENCLOSURE) =================
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .wrapContentHeight()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFF161B26))
+                    .border(1.dp, Color(0xFF2E384D), RoundedCornerShape(14.dp))
+                    .padding(3.dp),
+                verticalAlignment = Alignment.Bottom
+            ) {
+                // 1. LEFT: Pitch Bend Wheel anchored at bottom, grows by +50% in height smoothly
+                Box(
+                    modifier = Modifier
+                        .width(38.dp)
+                        .wrapContentHeight(),
+                    contentAlignment = Alignment.BottomCenter
+                ) {
+                    PitchBendWheel(
+                        currentBend = pitchBend,
+                        onBendChange = onPitchBendChange,
+                        modifier = Modifier
+                            .width(38.dp)
+                            .height(animatedPitchBendHeight)
+                            .padding(end = 4.dp, bottom = 1.dp)
+                    )
+                }
+
+                // 2. RIGHT: Unified Layers + Piano Keys Column
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .wrapContentHeight(),
+                    verticalArrangement = Arrangement.Bottom
+                ) {
+                    // Unified Layer Mapper Strip (Expands fluidly upwards inside the chassis)
+                    if (tracks.isNotEmpty()) {
                         Box(
                             modifier = Modifier
-                                .weight(1f)
+                                .fillMaxWidth()
                                 .height(animatedLayerHeight)
-                                .shadow(if (isLayerMapperExpanded) 18.dp else 4.dp, RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
-                                .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
-                                .background(
-                                    Brush.verticalGradient(
-                                        listOf(
-                                            if (isLayerMapperExpanded) Color(0xF5161B28) else Color(0xDD141824),
-                                            if (isLayerMapperExpanded) Color(0xF50E121B) else Color(0xDD0F121C)
-                                        )
-                                    )
-                                )
-                                .border(
-                                    width = 1.dp,
-                                    color = if (isLayerMapperExpanded) Color(0xFF2B3448) else Color(0x4420283C),
-                                    shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)
-                                )
+                                .horizontalScroll(scrollState)
+                                .padding(start = 3.dp)
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .horizontalScroll(scrollState)
-                            ) {
-                                KeyboardLayerMapper(
-                                    tracks = tracks,
-                                    whiteWidthDp = baseWhiteWidthDp,
-                                    totalWhiteKeys = totalWhiteKeys,
-                                    trackSaturation = trackSaturation,
-                                    isExpanded = isLayerMapperExpanded,
-                                    onToggleExpanded = { toggleMapperExpanded() },
-                                    onRangeChanged = onRangeChanged,
-                                    onDragSelectionChange = { range -> activeDragSelectionRange = range },
-                                    modifier = Modifier.padding(top = 1.dp, bottom = 1.dp)
-                                )
-                            }
-
-                            if (isLayerMapperExpanded) {
-                                IconButton(
-                                    onClick = { toggleMapperExpanded() },
-                                    modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .size(24.dp)
-                                        .padding(2.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Close,
-                                        contentDescription = "Fermer Layer Mapper",
-                                        tint = Color.White.copy(alpha = 0.80f),
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                }
-                            }
+                            KeyboardLayerMapper(
+                                tracks = tracks,
+                                whiteWidthDp = baseWhiteWidthDp,
+                                totalWhiteKeys = totalWhiteKeys,
+                                trackSaturation = trackSaturation,
+                                isExpanded = isLayerMapperExpanded,
+                                onToggleExpanded = { toggleMapperExpanded() },
+                                onRangeChanged = onRangeChanged,
+                                onDragSelectionChange = { range -> activeDragSelectionRange = range },
+                                modifier = Modifier.padding(top = 1.dp, bottom = 4.dp)
+                            )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(2.dp))
-                }
+                    // Visible clearance spacer between deployed layer lines and piano keys
+                    val keysGap = if (isLayerMapperExpanded) 4.dp else 1.dp
+                    Spacer(modifier = Modifier.height(keysGap))
 
-                    // Piano Keys Row (Pitch bend + Keys)
-                    Row(
+                    // Piano Keys Scrollable Container (Always 100% full brightness)
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(keysHeight),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Pitch Bend Wheel aligned with piano keys
-                        PitchBendWheel(
-                            currentBend = pitchBend,
-                            onBendChange = onPitchBendChange,
-                            modifier = Modifier
-                                .width(38.dp)
-                                .height(keysHeight)
-                                .padding(end = 4.dp, bottom = 1.dp)
-                        )
-
-                        // Piano Keys Scrollable Container
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(keysHeight)
-                                .horizontalScroll(scrollState)
-                                .pointerInput(Unit) {
-                                    detectTransformGestures { _, _, zoom, _ ->
-                                        if (zoom != 1.0f) {
-                                            currentScale = (currentScale * zoom).coerceIn(0.7f, 3.0f)
-                                            onKeyScaleChange(currentScale)
-                                        }
+                            .height(keysHeight)
+                            .horizontalScroll(scrollState)
+                            .pointerInput(Unit) {
+                                detectTransformGestures { _, _, zoom, _ ->
+                                    if (zoom != 1.0f) {
+                                        currentScale = (currentScale * zoom).coerceIn(0.7f, 3.0f)
+                                        onKeyScaleChange(currentScale)
                                     }
                                 }
-                        ) {
+                            }
+                    ) {
                             Row(
                                 modifier = Modifier
                                     .width(totalKeyboardWidthDp)
@@ -363,8 +343,8 @@ fun VirtualPianoKeyboard(
                                 )
                             }
 
-                            // Computer mouse-style live blue translucent selection overlay over the Virtual Keyboard
-                            activeDragSelectionRange?.let { (startFrac, endFrac) ->
+                            // Computer mouse-style live translucent selection overlay over the Virtual Keyboard matching the active track color
+                            activeDragSelectionRange?.let { (startFrac, endFrac, trackColor) ->
                                 val minFrac = minOf(startFrac, endFrac)
                                 val maxFrac = maxOf(startFrac, endFrac)
                                 val overlayStartXDp = (minFrac * baseWhiteWidthDp.value).dp
@@ -377,10 +357,10 @@ fun VirtualPianoKeyboard(
                                         .width(overlayWidthDp)
                                         .height(keysHeight)
                                         .clip(RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp))
-                                        .background(Color(0x403B82F6))
+                                        .background(trackColor.copy(alpha = 0.35f))
                                         .border(
                                             width = 1.2.dp,
-                                            color = Color(0xCC60A5FA),
+                                            color = trackColor.copy(alpha = 0.85f),
                                             shape = RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)
                                         )
                                 )

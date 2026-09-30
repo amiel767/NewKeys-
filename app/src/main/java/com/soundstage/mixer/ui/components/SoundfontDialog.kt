@@ -650,7 +650,7 @@ fun SoundfontDialog(
                                                 ) {
                                                     Icon(
                                                         imageVector = Icons.Default.Delete,
-                                                        contentDescription = "Supprimer",
+                                                        contentDescription = "Delete",
                                                         tint = Color.White,
                                                         modifier = Modifier.size(15.dp)
                                                     )

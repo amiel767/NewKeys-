@@ -729,7 +729,7 @@ fun DrumPadPage(
                                 modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
                             ) {
-                                Text("✨ Vierge", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("✨ Blank", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
 
                             Button(
@@ -740,7 +740,7 @@ fun DrumPadPage(
                                 modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.buttonColors(containerColor = NeonCyan)
                             ) {
-                                Text("📋 Dupliquer", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                                Text("📋 Duplicate", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Black)
                             }
                         }
                     }
@@ -748,7 +748,7 @@ fun DrumPadPage(
                 confirmButton = {},
                 dismissButton = {
                     TextButton(onClick = { showNewSceneDialog = false }) {
-                        Text("Annuler", color = Color.White)
+                        Text("Cancel", color = Color.White)
                     }
                 },
                 containerColor = Color(0xFF1E2330)

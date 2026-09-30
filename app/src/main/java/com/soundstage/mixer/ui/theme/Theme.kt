@@ -47,14 +47,14 @@ data class ThemePalettePreset(
 )
 
 val HarmoniousPalettes = listOf(
-    ThemePalettePreset("midnight_slate", "Midnight Slate (Défaut)", 220f, 0.40f, 0.45f, Color(0xFF4A5F7E), Color(0xFF36B37E)),
+    ThemePalettePreset("midnight_slate", "Midnight Slate (Default)", 220f, 0.40f, 0.45f, Color(0xFF4A5F7E), Color(0xFF36B37E)),
     ThemePalettePreset("cyber_neon", "Cyber Neon", 185f, 0.85f, 0.50f, Color(0xFF00E5FF), Color(0xFF8B5CF6)),
-    ThemePalettePreset("electric_ocean", "Océan Électrique", 210f, 0.90f, 0.50f, Color(0xFF0091FF), Color(0xFF00E5FF)),
-    ThemePalettePreset("dusk_purple", "Violet Crépuscule", 275f, 0.85f, 0.48f, Color(0xFFA855F7), Color(0xFFEC4899)),
-    ThemePalettePreset("analog_amber", "Ambre Analogique", 38f, 0.95f, 0.52f, Color(0xFFFFB300), Color(0xFFFF6D00)),
-    ThemePalettePreset("studio_emerald", "Émeraude Studio", 155f, 0.85f, 0.46f, Color(0xFF10B981), Color(0xFF06B6D4)),
-    ThemePalettePreset("synthwave_ruby", "Rubis Synthwave", 345f, 0.90f, 0.48f, Color(0xFFF43F5E), Color(0xFF9333EA)),
-    ThemePalettePreset("pure_titanium", "Titane Pur", 215f, 0.15f, 0.50f, Color(0xFFCBD5E1), Color(0xFF64748B))
+    ThemePalettePreset("electric_ocean", "Electric Ocean", 210f, 0.90f, 0.50f, Color(0xFF0091FF), Color(0xFF00E5FF)),
+    ThemePalettePreset("dusk_purple", "Dusk Purple", 275f, 0.85f, 0.48f, Color(0xFFA855F7), Color(0xFFEC4899)),
+    ThemePalettePreset("analog_amber", "Analog Amber", 38f, 0.95f, 0.52f, Color(0xFFFFB300), Color(0xFFFF6D00)),
+    ThemePalettePreset("studio_emerald", "Studio Emerald", 155f, 0.85f, 0.46f, Color(0xFF10B981), Color(0xFF06B6D4)),
+    ThemePalettePreset("synthwave_ruby", "Synthwave Ruby", 345f, 0.90f, 0.48f, Color(0xFFF43F5E), Color(0xFF9333EA)),
+    ThemePalettePreset("pure_titanium", "Pure Titanium", 215f, 0.15f, 0.50f, Color(0xFFCBD5E1), Color(0xFF64748B))
 )
 
 /**

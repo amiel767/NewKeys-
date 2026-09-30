@@ -116,7 +116,7 @@ fun SettingsDrawer(
     onThemeModulesLightnessChange: (Float) -> Unit = {},
     trackColorSaturation: Float = 1.0f,
     onTrackColorSaturationChange: (Float) -> Unit = {},
-    themePaletteName: String = "Midnight Slate (Défaut)",
+    themePaletteName: String = "Midnight Slate (Default)",
     onSelectThemePalette: (ThemePalettePreset) -> Unit = {},
     onResetTheme: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -271,14 +271,14 @@ private fun AospMainSettingsPage(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Settings,
-                        contentDescription = "Paramètres",
+                        contentDescription = "Settings",
                         tint = NeonCyan,
                         modifier = Modifier.size(20.dp)
                     )
                 }
                 Column {
                     Text(
-                        text = "Paramètres",
+                        text = "Settings",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -296,7 +296,7 @@ private fun AospMainSettingsPage(
             ) {
                 Icon(
                     imageVector = Icons.Default.Close,
-                    contentDescription = "Fermer",
+                    contentDescription = "Close",
                     tint = TextPrimary,
                     modifier = Modifier.size(16.dp)
                 )
@@ -1052,7 +1052,7 @@ private fun ThemeSettingsSubPage(
             // 6. Dynamic Tracks Neon Color Saturation
             item {
                 ThemeSliderCard(
-                    title = "Saturation des Pistes (Faders & Layers)",
+                    title = "Track Color Saturation (Faders & Layers)",
                     valueText = String.format(java.util.Locale.US, "%.2fx", trackColorSaturation),
                     progress = ((trackColorSaturation - 0.2f) / 1.8f).coerceIn(0f, 1f),
                     onProgressChange = { p -> onTrackColorSaturationChange(0.2f + p * 1.8f) },

@@ -206,7 +206,7 @@ data class SubSceneSnapshot(
     val globalTranspose: Int = 0,
     val globalOctaveShift: Int = 0,
     val masterVolume: Float = 0.85f,
-    val visibleTracksCount: Int = 8,
+    val visibleTracksCount: Int = 1,
     val fxParameters: FxParameters? = null,
     val timestamp: Long = System.currentTimeMillis()
 )

@@ -357,7 +357,7 @@ fun FileExplorerPage(
                                 .testTag("btn_close_file_explorer"),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.Close, contentDescription = "Fermer", tint = Color.White, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(16.dp))
                         }
                     }
                 }
@@ -967,12 +967,12 @@ fun FileExplorerPage(
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary)
                     ) {
-                        Text("Appliquer", color = Color.Black, fontWeight = FontWeight.Bold)
+                        Text("Apply", color = Color.Black, fontWeight = FontWeight.Bold)
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { fileForKeyEdit = null }) {
-                        Text("Annuler", color = Color.White)
+                        Text("Cancel", color = Color.White)
                     }
                 },
                 containerColor = Color(0xFF1E2330)

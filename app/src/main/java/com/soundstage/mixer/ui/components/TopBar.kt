@@ -131,55 +131,6 @@ fun TopBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // 1. Custom Home (Projects) Button
-            if (onBackToProjects != null) {
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(9.dp))
-                        .background(Color(0xFF141824))
-                        .border(1.dp, Color(0xFF222838), RoundedCornerShape(9.dp))
-                        .clickable { onBackToProjects() }
-                        .testTag("btn_back_to_projects"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Home,
-                        contentDescription = "Home",
-                        tint = NeonCyan,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-
-            // 1.5 Quick Save Diskette Button (Instant project save with visual shine)
-            if (onSaveProjectDirect != null) {
-                val diskBorderColor = if (isSavePulsing) NeonCyan else Color(0xFF222838)
-                val diskBgColor = if (isSavePulsing) Color(0x3322D3EE) else Color(0xFF141824)
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(9.dp))
-                        .background(diskBgColor)
-                        .border(if (isSavePulsing) 1.5.dp else 1.dp, diskBorderColor, RoundedCornerShape(9.dp))
-                        .clickable {
-                            isSavePulsing = true
-                            onSaveProjectDirect()
-                            coroutineScope.launch {
-                                delay(600)
-                                isSavePulsing = false
-                            }
-                        }
-                        .testTag("btn_quick_save_project"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    FloppyDiskIcon(
-                        isArmed = isSavePulsing,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-
             // 2. Transpose Stepper (Left)
             StepperControl(
                 label = "TRANS",
@@ -233,28 +184,29 @@ fun TopBar(
                     val variant = detectedChord.equivalentName.takeIf { it.isNotBlank() && it != detectedChord.primaryName }
                         ?: detectedChord.variantName.takeIf { it.isNotBlank() && it != detectedChord.primaryName }
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.wrapContentWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = if (variant != null) Arrangement.SpaceBetween else Arrangement.Center
+                        horizontalArrangement = Arrangement.Center
                     ) {
+                        // 1. Primary Chord Name (bold, full opacity primary text, dominant)
                         Text(
                             text = detectedChord.primaryName,
-                            fontSize = 13.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 14.5.sp,
+                            fontWeight = FontWeight.Black,
                             color = Color.White,
                             letterSpacing = 0.2.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            maxLines = 1
                         )
+                        // 2. Secondary Alternative (clearly readable, enlarged, in parentheses, directly to the right)
                         if (variant != null) {
+                            Spacer(modifier = Modifier.width(5.dp))
                             Text(
-                                text = variant,
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF38BDF8),
+                                text = "($variant)",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White.copy(alpha = 0.75f),
                                 letterSpacing = 0.2.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                maxLines = 1
                             )
                         }
                     }

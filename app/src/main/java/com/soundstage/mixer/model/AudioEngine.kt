@@ -32,7 +32,7 @@ sealed class MidiEngineEvent {
 }
 
 class SynthChannelParams {
-    var volume: Float = 0.85f
+    var volume: Float = 1.0f
     var pan: Float = 0.0f
     var instrumentType: Int = 0
     var program: Int = 0
@@ -74,17 +74,13 @@ class AudioEngine(private val context: Context) {
     private val audioDeviceCallback = object : android.media.AudioDeviceCallback() {
         override fun onAudioDevicesAdded(addedDevices: Array<out android.media.AudioDeviceInfo>?) {
             super.onAudioDevicesAdded(addedDevices)
-            if (isFirstAudioDeviceCallback) {
-                isFirstAudioDeviceCallback = false
-                return
-            }
-            Log.i(TAG, "Audio output device attached (headphones/BT). Restoring audio stream...")
+            Log.i(TAG, "Audio output device attached (headphones/BT). Restoring full dynamic audio stream...")
             reconnectAudioStream()
         }
 
         override fun onAudioDevicesRemoved(removedDevices: Array<out android.media.AudioDeviceInfo>?) {
             super.onAudioDevicesRemoved(removedDevices)
-            Log.i(TAG, "Audio output device removed. Restoring audio stream...")
+            Log.i(TAG, "Audio output device removed. Restoring full dynamic audio stream...")
             reconnectAudioStream()
         }
     }
@@ -97,6 +93,8 @@ class AudioEngine(private val context: Context) {
         } catch (e: Exception) {
             Log.w(TAG, "Could not register AudioDeviceCallback: ${e.message}")
         }
+        // Immediately start and lock stream parameters with full dynamic headroom
+        reconnectAudioStream()
     }
 
     fun restoreAllEngineParameters() {
@@ -136,8 +134,8 @@ class AudioEngine(private val context: Context) {
         fallbackSynth.isBypassed = false
     }
 
-    // Master DSP Parameters
-    var masterVolume: Float = 0.80f
+    // Master DSP Parameters (Calibrated to full unbridled 1.0f headroom)
+    var masterVolume: Float = 1.0f
         set(value) {
             field = value
             NativeAudioBridge.safeSetMasterVolume(value)
