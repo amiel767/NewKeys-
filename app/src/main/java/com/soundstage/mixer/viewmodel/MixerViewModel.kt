@@ -215,7 +215,8 @@ data class MixerUiState(
     val lastDrumPadPath: String = "",
     val showStoragePermissionDialog: Boolean = false,
 
-    // Dynamic Theme Customization (Spectral Hue, Accent, Background & Modules)
+    // Dynamic Theme Customization & Fader Layout Mode
+    val isFaderAutoFit: Boolean = false,
     val themeHue: Float = 220f,
     val themeSaturation: Float = 0.40f,
     val themeNuance: Float = 0.45f,
@@ -432,8 +433,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     }
 
                     val restoredVisibleTracks = saved.visibleTracksCount ?: saved.tracks.count { it.isEnabled }.coerceIn(1, 8)
-                    val restoredConfiguredSlots = if (saved.configuredSnapshotSlots.isNotEmpty()) saved.configuredSnapshotSlots else state.configuredSnapshotSlots
-                    val restoredCustomNames = if (saved.snapshotCustomNames.isNotEmpty()) saved.snapshotCustomNames else state.snapshotCustomNames
+                    val restoredConfiguredSlots = if (saved.configuredSnapshotSlots.isNotEmpty()) saved.configuredSnapshotSlots else listOf("slot_default")
+                    val restoredCustomNames = saved.snapshotCustomNames
 
                     state.copy(
                         currentTheme = restoredTheme,
@@ -453,8 +454,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         audioSlots = restoredSlots,
                         drumPads = restoredDrums,
                         fxParameters = restoredFx,
-                        snapshots = saved.snapshots.ifEmpty { state.snapshots },
+                        snapshots = saved.snapshots,
                         activeSnapshotSlot = saved.activeSnapshotSlot,
+                        customLibreTracks = null,
                         configuredSnapshotSlots = restoredConfiguredSlots,
                         snapshotCustomNames = restoredCustomNames,
                         tonicBrightness = saved.tonicBrightness ?: state.tonicBrightness,
@@ -466,7 +468,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         themeSaturation = saved.themeSaturation ?: state.themeSaturation,
                         themeNuance = saved.themeNuance ?: state.themeNuance,
                         themePaletteName = saved.themePalette ?: state.themePaletteName,
-                        trackColorSaturation = saved.trackColorSaturation ?: state.trackColorSaturation
+                        trackColorSaturation = saved.trackColorSaturation ?: state.trackColorSaturation,
+                        isFaderAutoFit = saved.isFaderAutoFit ?: state.isFaderAutoFit
                     )
                 }
 
@@ -642,7 +645,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             themeSaturation = state.themeSaturation,
             themeNuance = state.themeNuance,
             themePalette = state.themePaletteName,
-            trackColorSaturation = state.trackColorSaturation
+            trackColorSaturation = state.trackColorSaturation,
+            isFaderAutoFit = state.isFaderAutoFit
         )
         // Full auto-save: automatically sync to the current project's .scene file if a project is actively open
         if (state.activeProjectName.isNotEmpty() && state.activeProjectName != "None") {
@@ -2798,6 +2802,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectScene(sceneId: String) {
+        snapshotTransitionJob?.cancel()
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 // Completely unload all previous soundfonts and silence active voices before switching Setlist
@@ -3047,7 +3052,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                             snapshots = snapshotsMap,
                             configuredSnapshotSlots = configuredSlots,
                             snapshotCustomNames = customNames,
-                            activeSnapshotSlot = activeSlot
+                            activeSnapshotSlot = activeSlot,
+                            customLibreTracks = null
                         )
                     }
                     applyTrackVolumes(_uiState.value)
@@ -3446,8 +3452,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         deleteScene(projectName)
     }
 
-    fun createNewProject(projectName: String = "Project", isBlank: Boolean = true) {
-        val cleanName = projectName.trim().ifEmpty { "Project ${_uiState.value.scenes.size + 1}" }
+    fun createNewProject(projectName: String = "Setlist", isBlank: Boolean = true) {
+        snapshotTransitionJob?.cancel()
+        val cleanName = projectName.trim().ifEmpty { "Setlist ${_uiState.value.scenes.size + 1}" }
         if (isBlank) {
             NativeAudioBridge.safeAllNotesOff()
             NativeAudioBridge.safeUnloadAllSoundFonts(NativeAudioBridge.ENGINE_FADER)
@@ -3467,6 +3474,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     configuredSnapshotSlots = listOf("slot_default"),
                     snapshotCustomNames = emptyMap(),
                     activeSnapshotSlot = "slot_default",
+                    customLibreTracks = null,
                     currentPage = AppScreenPage.MIXER
                 )
             }
@@ -3476,6 +3484,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 current.copy(
                     activeProjectName = cleanName,
                     activeSceneId = cleanName,
+                    customLibreTracks = null,
                     currentPage = AppScreenPage.MIXER
                 )
             }
@@ -3608,14 +3617,16 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     val targetTracks = currentState.tracks.map { tr ->
                         val snap = targetSnapshot.tracks.find { it.id == tr.id }
                         if (snap != null) {
+                            val sfName = if (snap.soundfontName.isNotEmpty()) snap.soundfontName else tr.soundfontName
+                            val patchName = if (snap.soundfontName.isNotEmpty()) snap.patchName else tr.patchName
                             tr.copy(
                                 volume = snap.volume,
                                 pan = snap.pan,
                                 isMuted = snap.isMuted,
                                 isSolo = snap.isSolo,
                                 isEnabled = snap.isEnabled,
-                                soundfontName = snap.soundfontName,
-                                patchName = snap.patchName,
+                                soundfontName = sfName,
+                                patchName = patchName,
                                 bank = snap.bank,
                                 program = snap.program,
                                 splitNoteMin = snap.splitNoteMin,
@@ -3971,6 +3982,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleKeepScreenOn() {
         _uiState.update { it.copy(keepScreenOn = !it.keepScreenOn) }
         persistCurrentStateDebounced()
+    }
+
+    fun toggleFaderAutoFit() {
+        _uiState.update { it.copy(isFaderAutoFit = !it.isFaderAutoFit) }
+        persistCurrentState()
     }
 
     fun setScaleMode(mode: String) {

@@ -41,6 +41,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -100,21 +101,36 @@ fun BottomBar(
     onKeyboardDrag: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val barHeight = 44.dp
+    val barHeight = 42.dp
     val coroutineScope = rememberCoroutineScope()
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .wrapContentHeight()
-            .background(Color(0xFF131722))
-            .border(1.dp, Color(0xFF2C394E), RoundedCornerShape(0.dp))
+            .clip(RoundedCornerShape(10.dp))
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color(0xFF161A26), Color(0xFF11141E))
+                )
+            )
+            .drawWithContent {
+                drawContent()
+                // Subtle top specular highlight for natural hardware relief
+                drawLine(
+                    color = Color.White.copy(alpha = 0.08f),
+                    start = Offset(10.dp.toPx(), 0.5f),
+                    end = Offset(size.width - 10.dp.toPx(), 0.5f),
+                    strokeWidth = 1.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+            }
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(barHeight)
-                .padding(horizontal = 4.dp, vertical = 2.dp),
+                .wrapContentHeight()
+                .padding(horizontal = 6.dp, vertical = 3.5.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {
@@ -153,33 +169,47 @@ fun BottomBar(
 
         Box(
             modifier = Modifier
-                .width(104.dp)
+                .width(78.dp)
                 .height(barHeight)
-                .clip(RoundedCornerShape(9.dp))
-                .background(Color(0xFF141824))
-                .border(1.dp, Color(0xFF222838), RoundedCornerShape(9.dp))
-                .padding(horizontal = 7.dp, vertical = 2.dp),
+                .shadow(2.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                .clip(RoundedCornerShape(8.dp))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0xFF283144), Color(0xFF1D2433))
+                    )
+                )
+                .drawWithContent {
+                    drawContent()
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.12f),
+                        start = Offset(4.dp.toPx(), 1f),
+                        end = Offset(size.width - 4.dp.toPx(), 1f),
+                        strokeWidth = 1.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
+                .padding(horizontal = 4.dp, vertical = 2.dp),
             contentAlignment = Alignment.Center
         ) {
             Column(
                 modifier = Modifier.fillMaxHeight(),
-                verticalArrangement = Arrangement.spacedBy(1.5.dp, Alignment.CenterVertically),
+                verticalArrangement = Arrangement.spacedBy(1.dp, Alignment.CenterVertically),
                 horizontalAlignment = Alignment.Start
             ) {
                 // CPU indicator
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.5.dp)
+                    horizontalArrangement = Arrangement.spacedBy(3.5.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(5.5.dp)
+                            .size(5.dp)
                             .clip(CircleShape)
                             .background(if (cpuPercent > 70) Color(0xFFEF4444) else if (cpuPercent > 40) Color(0xFFF59E0B) else Color(0xFF10B981))
                     )
                     Text(
                         text = "CPU $cpuPercent%",
-                        fontSize = 9.sp,
+                        fontSize = 8.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFFE2E8F0),
                         style = androidx.compose.ui.text.TextStyle(
@@ -191,17 +221,17 @@ fun BottomBar(
                 // RAM indicator
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.5.dp)
+                    horizontalArrangement = Arrangement.spacedBy(3.5.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(5.5.dp)
+                            .size(5.dp)
                             .clip(CircleShape)
                             .background(Color(0xFF38BDF8))
                     )
                     Text(
                         text = "RAM ${memoryMb}M",
-                        fontSize = 9.sp,
+                        fontSize = 8.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFFCBD5E1),
                         style = androidx.compose.ui.text.TextStyle(
@@ -217,9 +247,23 @@ fun BottomBar(
         Row(
             modifier = Modifier
                 .height(barHeight)
-                .clip(RoundedCornerShape(9.dp))
-                .background(MaterialTheme.colorScheme.surface)
-                .border(1.dp, BorderSubtle, RoundedCornerShape(9.dp))
+                .shadow(2.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                .clip(RoundedCornerShape(8.dp))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0xFF283144), Color(0xFF1D2433))
+                    )
+                )
+                .drawWithContent {
+                    drawContent()
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.12f),
+                        start = Offset(4.dp.toPx(), 1f),
+                        end = Offset(size.width - 4.dp.toPx(), 1f),
+                        strokeWidth = 1.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
                 .testTag("bpm_box"),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -245,7 +289,7 @@ fun BottomBar(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = "−", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(text = "−", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE2E8F0))
             }
 
             Box(
@@ -257,14 +301,14 @@ fun BottomBar(
                         text = "$bpm",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = NeonCyanLight,
+                        color = Color.White,
                         lineHeight = 13.sp
                     )
                     Text(
                         text = "BPM",
                         fontSize = 7.5.sp,
                         fontWeight = FontWeight.Bold,
-                        color = TextDim,
+                        color = Color(0xFF94A3B8),
                         lineHeight = 8.sp
                     )
                 }
@@ -292,26 +336,33 @@ fun BottomBar(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = "+", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(text = "+", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE2E8F0))
             }
         }
 
         // ================= 3. FUSED METRONOME & SIGNATURE/KEY BUTTON =================
-        val metroBg by animateColorAsState(
-            targetValue = if (isMetronomeOn) Color(0xFF0F394A) else MaterialTheme.colorScheme.surface,
-            label = "metro_bg"
-        )
-        val metroBorder by animateColorAsState(
-            targetValue = if (isMetronomeOn) NeonCyan else BorderSubtle,
-            label = "metro_border"
-        )
+        val metroBgBrush = if (isMetronomeOn) {
+            Brush.verticalGradient(listOf(Color(0xFF163E52), Color(0xFF0F2D3D)))
+        } else {
+            Brush.verticalGradient(listOf(Color(0xFF283144), Color(0xFF1D2433)))
+        }
 
         Row(
             modifier = Modifier
                 .height(barHeight)
-                .clip(RoundedCornerShape(9.dp))
-                .background(metroBg)
-                .border(1.dp, metroBorder, RoundedCornerShape(9.dp))
+                .shadow(2.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                .clip(RoundedCornerShape(8.dp))
+                .background(metroBgBrush)
+                .drawWithContent {
+                    drawContent()
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.12f),
+                        start = Offset(4.dp.toPx(), 1f),
+                        end = Offset(size.width - 4.dp.toPx(), 1f),
+                        strokeWidth = 1.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
                 .clickable { onToggleMetroPanel() }
                 .padding(horizontal = 8.dp)
                 .testTag("btn_metronome"),
@@ -337,7 +388,7 @@ fun BottomBar(
                 )
                 drawPath(
                     path = bodyPath,
-                    color = if (isMetronomeOn) NeonCyan else TextDim,
+                    color = if (isMetronomeOn) NeonCyan else Color(0xFF94A3B8),
                     style = Stroke(width = 1.3f)
                 )
 
@@ -348,7 +399,7 @@ fun BottomBar(
                 val topArmY = pivotY - kotlin.math.cos(armAngle) * (h * 0.68f)
 
                 drawLine(
-                    color = if (isMetronomeOn) Color.White else TextPrimary,
+                    color = if (isMetronomeOn) Color.White else Color(0xFFE2E8F0),
                     start = Offset(pivotX, pivotY),
                     end = Offset(topArmX, topArmY),
                     strokeWidth = 1.6f,
@@ -373,7 +424,7 @@ fun BottomBar(
                     text = metroSignature,
                     fontSize = 11.5.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    color = if (isMetronomeOn) NeonCyanLight else TextPrimary
+                    color = if (isMetronomeOn) NeonCyanLight else Color.White
                 )
                 Text(
                     text = "·",
@@ -564,12 +615,14 @@ fun BottomBar(
             label = "arm_blink"
         )
 
+        val isAdaptiveSnapshots = configuredSnapshotSlots.size >= 4
+
         Row(
-            modifier = Modifier.wrapContentWidth(),
+            modifier = if (isAdaptiveSnapshots) Modifier.weight(1f).height(barHeight) else Modifier.wrapContentWidth().height(barHeight),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(5.dp)
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            // Configured Dynamic Snapshot Slots (Starts with "Default", up to 5 max)
+            // Configured Dynamic Snapshot Slots (Expand fluidly to fill space up to Master Fader)
             val slotKeys = configuredSnapshotSlots
             slotKeys.forEach { slotKey ->
                 val defaultLabel = when (slotKey) {
@@ -582,35 +635,76 @@ fun BottomBar(
                 val isActive = (activeSnapshotSlot == slotKey) || (activeSnapshotSlot == null && slotKey == "slot_default")
                 val isSaved = snapshots.containsKey(slotKey) || (slotKey == "slot_default" && snapshots.isNotEmpty())
 
-                // Studio Cyan Hardware Reference Palette: Sleek Dark Slate when inactive, Studio Neon Cyan when active (No Yellow)
+                // 1Gallery Reference Hardware Palette:
+                // Active: Solid Soft Pastel Periwinkle Blue with dark anthracite text (No harsh neon)
+                // Inactive: Matte Studio Slate with subtle embossed tactile relief gradient & subtle top bevel
                 val slotBg = when {
-                    isActive -> Color(0xFF0F394A)
-                    else -> Color(0xFF1E2433)
+                    isActive -> Brush.verticalGradient(
+                        listOf(Color(0xFF9BC0F8), Color(0xFF8FB6F2))
+                    )
+                    else -> Brush.verticalGradient(
+                        listOf(Color(0xFF283144), Color(0xFF1D2433))
+                    )
                 }
                 val slotBorderColor = when {
                     isSnapshotArmMode && !isActive -> Color(0xFFFF2A55).copy(alpha = armBlinkAlpha)
-                    isActive -> NeonCyan
-                    else -> Color(0xFF333E54)
+                    isActive -> Color(0x33000000)
+                    else -> Color(0xFF38455E)
                 }
                 val slotTextColor = when {
-                    isActive -> NeonCyan
+                    isActive -> Color(0xFF101726)
                     else -> Color(0xFFE2E8F0)
                 }
-                val slotFontWeight = FontWeight.Bold
+                val slotFontWeight = if (isActive) FontWeight.Bold else FontWeight.SemiBold
+
+                // 2-line format when space allows (matching reference screenshot: "Snapshot\n2")
+                val formattedLabel = if (displayName.contains(" ") && displayName.length > 7) {
+                    val p = displayName.split(" ", limit = 2)
+                    "${p[0]}\n${p[1]}"
+                } else {
+                    displayName
+                }
+
+                val slotModifier = if (isAdaptiveSnapshots) {
+                    Modifier.weight(1f).height(barHeight)
+                } else {
+                    Modifier.width(88.dp).height(barHeight)
+                }
 
                 Box(
-                    modifier = Modifier
-                        .wrapContentWidth()
-                        .defaultMinSize(minWidth = 64.dp)
-                        .height(barHeight)
-                        .clip(RoundedCornerShape(9.dp))
-                        .background(slotBg)
-                        .border(
-                            width = if (isActive || isSnapshotArmMode) 1.2.dp else 1.dp,
-                            color = slotBorderColor,
-                            shape = RoundedCornerShape(9.dp)
+                    modifier = slotModifier
+                        .shadow(
+                            elevation = if (isActive) 0.dp else 2.5.dp,
+                            shape = RoundedCornerShape(8.dp),
+                            ambientColor = Color.Black,
+                            spotColor = Color(0x99000000)
                         )
-                        .padding(horizontal = 12.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(slotBg)
+                        .then(
+                            if (isSnapshotArmMode && !isActive) {
+                                Modifier.border(
+                                    1.dp,
+                                    Color(0xFFFF2A55).copy(alpha = armBlinkAlpha),
+                                    RoundedCornerShape(8.dp)
+                                )
+                            } else {
+                                Modifier
+                            }
+                        )
+                        .drawWithContent {
+                            drawContent()
+                            // Natural top-edge highlight for inactive physical relief (no side borders)
+                            if (!isActive && !isSnapshotArmMode) {
+                                drawLine(
+                                    color = Color.White.copy(alpha = 0.12f),
+                                    start = Offset(5.dp.toPx(), 1f),
+                                    end = Offset(size.width - 5.dp.toPx(), 1f),
+                                    strokeWidth = 1.dp.toPx(),
+                                    cap = StrokeCap.Round
+                                )
+                            }
+                        }
                         .pointerInput(slotKey, displayName) {
                             detectTapGestures(
                                 onTap = { onSnapshotSlotClick(slotKey) },
@@ -624,11 +718,13 @@ fun BottomBar(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = displayName,
-                        fontSize = if (displayName.length > 7) 10.5.sp else 11.5.sp,
+                        text = formattedLabel,
+                        fontSize = if (formattedLabel.contains("\n")) 9.5.sp else 11.sp,
                         fontWeight = slotFontWeight,
                         color = slotTextColor,
-                        maxLines = 1,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 11.5.sp,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
@@ -638,10 +734,24 @@ fun BottomBar(
             if (configuredSnapshotSlots.size < 5) {
                 Box(
                     modifier = Modifier
-                        .size(42.dp, barHeight)
-                        .clip(RoundedCornerShape(9.dp))
-                        .background(Color(0xFF1E2433))
-                        .border(1.dp, Color(0xFF333E54), RoundedCornerShape(9.dp))
+                        .size(36.dp, barHeight)
+                        .shadow(2.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color(0xFF283144), Color(0xFF1D2433))
+                            )
+                        )
+                        .drawWithContent {
+                            drawContent()
+                            drawLine(
+                                color = Color.White.copy(alpha = 0.12f),
+                                start = Offset(4.dp.toPx(), 1f),
+                                end = Offset(size.width - 4.dp.toPx(), 1f),
+                                strokeWidth = 1.dp.toPx(),
+                                cap = StrokeCap.Round
+                            )
+                        }
                         .clickable {
                             newSnapshotNameInput = "Snapshot ${configuredSnapshotSlots.size}"
                             isAddSnapshotDialogOpen = true
@@ -649,48 +759,85 @@ fun BottomBar(
                         .testTag("btn_add_snapshot"),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("+", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE2E8F0))
+                    Text("+", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE2E8F0))
                 }
             }
 
             // Floppy Disk (Save) Icon - placed immediately to the RIGHT of [+] button, exact matching 44dp barHeight
+            val diskBgBrush = if (isSnapshotArmMode) {
+                SolidColor(Color(0xFF4A0014))
+            } else {
+                Brush.verticalGradient(
+                    listOf(Color(0xFF283144), Color(0xFF1D2433))
+                )
+            }
+
             Box(
                 modifier = Modifier
-                    .size(42.dp, barHeight)
-                    .clip(RoundedCornerShape(9.dp))
-                    .background(
+                    .size(36.dp, barHeight)
+                    .shadow(2.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(diskBgBrush)
+                    .then(
                         if (isSnapshotArmMode) {
-                            Color(0xFF4A0014)
+                            Modifier.border(
+                                1.dp,
+                                Color(0xFFFF2A55).copy(alpha = armBlinkAlpha),
+                                RoundedCornerShape(8.dp)
+                            )
                         } else {
-                            Color(0xFF1E2433)
+                            Modifier
                         }
                     )
-                    .border(
-                        1.2.dp,
-                        if (isSnapshotArmMode) Color(0xFFFF2A55).copy(alpha = armBlinkAlpha) else Color(0xFF333E54),
-                        RoundedCornerShape(9.dp)
-                    )
+                    .drawWithContent {
+                        drawContent()
+                        if (!isSnapshotArmMode) {
+                            drawLine(
+                                color = Color.White.copy(alpha = 0.12f),
+                                start = Offset(4.dp.toPx(), 1f),
+                                end = Offset(size.width - 4.dp.toPx(), 1f),
+                                strokeWidth = 1.dp.toPx(),
+                                cap = StrokeCap.Round
+                            )
+                        }
+                    }
                     .clickable { onToggleSnapshotArm() }
                     .testTag("btn_snapshot_arm"),
                 contentAlignment = Alignment.Center
             ) {
                 FloppyDiskIcon(
                     isArmed = isSnapshotArmMode,
-                    modifier = Modifier.size(19.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }
 
-        Spacer(modifier = Modifier.weight(1f))
+        if (!isAdaptiveSnapshots) {
+            Spacer(modifier = Modifier.weight(1f))
+        }
 
         // ================= 5. MASTER FADER (COMPACT FIXED WIDTH) =================
         Row(
             modifier = Modifier
                 .width(150.dp)
                 .height(barHeight)
-                .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFF0A0E15))
-                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(10.dp))
+                .shadow(2.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                .clip(RoundedCornerShape(8.dp))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0xFF202738), Color(0xFF141824))
+                    )
+                )
+                .drawWithContent {
+                    drawContent()
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.12f),
+                        start = Offset(4.dp.toPx(), 1f),
+                        end = Offset(size.width - 4.dp.toPx(), 1f),
+                        strokeWidth = 1.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
                 .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -703,8 +850,8 @@ fun BottomBar(
                     .weight(1f)
                     .height(24.dp),
                 colors = SliderDefaults.colors(
-                    thumbColor = NeonCyan,
-                    activeTrackColor = NeonCyan,
+                    thumbColor = Color(0xFF9BC0F8),
+                    activeTrackColor = Color(0xFF9BC0F8),
                     inactiveTrackColor = Color(0xFF1E2238)
                 )
             )
@@ -712,13 +859,27 @@ fun BottomBar(
             Box(
                 modifier = Modifier
                     .size(22.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color(0xFF161C28))
-                    .border(1.dp, Color(0xFF2C3242), RoundedCornerShape(4.dp))
+                    .shadow(1.5.dp, RoundedCornerShape(6.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(0xFF283144), Color(0xFF1D2433))
+                        )
+                    )
+                    .drawWithContent {
+                        drawContent()
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.12f),
+                            start = Offset(2.dp.toPx(), 1f),
+                            end = Offset(size.width - 2.dp.toPx(), 1f),
+                            strokeWidth = 1.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    }
                     .clickable { onMasterFxClick() },
                 contentAlignment = Alignment.Center
             ) {
-                Text("FX", color = NeonCyan, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                Text("FX", color = Color(0xFF9BC0F8), fontSize = 8.sp, fontWeight = FontWeight.Bold)
             }
         }
 
@@ -733,22 +894,36 @@ fun BottomBar(
                 enter = fadeIn(tween(220)) + expandHorizontally(tween(220)) + scaleIn(),
                 exit = fadeOut(tween(180)) + shrinkHorizontally(tween(180)) + scaleOut()
             ) {
-                val layerBg by animateColorAsState(
-                    targetValue = if (isLayerActive) Color(0xFF0F394A) else MaterialTheme.colorScheme.surface,
-                    label = "layer_bg"
-                )
-                val layerBorder by animateColorAsState(
-                    targetValue = if (isLayerActive) NeonCyan else BorderSubtle,
-                    label = "layer_border"
-                )
+                val layerBgBrush = if (isLayerActive) {
+                    Brush.verticalGradient(listOf(Color(0xFF9BC0F8), Color(0xFF8FB6F2)))
+                } else {
+                    Brush.verticalGradient(listOf(Color(0xFF283144), Color(0xFF1D2433)))
+                }
 
                 Box(
                     modifier = Modifier
                         .width(42.dp)
                         .height(barHeight)
-                        .clip(RoundedCornerShape(9.dp))
-                        .background(layerBg)
-                        .border(1.dp, layerBorder, RoundedCornerShape(9.dp))
+                        .shadow(
+                            elevation = if (isLayerActive) 0.dp else 2.5.dp,
+                            shape = RoundedCornerShape(8.dp),
+                            ambientColor = Color.Black,
+                            spotColor = Color(0x99000000)
+                        )
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(layerBgBrush)
+                        .drawWithContent {
+                            drawContent()
+                            if (!isLayerActive) {
+                                drawLine(
+                                    color = Color.White.copy(alpha = 0.12f),
+                                    start = Offset(4.dp.toPx(), 1f),
+                                    end = Offset(size.width - 4.dp.toPx(), 1f),
+                                    strokeWidth = 1.dp.toPx(),
+                                    cap = StrokeCap.Round
+                                )
+                            }
+                        }
                         .clickable { onToggleLayer() }
                         .testTag("btn_toggle_layer"),
                     contentAlignment = Alignment.Center
@@ -756,7 +931,7 @@ fun BottomBar(
                     Canvas(modifier = Modifier.size(20.dp, 16.dp)) {
                         val w = size.width
                         val h = size.height
-                        val strokeCol = if (isLayerActive) NeonCyan else TextDim
+                        val strokeCol = if (isLayerActive) Color(0xFF101726) else Color(0xFFE2E8F0)
 
                         // Top Layer
                         val p1 = Path().apply {
@@ -787,23 +962,37 @@ fun BottomBar(
                 }
             }
 
-            // Keyboard Toggle Button
-            val keyboardBg by animateColorAsState(
-                targetValue = if (isKeyboardActive) Color(0xFF0F394A) else MaterialTheme.colorScheme.surface,
-                label = "kb_bg"
-            )
-            val keyboardBorder by animateColorAsState(
-                targetValue = if (isKeyboardActive) NeonCyan else BorderSubtle,
-                label = "kb_border"
-            )
+            // Keyboard Toggle Button (Matching Snapshot button style & relief)
+            val keyboardBgBrush = if (isKeyboardActive) {
+                Brush.verticalGradient(listOf(Color(0xFF9BC0F8), Color(0xFF8FB6F2)))
+            } else {
+                Brush.verticalGradient(listOf(Color(0xFF283144), Color(0xFF1D2433)))
+            }
 
             Box(
                 modifier = Modifier
                     .width(44.dp)
                     .height(barHeight)
-                    .clip(RoundedCornerShape(9.dp))
-                    .background(keyboardBg)
-                    .border(1.dp, keyboardBorder, RoundedCornerShape(9.dp))
+                    .shadow(
+                        elevation = if (isKeyboardActive) 0.dp else 2.5.dp,
+                        shape = RoundedCornerShape(8.dp),
+                        ambientColor = Color.Black,
+                        spotColor = Color(0x99000000)
+                    )
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(keyboardBgBrush)
+                    .drawWithContent {
+                        drawContent()
+                        if (!isKeyboardActive) {
+                            drawLine(
+                                color = Color.White.copy(alpha = 0.12f),
+                                start = Offset(4.dp.toPx(), 1f),
+                                end = Offset(size.width - 4.dp.toPx(), 1f),
+                                strokeWidth = 1.dp.toPx(),
+                                cap = StrokeCap.Round
+                            )
+                        }
+                    }
                     .clickable { onToggleKeyboard() }
                     .testTag("btn_toggle_keyboard"),
                 contentAlignment = Alignment.Center
@@ -812,7 +1001,7 @@ fun BottomBar(
                     val w = size.width
                     val h = size.height
 
-                    val keyOutlineColor = if (isKeyboardActive) NeonCyan else TextDim
+                    val keyOutlineColor = if (isKeyboardActive) Color(0xFF101726) else Color(0xFFE2E8F0)
                     drawRoundRect(
                         color = keyOutlineColor,
                         topLeft = Offset(1f, 2f),
@@ -831,7 +1020,7 @@ fun BottomBar(
                         )
                     }
 
-                    val blackKeyColor = if (isKeyboardActive) NeonCyan else Color.White
+                    val blackKeyColor = if (isKeyboardActive) Color(0xFF101726) else Color.White
                     drawRect(
                         color = blackKeyColor,
                         topLeft = Offset(1f + keySpacing * 0.7f, 2f),

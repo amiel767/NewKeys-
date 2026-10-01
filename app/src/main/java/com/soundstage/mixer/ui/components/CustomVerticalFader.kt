@@ -201,94 +201,62 @@ fun CustomVerticalFader(
 
             // ================= CENTRAL NEON LINE: GLOWING IN THE GROOVE STRICTLY TERMINATED AT BOTTOM =================
             if (isEnabled) {
-                // 1. BASELINE TRACK LINE (Runs in the slot below thumb to the bottom inner boundary)
-                Canvas(
-                    modifier = Modifier
-                        .width(trackWidth)
-                        .fillMaxHeight()
-                ) {
-                    val h = size.height
-                    val w = size.width
-                    val topBoundary = 5.dp.toPx()
-                    val bottomBoundary = (h - 5.dp.toPx()).coerceAtLeast(topBoundary)
-                    val relativeBonnetY = bonnetCenterYPx.coerceIn(topBoundary, bottomBoundary)
-                    val activeHeight = (bottomBoundary - relativeBonnetY).coerceAtLeast(0f)
-                    val lineWidthPx = 2.4.dp.toPx()
-                    val lineLeft = (w - lineWidthPx) / 2f
-                    val lineCorner = CornerRadius(lineWidthPx / 2f, lineWidthPx / 2f)
+                // The physical travel boundaries of the thumb cap center and groove base
+                val topStopPx = (thumbHeightPx / 2f).coerceAtMost(containerHeightPx)
+                val bottomStopPx = with(density) { (containerHeightPx - 10.dp.toPx()).coerceAtLeast(topStopPx) }
+                val currentYPx = bonnetCenterYPx.coerceIn(topStopPx, bottomStopPx)
+                val activeHeightPx = (bottomStopPx - currentYPx).coerceAtLeast(0f)
 
-                    if (activeHeight > 0f) {
-                        // ALWAYS VISIBLE EVEN AT REST: distinct rich track color in the groove; glows intensely with audio
-                        val idleGrooveAlpha = if (isAudioSoundActive) 0.30f else 0.18f
-                        val coreAlpha = if (isAudioSoundActive) 1.0f else 0.65f
+                // 1. BASELINE TRACK LINE (Runs strictly from thumb cap center down to bottom travel stop)
+                if (activeHeightPx > 0f) {
+                    Canvas(
+                        modifier = Modifier
+                            .width(trackWidth)
+                            .fillMaxHeight()
+                    ) {
+                        val w = size.width
+                        val centerX = (w / 2f).roundToInt().toFloat()
+                        val lineWidthPx = (3.dp.toPx()).roundToInt().toFloat()
+                        val lineLeft = centerX - (lineWidthPx / 2f)
+                        val lineCorner = CornerRadius(lineWidthPx / 2f, lineWidthPx / 2f)
+
+                        // ALWAYS VISIBLE: distinct rich track color in the groove; glows intensely with audio
+                        val idleGrooveAlpha = if (isAudioSoundActive) 0.35f else 0.20f
+                        val coreAlpha = if (isAudioSoundActive) 1.0f else 0.75f
 
                         // Soft slot cavity tint
                         drawRoundRect(
                             color = dynamicAura.copy(alpha = idleGrooveAlpha),
-                            topLeft = Offset(lineLeft - 1.dp.toPx(), relativeBonnetY),
-                            size = Size(lineWidthPx + 2.dp.toPx(), activeHeight),
+                            topLeft = Offset(lineLeft - 1f, currentYPx),
+                            size = Size(lineWidthPx + 2f, activeHeightPx),
                             cornerRadius = lineCorner
                         )
 
                         // Core slot line
                         drawRoundRect(
                             color = dynamicAura.copy(alpha = coreAlpha),
-                            topLeft = Offset(lineLeft, relativeBonnetY),
-                            size = Size(lineWidthPx, activeHeight),
+                            topLeft = Offset(lineLeft, currentYPx),
+                            size = Size(lineWidthPx, activeHeightPx),
                             cornerRadius = lineCorner
                         )
                     }
-                }
 
-                // 2. AUDIO-REACTIVE LUMINOUS LAYER (Pulsing glow ONLY when audio is actively sounding)
-                if (isAudioSoundActive && audioActivity > 0.02f) {
-                    val intensity = audioActivity.coerceIn(0f, 1f)
-                    val glowBloomAlpha = (0.45f + intensity * 0.55f).coerceIn(0.45f, 1.0f)
-                    val coreLaserAlpha = (0.85f + intensity * 0.15f).coerceIn(0.85f, 1.0f)
+                    // 2. AUDIO-REACTIVE LUMINOUS LAYER (Pulsing glow ONLY when audio is actively sounding)
+                    if (isAudioSoundActive && audioActivity > 0.02f) {
+                        val intensity = audioActivity.coerceIn(0f, 1f)
+                        val coreLaserAlpha = (0.85f + intensity * 0.15f).coerceIn(0.85f, 1.0f)
 
-                    // Layer A: Radiant Bloom
-                    Canvas(
-                        modifier = Modifier
-                            .width(trackWidth)
-                            .fillMaxHeight()
-                    ) {
-                        val h = size.height
-                        val w = size.width
-                        val topBoundary = 5.dp.toPx()
-                        val bottomBoundary = (h - 5.dp.toPx()).coerceAtLeast(topBoundary)
-                        val relativeBonnetY = bonnetCenterYPx.coerceIn(topBoundary, bottomBoundary)
-                        val activeHeight = (bottomBoundary - relativeBonnetY).coerceAtLeast(0f)
+                        // Layer A: Saturated Core Glow
+                        Canvas(
+                            modifier = Modifier
+                                .width(trackWidth)
+                                .fillMaxHeight()
+                        ) {
+                            val w = size.width
+                            val centerX = (w / 2f).roundToInt().toFloat()
+                            val glowWidthPx = (6.dp.toPx()).roundToInt().toFloat()
+                            val glowLeft = centerX - (glowWidthPx / 2f)
 
-                        if (activeHeight > 0f) {
-                            drawRoundRect(
-                                brush = Brush.horizontalGradient(
-                                    colors = listOf(
-                                        dynamicAura.copy(alpha = 0f),
-                                        dynamicAura.copy(alpha = glowBloomAlpha * 0.70f),
-                                        dynamicAura.copy(alpha = 0f)
-                                     )
-                                ),
-                                topLeft = Offset(0f, relativeBonnetY),
-                                size = Size(w, activeHeight),
-                                cornerRadius = CornerRadius(7.dp.toPx())
-                            )
-                        }
-                    }
-
-                    // Layer B: Intense Saturated Core Glow
-                    Canvas(
-                        modifier = Modifier
-                            .width(6.dp)
-                            .fillMaxHeight()
-                    ) {
-                        val h = size.height
-                        val w = size.width
-                        val topBoundary = 5.dp.toPx()
-                        val bottomBoundary = (h - 5.dp.toPx()).coerceAtLeast(topBoundary)
-                        val relativeBonnetY = bonnetCenterYPx.coerceIn(topBoundary, bottomBoundary)
-                        val activeHeight = (bottomBoundary - relativeBonnetY).coerceAtLeast(0f)
-
-                        if (activeHeight > 0f) {
                             drawRoundRect(
                                 brush = Brush.verticalGradient(
                                     colors = listOf(
@@ -296,35 +264,31 @@ fun CustomVerticalFader(
                                         dynamicAura.copy(alpha = coreLaserAlpha),
                                         dynamicAura.copy(alpha = 0.90f)
                                     ),
-                                    startY = relativeBonnetY,
-                                    endY = bottomBoundary
+                                    startY = currentYPx,
+                                    endY = bottomStopPx
                                 ),
-                                topLeft = Offset(0f, relativeBonnetY),
-                                size = Size(w, activeHeight),
-                                cornerRadius = CornerRadius(3.dp.toPx())
+                                topLeft = Offset(glowLeft, currentYPx),
+                                size = Size(glowWidthPx, activeHeightPx),
+                                cornerRadius = CornerRadius(glowWidthPx / 2f)
                             )
                         }
-                    }
 
-                    // Layer C: Incandescent White-Hot Laser Filament
-                    Canvas(
-                        modifier = Modifier
-                            .width(2.5.dp)
-                            .fillMaxHeight()
-                    ) {
-                        val h = size.height
-                        val w = size.width
-                        val topBoundary = 5.dp.toPx()
-                        val bottomBoundary = (h - 5.dp.toPx()).coerceAtLeast(topBoundary)
-                        val relativeBonnetY = bonnetCenterYPx.coerceIn(topBoundary, bottomBoundary)
-                        val activeHeight = (bottomBoundary - relativeBonnetY).coerceAtLeast(0f)
+                        // Layer B: Incandescent White-Hot Laser Filament
+                        Canvas(
+                            modifier = Modifier
+                                .width(trackWidth)
+                                .fillMaxHeight()
+                        ) {
+                            val w = size.width
+                            val centerX = (w / 2f).roundToInt().toFloat()
+                            val filWidthPx = (1.8.dp.toPx()).roundToInt().toFloat()
+                            val filLeft = centerX - (filWidthPx / 2f)
 
-                        if (activeHeight > 0f) {
                             drawRoundRect(
-                                color = Color.White.copy(alpha = 0.92f),
-                                topLeft = Offset(0f, relativeBonnetY),
-                                size = Size(w, activeHeight),
-                                cornerRadius = CornerRadius(1.2.dp.toPx())
+                                color = Color.White.copy(alpha = 0.95f),
+                                topLeft = Offset(filLeft, currentYPx),
+                                size = Size(filWidthPx, activeHeightPx),
+                                cornerRadius = CornerRadius(filWidthPx / 2f)
                             )
                         }
                     }

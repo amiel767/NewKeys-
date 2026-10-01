@@ -312,15 +312,28 @@ fun MixerScreen(
                         if (verticalMode) {
                             val trackScrollState = rememberScrollState()
                             val overlayWidth = if (isPadOpen) (this@BoxWithConstraints.maxWidth * 0.50f) else 0.dp
-                            val standardTrackWidth = (((this@BoxWithConstraints.maxWidth - (6.dp * 7)) / 8) * 1.10f).coerceIn(94.dp, 116.dp)
+                            val visibleTracks = uiState.tracks.take(uiState.visibleTracksCount.coerceIn(1, 8))
+                            val showAddButton = uiState.visibleTracksCount < 8 && !isPadOpen
+                            val activeItemCount = visibleTracks.size + (if (showAddButton) 1 else 0)
+
+                            val trackWidth = if (uiState.isFaderAutoFit && activeItemCount > 0) {
+                                val totalSpacing = 6.dp * (activeItemCount - 1)
+                                val availableSpace = (this@BoxWithConstraints.maxWidth - totalSpacing).coerceAtLeast(0.dp)
+                                (availableSpace / activeItemCount).coerceIn(40.dp, 120.dp)
+                            } else {
+                                (((this@BoxWithConstraints.maxWidth - (6.dp * 7)) / 8) * 1.10f).coerceIn(94.dp, 116.dp)
+                            }
+
+                            val rowModifier = if (uiState.isFaderAutoFit) {
+                                Modifier.fillMaxSize()
+                            } else {
+                                Modifier.fillMaxSize().horizontalScroll(trackScrollState)
+                            }
 
                             Row(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .horizontalScroll(trackScrollState),
+                                modifier = rowModifier,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                val visibleTracks = uiState.tracks.take(uiState.visibleTracksCount.coerceIn(1, 8))
                                 visibleTracks.forEach { track ->
                                     VerticalTrackChannel(
                                         track = track,
@@ -334,16 +347,16 @@ fun MixerScreen(
                                         onFxClick = { viewModel.openEffectsForTrack(track.id) },
                                         showTicks = showTicks,
                                         modifier = Modifier
-                                            .width(standardTrackWidth)
+                                            .width(trackWidth)
                                             .fillMaxHeight()
                                     )
                                 }
 
                                 // "+ (Add Sound)" Button next to faders: studio square layout with thick professional border
-                                if (uiState.visibleTracksCount < 8 && !isPadOpen) {
+                                if (showAddButton) {
                                     Box(
                                         modifier = Modifier
-                                            .width(standardTrackWidth)
+                                            .width(trackWidth)
                                             .fillMaxHeight()
                                             .clip(RoundedCornerShape(10.dp))
                                             .background(Color(0xFF131722))
@@ -895,7 +908,9 @@ fun MixerScreen(
             onThemeModulesLightnessChange = { viewModel.setThemeModulesLightness(it) },
             themePaletteName = uiState.themePaletteName,
             onSelectThemePalette = { viewModel.setThemePalette(it) },
-            onResetTheme = { viewModel.resetThemeToDefault() }
+            onResetTheme = { viewModel.resetThemeToDefault() },
+            isFaderAutoFit = uiState.isFaderAutoFit,
+            onToggleFaderAutoFit = { viewModel.toggleFaderAutoFit() }
         )
 
         // Projects / Scenes Sliding Side Drawer (Exact sliding drawer from right matching Settings)
@@ -921,14 +936,14 @@ fun MixerScreen(
                 onDismissRequest = { viewModel.setStoragePermissionDialogVisible(false) },
                 title = {
                     Text(
-                        text = "Accès au dossier SoundStage",
+                        text = "SoundStage Storage Access",
                         style = MaterialTheme.typography.titleLarge,
                         color = MaterialTheme.colorScheme.primary
                     )
                 },
                 text = {
                     Text(
-                        text = "Pour détecter vos SoundFonts (.sf2), boucles audio et presets situés dans le dossier externe racine /SoundStage, l'application nécessite l'autorisation d'accès complet aux fichiers.\n\nSans cette permission, seuls les dossiers d'assets intégrés de l'application seront analysés.",
+                        text = "To detect your custom SoundFonts (.sf2), audio loops, and presets located in the external /SoundStage folder, the application requires full file access permission.\n\nWithout this permission, only built-in application asset folders will be scanned.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -940,14 +955,14 @@ fun MixerScreen(
                             onRequestManageStoragePermission()
                         }
                     ) {
-                        Text("Autoriser")
+                        Text("Grant Permission")
                     }
                 },
                 dismissButton = {
                     TextButton(
                         onClick = { viewModel.setStoragePermissionDialogVisible(false) }
                     ) {
-                        Text("Plus tard")
+                        Text("Later")
                     }
                 }
             )

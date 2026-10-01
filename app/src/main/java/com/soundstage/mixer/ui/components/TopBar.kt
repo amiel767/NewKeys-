@@ -36,9 +36,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -174,9 +177,23 @@ fun TopBar(
                 modifier = Modifier
                     .weight(1f)
                     .height(38.dp)
-                    .clip(RoundedCornerShape(9.dp))
-                    .background(Color(0xFF141722))
-                    .border(1.dp, Color(0xFF262E40), RoundedCornerShape(9.dp))
+                    .shadow(2.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(0xFF202738), Color(0xFF141722))
+                        )
+                    )
+                    .drawWithContent {
+                        drawContent()
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.10f),
+                            start = Offset(4.dp.toPx(), 1f),
+                            end = Offset(size.width - 4.dp.toPx(), 1f),
+                            strokeWidth = 1.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    }
                     .padding(horizontal = 8.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -237,16 +254,28 @@ fun TopBar(
             val sustainAlpha = if (isMidiPedalPressed) pedalBlinkAlpha else if (isSustainActive) 1.0f else 0.4f
             val sustainGreen = Color(0xFF10B981)
 
+            val sustainBgBrush = if (isSustainLit) {
+                Brush.verticalGradient(listOf(Color(0xFF0F3D2E), Color(0xFF0A291F)))
+            } else {
+                Brush.verticalGradient(listOf(Color(0xFF283144), Color(0xFF1D2433)))
+            }
+
             Box(
                 modifier = Modifier
                     .height(38.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(if (isSustainLit) Color(0x2610B981) else DarkSurface)
-                    .border(
-                        1.dp,
-                        if (isSustainLit) sustainGreen.copy(alpha = sustainAlpha) else BorderSubtle,
-                        RoundedCornerShape(12.dp)
-                    )
+                    .shadow(2.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(sustainBgBrush)
+                    .drawWithContent {
+                        drawContent()
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.12f),
+                            start = Offset(4.dp.toPx(), 1f),
+                            end = Offset(size.width - 4.dp.toPx(), 1f),
+                            strokeWidth = 1.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    }
                     .clickable { onToggleSustain() }
                     .padding(horizontal = 9.dp)
                     .testTag("btn_global_sustain"),
@@ -275,9 +304,23 @@ fun TopBar(
             Box(
                 modifier = Modifier
                     .size(38.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surface)
-                    .border(1.dp, BorderSubtle, RoundedCornerShape(12.dp))
+                    .shadow(2.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(0xFF283144), Color(0xFF1D2433))
+                        )
+                    )
+                    .drawWithContent {
+                        drawContent()
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.12f),
+                            start = Offset(4.dp.toPx(), 1f),
+                            end = Offset(size.width - 4.dp.toPx(), 1f),
+                            strokeWidth = 1.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    }
                     .clickable { onOpenNotes() }
                     .testTag("btn_notes"),
                 contentAlignment = Alignment.Center
@@ -294,9 +337,23 @@ fun TopBar(
             Box(
                 modifier = Modifier
                     .size(38.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surface)
-                    .border(1.dp, BorderSubtle, RoundedCornerShape(12.dp))
+                    .shadow(2.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(0xFF283144), Color(0xFF1D2433))
+                        )
+                    )
+                    .drawWithContent {
+                        drawContent()
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.12f),
+                            start = Offset(4.dp.toPx(), 1f),
+                            end = Offset(size.width - 4.dp.toPx(), 1f),
+                            strokeWidth = 1.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    }
                     .clickable { onOpenDrumPad() }
                     .testTag("btn_drum_pad"),
                 contentAlignment = Alignment.Center
@@ -336,11 +393,21 @@ fun TopBar(
             Box(
                 modifier = Modifier
                     .size(38.dp)
-                    .clip(RoundedCornerShape(19.dp))
+                    .shadow(2.5.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                    .clip(RoundedCornerShape(8.dp))
                     .background(
                         Brush.verticalGradient(listOf(PanicRed.copy(alpha = panicAlpha), PanicRedDark))
                     )
-                    .border(1.dp, PanicRed.copy(alpha = panicAlpha), RoundedCornerShape(19.dp))
+                    .drawWithContent {
+                        drawContent()
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.18f),
+                            start = Offset(4.dp.toPx(), 1f),
+                            end = Offset(size.width - 4.dp.toPx(), 1f),
+                            strokeWidth = 1.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    }
                     .clickable { onPanic() }
                     .testTag("btn_panic"),
                 contentAlignment = Alignment.Center
@@ -357,9 +424,23 @@ fun TopBar(
             Box(
                 modifier = Modifier
                     .size(38.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surface)
-                    .border(1.dp, BorderSubtle, RoundedCornerShape(12.dp))
+                    .shadow(2.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(0xFF283144), Color(0xFF1D2433))
+                        )
+                    )
+                    .drawWithContent {
+                        drawContent()
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.12f),
+                            start = Offset(4.dp.toPx(), 1f),
+                            end = Offset(size.width - 4.dp.toPx(), 1f),
+                            strokeWidth = 1.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    }
                     .clickable { onOpenScenes() }
                     .testTag("btn_scene"),
                 contentAlignment = Alignment.Center
@@ -376,9 +457,23 @@ fun TopBar(
             Box(
                 modifier = Modifier
                     .size(38.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surface)
-                    .border(1.dp, BorderSubtle, RoundedCornerShape(12.dp))
+                    .shadow(2.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(0xFF283144), Color(0xFF1D2433))
+                        )
+                    )
+                    .drawWithContent {
+                        drawContent()
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.12f),
+                            start = Offset(4.dp.toPx(), 1f),
+                            end = Offset(size.width - 4.dp.toPx(), 1f),
+                            strokeWidth = 1.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    }
                     .clickable { onOpenSettings() }
                     .testTag("btn_settings"),
                 contentAlignment = Alignment.Center
@@ -405,9 +500,23 @@ fun StepperControl(
     Row(
         modifier = modifier
             .height(38.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, BorderSubtle, RoundedCornerShape(12.dp)),
+            .shadow(2.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+            .clip(RoundedCornerShape(8.dp))
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color(0xFF283144), Color(0xFF1D2433))
+                )
+            )
+            .drawWithContent {
+                drawContent()
+                drawLine(
+                    color = Color.White.copy(alpha = 0.12f),
+                    start = Offset(4.dp.toPx(), 1f),
+                    end = Offset(size.width - 4.dp.toPx(), 1f),
+                    strokeWidth = 1.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+            },
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Minus Button
@@ -415,7 +524,6 @@ fun StepperControl(
             modifier = Modifier
                 .width(28.dp)
                 .fillMaxHeight()
-                .background(Color(0x1022D3EE))
                 .clickable { onMinus() },
             contentAlignment = Alignment.Center
         ) {
@@ -423,9 +531,17 @@ fun StepperControl(
                 text = "−",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.ExtraBold,
-                color = NeonCyan
+                color = Color(0xFFE2E8F0)
             )
         }
+
+        // Left Vertical Divider
+        Box(
+            modifier = Modifier
+                .width(1.dp)
+                .fillMaxHeight(0.55f)
+                .background(Color.White.copy(alpha = 0.12f))
+        )
 
         // Center Value & Label
         Column(
@@ -439,7 +555,7 @@ fun StepperControl(
                 text = label,
                 fontSize = 8.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = TextDim2,
+                color = Color(0xFF94A3B8),
                 letterSpacing = 0.5.sp,
                 lineHeight = 9.sp
             )
@@ -447,17 +563,24 @@ fun StepperControl(
                 text = value,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
-                color = TextPrimary,
+                color = Color.White,
                 lineHeight = 14.sp
             )
         }
 
-        // Plus Button
+        // Right Vertical Divider
+        Box(
+            modifier = Modifier
+                .width(1.dp)
+                .fillMaxHeight(0.55f)
+                .background(Color.White.copy(alpha = 0.12f))
+        )
+
+        // Plus Button (Simple clean +, no relief on + as requested)
         Box(
             modifier = Modifier
                 .width(28.dp)
                 .fillMaxHeight()
-                .background(Color(0x1022D3EE))
                 .clickable { onPlus() },
             contentAlignment = Alignment.Center
         ) {
@@ -465,7 +588,7 @@ fun StepperControl(
                 text = "+",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.ExtraBold,
-                color = NeonCyan
+                color = Color(0xFFE2E8F0)
             )
         }
     }

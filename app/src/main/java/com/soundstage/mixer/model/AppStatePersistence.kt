@@ -51,6 +51,7 @@ class AppStatePersistence(context: Context) {
         private const val KEY_THEME_NUANCE = "theme_nuance"
         private const val KEY_THEME_PALETTE = "theme_palette"
         private const val KEY_TRACK_COLOR_SATURATION = "track_color_saturation"
+        private const val KEY_FADER_AUTO_FIT = "is_fader_auto_fit"
     }
 
     data class SavedTrackData(
@@ -122,7 +123,8 @@ class AppStatePersistence(context: Context) {
         val themeSaturation: Float? = null,
         val themeNuance: Float? = null,
         val themePalette: String? = null,
-        val trackColorSaturation: Float? = null
+        val trackColorSaturation: Float? = null,
+        val isFaderAutoFit: Boolean? = null
     )
 
     fun saveAppState(
@@ -157,7 +159,8 @@ class AppStatePersistence(context: Context) {
         themeSaturation: Float = 0.85f,
         themeNuance: Float = 0.50f,
         themePalette: String = "Cyber Neon",
-        trackColorSaturation: Float = 1.0f
+        trackColorSaturation: Float = 1.0f,
+        isFaderAutoFit: Boolean = false
     ) {
         try {
             val tracksArray = JSONArray()
@@ -315,6 +318,7 @@ class AppStatePersistence(context: Context) {
                 putFloat(KEY_THEME_NUANCE, themeNuance)
                 putString(KEY_THEME_PALETTE, themePalette)
                 putFloat(KEY_TRACK_COLOR_SATURATION, trackColorSaturation)
+                putBoolean(KEY_FADER_AUTO_FIT, isFaderAutoFit)
                 apply()
             }
         } catch (e: Exception) {
@@ -545,6 +549,8 @@ class AppStatePersistence(context: Context) {
                 }
             }
 
+            val isFaderAutoFit = if (prefs.contains(KEY_FADER_AUTO_FIT)) prefs.getBoolean(KEY_FADER_AUTO_FIT, false) else null
+
             return RestoredAppState(
                 themeName = themeName,
                 bpm = bpm,
@@ -574,6 +580,7 @@ class AppStatePersistence(context: Context) {
                 themeNuance = themeNuance,
                 themePalette = themePalette,
                 trackColorSaturation = trackColorSaturation,
+                isFaderAutoFit = isFaderAutoFit,
                 snapshots = snapshotsMap,
                 activeSnapshotSlot = activeSnapshotSlot,
                 configuredSnapshotSlots = configuredSlotsList,

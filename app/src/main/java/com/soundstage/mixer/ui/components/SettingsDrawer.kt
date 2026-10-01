@@ -36,9 +36,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
@@ -119,6 +122,8 @@ fun SettingsDrawer(
     themePaletteName: String = "Midnight Slate (Default)",
     onSelectThemePalette: (ThemePalettePreset) -> Unit = {},
     onResetTheme: () -> Unit = {},
+    isFaderAutoFit: Boolean = false,
+    onToggleFaderAutoFit: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     if (isOpen) {
@@ -198,6 +203,8 @@ fun SettingsDrawer(
                             trackColorSaturation = trackColorSaturation,
                             onTrackColorSaturationChange = onTrackColorSaturationChange,
                             onResetTheme = onResetTheme,
+                            isFaderAutoFit = isFaderAutoFit,
+                            onToggleFaderAutoFit = onToggleFaderAutoFit,
                             onBack = { onNavigateSubPage("main") }
                         )
                     }
@@ -266,13 +273,13 @@ private fun AospMainSettingsPage(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0x1800E5FF)),
+                        .background(Color(0x183B82F6)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Settings,
                         contentDescription = "Settings",
-                        tint = NeonCyan,
+                        tint = Color(0xFF3B82F6),
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -326,8 +333,8 @@ private fun AospMainSettingsPage(
 
                         AospSettingItem(
                             icon = Icons.Default.Tune,
-                            iconTint = NeonCyan,
-                            iconBg = Color(0x1800E5FF),
+                            iconTint = Color(0xFF3B82F6),
+                            iconBg = Color(0x183B82F6),
                             title = "Buffer & Polyphony",
                             subtitle = "Buffer $audioBufferSize frames · Polyphony $polyphony voices",
                             onClick = { onNavigateSubPage("buffer_polyphony") }
@@ -336,15 +343,15 @@ private fun AospMainSettingsPage(
                 }
             }
 
-            // CARD 2: THEME & AMBIANCE
+            // CARD 2: UI SETTINGS
             item {
-                AospCard(title = "Theme & Customization") {
+                AospCard(title = "UI Settings") {
                     AospSettingItem(
                         icon = Icons.Default.Palette,
                         iconTint = Color(0xFFA855F7),
                         iconBg = Color(0x18A855F7),
-                        title = "Theme",
-                        subtitle = "Hue, saturation, background tone and harmonious presets",
+                        title = "UI Settings",
+                        subtitle = "Colors, theme presets, and faders layout mode",
                         onClick = { onNavigateSubPage("theme") }
                     )
                 }
@@ -455,13 +462,13 @@ private fun AospMainSettingsPage(
                                 modifier = Modifier
                                     .size(36.dp)
                                     .clip(RoundedCornerShape(12.dp))
-                                    .background(Color(0x1800E5FF)),
+                                    .background(Color(0x183B82F6)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Tune,
                                     contentDescription = "Screen On",
-                                    tint = NeonCyan,
+                                    tint = Color(0xFF3B82F6),
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
@@ -485,7 +492,7 @@ private fun AospMainSettingsPage(
                                 onCheckedChange = { onToggleKeepScreenOn() },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = Color.White,
-                                    checkedTrackColor = NeonCyan,
+                                    checkedTrackColor = Color(0xFF3B82F6),
                                     uncheckedThumbColor = Color.LightGray,
                                     uncheckedTrackColor = Color(0xFF33384A)
                                 )
@@ -521,7 +528,7 @@ private fun AospMainSettingsPage(
                                     value = safeMin..safeMax,
                                     onValueChange = { range -> onVelocityRangeChange(range.start, range.endInclusive) },
                                     valueRange = 0f..1f,
-                                    colors = SliderDefaults.colors(thumbColor = NeonCyan, activeTrackColor = NeonCyan)
+                                    colors = SliderDefaults.colors(thumbColor = Color(0xFF3B82F6), activeTrackColor = Color(0xFF3B82F6))
                                 )
                             }
                         }
@@ -542,7 +549,7 @@ private fun AospCard(
             text = title.uppercase(),
             fontSize = 9.sp,
             fontWeight = FontWeight.Bold,
-            color = NeonCyanLight,
+            color = Color(0xFF94A3B8),
             letterSpacing = 0.8.sp,
             modifier = Modifier.padding(start = 6.dp, bottom = 5.dp)
         )
@@ -550,9 +557,23 @@ private fun AospCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
-                .background(Color(0xFF1E212E))
-                .border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(20.dp))
+                .shadow(2.dp, RoundedCornerShape(16.dp), ambientColor = Color.Black, spotColor = Color(0x88000000))
+                .clip(RoundedCornerShape(16.dp))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0xFF222836), Color(0xFF191F2C))
+                    )
+                )
+                .drawWithContent {
+                    drawContent()
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.10f),
+                        start = Offset(6.dp.toPx(), 1f),
+                        end = Offset(size.width - 6.dp.toPx(), 1f),
+                        strokeWidth = 1.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
         ) {
             content()
         }
@@ -645,14 +666,14 @@ private fun MidiDevicesSubPage(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Retour",
-                    tint = NeonCyan,
+                    contentDescription = "Back",
+                    tint = Color(0xFF3B82F6),
                     modifier = Modifier.size(14.dp)
                 )
-                Text(text = "Retour", fontSize = 10.sp, color = NeonCyan)
+                Text(text = "Back", fontSize = 10.sp, color = Color(0xFF3B82F6))
             }
             Spacer(modifier = Modifier.width(12.dp))
-            Text(text = "Périphériques USB MIDI", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Text(text = "USB MIDI Devices", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
         }
 
         if (midiDevices.isEmpty()) {
@@ -674,7 +695,7 @@ private fun MidiDevicesSubPage(
                     }
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        text = "Aucun clavier USB MIDI branché.\nBranchez un contrôleur MIDI en USB-OTG pour jouer directement.",
+                        text = "No USB MIDI keyboard detected.\nConnect a USB-OTG MIDI controller to play directly.",
                         fontSize = 10.sp,
                         color = TextDim,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -695,7 +716,7 @@ private fun MidiDevicesSubPage(
                     ) {
                         Column {
                             Text(text = dev.name, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            Text(text = if (dev.isConnected) "Connecté" else "Déconnecté", fontSize = 9.sp, color = if (dev.isConnected) Color(0xFF10B981) else TextDim)
+                            Text(text = if (dev.isConnected) "Connected" else "Disconnected", fontSize = 9.sp, color = if (dev.isConnected) Color(0xFF10B981) else TextDim)
                         }
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -714,7 +735,7 @@ private fun MidiDevicesSubPage(
                             Switch(
                                 checked = dev.isEnabled,
                                 onCheckedChange = { onToggleDevice(dev.id) },
-                                colors = SwitchDefaults.colors(checkedThumbColor = NeonCyan)
+                                colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFF3B82F6), checkedTrackColor = Color(0x663B82F6))
                             )
                         }
                     }
@@ -753,22 +774,22 @@ private fun BufferPolyphonySubPage(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Retour",
-                    tint = NeonCyan,
+                    contentDescription = "Back",
+                    tint = Color(0xFF3B82F6),
                     modifier = Modifier.size(14.dp)
                 )
-                Text(text = "Retour", fontSize = 10.sp, color = NeonCyan)
+                Text(text = "Back", fontSize = 10.sp, color = Color(0xFF3B82F6))
             }
             Spacer(modifier = Modifier.width(12.dp))
-            Text(text = "Buffer & Polyphonie", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Text(text = "Buffer & Polyphony", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
         }
 
         LazyColumn(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             item {
-                AospCard(title = "Taille du Buffer Audio (Latence)") {
+                AospCard(title = "Audio Buffer Size (Latency)") {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(
-                            text = "Un buffer plus petit réduit la latence au toucher du clavier. Réglez selon la puissance de l'appareil.",
+                            text = "A smaller buffer size reduces key touch latency. Adjust according to device performance.",
                             fontSize = 9.5.sp,
                             color = TextDim
                         )
@@ -789,7 +810,7 @@ private fun BufferPolyphonySubPage(
                                     modifier = Modifier
                                         .weight(1f)
                                         .clip(RoundedCornerShape(10.dp))
-                                        .background(if (isSel) NeonCyan else Color(0x14FFFFFF))
+                                        .background(if (isSel) Color(0xFF3B82F6) else Color(0x14FFFFFF))
                                         .clickable { onSelectBufferSize(sz) }
                                         .padding(vertical = 8.dp),
                                     contentAlignment = Alignment.Center
@@ -799,12 +820,12 @@ private fun BufferPolyphonySubPage(
                                             text = "$sz",
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = if (isSel) Color(0xFF002233) else TextPrimary
+                                            color = if (isSel) Color.White else TextPrimary
                                         )
                                         Text(
                                             text = latencyMs,
                                             fontSize = 8.sp,
-                                            color = if (isSel) Color(0xFF003344) else TextDim2
+                                            color = if (isSel) Color(0xCCFFFFFF) else TextDim2
                                         )
                                     }
                                 }
@@ -815,10 +836,10 @@ private fun BufferPolyphonySubPage(
             }
 
             item {
-                AospCard(title = "Polyphonie Maximale (Voix)") {
+                AospCard(title = "Maximum Polyphony (Voices)") {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(
-                            text = "Nombre maximum de notes jouées simultanément par le moteur FluidSynth.",
+                            text = "Maximum number of notes played simultaneously by the synth engine.",
                             fontSize = 9.5.sp,
                             color = TextDim
                         )
@@ -841,7 +862,7 @@ private fun BufferPolyphonySubPage(
                                         text = "$p",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isSel) Color(0xFF003311) else TextPrimary
+                                        color = if (isSel) Color.White else TextPrimary
                                     )
                                 }
                             }
@@ -880,10 +901,10 @@ private fun LanguageSelectorSubPage(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back",
-                    tint = NeonCyan,
+                    tint = Color(0xFF3B82F6),
                     modifier = Modifier.size(14.dp)
                 )
-                Text(text = "Back", fontSize = 10.sp, color = NeonCyan)
+                Text(text = "Back", fontSize = 10.sp, color = Color(0xFF3B82F6))
             }
             Spacer(modifier = Modifier.width(12.dp))
             Text(text = "Language", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
@@ -897,7 +918,7 @@ private fun LanguageSelectorSubPage(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
                         .background(if (isSel) Color(0xFF1E2C3D) else Color(0xFF1E212E))
-                        .border(1.dp, if (isSel) NeonCyan else Color(0x14FFFFFF), RoundedCornerShape(12.dp))
+                        .border(1.dp, if (isSel) Color(0xFF3B82F6) else Color(0x14FFFFFF), RoundedCornerShape(12.dp))
                         .clickable { onSelectLanguage(lang) }
                         .padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -911,11 +932,101 @@ private fun LanguageSelectorSubPage(
                         modifier = Modifier.weight(1f)
                     )
                     if (isSel) {
-                        Text(text = "✓", fontSize = 14.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
+                        Text(text = "✓", fontSize = 14.sp, color = Color(0xFF3B82F6), fontWeight = FontWeight.Bold)
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+fun PadlockIcon(
+    isLocked: Boolean,
+    tint: Color = Color.White,
+    modifier: Modifier = Modifier
+) {
+    androidx.compose.foundation.Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val bodyWidth = w * 0.62f
+        val bodyHeight = h * 0.44f
+        val bodyLeft = (w - bodyWidth) / 2f
+        val bodyTop = h * 0.48f
+
+        val shackleRadius = bodyWidth * 0.32f
+        val shackleCenterX = w / 2f
+        val shackleCenterY = bodyTop
+        val strokeW = w * 0.11f
+
+        val shacklePath = androidx.compose.ui.graphics.Path()
+
+        if (isLocked) {
+            // Closed shackle
+            shacklePath.moveTo(shackleCenterX - shackleRadius, shackleCenterY)
+            shacklePath.lineTo(shackleCenterX - shackleRadius, shackleCenterY - shackleRadius)
+            shacklePath.arcTo(
+                rect = androidx.compose.ui.geometry.Rect(
+                    shackleCenterX - shackleRadius,
+                    shackleCenterY - (shackleRadius * 2f),
+                    shackleCenterX + shackleRadius,
+                    shackleCenterY
+                ),
+                startAngleDegrees = 180f,
+                sweepAngleDegrees = 180f,
+                forceMoveTo = false
+            )
+            shacklePath.lineTo(shackleCenterX + shackleRadius, shackleCenterY)
+        } else {
+            // Open shackle (lifted up)
+            val openLift = h * 0.14f
+            shacklePath.moveTo(shackleCenterX - shackleRadius, shackleCenterY - openLift)
+            shacklePath.lineTo(shackleCenterX - shackleRadius, shackleCenterY - shackleRadius - openLift)
+            shacklePath.arcTo(
+                rect = androidx.compose.ui.geometry.Rect(
+                    shackleCenterX - shackleRadius,
+                    shackleCenterY - (shackleRadius * 2f) - openLift,
+                    shackleCenterX + shackleRadius,
+                    shackleCenterY - openLift
+                ),
+                startAngleDegrees = 180f,
+                sweepAngleDegrees = 180f,
+                forceMoveTo = false
+            )
+            shacklePath.lineTo(shackleCenterX + shackleRadius, shackleCenterY - (openLift * 1.8f))
+        }
+
+        drawPath(
+            path = shacklePath,
+            color = tint,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                width = strokeW,
+                cap = StrokeCap.Round,
+                join = androidx.compose.ui.graphics.StrokeJoin.Round
+            )
+        )
+
+        // Draw Body
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(bodyLeft, bodyTop),
+            size = androidx.compose.ui.geometry.Size(bodyWidth, bodyHeight),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(bodyWidth * 0.20f)
+        )
+
+        // Keyhole
+        val holeRadius = bodyWidth * 0.12f
+        val holeCenter = Offset(w / 2f, bodyTop + bodyHeight * 0.42f)
+        drawCircle(
+            color = Color(0xFF191F2C),
+            radius = holeRadius,
+            center = holeCenter
+        )
+        drawRect(
+            color = Color(0xFF191F2C),
+            topLeft = Offset(holeCenter.x - (holeRadius * 0.5f), holeCenter.y),
+            size = androidx.compose.ui.geometry.Size(holeRadius, holeRadius * 1.5f)
+        )
     }
 }
 
@@ -934,6 +1045,8 @@ private fun ThemeSettingsSubPage(
     trackColorSaturation: Float = 1.0f,
     onTrackColorSaturationChange: (Float) -> Unit = {},
     onResetTheme: () -> Unit,
+    isFaderAutoFit: Boolean = false,
+    onToggleFaderAutoFit: () -> Unit = {},
     onBack: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
@@ -955,14 +1068,14 @@ private fun ThemeSettingsSubPage(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back",
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = Color(0xFF3B82F6),
                     modifier = Modifier.size(14.dp)
                 )
-                Text(text = "Back", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                Text(text = "Back", fontSize = 11.sp, color = Color(0xFF3B82F6))
             }
             Spacer(modifier = Modifier.width(12.dp))
             Text(
-                text = "Theme",
+                text = "UI Settings",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White
@@ -982,7 +1095,7 @@ private fun ThemeSettingsSubPage(
                 Icon(
                     imageVector = Icons.Default.Refresh,
                     contentDescription = "Reset Theme",
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = Color(0xFF3B82F6),
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -994,48 +1107,95 @@ private fun ThemeSettingsSubPage(
                 .weight(1f),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // 1. Primary Interface Hue
+            // CARD 1: FADERS LAYOUT
             item {
-                ThemeSliderCard(
-                    title = "Primary Interface Hue",
-                    valueText = "${themeHue.toInt()}°",
-                    progress = (themeHue / 360f).coerceIn(0f, 1f),
-                    onProgressChange = { p -> onThemeHueChange(p * 360f) },
-                    onReset = { onThemeHueChange(220f) }
-                )
+                AospCard(title = "Faders Layout") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onToggleFaderAutoFit() }
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Faders Auto-Fit",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = if (isFaderAutoFit) "Locked to screen (no scroll)" else "Fixed width with scroll",
+                                fontSize = 11.sp,
+                                color = TextDim
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .shadow(2.dp, RoundedCornerShape(10.dp))
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isFaderAutoFit) Color(0xFF3B82F6) else Color(0xFF222836))
+                                .clickable { onToggleFaderAutoFit() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            PadlockIcon(
+                                isLocked = isFaderAutoFit,
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
             }
 
-            // 2. Accent Color Saturation
+            // CARD 2: COLORS
             item {
-                ThemeSliderCard(
-                    title = "Accent Color Saturation",
-                    valueText = String.format(java.util.Locale.US, "%.2fx", themeAccentSaturation),
-                    progress = ((themeAccentSaturation - 0.5f) / 1.5f).coerceIn(0f, 1f),
-                    onProgressChange = { p -> onThemeAccentSaturationChange(0.5f + p * 1.5f) },
-                    onReset = { onThemeAccentSaturationChange(1.27f) }
-                )
-            }
+                AospCard(title = "Colors") {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // 1. Primary Interface Hue
+                        ThemeSliderCard(
+                            title = "Primary Interface Hue",
+                            valueText = "${themeHue.toInt()}°",
+                            progress = (themeHue / 360f).coerceIn(0f, 1f),
+                            onProgressChange = { p -> onThemeHueChange(p * 360f) },
+                            onReset = { onThemeHueChange(220f) }
+                        )
 
-            // 3. Background Tone Saturation
-            item {
-                ThemeSliderCard(
-                    title = "Background Tone Saturation",
-                    valueText = String.format(java.util.Locale.US, "%.2fx", themeBgSaturation),
-                    progress = (themeBgSaturation / 2.0f).coerceIn(0f, 1f),
-                    onProgressChange = { p -> onThemeBgSaturationChange(p * 2.0f) },
-                    onReset = { onThemeBgSaturationChange(1.60f) }
-                )
-            }
+                        // 2. Accent Color Saturation
+                        ThemeSliderCard(
+                            title = "Accent Color Saturation",
+                            valueText = String.format(java.util.Locale.US, "%.2fx", themeAccentSaturation),
+                            progress = ((themeAccentSaturation - 0.5f) / 1.5f).coerceIn(0f, 1f),
+                            onProgressChange = { p -> onThemeAccentSaturationChange(0.5f + p * 1.5f) },
+                            onReset = { onThemeAccentSaturationChange(1.27f) }
+                        )
 
-            // 4. Background Lightness
-            item {
-                ThemeSliderCard(
-                    title = "Background Lightness",
-                    valueText = String.format(java.util.Locale.US, "%.2fx", themeBgLightness),
-                    progress = ((themeBgLightness - 0.7f) / 0.7f).coerceIn(0f, 1f),
-                    onProgressChange = { p -> onThemeBgLightnessChange(0.7f + p * 0.7f) },
-                    onReset = { onThemeBgLightnessChange(0.95f) }
-                )
+                        // 3. Background Tone Saturation
+                        ThemeSliderCard(
+                            title = "Background Tone Saturation",
+                            valueText = String.format(java.util.Locale.US, "%.2fx", themeBgSaturation),
+                            progress = (themeBgSaturation / 2.0f).coerceIn(0f, 1f),
+                            onProgressChange = { p -> onThemeBgSaturationChange(p * 2.0f) },
+                            onReset = { onThemeBgSaturationChange(1.60f) }
+                        )
+
+                        // 4. Background Lightness
+                        ThemeSliderCard(
+                            title = "Background Lightness",
+                            valueText = String.format(java.util.Locale.US, "%.2fx", themeBgLightness),
+                            progress = ((themeBgLightness - 0.7f) / 0.7f).coerceIn(0f, 1f),
+                            onProgressChange = { p -> onThemeBgLightnessChange(0.7f + p * 0.7f) },
+                            onReset = { onThemeBgLightnessChange(0.95f) }
+                        )
+                    }
+                }
             }
         }
     }
