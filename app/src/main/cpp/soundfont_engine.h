@@ -165,6 +165,7 @@ public:
 
     int loadSoundFont(const std::string &absolutePath);
     int unloadSoundFont(int sfontId);
+    void unloadAllSoundFonts();
     std::vector<NativePresetInfo> listPresets(int soundFontId);
     bool selectProgram(int channel, int soundFontId, int bank, int preset);
     bool programChange(int channel, int program);

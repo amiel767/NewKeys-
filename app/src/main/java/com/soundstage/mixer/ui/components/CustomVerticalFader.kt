@@ -209,10 +209,10 @@ fun CustomVerticalFader(
                 ) {
                     val h = size.height
                     val w = size.width
-                    val bottomInsetPx = minOf(h * 0.075f, 16.dp.toPx()).coerceAtLeast(10.dp.toPx())
-                    val railTopPx = (containerHeightPx - h) / 2f
-                    val relativeBonnetY = (bonnetCenterYPx - railTopPx).coerceIn(4.dp.toPx(), h - bottomInsetPx)
-                    val activeHeight = (h - bottomInsetPx) - relativeBonnetY
+                    val topBoundary = 5.dp.toPx()
+                    val bottomBoundary = (h - 5.dp.toPx()).coerceAtLeast(topBoundary)
+                    val relativeBonnetY = bonnetCenterYPx.coerceIn(topBoundary, bottomBoundary)
+                    val activeHeight = (bottomBoundary - relativeBonnetY).coerceAtLeast(0f)
                     val lineWidthPx = 2.4.dp.toPx()
                     val lineLeft = (w - lineWidthPx) / 2f
                     val lineCorner = CornerRadius(lineWidthPx / 2f, lineWidthPx / 2f)
@@ -254,10 +254,10 @@ fun CustomVerticalFader(
                     ) {
                         val h = size.height
                         val w = size.width
-                        val bottomInsetPx = minOf(h * 0.075f, 16.dp.toPx()).coerceAtLeast(10.dp.toPx())
-                        val railTopPx = (containerHeightPx - h) / 2f
-                        val relativeBonnetY = (bonnetCenterYPx - railTopPx).coerceIn(4.dp.toPx(), h - bottomInsetPx)
-                        val activeHeight = (h - bottomInsetPx) - relativeBonnetY
+                        val topBoundary = 5.dp.toPx()
+                        val bottomBoundary = (h - 5.dp.toPx()).coerceAtLeast(topBoundary)
+                        val relativeBonnetY = bonnetCenterYPx.coerceIn(topBoundary, bottomBoundary)
+                        val activeHeight = (bottomBoundary - relativeBonnetY).coerceAtLeast(0f)
 
                         if (activeHeight > 0f) {
                             drawRoundRect(
@@ -266,7 +266,7 @@ fun CustomVerticalFader(
                                         dynamicAura.copy(alpha = 0f),
                                         dynamicAura.copy(alpha = glowBloomAlpha * 0.70f),
                                         dynamicAura.copy(alpha = 0f)
-                                    )
+                                     )
                                 ),
                                 topLeft = Offset(0f, relativeBonnetY),
                                 size = Size(w, activeHeight),
@@ -283,10 +283,10 @@ fun CustomVerticalFader(
                     ) {
                         val h = size.height
                         val w = size.width
-                        val bottomInsetPx = minOf(h * 0.075f, 16.dp.toPx()).coerceAtLeast(10.dp.toPx())
-                        val railTopPx = (containerHeightPx - h) / 2f
-                        val relativeBonnetY = (bonnetCenterYPx - railTopPx).coerceIn(4.dp.toPx(), h - bottomInsetPx)
-                        val activeHeight = (h - bottomInsetPx) - relativeBonnetY
+                        val topBoundary = 5.dp.toPx()
+                        val bottomBoundary = (h - 5.dp.toPx()).coerceAtLeast(topBoundary)
+                        val relativeBonnetY = bonnetCenterYPx.coerceIn(topBoundary, bottomBoundary)
+                        val activeHeight = (bottomBoundary - relativeBonnetY).coerceAtLeast(0f)
 
                         if (activeHeight > 0f) {
                             drawRoundRect(
@@ -297,7 +297,7 @@ fun CustomVerticalFader(
                                         dynamicAura.copy(alpha = 0.90f)
                                     ),
                                     startY = relativeBonnetY,
-                                    endY = h - bottomInsetPx
+                                    endY = bottomBoundary
                                 ),
                                 topLeft = Offset(0f, relativeBonnetY),
                                 size = Size(w, activeHeight),
@@ -314,10 +314,10 @@ fun CustomVerticalFader(
                     ) {
                         val h = size.height
                         val w = size.width
-                        val bottomInsetPx = minOf(h * 0.075f, 16.dp.toPx()).coerceAtLeast(10.dp.toPx())
-                        val railTopPx = (containerHeightPx - h) / 2f
-                        val relativeBonnetY = (bonnetCenterYPx - railTopPx).coerceIn(4.dp.toPx(), h - bottomInsetPx)
-                        val activeHeight = (h - bottomInsetPx) - relativeBonnetY
+                        val topBoundary = 5.dp.toPx()
+                        val bottomBoundary = (h - 5.dp.toPx()).coerceAtLeast(topBoundary)
+                        val relativeBonnetY = bonnetCenterYPx.coerceIn(topBoundary, bottomBoundary)
+                        val activeHeight = (bottomBoundary - relativeBonnetY).coerceAtLeast(0f)
 
                         if (activeHeight > 0f) {
                             drawRoundRect(

@@ -309,16 +309,16 @@ private fun AospMainSettingsPage(
                 .weight(1f),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // CARD 1: PÉRIPHÉRIQUES & AUDIO
+            // CARD 1: DEVICES & AUDIO
             item {
-                AospCard(title = "Périphériques & Audio") {
+                AospCard(title = "Devices & Audio") {
                     Column {
                         AospSettingItem(
                             icon = Icons.Default.Usb,
                             iconTint = Color(0xFF10B981),
                             iconBg = Color(0x1810B981),
                             title = "USB MIDI",
-                            subtitle = "Détection matérielle (${midiDevices.count { it.isConnected }} connectés)",
+                            subtitle = "Hardware Detection (${midiDevices.count { it.isConnected }} connected)",
                             onClick = { onNavigateSubPage("midi") }
                         )
 
@@ -328,37 +328,37 @@ private fun AospMainSettingsPage(
                             icon = Icons.Default.Tune,
                             iconTint = NeonCyan,
                             iconBg = Color(0x1800E5FF),
-                            title = "Buffer & Polyphonie",
-                            subtitle = "Tampon $audioBufferSize frames · Polyphonie $polyphony voix",
+                            title = "Buffer & Polyphony",
+                            subtitle = "Buffer $audioBufferSize frames · Polyphony $polyphony voices",
                             onClick = { onNavigateSubPage("buffer_polyphony") }
                         )
                     }
                 }
             }
 
-            // CARD 2: LANGUE & SYSTÈME
+            // CARD 2: THEME & AMBIANCE
             item {
-                AospCard(title = "Thème & Ambiance") {
+                AospCard(title = "Theme & Customization") {
                     AospSettingItem(
                         icon = Icons.Default.Palette,
                         iconTint = Color(0xFFA855F7),
                         iconBg = Color(0x18A855F7),
-                        title = "Thème",
-                        subtitle = "Teinte, saturation, nuance et palettes harmonieuses",
+                        title = "Theme",
+                        subtitle = "Hue, saturation, background tone and harmonious presets",
                         onClick = { onNavigateSubPage("theme") }
                     )
                 }
             }
 
-            // CARD 3: LANGUE & SYSTÈME
+            // CARD 3: LANGUAGE & SYSTEM
             item {
-                AospCard(title = "Langue & Système") {
+                AospCard(title = "Language & System") {
                     Column {
                         AospSettingItem(
                             icon = Icons.Default.Language,
                             iconTint = Color(0xFFEC4899),
                             iconBg = Color(0x18EC4899),
-                            title = "Langue / Language",
+                            title = "Language",
                             subtitle = selectedLanguage,
                             onClick = { onNavigateSubPage("language") }
                         )
@@ -460,7 +460,7 @@ private fun AospMainSettingsPage(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Tune,
-                                    contentDescription = "Écran Allumé",
+                                    contentDescription = "Screen On",
                                     tint = NeonCyan,
                                     modifier = Modifier.size(18.dp)
                                 )
@@ -468,13 +468,13 @@ private fun AospMainSettingsPage(
 
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Écran toujours allumé",
+                                    text = "Keep Screen On",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
                                 )
                                 Text(
-                                    text = if (keepScreenOn) "Actif (empêche la mise en veille)" else "Désactivé (veille système)",
+                                    text = if (keepScreenOn) "Active (prevents screen sleep)" else "Disabled (system sleep)",
                                     fontSize = 11.sp,
                                     color = TextDim
                                 )
@@ -495,9 +495,9 @@ private fun AospMainSettingsPage(
                 }
             }
 
-            // CARD 3: DYNAMIQUE & VÉLOCITÉ
+            // CARD 4: DYNAMICS & VELOCITY
             item {
-                AospCard(title = "Dynamique & Vélocité") {
+                AospCard(title = "Dynamics & Velocity") {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -511,7 +511,7 @@ private fun AospMainSettingsPage(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Vélocité (Min - Max): ${(velocityMin * 127).roundToInt()} - ${(velocityMax * 127).roundToInt()}",
+                                    text = "Velocity Range (Min - Max): ${(velocityMin * 127).roundToInt()} - ${(velocityMax * 127).roundToInt()}",
                                     fontSize = 9.sp,
                                     color = TextDim
                                 )
@@ -994,7 +994,7 @@ private fun ThemeSettingsSubPage(
                 .weight(1f),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // 1. Primary UI Hue Spectrum Slider
+            // 1. Primary Interface Hue
             item {
                 ThemeSliderCard(
                     title = "Primary Interface Hue",
@@ -1012,7 +1012,7 @@ private fun ThemeSettingsSubPage(
                     valueText = String.format(java.util.Locale.US, "%.2fx", themeAccentSaturation),
                     progress = ((themeAccentSaturation - 0.5f) / 1.5f).coerceIn(0f, 1f),
                     onProgressChange = { p -> onThemeAccentSaturationChange(0.5f + p * 1.5f) },
-                    onReset = { onThemeAccentSaturationChange(1.0f) }
+                    onReset = { onThemeAccentSaturationChange(1.27f) }
                 )
             }
 
@@ -1023,7 +1023,7 @@ private fun ThemeSettingsSubPage(
                     valueText = String.format(java.util.Locale.US, "%.2fx", themeBgSaturation),
                     progress = (themeBgSaturation / 2.0f).coerceIn(0f, 1f),
                     onProgressChange = { p -> onThemeBgSaturationChange(p * 2.0f) },
-                    onReset = { onThemeBgSaturationChange(1.0f) }
+                    onReset = { onThemeBgSaturationChange(1.60f) }
                 )
             }
 
@@ -1034,29 +1034,7 @@ private fun ThemeSettingsSubPage(
                     valueText = String.format(java.util.Locale.US, "%.2fx", themeBgLightness),
                     progress = ((themeBgLightness - 0.7f) / 0.7f).coerceIn(0f, 1f),
                     onProgressChange = { p -> onThemeBgLightnessChange(0.7f + p * 0.7f) },
-                    onReset = { onThemeBgLightnessChange(1.0f) }
-                )
-            }
-
-            // 5. Modules Lightness & Contrast
-            item {
-                ThemeSliderCard(
-                    title = "Modules Lightness & Contrast",
-                    valueText = String.format(java.util.Locale.US, "%.2fx", themeModulesLightness),
-                    progress = ((themeModulesLightness - 0.8f) / 0.7f).coerceIn(0f, 1f),
-                    onProgressChange = { p -> onThemeModulesLightnessChange(0.8f + p * 0.7f) },
-                    onReset = { onThemeModulesLightnessChange(1.0f) }
-                )
-            }
-
-            // 6. Dynamic Tracks Neon Color Saturation
-            item {
-                ThemeSliderCard(
-                    title = "Track Color Saturation (Faders & Layers)",
-                    valueText = String.format(java.util.Locale.US, "%.2fx", trackColorSaturation),
-                    progress = ((trackColorSaturation - 0.2f) / 1.8f).coerceIn(0f, 1f),
-                    onProgressChange = { p -> onTrackColorSaturationChange(0.2f + p * 1.8f) },
-                    onReset = { onTrackColorSaturationChange(1.0f) }
+                    onReset = { onThemeBgLightnessChange(0.95f) }
                 )
             }
         }

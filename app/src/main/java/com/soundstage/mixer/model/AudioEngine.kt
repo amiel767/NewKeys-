@@ -74,14 +74,14 @@ class AudioEngine(private val context: Context) {
     private val audioDeviceCallback = object : android.media.AudioDeviceCallback() {
         override fun onAudioDevicesAdded(addedDevices: Array<out android.media.AudioDeviceInfo>?) {
             super.onAudioDevicesAdded(addedDevices)
-            Log.i(TAG, "Audio output device attached (headphones/BT). Restoring full dynamic audio stream...")
-            reconnectAudioStream()
+            Log.i(TAG, "Audio output device attached (jack/headphones). Updating parameters smoothly...")
+            restoreAllEngineParameters()
         }
 
         override fun onAudioDevicesRemoved(removedDevices: Array<out android.media.AudioDeviceInfo>?) {
             super.onAudioDevicesRemoved(removedDevices)
-            Log.i(TAG, "Audio output device removed. Restoring full dynamic audio stream...")
-            reconnectAudioStream()
+            Log.i(TAG, "Audio output device removed. Updating parameters smoothly...")
+            restoreAllEngineParameters()
         }
     }
 

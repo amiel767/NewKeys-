@@ -2800,6 +2800,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     fun selectScene(sceneId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                // Completely unload all previous soundfonts and silence active voices before switching Setlist
+                NativeAudioBridge.safeAllNotesOff()
+                NativeAudioBridge.safeUnloadAllSoundFonts(NativeAudioBridge.ENGINE_FADER)
+                NativeAudioBridge.safeTrimMemory()
+
                 val sceneFiles = fileManager.getSceneFiles()
                 val targetFile = sceneFiles.find { 
                     it.name.equals(sceneId, ignoreCase = true) || 
@@ -2944,6 +2949,75 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     map
                 } else _uiState.value.fxParameters
 
+                // Restore Scene-specific Snapshots
+                val snapshotsMap = mutableMapOf<String, SubSceneSnapshot>()
+                val snapJsonObj = obj.optJSONObject("snapshots")
+                if (snapJsonObj != null) {
+                    val sKeys = snapJsonObj.keys()
+                    while (sKeys.hasNext()) {
+                        val slotKey = sKeys.next()
+                        val sItem = snapJsonObj.getJSONObject(slotKey)
+                        val slotName = sItem.optString("slotName", slotKey)
+                        val globalTranspose = sItem.optInt("globalTranspose", 0)
+                        val globalOctaveShift = sItem.optInt("globalOctaveShift", 0)
+                        val masterVolume = sItem.optDouble("masterVolume", 0.85).toFloat()
+                        val visibleTracksCount = sItem.optInt("visibleTracksCount", enabledCount)
+                        val timestamp = sItem.optLong("timestamp", System.currentTimeMillis())
+                        val trackSnapList = mutableListOf<TrackSnapshot>()
+                        val tArray = sItem.optJSONArray("tracks")
+                        if (tArray != null) {
+                            for (ti in 0 until tArray.length()) {
+                                val to = tArray.getJSONObject(ti)
+                                trackSnapList.add(
+                                    TrackSnapshot(
+                                        id = to.optInt("id", ti + 1),
+                                        volume = to.optDouble("volume", 0.65).toFloat(),
+                                        pan = to.optDouble("pan", 0.0).toFloat(),
+                                        isMuted = to.optBoolean("isMuted", false),
+                                        isSolo = to.optBoolean("isSolo", false),
+                                        isEnabled = to.optBoolean("isEnabled", true),
+                                        soundfontName = to.optString("soundfontName", ""),
+                                        patchName = to.optString("patchName", "-"),
+                                        bank = to.optInt("bank", 0),
+                                        program = to.optInt("program", 0),
+                                        reverbSend = to.optDouble("reverbSend", 0.20).toFloat(),
+                                        splitNoteMin = to.optInt("splitNoteMin", 24),
+                                        splitNoteMax = to.optInt("splitNoteMax", 108),
+                                        velocityCurve = to.optDouble("velocityCurve", 0.5).toFloat()
+                                    )
+                                )
+                            }
+                        }
+                        snapshotsMap[slotKey] = SubSceneSnapshot(
+                            slotName = slotName,
+                            tracks = trackSnapList,
+                            globalTranspose = globalTranspose,
+                            globalOctaveShift = globalOctaveShift,
+                            masterVolume = masterVolume,
+                            visibleTracksCount = visibleTracksCount,
+                            timestamp = timestamp
+                        )
+                    }
+                }
+                val configuredSlots = mutableListOf<String>()
+                val confSlotsArr = obj.optJSONArray("configuredSnapshotSlots")
+                if (confSlotsArr != null) {
+                    for (ci in 0 until confSlotsArr.length()) {
+                        configuredSlots.add(confSlotsArr.getString(ci))
+                    }
+                }
+                if (configuredSlots.isEmpty()) configuredSlots.add("slot_default")
+                val customNames = mutableMapOf<String, String>()
+                val customNamesObj = obj.optJSONObject("snapshotCustomNames")
+                if (customNamesObj != null) {
+                    val cnKeys = customNamesObj.keys()
+                    while (cnKeys.hasNext()) {
+                        val k = cnKeys.next()
+                        customNames[k] = customNamesObj.getString(k)
+                    }
+                }
+                val activeSlot = obj.optString("activeSnapshotSlot", "slot_default")
+
                 withContext(Dispatchers.Main) {
                     _uiState.update { state ->
                         state.copy(
@@ -2969,7 +3043,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                             themeNuance = restoredThemeNuance,
                             themePaletteName = restoredThemePalette,
                             trackColorSaturation = restoredTrackSaturation,
-                            visibleTracksCount = enabledCount
+                            visibleTracksCount = enabledCount,
+                            snapshots = snapshotsMap,
+                            configuredSnapshotSlots = configuredSlots,
+                            snapshotCustomNames = customNames,
+                            activeSnapshotSlot = activeSlot
                         )
                     }
                     applyTrackVolumes(_uiState.value)
@@ -3144,6 +3222,49 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         slotsArray.put(sObj)
                     }
                     put("audioSlots", slotsArray)
+
+                    // Save scene-specific Snapshots (Hermetic Setlist Snapshots)
+                    val snapshotsObj = org.json.JSONObject()
+                    state.snapshots.forEach { (key, snap) ->
+                        val snapJson = org.json.JSONObject().apply {
+                            put("slotName", snap.slotName)
+                            put("globalTranspose", snap.globalTranspose)
+                            put("globalOctaveShift", snap.globalOctaveShift)
+                            put("masterVolume", snap.masterVolume.toDouble())
+                            put("visibleTracksCount", snap.visibleTracksCount)
+                            put("timestamp", snap.timestamp)
+                            val tArr = org.json.JSONArray()
+                            snap.tracks.forEach { ts ->
+                                val to = org.json.JSONObject().apply {
+                                    put("id", ts.id)
+                                    put("volume", ts.volume.toDouble())
+                                    put("pan", ts.pan.toDouble())
+                                    put("isMuted", ts.isMuted)
+                                    put("isSolo", ts.isSolo)
+                                    put("isEnabled", ts.isEnabled)
+                                    put("soundfontName", ts.soundfontName)
+                                    put("patchName", ts.patchName)
+                                    put("bank", ts.bank)
+                                    put("program", ts.program)
+                                    put("reverbSend", ts.reverbSend.toDouble())
+                                    put("splitNoteMin", ts.splitNoteMin)
+                                    put("splitNoteMax", ts.splitNoteMax)
+                                    put("velocityCurve", ts.velocityCurve.toDouble())
+                                }
+                                tArr.put(to)
+                            }
+                            put("tracks", tArr)
+                        }
+                        snapshotsObj.put(key, snapJson)
+                    }
+                    put("snapshots", snapshotsObj)
+                    val slotsArrConfig = org.json.JSONArray()
+                    state.configuredSnapshotSlots.forEach { slotsArrConfig.put(it) }
+                    put("configuredSnapshotSlots", slotsArrConfig)
+                    val customNamesObj = org.json.JSONObject()
+                    state.snapshotCustomNames.forEach { (k, v) -> customNamesObj.put(k, v) }
+                    put("snapshotCustomNames", customNamesObj)
+                    put("activeSnapshotSlot", state.activeSnapshotSlot ?: "slot_default")
                 }
 
                 fileManager.saveSceneFile(name, json.toString())
@@ -3328,6 +3449,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     fun createNewProject(projectName: String = "Project", isBlank: Boolean = true) {
         val cleanName = projectName.trim().ifEmpty { "Project ${_uiState.value.scenes.size + 1}" }
         if (isBlank) {
+            NativeAudioBridge.safeAllNotesOff()
+            NativeAudioBridge.safeUnloadAllSoundFonts(NativeAudioBridge.ENGINE_FADER)
+            NativeAudioBridge.safeTrimMemory()
             val fresh = createInitialState()
             _uiState.update { current ->
                 current.copy(
@@ -3339,7 +3463,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     visibleTracksCount = 1,
                     transpose = 0,
                     octave = 0,
+                    snapshots = emptyMap(),
                     configuredSnapshotSlots = listOf("slot_default"),
+                    snapshotCustomNames = emptyMap(),
                     activeSnapshotSlot = "slot_default",
                     currentPage = AppScreenPage.MIXER
                 )
@@ -3523,7 +3649,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                             snapshotTransitionProgress = 0.0f,
                             transpose = targetSnapshot.globalTranspose,
                             octave = targetSnapshot.globalOctaveShift,
-                            visibleTracksCount = targetSnapshot.visibleTracksCount.coerceIn(1, 8)
+                            visibleTracksCount = if (targetSnapshot.visibleTracksCount in 1..8) targetSnapshot.visibleTracksCount else currentState.visibleTracksCount
                         )
                     }
                     persistCurrentState()

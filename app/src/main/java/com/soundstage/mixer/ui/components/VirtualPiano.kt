@@ -105,9 +105,9 @@ fun VirtualPianoKeyboard(
     val activeTracksCount = remember(tracks) { tracks.count { it.isEnabled }.coerceAtLeast(1) }
     val keysHeight = 48.dp
     val visibleTracksCount = remember(tracks) { tracks.count { it.isEnabled }.coerceIn(1, 8) }
-    // Reduced resting height by 40% for ultra-clean minimalist profile
-    val restStripHeight = remember(visibleTracksCount) { (2.7f * visibleTracksCount + 1.2f).dp.coerceIn(4.dp, 24.dp) }
-    val expandedTargetHeight = (23 * visibleTracksCount + 14).dp.coerceIn(46.dp, 205.dp)
+    // Clean resting height ensuring all 8 layers are visible at rest
+    val restStripHeight = remember(visibleTracksCount) { (3.4f * visibleTracksCount + 3f).dp.coerceIn(6.dp, 32.dp) }
+    val expandedTargetHeight = (24 * visibleTracksCount + 18).dp.coerceIn(48.dp, 220.dp)
 
     // Continuous smooth iOS-style growth animation: lines expand directly from resting strip into deployed layer
     val animatedLayerHeight by animateDpAsState(
@@ -120,8 +120,10 @@ fun VirtualPianoKeyboard(
         modifier = modifier
             .fillMaxWidth()
             .wrapContentHeight()
-            .background(Color(0xFF111420))
-            .padding(start = 2.dp, end = 2.dp, top = 1.dp, bottom = 2.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFF161A26))
+            .border(1.dp, Color(0xFF2C394E), RoundedCornerShape(8.dp))
+            .padding(horizontal = 3.dp, vertical = 2.dp)
             .testTag("virtual_piano_keyboard")
     ) {
         // ================= KEYBOARD BODY (LAYER MAPPER + PITCH BEND & A1-C8 KEYS) =================
@@ -134,7 +136,7 @@ fun VirtualPianoKeyboard(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 2.dp, vertical = 1.dp)
+                .padding(vertical = 1.dp)
         ) {
             val availableWidthDp = (maxWidth - 38.dp).coerceAtLeast(100.dp)
             val baseWhiteWidthDp = (availableWidthDp / totalWhiteKeys.toFloat()) * currentScale.coerceIn(0.7f, 3.0f)
@@ -165,21 +167,18 @@ fun VirtualPianoKeyboard(
                 label = "pitch_bend_growth"
             )
 
-            // ================= UNIFIED STUDIO CHASSIS (SUNDAY KEYS MONOBLOC ENCLOSURE) =================
+            // ================= UNIFIED STUDIO LAYOUT (EDGE-TO-EDGE CLEAN CHASSIS) =================
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .wrapContentHeight()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0xFF161B26))
-                    .border(1.dp, Color(0xFF2E384D), RoundedCornerShape(14.dp))
-                    .padding(3.dp),
+                    .padding(vertical = 1.dp),
                 verticalAlignment = Alignment.Bottom
             ) {
                 // 1. LEFT: Pitch Bend Wheel anchored at bottom, grows by +50% in height smoothly
                 Box(
                     modifier = Modifier
-                        .width(38.dp)
+                        .width(36.dp)
                         .wrapContentHeight(),
                     contentAlignment = Alignment.BottomCenter
                 ) {
@@ -187,9 +186,9 @@ fun VirtualPianoKeyboard(
                         currentBend = pitchBend,
                         onBendChange = onPitchBendChange,
                         modifier = Modifier
-                            .width(38.dp)
+                            .width(36.dp)
                             .height(animatedPitchBendHeight)
-                            .padding(end = 4.dp, bottom = 1.dp)
+                            .padding(end = 3.dp, bottom = 1.dp)
                     )
                 }
 
@@ -207,7 +206,7 @@ fun VirtualPianoKeyboard(
                                 .fillMaxWidth()
                                 .height(animatedLayerHeight)
                                 .horizontalScroll(scrollState)
-                                .padding(start = 3.dp)
+                                .padding(horizontal = 1.dp)
                         ) {
                             KeyboardLayerMapper(
                                 tracks = tracks,
@@ -218,7 +217,7 @@ fun VirtualPianoKeyboard(
                                 onToggleExpanded = { toggleMapperExpanded() },
                                 onRangeChanged = onRangeChanged,
                                 onDragSelectionChange = { range -> activeDragSelectionRange = range },
-                                modifier = Modifier.padding(top = 1.dp, bottom = 4.dp)
+                                modifier = Modifier.padding(top = 1.dp, bottom = 2.dp)
                             )
                         }
                     }
@@ -233,6 +232,7 @@ fun VirtualPianoKeyboard(
                             .fillMaxWidth()
                             .height(keysHeight)
                             .horizontalScroll(scrollState)
+                            .padding(horizontal = 1.dp)
                             .pointerInput(Unit) {
                                 detectTransformGestures { _, _, zoom, _ ->
                                     if (zoom != 1.0f) {

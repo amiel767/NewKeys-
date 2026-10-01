@@ -103,37 +103,37 @@ fun BottomBar(
     val barHeight = 44.dp
     val coroutineScope = rememberCoroutineScope()
 
-    Row(
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(barHeight),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(5.dp)
+            .wrapContentHeight()
+            .background(Color(0xFF131722))
+            .border(1.dp, Color(0xFF2C394E), RoundedCornerShape(0.dp))
     ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(barHeight)
+                .padding(horizontal = 4.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
         // ================= 1. DAW PRO REAL SYSTEM RESOURCE MONITOR (CPU & RAM) =================
-        val context = LocalContext.current
-        val activityManager = remember { context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager }
         val runtime = remember { Runtime.getRuntime() }
-        var memoryMb by remember { mutableIntStateOf(145) }
-        var cpuPercent by remember { mutableIntStateOf(14) }
+        var memoryMb by remember { mutableIntStateOf(65) }
+        var cpuPercent by remember { mutableIntStateOf(8) }
 
         LaunchedEffect(Unit) {
-            val memInfo = ActivityManager.MemoryInfo()
             val cores = runtime.availableProcessors().coerceAtLeast(1)
             var prevCpuTime = android.os.Process.getElapsedCpuTime()
             var prevWallTime = System.currentTimeMillis()
 
             while (true) {
-                try {
-                    activityManager?.getMemoryInfo(memInfo)
-                    val totalMb = (memInfo.totalMem / (1024 * 1024)).toInt()
-                    val availMb = (memInfo.availMem / (1024 * 1024)).toInt()
-                    val usedMb = (totalMb - availMb).coerceAtLeast(0)
-                    memoryMb = if (usedMb > 0) usedMb else ((runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024)).toInt()
-                } catch (_: Exception) {
-                    val usedMem = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024)
-                    memoryMb = usedMem.toInt().coerceIn(10, 9999)
-                }
+                // Precise App PSS & Heap RAM consumption (JVM + Native FluidSynth / AudioTrack heap)
+                val jvmUsedMb = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024)
+                val nativeUsedMb = android.os.Debug.getNativeHeapAllocatedSize() / (1024 * 1024)
+                val totalAppMb = (jvmUsedMb + nativeUsedMb).toInt()
+                memoryMb = totalAppMb.coerceIn(12, 9999)
 
                 val curCpuTime = android.os.Process.getElapsedCpuTime()
                 val curWallTime = System.currentTimeMillis()
@@ -142,7 +142,7 @@ fun BottomBar(
 
                 if (deltaWall > 0) {
                     val rawLoad = ((deltaCpu.toFloat() / (deltaWall * cores)) * 100f).roundToInt()
-                    cpuPercent = rawLoad.coerceIn(3, 99)
+                    cpuPercent = rawLoad.coerceIn(2, 99)
                 }
 
                 prevCpuTime = curCpuTime
@@ -163,45 +163,50 @@ fun BottomBar(
         ) {
             Column(
                 modifier = Modifier.fillMaxHeight(),
-                verticalArrangement = Arrangement.Center,
+                verticalArrangement = Arrangement.spacedBy(1.5.dp, Alignment.CenterVertically),
                 horizontalAlignment = Alignment.Start
             ) {
                 // CPU indicator
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.5.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(5.dp)
+                            .size(5.5.dp)
                             .clip(CircleShape)
-                            .background(if (cpuPercent > 65) Color(0xFFF59E0B) else Color(0xFF10B981))
+                            .background(if (cpuPercent > 70) Color(0xFFEF4444) else if (cpuPercent > 40) Color(0xFFF59E0B) else Color(0xFF10B981))
                     )
                     Text(
                         text = "CPU $cpuPercent%",
-                        fontSize = 9.5.sp,
+                        fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFFE2E8F0),
+                        style = androidx.compose.ui.text.TextStyle(
+                            platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)
+                        ),
                         maxLines = 1
                     )
                 }
-                Spacer(modifier = Modifier.height(1.dp))
                 // RAM indicator
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.5.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(5.dp)
+                            .size(5.5.dp)
                             .clip(CircleShape)
                             .background(Color(0xFF38BDF8))
                     )
                     Text(
                         text = "RAM ${memoryMb}M",
-                        fontSize = 9.5.sp,
+                        fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFFCBD5E1),
+                        style = androidx.compose.ui.text.TextStyle(
+                            platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)
+                        ),
                         maxLines = 1
                     )
                 }
@@ -577,34 +582,33 @@ fun BottomBar(
                 val isActive = (activeSnapshotSlot == slotKey) || (activeSnapshotSlot == null && slotKey == "slot_default")
                 val isSaved = snapshots.containsKey(slotKey) || (slotKey == "slot_default" && snapshots.isNotEmpty())
 
-                // Sunday Keys Hardware Palette: soft slate steel blue when inactive, soft luminous ice-blue when active
+                // Studio Cyan Hardware Reference Palette: Sleek Dark Slate when inactive, Studio Neon Cyan when active (No Yellow)
                 val slotBg = when {
-                    isActive -> Color(0xFFB8D2F8)
-                    else -> Color(0xFF384458)
+                    isActive -> Color(0xFF0F394A)
+                    else -> Color(0xFF1E2433)
                 }
                 val slotBorderColor = when {
                     isSnapshotArmMode && !isActive -> Color(0xFFFF2A55).copy(alpha = armBlinkAlpha)
-                    isActive -> Color(0xFFD6E6FD)
-                    else -> Color(0xFF4C5D77)
+                    isActive -> NeonCyan
+                    else -> Color(0xFF333E54)
                 }
                 val slotTextColor = when {
-                    isActive -> Color(0xFF0F172A)
-                    isSaved -> Color.White
+                    isActive -> NeonCyan
                     else -> Color(0xFFE2E8F0)
                 }
-                val slotFontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.Bold
+                val slotFontWeight = FontWeight.Bold
 
                 Box(
                     modifier = Modifier
                         .wrapContentWidth()
                         .defaultMinSize(minWidth = 64.dp)
                         .height(barHeight)
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(RoundedCornerShape(9.dp))
                         .background(slotBg)
                         .border(
                             width = if (isActive || isSnapshotArmMode) 1.2.dp else 1.dp,
                             color = slotBorderColor,
-                            shape = RoundedCornerShape(10.dp)
+                            shape = RoundedCornerShape(9.dp)
                         )
                         .padding(horizontal = 12.dp)
                         .pointerInput(slotKey, displayName) {
@@ -634,10 +638,10 @@ fun BottomBar(
             if (configuredSnapshotSlots.size < 5) {
                 Box(
                     modifier = Modifier
-                        .size(38.dp, barHeight)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFF384458))
-                        .border(1.dp, Color(0xFF4C5D77), RoundedCornerShape(10.dp))
+                        .size(42.dp, barHeight)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(Color(0xFF1E2433))
+                        .border(1.dp, Color(0xFF333E54), RoundedCornerShape(9.dp))
                         .clickable {
                             newSnapshotNameInput = "Snapshot ${configuredSnapshotSlots.size}"
                             isAddSnapshotDialogOpen = true
@@ -645,29 +649,26 @@ fun BottomBar(
                         .testTag("btn_add_snapshot"),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("+", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE2E8F0))
+                    Text("+", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE2E8F0))
                 }
             }
 
             // Floppy Disk (Save) Icon - placed immediately to the RIGHT of [+] button, exact matching 44dp barHeight
             Box(
                 modifier = Modifier
-                    .size(38.dp, barHeight)
-                    .clip(RoundedCornerShape(10.dp))
+                    .size(42.dp, barHeight)
+                    .clip(RoundedCornerShape(9.dp))
                     .background(
                         if (isSnapshotArmMode) {
-                            Brush.radialGradient(
-                                colors = listOf(Color(0xFFFF2A55), Color(0xFF4A0014)),
-                                radius = 45f
-                            )
+                            Color(0xFF4A0014)
                         } else {
-                            SolidColor(Color(0xFF384458))
+                            Color(0xFF1E2433)
                         }
                     )
                     .border(
                         1.2.dp,
-                        if (isSnapshotArmMode) Color(0xFFFF2A55).copy(alpha = armBlinkAlpha) else Color(0xFF4C5D77),
-                        RoundedCornerShape(10.dp)
+                        if (isSnapshotArmMode) Color(0xFFFF2A55).copy(alpha = armBlinkAlpha) else Color(0xFF333E54),
+                        RoundedCornerShape(9.dp)
                     )
                     .clickable { onToggleSnapshotArm() }
                     .testTag("btn_snapshot_arm"),
@@ -850,6 +851,7 @@ fun BottomBar(
             }
         }
     }
+}
 }
 
 @Composable

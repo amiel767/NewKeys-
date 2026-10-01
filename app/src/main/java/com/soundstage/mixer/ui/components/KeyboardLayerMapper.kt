@@ -280,10 +280,10 @@ fun KeyboardLayerMapper(
                 val keyIndex = 2 + oct * 7
                 val x = keyIndex * whitePx
                 drawLine(
-                    color = Color(0x38FFFFFF),
+                    color = Color(0x6EFFFFFF),
                     start = Offset(x, 0f),
                     end = Offset(x, size.height),
-                    strokeWidth = 1.2f
+                    strokeWidth = 2.0f
                 )
             }
         }
@@ -457,13 +457,17 @@ private fun TrackRangeBarRow(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(4.dp))
                                     .background(Color(0xD90F172A))
-                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                                    .padding(horizontal = 4.dp, vertical = 1.dp),
+                                contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = minNoteName,
                                     fontSize = 8.5.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color.White
+                                    color = Color.White,
+                                    style = androidx.compose.ui.text.TextStyle(
+                                        platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)
+                                    )
                                 )
                             }
 
@@ -478,6 +482,9 @@ private fun TrackRangeBarRow(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 textAlign = TextAlign.Center,
+                                style = androidx.compose.ui.text.TextStyle(
+                                    platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)
+                                ),
                                 modifier = Modifier
                                     .weight(1f, fill = false)
                                     .padding(horizontal = 2.dp)
@@ -490,13 +497,17 @@ private fun TrackRangeBarRow(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(4.dp))
                                     .background(Color(0xD90F172A))
-                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                                    .padding(horizontal = 4.dp, vertical = 1.dp),
+                                contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = maxNoteName,
                                     fontSize = 8.5.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color.White
+                                    color = Color.White,
+                                    style = androidx.compose.ui.text.TextStyle(
+                                        platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)
+                                    )
                                 )
                             }
                         }

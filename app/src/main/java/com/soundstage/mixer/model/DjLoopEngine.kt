@@ -329,6 +329,13 @@ class DjLoopEngine(private val context: Context) {
         currentFilePath = ""
     }
 
+    fun clearCache() {
+        loopPcmCache.clear()
+        rawDecodedPcm = null
+        currentPcm = null
+        System.gc()
+    }
+
     fun isPlaying(): Boolean = isPlaying && !isPaused
 
     // ------------------------------------------------------------------------
@@ -337,6 +344,14 @@ class DjLoopEngine(private val context: Context) {
     private fun getOrDecodeAudio(filePath: String): DecodedAudio? {
         val cached = loopPcmCache[filePath]
         if (cached != null) return cached
+
+        // Solution 3 (Streaming with Bounded Cache): Evict previous loops to prevent background RAM accumulation
+        if (loopPcmCache.isNotEmpty()) {
+            loopPcmCache.clear()
+            rawDecodedPcm = null
+            currentPcm = null
+            System.gc()
+        }
 
         val file = File(filePath)
         if (!file.exists()) return null

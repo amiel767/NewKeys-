@@ -1,6 +1,7 @@
 #include <jni.h>
 #include <string>
 #include <android/log.h>
+#include <malloc.h>
 #include "audio_engine.h"
 
 #define TAG "LiveKeysNative"
@@ -57,6 +58,15 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_unloadSoundFont(
         jint engineIndex,
         jint soundFontId) {
     return gAudioEngine.getEngine(engineIndex).unloadSoundFont(soundFontId);
+}
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_trimMemory(
+        JNIEnv *env,
+        jobject /* this */) {
+#if defined(__ANDROID__) && __ANDROID_API__ >= 28
+    malloc_trim(0);
+#endif
 }
 
 JNIEXPORT jobjectArray JNICALL
@@ -489,6 +499,19 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_setDrumChokeGroup(
         jint sampleId,
         jint chokeGroup) {
     gAudioEngine.getDrumSampler().setChokeGroup(sampleId, chokeGroup);
+}
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_unloadAllSoundFonts(
+        JNIEnv *env,
+        jobject /* this */,
+        jint engineIndex) {
+    if (engineIndex < 0) {
+        gAudioEngine.getEngine(0).unloadAllSoundFonts();
+        gAudioEngine.getEngine(1).unloadAllSoundFonts();
+    } else {
+        gAudioEngine.getEngine(engineIndex).unloadAllSoundFonts();
+    }
 }
 
 JNIEXPORT jint JNICALL

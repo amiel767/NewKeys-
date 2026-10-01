@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <thread>
+#include <malloc.h>
 
 #if __has_include(<fluidsynth/voice.h>)
 #include <fluidsynth/voice.h>
@@ -78,6 +79,9 @@ void SoundfontEngine::destroyInternal() {
     mPathToSfontId.clear();
     mSfontRefCount.clear();
     mSfontIdToPath.clear();
+#if defined(__ANDROID__) && __ANDROID_API__ >= 28
+    malloc_trim(0);
+#endif
 }
 
 int SoundfontEngine::loadSoundFont(const std::string &absolutePath) {
@@ -87,7 +91,7 @@ int SoundfontEngine::loadSoundFont(const std::string &absolutePath) {
         mSettings = new_fluid_settings();
         if (mSettings) {
             fluid_settings_setnum(mSettings, "synth.sample-rate", 48000.0);
-            fluid_settings_setnum(mSettings, "synth.gain", 1.85);
+            fluid_settings_setnum(mSettings, "synth.gain", 1.0);
             fluid_settings_setint(mSettings, "synth.polyphony", mConfiguredPolyphony);
             fluid_settings_setint(mSettings, "synth.midi-channels", kMaxChannels);
             fluid_settings_setint(mSettings, "synth.reverb.active", 0);
@@ -95,7 +99,7 @@ int SoundfontEngine::loadSoundFont(const std::string &absolutePath) {
             fluid_settings_setint(mSettings, "synth.dynamic-sample-loading", 1);
             mSynth = new_fluid_synth(mSettings);
             if (mSynth) {
-                fluid_synth_set_gain(mSynth, 1.85f);
+                fluid_synth_set_gain(mSynth, 1.0f);
                 fluid_synth_set_interp_method(mSynth, -1, FLUID_INTERP_4THORDER);
                 fluid_synth_reverb_on(mSynth, -1, 0);
                 fluid_synth_chorus_on(mSynth, -1, 1);
@@ -170,8 +174,42 @@ int SoundfontEngine::unloadSoundFont(int sfontId) {
 
     // reset_presets = 0 to avoid crashing active voices on other channels
     int res = fluid_synth_sfunload(mSynth, sfontId, 0);
+#if defined(__ANDROID__) && __ANDROID_API__ >= 28
+    malloc_trim(0);
+#endif
     LOGI("[%s] Completely Unloaded SoundFont ID: %d from RAM (res: %d)", mInstanceName.c_str(), sfontId, res);
     return res;
+}
+
+void SoundfontEngine::unloadAllSoundFonts() {
+    std::lock_guard<std::recursive_mutex> lock(mMutex);
+    if (!mSynth) return;
+
+    fluid_synth_all_notes_off(mSynth, -1);
+    for (int ch = 0; ch < kMaxChannels; ++ch) {
+        fluid_synth_cc(mSynth, ch, 123, 0);
+        fluid_synth_cc(mSynth, ch, 120, 0);
+    }
+    mEventQueue.clear();
+
+    // Copy IDs to safely unload all soundfonts
+    std::vector<int> sfIds;
+    for (const auto &pair : mSfontIdToPath) {
+        sfIds.push_back(pair.first);
+    }
+
+    for (int sfId : sfIds) {
+        fluid_synth_sfunload(mSynth, sfId, 0);
+    }
+
+    mPathToSfontId.clear();
+    mSfontRefCount.clear();
+    mSfontIdToPath.clear();
+
+#if defined(__ANDROID__) && __ANDROID_API__ >= 28
+    malloc_trim(0);
+#endif
+    LOGI("[%s] Unloaded ALL SoundFonts and purged native RAM cache.", mInstanceName.c_str());
 }
 
 std::vector<NativePresetInfo> SoundfontEngine::listPresets(int soundFontId) {

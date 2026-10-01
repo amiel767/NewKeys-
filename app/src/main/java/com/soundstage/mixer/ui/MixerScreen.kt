@@ -229,18 +229,15 @@ fun MixerScreen(
                     )
                 }
                 AppScreenPage.MIXER -> {
-                    // Device Chassis Card
+                    // Full-screen Studio Layout (No enclosing bento box, edge-to-edge layout)
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .shadow(16.dp, RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomStart = if (isKeyboardVisible) 0.dp else 14.dp, bottomEnd = if (isKeyboardVisible) 0.dp else 14.dp))
-                            .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomStart = if (isKeyboardVisible) 0.dp else 14.dp, bottomEnd = if (isKeyboardVisible) 0.dp else 14.dp))
                             .background(MaterialTheme.colorScheme.background)
-                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f), RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomStart = if (isKeyboardVisible) 0.dp else 14.dp, bottomEnd = if (isKeyboardVisible) 0.dp else 14.dp))
                             .padding(
-                                start = 8.dp,
-                                end = 8.dp,
-                                top = 6.dp,
+                                start = 4.dp,
+                                end = 4.dp,
+                                top = 2.dp,
                                 bottom = safeBottomPadding
                             )
                     ) {
@@ -315,13 +312,7 @@ fun MixerScreen(
                         if (verticalMode) {
                             val trackScrollState = rememberScrollState()
                             val overlayWidth = if (isPadOpen) (this@BoxWithConstraints.maxWidth * 0.50f) else 0.dp
-                            val availableWidth = (this@BoxWithConstraints.maxWidth - overlayWidth).coerceAtLeast(100.dp)
-                            // Base width for 8 tracks filling 100% of the available width with 6.dp spacing (Reference size)
-                            val baseTrackWidth = ((availableWidth - (6.dp * 7)) / 8).coerceAtLeast(64.dp)
-                            val count = uiState.visibleTracksCount.coerceIn(1, 8)
-                            // +25% larger when only 1 track, adapting smoothly down to 1.0x (reference size) at 8 tracks
-                            val scaleFactor = 1.0f + 0.25f * ((8 - count) / 7f)
-                            val standardTrackWidth = (baseTrackWidth * scaleFactor).coerceAtMost(availableWidth)
+                            val standardTrackWidth = (((this@BoxWithConstraints.maxWidth - (6.dp * 7)) / 8) * 1.10f).coerceIn(94.dp, 116.dp)
 
                             Row(
                                 modifier = Modifier
@@ -572,7 +563,7 @@ fun MixerScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
                 // 3. BOTTOM BAR (With MIDI Player, Real Chord Detector & Piano Toggle)
                 BottomBar(
@@ -626,12 +617,12 @@ fun MixerScreen(
                     }
                 )
 
-                // 4. FIXED LAYOUT SLOT FOR RETRACTABLE PIANO (pushes BottomBar cleanly without overlapping)
+                // 4. FIXED LAYOUT SLOT FOR RETRACTABLE PIANO (Exact fit with 5dp margin without overlapping)
                 val activePianoTracksCount = remember(uiState.tracks, uiState.visibleTracksCount) {
                     uiState.tracks.take(uiState.visibleTracksCount.coerceIn(1, 8)).count { it.isEnabled }.coerceIn(1, 8)
                 }
-                val pianoRestStripHeight = (activePianoTracksCount * 2.7f + 1.2f).dp.coerceIn(4.dp, 24.dp)
-                val targetKeyboardSlotHeight = if (isKeyboardVisible) 58.dp + pianoRestStripHeight + 18.dp else 0.dp
+                val pianoRestStripHeight = (3.4f * activePianoTracksCount + 3f).dp.coerceIn(6.dp, 32.dp)
+                val targetKeyboardSlotHeight = if (isKeyboardVisible) 48.dp + pianoRestStripHeight + 11.dp else 0.dp
                 val keyboardHeight by animateDpAsState(
                     targetValue = targetKeyboardSlotHeight,
                     animationSpec = tween(300, easing = EaseOutExpo),
@@ -681,6 +672,7 @@ fun MixerScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
+                    .padding(top = 5.dp)
                     .zIndex(100f)
             ) {
                 VirtualPianoKeyboard(

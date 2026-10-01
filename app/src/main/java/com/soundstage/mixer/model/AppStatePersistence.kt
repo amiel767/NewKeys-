@@ -222,6 +222,7 @@ class AppStatePersistence(context: Context) {
                     put("globalTranspose", snap.globalTranspose)
                     put("globalOctaveShift", snap.globalOctaveShift)
                     put("masterVolume", snap.masterVolume.toDouble())
+                    put("visibleTracksCount", snap.visibleTracksCount)
                     put("timestamp", snap.timestamp)
                     val tArray = JSONArray()
                     snap.tracks.forEach { t ->
@@ -464,12 +465,14 @@ class AppStatePersistence(context: Context) {
                                 )
                             }
                         }
+                        val visibleTracksCount = snapJson.optInt("visibleTracksCount", -1)
                         snapshotsMap[slotKey] = SubSceneSnapshot(
                             slotName = slotName,
                             tracks = trackSnapList,
                             globalTranspose = globalTranspose,
                             globalOctaveShift = globalOctaveShift,
                             masterVolume = masterVol,
+                            visibleTracksCount = if (visibleTracksCount in 1..8) visibleTracksCount else 1,
                             timestamp = timestamp
                         )
                     }

@@ -56,6 +56,8 @@ object NativeAudioBridge {
     external fun setAudioDriver(driverType: Int)
     external fun loadSoundFont(engineIndex: Int, absolutePath: String): Int
     external fun unloadSoundFont(engineIndex: Int, soundFontId: Int): Int
+    external fun unloadAllSoundFonts(engineIndex: Int = -1)
+    external fun trimMemory()
     external fun listPresets(soundFontId: Int): Array<PresetInfo>
     external fun selectProgram(engineIndex: Int, channel: Int, soundFontId: Int, bank: Int, preset: Int): Boolean
     external fun programChange(engineIndex: Int, channel: Int, preset: Int): Boolean
@@ -159,12 +161,34 @@ object NativeAudioBridge {
     fun safeUnloadSoundFont(engineIndex: Int = ENGINE_FADER, soundFontId: Int): Int {
         return if (isLibraryLoaded && soundFontId > 0) {
             try {
-                unloadSoundFont(engineIndex, soundFontId)
+                val res = unloadSoundFont(engineIndex, soundFontId)
+                safeTrimMemory()
+                res
             } catch (e: Throwable) {
                 Log.e("NativeAudioBridge", "Error invoking unloadSoundFont: ${e.message}")
                 -1
             }
         } else -1
+    }
+
+    fun safeTrimMemory() {
+        if (isLibraryLoaded) {
+            try {
+                trimMemory()
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking trimMemory: ${e.message}")
+            }
+        }
+    }
+
+    fun safeUnloadAllSoundFonts(engineIndex: Int = -1) {
+        if (isLibraryLoaded) {
+            try {
+                unloadAllSoundFonts(engineIndex)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking unloadAllSoundFonts: ${e.message}")
+            }
+        }
     }
 
     fun safeSelectProgram(

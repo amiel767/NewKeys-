@@ -742,9 +742,8 @@ public:
     void stop();
     void setDriver(int driverType);
     void setMasterGain(float gain) {
-        float clamped = std::clamp(gain, 0.0f, 2.0f);
-        // Map 0..1 volume linearly to the full SoundFont 1.85f synthesis gain
-        mMasterGain = clamped * 1.85f;
+        float clamped = std::clamp(gain, 0.0f, 1.0f);
+        mMasterGain = clamped * 1.0f;
         mSynthEngine.setGain(mMasterGain);
     }
     void setDrumMasterVolume(float vol) {
