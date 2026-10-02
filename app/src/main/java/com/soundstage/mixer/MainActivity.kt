@@ -55,24 +55,8 @@ class MainActivity : ComponentActivity() {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
 
+    // Configure edge-to-edge window
     WindowCompat.setDecorFitsSystemWindows(window, false)
-
-    try {
-        val audioManager = getSystemService(android.content.Context.AUDIO_SERVICE) as? android.media.AudioManager
-        audioManager?.mode = android.media.AudioManager.MODE_NORMAL
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val playbackAttributes = android.media.AudioAttributes.Builder()
-                .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
-                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
-                .build()
-            val focusRequest = android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN)
-                .setAudioAttributes(playbackAttributes)
-                .setAcceptsDelayedFocusGain(true)
-                .setOnAudioFocusChangeListener { }
-                .build()
-            audioManager?.requestAudioFocus(focusRequest)
-        }
-    } catch (_: Throwable) {}
 
     setContent {
       val uiState by viewModel.uiState.collectAsStateWithLifecycle()

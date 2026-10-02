@@ -744,7 +744,7 @@ public:
     void setMasterGain(float gain) {
         float clamped = std::clamp(gain, 0.0f, 1.0f);
         mMasterGain = clamped * 1.0f;
-        mSynthEngine.setGain(mMasterGain);
+        mSynthEngine.setGain(clamped * 2.2f);
     }
     void setDrumMasterVolume(float vol) {
         mDrumMasterVolume = vol;
@@ -823,7 +823,7 @@ private:
 
     // Preserved parameters across stream reconnections (Jack plug/unplug, routing events)
     std::atomic<bool> mIsReconnecting{false};
-    float mMasterGain = 1.25f;
+    float mMasterGain = 1.40f;
     float mDrumMasterVolume = 0.80f;
     float mMasterPunchAmount = 0.0f;
     float mSpatialWidenerAmount = 0.0f;

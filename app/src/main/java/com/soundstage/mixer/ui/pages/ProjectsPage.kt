@@ -70,13 +70,13 @@ fun ProjectsPage(
     // Dynamic background directly synchronized with Mixer theme settings
     val studioBg = MaterialTheme.colorScheme.background
 
-    // Ambient Floating Glow Orb Animation (Smooth organic multi-frequency floating light bubble)
+    // Ambient Floating Glow Orb Animation (Smooth, slow, delicate organic ambient light bubble)
     val infiniteTransition = rememberInfiniteTransition(label = "ambient_glow_orb")
     val animPhaseX by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = (2 * Math.PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 18000, easing = LinearEasing),
+            animation = tween(durationMillis = 48000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "glow_x"
@@ -85,16 +85,16 @@ fun ProjectsPage(
         initialValue = 0f,
         targetValue = (2 * Math.PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 24000, easing = LinearEasing),
+            animation = tween(durationMillis = 62000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "glow_y"
     )
     val animPhaseRadius by infiniteTransition.animateFloat(
-        initialValue = 0.85f,
-        targetValue = 1.15f,
+        initialValue = 0.90f,
+        targetValue = 1.10f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 13000, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 28000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "glow_radius_pulse"
@@ -103,7 +103,7 @@ fun ProjectsPage(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 16000, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 36000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "glow_color"
@@ -323,46 +323,46 @@ fun ProjectsPage(
             .fillMaxSize()
             .testTag("projects_page")
     ) {
-        // 1. Dynamic Canvas Background + Ambient Floating Glow Bubble (Aura + Core)
+        // 1. Dynamic Canvas Background + Ambient Floating Glow Bubble (Delicate, soft atmospheric luminescence)
         Canvas(modifier = Modifier.fillMaxSize()) {
             // Theme-synchronized dark studio background (matching Mixer exactly)
             drawRect(color = studioBg)
 
-            // Primary Floating Ambient Glow Orb (smooth, subtle, beautiful organic bubble drifting through the page)
-            val cx = size.width * (0.50f + 0.36f * kotlin.math.sin(animPhaseX))
-            val cy = size.height * (0.48f + 0.30f * kotlin.math.cos(animPhaseY))
-            val baseRadius = (size.width * 0.26f).coerceIn(140.dp.toPx(), 270.dp.toPx())
+            // Primary Floating Ambient Glow Orb (smooth, subtle, organic luminous bubble)
+            val cx = size.width * (0.50f + 0.35f * kotlin.math.sin(animPhaseX))
+            val cy = size.height * (0.50f + 0.30f * kotlin.math.cos(animPhaseY))
+            val baseRadius = (size.width * 0.35f).coerceIn(160.dp.toPx(), 320.dp.toPx())
             val currentOrbRadius = baseRadius * animPhaseRadius
 
-            // Chromatic soft blend (Snapshot blue -> Soft Lavender -> Sky Frost)
+            // Soft Snapshot Sky to Pastel Periwinkle chromatic interpolation
             val orbColor = androidx.compose.ui.graphics.lerp(
-                Color(0xFF9BC0F8),
-                Color(0xFFA5B4FC),
+                Color(0xFF60A5FA),
+                Color(0xFF818CF8),
                 animColorPhase
             )
 
-            // Layer 1: Wide Diffused Aura (Ultra-soft ambient glow)
+            // Layer 1: Wide Diffused Aura (Subtle ambient background illumination)
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        orbColor.copy(alpha = 0.07f),
-                        orbColor.copy(alpha = 0.035f),
+                        orbColor.copy(alpha = 0.12f),
+                        orbColor.copy(alpha = 0.05f),
                         orbColor.copy(alpha = 0.01f),
                         Color.Transparent
                     ),
                     center = Offset(cx, cy),
-                    radius = currentOrbRadius * 1.45f
+                    radius = currentOrbRadius * 1.5f
                 ),
                 center = Offset(cx, cy),
-                radius = currentOrbRadius * 1.45f
+                radius = currentOrbRadius * 1.5f
             )
 
-            // Layer 2: Luminous Inner Core (Soft tactile light center)
+            // Layer 2: Gentle Soft Core
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        orbColor.copy(alpha = 0.11f),
-                        orbColor.copy(alpha = 0.045f),
+                        orbColor.copy(alpha = 0.18f),
+                        orbColor.copy(alpha = 0.08f),
                         Color.Transparent
                     ),
                     center = Offset(cx, cy),
@@ -372,16 +372,16 @@ fun ProjectsPage(
                 radius = currentOrbRadius * 0.70f
             )
 
-            // Layer 3: Gentle Satellite Glow Orb drifting on opposite phase
-            val satX = size.width * (0.50f - 0.32f * kotlin.math.sin(animPhaseY * 0.85f))
-            val satY = size.height * (0.52f - 0.26f * kotlin.math.cos(animPhaseX * 0.75f))
-            val satRadius = baseRadius * 0.65f
+            // Layer 3: Secondary Floating Satellite Glow Orb drifting counter-phase
+            val satX = size.width * (0.50f - 0.34f * kotlin.math.sin(animPhaseY * 0.85f))
+            val satY = size.height * (0.50f - 0.28f * kotlin.math.cos(animPhaseX * 0.75f))
+            val satRadius = baseRadius * 0.75f
 
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        Color(0xFF7DD3FC).copy(alpha = 0.05f),
-                        Color(0xFF7DD3FC).copy(alpha = 0.015f),
+                        Color(0xFF93C5FD).copy(alpha = 0.10f),
+                        Color(0xFF818CF8).copy(alpha = 0.04f),
                         Color.Transparent
                     ),
                     center = Offset(satX, satY),
@@ -571,23 +571,23 @@ fun ProjectsPage(
                 )
             }
 
-            // MIDDLE SECTION: Recently used Carousel + All Setlists List
+            // MIDDLE SECTION: Recently used Carousel + All Setlists List (Extends down to Cancel/Load buttons)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .padding(vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .padding(vertical = 2.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // 2. SECTION: "Recently used Setlists" (Horizontal Cards Carousel)
+                // 2. SECTION: "Recently used Setlists" (Ultra Compact Horizontal Cards Carousel)
                 Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
                     Text(
                         text = "Recently used Setlists",
                         color = Color(0xFF94A3B8),
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold
                     )
 
@@ -595,23 +595,23 @@ fun ProjectsPage(
                         modifier = Modifier
                             .fillMaxWidth()
                             .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         if (projects.isEmpty()) {
                             Box(
                                 modifier = Modifier
-                                    .width(220.dp)
-                                    .height(105.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(CardBgBrush)
-                                    .border(1.dp, CardBorder, RoundedCornerShape(12.dp))
-                                    .padding(12.dp),
+                                    .width(160.dp)
+                                    .height(52.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xB3283144))
+                                    .border(1.dp, CardBorder, RoundedCornerShape(8.dp))
+                                    .padding(6.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = "No setlists yet.\nTap Create to start.",
                                     color = Color(0xFF6B7280),
-                                    fontSize = 11.sp,
+                                    fontSize = 10.sp,
                                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                                 )
                             }
@@ -629,12 +629,12 @@ fun ProjectsPage(
                     }
                 }
 
-                // 3. SECTION: "All Setlists" (Table List View)
+                // 3. SECTION: "All Setlists" (Full width table list view extending down to Cancel/Load buttons)
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
                     // Sub-header with Sort options
                     Row(
@@ -645,7 +645,7 @@ fun ProjectsPage(
                         Text(
                             text = "All Setlists",
                             color = Color(0xFF94A3B8),
-                            fontSize = 12.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold
                         )
 
@@ -656,15 +656,15 @@ fun ProjectsPage(
                             Text(
                                 text = "Sort by",
                                 color = Color(0xFF64748B),
-                                fontSize = 11.sp
+                                fontSize = 10.5.sp
                             )
 
                             Box {
                                 Row(
                                     modifier = Modifier
-                                        .height(28.dp)
+                                        .height(24.dp)
                                         .clip(RoundedCornerShape(6.dp))
-                                        .background(Color(0xFF1B212F))
+                                        .background(Color(0xD91B212F))
                                         .border(1.dp, CardBorder, RoundedCornerShape(6.dp))
                                         .clickable { isSortMenuOpen = true }
                                         .padding(horizontal = 8.dp),
@@ -674,14 +674,14 @@ fun ProjectsPage(
                                     Text(
                                         text = sortOrder,
                                         color = Color.White,
-                                        fontSize = 11.sp,
+                                        fontSize = 10.sp,
                                         fontWeight = FontWeight.Medium
                                     )
                                     Icon(
                                         imageVector = Icons.Default.KeyboardArrowDown,
                                         contentDescription = "Sort Options",
                                         tint = Color(0xFF94A3B8),
-                                        modifier = Modifier.size(14.dp)
+                                        modifier = Modifier.size(12.dp)
                                     )
                                 }
 
@@ -704,26 +704,26 @@ fun ProjectsPage(
 
                             IconButton(
                                 onClick = { isSortMenuOpen = true },
-                                modifier = Modifier.size(28.dp)
+                                modifier = Modifier.size(24.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.Sort,
                                     contentDescription = "Sort",
                                     tint = Color(0xFF94A3B8),
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(14.dp)
                                 )
                             }
                         }
                     }
 
-                    // Scrollable List of Setlists
+                    // Scrollable List of Setlists (Translucent backdrop to let glowing orb shine clearly through)
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFF111520))
-                            .border(1.dp, CardBorder, RoundedCornerShape(10.dp)),
+                            .background(Color(0x80111520))
+                            .border(1.dp, CardBorder.copy(alpha = 0.55f), RoundedCornerShape(10.dp)),
                         verticalArrangement = Arrangement.spacedBy(1.dp)
                     ) {
                         if (filteredProjects.isEmpty()) {
@@ -731,7 +731,7 @@ fun ProjectsPage(
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(24.dp),
+                                        .padding(20.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
@@ -757,107 +757,96 @@ fun ProjectsPage(
                 }
             }
 
-            // BOTTOM SECTION: Divider + Actions
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+            // BOTTOM SECTION: Actions (No bottom divider line per user request)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.End
             ) {
-                // Horizontal separator line above bottom bar
-                HorizontalDivider(
-                    color = CardBorder.copy(alpha = 0.75f),
-                    thickness = 1.dp,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                // 4. BOTTOM ACTION FOOTER: Cancel + Load Setlist (aligned to the right)
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        // Cancel Button
-                        Box(
-                            modifier = Modifier
-                                .height(38.dp)
-                                .shadow(2.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(
-                                    Brush.verticalGradient(
-                                        listOf(Color(0xFF283144), Color(0xFF1D2433))
-                                    )
+                    // Cancel Button
+                    Box(
+                        modifier = Modifier
+                            .height(38.dp)
+                            .shadow(2.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color(0xFF283144), Color(0xFF1D2433))
                                 )
-                                .border(1.dp, CardBorder, RoundedCornerShape(8.dp))
-                                .drawWithContent {
-                                    drawContent()
+                            )
+                            .border(1.dp, CardBorder, RoundedCornerShape(8.dp))
+                            .drawWithContent {
+                                drawContent()
+                                drawLine(
+                                    color = Color.White.copy(alpha = 0.12f),
+                                    start = Offset(4.dp.toPx(), 1f),
+                                    end = Offset(size.width - 4.dp.toPx(), 1f),
+                                    strokeWidth = 1.dp.toPx(),
+                                    cap = StrokeCap.Round
+                                )
+                            }
+                            .clickable {
+                                if (projects.isNotEmpty()) {
+                                    onOpenProject(selectedSetlistName.ifEmpty { projects.first().name })
+                                }
+                            }
+                            .padding(horizontal = 16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Cancel",
+                            color = Color(0xFFCBD5E1),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    // Load Setlist Button (in Glowing Snapshot Soft Blue with dark contrast text)
+                    val isEnabled = selectedSetlistName.isNotEmpty()
+                    Box(
+                        modifier = Modifier
+                            .height(38.dp)
+                            .shadow(if (isEnabled) 3.dp else 0.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(
+                                if (isEnabled) Brush.verticalGradient(listOf(Color(0xFF9BC0F8), Color(0xFF8FB6F2)))
+                                else Brush.verticalGradient(listOf(Color(0xFF283144), Color(0xFF1D2433)))
+                            )
+                            .border(
+                                1.dp,
+                                if (isEnabled) Color(0x33000000) else CardBorder,
+                                RoundedCornerShape(8.dp)
+                            )
+                            .drawWithContent {
+                                drawContent()
+                                if (isEnabled) {
                                     drawLine(
-                                        color = Color.White.copy(alpha = 0.12f),
+                                        color = Color.White.copy(alpha = 0.25f),
                                         start = Offset(4.dp.toPx(), 1f),
                                         end = Offset(size.width - 4.dp.toPx(), 1f),
                                         strokeWidth = 1.dp.toPx(),
                                         cap = StrokeCap.Round
                                     )
                                 }
-                                .clickable {
-                                    if (projects.isNotEmpty()) {
-                                        onOpenProject(selectedSetlistName.ifEmpty { projects.first().name })
-                                    }
-                                }
-                                .padding(horizontal = 16.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Cancel",
-                                color = Color(0xFFCBD5E1),
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-
-                        // Load Setlist Button (in Glowing Snapshot Soft Blue with dark contrast text)
-                        val isEnabled = selectedSetlistName.isNotEmpty()
-                        Box(
-                            modifier = Modifier
-                                .height(38.dp)
-                                .shadow(if (isEnabled) 3.dp else 0.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(
-                                    if (isEnabled) Brush.verticalGradient(listOf(Color(0xFF9BC0F8), Color(0xFF8FB6F2)))
-                                    else Brush.verticalGradient(listOf(Color(0xFF283144), Color(0xFF1D2433)))
-                                )
-                                .border(
-                                    1.dp,
-                                    if (isEnabled) Color(0x33000000) else CardBorder,
-                                    RoundedCornerShape(8.dp)
-                                )
-                                .drawWithContent {
-                                    drawContent()
-                                    if (isEnabled) {
-                                        drawLine(
-                                            color = Color.White.copy(alpha = 0.25f),
-                                            start = Offset(4.dp.toPx(), 1f),
-                                            end = Offset(size.width - 4.dp.toPx(), 1f),
-                                            strokeWidth = 1.dp.toPx(),
-                                            cap = StrokeCap.Round
-                                        )
-                                    }
-                                }
-                                .clickable(enabled = isEnabled) {
-                                    onOpenProject(selectedSetlistName)
-                                }
-                                .padding(horizontal = 20.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Load Setlist",
-                                color = if (isEnabled) Color(0xFF101726) else Color(0xFF64748B),
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
+                            }
+                            .clickable(enabled = isEnabled) {
+                                onOpenProject(selectedSetlistName)
+                            }
+                            .padding(horizontal = 20.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Load Setlist",
+                            color = if (isEnabled) Color(0xFF101726) else Color(0xFF64748B),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }

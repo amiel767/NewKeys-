@@ -319,19 +319,22 @@ fun MixerScreen(
                             val showAddButton = uiState.visibleTracksCount < 8 && !isPadOpen
                             val activeItemCount = visibleTracks.size + (if (showAddButton) 1 else 0)
 
-                            // Fader Width: Reduced by an additional 10% in both Lock and Unlock modes per user instruction
-                            val trackWidth = if (uiState.isFaderAutoFit && activeItemCount > 0) {
-                                val totalSpacing = 6.dp * (activeItemCount - 1)
-                                val availableSpace = (this@BoxWithConstraints.maxWidth - totalSpacing).coerceAtLeast(0.dp)
-                                ((availableSpace / activeItemCount) * 0.675f).coerceIn(34.dp, 128.dp)
-                            } else {
-                                val totalSpacing = 6.dp * 3
-                                val availableSpace = (this@BoxWithConstraints.maxWidth - totalSpacing).coerceAtLeast(0.dp)
-                                ((availableSpace / 4) * 0.675f).coerceIn(98.dp, 128.dp)
-                            }
+                            // Fader Width & Layout Logic:
+                            // Reference default width = 120.dp (+30% increase for generous, comfortable touch targets).
+                            // In Unlock mode: Always maintains default width (120.dp) with horizontal scroll.
+                            // In Lock mode: Keeps default width (120.dp) until tracks exceed screen space, then adapts down proportionally to fit all tracks.
+                            val defaultTrackWidth = 120.dp
+                            val totalSpacing = 6.dp * (activeItemCount - 1).coerceAtLeast(0)
+                            val availableSpace = (this@BoxWithConstraints.maxWidth - totalSpacing).coerceAtLeast(0.dp)
+                            val totalNeededWidth = defaultTrackWidth * activeItemCount
+                            val isOverflowingInLock = uiState.isFaderAutoFit && (totalNeededWidth > availableSpace)
+                            val autoFitWidth = if (activeItemCount > 0) (availableSpace / activeItemCount) else defaultTrackWidth
+                            val finalTrackWidth = if (isOverflowingInLock) autoFitWidth else defaultTrackWidth
 
-                            val rowModifier = if (uiState.isFaderAutoFit) {
+                            val rowModifier = if (uiState.isFaderAutoFit && isOverflowingInLock) {
                                 Modifier.fillMaxSize()
+                            } else if (uiState.isFaderAutoFit) {
+                                Modifier.fillMaxHeight().wrapContentWidth()
                             } else {
                                 Modifier.fillMaxSize().horizontalScroll(trackScrollState)
                             }
@@ -341,6 +344,16 @@ fun MixerScreen(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 visibleTracks.forEach { track ->
+                                    val itemModifier = if (isOverflowingInLock) {
+                                        Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                    } else {
+                                        Modifier
+                                            .width(finalTrackWidth)
+                                            .fillMaxHeight()
+                                    }
+
                                     VerticalTrackChannel(
                                         track = track,
                                         onVolumeChange = { vol -> viewModel.setTrackVolume(track.id, vol) },
@@ -352,18 +365,24 @@ fun MixerScreen(
                                         onTrackNameClick = { viewModel.openSoundfontForSlot(track.id - 1) },
                                         onFxClick = { viewModel.openEffectsForTrack(track.id) },
                                         showTicks = showTicks,
-                                        modifier = Modifier
-                                            .width(trackWidth)
-                                            .fillMaxHeight()
+                                        modifier = itemModifier
                                     )
                                 }
 
                                 // "+ (Add Sound)" Button next to faders: studio square layout with thick professional border
                                 if (showAddButton) {
-                                    Box(
-                                        modifier = Modifier
-                                            .width(trackWidth)
+                                    val addBtnModifier = if (isOverflowingInLock) {
+                                        Modifier
+                                            .weight(1f)
                                             .fillMaxHeight()
+                                    } else {
+                                        Modifier
+                                            .width(finalTrackWidth)
+                                            .fillMaxHeight()
+                                    }
+
+                                    Box(
+                                        modifier = addBtnModifier
                                             .clip(RoundedCornerShape(10.dp))
                                             .background(Color(0xFF131722))
                                             .border(

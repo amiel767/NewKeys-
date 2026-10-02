@@ -75,7 +75,6 @@ class AudioEngine(private val context: Context) {
         override fun onAudioDevicesAdded(addedDevices: Array<out android.media.AudioDeviceInfo>?) {
             super.onAudioDevicesAdded(addedDevices)
             Log.i(TAG, "Audio output device attached (jack/headphones). Reconnecting audio stream cleanly...")
-            ensureMaxStreamVolume()
             reconnectAudioStreamDebounced()
         }
 
@@ -91,7 +90,6 @@ class AudioEngine(private val context: Context) {
             if (intent?.action == android.content.Intent.ACTION_HEADSET_PLUG) {
                 val state = intent.getIntExtra("state", -1)
                 Log.i(TAG, "ACTION_HEADSET_PLUG detected: state=$state (0: unplugged, 1: plugged). Restoring clean stage stream...")
-                ensureMaxStreamVolume()
                 reconnectAudioStreamDebounced()
             }
         }
@@ -113,21 +111,6 @@ class AudioEngine(private val context: Context) {
         }
         // Immediately start and lock stream parameters with full dynamic headroom
         reconnectAudioStream()
-    }
-
-    fun ensureMaxStreamVolume() {
-        try {
-            val am = audioManager ?: return
-            val maxVol = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-            val curVol = am.getStreamVolume(AudioManager.STREAM_MUSIC)
-            // If system attenuated or ducked media volume upon jack insertion (e.g. EU safe volume limit)
-            if (curVol < (maxVol * 0.80f).toInt()) {
-                am.setStreamVolume(AudioManager.STREAM_MUSIC, maxVol, 0)
-                Log.i(TAG, "Restored STREAM_MUSIC from $curVol to full stage volume $maxVol")
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Could not check/set stream volume: ${e.message}")
-        }
     }
 
     fun restoreAllEngineParameters() {
@@ -168,7 +151,6 @@ class AudioEngine(private val context: Context) {
         reconnectJob = coroutineScope.launch(Dispatchers.IO) {
             // Settle time for Linux kernel jack switch and Android audio policy router
             kotlinx.coroutines.delay(220)
-            ensureMaxStreamVolume()
             NativeAudioBridge.safeStartEngine(0)
             restoreAllEngineParameters()
         }
