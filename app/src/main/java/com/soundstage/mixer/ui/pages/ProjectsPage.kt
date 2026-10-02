@@ -36,11 +36,12 @@ import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.model.ScenePreset
 
 // Snapshot Color Palette
-private val SnapshotAccent = Color(0xFF7DD3FC)
-private val SnapshotAccentBorder = Color(0xFF60A5FA)
-private val CardBorder = Color(0xFF28344A)
-private val CardBgBrush = Brush.verticalGradient(listOf(Color(0xFF1E2638), Color(0xFF141926)))
-private val SelectedCardBrush = Brush.verticalGradient(listOf(Color(0xFF243652), Color(0xFF182336)))
+private val SnapshotAccent = Color(0xFF9BC0F8)
+private val SnapshotAccentDark = Color(0xFF8FB6F2)
+private val SnapshotAccentBorder = Color(0x669BC0F8)
+private val CardBorder = Color(0xFF38455E)
+private val CardBgBrush = Brush.verticalGradient(listOf(Color(0xFF283144), Color(0xFF1D2433)))
+private val SelectedCardBrush = Brush.verticalGradient(listOf(Color(0xFF3B4863), Color(0xFF2A344A)))
 
 @Composable
 fun ProjectsPage(
@@ -66,20 +67,16 @@ fun ProjectsPage(
     var sortOrder by remember { mutableStateOf("Recently used") }
     var isSortMenuOpen by remember { mutableStateOf(false) }
 
-    // Dynamic background adapting directly to Mixer theme settings
-    val dynamicBg = remember(themeHue, themeBgSaturation, themeBgLightness) {
-        val sat = (0.24f * themeBgSaturation).coerceIn(0f, 1f)
-        val light = (0.065f * themeBgLightness).coerceIn(0.02f, 0.35f)
-        Color.hsl(themeHue, sat, light)
-    }
+    // Dynamic background directly synchronized with Mixer theme settings
+    val studioBg = MaterialTheme.colorScheme.background
 
-    // Ambient Floating Glow Orb Animation (Subtle floating light bubble)
+    // Ambient Floating Glow Orb Animation (Smooth organic multi-frequency floating light bubble)
     val infiniteTransition = rememberInfiniteTransition(label = "ambient_glow_orb")
     val animPhaseX by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = (2 * Math.PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 16000, easing = LinearEasing),
+            animation = tween(durationMillis = 18000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "glow_x"
@@ -88,16 +85,25 @@ fun ProjectsPage(
         initialValue = 0f,
         targetValue = (2 * Math.PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 22000, easing = LinearEasing),
+            animation = tween(durationMillis = 24000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "glow_y"
+    )
+    val animPhaseRadius by infiniteTransition.animateFloat(
+        initialValue = 0.85f,
+        targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 13000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "glow_radius_pulse"
     )
     val animColorPhase by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 14000, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 16000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "glow_color"
@@ -317,30 +323,72 @@ fun ProjectsPage(
             .fillMaxSize()
             .testTag("projects_page")
     ) {
-        // 1. Dynamic Canvas Background + Ambient Floating Glow Bubble
+        // 1. Dynamic Canvas Background + Ambient Floating Glow Bubble (Aura + Core)
         Canvas(modifier = Modifier.fillMaxSize()) {
-            // Theme-synchronized dark studio background
-            drawRect(color = dynamicBg)
+            // Theme-synchronized dark studio background (matching Mixer exactly)
+            drawRect(color = studioBg)
 
-            // Floating Ambient Glow Orb (smooth, elegant, never intrusive)
-            val cx = size.width * (0.50f + 0.35f * kotlin.math.sin(animPhaseX))
-            val cy = size.height * (0.50f + 0.28f * kotlin.math.cos(animPhaseY))
-            val orbRadius = (size.width * 0.30f).coerceIn(160.dp.toPx(), 300.dp.toPx())
+            // Primary Floating Ambient Glow Orb (smooth, subtle, beautiful organic bubble drifting through the page)
+            val cx = size.width * (0.50f + 0.36f * kotlin.math.sin(animPhaseX))
+            val cy = size.height * (0.48f + 0.30f * kotlin.math.cos(animPhaseY))
+            val baseRadius = (size.width * 0.26f).coerceIn(140.dp.toPx(), 270.dp.toPx())
+            val currentOrbRadius = baseRadius * animPhaseRadius
 
+            // Chromatic soft blend (Snapshot blue -> Soft Lavender -> Sky Frost)
             val orbColor = androidx.compose.ui.graphics.lerp(
-                Color(0xFF38BDF8).copy(alpha = 0.12f),
-                Color(0xFF818CF8).copy(alpha = 0.09f),
+                Color(0xFF9BC0F8),
+                Color(0xFFA5B4FC),
                 animColorPhase
             )
 
+            // Layer 1: Wide Diffused Aura (Ultra-soft ambient glow)
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(orbColor, orbColor.copy(alpha = 0.04f), Color.Transparent),
+                    colors = listOf(
+                        orbColor.copy(alpha = 0.07f),
+                        orbColor.copy(alpha = 0.035f),
+                        orbColor.copy(alpha = 0.01f),
+                        Color.Transparent
+                    ),
                     center = Offset(cx, cy),
-                    radius = orbRadius
+                    radius = currentOrbRadius * 1.45f
                 ),
                 center = Offset(cx, cy),
-                radius = orbRadius
+                radius = currentOrbRadius * 1.45f
+            )
+
+            // Layer 2: Luminous Inner Core (Soft tactile light center)
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        orbColor.copy(alpha = 0.11f),
+                        orbColor.copy(alpha = 0.045f),
+                        Color.Transparent
+                    ),
+                    center = Offset(cx, cy),
+                    radius = currentOrbRadius * 0.70f
+                ),
+                center = Offset(cx, cy),
+                radius = currentOrbRadius * 0.70f
+            )
+
+            // Layer 3: Gentle Satellite Glow Orb drifting on opposite phase
+            val satX = size.width * (0.50f - 0.32f * kotlin.math.sin(animPhaseY * 0.85f))
+            val satY = size.height * (0.52f - 0.26f * kotlin.math.cos(animPhaseX * 0.75f))
+            val satRadius = baseRadius * 0.65f
+
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color(0xFF7DD3FC).copy(alpha = 0.05f),
+                        Color(0xFF7DD3FC).copy(alpha = 0.015f),
+                        Color.Transparent
+                    ),
+                    center = Offset(satX, satY),
+                    radius = satRadius
+                ),
+                center = Offset(satX, satY),
+                radius = satRadius
             )
         }
 
@@ -356,7 +404,7 @@ fun ProjectsPage(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // 1. TOP HEADER BAR: Search Box + Title "Setlists" + "+ Create New Setlist"
+                // 1. TOP HEADER BAR: Search Box + Title "Setlists" + "+ Create New Setlist" + Settings
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -367,14 +415,18 @@ fun ProjectsPage(
                         modifier = Modifier
                             .width(220.dp)
                             .height(38.dp)
-                            .shadow(2.dp, RoundedCornerShape(10.dp))
+                            .shadow(2.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
                             .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFF1B212F))
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color(0xFF283144), Color(0xFF1D2433))
+                                )
+                            )
                             .border(1.dp, CardBorder, RoundedCornerShape(10.dp))
                             .drawWithContent {
                                 drawContent()
                                 drawLine(
-                                    color = Color.White.copy(alpha = 0.10f),
+                                    color = Color.White.copy(alpha = 0.12f),
                                     start = Offset(4.dp.toPx(), 1f),
                                     end = Offset(size.width - 4.dp.toPx(), 1f),
                                     strokeWidth = 1.dp.toPx(),
@@ -422,51 +474,90 @@ fun ProjectsPage(
                         fontWeight = FontWeight.Bold
                     )
 
-                    // Right: "+ Create New Setlist" Button
-                    Box(
-                        modifier = Modifier
-                            .height(38.dp)
-                            .shadow(2.5.dp, RoundedCornerShape(10.dp))
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(Color(0xFF2563EB), Color(0xFF1D4ED8))
-                                )
-                            )
-                            .border(1.dp, SnapshotAccentBorder, RoundedCornerShape(10.dp))
-                            .drawWithContent {
-                                drawContent()
-                                drawLine(
-                                    color = Color.White.copy(alpha = 0.18f),
-                                    start = Offset(4.dp.toPx(), 1f),
-                                    end = Offset(size.width - 4.dp.toPx(), 1f),
-                                    strokeWidth = 1.dp.toPx(),
-                                    cap = StrokeCap.Round
-                                )
-                            }
-                            .clickable {
-                                newSetlistNameInput = "Setlist ${projects.size + 1}"
-                                isNewSetlistDialogOpen = true
-                            }
-                            .padding(horizontal = 14.dp)
-                            .testTag("btn_create_setlist_header"),
-                        contentAlignment = Alignment.Center
+                    // Right: "+ Create New Setlist" Button + Settings Button immediately to its right
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        Box(
+                            modifier = Modifier
+                                .height(38.dp)
+                                .shadow(2.5.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(Color(0xFF9BC0F8), Color(0xFF8FB6F2))
+                                    )
+                                )
+                                .border(1.dp, Color(0x33000000), RoundedCornerShape(10.dp))
+                                .drawWithContent {
+                                    drawContent()
+                                    drawLine(
+                                        color = Color.White.copy(alpha = 0.25f),
+                                        start = Offset(4.dp.toPx(), 1f),
+                                        end = Offset(size.width - 4.dp.toPx(), 1f),
+                                        strokeWidth = 1.dp.toPx(),
+                                        cap = StrokeCap.Round
+                                    )
+                                }
+                                .clickable {
+                                    newSetlistNameInput = "Setlist ${projects.size + 1}"
+                                    isNewSetlistDialogOpen = true
+                                }
+                                .padding(horizontal = 14.dp)
+                                .testTag("btn_create_setlist_header"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "Create",
+                                    tint = Color(0xFF101726),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "Create New Setlist",
+                                    color = Color(0xFF101726),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        // Settings button placed next to Create New Setlist
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .shadow(2.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(Color(0xFF283144), Color(0xFF1D2433))
+                                    )
+                                )
+                                .border(1.dp, CardBorder, RoundedCornerShape(10.dp))
+                                .drawWithContent {
+                                    drawContent()
+                                    drawLine(
+                                        color = Color.White.copy(alpha = 0.12f),
+                                        start = Offset(4.dp.toPx(), 1f),
+                                        end = Offset(size.width - 4.dp.toPx(), 1f),
+                                        strokeWidth = 1.dp.toPx(),
+                                        cap = StrokeCap.Round
+                                    )
+                                }
+                                .clickable { onOpenSettings() }
+                                .testTag("btn_setlist_settings_header"),
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "Create",
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = "Create New Setlist",
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Settings",
+                                tint = Color(0xFFCBD5E1),
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
@@ -474,7 +565,7 @@ fun ProjectsPage(
 
                 // Horizontal separator line below header
                 HorizontalDivider(
-                    color = CardBorder.copy(alpha = 0.85f),
+                    color = CardBorder.copy(alpha = 0.75f),
                     thickness = 1.dp,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -673,73 +764,96 @@ fun ProjectsPage(
             ) {
                 // Horizontal separator line above bottom bar
                 HorizontalDivider(
-                    color = CardBorder.copy(alpha = 0.85f),
+                    color = CardBorder.copy(alpha = 0.75f),
                     thickness = 1.dp,
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                // 4. BOTTOM ACTION FOOTER: Settings + Cancel + Load Setlist
+                // 4. BOTTOM ACTION FOOTER: Cancel + Load Setlist (aligned to the right)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.End
                 ) {
-                    // Settings icon on bottom left for quick studio tuning
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .shadow(2.dp, RoundedCornerShape(8.dp))
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF1B212F))
-                            .border(1.dp, CardBorder, RoundedCornerShape(8.dp))
-                            .clickable { onOpenSettings() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = "Settings",
-                            tint = Color(0xFF94A3B8),
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         // Cancel Button
-                        TextButton(
-                            onClick = {
-                                if (projects.isNotEmpty()) {
-                                    onOpenProject(selectedSetlistName.ifEmpty { projects.first().name })
-                                }
-                            }
-                        ) {
-                            Text(
-                                text = "Cancel",
-                                color = Color(0xFF94A3B8),
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-
-                        // Load Setlist Button (in Glowing Snapshot Cyan/Blue with dark contrast text)
                         Box(
                             modifier = Modifier
                                 .height(38.dp)
-                                .shadow(if (selectedSetlistName.isNotEmpty()) 3.dp else 0.dp, RoundedCornerShape(8.dp))
+                                .shadow(2.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(if (selectedSetlistName.isNotEmpty()) SnapshotAccent else Color(0xFF1E2638))
-                                .border(1.dp, if (selectedSetlistName.isNotEmpty()) SnapshotAccentBorder else CardBorder, RoundedCornerShape(8.dp))
-                                .clickable(enabled = selectedSetlistName.isNotEmpty()) {
-                                    onOpenProject(selectedSetlistName)
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(Color(0xFF283144), Color(0xFF1D2433))
+                                    )
+                                )
+                                .border(1.dp, CardBorder, RoundedCornerShape(8.dp))
+                                .drawWithContent {
+                                    drawContent()
+                                    drawLine(
+                                        color = Color.White.copy(alpha = 0.12f),
+                                        start = Offset(4.dp.toPx(), 1f),
+                                        end = Offset(size.width - 4.dp.toPx(), 1f),
+                                        strokeWidth = 1.dp.toPx(),
+                                        cap = StrokeCap.Round
+                                    )
+                                }
+                                .clickable {
+                                    if (projects.isNotEmpty()) {
+                                        onOpenProject(selectedSetlistName.ifEmpty { projects.first().name })
+                                    }
                                 }
                                 .padding(horizontal = 16.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
+                                text = "Cancel",
+                                color = Color(0xFFCBD5E1),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        // Load Setlist Button (in Glowing Snapshot Soft Blue with dark contrast text)
+                        val isEnabled = selectedSetlistName.isNotEmpty()
+                        Box(
+                            modifier = Modifier
+                                .height(38.dp)
+                                .shadow(if (isEnabled) 3.dp else 0.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if (isEnabled) Brush.verticalGradient(listOf(Color(0xFF9BC0F8), Color(0xFF8FB6F2)))
+                                    else Brush.verticalGradient(listOf(Color(0xFF283144), Color(0xFF1D2433)))
+                                )
+                                .border(
+                                    1.dp,
+                                    if (isEnabled) Color(0x33000000) else CardBorder,
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .drawWithContent {
+                                    drawContent()
+                                    if (isEnabled) {
+                                        drawLine(
+                                            color = Color.White.copy(alpha = 0.25f),
+                                            start = Offset(4.dp.toPx(), 1f),
+                                            end = Offset(size.width - 4.dp.toPx(), 1f),
+                                            strokeWidth = 1.dp.toPx(),
+                                            cap = StrokeCap.Round
+                                        )
+                                    }
+                                }
+                                .clickable(enabled = isEnabled) {
+                                    onOpenProject(selectedSetlistName)
+                                }
+                                .padding(horizontal = 20.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
                                 text = "Load Setlist",
-                                color = if (selectedSetlistName.isNotEmpty()) Color(0xFF0F172A) else Color(0xFF64748B),
+                                color = if (isEnabled) Color(0xFF101726) else Color(0xFF64748B),
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -868,7 +982,7 @@ private fun SetlistTableRow(
         modifier = Modifier
             .fillMaxWidth()
             .height(44.dp)
-            .background(if (isSelected) Color(0x2860A5FA) else Color.Transparent)
+            .background(if (isSelected) Color(0x339BC0F8) else Color.Transparent)
             .clickable { onSelect() }
             .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,

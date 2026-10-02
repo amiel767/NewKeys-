@@ -238,8 +238,48 @@ fun TopBar(
                 }
             }
 
+            // 3.5 Panic Button (All Notes Off - Rouge clignotant / vibrant)
+            val infiniteTransition = rememberInfiniteTransition(label = "topbar_animations")
+            val panicAlpha by infiniteTransition.animateFloat(
+                initialValue = 0.82f,
+                targetValue = 1.0f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 700, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "panic_pulse"
+            )
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .shadow(2.5.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(
+                        Brush.verticalGradient(listOf(PanicRed.copy(alpha = panicAlpha), PanicRedDark))
+                    )
+                    .drawWithContent {
+                        drawContent()
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.18f),
+                            start = Offset(4.dp.toPx(), 1f),
+                            end = Offset(size.width - 4.dp.toPx(), 1f),
+                            strokeWidth = 1.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    }
+                    .clickable { onPanic() }
+                    .testTag("btn_panic"),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_midi_panic),
+                    contentDescription = "MIDI Panic",
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+
             // 4. Global Sustain Button with Active Green Halo
-            val infiniteTransition = rememberInfiniteTransition(label = "sustain_pedal_blink")
             val pedalBlinkAlpha by infiniteTransition.animateFloat(
                 initialValue = 0.35f,
                 targetValue = 1.0f,
@@ -380,46 +420,6 @@ fun TopBar(
                 }
             }
 
-            // 8. Panic Button (All Notes Off - Rouge clignotant / vibrant)
-            val panicAlpha by infiniteTransition.animateFloat(
-                initialValue = 0.82f,
-                targetValue = 1.0f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(durationMillis = 700, easing = FastOutSlowInEasing),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = "panic_pulse"
-            )
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .shadow(2.5.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(
-                        Brush.verticalGradient(listOf(PanicRed.copy(alpha = panicAlpha), PanicRedDark))
-                    )
-                    .drawWithContent {
-                        drawContent()
-                        drawLine(
-                            color = Color.White.copy(alpha = 0.18f),
-                            start = Offset(4.dp.toPx(), 1f),
-                            end = Offset(size.width - 4.dp.toPx(), 1f),
-                            strokeWidth = 1.dp.toPx(),
-                            cap = StrokeCap.Round
-                        )
-                    }
-                    .clickable { onPanic() }
-                    .testTag("btn_panic"),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_midi_panic),
-                    contentDescription = "MIDI Panic",
-                    tint = Color.White,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-
             // 9. Scene Expansion Button
             Box(
                 modifier = Modifier
@@ -448,7 +448,7 @@ fun TopBar(
                 Icon(
                     imageVector = Icons.Default.Menu,
                     contentDescription = "Setlists",
-                    tint = NeonCyan,
+                    tint = Color(0xFF9BC0F8),
                     modifier = Modifier.size(18.dp)
                 )
             }

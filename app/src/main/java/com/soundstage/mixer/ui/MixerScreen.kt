@@ -319,16 +319,15 @@ fun MixerScreen(
                             val showAddButton = uiState.visibleTracksCount < 8 && !isPadOpen
                             val activeItemCount = visibleTracks.size + (if (showAddButton) 1 else 0)
 
-                            // Fader Width: In Lock mode (auto-fit), fits active tracks.
-                            // In Unlock mode, tracks retain the generous 4-fader width from the reference screenshot (~155-185dp) with smooth horizontal scroll.
+                            // Fader Width: Reduced by an additional 10% in both Lock and Unlock modes per user instruction
                             val trackWidth = if (uiState.isFaderAutoFit && activeItemCount > 0) {
                                 val totalSpacing = 6.dp * (activeItemCount - 1)
                                 val availableSpace = (this@BoxWithConstraints.maxWidth - totalSpacing).coerceAtLeast(0.dp)
-                                (availableSpace / activeItemCount).coerceIn(40.dp, 190.dp)
+                                ((availableSpace / activeItemCount) * 0.675f).coerceIn(34.dp, 128.dp)
                             } else {
                                 val totalSpacing = 6.dp * 3
                                 val availableSpace = (this@BoxWithConstraints.maxWidth - totalSpacing).coerceAtLeast(0.dp)
-                                (availableSpace / 4).coerceIn(145.dp, 190.dp)
+                                ((availableSpace / 4) * 0.675f).coerceIn(98.dp, 128.dp)
                             }
 
                             val rowModifier = if (uiState.isFaderAutoFit) {
