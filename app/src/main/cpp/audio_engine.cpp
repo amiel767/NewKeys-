@@ -25,7 +25,9 @@ AudioEngine::AudioEngine() {
     mPadFilter.setLowPass(static_cast<float>(sampleRate), 400.0f * std::pow(45.0f, mPadBrightness), 0.707f);
     mDrumSampler.init(sampleRate);
     mMasterCompressor.init(sampleRate, -15.0f, 1.6f, 12.0f, 120.0f, 4.0f);
+    mMasterCompressor.setParams(false, -15.0f, 1.6f, 12.0f, 120.0f, 0.0f);
     mSoftClipper.init(sampleRate);
+    mSpatialWidener.setAmount(0.0f);
 }
 
 AudioEngine::~AudioEngine() {
@@ -52,7 +54,7 @@ bool AudioEngine::openAndStartStream() {
         ->setSharingMode(oboe::SharingMode::Exclusive)
         ->setFormat(oboe::AudioFormat::Float)
         ->setChannelCount(oboe::ChannelCount::Stereo)
-        ->setSampleRate(48000)
+        ->setSampleRate(oboe::kUnspecified)
         ->setDataCallback(this)
         ->setErrorCallback(this)
         ->setUsage(oboe::Usage::Media)

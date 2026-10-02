@@ -146,7 +146,10 @@ fun MixerScreen(
                         onOpenProject = { viewModel.openProject(it) },
                         onCreateNewProject = { name, isBlank -> viewModel.createNewProject(name, isBlank) },
                         onDeleteProject = { viewModel.deleteProject(it) },
-                        onOpenSettings = { viewModel.openSettingsDrawer() }
+                        onOpenSettings = { viewModel.openSettingsDrawer() },
+                        themeHue = uiState.themeHue,
+                        themeBgSaturation = uiState.themeBgSaturation,
+                        themeBgLightness = uiState.themeBgLightness
                     )
                 }
                 AppScreenPage.DRUMPAD -> {
@@ -269,7 +272,7 @@ fun MixerScreen(
                     isMidiPedalPressed = uiState.isMidiPedalPressed,
                     onToggleSustain = { viewModel.toggleSustain() },
                     onOpenNotes = {
-                        viewModel.navigateToPage(AppScreenPage.SHEETS)
+                        viewModel.openSheetsDrawer()
                     },
                     onOpenDrumPad = {
                         viewModel.navigateToPage(AppScreenPage.DRUMPAD)
@@ -316,12 +319,16 @@ fun MixerScreen(
                             val showAddButton = uiState.visibleTracksCount < 8 && !isPadOpen
                             val activeItemCount = visibleTracks.size + (if (showAddButton) 1 else 0)
 
+                            // Fader Width: In Lock mode (auto-fit), fits active tracks.
+                            // In Unlock mode, tracks retain the generous 4-fader width from the reference screenshot (~155-185dp) with smooth horizontal scroll.
                             val trackWidth = if (uiState.isFaderAutoFit && activeItemCount > 0) {
                                 val totalSpacing = 6.dp * (activeItemCount - 1)
                                 val availableSpace = (this@BoxWithConstraints.maxWidth - totalSpacing).coerceAtLeast(0.dp)
-                                (availableSpace / activeItemCount).coerceIn(40.dp, 120.dp)
+                                (availableSpace / activeItemCount).coerceIn(40.dp, 190.dp)
                             } else {
-                                (((this@BoxWithConstraints.maxWidth - (6.dp * 7)) / 8) * 1.10f).coerceIn(94.dp, 116.dp)
+                                val totalSpacing = 6.dp * 3
+                                val availableSpace = (this@BoxWithConstraints.maxWidth - totalSpacing).coerceAtLeast(0.dp)
+                                (availableSpace / 4).coerceIn(145.dp, 190.dp)
                             }
 
                             val rowModifier = if (uiState.isFaderAutoFit) {
@@ -911,6 +918,23 @@ fun MixerScreen(
             onResetTheme = { viewModel.resetThemeToDefault() },
             isFaderAutoFit = uiState.isFaderAutoFit,
             onToggleFaderAutoFit = { viewModel.toggleFaderAutoFit() }
+        )
+
+        // Sheets & Chords Sliding Side Drawer Overlay
+        SheetsDrawer(
+            isOpen = uiState.isSheetsDrawerOpen,
+            onClose = { viewModel.closeSheetsDrawer() },
+            notesText = uiState.notesText,
+            onNotesChange = { viewModel.updateNotesText(it) },
+            transpose = uiState.transpose,
+            onTransposeChange = { viewModel.updateTranspose(it) },
+            onOpenFullPage = {
+                viewModel.closeSheetsDrawer()
+                viewModel.navigateToPage(AppScreenPage.SHEETS)
+            },
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(115f)
         )
 
         // Projects / Scenes Sliding Side Drawer (Exact sliding drawer from right matching Settings)

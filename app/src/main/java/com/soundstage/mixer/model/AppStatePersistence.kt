@@ -50,6 +50,10 @@ class AppStatePersistence(context: Context) {
         private const val KEY_THEME_SATURATION = "theme_saturation"
         private const val KEY_THEME_NUANCE = "theme_nuance"
         private const val KEY_THEME_PALETTE = "theme_palette"
+        private const val KEY_THEME_ACCENT_SATURATION = "theme_accent_saturation"
+        private const val KEY_THEME_BG_SATURATION = "theme_bg_saturation"
+        private const val KEY_THEME_BG_LIGHTNESS = "theme_bg_lightness"
+        private const val KEY_THEME_MODULES_LIGHTNESS = "theme_modules_lightness"
         private const val KEY_TRACK_COLOR_SATURATION = "track_color_saturation"
         private const val KEY_FADER_AUTO_FIT = "is_fader_auto_fit"
     }
@@ -123,6 +127,10 @@ class AppStatePersistence(context: Context) {
         val themeSaturation: Float? = null,
         val themeNuance: Float? = null,
         val themePalette: String? = null,
+        val themeAccentSaturation: Float? = null,
+        val themeBgSaturation: Float? = null,
+        val themeBgLightness: Float? = null,
+        val themeModulesLightness: Float? = null,
         val trackColorSaturation: Float? = null,
         val isFaderAutoFit: Boolean? = null
     )
@@ -154,11 +162,15 @@ class AppStatePersistence(context: Context) {
         configuredSnapshotSlots: List<String> = listOf("slot_default"),
         snapshotCustomNames: Map<String, String> = emptyMap(),
         visibleTracksCount: Int = 1,
-        activeProjectName: String = "Project 1",
+        activeProjectName: String = "Setlist 1",
         themeHue: Float = 185f,
         themeSaturation: Float = 0.85f,
         themeNuance: Float = 0.50f,
         themePalette: String = "Cyber Neon",
+        themeAccentSaturation: Float = 1.0f,
+        themeBgSaturation: Float = 1.60f,
+        themeBgLightness: Float = 1.0f,
+        themeModulesLightness: Float = 1.0f,
         trackColorSaturation: Float = 1.0f,
         isFaderAutoFit: Boolean = false
     ) {
@@ -317,6 +329,10 @@ class AppStatePersistence(context: Context) {
                 putFloat(KEY_THEME_SATURATION, themeSaturation)
                 putFloat(KEY_THEME_NUANCE, themeNuance)
                 putString(KEY_THEME_PALETTE, themePalette)
+                putFloat(KEY_THEME_ACCENT_SATURATION, themeAccentSaturation)
+                putFloat(KEY_THEME_BG_SATURATION, themeBgSaturation)
+                putFloat(KEY_THEME_BG_LIGHTNESS, themeBgLightness)
+                putFloat(KEY_THEME_MODULES_LIGHTNESS, themeModulesLightness)
                 putFloat(KEY_TRACK_COLOR_SATURATION, trackColorSaturation)
                 putBoolean(KEY_FADER_AUTO_FIT, isFaderAutoFit)
                 apply()
@@ -336,8 +352,12 @@ class AppStatePersistence(context: Context) {
             val bpm = if (prefs.contains(KEY_BPM)) prefs.getInt(KEY_BPM, 120) else null
             val transpose = if (prefs.contains(KEY_TRANSPOSE)) prefs.getInt(KEY_TRANSPOSE, 0) else null
             val octave = if (prefs.contains(KEY_OCTAVE)) prefs.getInt(KEY_OCTAVE, 0) else null
-            val activeSceneId = prefs.getString(KEY_ACTIVE_SCENE_ID, null)
-            val activeProjectName = prefs.getString(KEY_ACTIVE_PROJECT_NAME, null)
+            val activeSceneId = prefs.getString(KEY_ACTIVE_SCENE_ID, null)?.let {
+                if (it.startsWith("Project", ignoreCase = true)) it.replaceFirst(Regex("(?i)^Project"), "Setlist") else it
+            }
+            val activeProjectName = prefs.getString(KEY_ACTIVE_PROJECT_NAME, null)?.let {
+                if (it.startsWith("Project", ignoreCase = true)) it.replaceFirst(Regex("(?i)^Project"), "Setlist") else it
+            }
             val visibleTracksCount = if (prefs.contains(KEY_VISIBLE_TRACKS_COUNT)) prefs.getInt(KEY_VISIBLE_TRACKS_COUNT, 1) else null
             val soundGoodizerAmount = if (prefs.contains(KEY_SOUNDGOODIZER_AMOUNT)) prefs.getFloat(KEY_SOUNDGOODIZER_AMOUNT, 0.45f) else null
             val soundGoodizerMode = prefs.getString(KEY_SOUNDGOODIZER_MODE, null)
@@ -355,6 +375,10 @@ class AppStatePersistence(context: Context) {
             val themeSaturation = if (prefs.contains(KEY_THEME_SATURATION)) prefs.getFloat(KEY_THEME_SATURATION, 0.85f) else null
             val themeNuance = if (prefs.contains(KEY_THEME_NUANCE)) prefs.getFloat(KEY_THEME_NUANCE, 0.50f) else null
             val themePalette = prefs.getString(KEY_THEME_PALETTE, null)
+            val themeAccentSaturation = if (prefs.contains(KEY_THEME_ACCENT_SATURATION)) prefs.getFloat(KEY_THEME_ACCENT_SATURATION, 1.0f) else null
+            val themeBgSaturation = if (prefs.contains(KEY_THEME_BG_SATURATION)) prefs.getFloat(KEY_THEME_BG_SATURATION, 1.60f) else null
+            val themeBgLightness = if (prefs.contains(KEY_THEME_BG_LIGHTNESS)) prefs.getFloat(KEY_THEME_BG_LIGHTNESS, 1.0f) else null
+            val themeModulesLightness = if (prefs.contains(KEY_THEME_MODULES_LIGHTNESS)) prefs.getFloat(KEY_THEME_MODULES_LIGHTNESS, 1.0f) else null
             val trackColorSaturation = if (prefs.contains(KEY_TRACK_COLOR_SATURATION)) prefs.getFloat(KEY_TRACK_COLOR_SATURATION, 1.0f) else null
 
             val tracksList = mutableListOf<SavedTrackData>()
@@ -579,6 +603,10 @@ class AppStatePersistence(context: Context) {
                 themeSaturation = themeSaturation,
                 themeNuance = themeNuance,
                 themePalette = themePalette,
+                themeAccentSaturation = themeAccentSaturation,
+                themeBgSaturation = themeBgSaturation,
+                themeBgLightness = themeBgLightness,
+                themeModulesLightness = themeModulesLightness,
                 trackColorSaturation = trackColorSaturation,
                 isFaderAutoFit = isFaderAutoFit,
                 snapshots = snapshotsMap,

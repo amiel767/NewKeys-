@@ -152,10 +152,6 @@ class MainActivity : ComponentActivity() {
         }
       }
 
-      if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-        permissionsToRequest.add(Manifest.permission.RECORD_AUDIO)
-      }
-
       if (permissionsToRequest.isNotEmpty()) {
         hasRequestedPermissions = true
         requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())

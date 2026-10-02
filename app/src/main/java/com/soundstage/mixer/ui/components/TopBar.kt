@@ -447,7 +447,7 @@ fun TopBar(
             ) {
                 Icon(
                     imageVector = Icons.Default.Menu,
-                    contentDescription = "Scenes",
+                    contentDescription = "Setlists",
                     tint = NeonCyan,
                     modifier = Modifier.size(18.dp)
                 )

@@ -704,14 +704,22 @@ class FileManager(private val context: Context) {
             if (scenesDir.exists() && scenesDir.canRead()) {
                 scenesDir.listFiles { file -> file.isFile && (file.extension.equals("lkproj", ignoreCase = true) || file.extension.equals("scene", ignoreCase = true) || file.extension.equals("json", ignoreCase = true)) }
                     ?.forEach { file ->
+                        val effectiveFile = if (file.nameWithoutExtension.startsWith("Project", ignoreCase = true)) {
+                            val newName = file.nameWithoutExtension.replaceFirst(Regex("(?i)^Project"), "Setlist")
+                            val renamed = File(scenesDir, "$newName.${file.extension}")
+                            if (!renamed.exists()) {
+                                file.renameTo(renamed)
+                                renamed
+                            } else file
+                        } else file
                         result.add(
                             StorageItem(
-                                name = file.nameWithoutExtension,
-                                path = file.absolutePath,
+                                name = effectiveFile.nameWithoutExtension,
+                                path = effectiveFile.absolutePath,
                                 isDirectory = false,
-                                size = file.length(),
-                                extension = file.extension.lowercase(),
-                                formattedSize = formatSize(file.length())
+                                size = effectiveFile.length(),
+                                extension = effectiveFile.extension.lowercase(),
+                                formattedSize = formatSize(effectiveFile.length())
                             )
                         )
                     }

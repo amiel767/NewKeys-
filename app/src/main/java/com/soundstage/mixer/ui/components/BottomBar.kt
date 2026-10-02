@@ -130,7 +130,7 @@ fun BottomBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .wrapContentHeight()
-                .padding(horizontal = 6.dp, vertical = 3.5.dp),
+                .padding(horizontal = 6.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {
@@ -902,7 +902,7 @@ fun BottomBar(
 
                 Box(
                     modifier = Modifier
-                        .width(42.dp)
+                        .requiredWidth(42.dp)
                         .height(barHeight)
                         .shadow(
                             elevation = if (isLayerActive) 0.dp else 2.5.dp,
@@ -971,7 +971,7 @@ fun BottomBar(
 
             Box(
                 modifier = Modifier
-                    .width(44.dp)
+                    .requiredWidth(44.dp)
                     .height(barHeight)
                     .shadow(
                         elevation = if (isKeyboardActive) 0.dp else 2.5.dp,

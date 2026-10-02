@@ -8,6 +8,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -134,7 +136,7 @@ fun SceneDialog(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // ================= 1. HEADER: "Projects" + Diskette Icon + Close (X) =================
+                    // ================= 1. HEADER: "Setlists" + Diskette Icon + Close (X) =================
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -143,7 +145,7 @@ fun SceneDialog(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "Projects",
+                            text = "Setlists",
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
@@ -230,8 +232,8 @@ fun SceneDialog(
                             val isSelected = scene.id == activeSceneId
                             val isPendingDelete = pendingDeleteSceneId == scene.id
 
-                            val cardBg = if (isSelected) Color(0xFF16232D) else Color(0xFF161A24)
-                            val cardBorder = if (isSelected) NeonCyan.copy(alpha = 0.8f) else Color(0xFF222838)
+                            val cardBg = if (isSelected) Color(0xFF1A2638) else Color(0xFF141924)
+                            val cardBorder = if (isSelected) Color(0xFF60A5FA) else Color(0xFF28344A)
 
                             Box(
                                 modifier = Modifier
@@ -259,13 +261,14 @@ fun SceneDialog(
                                             modifier = Modifier
                                                 .size(38.dp)
                                                 .clip(RoundedCornerShape(10.dp))
-                                                .background(if (isSelected) Color(0xFF1C383D) else Color(0xFF1F2433)),
+                                                .background(if (isSelected) Color(0xFF243652) else Color(0xFF19202E))
+                                                .border(1.dp, if (isSelected) Color(0xFF60A5FA) else Color(0xFF28344A), RoundedCornerShape(10.dp)),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Canvas(modifier = Modifier.size(16.dp, 16.dp)) {
                                                 val w = size.width
                                                 val h = size.height
-                                                val barCol = if (isSelected) NeonCyan else Color(0xFF64748B)
+                                                val barCol = if (isSelected) Color(0xFF7DD3FC) else Color(0xFF64748B)
 
                                                 // 3 Sound equalizer bars
                                                 drawLine(
@@ -305,7 +308,7 @@ fun SceneDialog(
                                                 overflow = TextOverflow.Ellipsis
                                             )
                                             Text(
-                                                text = if (scene.timestamp.isNotEmpty()) scene.timestamp else "Active Project",
+                                                text = if (scene.timestamp.isNotEmpty()) scene.timestamp else "Active Setlist",
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Normal,
                                                 color = Color(0xFF64748B),
@@ -426,7 +429,7 @@ fun SceneDialog(
                                 )
                             }
                             .clickable {
-                                newSceneNameInput = "Project ${scenes.size + 1}"
+                                newSceneNameInput = "Setlist ${scenes.size + 1}"
                                 isNewSceneDialogOpen = true
                             }
                             .testTag("btn_new_scene_dashed"),
@@ -443,7 +446,7 @@ fun SceneDialog(
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
-                                text = "New Project",
+                                text = "New Setlist",
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color(0xFF94A3B8)
@@ -455,22 +458,28 @@ fun SceneDialog(
         }
     }
 
-    // New Project Dialog
+    // New Setlist Dialog (Scrollable so Option 2 is never truncated)
     if (isNewSceneDialogOpen) {
         AlertDialog(
             onDismissRequest = { isNewSceneDialogOpen = false },
             title = {
                 Text(
-                    text = "New Project",
+                    text = "New Setlist",
                     color = Color.White,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 300.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Text(
-                        text = "Enter project name:",
+                        text = "Enter setlist name:",
                         color = Color(0xFF94A3B8),
                         fontSize = 12.sp
                     )
@@ -490,69 +499,83 @@ fun SceneDialog(
 
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "Project Mode:",
+                        text = "Setlist Mode:",
                         color = Color(0xFF94A3B8),
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold
                     )
 
-                    // Option 1: Blank Project
+                    // Compact side-by-side mode cards (fits any landscape screen without truncation)
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { isBlankProjectMode = true }
-                            .padding(vertical = 4.dp)
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        RadioButton(
-                            selected = isBlankProjectMode,
-                            onClick = { isBlankProjectMode = true },
-                            colors = RadioButtonDefaults.colors(selectedColor = NeonCyan, unselectedColor = Color(0xFF64748B))
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Column {
-                            Text(
-                                text = "New Blank Project",
-                                color = Color.White,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "Start fresh with default settings",
-                                color = Color(0xFF64748B),
-                                fontSize = 11.sp
-                            )
+                        // Option 1: Blank Setlist
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isBlankProjectMode) Color(0xFF1E293B) else Color(0xFF111622))
+                                .border(1.dp, if (isBlankProjectMode) NeonCyan else Color(0xFF263248), RoundedCornerShape(8.dp))
+                                .clickable { isBlankProjectMode = true }
+                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(
+                                    selected = isBlankProjectMode,
+                                    onClick = { isBlankProjectMode = true },
+                                    colors = RadioButtonDefaults.colors(selectedColor = NeonCyan, unselectedColor = Color(0xFF64748B)),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Column {
+                                    Text(
+                                        text = "New Blank",
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = "Default tracks",
+                                        color = Color(0xFF64748B),
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            }
                         }
-                    }
 
-                    // Option 2: Duplicate Current Project
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { isBlankProjectMode = false }
-                            .padding(vertical = 4.dp)
-                    ) {
-                        RadioButton(
-                            selected = !isBlankProjectMode,
-                            onClick = { isBlankProjectMode = false },
-                            colors = RadioButtonDefaults.colors(selectedColor = NeonCyan, unselectedColor = Color(0xFF64748B))
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Column {
-                            Text(
-                                text = "Duplicate Current Project",
-                                color = Color.White,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "Clone all current tracks & soundfonts",
-                                color = Color(0xFF64748B),
-                                fontSize = 11.sp
-                            )
+                        // Option 2: Duplicate Current Setlist
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (!isBlankProjectMode) Color(0xFF1E293B) else Color(0xFF111622))
+                                .border(1.dp, if (!isBlankProjectMode) NeonCyan else Color(0xFF263248), RoundedCornerShape(8.dp))
+                                .clickable { isBlankProjectMode = false }
+                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(
+                                    selected = !isBlankProjectMode,
+                                    onClick = { isBlankProjectMode = false },
+                                    colors = RadioButtonDefaults.colors(selectedColor = NeonCyan, unselectedColor = Color(0xFF64748B)),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Column {
+                                    Text(
+                                        text = "Duplicate Current",
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = "Clone tracks & SF2",
+                                        color = Color(0xFF64748B),
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -560,13 +583,13 @@ fun SceneDialog(
             confirmButton = {
                 Button(
                     onClick = {
-                        val name = newSceneNameInput.trim().ifEmpty { "Project ${scenes.size + 1}" }
+                        val name = newSceneNameInput.trim().ifEmpty { "Setlist ${scenes.size + 1}" }
                         onCreateNewProject(name, isBlankProjectMode)
                         isNewSceneDialogOpen = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = NeonCyan)
                 ) {
-                    Text("Create Project", color = Color(0xFF032830), fontWeight = FontWeight.Bold)
+                    Text("Create Setlist", color = Color(0xFF032830), fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -585,7 +608,7 @@ fun SceneDialog(
             onDismissRequest = { renamingSceneId = null },
             title = {
                 Text(
-                    text = "Rename Project",
+                    text = "Rename Setlist",
                     color = Color.White,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold

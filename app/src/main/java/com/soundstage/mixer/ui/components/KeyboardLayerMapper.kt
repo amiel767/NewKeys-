@@ -344,14 +344,15 @@ private fun TrackRangeBarRow(
     val leftFrac = KeyPositionMapper.midiToKeyLeftEdgeFraction(minNote)
     val rightFrac = KeyPositionMapper.midiToKeyRightEdgeFraction(maxNote)
 
-    val startXDp = (leftFrac * whiteWidthDp.value).dp
-    val endXDp = (rightFrac * whiteWidthDp.value).dp
+    val maxAvailableWidth = (whiteWidthDp * 45 - 4.dp).coerceAtLeast(0.dp)
+    val startXDp = (leftFrac * whiteWidthDp.value).dp.coerceIn(0.dp, maxAvailableWidth)
+    val endXDp = (rightFrac * whiteWidthDp.value).dp.coerceIn(startXDp, maxAvailableWidth)
 
-    // Dynamic animated height and corner radius (2.1dp at rest - reduced by 40%, 22dp when deployed)
-    val rowHeightDp = lerp(2.1.dp, 22.dp, expandProgress)
-    val cornerRadiusStartDp = lerp(1.5.dp, 5.dp, expandProgress)
-    val cornerRadiusEndDp = lerp(3.5.dp, 5.dp, expandProgress)
-    val minBarWidth = lerp(8.dp, 22.dp, expandProgress)
+    // Dynamic animated height and corner radius (2.1dp at rest, 27.5dp when deployed - increased by 25%)
+    val rowHeightDp = lerp(2.1.dp, 27.5.dp, expandProgress)
+    val cornerRadiusStartDp = lerp(1.5.dp, 6.dp, expandProgress)
+    val cornerRadiusEndDp = lerp(3.5.dp, 6.dp, expandProgress)
+    val minBarWidth = lerp(8.dp, 26.dp, expandProgress)
     val rawBarWidthDp = (endXDp - startXDp).coerceAtLeast(minBarWidth)
 
     var dragMinOffsetPx by remember { mutableFloatStateOf(0f) }
@@ -382,7 +383,7 @@ private fun TrackRangeBarRow(
     )
 
     val dotSize = 10.dp
-    val dotInset = 4.dp
+    val dotInset = 6.dp
     val leftDotX = animatedStartX + dotInset
     val rightDotX = (animatedStartX + animatedWidth - dotInset - dotSize).coerceAtLeast(leftDotX + dotSize + 2.dp)
     val touchHitboxWidth = 38.dp

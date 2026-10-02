@@ -107,7 +107,7 @@ fun VirtualPianoKeyboard(
     val visibleTracksCount = remember(tracks) { tracks.count { it.isEnabled }.coerceIn(1, 8) }
     // Clean resting height ensuring all 8 layers are visible at rest
     val restStripHeight = remember(visibleTracksCount) { (3.4f * visibleTracksCount + 3f).dp.coerceIn(6.dp, 32.dp) }
-    val expandedTargetHeight = (24 * visibleTracksCount + 18).dp.coerceIn(48.dp, 220.dp)
+    val expandedTargetHeight = (31 * visibleTracksCount + 18).dp.coerceIn(58.dp, 275.dp)
 
     // Continuous smooth iOS-style growth animation: lines expand directly from resting strip into deployed layer
     val animatedLayerHeight by animateDpAsState(

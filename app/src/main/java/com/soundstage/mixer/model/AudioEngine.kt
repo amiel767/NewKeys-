@@ -74,27 +74,60 @@ class AudioEngine(private val context: Context) {
     private val audioDeviceCallback = object : android.media.AudioDeviceCallback() {
         override fun onAudioDevicesAdded(addedDevices: Array<out android.media.AudioDeviceInfo>?) {
             super.onAudioDevicesAdded(addedDevices)
-            Log.i(TAG, "Audio output device attached (jack/headphones). Updating parameters smoothly...")
-            restoreAllEngineParameters()
+            Log.i(TAG, "Audio output device attached (jack/headphones). Reconnecting audio stream cleanly...")
+            ensureMaxStreamVolume()
+            reconnectAudioStreamDebounced()
         }
 
         override fun onAudioDevicesRemoved(removedDevices: Array<out android.media.AudioDeviceInfo>?) {
             super.onAudioDevicesRemoved(removedDevices)
-            Log.i(TAG, "Audio output device removed. Updating parameters smoothly...")
-            restoreAllEngineParameters()
+            Log.i(TAG, "Audio output device removed. Reconnecting audio stream cleanly...")
+            reconnectAudioStreamDebounced()
+        }
+    }
+
+    private val headsetPlugReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(ctx: Context?, intent: android.content.Intent?) {
+            if (intent?.action == android.content.Intent.ACTION_HEADSET_PLUG) {
+                val state = intent.getIntExtra("state", -1)
+                Log.i(TAG, "ACTION_HEADSET_PLUG detected: state=$state (0: unplugged, 1: plugged). Restoring clean stage stream...")
+                ensureMaxStreamVolume()
+                reconnectAudioStreamDebounced()
+            }
         }
     }
 
     init {
-        fallbackSynth.start()
+        fallbackSynth.isBypassed = true
         try {
             audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
             audioManager?.registerAudioDeviceCallback(audioDeviceCallback, null)
         } catch (e: Exception) {
             Log.w(TAG, "Could not register AudioDeviceCallback: ${e.message}")
         }
+        try {
+            val filter = android.content.IntentFilter(android.content.Intent.ACTION_HEADSET_PLUG)
+            context.registerReceiver(headsetPlugReceiver, filter)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not register headsetPlugReceiver: ${e.message}")
+        }
         // Immediately start and lock stream parameters with full dynamic headroom
         reconnectAudioStream()
+    }
+
+    fun ensureMaxStreamVolume() {
+        try {
+            val am = audioManager ?: return
+            val maxVol = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            val curVol = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+            // If system attenuated or ducked media volume upon jack insertion (e.g. EU safe volume limit)
+            if (curVol < (maxVol * 0.80f).toInt()) {
+                am.setStreamVolume(AudioManager.STREAM_MUSIC, maxVol, 0)
+                Log.i(TAG, "Restored STREAM_MUSIC from $curVol to full stage volume $maxVol")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not check/set stream volume: ${e.message}")
+        }
     }
 
     fun restoreAllEngineParameters() {
@@ -130,8 +163,19 @@ class AudioEngine(private val context: Context) {
         }
     }
 
+    fun reconnectAudioStreamDebounced() {
+        reconnectJob?.cancel()
+        reconnectJob = coroutineScope.launch(Dispatchers.IO) {
+            // Settle time for Linux kernel jack switch and Android audio policy router
+            kotlinx.coroutines.delay(220)
+            ensureMaxStreamVolume()
+            NativeAudioBridge.safeStartEngine(0)
+            restoreAllEngineParameters()
+        }
+    }
+
     fun setHasActiveSoundFont(hasSoundFont: Boolean) {
-        fallbackSynth.isBypassed = false
+        fallbackSynth.isBypassed = true
     }
 
     // Master DSP Parameters (Calibrated to full unbridled 1.0f headroom)
@@ -178,12 +222,12 @@ class AudioEngine(private val context: Context) {
             }
             NativeAudioBridge.safeSetSoundGoodizer(isSoundGoodizerEnabled, modeInt, value)
         }
-    var spatialWidener: Float = 0.35f
+    var spatialWidener: Float = 0.0f
         set(value) {
             field = value
             NativeAudioBridge.safeSetSpatialWidener(value)
         }
-    var masterPunch: Float = 0.50f
+    var masterPunch: Float = 0.0f
         set(value) {
             field = value
             NativeAudioBridge.safeSetMasterPunch(value)
@@ -1326,6 +1370,12 @@ class AudioEngine(private val context: Context) {
         stopMidiPlayer()
         soundPool?.release()
         soundPool = null
+        try {
+            context.unregisterReceiver(headsetPlugReceiver)
+        } catch (_: Exception) {}
+        try {
+            audioManager?.unregisterAudioDeviceCallback(audioDeviceCallback)
+        } catch (_: Exception) {}
         for (dev in openDevices) {
             try { dev.close() } catch (_: Exception) {}
         }

@@ -642,7 +642,7 @@ class SimpleMasterCompressor {
 public:
     void init(int sampleRate, float thresholdDb = -15.0f, float ratio = 1.6f, float attackMs = 12.0f, float releaseMs = 120.0f, float makeupGainDb = 4.0f) {
         mSampleRate = sampleRate > 0 ? sampleRate : 48000;
-        setParams(true, thresholdDb, ratio, attackMs, releaseMs, makeupGainDb);
+        setParams(false, thresholdDb, ratio, attackMs, releaseMs, makeupGainDb);
     }
 
     void setParams(bool enabled, float thresholdDb, float ratio, float attackMs, float releaseMs, float makeupGainDb) {
@@ -823,10 +823,10 @@ private:
 
     // Preserved parameters across stream reconnections (Jack plug/unplug, routing events)
     std::atomic<bool> mIsReconnecting{false};
-    float mMasterGain = 1.85f;
+    float mMasterGain = 1.25f;
     float mDrumMasterVolume = 0.80f;
-    float mMasterPunchAmount = 0.50f;
-    float mSpatialWidenerAmount = 0.35f;
+    float mMasterPunchAmount = 0.0f;
+    float mSpatialWidenerAmount = 0.0f;
     bool mSoundGoodizerEnabled = false;
     int mSoundGoodizerMode = 0;
     float mSoundGoodizerAmount = 0.42f;

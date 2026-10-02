@@ -169,6 +169,7 @@ data class MixerUiState(
     
     // Settings Drawer (Material Expressive AOSP style)
     val isSettingsDrawerOpen: Boolean = false,
+    val isSheetsDrawerOpen: Boolean = false,
     val settingsSubPage: String = "main",
     val isLowLatencyAudio: Boolean = true,
     val isKeyboardVelocityTouch: Boolean = true,
@@ -188,7 +189,7 @@ data class MixerUiState(
     // Master FX SoundGoodizer (FL Studio Engine)
     val soundGoodizer: Float = 0.45f,
     val soundGoodizerMode: SoundGoodizerMode = SoundGoodizerMode.A,
-    val masterPunch: Float = 0.55f,
+    val masterPunch: Float = 0.0f,
     val spatialWidener: Float = 0.38f,
     
     // Connected MIDI Devices
@@ -221,7 +222,7 @@ data class MixerUiState(
     val themeSaturation: Float = 0.40f,
     val themeNuance: Float = 0.45f,
     val themeAccentSaturation: Float = 1.0f,
-    val themeBgSaturation: Float = 1.0f,
+    val themeBgSaturation: Float = 1.60f,
     val themeBgLightness: Float = 1.0f,
     val themeModulesLightness: Float = 1.0f,
     val themePaletteName: String = "Midnight Slate (Default)",
@@ -354,7 +355,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             val saved = appStatePersistence.loadAppState()
             if (saved != null) {
                 val drumPreloadList = mutableListOf<String>()
-                val restoredProjectName = (saved.activeProjectName ?: saved.activeSceneId ?: "").trim()
+                val rawProjectName = (saved.activeProjectName ?: saved.activeSceneId ?: "").trim()
+                val restoredProjectName = if (rawProjectName.startsWith("Project", ignoreCase = true)) {
+                    rawProjectName.replaceFirst(Regex("(?i)^Project"), "Setlist")
+                } else rawProjectName
                 val hasActive = restoredProjectName.isNotEmpty() && restoredProjectName != "None"
 
                 _uiState.update { state ->
@@ -468,6 +472,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         themeSaturation = saved.themeSaturation ?: state.themeSaturation,
                         themeNuance = saved.themeNuance ?: state.themeNuance,
                         themePaletteName = saved.themePalette ?: state.themePaletteName,
+                        themeAccentSaturation = saved.themeAccentSaturation ?: state.themeAccentSaturation,
+                        themeBgSaturation = saved.themeBgSaturation ?: 1.60f,
+                        themeBgLightness = saved.themeBgLightness ?: state.themeBgLightness,
+                        themeModulesLightness = saved.themeModulesLightness ?: state.themeModulesLightness,
                         trackColorSaturation = saved.trackColorSaturation ?: state.trackColorSaturation,
                         isFaderAutoFit = saved.isFaderAutoFit ?: state.isFaderAutoFit
                     )
@@ -645,6 +653,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             themeSaturation = state.themeSaturation,
             themeNuance = state.themeNuance,
             themePalette = state.themePaletteName,
+            themeAccentSaturation = state.themeAccentSaturation,
+            themeBgSaturation = state.themeBgSaturation,
+            themeBgLightness = state.themeBgLightness,
+            themeModulesLightness = state.themeModulesLightness,
             trackColorSaturation = state.trackColorSaturation,
             isFaderAutoFit = state.isFaderAutoFit
         )
@@ -772,13 +784,27 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 val sceneFiles = fileManager.getSceneFiles()
 
                 val realScenes = sceneFiles.map { f ->
+                    val cleanName = if (f.name.startsWith("Project", ignoreCase = true)) {
+                        f.name.replaceFirst(Regex("(?i)^Project"), "Setlist")
+                    } else f.name
                     ScenePreset(
-                        id = f.name,
-                        name = f.name,
+                        id = cleanName,
+                        name = cleanName,
                         timestamp = f.formattedSize,
                         color = NeonCyan
                     )
                 }
+
+                val effectiveScenes = if (realScenes.isEmpty()) {
+                    listOf(
+                        ScenePreset(
+                            id = "Setlist 1",
+                            name = "Setlist 1",
+                            timestamp = "Active",
+                            color = NeonCyan
+                        )
+                    )
+                } else realScenes
 
                 val loopDirItems = fileManager.listItemsInDirectory(fileManager.loopsDir.absolutePath)
                 val midiDirItems = fileManager.listItemsInDirectory(fileManager.midiDir.absolutePath)
@@ -808,7 +834,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         currentLoopDirItems = loopDirItems,
                         currentMidiDirItems = midiDirItems,
                         soundfontBankFiles = bankFiles,
-                        scenes = realScenes,
+                        scenes = effectiveScenes,
                         isScanningStorage = false
                     )
                 }
@@ -1386,7 +1412,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 themeSaturation = preset.saturation,
                 themeNuance = preset.nuance,
                 themeAccentSaturation = 1.0f,
-                themeBgSaturation = 1.0f,
+                themeBgSaturation = 1.60f,
                 themeBgLightness = 1.0f,
                 themeModulesLightness = 1.0f,
                 themePaletteName = preset.name
@@ -1402,7 +1428,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 themeSaturation = 0.40f,
                 themeNuance = 0.45f,
                 themeAccentSaturation = 1.0f,
-                themeBgSaturation = 1.0f,
+                themeBgSaturation = 1.60f,
                 themeBgLightness = 1.0f,
                 themeModulesLightness = 1.0f,
                 themePaletteName = "Midnight Slate (Default)"
@@ -3302,7 +3328,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     fun saveCurrentProjectDirect() {
         val current = _uiState.value.activeProjectName.ifEmpty {
             _uiState.value.activeSceneId.ifEmpty {
-                "Project ${_uiState.value.scenes.size + 1}"
+                "Setlist ${_uiState.value.scenes.size + 1}"
             }
         }
         saveCurrentScene(current)
@@ -3327,7 +3353,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         val nextActive = if (state.activeSceneId.equals(sceneId, ignoreCase = true) || 
                                              state.activeSceneId.equals("$sceneId.scene", ignoreCase = true) || 
                                              state.activeProjectName.equals(sceneId, ignoreCase = true)) {
-                            updatedScenes.firstOrNull()?.id ?: "Project 1"
+                            updatedScenes.firstOrNull()?.id ?: "Setlist 1"
                         } else state.activeSceneId
                         val nextProjectName = if (state.activeProjectName.equals(sceneId, ignoreCase = true)) nextActive else state.activeProjectName
                         state.copy(
@@ -3498,7 +3524,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateActiveScene() {
         val currentActiveId = _uiState.value.activeSceneId.ifEmpty {
-            _uiState.value.activeProjectName.ifEmpty { "Project 1" }
+            _uiState.value.activeProjectName.ifEmpty { "Setlist 1" }
         }
         saveCurrentScene(currentActiveId)
     }
@@ -3725,6 +3751,19 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun closeSettingsDrawer() {
         _uiState.update { it.copy(isSettingsDrawerOpen = false) }
+    }
+
+    // ================= SHEETS DRAWER OVERLAY =================
+    fun openSheetsDrawer() {
+        _uiState.update { it.copy(isSheetsDrawerOpen = true) }
+    }
+
+    fun closeSheetsDrawer() {
+        _uiState.update { it.copy(isSheetsDrawerOpen = false) }
+    }
+
+    fun toggleSheetsDrawer() {
+        _uiState.update { it.copy(isSheetsDrawerOpen = !it.isSheetsDrawerOpen) }
     }
 
     fun setSettingsSubPage(page: String) {
