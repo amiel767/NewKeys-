@@ -40,7 +40,6 @@ import com.soundstage.mixer.model.AppScreenPage
 import com.soundstage.mixer.model.FxParameters
 import com.soundstage.mixer.ui.components.*
 import com.soundstage.mixer.ui.pages.DrumPadPage
-import com.soundstage.mixer.ui.pages.FileExplorerPage
 import com.soundstage.mixer.ui.pages.ProjectsPage
 import com.soundstage.mixer.ui.pages.SheetsPage
 import com.soundstage.mixer.ui.theme.*
@@ -153,74 +152,50 @@ fun MixerScreen(
                     )
                 }
                 AppScreenPage.DRUMPAD -> {
-                    if (uiState.isDrumPadFileExplorerOpen || uiState.isDrumPadLoopsOpen) {
-                        FileExplorerPage(
-                            title = if (uiState.isDrumPadLoopsOpen) "Explorateur de loops audio" else "Explorateur de fichiers audio",
-                            audioFiles = if (uiState.isDrumPadLoopsOpen) uiState.loopAudioFiles else uiState.drumPadAudioFiles,
-                            isLoopMode = uiState.isDrumPadLoopsOpen,
-                            onPreviewAudioFile = { viewModel.previewFileInExplorer(it, uiState.isDrumPadLoopsOpen) },
-                            onStopPreview = { viewModel.stopFileExplorerPreview() },
-                            onAssignToPad = { padId, sample, isLoop ->
-                                viewModel.assignDrumSampleOrLoop(padId, sample.name, sample.path, isLoop = isLoop)
-                            },
-                            onClose = {
-                                viewModel.openDrumPadFileExplorer(false)
-                                viewModel.openDrumPadLoopsView(false)
-                            }
-                        )
-                    } else {
-                        val tonicSlot = uiState.audioSlots.find { it.slotId == 9 }
-                        val tonicVol = tonicSlot?.volume ?: 0.85f
-                        DrumPadPage(
-                            drumPads = uiState.drumPads,
-                            isMixMode = uiState.isDrumPadMixMode,
-                            onToggleMixMode = { viewModel.toggleDrumPadMixMode() },
-                            feelSwing = uiState.drumFeelSwing,
-                            onFeelSwingChange = { viewModel.setDrumFeelSwing(it) },
-                            bpm = uiState.bpm,
-                            onBpmChange = { viewModel.setGlobalBpm(it) },
-                            scenes = uiState.scenes,
-                            activeSceneId = uiState.activeSceneId,
-                            onSelectScene = { viewModel.selectScene(it) },
-                            onCreateBlankScene = { viewModel.createBlankScene(it) },
-                            onDuplicateScene = { viewModel.duplicateCurrentScene(it) },
-                            activeTonicNotes = uiState.activeTonicNotes,
-                            onTonicNoteClick = { viewModel.onTonicNoteClick(it) },
-                            useFlats = uiState.useFlats,
-                            onToggleUseFlats = { viewModel.toggleUseFlats() },
-                            activeTonicPadName = uiState.activeTonicPadName,
-                            onOpenTonicSoundPicker = {
-                                viewModel.openSoundfontForSlot(9)
-                            },
-                            activeDrumKitName = uiState.activeDrumKitName,
-                            onOpenDrumKitPicker = { viewModel.toggleDrumPadMiniBrowser() },
-                            onStopTonicDrone = { viewModel.onTonicNoteClick("") },
-                            tonicOctaveRange = uiState.tonicOctaveRange,
-                            onTonicOctaveMinus = { viewModel.onTonicOctaveMinus() },
-                            onTonicOctavePlus = { viewModel.onTonicOctavePlus() },
-                            isMultiPadEnabled = uiState.isMultiPadEnabled,
-                            onToggleMultiPad = { viewModel.toggleMultiPad() },
-                            tonicVolume = tonicVol,
-                            onTonicVolumeChange = { viewModel.setTonicVolume(it) },
-                            tonicShimmer = uiState.tonicShimmer,
-                            onTonicShimmerChange = { viewModel.setTonicShimmer(it) },
-                            isMiniBrowserOpen = uiState.isDrumPadMiniBrowserOpen,
-                            onToggleMiniBrowser = { viewModel.toggleDrumPadMiniBrowser() },
-                            onCloseMiniBrowser = { viewModel.closeDrumPadMiniBrowser() },
-                            audioFiles = uiState.drumPadAudioFiles,
-                            onPreviewAudioFile = { viewModel.playDrumSample(it) },
-                            onAssignSampleToPad = { padId, sample ->
-                                viewModel.assignDrumSampleOrLoop(padId, sample.name, sample.path, isLoop = false)
-                            },
-                            onPadPressed = { viewModel.onDrumPadPressed(it) },
-                            onPadReleased = { viewModel.onDrumPadReleased(it) },
-                            onPadVolumeChange = { padId, vol -> viewModel.setDrumPadVolumeDirect(padId, vol) },
-                            onLoopBeatsChange = { padId, beats -> viewModel.setDrumPadLoopBeats(padId, beats) },
-                            onOpenFileExplorer = { viewModel.openDrumPadFileExplorer(true) },
-                            onOpenLoopsView = { viewModel.openDrumPadLoopsView(true) },
-                            onBackToMixer = { viewModel.navigateBackToMixer() }
-                        )
-                    }
+                    val tonicSlot = uiState.audioSlots.find { it.slotId == 9 }
+                    val tonicVol = tonicSlot?.volume ?: 0.85f
+                    DrumPadPage(
+                        drumPads = uiState.drumPads,
+                        isMixMode = uiState.isDrumPadMixMode,
+                        onToggleMixMode = { viewModel.toggleDrumPadMixMode() },
+                        feelSwing = uiState.drumFeelSwing,
+                        onFeelSwingChange = { viewModel.setDrumFeelSwing(it) },
+                        bpm = uiState.bpm,
+                        onBpmChange = { viewModel.setGlobalBpm(it) },
+                        activeTonicNotes = uiState.activeTonicNotes,
+                        onTonicNoteClick = { viewModel.onTonicNoteClick(it) },
+                        useFlats = uiState.useFlats,
+                        onToggleUseFlats = { viewModel.toggleUseFlats() },
+                        activeTonicPadName = uiState.activeTonicPadName,
+                        onOpenTonicSoundPicker = {
+                            viewModel.openSoundfontForSlot(9)
+                        },
+                        activeDrumKitName = uiState.activeDrumKitName,
+                        onOpenDrumKitPicker = { viewModel.toggleDrumPadMiniBrowser() },
+                        onStopTonicDrone = { viewModel.onTonicNoteClick("") },
+                        tonicOctaveRange = uiState.tonicOctaveRange,
+                        onTonicOctaveMinus = { viewModel.onTonicOctaveMinus() },
+                        onTonicOctavePlus = { viewModel.onTonicOctavePlus() },
+                        isMultiPadEnabled = uiState.isMultiPadEnabled,
+                        onToggleMultiPad = { viewModel.toggleMultiPad() },
+                        tonicVolume = tonicVol,
+                        onTonicVolumeChange = { viewModel.setTonicVolume(it) },
+                        tonicShimmer = uiState.tonicShimmer,
+                        onTonicShimmerChange = { viewModel.setTonicShimmer(it) },
+                        isMiniBrowserOpen = uiState.isDrumPadMiniBrowserOpen,
+                        onToggleMiniBrowser = { viewModel.toggleDrumPadMiniBrowser() },
+                        onCloseMiniBrowser = { viewModel.closeDrumPadMiniBrowser() },
+                        audioFiles = uiState.drumPadAudioFiles,
+                        onPreviewAudioFile = { viewModel.playDrumSample(it) },
+                        onAssignSampleToPad = { padId, sample ->
+                            viewModel.assignDrumSampleOrLoop(padId, sample.name, sample.path, isLoop = false)
+                        },
+                        onPadPressed = { viewModel.onDrumPadPressed(it) },
+                        onPadReleased = { viewModel.onDrumPadReleased(it) },
+                        onPadVolumeChange = { padId, vol -> viewModel.setDrumPadVolumeDirect(padId, vol) },
+                        onLoopBeatsChange = { padId, beats -> viewModel.setDrumPadLoopBeats(padId, beats) },
+                        onBackToMixer = { viewModel.navigateBackToMixer() }
+                    )
                 }
                 AppScreenPage.SHEETS -> {
                     SheetsPage(
@@ -614,19 +589,6 @@ fun MixerScreen(
                     onToggleRecording = { viewModel.toggleRecording() },
                     bpm = uiState.bpm,
                     onBpmChange = { viewModel.updateBpm(it) },
-                    isMetronomeOn = uiState.isMetronomeOn,
-                    onToggleMetronome = { viewModel.toggleMetronome() },
-                    isMetroPanelOpen = uiState.isMetroPanelOpen,
-                    onToggleMetroPanel = { viewModel.toggleMetroPanel() },
-                    metroSignature = uiState.metronomeSignature,
-                    onSelectSignature = { viewModel.setMetronomeSignature(it) },
-                    metroVolume = uiState.metronomeVolume,
-                    onMetroVolumeChange = { viewModel.setMetronomeVolume(it) },
-                    selectedKey = uiState.selectedRootKey,
-                    onSelectKey = { viewModel.setSelectedRootKey(it) },
-                    selectedScaleMode = uiState.selectedScaleMode,
-                    onSelectScaleMode = { viewModel.setScaleMode(it) },
-                    useFlats = uiState.useFlats,
                     
                     // Real-time Detected Chord
                     detectedChord = detectedChord,
@@ -740,43 +702,16 @@ fun MixerScreen(
 
 
             // Outside touch scrim for quick closing of floating dropdowns
-            if (uiState.isLoopsPanelOpen || uiState.isMetroPanelOpen || uiState.isMidiPanelOpen || uiState.activePopup == ActivePopup.SCENE) {
+            if (uiState.isLoopsPanelOpen || uiState.isMidiPanelOpen || uiState.activePopup == ActivePopup.SCENE) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(Color(0x22000000))
                         .clickable {
                             if (uiState.isLoopsPanelOpen) viewModel.closeLoopsPanel()
-                            if (uiState.isMetroPanelOpen) viewModel.closeMetroPanel()
                             if (uiState.isMidiPanelOpen) viewModel.closeMidiPanel()
                             if (uiState.activePopup == ActivePopup.SCENE) viewModel.closePopup()
                         }
-                )
-            }
-
-            // Floating Metronome Dropdown Panel
-            AnimatedVisibility(
-                visible = uiState.isMetroPanelOpen,
-                enter = fadeIn(tween(180)) + slideInVertically(initialOffsetY = { 20 }, animationSpec = tween(200)),
-                exit = fadeOut(tween(150)) + slideOutVertically(targetOffsetY = { 20 }, animationSpec = tween(150)),
-                modifier = Modifier
-                    .padding(bottom = 40.dp, start = 120.dp)
-                    .align(Alignment.BottomStart)
-            ) {
-                MetronomeFloatingPanel(
-                    isOpen = uiState.isMetroPanelOpen,
-                    isMetronomeOn = uiState.isMetronomeOn,
-                    onToggleMetronome = { viewModel.toggleMetronome() },
-                    selectedSignature = uiState.metronomeSignature,
-                    onSelectSignature = { viewModel.setMetronomeSignature(it) },
-                    volume = uiState.metronomeVolume,
-                    onVolumeChange = { viewModel.setMetronomeVolume(it) },
-                    selectedKey = uiState.selectedRootKey,
-                    onSelectKey = { viewModel.setSelectedRootKey(it) },
-                    selectedScaleMode = uiState.selectedScaleMode,
-                    onSelectScaleMode = { viewModel.setScaleMode(it) },
-                    useFlats = uiState.useFlats,
-                    onClose = { viewModel.closeMetroPanel() }
                 )
             }
 

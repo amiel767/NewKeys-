@@ -56,6 +56,8 @@ class AppStatePersistence(context: Context) {
         private const val KEY_THEME_MODULES_LIGHTNESS = "theme_modules_lightness"
         private const val KEY_TRACK_COLOR_SATURATION = "track_color_saturation"
         private const val KEY_FADER_AUTO_FIT = "is_fader_auto_fit"
+        private const val KEY_PATCHES_JSON = "patches_json"
+        private const val KEY_ACTIVE_PATCH_ID = "active_patch_id"
     }
 
     data class SavedTrackData(
@@ -132,7 +134,9 @@ class AppStatePersistence(context: Context) {
         val themeBgLightness: Float? = null,
         val themeModulesLightness: Float? = null,
         val trackColorSaturation: Float? = null,
-        val isFaderAutoFit: Boolean? = null
+        val isFaderAutoFit: Boolean? = null,
+        val patches: List<PatchItem> = emptyList(),
+        val activePatchId: String? = null
     )
 
     fun saveAppState(
@@ -172,7 +176,9 @@ class AppStatePersistence(context: Context) {
         themeBgLightness: Float = 1.0f,
         themeModulesLightness: Float = 1.0f,
         trackColorSaturation: Float = 1.0f,
-        isFaderAutoFit: Boolean = false
+        isFaderAutoFit: Boolean = false,
+        patches: List<PatchItem> = emptyList(),
+        activePatchId: String? = null
     ) {
         try {
             val tracksArray = JSONArray()
@@ -297,6 +303,82 @@ class AppStatePersistence(context: Context) {
             val snapshotNamesObj = JSONObject()
             snapshotCustomNames.forEach { (k, v) -> snapshotNamesObj.put(k, v) }
 
+            val patchesArray = JSONArray()
+            patches.forEach { p ->
+                val pObj = JSONObject().apply {
+                    put("id", p.id)
+                    put("name", p.name)
+                    put("visibleTracksCount", p.visibleTracksCount)
+                    put("transpose", p.transpose)
+                    put("octave", p.octave)
+                    put("bpm", p.bpm)
+                    put("masterVolume", p.masterVolume.toDouble())
+                    put("activeSnapshotSlot", p.activeSnapshotSlot ?: "slot_default")
+
+                    val pSlotsConfig = JSONArray()
+                    p.configuredSnapshotSlots.forEach { pSlotsConfig.put(it) }
+                    put("configuredSnapshotSlots", pSlotsConfig)
+
+                    val pCustomNames = JSONObject()
+                    p.snapshotCustomNames.forEach { (k, v) -> pCustomNames.put(k, v) }
+                    put("snapshotCustomNames", pCustomNames)
+
+                    val pSnapshotsObj = JSONObject()
+                    p.snapshots.forEach { (slotKey, snap) ->
+                        val sObj = JSONObject().apply {
+                            put("slotName", snap.slotName)
+                            put("globalTranspose", snap.globalTranspose)
+                            put("globalOctaveShift", snap.globalOctaveShift)
+                            put("masterVolume", snap.masterVolume.toDouble())
+                            put("visibleTracksCount", snap.visibleTracksCount)
+                            put("timestamp", snap.timestamp)
+                            val tArray = JSONArray()
+                            snap.tracks.forEach { t ->
+                                val to = JSONObject().apply {
+                                    put("id", t.id)
+                                    put("volume", t.volume.toDouble())
+                                    put("pan", t.pan.toDouble())
+                                    put("isMuted", t.isMuted)
+                                    put("isSolo", t.isSolo)
+                                    put("isEnabled", t.isEnabled)
+                                    put("soundfontName", t.soundfontName)
+                                    put("patchName", t.patchName)
+                                    put("bank", t.bank)
+                                    put("program", t.program)
+                                    put("transpose", t.transpose)
+                                    put("octave", t.octave)
+                                    put("reverbSend", t.reverbSend.toDouble())
+                                }
+                                tArray.put(to)
+                            }
+                            put("tracks", tArray)
+                        }
+                        pSnapshotsObj.put(slotKey, sObj)
+                    }
+                    put("snapshots", pSnapshotsObj)
+
+                    val pTracksArr = JSONArray()
+                    p.tracks.forEach { t ->
+                        val to = JSONObject().apply {
+                            put("id", t.id)
+                            put("name", t.name)
+                            put("isEnabled", t.isEnabled)
+                            put("volume", t.volume.toDouble())
+                            put("pan", t.pan.toDouble())
+                            put("soundfontName", t.soundfontName)
+                            put("patchName", t.patchName)
+                            put("bank", t.bank)
+                            put("program", t.program)
+                            put("reverbPreset", t.reverbPreset)
+                            put("reverbMix", t.reverbMix.toDouble())
+                        }
+                        pTracksArr.put(to)
+                    }
+                    put("tracks", pTracksArr)
+                }
+                patchesArray.put(pObj)
+            }
+
             prefs.edit().apply {
                 putString(KEY_THEME, currentTheme.name)
                 putInt(KEY_BPM, bpm)
@@ -335,6 +417,8 @@ class AppStatePersistence(context: Context) {
                 putFloat(KEY_THEME_MODULES_LIGHTNESS, themeModulesLightness)
                 putFloat(KEY_TRACK_COLOR_SATURATION, trackColorSaturation)
                 putBoolean(KEY_FADER_AUTO_FIT, isFaderAutoFit)
+                putString(KEY_PATCHES_JSON, patchesArray.toString())
+                putString(KEY_ACTIVE_PATCH_ID, activePatchId)
                 apply()
             }
         } catch (e: Exception) {
@@ -575,6 +659,130 @@ class AppStatePersistence(context: Context) {
 
             val isFaderAutoFit = if (prefs.contains(KEY_FADER_AUTO_FIT)) prefs.getBoolean(KEY_FADER_AUTO_FIT, false) else null
 
+            val activePatchId = prefs.getString(KEY_ACTIVE_PATCH_ID, null)
+            val restoredPatches = mutableListOf<PatchItem>()
+            val patchesJson = prefs.getString(KEY_PATCHES_JSON, null)
+            if (patchesJson != null) {
+                try {
+                    val pArr = JSONArray(patchesJson)
+                    for (i in 0 until pArr.length()) {
+                        val pObj = pArr.getJSONObject(i)
+                        val pId = pObj.optString("id", "patch_$i")
+                        val pName = pObj.optString("name", "Patch ${i + 1}")
+                        val pVisible = pObj.optInt("visibleTracksCount", 1)
+                        val pTrans = pObj.optInt("transpose", 0)
+                        val pOct = pObj.optInt("octave", 0)
+                        val pBpm = pObj.optInt("bpm", 120)
+                        val pMVol = pObj.optDouble("masterVolume", 0.85).toFloat()
+                        val pActiveSlot = pObj.optString("activeSnapshotSlot", "slot_default")
+
+                        val pConfSlots = mutableListOf<String>()
+                        val confArr = pObj.optJSONArray("configuredSnapshotSlots")
+                        if (confArr != null) {
+                            for (c in 0 until confArr.length()) {
+                                pConfSlots.add(confArr.getString(c))
+                            }
+                        }
+                        if (pConfSlots.isEmpty()) pConfSlots.add("slot_default")
+
+                        val pCustomNames = mutableMapOf<String, String>()
+                        val cNamesObj = pObj.optJSONObject("snapshotCustomNames")
+                        if (cNamesObj != null) {
+                            val keys = cNamesObj.keys()
+                            while (keys.hasNext()) {
+                                val k = keys.next()
+                                pCustomNames[k] = cNamesObj.getString(k)
+                            }
+                        }
+
+                        val pSnapshots = mutableMapOf<String, SubSceneSnapshot>()
+                        val snapsObj = pObj.optJSONObject("snapshots")
+                        if (snapsObj != null) {
+                            val sKeys = snapsObj.keys()
+                            while (sKeys.hasNext()) {
+                                val sk = sKeys.next()
+                                val sItem = snapsObj.getJSONObject(sk)
+                                val snapTracks = mutableListOf<TrackSnapshot>()
+                                val tArr = sItem.optJSONArray("tracks")
+                                if (tArr != null) {
+                                    for (ti in 0 until tArr.length()) {
+                                        val to = tArr.getJSONObject(ti)
+                                        snapTracks.add(
+                                            TrackSnapshot(
+                                                id = to.optInt("id", ti + 1),
+                                                volume = to.optDouble("volume", 0.65).toFloat(),
+                                                pan = to.optDouble("pan", 0.0).toFloat(),
+                                                isMuted = to.optBoolean("isMuted", false),
+                                                isSolo = to.optBoolean("isSolo", false),
+                                                isEnabled = to.optBoolean("isEnabled", true),
+                                                soundfontName = to.optString("soundfontName", ""),
+                                                patchName = to.optString("patchName", "-"),
+                                                bank = to.optInt("bank", 0),
+                                                program = to.optInt("program", 0),
+                                                reverbSend = to.optDouble("reverbSend", 0.20).toFloat(),
+                                                transpose = to.optInt("transpose", 0),
+                                                octave = to.optInt("octave", 0)
+                                            )
+                                        )
+                                    }
+                                }
+                                pSnapshots[sk] = SubSceneSnapshot(
+                                    slotName = sItem.optString("slotName", sk),
+                                    tracks = snapTracks,
+                                    globalTranspose = sItem.optInt("globalTranspose", 0),
+                                    globalOctaveShift = sItem.optInt("globalOctaveShift", 0),
+                                    masterVolume = sItem.optDouble("masterVolume", 0.85).toFloat(),
+                                    visibleTracksCount = sItem.optInt("visibleTracksCount", 1),
+                                    timestamp = sItem.optLong("timestamp", System.currentTimeMillis())
+                                )
+                            }
+                        }
+
+                        val pTracks = mutableListOf<TrackChannel>()
+                        val trArr = pObj.optJSONArray("tracks")
+                        if (trArr != null) {
+                            for (ti in 0 until trArr.length()) {
+                                val to = trArr.getJSONObject(ti)
+                                pTracks.add(
+                                    TrackChannel(
+                                        id = to.optInt("id", ti + 1),
+                                        name = to.optString("name", "Track ${ti + 1}"),
+                                        isEnabled = to.optBoolean("isEnabled", ti == 0),
+                                        volume = to.optDouble("volume", 0.65).toFloat(),
+                                        pan = to.optDouble("pan", 0.0).toFloat(),
+                                        soundfontName = to.optString("soundfontName", ""),
+                                        patchName = to.optString("patchName", "-"),
+                                        bank = to.optInt("bank", 0),
+                                        program = to.optInt("program", 0),
+                                        reverbPreset = to.optString("reverbPreset", "Concert Hall"),
+                                        reverbMix = to.optDouble("reverbMix", 0.20).toFloat()
+                                    )
+                                )
+                            }
+                        }
+
+                        restoredPatches.add(
+                            PatchItem(
+                                id = pId,
+                                name = pName,
+                                tracks = pTracks,
+                                visibleTracksCount = pVisible,
+                                transpose = pTrans,
+                                octave = pOct,
+                                bpm = pBpm,
+                                masterVolume = pMVol,
+                                snapshots = pSnapshots,
+                                configuredSnapshotSlots = pConfSlots,
+                                snapshotCustomNames = pCustomNames,
+                                activeSnapshotSlot = pActiveSlot
+                            )
+                        )
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error parsing saved patches: ${e.message}")
+                }
+            }
+
             return RestoredAppState(
                 themeName = themeName,
                 bpm = bpm,
@@ -612,7 +820,9 @@ class AppStatePersistence(context: Context) {
                 snapshots = snapshotsMap,
                 activeSnapshotSlot = activeSnapshotSlot,
                 configuredSnapshotSlots = configuredSlotsList,
-                snapshotCustomNames = customNamesMap
+                snapshotCustomNames = customNamesMap,
+                patches = restoredPatches,
+                activePatchId = activePatchId
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error loading app state: ${e.message}")

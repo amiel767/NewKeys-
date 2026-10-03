@@ -442,6 +442,14 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     val restoredConfiguredSlots = if (saved.configuredSnapshotSlots.isNotEmpty()) saved.configuredSnapshotSlots else listOf("slot_default")
                     val restoredCustomNames = saved.snapshotCustomNames
 
+                    val restoredPatches = if (saved.patches.isNotEmpty()) saved.patches else state.patches
+                    val restoredActivePatchId = saved.activePatchId ?: restoredPatches.firstOrNull()?.id
+                    val activePatch = restoredPatches.find { it.id == restoredActivePatchId }
+                    val finalSnapshots = if (!activePatch?.snapshots.isNullOrEmpty()) activePatch!!.snapshots else saved.snapshots
+                    val finalConfSlots = if (!activePatch?.configuredSnapshotSlots.isNullOrEmpty()) activePatch!!.configuredSnapshotSlots else restoredConfiguredSlots
+                    val finalCustomNames = if (!activePatch?.snapshotCustomNames.isNullOrEmpty()) activePatch!!.snapshotCustomNames else restoredCustomNames
+                    val finalActiveSlot = activePatch?.activeSnapshotSlot ?: saved.activeSnapshotSlot
+
                     state.copy(
                         currentTheme = restoredTheme,
                         currentPage = AppScreenPage.PROJECTS,
@@ -460,11 +468,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         audioSlots = restoredSlots,
                         drumPads = restoredDrums,
                         fxParameters = restoredFx,
-                        snapshots = saved.snapshots,
-                        activeSnapshotSlot = saved.activeSnapshotSlot,
+                        snapshots = finalSnapshots,
+                        activeSnapshotSlot = finalActiveSlot,
                         customLibreTracks = null,
-                        configuredSnapshotSlots = restoredConfiguredSlots,
-                        snapshotCustomNames = restoredCustomNames,
+                        configuredSnapshotSlots = finalConfSlots,
+                        snapshotCustomNames = finalCustomNames,
+                        patches = restoredPatches,
+                        activePatchId = restoredActivePatchId,
                         tonicBrightness = saved.tonicBrightness ?: state.tonicBrightness,
                         tonicShimmer = saved.tonicShimmer ?: state.tonicShimmer,
                         drumReverb = saved.drumReverb ?: state.drumReverb,
@@ -623,6 +633,25 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun persistCurrentState() {
         val state = _uiState.value
+        val updatedPatches = if (state.activePatchId != null && state.patches.isNotEmpty()) {
+            state.patches.map { p ->
+                if (p.id == state.activePatchId) {
+                    p.copy(
+                        tracks = state.tracks,
+                        audioSlots = state.audioSlots,
+                        visibleTracksCount = state.visibleTracksCount,
+                        transpose = state.transpose,
+                        octave = state.octave,
+                        masterVolume = state.masterTrack.volume,
+                        snapshots = state.snapshots,
+                        configuredSnapshotSlots = state.configuredSnapshotSlots,
+                        snapshotCustomNames = state.snapshotCustomNames,
+                        activeSnapshotSlot = state.activeSnapshotSlot
+                    )
+                } else p
+            }
+        } else state.patches
+
         appStatePersistence.saveAppState(
             currentTheme = state.currentTheme,
             bpm = state.bpm,
@@ -660,7 +689,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             themeBgLightness = state.themeBgLightness,
             themeModulesLightness = state.themeModulesLightness,
             trackColorSaturation = state.trackColorSaturation,
-            isFaderAutoFit = state.isFaderAutoFit
+            isFaderAutoFit = state.isFaderAutoFit,
+            patches = updatedPatches,
+            activePatchId = state.activePatchId
         )
         // Full auto-save: automatically sync to the current project's .scene file if a project is actively open
         if (state.activeProjectName.isNotEmpty() && state.activeProjectName != "None") {
@@ -844,6 +875,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
 
+                val currentActiveName = _uiState.value.activeProjectName.ifEmpty { _uiState.value.activeSceneId }
+                val activeSceneMatch = realScenes.find { it.name.equals(currentActiveName, ignoreCase = true) }
+                val patchesToUse = if (_uiState.value.patches.isEmpty() && activeSceneMatch != null && activeSceneMatch.patches.isNotEmpty()) {
+                    activeSceneMatch.patches
+                } else _uiState.value.patches
+
                 _uiState.update {
                     it.copy(
                         storageBaseDirPath = fileManager.baseDir.absolutePath,
@@ -861,6 +898,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         currentLoopDirItems = loopDirItems,
                         currentMidiDirItems = midiDirItems,
                         soundfontBankFiles = bankFiles,
+                        patches = patchesToUse,
+                        activePatchId = if (it.activePatchId.isNullOrEmpty()) patchesToUse.firstOrNull()?.id else it.activePatchId,
                         scenes = effectiveScenes,
                         isScanningStorage = false
                     )
@@ -3086,22 +3125,146 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         val pTracksCount = pObj.optInt("visibleTracksCount", enabledCount)
                         val pTranspose = pObj.optInt("transpose", transpose)
                         val pOctave = pObj.optInt("octave", octave)
+                        val pBpm = pObj.optInt("bpm", bpm)
                         val pMasterVol = pObj.optDouble("masterVolume", masterVol.toDouble()).toFloat()
+                        val pActiveSlot = pObj.optString("activeSnapshotSlot", "slot_default")
+
+                        val pConfSlots = mutableListOf<String>()
+                        val pConfArr = pObj.optJSONArray("configuredSnapshotSlots")
+                        if (pConfArr != null) {
+                            for (ci in 0 until pConfArr.length()) {
+                                pConfSlots.add(pConfArr.getString(ci))
+                            }
+                        }
+                        if (pConfSlots.isEmpty()) pConfSlots.add("slot_default")
+
+                        val pCustomNames = mutableMapOf<String, String>()
+                        val pCnObj = pObj.optJSONObject("snapshotCustomNames")
+                        if (pCnObj != null) {
+                            val keys = pCnObj.keys()
+                            while (keys.hasNext()) {
+                                val k = keys.next()
+                                pCustomNames[k] = pCnObj.getString(k)
+                            }
+                        }
+
+                        val pSnapshots = mutableMapOf<String, SubSceneSnapshot>()
+                        val pSnapsObj = pObj.optJSONObject("snapshots")
+                        if (pSnapsObj != null) {
+                            val sKeys = pSnapsObj.keys()
+                            while (sKeys.hasNext()) {
+                                val sk = sKeys.next()
+                                val sItem = pSnapsObj.getJSONObject(sk)
+                                val snapTracks = mutableListOf<TrackSnapshot>()
+                                val tArr = sItem.optJSONArray("tracks")
+                                if (tArr != null) {
+                                    for (ti in 0 until tArr.length()) {
+                                        val to = tArr.getJSONObject(ti)
+                                        snapTracks.add(
+                                            TrackSnapshot(
+                                                id = to.optInt("id", ti + 1),
+                                                volume = to.optDouble("volume", 0.65).toFloat(),
+                                                pan = to.optDouble("pan", 0.0).toFloat(),
+                                                isMuted = to.optBoolean("isMuted", false),
+                                                isSolo = to.optBoolean("isSolo", false),
+                                                isEnabled = to.optBoolean("isEnabled", true),
+                                                soundfontName = to.optString("soundfontName", ""),
+                                                patchName = to.optString("patchName", "-"),
+                                                bank = to.optInt("bank", 0),
+                                                program = to.optInt("program", 0),
+                                                reverbSend = to.optDouble("reverbSend", 0.20).toFloat(),
+                                                transpose = to.optInt("transpose", 0),
+                                                octave = to.optInt("octave", 0)
+                                            )
+                                        )
+                                    }
+                                }
+                                pSnapshots[sk] = SubSceneSnapshot(
+                                    slotName = sItem.optString("slotName", sk),
+                                    tracks = snapTracks,
+                                    globalTranspose = sItem.optInt("globalTranspose", 0),
+                                    globalOctaveShift = sItem.optInt("globalOctaveShift", 0),
+                                    masterVolume = sItem.optDouble("masterVolume", 0.85).toFloat(),
+                                    visibleTracksCount = sItem.optInt("visibleTracksCount", 1),
+                                    timestamp = sItem.optLong("timestamp", System.currentTimeMillis())
+                                )
+                            }
+                        }
+
+                        val pTracks = mutableListOf<TrackChannel>()
+                        val trArr = pObj.optJSONArray("tracks")
+                        if (trArr != null) {
+                            for (ti in 0 until trArr.length()) {
+                                val to = trArr.getJSONObject(ti)
+                                pTracks.add(
+                                    TrackChannel(
+                                        id = to.optInt("id", ti + 1),
+                                        name = to.optString("name", "Track ${ti + 1}"),
+                                        isEnabled = to.optBoolean("isEnabled", ti == 0),
+                                        volume = to.optDouble("volume", 0.65).toFloat(),
+                                        pan = to.optDouble("pan", 0.0).toFloat(),
+                                        soundfontName = to.optString("soundfontName", ""),
+                                        patchName = to.optString("patchName", "-"),
+                                        bank = to.optInt("bank", 0),
+                                        program = to.optInt("program", 0),
+                                        reverbPreset = to.optString("reverbPreset", "Concert Hall"),
+                                        reverbMix = to.optDouble("reverbMix", 0.20).toFloat()
+                                    )
+                                )
+                            }
+                        }
+
                         restoredPatches.add(
                             PatchItem(
                                 id = pId,
                                 name = pName,
+                                tracks = pTracks,
                                 visibleTracksCount = pTracksCount,
                                 transpose = pTranspose,
                                 octave = pOctave,
+                                bpm = pBpm,
                                 masterVolume = pMasterVol,
-                                snapshots = snapshotsMap,
-                                configuredSnapshotSlots = configuredSlots
+                                snapshots = pSnapshots,
+                                configuredSnapshotSlots = pConfSlots,
+                                snapshotCustomNames = pCustomNames,
+                                activeSnapshotSlot = pActiveSlot
                             )
                         )
                     }
                 }
+
+                if (restoredPatches.isEmpty()) {
+                    restoredPatches.add(
+                        PatchItem(
+                            id = "patch_${System.currentTimeMillis()}",
+                            name = "Patch 1",
+                            tracks = updatedTracks,
+                            audioSlots = updatedSlots,
+                            visibleTracksCount = enabledCount,
+                            transpose = transpose,
+                            octave = octave,
+                            bpm = bpm,
+                            masterVolume = masterVol,
+                            snapshots = snapshotsMap,
+                            configuredSnapshotSlots = configuredSlots,
+                            snapshotCustomNames = customNames,
+                            activeSnapshotSlot = activeSlot
+                        )
+                    )
+                }
+
                 val restoredActivePatchId = obj.optString("activePatchId", restoredPatches.firstOrNull()?.id ?: "")
+                val effectiveActivePatchId = if (restoredActivePatchId.isNotEmpty() && restoredPatches.any { it.id == restoredActivePatchId }) {
+                    restoredActivePatchId
+                } else {
+                    restoredPatches.firstOrNull()?.id ?: ""
+                }
+                val activePatch = restoredPatches.find { it.id == effectiveActivePatchId }
+                val activeSnapshots = if (!activePatch?.snapshots.isNullOrEmpty()) activePatch!!.snapshots else snapshotsMap
+                val activeConfSlots = if (!activePatch?.configuredSnapshotSlots.isNullOrEmpty()) activePatch!!.configuredSnapshotSlots else configuredSlots
+                val activeCustomNames = if (!activePatch?.snapshotCustomNames.isNullOrEmpty()) activePatch!!.snapshotCustomNames else customNames
+                val activeSlotName = activePatch?.activeSnapshotSlot ?: activeSlot
+                val activeTracks = if (!activePatch?.tracks.isNullOrEmpty()) activePatch!!.tracks else updatedTracks
 
                 withContext(Dispatchers.Main) {
                     _uiState.update { state ->
@@ -3117,7 +3280,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                             drumVolume = drumVol,
                             drumReverb = drumRev,
                             masterTrack = state.masterTrack.copy(volume = masterVol),
-                            tracks = updatedTracks,
+                            tracks = activeTracks,
                             audioSlots = updatedSlots,
                             drumPads = updatedDrumPads,
                             fxParameters = updatedFx,
@@ -3129,12 +3292,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                             themePaletteName = restoredThemePalette,
                             trackColorSaturation = restoredTrackSaturation,
                             visibleTracksCount = enabledCount,
-                            snapshots = snapshotsMap,
-                            configuredSnapshotSlots = configuredSlots,
-                            snapshotCustomNames = customNames,
-                            activeSnapshotSlot = activeSlot,
+                            snapshots = activeSnapshots,
+                            configuredSnapshotSlots = activeConfSlots,
+                            snapshotCustomNames = activeCustomNames,
+                            activeSnapshotSlot = activeSlotName,
                             patches = restoredPatches,
-                            activePatchId = if (restoredActivePatchId.isNotEmpty()) restoredActivePatchId else restoredPatches.firstOrNull()?.id,
+                            activePatchId = effectiveActivePatchId,
                             customLibreTracks = null
                         )
                     }
@@ -3198,6 +3361,25 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val state = _uiState.value
+                val currentPatches = if (state.activePatchId != null && state.patches.isNotEmpty()) {
+                    state.patches.map { p ->
+                        if (p.id == state.activePatchId) {
+                            p.copy(
+                                tracks = state.tracks,
+                                audioSlots = state.audioSlots,
+                                visibleTracksCount = state.visibleTracksCount,
+                                transpose = state.transpose,
+                                octave = state.octave,
+                                masterVolume = state.masterTrack.volume,
+                                snapshots = state.snapshots,
+                                configuredSnapshotSlots = state.configuredSnapshotSlots,
+                                snapshotCustomNames = state.snapshotCustomNames,
+                                activeSnapshotSlot = state.activeSnapshotSlot
+                            )
+                        } else p
+                    }
+                } else state.patches
+
                 val json = org.json.JSONObject().apply {
                     put("name", name)
                     put("bpm", state.bpm)
@@ -3354,16 +3536,79 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     put("snapshotCustomNames", customNamesObj)
                     put("activeSnapshotSlot", state.activeSnapshotSlot ?: "slot_default")
 
-                    // Save Patches (Level 2)
+                    // Save Patches (Level 2) with independent snapshots & settings per patch
                     val patchesArr = org.json.JSONArray()
-                    state.patches.forEach { p ->
+                    currentPatches.forEach { p ->
                         val pObj = org.json.JSONObject().apply {
                             put("id", p.id)
                             put("name", p.name)
                             put("visibleTracksCount", p.visibleTracksCount)
                             put("transpose", p.transpose)
                             put("octave", p.octave)
+                            put("bpm", p.bpm)
                             put("masterVolume", p.masterVolume.toDouble())
+                            put("activeSnapshotSlot", p.activeSnapshotSlot ?: "slot_default")
+
+                            val pSlotsConfig = org.json.JSONArray()
+                            p.configuredSnapshotSlots.forEach { pSlotsConfig.put(it) }
+                            put("configuredSnapshotSlots", pSlotsConfig)
+
+                            val pCustomNames = org.json.JSONObject()
+                            p.snapshotCustomNames.forEach { (k, v) -> pCustomNames.put(k, v) }
+                            put("snapshotCustomNames", pCustomNames)
+
+                            val pSnapshotsObj = org.json.JSONObject()
+                            p.snapshots.forEach { (slotKey, snap) ->
+                                val sObj = org.json.JSONObject().apply {
+                                    put("slotName", snap.slotName)
+                                    put("globalTranspose", snap.globalTranspose)
+                                    put("globalOctaveShift", snap.globalOctaveShift)
+                                    put("masterVolume", snap.masterVolume.toDouble())
+                                    put("visibleTracksCount", snap.visibleTracksCount)
+                                    put("timestamp", snap.timestamp)
+                                    val tArray = org.json.JSONArray()
+                                    snap.tracks.forEach { t ->
+                                        val to = org.json.JSONObject().apply {
+                                            put("id", t.id)
+                                            put("volume", t.volume.toDouble())
+                                            put("pan", t.pan.toDouble())
+                                            put("isMuted", t.isMuted)
+                                            put("isSolo", t.isSolo)
+                                            put("isEnabled", t.isEnabled)
+                                            put("soundfontName", t.soundfontName)
+                                            put("patchName", t.patchName)
+                                            put("bank", t.bank)
+                                            put("program", t.program)
+                                            put("transpose", t.transpose)
+                                            put("octave", t.octave)
+                                            put("reverbSend", t.reverbSend.toDouble())
+                                        }
+                                        tArray.put(to)
+                                    }
+                                    put("tracks", tArray)
+                                }
+                                pSnapshotsObj.put(slotKey, sObj)
+                            }
+                            put("snapshots", pSnapshotsObj)
+
+                            val pTracksArr = org.json.JSONArray()
+                            p.tracks.forEach { t ->
+                                val to = org.json.JSONObject().apply {
+                                    put("id", t.id)
+                                    put("name", t.name)
+                                    put("isEnabled", t.isEnabled)
+                                    put("volume", t.volume.toDouble())
+                                    put("pan", t.pan.toDouble())
+                                    put("soundfontName", t.soundfontName)
+                                    put("patchName", t.patchName)
+                                    put("bank", t.bank)
+                                    put("program", t.program)
+                                    put("reverbPreset", t.reverbPreset)
+                                    put("reverbMix", t.reverbMix.toDouble())
+                                }
+                                pTracksArr.put(to)
+                            }
+                            put("tracks", pTracksArr)
                         }
                         patchesArr.put(pObj)
                     }
@@ -3375,14 +3620,14 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 val sceneFiles = fileManager.getSceneFiles()
                 val updatedScenes = sceneFiles.map { f ->
                     val isCurrent = f.name.equals(name, ignoreCase = true)
-                    val currentPatches = if (isCurrent) state.patches else emptyList()
+                    val currentPatchesList = if (isCurrent) currentPatches else emptyList()
                     ScenePreset(
                         id = f.name,
                         name = f.name,
                         timestamp = if (f.formattedDate.isNotEmpty()) f.formattedDate else "Recently used",
                         color = NeonCyan,
-                        patchesCount = currentPatches.size,
-                        patches = currentPatches
+                        patchesCount = currentPatchesList.size,
+                        patches = currentPatchesList
                     )
                 }
 
@@ -3390,7 +3635,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     _uiState.update {
                         it.copy(
                             scenes = updatedScenes,
-                            activeSceneId = name
+                            activeSceneId = name,
+                            patches = currentPatches
                         )
                     }
                 }
@@ -3514,14 +3760,26 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     visibleTracksCount = current.visibleTracksCount
                 )
                 val updatedSnapshots = current.snapshots + (newSlotKey to currentSnapshot)
+                val updatedPatches = current.patches.map { p ->
+                    if (p.id == current.activePatchId) {
+                        p.copy(
+                            configuredSnapshotSlots = updatedSlots,
+                            snapshotCustomNames = updatedNames,
+                            snapshots = updatedSnapshots,
+                            activeSnapshotSlot = newSlotKey
+                        )
+                    } else p
+                }
                 current.copy(
                     configuredSnapshotSlots = updatedSlots,
                     snapshotCustomNames = updatedNames,
                     snapshots = updatedSnapshots,
-                    activeSnapshotSlot = newSlotKey
+                    activeSnapshotSlot = newSlotKey,
+                    patches = updatedPatches
                 )
             } else current
         }
+        persistCurrentStateDebounced()
     }
 
     fun removeSnapshotSlot(slotKey: String) {
@@ -3531,13 +3789,25 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             val updatedNames = current.snapshotCustomNames - slotKey
             val updatedSnapshots = current.snapshots - slotKey
             val newActive = if (current.activeSnapshotSlot == slotKey) "slot_default" else current.activeSnapshotSlot
+            val updatedPatches = current.patches.map { p ->
+                if (p.id == current.activePatchId) {
+                    p.copy(
+                        configuredSnapshotSlots = updatedSlots,
+                        snapshotCustomNames = updatedNames,
+                        snapshots = updatedSnapshots,
+                        activeSnapshotSlot = newActive
+                    )
+                } else p
+            }
             current.copy(
                 configuredSnapshotSlots = updatedSlots,
                 snapshotCustomNames = updatedNames,
                 snapshots = updatedSnapshots,
-                activeSnapshotSlot = newActive
+                activeSnapshotSlot = newActive,
+                patches = updatedPatches
             )
         }
+        persistCurrentStateDebounced()
     }
 
     fun openProject(projectName: String) {
@@ -3563,11 +3833,25 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     fun createNewProject(projectName: String = "Setlist", isBlank: Boolean = true) {
         snapshotTransitionJob?.cancel()
         val cleanName = projectName.trim().ifEmpty { "Setlist ${_uiState.value.scenes.size + 1}" }
+        val defaultPatchId = "patch_${System.currentTimeMillis()}"
         if (isBlank) {
             NativeAudioBridge.safeAllNotesOff()
             NativeAudioBridge.safeUnloadAllSoundFonts(NativeAudioBridge.ENGINE_FADER)
             NativeAudioBridge.safeTrimMemory()
             val fresh = createInitialState()
+            val initialPatch = PatchItem(
+                id = defaultPatchId,
+                name = "Patch 1",
+                tracks = fresh.tracks,
+                audioSlots = fresh.audioSlots,
+                visibleTracksCount = 1,
+                transpose = 0,
+                octave = 0,
+                masterVolume = 0.85f,
+                snapshots = emptyMap(),
+                configuredSnapshotSlots = listOf("slot_default"),
+                activeSnapshotSlot = "slot_default"
+            )
             _uiState.update { current ->
                 current.copy(
                     activeProjectName = cleanName,
@@ -3582,18 +3866,35 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     configuredSnapshotSlots = listOf("slot_default"),
                     snapshotCustomNames = emptyMap(),
                     activeSnapshotSlot = "slot_default",
-                    patches = emptyList(),
-                    activePatchId = null,
+                    patches = listOf(initialPatch),
+                    activePatchId = defaultPatchId,
                     customLibreTracks = null,
                     currentPage = AppScreenPage.MIXER
                 )
             }
             saveCurrentScene(cleanName)
         } else {
-            _uiState.update { current ->
-                current.copy(
+            val current = _uiState.value
+            val initialPatch = PatchItem(
+                id = defaultPatchId,
+                name = "Patch 1",
+                tracks = current.tracks,
+                audioSlots = current.audioSlots,
+                visibleTracksCount = current.visibleTracksCount,
+                transpose = current.transpose,
+                octave = current.octave,
+                masterVolume = current.masterTrack.volume,
+                snapshots = current.snapshots,
+                configuredSnapshotSlots = current.configuredSnapshotSlots,
+                snapshotCustomNames = current.snapshotCustomNames,
+                activeSnapshotSlot = current.activeSnapshotSlot
+            )
+            _uiState.update { curr ->
+                curr.copy(
                     activeProjectName = cleanName,
                     activeSceneId = cleanName,
+                    patches = listOf(initialPatch),
+                    activePatchId = defaultPatchId,
                     customLibreTracks = null,
                     currentPage = AppScreenPage.MIXER
                 )
@@ -3620,6 +3921,24 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val newPatchId = "patch_${System.currentTimeMillis()}"
         val freshState = createInitialState()
 
+        // 1. Save current active patch first
+        val patchesWithSavedCurrent = state.patches.map { p ->
+            if (p.id == state.activePatchId) {
+                p.copy(
+                    tracks = state.tracks,
+                    audioSlots = state.audioSlots,
+                    visibleTracksCount = state.visibleTracksCount,
+                    transpose = state.transpose,
+                    octave = state.octave,
+                    masterVolume = state.masterTrack.volume,
+                    snapshots = state.snapshots,
+                    configuredSnapshotSlots = state.configuredSnapshotSlots,
+                    snapshotCustomNames = state.snapshotCustomNames,
+                    activeSnapshotSlot = state.activeSnapshotSlot
+                )
+            } else p
+        }
+
         val newPatch = PatchItem(
             id = newPatchId,
             name = cleanName,
@@ -3630,10 +3949,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             octave = if (isBlank) 0 else state.octave,
             masterVolume = state.masterTrack.volume,
             snapshots = emptyMap(),
-            configuredSnapshotSlots = listOf("slot_default")
+            configuredSnapshotSlots = listOf("slot_default"),
+            snapshotCustomNames = emptyMap(),
+            activeSnapshotSlot = "slot_default"
         )
 
-        val updatedPatches = state.patches + newPatch
+        val updatedPatches = patchesWithSavedCurrent + newPatch
         _uiState.update { current ->
             current.copy(
                 patches = updatedPatches,
@@ -3645,6 +3966,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 octave = newPatch.octave,
                 snapshots = emptyMap(),
                 configuredSnapshotSlots = listOf("slot_default"),
+                snapshotCustomNames = emptyMap(),
                 activeSnapshotSlot = "slot_default"
             )
         }
@@ -3653,7 +3975,31 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectPatch(patchId: String) {
         val state = _uiState.value
-        val targetPatch = state.patches.find { it.id == patchId || it.name == patchId } ?: return
+        // 1. Save current state into current active patch
+        val patchesWithSavedCurrent = state.patches.map { p ->
+            if (p.id == state.activePatchId) {
+                p.copy(
+                    tracks = state.tracks,
+                    audioSlots = state.audioSlots,
+                    visibleTracksCount = state.visibleTracksCount,
+                    transpose = state.transpose,
+                    octave = state.octave,
+                    masterVolume = state.masterTrack.volume,
+                    snapshots = state.snapshots,
+                    configuredSnapshotSlots = state.configuredSnapshotSlots,
+                    snapshotCustomNames = state.snapshotCustomNames,
+                    activeSnapshotSlot = state.activeSnapshotSlot
+                )
+            } else p
+        }
+
+        val targetPatch = patchesWithSavedCurrent.find { it.id == patchId || it.name == patchId } ?: return
+
+        // 2. Load target patch settings and its own snapshots
+        val targetSnapshots = targetPatch.snapshots
+        val targetConfiguredSlots = if (targetPatch.configuredSnapshotSlots.isNotEmpty()) targetPatch.configuredSnapshotSlots else listOf("slot_default")
+        val targetCustomNames = targetPatch.snapshotCustomNames
+        val targetActiveSlot = targetPatch.activeSnapshotSlot ?: "slot_default"
 
         // Cleanly reset mute/solo states and apply patch parameters
         val cleanedTracks = targetPatch.tracks.map { tr ->
@@ -3665,28 +4011,50 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
         _uiState.update { current ->
             current.copy(
+                patches = patchesWithSavedCurrent,
                 activePatchId = targetPatch.id,
                 tracks = if (cleanedTracks.isNotEmpty()) cleanedTracks else current.tracks,
                 audioSlots = if (targetPatch.audioSlots.isNotEmpty()) targetPatch.audioSlots else current.audioSlots,
                 visibleTracksCount = targetPatch.visibleTracksCount,
                 transpose = targetPatch.transpose,
                 octave = targetPatch.octave,
-                snapshots = targetPatch.snapshots,
-                configuredSnapshotSlots = if (targetPatch.configuredSnapshotSlots.isNotEmpty()) targetPatch.configuredSnapshotSlots else listOf("slot_default"),
-                activeSnapshotSlot = targetPatch.activeSnapshotSlot
+                snapshots = targetSnapshots,
+                configuredSnapshotSlots = targetConfiguredSlots,
+                snapshotCustomNames = targetCustomNames,
+                activeSnapshotSlot = targetActiveSlot
             )
         }
+
+        // Apply soundfonts for loaded tracks
+        cleanedTracks.forEachIndexed { idx, track ->
+            if (track.soundfontName.isNotEmpty()) {
+                val candidate = File(fileManager.soundfontsDir, track.soundfontName)
+                if (candidate.exists()) {
+                    loadSoundFontForSlot(idx, candidate.absolutePath, track.bank, track.program, track.patchName, saveAfterLoad = false)
+                }
+            }
+        }
+        applyTrackVolumes(_uiState.value)
+        audioEngine.globalTranspose = targetPatch.transpose
+        audioEngine.globalOctaveShift = targetPatch.octave
+
         saveCurrentProjectDirect()
     }
 
     fun deletePatch(patchId: String) {
         val state = _uiState.value
         val updatedPatches = state.patches.filterNot { it.id == patchId || it.name == patchId }
-        val nextActive = updatedPatches.lastOrNull()?.id
+        val nextActivePatch = updatedPatches.lastOrNull()
         _uiState.update { current ->
             current.copy(
                 patches = updatedPatches,
-                activePatchId = nextActive
+                activePatchId = nextActivePatch?.id,
+                snapshots = nextActivePatch?.snapshots ?: emptyMap(),
+                configuredSnapshotSlots = nextActivePatch?.configuredSnapshotSlots ?: listOf("slot_default"),
+                snapshotCustomNames = nextActivePatch?.snapshotCustomNames ?: emptyMap(),
+                activeSnapshotSlot = nextActivePatch?.activeSnapshotSlot ?: "slot_default",
+                tracks = nextActivePatch?.tracks ?: current.tracks,
+                audioSlots = nextActivePatch?.audioSlots ?: current.audioSlots
             )
         }
         saveCurrentProjectDirect()
@@ -3712,10 +4080,19 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     fun renameSnapshotSlot(slotName: String, newName: String) {
         val trimmed = newName.trim()
         if (trimmed.isEmpty()) return
-        _uiState.update {
-            val updated = it.snapshotCustomNames + (slotName to trimmed)
-            it.copy(snapshotCustomNames = updated)
+        _uiState.update { current ->
+            val updated = current.snapshotCustomNames + (slotName to trimmed)
+            val updatedPatches = current.patches.map { p ->
+                if (p.id == current.activePatchId) {
+                    p.copy(snapshotCustomNames = updated)
+                } else p
+            }
+            current.copy(
+                snapshotCustomNames = updated,
+                patches = updatedPatches
+            )
         }
+        persistCurrentStateDebounced()
     }
 
     fun onSnapshotSlotClick(slotName: String) {
@@ -3749,11 +4126,20 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 fxParameters = currentState.fxParameters[0]
             )
             val updatedSnapshots = currentState.snapshots + (slotName to newSubScene)
+            val updatedPatches = currentState.patches.map { p ->
+                if (p.id == currentState.activePatchId) {
+                    p.copy(
+                        snapshots = updatedSnapshots,
+                        activeSnapshotSlot = slotName
+                    )
+                } else p
+            }
             _uiState.update {
                 it.copy(
                     isSnapshotArmMode = false,
                     activeSnapshotSlot = slotName,
                     snapshots = updatedSnapshots,
+                    patches = updatedPatches,
                     snapshotTransitionProgress = 1.0f
                 )
             }

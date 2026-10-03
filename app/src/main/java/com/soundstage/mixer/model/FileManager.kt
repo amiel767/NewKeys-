@@ -76,8 +76,9 @@ class FileManager(private val context: Context) {
     val loopsDir: File get() = File(baseDir, "Loops")
     val drumPadDir: File get() = File(baseDir, "DrumPad")
     val drumPadLoopDir: File get() = File(drumPadDir, "DrumPad loop")
-    val projectsDir: File get() = File(baseDir, "Projects")
-    val scenesDir: File get() = projectsDir
+    val setlistsDir: File get() = File(baseDir, "Setlists")
+    val projectsDir: File get() = setlistsDir
+    val scenesDir: File get() = setlistsDir
     val recordingsDir: File get() = File(baseDir, "Recordings")
     val presetsDir: File get() = File(baseDir, "Presets")
     val logsDir: File get() = File(baseDir, "Logs")
@@ -114,15 +115,26 @@ class FileManager(private val context: Context) {
             if (!loopsDir.exists()) loopsDir.mkdirs()
             if (!drumPadDir.exists()) drumPadDir.mkdirs()
             if (!drumPadLoopDir.exists()) drumPadLoopDir.mkdirs()
-            if (!projectsDir.exists()) projectsDir.mkdirs()
+            if (!setlistsDir.exists()) setlistsDir.mkdirs()
             if (!logsDir.exists()) logsDir.mkdirs()
 
-            // Migrate legacy Scenes directory to Projects once if present, then cleanup
+            // Migrate legacy Projects and Scenes directories to Setlists once if present, then cleanup
             try {
+                val oldProjects = File(baseDir, "Projects")
+                if (oldProjects.exists() && oldProjects.isDirectory) {
+                    oldProjects.listFiles()?.forEach { file ->
+                        val target = File(setlistsDir, file.name)
+                        if (!target.exists()) {
+                            file.copyTo(target, overwrite = true)
+                        }
+                    }
+                    oldProjects.deleteRecursively()
+                }
+
                 val oldScenes = File(baseDir, "Scenes")
                 if (oldScenes.exists() && oldScenes.isDirectory) {
                     oldScenes.listFiles()?.forEach { file ->
-                        val target = File(projectsDir, file.name)
+                        val target = File(setlistsDir, file.name)
                         if (!target.exists()) {
                             file.copyTo(target, overwrite = true)
                         }
@@ -139,8 +151,8 @@ class FileManager(private val context: Context) {
                 if (oldStyles.exists()) oldStyles.deleteRecursively()
             } catch (_: Exception) {}
 
-            // Create index marker files in strictly necessary folders (SoundFonts, Loops, DrumPad, Projects)
-            listOf(baseDir, soundfontsDir, loopsDir, drumPadDir, drumPadLoopDir, projectsDir, logsDir).forEach { dir ->
+            // Create index marker files in strictly necessary folders (SoundFonts, Loops, DrumPad, Setlists)
+            listOf(baseDir, soundfontsDir, loopsDir, drumPadDir, drumPadLoopDir, setlistsDir, logsDir).forEach { dir ->
                 try {
                     val marker = File(dir, ".soundstage")
                     if (!marker.exists()) {

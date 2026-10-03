@@ -62,19 +62,6 @@ fun BottomBar(
     onToggleRecording: () -> Unit,
     bpm: Int,
     onBpmChange: (Int) -> Unit,
-    isMetronomeOn: Boolean,
-    onToggleMetronome: () -> Unit,
-    isMetroPanelOpen: Boolean,
-    onToggleMetroPanel: () -> Unit,
-    metroSignature: String,
-    onSelectSignature: (String) -> Unit,
-    metroVolume: Float,
-    onMetroVolumeChange: (Float) -> Unit,
-    selectedKey: String = "C",
-    onSelectKey: (String) -> Unit = {},
-    selectedScaleMode: String = "Majeur",
-    onSelectScaleMode: (String) -> Unit = {},
-    useFlats: Boolean = false,
     
     // Snapshots / Sub-Scenes (Section 2)
     isSnapshotArmMode: Boolean = false,
@@ -104,7 +91,7 @@ fun BottomBar(
     val barHeight = 42.dp
     val coroutineScope = rememberCoroutineScope()
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             .wrapContentHeight()
@@ -126,6 +113,9 @@ fun BottomBar(
                 )
             }
     ) {
+        // Fixed Master Fader Width: strictly constant at 120.dp across all snapshot states
+        val masterFaderWidth = 120.dp
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -340,116 +330,6 @@ fun BottomBar(
             }
         }
 
-        // ================= 3. FUSED METRONOME & SIGNATURE/KEY BUTTON =================
-        val metroBgBrush = if (isMetronomeOn) {
-            Brush.verticalGradient(listOf(Color(0xFF163E52), Color(0xFF0F2D3D)))
-        } else {
-            Brush.verticalGradient(listOf(Color(0xFF283144), Color(0xFF1D2433)))
-        }
-
-        Row(
-            modifier = Modifier
-                .height(barHeight)
-                .shadow(2.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
-                .clip(RoundedCornerShape(8.dp))
-                .background(metroBgBrush)
-                .drawWithContent {
-                    drawContent()
-                    drawLine(
-                        color = Color.White.copy(alpha = 0.12f),
-                        start = Offset(4.dp.toPx(), 1f),
-                        end = Offset(size.width - 4.dp.toPx(), 1f),
-                        strokeWidth = 1.dp.toPx(),
-                        cap = StrokeCap.Round
-                    )
-                }
-                .clickable { onToggleMetroPanel() }
-                .padding(horizontal = 8.dp)
-                .testTag("btn_metronome"),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            // Left: Metronome Icon
-            Canvas(modifier = Modifier.size(18.dp)) {
-                val w = size.width
-                val h = size.height
-
-                val bodyPath = Path().apply {
-                    moveTo(w * 0.28f, h * 0.90f)
-                    lineTo(w * 0.42f, h * 0.18f)
-                    lineTo(w * 0.58f, h * 0.18f)
-                    lineTo(w * 0.72f, h * 0.90f)
-                    close()
-                }
-
-                drawPath(
-                    path = bodyPath,
-                    color = if (isMetronomeOn) NeonCyan.copy(alpha = 0.25f) else Color(0x18FFFFFF)
-                )
-                drawPath(
-                    path = bodyPath,
-                    color = if (isMetronomeOn) NeonCyan else Color(0xFF94A3B8),
-                    style = Stroke(width = 1.3f)
-                )
-
-                val armAngle = if (isMetronomeOn) 0.35f else 0.0f
-                val pivotX = w * 0.50f
-                val pivotY = h * 0.85f
-                val topArmX = pivotX + kotlin.math.sin(armAngle) * (h * 0.68f)
-                val topArmY = pivotY - kotlin.math.cos(armAngle) * (h * 0.68f)
-
-                drawLine(
-                    color = if (isMetronomeOn) Color.White else Color(0xFFE2E8F0),
-                    start = Offset(pivotX, pivotY),
-                    end = Offset(topArmX, topArmY),
-                    strokeWidth = 1.6f,
-                    cap = StrokeCap.Round
-                )
-            }
-
-            // Subtle vertical separator
-            Box(
-                modifier = Modifier
-                    .width(1.dp)
-                    .height(14.dp)
-                    .background(if (isMetronomeOn) NeonCyan.copy(alpha = 0.4f) else Color(0x22FFFFFF))
-            )
-
-            // Right: Signature & Key indicator
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(3.dp)
-            ) {
-                Text(
-                    text = metroSignature,
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = if (isMetronomeOn) NeonCyanLight else Color.White
-                )
-                Text(
-                    text = "·",
-                    fontSize = 10.sp,
-                    color = Color(0x44FFFFFF)
-                )
-                val formattedKey = if (useFlats) {
-                    when (selectedKey) {
-                        "C#" -> "Db"
-                        "D#" -> "Eb"
-                        "F#" -> "Gb"
-                        "G#" -> "Ab"
-                        "A#" -> "Bb"
-                        else -> selectedKey
-                    }
-                } else selectedKey
-                Text(
-                    text = if (selectedScaleMode.contains("Min", ignoreCase = true)) "${formattedKey}m" else formattedKey,
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0x66FFFFFF) // Gris fade éteint comme demandé
-                )
-            }
-        }
-
         // ================= 4. SNAPSHOTS / SUB-SCENES RACK (SECTION 2) =================
         // Slow rotating vivid RGB LED phase for active slot halo
         val ledInfiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition(label = "rgb_led_glow")
@@ -495,9 +375,9 @@ fun BottomBar(
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = Color.White,
                                 unfocusedTextColor = Color.White,
-                                focusedBorderColor = NeonCyan,
+                                focusedBorderColor = Color(0xFF9BC0F8),
                                 unfocusedBorderColor = Color(0x66FFFFFF),
-                                cursorColor = NeonCyan
+                                cursorColor = Color(0xFF9BC0F8)
                             ),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -515,7 +395,7 @@ fun BottomBar(
                         },
                         modifier = Modifier.testTag("btn_confirm_add_snapshot")
                     ) {
-                        Text("Add", color = NeonCyan, fontWeight = FontWeight.Bold)
+                        Text("Add", color = Color(0xFF9BC0F8), fontWeight = FontWeight.Bold)
                     }
                 },
                 dismissButton = {
@@ -554,9 +434,9 @@ fun BottomBar(
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = Color.White,
                                 unfocusedTextColor = Color.White,
-                                focusedBorderColor = NeonCyan,
+                                focusedBorderColor = Color(0xFF9BC0F8),
                                 unfocusedBorderColor = Color(0x66FFFFFF),
-                                cursorColor = NeonCyan
+                                cursorColor = Color(0xFF9BC0F8)
                             ),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -589,7 +469,7 @@ fun BottomBar(
                         },
                         modifier = Modifier.testTag("btn_confirm_rename_snapshot")
                     ) {
-                        Text("Save", color = NeonCyan, fontWeight = FontWeight.Bold)
+                        Text("Save", color = Color(0xFF9BC0F8), fontWeight = FontWeight.Bold)
                     }
                 },
                 dismissButton = {
@@ -616,12 +496,16 @@ fun BottomBar(
         )
 
         Row(
-            modifier = Modifier.wrapContentWidth().height(barHeight),
+            modifier = Modifier
+                .weight(1f)
+                .height(barHeight),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             // Configured Dynamic Snapshot Slots (Expand fluidly to fill space up to Master Fader)
             val slotKeys = configuredSnapshotSlots
+            val isAdaptiveStretch = slotKeys.size >= 4
+
             slotKeys.forEach { slotKey ->
                 val defaultLabel = when (slotKey) {
                     "slot_default" -> "Default"
@@ -663,10 +547,10 @@ fun BottomBar(
                     displayName
                 }
 
-                val slotModifier = if (configuredSnapshotSlots.size > 3) {
-                    Modifier.width(66.dp).height(barHeight)
+                val slotModifier = if (isAdaptiveStretch) {
+                    Modifier.weight(1f).height(barHeight)
                 } else {
-                    Modifier.width(80.dp).height(barHeight)
+                    Modifier.width(110.dp).height(barHeight)
                 }
 
                 Box(
@@ -808,16 +692,14 @@ fun BottomBar(
                     modifier = Modifier.size(18.dp)
                 )
             }
+
+            // If less than 4 snapshots, flexible spacer keeps Right Block pinned to the right edge
+            if (!isAdaptiveStretch) {
+                Spacer(modifier = Modifier.weight(1f))
+            }
         }
 
-        // Flexible Spacer pushing Master Slider and Keyboard buttons to the far right end
-        Spacer(modifier = Modifier.weight(1f))
-
-        // ================= 5. MASTER FADER (FIXED CONSTANT WIDTH) =================
-        // Master slider maintains its fixed natural size. When Layers button appears beside Virtual Keyboard,
-        // it pushes the Master Slider to the left into the flexible spacer.
-        val masterFaderWidth = 115.dp
-
+        // ================= 5. MASTER FADER =================
         Row(
             modifier = Modifier
                 .width(masterFaderWidth)
@@ -1042,244 +924,6 @@ fun BottomBar(
         }
     }
 }
-}
-
-@Composable
-fun MetronomeFloatingPanel(
-    isOpen: Boolean,
-    isMetronomeOn: Boolean,
-    onToggleMetronome: () -> Unit,
-    selectedSignature: String,
-    onSelectSignature: (String) -> Unit,
-    volume: Float,
-    onVolumeChange: (Float) -> Unit,
-    onClose: () -> Unit,
-    selectedKey: String = "C",
-    onSelectKey: (String) -> Unit = {},
-    selectedScaleMode: String = "Majeur",
-    onSelectScaleMode: (String) -> Unit = {},
-    useFlats: Boolean = false,
-    modifier: Modifier = Modifier
-) {
-    val allSignatures = listOf(
-        "2/4", "3/4", "4/4", "5/4",
-        "6/4", "7/4", "3/8", "5/8",
-        "6/8", "7/8", "9/8", "12/8"
-    )
-    val chromaticKeys = listOf(
-        "C", "C#", "D", "D#", "E", "F",
-        "F#", "G", "G#", "A", "A#", "B"
-    )
-    val displayedKeys = listOf(
-        "C", if (useFlats) "Db" else "C#", "D", if (useFlats) "Eb" else "D#", "E", "F",
-        if (useFlats) "Gb" else "F#", "G", if (useFlats) "Ab" else "G#", "A", if (useFlats) "Bb" else "A#", "B"
-    )
-
-    AnimatedVisibility(
-        visible = isOpen,
-        enter = fadeIn(tween(180)) + expandVertically(tween(220)),
-        exit = fadeOut(tween(150)) + shrinkVertically(tween(180)),
-        modifier = modifier
-    ) {
-        Column(
-            modifier = Modifier
-                .width(288.dp)
-                .shadow(20.dp, RoundedCornerShape(16.dp))
-                .clip(RoundedCornerShape(16.dp))
-                .background(
-                    Brush.linearGradient(listOf(Color(0xFF1C2A38), Color(0xFF101820)))
-                )
-                .border(1.dp, Color(0x4D22D3EE), RoundedCornerShape(16.dp))
-                .padding(14.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "Métronome & Tonalité",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
-
-                Box(
-                    modifier = Modifier
-                        .width(38.dp)
-                        .height(22.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (isMetronomeOn) Brush.horizontalGradient(listOf(NeonCyanLight, NeonCyan)) else Brush.linearGradient(listOf(Color(0x1AFFFFFF), Color(0x1AFFFFFF))))
-                        .clickable { onToggleMetronome() }
-                        .padding(2.dp),
-                    contentAlignment = if (isMetronomeOn) Alignment.CenterEnd else Alignment.CenterStart
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(18.dp)
-                            .clip(CircleShape)
-                            .background(Color.White)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // TONALITÉ (ROOT KEY)
-            Text(
-                text = "TONALITÉ (ROOT KEY)",
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextDim,
-                letterSpacing = 0.6.sp
-            )
-
-            Spacer(modifier = Modifier.height(5.dp))
-
-            chromaticKeys.zip(displayedKeys).chunked(6).forEach { rowPairs ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    rowPairs.forEach { (actualNote, displayedNote) ->
-                        val isSelected = selectedKey.equals(actualNote, ignoreCase = true)
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(26.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(
-                                    if (isSelected) Brush.verticalGradient(listOf(NeonCyanLight, NeonCyanDark))
-                                    else Brush.linearGradient(listOf(Color(0x0DFFFFFF), Color(0x08FFFFFF)))
-                                )
-                                .border(
-                                    1.dp,
-                                    if (isSelected) Color.Transparent else Color(0x1AFFFFFF),
-                                    RoundedCornerShape(6.dp)
-                                )
-                                .clickable { onSelectKey(actualNote) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = displayedNote,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isSelected) Color(0xFF00232B) else TextDim
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // MODE TONALITÉ (MAJEUR / MINEUR)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                listOf("Majeur", "Mineur").forEach { mode ->
-                    val isModeSelected = selectedScaleMode.equals(mode, ignoreCase = true)
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(26.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(
-                                if (isModeSelected) Brush.verticalGradient(listOf(NeonCyanLight, NeonCyanDark))
-                                else Brush.linearGradient(listOf(Color(0x0DFFFFFF), Color(0x08FFFFFF)))
-                            )
-                            .border(
-                                1.dp,
-                                if (isModeSelected) Color.Transparent else Color(0x1AFFFFFF),
-                                RoundedCornerShape(6.dp)
-                            )
-                            .clickable { onSelectScaleMode(mode) },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = mode.uppercase(),
-                            fontSize = 9.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isModeSelected) Color(0xFF00232B) else TextDim
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Text(
-                text = "SIGNATURE RYTHMIQUE (TOUTES SIGNATURES)",
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextDim,
-                letterSpacing = 0.6.sp
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // 3 Rows x 4 Columns Grid of Signatures
-            allSignatures.chunked(4).forEach { rowList ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp)
-                ) {
-                    rowList.forEach { sig ->
-                        val isSelected = selectedSignature == sig
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(26.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(
-                                    if (isSelected) Brush.verticalGradient(listOf(NeonCyanLight, NeonCyanDark)) else Brush.linearGradient(listOf(Color(0x0DFFFFFF), Color(0x08FFFFFF)))
-                                )
-                                .border(
-                                    1.dp,
-                                    if (isSelected) Color.Transparent else Color(0x1AFFFFFF),
-                                    RoundedCornerShape(6.dp)
-                                )
-                                .clickable { onSelectSignature(sig) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = sig,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isSelected) Color(0xFF00232B) else TextDim
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Text(
-                text = "VOLUME DU CLIC",
-                fontSize = 9.5.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextDim,
-                letterSpacing = 0.6.sp
-            )
-
-            Slider(
-                value = volume,
-                onValueChange = onVolumeChange,
-                colors = SliderDefaults.colors(
-                    thumbColor = NeonCyan,
-                    activeTrackColor = NeonCyan,
-                    inactiveTrackColor = Color(0x1AFFFFFF)
-                ),
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-    }
 }
 
 /**

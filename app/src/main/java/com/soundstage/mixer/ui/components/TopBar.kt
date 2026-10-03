@@ -8,6 +8,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -420,7 +421,7 @@ fun TopBar(
                 }
             }
 
-            // 9. Scene Expansion Button
+            // Patches Button (Window / Dialog of Patches)
             Box(
                 modifier = Modifier
                     .size(38.dp)
@@ -445,15 +446,43 @@ fun TopBar(
                     .testTag("btn_scene"),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Default.Menu,
-                    contentDescription = "Setlists",
-                    tint = Color(0xFF9BC0F8),
-                    modifier = Modifier.size(18.dp)
-                )
+                Canvas(modifier = Modifier.size(19.dp, 16.dp)) {
+                    val w = size.width
+                    val h = size.height
+                    val col = Color(0xFF9BC0F8)
+                    // Back patch card
+                    drawRoundRect(
+                        color = col.copy(alpha = 0.45f),
+                        topLeft = Offset(w * 0.18f, 0f),
+                        size = androidx.compose.ui.geometry.Size(w * 0.72f, h * 0.52f),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.5.dp.toPx())
+                    )
+                    // Front patch card
+                    drawRoundRect(
+                        color = col,
+                        topLeft = Offset(0f, h * 0.32f),
+                        size = androidx.compose.ui.geometry.Size(w * 0.84f, h * 0.68f),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.5.dp.toPx())
+                    )
+                    // Patch slot indicator lines
+                    drawLine(
+                        color = Color(0xFF141926),
+                        start = Offset(w * 0.14f, h * 0.52f),
+                        end = Offset(w * 0.70f, h * 0.52f),
+                        strokeWidth = 1.4.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                    drawLine(
+                        color = Color(0xFF141926),
+                        start = Offset(w * 0.14f, h * 0.74f),
+                        end = Offset(w * 0.52f, h * 0.74f),
+                        strokeWidth = 1.4.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
             }
 
-            // 10. Settings Button
+            // Settings Button
             Box(
                 modifier = Modifier
                     .size(38.dp)

@@ -2,6 +2,7 @@ package com.soundstage.mixer.ui.pages
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,6 +13,8 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -21,8 +24,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -33,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.model.DrumPadItem
 import com.soundstage.mixer.model.ScenePreset
 import com.soundstage.mixer.model.StorageItem
+import com.soundstage.mixer.ui.components.AmbientStudioBackground
 import com.soundstage.mixer.ui.theme.*
 
 // Palettes Material You fidèles aux maquettes SVG (soundstage_drumpad.svg et soundstage_drumpad_mix.svg)
@@ -64,11 +72,6 @@ fun DrumPadPage(
     onFeelSwingChange: (Int) -> Unit,
     bpm: Int,
     onBpmChange: (Int) -> Unit,
-    scenes: List<ScenePreset>,
-    activeSceneId: String,
-    onSelectScene: (String) -> Unit,
-    onCreateBlankScene: (String) -> Unit,
-    onDuplicateScene: (String) -> Unit,
     activeTonicNotes: Set<String>,
     onTonicNoteClick: (String) -> Unit,
     useFlats: Boolean,
@@ -97,15 +100,9 @@ fun DrumPadPage(
     onPadReleased: (Int) -> Unit,
     onPadVolumeChange: (Int, Float) -> Unit,
     onLoopBeatsChange: (Int, String) -> Unit = { _, _ -> },
-    onOpenFileExplorer: () -> Unit,
-    onOpenLoopsView: () -> Unit,
     onBackToMixer: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var showNewSceneDialog by remember { mutableStateOf(false) }
-    var newSceneName by remember { mutableStateOf("") }
-    var isDarkTheme by remember { mutableStateOf(true) }
-
     val chromaticSharps = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
     val chromaticFlats = listOf("C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B")
     val currentChromaticNotes = if (useFlats) chromaticFlats else chromaticSharps
@@ -116,29 +113,56 @@ fun DrumPadPage(
         match?.groupValues?.getOrNull(1) ?: "3"
     }
 
-    val defaultPadColors = listOf(
-        ColorPadKick1, ColorPadClap1, ColorPadWood1, ColorPadTumb1,
-        ColorPadTom1, ColorPadTom2, ColorPadTom3, ColorPadSubKick
-    )
+    var sampleToAssign by remember { mutableStateOf<StorageItem?>(null) }
 
-    Box(
+    // Fallback default samples if audioFiles list is empty
+    val effectiveAudioFiles = remember(audioFiles) {
+        if (audioFiles.isNotEmpty()) audioFiles else listOf(
+            StorageItem("Kick_808.wav", "/sdcard/DrumPad/Kick_808.wav", false, extension = "wav"),
+            StorageItem("Snare_Studio_Punch.wav", "/sdcard/DrumPad/Snare_Studio_Punch.wav", false, extension = "wav"),
+            StorageItem("Clap_Hand_Pro.wav", "/sdcard/DrumPad/Clap_Hand_Pro.wav", false, extension = "wav"),
+            StorageItem("HiHat_Closed_Tight.wav", "/sdcard/DrumPad/HiHat_Closed_Tight.wav", false, extension = "wav"),
+            StorageItem("HiHat_Open_Sizzle.wav", "/sdcard/DrumPad/HiHat_Open_Sizzle.wav", false, extension = "wav"),
+            StorageItem("Tom_High_Studio.wav", "/sdcard/DrumPad/Tom_High_Studio.wav", false, extension = "wav"),
+            StorageItem("Tom_Low_Deep.wav", "/sdcard/DrumPad/Tom_Low_Deep.wav", false, extension = "wav"),
+            StorageItem("Perc_Rimshot.wav", "/sdcard/DrumPad/Perc_Rimshot.wav", false, extension = "wav"),
+            StorageItem("Crash_Cymbal_16.wav", "/sdcard/DrumPad/Crash_Cymbal_16.wav", false, extension = "wav"),
+            StorageItem("Sub_Kick_Analog.wav", "/sdcard/DrumPad/Sub_Kick_Analog.wav", false, extension = "wav")
+        )
+    }
+
+    AmbientStudioBackground(
         modifier = modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(listOf(DrumPadCanvasDark, DrumPadCanvasDarkEnd))
-            )
-            .padding(horizontal = 8.dp, vertical = 6.dp)
             .testTag("drumpad_page_root")
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // ================= 1. BARRE SUPÉRIEURE (SVG MATCH EXACT) =================
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 4.dp)
+        ) {
+            // ================= 1. BARRE SUPÉRIEURE (CLEAN & RELIEF BENTO) =================
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(44.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(TopBarCardBg)
-                    .border(1.dp, TopBarCardBorder, RoundedCornerShape(16.dp))
+                    .height(42.dp)
+                    .shadow(2.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(0xFF283144), Color(0xFF1D2433))
+                        )
+                    )
+                    .drawWithContent {
+                        drawContent()
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.12f),
+                            start = Offset(6.dp.toPx(), 1f),
+                            end = Offset(size.width - 6.dp.toPx(), 1f),
+                            strokeWidth = 1.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    }
                     .padding(horizontal = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -163,92 +187,29 @@ fun DrumPadPage(
                     color = Color.White
                 )
 
-                Spacer(modifier = Modifier.width(4.dp))
-
-                // Boutons d'accès direct [📁 Fichiers] & [🔁 Loops] déplacés dans la TopBar
-                Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0x22FFFFFF))
-                        .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(10.dp))
-                        .padding(horizontal = 2.dp, vertical = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { onOpenFileExplorer() }
-                            .padding(horizontal = 7.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(Icons.Default.Folder, contentDescription = "Fichiers", tint = Color.White, modifier = Modifier.size(13.dp))
-                        Text("Fichiers", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { onOpenLoopsView() }
-                            .padding(horizontal = 7.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(Icons.Default.Repeat, contentDescription = "Loops", tint = NeonCyan, modifier = Modifier.size(13.dp))
-                        Text("Loops", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = NeonCyan)
-                    }
-                }
-
                 Spacer(modifier = Modifier.weight(1f))
-
-                // Sélecteur Scène 1 2 3 4 + bouton '+'
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text("Scène", fontSize = 11.sp, color = Color(0xCCFFFFFF), fontWeight = FontWeight.Medium)
-                    listOf("1", "2", "3", "4").forEach { sceneNum ->
-                        val isSelected = activeSceneId.contains(sceneNum) || (activeSceneId.isEmpty() && sceneNum == "1")
-                        Box(
-                            modifier = Modifier
-                                .size(24.dp)
-                                .clip(CircleShape)
-                                .background(if (isSelected) Color.White else Color(0x22FFFFFF))
-                                .clickable { onSelectScene("scene_$sceneNum") },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = sceneNum,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isSelected) Color.Black else Color.White
-                            )
-                        }
-                    }
-
-                    // Bouton '+' pour ajouter/dupliquer une scène
-                    Box(
-                        modifier = Modifier
-                            .size(24.dp)
-                            .clip(CircleShape)
-                            .background(Color(0x33FFFFFF))
-                            .clickable {
-                                newSceneName = "Scène ${scenes.size + 1}"
-                                showNewSceneDialog = true
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = "Nouvelle scène", tint = Color.White, modifier = Modifier.size(14.dp))
-                    }
-                }
 
                 // Feel Swing %
                 Box(
                     modifier = Modifier
                         .height(28.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(Color(0x22FFFFFF))
+                        .shadow(1.5.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color(0xFF283144), Color(0xFF1D2433))
+                            )
+                        )
+                        .drawWithContent {
+                            drawContent()
+                            drawLine(
+                                color = Color.White.copy(alpha = 0.12f),
+                                start = Offset(4.dp.toPx(), 1f),
+                                end = Offset(size.width - 4.dp.toPx(), 1f),
+                                strokeWidth = 1.dp.toPx(),
+                                cap = StrokeCap.Round
+                            )
+                        }
                         .clickable {
                             val nextSwing = if (feelSwing >= 75) 0 else feelSwing + 25
                             onFeelSwingChange(nextSwing)
@@ -269,15 +230,30 @@ fun DrumPadPage(
                 Row(
                     modifier = Modifier
                         .height(28.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(Color(0x22FFFFFF))
+                        .shadow(1.5.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color(0xFF283144), Color(0xFF1D2433))
+                            )
+                        )
+                        .drawWithContent {
+                            drawContent()
+                            drawLine(
+                                color = Color.White.copy(alpha = 0.12f),
+                                start = Offset(4.dp.toPx(), 1f),
+                                end = Offset(size.width - 4.dp.toPx(), 1f),
+                                strokeWidth = 1.dp.toPx(),
+                                cap = StrokeCap.Round
+                            )
+                        }
                         .padding(horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(22.dp)
+                            .size(20.dp)
                             .clip(CircleShape)
                             .background(Color(0x22FFFFFF))
                             .clickable { onBpmChange((bpm - 1).coerceAtLeast(40)) },
@@ -290,7 +266,7 @@ fun DrumPadPage(
 
                     Box(
                         modifier = Modifier
-                            .size(22.dp)
+                            .size(20.dp)
                             .clip(CircleShape)
                             .background(Color(0x22FFFFFF))
                             .clickable { onBpmChange((bpm + 1).coerceAtMost(240)) },
@@ -304,8 +280,27 @@ fun DrumPadPage(
                 Box(
                     modifier = Modifier
                         .height(28.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(if (isMixMode) Color.White else Color(0x22FFFFFF))
+                        .shadow(1.5.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            if (isMixMode) {
+                                Brush.verticalGradient(listOf(Color(0xFF9BC0F8), Color(0xFF8FB6F2)))
+                            } else {
+                                Brush.verticalGradient(listOf(Color(0xFF283144), Color(0xFF1D2433)))
+                            }
+                        )
+                        .drawWithContent {
+                            drawContent()
+                            if (!isMixMode) {
+                                drawLine(
+                                    color = Color.White.copy(alpha = 0.12f),
+                                    start = Offset(4.dp.toPx(), 1f),
+                                    end = Offset(size.width - 4.dp.toPx(), 1f),
+                                    strokeWidth = 1.dp.toPx(),
+                                    cap = StrokeCap.Round
+                                )
+                            }
+                        }
                         .clickable { onToggleMixMode() }
                         .padding(horizontal = 8.dp)
                         .testTag("btn_drumpad_mix_mode"),
@@ -318,29 +313,16 @@ fun DrumPadPage(
                         Icon(
                             imageVector = Icons.Default.Tune,
                             contentDescription = "Mix",
-                            tint = if (isMixMode) Color.Black else Color.White,
+                            tint = if (isMixMode) Color(0xFF101726) else Color.White,
                             modifier = Modifier.size(13.dp)
                         )
                         Text(
                             text = "Mix",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (isMixMode) Color.Black else Color.White
+                            color = if (isMixMode) Color(0xFF101726) else Color.White
                         )
                     }
-                }
-
-                // Bouton Thème (Soleil / Lune)
-                IconButton(
-                    onClick = { isDarkTheme = !isDarkTheme },
-                    modifier = Modifier.size(28.dp)
-                ) {
-                    Icon(
-                        imageVector = if (isDarkTheme) Icons.Default.WbSunny else Icons.Default.DarkMode,
-                        contentDescription = "Thème",
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp)
-                    )
                 }
             }
 
@@ -360,13 +342,28 @@ fun DrumPadPage(
                         .fillMaxHeight(),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // Contrôle d'octave et Multi-Pad en haut du TonicPad (sans texte superflu)
+                    // Contrôle d'octave et Multi-Pad en haut du TonicPad (avec relief Bento)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(26.dp)
+                            .height(28.dp)
+                            .shadow(1.5.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
                             .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0x1FFFFFFF))
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color(0xFF283144), Color(0xFF1D2433))
+                                )
+                            )
+                            .drawWithContent {
+                                drawContent()
+                                drawLine(
+                                    color = Color.White.copy(alpha = 0.12f),
+                                    start = Offset(4.dp.toPx(), 1f),
+                                    end = Offset(size.width - 4.dp.toPx(), 1f),
+                                    strokeWidth = 1.dp.toPx(),
+                                    cap = StrokeCap.Round
+                                )
+                            }
                             .padding(horizontal = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
@@ -479,13 +476,27 @@ fun DrumPadPage(
                         }
                     }
 
-                    // Panneau d'état & Cartes dynamiques de sons
+                    // Panneau d'état & Cartes dynamiques de sons (Bento relief)
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0x1FFFFFFF))
-                            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(12.dp))
+                            .shadow(2.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color(0xFF283144), Color(0xFF1D2433))
+                                )
+                            )
+                            .drawWithContent {
+                                drawContent()
+                                drawLine(
+                                    color = Color.White.copy(alpha = 0.12f),
+                                    start = Offset(4.dp.toPx(), 1f),
+                                    end = Offset(size.width - 4.dp.toPx(), 1f),
+                                    strokeWidth = 1.dp.toPx(),
+                                    cap = StrokeCap.Round
+                                )
+                            }
                             .padding(6.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
@@ -575,8 +586,23 @@ fun DrumPadPage(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(26.dp)
+                                .shadow(1.dp, RoundedCornerShape(6.dp))
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(Color(0x14FFFFFF))
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(Color(0xFF283144), Color(0xFF1D2433))
+                                    )
+                                )
+                                .drawWithContent {
+                                    drawContent()
+                                    drawLine(
+                                        color = Color.White.copy(alpha = 0.12f),
+                                        start = Offset(3.dp.toPx(), 1f),
+                                        end = Offset(size.width - 3.dp.toPx(), 1f),
+                                        strokeWidth = 1.dp.toPx(),
+                                        cap = StrokeCap.Round
+                                    )
+                                }
                                 .clickable { onOpenTonicSoundPicker() }
                                 .padding(horizontal = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -600,14 +626,29 @@ fun DrumPadPage(
                             Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color(0x88FFFFFF), modifier = Modifier.size(13.dp))
                         }
 
-                        // Carte Kit : [Nom dynamique du drum kit] (poussée en bas) -> Clic ouvre le dossier Loops
+                        // Carte Kit : [Nom dynamique du drum kit] (poussée en bas) -> Clic ouvre le sélecteur de Kit
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(26.dp)
+                                .shadow(1.dp, RoundedCornerShape(6.dp))
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(Color(0x14FFFFFF))
-                                .clickable { onOpenLoopsView() }
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(Color(0xFF283144), Color(0xFF1D2433))
+                                    )
+                                )
+                                .drawWithContent {
+                                    drawContent()
+                                    drawLine(
+                                        color = Color.White.copy(alpha = 0.12f),
+                                        start = Offset(3.dp.toPx(), 1f),
+                                        end = Offset(size.width - 3.dp.toPx(), 1f),
+                                        strokeWidth = 1.dp.toPx(),
+                                        cap = StrokeCap.Round
+                                    )
+                                }
+                                .clickable { onOpenDrumKitPicker() }
                                 .padding(horizontal = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
@@ -648,7 +689,6 @@ fun DrumPadPage(
                     ) {
                         for (i in 0 until 4) {
                             val pad = drumPads.getOrNull(i) ?: DrumPadItem(id = i + 1, label = "Pad ${i + 1}")
-                            val padColor = defaultPadColors.getOrElse(i) { ColorPadKick1 }
 
                             Box(
                                 modifier = Modifier
@@ -657,7 +697,6 @@ fun DrumPadPage(
                             ) {
                                 SingleDrumPadBox(
                                     pad = pad,
-                                    padColor = padColor,
                                     isMixMode = isMixMode,
                                     onPadPressed = { onPadPressed(pad.id) },
                                     onPadReleased = { onPadReleased(pad.id) },
@@ -677,7 +716,6 @@ fun DrumPadPage(
                     ) {
                         for (i in 4 until 8) {
                             val pad = drumPads.getOrNull(i) ?: DrumPadItem(id = i + 1, label = "Pad ${i + 1}")
-                            val padColor = defaultPadColors.getOrElse(i) { ColorPadKick1 }
 
                             Box(
                                 modifier = Modifier
@@ -686,7 +724,6 @@ fun DrumPadPage(
                             ) {
                                 SingleDrumPadBox(
                                     pad = pad,
-                                    padColor = padColor,
                                     isMixMode = isMixMode,
                                     onPadPressed = { onPadPressed(pad.id) },
                                     onPadReleased = { onPadReleased(pad.id) },
@@ -700,58 +737,253 @@ fun DrumPadPage(
             }
         }
 
-        // Dialogue Nouvelle Scène (Vierge ou Dupliquée)
-        if (showNewSceneDialog) {
-            AlertDialog(
-                onDismissRequest = { showNewSceneDialog = false },
-                title = { Text("Nouvelle Scène", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White) },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(
-                            value = newSceneName,
-                            onValueChange = { newSceneName = it },
-                            label = { Text("Nom de la scène") },
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White
-                            )
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Button(
-                                onClick = {
-                                    onCreateBlankScene(newSceneName)
-                                    showNewSceneDialog = false
-                                },
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
-                            ) {
-                                Text("✨ Blank", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
+        // ================= OUTSIDE SCRIM BACKDROP (TOUCH OUTSIDE TO DISMISS) =================
+        AnimatedVisibility(
+            visible = isMiniBrowserOpen,
+            enter = fadeIn(tween(250)),
+            exit = fadeOut(tween(200))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.45f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onCloseMiniBrowser() }
+            )
+        }
 
-                            Button(
-                                onClick = {
-                                    onDuplicateScene(newSceneName)
-                                    showNewSceneDialog = false
-                                },
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.buttonColors(containerColor = NeonCyan)
+        // ================= DRUMKIT LIQUID GLASS OVERLAY (SLIDES FROM RIGHT OVER PADS 3,4,6,7) =================
+        AnimatedVisibility(
+            visible = isMiniBrowserOpen,
+            enter = slideInHorizontally(
+                initialOffsetX = { it },
+                animationSpec = tween(320, easing = FastOutSlowInEasing)
+            ) + fadeIn(tween(250)),
+            exit = slideOutHorizontally(
+                targetOffsetX = { it },
+                animationSpec = tween(280, easing = FastOutSlowInEasing)
+            ) + fadeOut(tween(200)),
+            modifier = Modifier.align(Alignment.CenterEnd)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(0.52f) // Covers right column of pads (Pads 3, 4, 6, 7)
+                    .shadow(16.dp, RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp), ambientColor = Color.Black, spotColor = Color(0xAA000000))
+                    .clip(RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(0xFA1A2130), Color(0xFA111522))
+                        )
+                    )
+                    .drawWithContent {
+                        drawContent()
+                        // Top specular highlight for natural physical liquid glass sheen
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.15f),
+                            start = Offset(12.dp.toPx(), 1f),
+                            end = Offset(size.width - 2.dp.toPx(), 1f),
+                            strokeWidth = 1.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    }
+                    .padding(horizontal = 14.dp, vertical = 12.dp)
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    // Header Title: Just "DrumKit" (No X button, touch outside to dismiss)
+                    Text(
+                        text = "DrumKit",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = "Tap to preview • Long press to assign",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF94A3B8)
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Unified clean Liquid Glass list
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(5.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(effectiveAudioFiles) { sample ->
+                            val cleanName = sample.name
+                                .removeSuffix(".wav")
+                                .removeSuffix(".mp3")
+                                .removeSuffix(".ogg")
+                                .replace("_", " ")
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(38.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(
+                                        Brush.verticalGradient(
+                                            listOf(Color(0xFF283144), Color(0xFF1D2433))
+                                        )
+                                    )
+                                    .drawWithContent {
+                                        drawContent()
+                                        drawLine(
+                                            color = Color.White.copy(alpha = 0.10f),
+                                            start = Offset(4.dp.toPx(), 1f),
+                                            end = Offset(size.width - 4.dp.toPx(), 1f),
+                                            strokeWidth = 1.dp.toPx(),
+                                            cap = StrokeCap.Round
+                                        )
+                                    }
+                                    .pointerInput(sample) {
+                                        detectTapGestures(
+                                            onTap = {
+                                                onPreviewAudioFile(sample)
+                                            },
+                                            onLongPress = {
+                                                sampleToAssign = sample
+                                            }
+                                        )
+                                    }
+                                    .padding(horizontal = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("📋 Duplicate", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.MusicNote,
+                                        contentDescription = null,
+                                        tint = Color(0xFF9BC0F8),
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Text(
+                                        text = cleanName,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+
+                                Icon(
+                                    imageVector = Icons.Default.PlayArrow,
+                                    contentDescription = "Preview",
+                                    tint = Color.White.copy(alpha = 0.70f),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ================= ASSIGN SAMPLE TO PAD DIALOG =================
+        if (sampleToAssign != null) {
+            val currentSample = sampleToAssign!!
+            val cleanSampleName = currentSample.name.removeSuffix(".wav").removeSuffix(".mp3").replace("_", " ")
+
+            AlertDialog(
+                onDismissRequest = { sampleToAssign = null },
+                title = {
+                    Text(
+                        text = "Assign Sample",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "Assign \"$cleanSampleName\" to pad:",
+                            color = Color(0xFFB0BEC5),
+                            fontSize = 12.sp
+                        )
+
+                        // 2x4 Grid of Pads D1 to D8
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                for (padId in 1..4) {
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(36.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(
+                                                Brush.verticalGradient(
+                                                    listOf(Color(0xFF283144), Color(0xFF1D2433))
+                                                )
+                                            )
+                                            .clickable {
+                                                onAssignSampleToPad(padId, currentSample)
+                                                sampleToAssign = null
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "D$padId",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF9BC0F8)
+                                        )
+                                    }
+                                }
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                for (padId in 5..8) {
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(36.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(
+                                                Brush.verticalGradient(
+                                                    listOf(Color(0xFF283144), Color(0xFF1D2433))
+                                                )
+                                            )
+                                            .clickable {
+                                                onAssignSampleToPad(padId, currentSample)
+                                                sampleToAssign = null
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "D$padId",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF9BC0F8)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
                 },
                 confirmButton = {},
                 dismissButton = {
-                    TextButton(onClick = { showNewSceneDialog = false }) {
-                        Text("Cancel", color = Color.White)
+                    TextButton(onClick = { sampleToAssign = null }) {
+                        Text("Cancel", color = Color(0xFF8E95A5))
                     }
                 },
-                containerColor = Color(0xFF1E2330)
+                containerColor = Color(0xFF161B29),
+                shape = RoundedCornerShape(16.dp)
             )
         }
     }
@@ -760,7 +992,6 @@ fun DrumPadPage(
 @Composable
 private fun SingleDrumPadBox(
     pad: DrumPadItem,
-    padColor: Color,
     isMixMode: Boolean,
     onPadPressed: () -> Unit,
     onPadReleased: () -> Unit,
@@ -771,16 +1002,33 @@ private fun SingleDrumPadBox(
 
     var accumulatedDrag by remember(pad.id) { mutableFloatStateOf(0f) }
 
+    val padBgBrush = if (pad.isPressed) {
+        Brush.verticalGradient(
+            listOf(Color(0xFF333C50), Color(0xFF232938))
+        )
+    } else {
+        Brush.verticalGradient(
+            listOf(Color(0xFF222838), Color(0xFF141824))
+        )
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .clip(RoundedCornerShape(16.dp))
-            .background(padColor)
-            .border(
-                1.5.dp,
-                if (pad.isPressed) Color.White else Color.White.copy(alpha = 0.18f),
-                RoundedCornerShape(16.dp)
-            )
+            .shadow(2.dp, RoundedCornerShape(12.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+            .clip(RoundedCornerShape(12.dp))
+            .background(padBgBrush)
+            .drawWithContent {
+                drawContent()
+                // Top specular highlight for natural physical relief (matching Snapshot relief)
+                drawLine(
+                    color = Color.White.copy(alpha = if (pad.isPressed) 0.22f else 0.12f),
+                    start = Offset(6.dp.toPx(), 1f),
+                    end = Offset(size.width - 6.dp.toPx(), 1f),
+                    strokeWidth = 1.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+            }
             .pointerInput(pad.id, isMixMode) {
                 if (isMixMode) {
                     detectVerticalDragGestures(

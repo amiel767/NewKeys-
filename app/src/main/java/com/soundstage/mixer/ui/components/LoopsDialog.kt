@@ -213,34 +213,13 @@ fun LoopsDialog(
                             onConfirmDelete = { file ->
                                 fileToDelete = file
                             },
-                            onImportLoop = { isNativeBrowserOpen = true },
+                            onImportLoop = {},
                             onClose = onClose
                         )
                     }
                 }
             }
         }
-    }
-
-    if (isNativeBrowserOpen) {
-        NativeFileBrowserDialog(
-            isOpen = isNativeBrowserOpen,
-            onClose = { isNativeBrowserOpen = false },
-            initialPath = lastPath.ifEmpty { "/storage/emulated/0/SoundStage/Loops" },
-            title = "Explorateur de Loops Audio",
-            onPathChanged = { newPath -> onUpdateLastPath(newPath) },
-            onFileSelected = { file ->
-                val imported = LoopFile(
-                    name = file.name,
-                    duration = "Audio",
-                    folder = file.parentFile?.name ?: "Stockage",
-                    beats = selectedBeats.coerceAtLeast(2),
-                    path = file.absolutePath
-                )
-                onSelectFile(imported)
-                isNativeBrowserOpen = false
-            }
-        )
     }
 
     // Delete Confirmation Dialog

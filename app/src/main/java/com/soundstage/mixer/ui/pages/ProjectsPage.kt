@@ -34,6 +34,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.model.ScenePreset
+import com.soundstage.mixer.ui.components.AmbientStudioBackground
 
 // Snapshot Color Palette
 private val SnapshotAccent = Color(0xFF9BC0F8)
@@ -66,48 +67,6 @@ fun ProjectsPage(
     var pendingDeleteSetlistName by remember { mutableStateOf<String?>(null) }
     var sortOrder by remember { mutableStateOf("Recently used") }
     var isSortMenuOpen by remember { mutableStateOf(false) }
-
-    // Dynamic background directly synchronized with Mixer theme settings
-    val studioBg = MaterialTheme.colorScheme.background
-
-    // Ambient Floating Glow Orb Animation (Smooth, slow, delicate organic ambient light bubble)
-    val infiniteTransition = rememberInfiniteTransition(label = "ambient_glow_orb")
-    val animPhaseX by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2 * Math.PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 48000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "glow_x"
-    )
-    val animPhaseY by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2 * Math.PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 62000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "glow_y"
-    )
-    val animPhaseRadius by infiniteTransition.animateFloat(
-        initialValue = 0.90f,
-        targetValue = 1.10f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 28000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "glow_radius_pulse"
-    )
-    val animColorPhase by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 36000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "glow_color"
-    )
 
     // Filtered setlists based on search query
     val filteredProjects = remember(projects, searchQuery, sortOrder) {
@@ -318,80 +277,11 @@ fun ProjectsPage(
     }
 
     // ================= ROOT CONTAINER: OPEN STUDIO LAYOUT WITH FLOATING GLOW ORB =================
-    Box(
+    AmbientStudioBackground(
         modifier = modifier
             .fillMaxSize()
             .testTag("projects_page")
     ) {
-        // 1. Dynamic Canvas Background + Ambient Floating Glow Bubble (Delicate, soft atmospheric luminescence)
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            // Theme-synchronized dark studio background (matching Mixer exactly)
-            drawRect(color = studioBg)
-
-            // Primary Floating Ambient Glow Orb (smooth, subtle, organic luminous bubble)
-            val cx = size.width * (0.50f + 0.35f * kotlin.math.sin(animPhaseX))
-            val cy = size.height * (0.50f + 0.30f * kotlin.math.cos(animPhaseY))
-            val baseRadius = (size.width * 0.35f).coerceIn(160.dp.toPx(), 320.dp.toPx())
-            val currentOrbRadius = baseRadius * animPhaseRadius
-
-            // Soft Snapshot Sky to Pastel Periwinkle chromatic interpolation
-            val orbColor = androidx.compose.ui.graphics.lerp(
-                Color(0xFF60A5FA),
-                Color(0xFF818CF8),
-                animColorPhase
-            )
-
-            // Layer 1: Wide Diffused Aura (Subtle ambient background illumination)
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        orbColor.copy(alpha = 0.12f),
-                        orbColor.copy(alpha = 0.05f),
-                        orbColor.copy(alpha = 0.01f),
-                        Color.Transparent
-                    ),
-                    center = Offset(cx, cy),
-                    radius = currentOrbRadius * 1.5f
-                ),
-                center = Offset(cx, cy),
-                radius = currentOrbRadius * 1.5f
-            )
-
-            // Layer 2: Gentle Soft Core
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        orbColor.copy(alpha = 0.18f),
-                        orbColor.copy(alpha = 0.08f),
-                        Color.Transparent
-                    ),
-                    center = Offset(cx, cy),
-                    radius = currentOrbRadius * 0.70f
-                ),
-                center = Offset(cx, cy),
-                radius = currentOrbRadius * 0.70f
-            )
-
-            // Layer 3: Secondary Floating Satellite Glow Orb drifting counter-phase
-            val satX = size.width * (0.50f - 0.34f * kotlin.math.sin(animPhaseY * 0.85f))
-            val satY = size.height * (0.50f - 0.28f * kotlin.math.cos(animPhaseX * 0.75f))
-            val satRadius = baseRadius * 0.75f
-
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        Color(0xFF93C5FD).copy(alpha = 0.10f),
-                        Color(0xFF818CF8).copy(alpha = 0.04f),
-                        Color.Transparent
-                    ),
-                    center = Offset(satX, satY),
-                    radius = satRadius
-                ),
-                center = Offset(satX, satY),
-                radius = satRadius
-            )
-        }
-
         // 2. Open Page Content (No enclosing box border)
         Column(
             modifier = Modifier
