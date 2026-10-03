@@ -23,7 +23,9 @@ data class StorageItem(
     val size: Long = 0L,
     val extension: String = "",
     val subItemCount: Int = 0,
-    val formattedSize: String = ""
+    val formattedSize: String = "",
+    val lastModified: Long = 0L,
+    val formattedDate: String = ""
 )
 
 /**
@@ -351,6 +353,29 @@ class FileManager(private val context: Context) {
             bytes < 1024 -> "$bytes B"
             bytes < 1024 * 1024 -> "${bytes / 1024} KB"
             else -> String.format("%.1f MB", bytes.toDouble() / (1024.0 * 1024.0))
+        }
+    }
+
+    fun formatRelativeDate(timestamp: Long): String {
+        if (timestamp <= 0L) return "Recently"
+        val now = System.currentTimeMillis()
+        val diff = now - timestamp
+        val oneMinute = 60 * 1000L
+        val oneHour = 60 * oneMinute
+        val cal = java.util.Calendar.getInstance().apply { timeInMillis = timestamp }
+        val nowCal = java.util.Calendar.getInstance()
+
+        val timeFormat = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+        val dateFormat = java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.getDefault())
+
+        return when {
+            diff < 2 * oneMinute -> "Just now"
+            diff < oneHour -> "${(diff / oneMinute).coerceAtLeast(1)}m ago"
+            nowCal.get(java.util.Calendar.DAY_OF_YEAR) == cal.get(java.util.Calendar.DAY_OF_YEAR) &&
+            nowCal.get(java.util.Calendar.YEAR) == cal.get(java.util.Calendar.YEAR) -> "Today, ${timeFormat.format(cal.time)}"
+            nowCal.get(java.util.Calendar.DAY_OF_YEAR) - cal.get(java.util.Calendar.DAY_OF_YEAR) == 1 &&
+            nowCal.get(java.util.Calendar.YEAR) == cal.get(java.util.Calendar.YEAR) -> "Yesterday, ${timeFormat.format(cal.time)}"
+            else -> dateFormat.format(cal.time)
         }
     }
 
@@ -712,6 +737,7 @@ class FileManager(private val context: Context) {
                                 renamed
                             } else file
                         } else file
+                        val fileLastModified = effectiveFile.lastModified()
                         result.add(
                             StorageItem(
                                 name = effectiveFile.nameWithoutExtension,
@@ -719,7 +745,9 @@ class FileManager(private val context: Context) {
                                 isDirectory = false,
                                 size = effectiveFile.length(),
                                 extension = effectiveFile.extension.lowercase(),
-                                formattedSize = formatSize(effectiveFile.length())
+                                formattedSize = formatSize(effectiveFile.length()),
+                                lastModified = fileLastModified,
+                                formattedDate = formatRelativeDate(fileLastModified)
                             )
                         )
                     }

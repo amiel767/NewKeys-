@@ -211,12 +211,31 @@ data class SubSceneSnapshot(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+data class PatchItem(
+    val id: String,
+    val name: String,
+    val tracks: List<TrackChannel> = emptyList(),
+    val audioSlots: List<AudioSlot> = emptyList(),
+    val visibleTracksCount: Int = 1,
+    val transpose: Int = 0,
+    val octave: Int = 0,
+    val bpm: Int = 120,
+    val masterVolume: Float = 0.85f,
+    val snapshots: Map<String, SubSceneSnapshot> = emptyMap(),
+    val configuredSnapshotSlots: List<String> = listOf("slot_default"),
+    val snapshotCustomNames: Map<String, String> = emptyMap(),
+    val activeSnapshotSlot: String? = "slot_default"
+)
+
 data class ScenePreset(
     val id: String,
     val name: String,
     val timestamp: String,
     val color: Color,
-    val snapshots: Map<String, SubSceneSnapshot> = emptyMap()
+    val patchesCount: Int = 1,
+    val formattedDate: String = "",
+    val snapshots: Map<String, SubSceneSnapshot> = emptyMap(),
+    val patches: List<PatchItem> = emptyList()
 )
 
 data class SoundfontPreset(

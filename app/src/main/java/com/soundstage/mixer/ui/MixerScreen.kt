@@ -955,16 +955,16 @@ fun MixerScreen(
                 .zIndex(115f)
         )
 
-        // Projects / Scenes Sliding Side Drawer (Exact sliding drawer from right matching Settings)
+        // Patches Sliding Side Drawer (Exact sliding drawer from right matching Settings)
         SceneDialog(
             isOpen = uiState.activePopup == ActivePopup.SCENE,
-            scenes = uiState.scenes,
-            activeSceneId = uiState.activeSceneId,
-            onSelectScene = { viewModel.selectScene(it) },
-            onSaveCurrentScene = { viewModel.saveCurrentScene(it) },
-            onCreateNewProject = { name, isBlank -> viewModel.createNewProject(name, isBlank) },
+            patches = uiState.patches,
+            activePatchId = uiState.activePatchId,
+            onSelectPatch = { viewModel.selectPatch(it) },
+            onCreateNewPatch = { name, isBlank -> viewModel.createNewPatch(name, isBlank) },
+            onDeletePatch = { viewModel.deletePatch(it) },
+            onRenamePatch = { id, newName -> viewModel.renamePatch(id, newName) },
             onUpdateActiveScene = { viewModel.updateActiveScene() },
-            onDeleteScene = { viewModel.deleteScene(it) },
             onNavigateHome = { viewModel.navigateToProjectsHome() },
             onClose = { viewModel.closePopup() },
             modifier = Modifier

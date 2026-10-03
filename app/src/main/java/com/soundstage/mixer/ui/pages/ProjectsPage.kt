@@ -937,9 +937,14 @@ private fun RecentlyUsedSetlistCard(
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                val patchesCount = project.snapshots.size.coerceAtLeast(1)
+                val patchesCount = project.patches.size
+                val patchLabel = when (patchesCount) {
+                    0 -> "0 Patches"
+                    1 -> "1 Patch"
+                    else -> "$patchesCount Patches"
+                }
                 Text(
-                    text = "$patchesCount Patches",
+                    text = patchLabel,
                     color = if (isSelected) SnapshotAccent else Color(0xFF94A3B8),
                     fontSize = 10.5.sp,
                     fontWeight = FontWeight.Medium
@@ -965,7 +970,12 @@ private fun SetlistTableRow(
     onDelete: () -> Unit
 ) {
     var isMenuOpen by remember { mutableStateOf(false) }
-    val patchesCount = project.snapshots.size.coerceAtLeast(1)
+    val patchesCount = project.patches.size
+    val patchLabel = when (patchesCount) {
+        0 -> "0 Patches"
+        1 -> "1 Patch"
+        else -> "$patchesCount Patches"
+    }
 
     Row(
         modifier = Modifier
@@ -1001,32 +1011,11 @@ private fun SetlistTableRow(
 
         // Patches Count
         Text(
-            text = "$patchesCount Patches",
+            text = patchLabel,
             color = if (isSelected) SnapshotAccent else Color(0xFF94A3B8),
             fontSize = 11.sp,
             modifier = Modifier.weight(0.8f)
         )
-
-        // Type badge (User created / Received)
-        Box(
-            modifier = Modifier
-                .weight(0.8f)
-        ) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color(0xFF1E2638))
-                    .border(1.dp, CardBorder, RoundedCornerShape(4.dp))
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
-            ) {
-                Text(
-                    text = "User created",
-                    color = Color(0xFF94A3B8),
-                    fontSize = 9.5.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-        }
 
         // Date Created / Last used
         Text(

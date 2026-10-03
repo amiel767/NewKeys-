@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -28,6 +29,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
@@ -39,7 +42,6 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
@@ -47,17 +49,12 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.soundstage.mixer.model.ScenePreset
+import com.soundstage.mixer.model.PatchItem
 import com.soundstage.mixer.ui.theme.*
-
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.RadioButtonChecked
-import androidx.compose.material.icons.filled.RadioButtonUnchecked
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.RadioButtonDefaults
 
 // Snapshot Harmonized Palette
 private val SnapshotAccent = Color(0xFF9BC0F8)
@@ -65,23 +62,23 @@ private val SnapshotAccentDark = Color(0xFF8FB6F2)
 private val CardBorder = Color(0xFF38455E)
 
 /**
- * Modern Global Scene Side Panel:
- * - Fluid sliding side drawer from the right (identical to SettingsDrawer)
- * - Clean Diskette save icon in header for 1-click global scene save/overwrite with visual pulse
- * - Home icon to return to Projects Page
- * - Dual-mode New Project Dialog (Blank Project vs Duplicate Current)
- * - Real Scene files list with sound wave icon, selected badge, rename & animated delete
+ * Modern Global Scene Side Panel for Patches:
+ * - Dedicated exclusively to internal Patches belonging to the open Setlist
+ * - Fluid sliding side drawer from the right
+ * - Clean Diskette save icon in header for 1-click setlist/patch save with visual pulse
+ * - Home icon to return to Projects / Setlists Page
+ * - Displays Patches (Level 2), with option to create, rename, delete or select patches
  */
 @Composable
 fun SceneDialog(
     isOpen: Boolean,
-    scenes: List<ScenePreset>,
-    activeSceneId: String,
-    onSelectScene: (String) -> Unit,
-    onSaveCurrentScene: (String) -> Unit = {},
-    onCreateNewProject: (name: String, isBlank: Boolean) -> Unit = { _, _ -> },
+    patches: List<PatchItem>,
+    activePatchId: String?,
+    onSelectPatch: (String) -> Unit,
+    onCreateNewPatch: (name: String, isBlank: Boolean) -> Unit = { _, _ -> },
+    onDeletePatch: (String) -> Unit = {},
+    onRenamePatch: (id: String, newName: String) -> Unit = { _, _ -> },
     onUpdateActiveScene: () -> Unit = {},
-    onDeleteScene: (String) -> Unit = {},
     onNavigateHome: () -> Unit = {},
     onClose: () -> Unit,
     modifier: Modifier = Modifier
@@ -144,7 +141,7 @@ fun SceneDialog(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // ================= 1. HEADER: "Setlists" + Diskette Icon + Close (X) =================
+                    // ================= 1. HEADER: "Patches" + Home + Diskette Icon + Close (X) =================
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -153,7 +150,7 @@ fun SceneDialog(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "Setlists",
+                            text = "Patches",
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
@@ -163,7 +160,7 @@ fun SceneDialog(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            // Home Button (with snapshot soft cyan-blue icon)
+                            // Home Button (Return to Setlists Page)
                             Box(
                                 modifier = Modifier
                                     .size(34.dp)
@@ -194,7 +191,7 @@ fun SceneDialog(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Home,
-                                    contentDescription = "Home",
+                                    contentDescription = "Setlists",
                                     tint = SnapshotAccent,
                                     modifier = Modifier.size(18.dp)
                                 )
@@ -244,191 +241,218 @@ fun SceneDialog(
                         }
                     }
 
-                    // ================= 2. REAL SCENES LIST =================
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        items(scenes, key = { it.id }) { scene ->
-                            val isSelected = scene.id == activeSceneId
-                            val isPendingDelete = pendingDeleteSceneId == scene.id
-
-                            val cardBg = if (isSelected) Color(0xFF222C3D) else Color(0xFF141924)
-                            val cardBorder = if (isSelected) Color(0x889BC0F8) else Color(0xFF28344A)
-
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(cardBg)
-                                    .border(if (isSelected) 1.5.dp else 1.dp, cardBorder, RoundedCornerShape(14.dp))
-                                    .clickable { onSelectScene(scene.id) }
-                                    .padding(horizontal = 14.dp, vertical = 12.dp)
-                                    .testTag("scene_item_${scene.id}")
+                    // ================= 2. PATCHES LIST =================
+                    if (patches.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                Text(
+                                    text = "0 Patch",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF94A3B8)
+                                )
+                                Text(
+                                    text = "No patch in this Setlist.\nClick below to create a patch.",
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF64748B),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            items(patches, key = { it.id }) { patch ->
+                                val isSelected = patch.id == activePatchId
+                                val isPendingDelete = pendingDeleteSceneId == patch.id
+
+                                val cardBg = if (isSelected) Color(0xFF222C3D) else Color(0xFF141924)
+                                val cardBorder = if (isSelected) Color(0x889BC0F8) else Color(0xFF28344A)
+
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(cardBg)
+                                        .border(if (isSelected) 1.5.dp else 1.dp, cardBorder, RoundedCornerShape(14.dp))
+                                        .clickable { onSelectPatch(patch.id) }
+                                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                                        .testTag("patch_item_${patch.id}")
                                 ) {
-                                    // Left: Sound wave icon + Scene title & description
                                     Row(
-                                        modifier = Modifier.weight(1f),
+                                        modifier = Modifier.fillMaxWidth(),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                        horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        // Sound bars icon container
-                                        Box(
-                                            modifier = Modifier
-                                                .size(38.dp)
-                                                .clip(RoundedCornerShape(10.dp))
-                                                .background(if (isSelected) Color(0xFF2B384E) else Color(0xFF19202E))
-                                                .border(1.dp, if (isSelected) Color(0x889BC0F8) else Color(0xFF28344A), RoundedCornerShape(10.dp)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Canvas(modifier = Modifier.size(16.dp, 16.dp)) {
-                                                val w = size.width
-                                                val h = size.height
-                                                val barCol = if (isSelected) SnapshotAccent else Color(0xFF64748B)
-
-                                                // 3 Sound equalizer bars
-                                                drawLine(
-                                                    color = barCol,
-                                                    start = Offset(w * 0.20f, h * 0.40f),
-                                                    end = Offset(w * 0.20f, h * 0.90f),
-                                                    strokeWidth = 2.5f,
-                                                    cap = androidx.compose.ui.graphics.StrokeCap.Round
-                                                )
-                                                drawLine(
-                                                    color = barCol,
-                                                    start = Offset(w * 0.50f, h * 0.15f),
-                                                    end = Offset(w * 0.50f, h * 0.90f),
-                                                    strokeWidth = 2.5f,
-                                                    cap = androidx.compose.ui.graphics.StrokeCap.Round
-                                                )
-                                                drawLine(
-                                                    color = barCol,
-                                                    start = Offset(w * 0.80f, h * 0.50f),
-                                                    end = Offset(w * 0.80f, h * 0.90f),
-                                                    strokeWidth = 2.5f,
-                                                    cap = androidx.compose.ui.graphics.StrokeCap.Round
-                                                )
-                                            }
-                                        }
-
-                                        Column(
+                                        // Left: Sound wave icon + Patch name & snapshot count
+                                        Row(
                                             modifier = Modifier.weight(1f),
-                                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                                         ) {
-                                            Text(
-                                                text = scene.name,
-                                                fontSize = 14.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.White,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(
-                                                text = if (scene.timestamp.isNotEmpty()) scene.timestamp else "Active Setlist",
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Normal,
-                                                color = Color(0xFF64748B),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-                                    }
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(38.dp)
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .background(if (isSelected) Color(0xFF2B384E) else Color(0xFF19202E))
+                                                    .border(1.dp, if (isSelected) Color(0x889BC0F8) else Color(0xFF28344A), RoundedCornerShape(10.dp)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Canvas(modifier = Modifier.size(16.dp, 16.dp)) {
+                                                    val w = size.width
+                                                    val h = size.height
+                                                    val barCol = if (isSelected) SnapshotAccent else Color(0xFF64748B)
 
-                                    // Right: Actions (Rename, Delete confirmation, Checkmark)
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        // Rename button
-                                        IconButton(
-                                            onClick = {
-                                                renamingSceneId = scene.id
-                                                renamingSceneNameInput = scene.name
-                                            },
-                                            modifier = Modifier.size(28.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Edit,
-                                                contentDescription = "Rename",
-                                                tint = Color(0xFF64748B),
-                                                modifier = Modifier.size(15.dp)
-                                            )
-                                        }
-
-                                        // Animated Delete Button
-                                        AnimatedContent(
-                                            targetState = isPendingDelete,
-                                            label = "delete_anim_${scene.id}"
-                                        ) { pending ->
-                                            if (pending) {
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                                ) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .clip(RoundedCornerShape(6.dp))
-                                                            .background(Color(0xFFDC2626))
-                                                            .clickable {
-                                                                onDeleteScene(scene.id)
-                                                                pendingDeleteSceneId = null
-                                                            }
-                                                            .padding(horizontal = 6.dp, vertical = 3.dp)
-                                                    ) {
-                                                        Text("Delete", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                                    }
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .clip(RoundedCornerShape(6.dp))
-                                                            .background(Color(0xFF333D52))
-                                                            .clickable { pendingDeleteSceneId = null }
-                                                            .padding(horizontal = 4.dp, vertical = 3.dp)
-                                                    ) {
-                                                        Icon(Icons.Default.Close, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
-                                                    }
-                                                }
-                                            } else {
-                                                IconButton(
-                                                    onClick = { pendingDeleteSceneId = scene.id },
-                                                    modifier = Modifier.size(28.dp)
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Delete,
-                                                        contentDescription = "Delete",
-                                                        tint = Color(0xFF64748B),
-                                                        modifier = Modifier.size(15.dp)
+                                                    drawLine(
+                                                        color = barCol,
+                                                        start = Offset(w * 0.20f, h * 0.40f),
+                                                        end = Offset(w * 0.20f, h * 0.90f),
+                                                        strokeWidth = 2.5f,
+                                                        cap = StrokeCap.Round
+                                                    )
+                                                    drawLine(
+                                                        color = barCol,
+                                                        start = Offset(w * 0.50f, h * 0.15f),
+                                                        end = Offset(w * 0.50f, h * 0.90f),
+                                                        strokeWidth = 2.5f,
+                                                        cap = StrokeCap.Round
+                                                    )
+                                                    drawLine(
+                                                        color = barCol,
+                                                        start = Offset(w * 0.80f, h * 0.50f),
+                                                        end = Offset(w * 0.80f, h * 0.90f),
+                                                        strokeWidth = 2.5f,
+                                                        cap = StrokeCap.Round
                                                     )
                                                 }
                                             }
+
+                                            Column(
+                                                modifier = Modifier.weight(1f),
+                                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                                            ) {
+                                                Text(
+                                                    text = patch.name,
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                val snapCount = patch.configuredSnapshotSlots.size
+                                                val snapText = when (snapCount) {
+                                                    0 -> "0 Snapshot"
+                                                    1 -> "1 Snapshot"
+                                                    else -> "$snapCount Snapshots"
+                                                }
+                                                Text(
+                                                    text = snapText,
+                                                    fontSize = 11.sp,
+                                                    color = Color(0xFF64748B),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
                                         }
 
-                                        // Selected Checkmark Badge (matching soft pastel snapshot color with dark contrast check)
-                                        if (isSelected) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(22.dp)
-                                                    .shadow(2.dp, CircleShape, ambientColor = Color.Black, spotColor = Color(0x66000000))
-                                                    .clip(CircleShape)
-                                                    .background(
-                                                        Brush.verticalGradient(
-                                                            listOf(SnapshotAccent, SnapshotAccentDark)
-                                                        )
-                                                    ),
-                                                contentAlignment = Alignment.Center
+                                        // Right: Actions (Rename, Delete, Selected Checkmark)
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            IconButton(
+                                                onClick = {
+                                                    renamingSceneId = patch.id
+                                                    renamingSceneNameInput = patch.name
+                                                },
+                                                modifier = Modifier.size(28.dp)
                                             ) {
                                                 Icon(
-                                                    imageVector = Icons.Default.Check,
-                                                    contentDescription = "Active",
-                                                    tint = Color(0xFF101726),
-                                                    modifier = Modifier.size(14.dp)
+                                                    imageVector = Icons.Default.Edit,
+                                                    contentDescription = "Rename",
+                                                    tint = Color(0xFF64748B),
+                                                    modifier = Modifier.size(15.dp)
                                                 )
+                                            }
+
+                                            AnimatedContent(
+                                                targetState = isPendingDelete,
+                                                label = "delete_anim_${patch.id}"
+                                            ) { pending ->
+                                                if (pending) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                    ) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .clip(RoundedCornerShape(6.dp))
+                                                                .background(Color(0xFFDC2626))
+                                                                .clickable {
+                                                                    onDeletePatch(patch.id)
+                                                                    pendingDeleteSceneId = null
+                                                                }
+                                                                .padding(horizontal = 6.dp, vertical = 3.dp)
+                                                        ) {
+                                                            Text("Delete", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                                        }
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .clip(RoundedCornerShape(6.dp))
+                                                                .background(Color(0xFF333D52))
+                                                                .clickable { pendingDeleteSceneId = null }
+                                                                .padding(horizontal = 4.dp, vertical = 3.dp)
+                                                        ) {
+                                                            Icon(Icons.Default.Close, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
+                                                        }
+                                                    }
+                                                } else {
+                                                    IconButton(
+                                                        onClick = { pendingDeleteSceneId = patch.id },
+                                                        modifier = Modifier.size(28.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Delete,
+                                                            contentDescription = "Delete",
+                                                            tint = Color(0xFF64748B),
+                                                            modifier = Modifier.size(15.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+
+                                            if (isSelected) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(22.dp)
+                                                        .shadow(2.dp, CircleShape, ambientColor = Color.Black, spotColor = Color(0x66000000))
+                                                        .clip(CircleShape)
+                                                        .background(
+                                                            Brush.verticalGradient(
+                                                                listOf(SnapshotAccent, SnapshotAccentDark)
+                                                            )
+                                                        ),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Check,
+                                                        contentDescription = "Active",
+                                                        tint = Color(0xFF101726),
+                                                        modifier = Modifier.size(14.dp)
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -439,7 +463,7 @@ fun SceneDialog(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // ================= 3. BOTTOM BUTTON: "+ Nouvelle scène" (Dashed border) =================
+                    // ================= 3. BOTTOM BUTTON: "+ New Patch" (Dashed border) =================
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -457,10 +481,10 @@ fun SceneDialog(
                                 )
                             }
                             .clickable {
-                                newSceneNameInput = "Setlist ${scenes.size + 1}"
+                                newSceneNameInput = "Patch ${patches.size + 1}"
                                 isNewSceneDialogOpen = true
                             }
-                            .testTag("btn_new_scene_dashed"),
+                            .testTag("btn_new_patch_dashed"),
                         contentAlignment = Alignment.Center
                     ) {
                         Row(
@@ -474,7 +498,7 @@ fun SceneDialog(
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
-                                text = "New Setlist",
+                                text = "New Patch",
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color(0xFF94A3B8)
@@ -486,13 +510,13 @@ fun SceneDialog(
         }
     }
 
-    // New Setlist Dialog (Scrollable so Option 2 is never truncated)
+    // New Patch Dialog
     if (isNewSceneDialogOpen) {
         AlertDialog(
             onDismissRequest = { isNewSceneDialogOpen = false },
             title = {
                 Text(
-                    text = "New Setlist",
+                    text = "New Patch",
                     color = Color.White,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
@@ -507,7 +531,7 @@ fun SceneDialog(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "Enter setlist name:",
+                        text = "Enter patch name:",
                         color = Color(0xFF94A3B8),
                         fontSize = 12.sp
                     )
@@ -518,27 +542,26 @@ fun SceneDialog(
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = Color.White,
                             unfocusedTextColor = Color.White,
-                            focusedBorderColor = NeonCyan,
+                            focusedBorderColor = SnapshotAccent,
                             unfocusedBorderColor = Color(0x55FFFFFF),
-                            cursorColor = NeonCyan
+                            cursorColor = SnapshotAccent
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )
 
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "Setlist Mode:",
+                        text = "Patch Mode:",
                         color = Color(0xFF94A3B8),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold
                     )
 
-                    // Compact side-by-side mode cards (fits any landscape screen without truncation)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // Option 1: Blank Setlist
+                        // Option 1: Blank Patch
                         Box(
                             modifier = Modifier
                                 .weight(1f)
@@ -558,7 +581,7 @@ fun SceneDialog(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Column {
                                     Text(
-                                        text = "New Blank",
+                                        text = "Blank Patch",
                                         color = Color.White,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.SemiBold
@@ -572,7 +595,7 @@ fun SceneDialog(
                             }
                         }
 
-                        // Option 2: Duplicate Current Setlist
+                        // Option 2: Duplicate Current Patch
                         Box(
                             modifier = Modifier
                                 .weight(1f)
@@ -611,13 +634,13 @@ fun SceneDialog(
             confirmButton = {
                 Button(
                     onClick = {
-                        val name = newSceneNameInput.trim().ifEmpty { "Setlist ${scenes.size + 1}" }
-                        onCreateNewProject(name, isBlankProjectMode)
+                        val name = newSceneNameInput.trim().ifEmpty { "Patch ${patches.size + 1}" }
+                        onCreateNewPatch(name, isBlankProjectMode)
                         isNewSceneDialogOpen = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = SnapshotAccent)
                 ) {
-                    Text("Create Setlist", color = Color(0xFF101726), fontWeight = FontWeight.Bold)
+                    Text("Create Patch", color = Color(0xFF101726), fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -630,13 +653,13 @@ fun SceneDialog(
         )
     }
 
-    // Rename Scene Dialog
+    // Rename Patch Dialog
     if (renamingSceneId != null) {
         AlertDialog(
             onDismissRequest = { renamingSceneId = null },
             title = {
                 Text(
-                    text = "Rename Setlist",
+                    text = "Rename Patch",
                     color = Color.White,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
@@ -662,7 +685,7 @@ fun SceneDialog(
                     onClick = {
                         val id = renamingSceneId
                         if (id != null && renamingSceneNameInput.isNotBlank()) {
-                            onSaveCurrentScene(renamingSceneNameInput.trim())
+                            onRenamePatch(id, renamingSceneNameInput.trim())
                         }
                         renamingSceneId = null
                     },

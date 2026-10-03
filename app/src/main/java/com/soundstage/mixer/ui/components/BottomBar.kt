@@ -615,10 +615,8 @@ fun BottomBar(
             label = "arm_blink"
         )
 
-        val isAdaptiveSnapshots = configuredSnapshotSlots.size >= 4
-
         Row(
-            modifier = if (isAdaptiveSnapshots) Modifier.weight(1f).height(barHeight) else Modifier.wrapContentWidth().height(barHeight),
+            modifier = Modifier.wrapContentWidth().height(barHeight),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
@@ -665,10 +663,10 @@ fun BottomBar(
                     displayName
                 }
 
-                val slotModifier = if (isAdaptiveSnapshots) {
-                    Modifier.weight(1f).height(barHeight)
+                val slotModifier = if (configuredSnapshotSlots.size > 3) {
+                    Modifier.width(66.dp).height(barHeight)
                 } else {
-                    Modifier.width(88.dp).height(barHeight)
+                    Modifier.width(80.dp).height(barHeight)
                 }
 
                 Box(
@@ -812,14 +810,17 @@ fun BottomBar(
             }
         }
 
-        if (!isAdaptiveSnapshots) {
-            Spacer(modifier = Modifier.weight(1f))
-        }
+        // Flexible Spacer pushing Master Slider and Keyboard buttons to the far right end
+        Spacer(modifier = Modifier.weight(1f))
 
-        // ================= 5. MASTER FADER (COMPACT FIXED WIDTH) =================
+        // ================= 5. MASTER FADER (FIXED CONSTANT WIDTH) =================
+        // Master slider maintains its fixed natural size. When Layers button appears beside Virtual Keyboard,
+        // it pushes the Master Slider to the left into the flexible spacer.
+        val masterFaderWidth = 115.dp
+
         Row(
             modifier = Modifier
-                .width(150.dp)
+                .width(masterFaderWidth)
                 .height(barHeight)
                 .shadow(2.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
                 .clip(RoundedCornerShape(8.dp))
