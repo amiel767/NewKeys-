@@ -15,6 +15,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -37,6 +38,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.withTimeoutOrNull
 import com.soundstage.mixer.model.DrumPadItem
 import com.soundstage.mixer.model.ScenePreset
 import com.soundstage.mixer.model.StorageItem
@@ -115,21 +117,8 @@ fun DrumPadPage(
 
     var sampleToAssign by remember { mutableStateOf<StorageItem?>(null) }
 
-    // Fallback default samples if audioFiles list is empty
-    val effectiveAudioFiles = remember(audioFiles) {
-        if (audioFiles.isNotEmpty()) audioFiles else listOf(
-            StorageItem("Kick_808.wav", "/sdcard/DrumPad/Kick_808.wav", false, extension = "wav"),
-            StorageItem("Snare_Studio_Punch.wav", "/sdcard/DrumPad/Snare_Studio_Punch.wav", false, extension = "wav"),
-            StorageItem("Clap_Hand_Pro.wav", "/sdcard/DrumPad/Clap_Hand_Pro.wav", false, extension = "wav"),
-            StorageItem("HiHat_Closed_Tight.wav", "/sdcard/DrumPad/HiHat_Closed_Tight.wav", false, extension = "wav"),
-            StorageItem("HiHat_Open_Sizzle.wav", "/sdcard/DrumPad/HiHat_Open_Sizzle.wav", false, extension = "wav"),
-            StorageItem("Tom_High_Studio.wav", "/sdcard/DrumPad/Tom_High_Studio.wav", false, extension = "wav"),
-            StorageItem("Tom_Low_Deep.wav", "/sdcard/DrumPad/Tom_Low_Deep.wav", false, extension = "wav"),
-            StorageItem("Perc_Rimshot.wav", "/sdcard/DrumPad/Perc_Rimshot.wav", false, extension = "wav"),
-            StorageItem("Crash_Cymbal_16.wav", "/sdcard/DrumPad/Crash_Cymbal_16.wav", false, extension = "wav"),
-            StorageItem("Sub_Kick_Analog.wav", "/sdcard/DrumPad/Sub_Kick_Analog.wav", false, extension = "wav")
-        )
-    }
+    // Real audio files strictly from folder (no fake hardcoded fallback samples)
+    val effectiveAudioFiles = audioFiles
 
     AmbientStudioBackground(
         modifier = modifier
@@ -167,13 +156,13 @@ fun DrumPadPage(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Menu Burger (Retour Mixeur)
+                // Retour Mixeur
                 IconButton(
                     onClick = onBackToMixer,
                     modifier = Modifier.size(32.dp).testTag("btn_drumpad_back_mixer")
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Menu,
+                        imageVector = Icons.Default.Tune,
                         contentDescription = "Retour Mixeur",
                         tint = Color.White,
                         modifier = Modifier.size(20.dp)
@@ -335,102 +324,14 @@ fun DrumPadPage(
                     .weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // ================= FLANC GAUCHE : TONIC PAD ULTRA FIDÈLE AU SVG =================
+                // ================= FLANC GAUCHE : TONIC PAD =================
                 Column(
                     modifier = Modifier
                         .width(180.dp)
                         .fillMaxHeight(),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // Contrôle d'octave et Multi-Pad en haut du TonicPad (avec relief Bento)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(28.dp)
-                            .shadow(1.5.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(Color(0xFF283144), Color(0xFF1D2433))
-                                )
-                            )
-                            .drawWithContent {
-                                drawContent()
-                                drawLine(
-                                    color = Color.White.copy(alpha = 0.12f),
-                                    start = Offset(4.dp.toPx(), 1f),
-                                    end = Offset(size.width - 4.dp.toPx(), 1f),
-                                    strokeWidth = 1.dp.toPx(),
-                                    cap = StrokeCap.Round
-                                )
-                            }
-                            .padding(horizontal = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        // Octave - / +
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text("Oct", fontSize = 10.sp, color = Color(0xCCFFFFFF), fontWeight = FontWeight.Bold)
-                            Box(
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(Color(0x22FFFFFF))
-                                    .clickable { onTonicOctaveMinus() },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Default.Remove, contentDescription = "Octave moins", tint = Color.White, modifier = Modifier.size(11.dp))
-                            }
-                            Text(displayOctaveNumber, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            Box(
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(Color(0x22FFFFFF))
-                                    .clickable { onTonicOctavePlus() },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = "Octave plus", tint = Color.White, modifier = Modifier.size(11.dp))
-                            }
-                        }
-
-                        // Bascule Multi-Pad
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(if (isMultiPadEnabled) TonicPadKeyActive else Color(0x22FFFFFF))
-                                .clickable { onToggleMultiPad() }
-                                .padding(horizontal = 5.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = "Multi",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                        }
-
-                        // Bascule Dièses / Bémols
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(Color(0x22FFFFFF))
-                                .clickable { onToggleUseFlats() }
-                                .padding(horizontal = 4.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = if (useFlats) "b" else "#",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                        }
-                    }
-
-                    // Grille 4x3 de parfaits carrés (ratio 1:1, squarcles, non déformés)
+                    // Grille 4x3 de notes chromatiques (étendue vers le haut)
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -449,17 +350,40 @@ fun DrumPadPage(
                                     val note = currentChromaticNotes.getOrElse(index) { "C" }
                                     val isActive = activeTonicNotes.contains(note)
 
+                                    val keyBg = if (isActive) {
+                                        Brush.verticalGradient(
+                                            listOf(Color(0xFF9BC0F8), Color(0xFF38BDF8))
+                                        )
+                                    } else {
+                                        Brush.verticalGradient(
+                                            listOf(Color(0xFF283144), Color(0xFF1D2433))
+                                        )
+                                    }
+
                                     Box(
                                         modifier = Modifier
                                             .weight(1f)
                                             .fillMaxHeight()
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(if (isActive) TonicPadKeyActive else TonicPadKeyDark)
-                                            .border(
-                                                1.dp,
-                                                if (isActive) Color.White.copy(alpha = 0.5f) else Color(0x1AFFFFFF),
-                                                RoundedCornerShape(10.dp)
+                                            .shadow(
+                                                elevation = if (isActive) 8.dp else 2.dp,
+                                                shape = RoundedCornerShape(10.dp),
+                                                ambientColor = if (isActive) Color(0xFF38BDF8) else Color.Black,
+                                                spotColor = if (isActive) Color(0xFF38BDF8) else Color(0x99000000)
                                             )
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(keyBg)
+                                            .drawWithContent {
+                                                drawContent()
+                                                if (!isActive) {
+                                                    drawLine(
+                                                        color = Color.White.copy(alpha = 0.12f),
+                                                        start = Offset(4.dp.toPx(), 1f),
+                                                        end = Offset(size.width - 4.dp.toPx(), 1f),
+                                                        strokeWidth = 1.dp.toPx(),
+                                                        cap = StrokeCap.Round
+                                                    )
+                                                }
+                                            }
                                             .clickable { onTonicNoteClick(note) }
                                             .testTag("tonic_note_$note"),
                                         contentAlignment = Alignment.Center
@@ -468,7 +392,7 @@ fun DrumPadPage(
                                             text = note,
                                             fontSize = 13.sp,
                                             fontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.Bold,
-                                            color = Color.White
+                                            color = if (isActive) Color(0xFF101726) else Color.White
                                         )
                                     }
                                 }
@@ -500,7 +424,61 @@ fun DrumPadPage(
                             .padding(6.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        // Deux petits sliders : Volume et Shimmer (déplacés en haut, juste en bas des cases de notes)
+                        // Ligne de contrôle Octave (- / +) et bouton Multi (placés en premier)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(26.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            // Octave - / +
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text("Oct", fontSize = 10.sp, color = Color(0xCCFFFFFF), fontWeight = FontWeight.Bold)
+                                Box(
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color(0x22FFFFFF))
+                                        .clickable { onTonicOctaveMinus() },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.Remove, contentDescription = "Octave minus", tint = Color.White, modifier = Modifier.size(11.dp))
+                                }
+                                Text(displayOctaveNumber, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                Box(
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color(0x22FFFFFF))
+                                        .clickable { onTonicOctavePlus() },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = "Octave plus", tint = Color.White, modifier = Modifier.size(11.dp))
+                                }
+                            }
+
+                            // Bascule Multi-Pad
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(if (isMultiPadEnabled) Color(0xFF9BC0F8) else Color(0x22FFFFFF))
+                                    .clickable { onToggleMultiPad() }
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "Multi",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isMultiPadEnabled) Color(0xFF101726) else Color.White
+                                )
+                            }
+                        }
+
+                        // Deux petits sliders : Volume et Shimmer (placés en second)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -513,7 +491,7 @@ fun DrumPadPage(
                                     onValueChange = { onTonicVolumeChange(it) },
                                     colors = SliderDefaults.colors(
                                         thumbColor = Color.White,
-                                        activeTrackColor = TonicPadKeyActive,
+                                        activeTrackColor = Color(0xFF9BC0F8),
                                         inactiveTrackColor = Color(0x33FFFFFF)
                                     ),
                                     modifier = Modifier.height(18.dp)
@@ -536,52 +514,9 @@ fun DrumPadPage(
                             }
                         }
 
-                        // Ligne Note active + Bouton Stop rouge arrondi
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(28.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(5.dp)
-                            ) {
-                                val displayNote = activeTonicNotes.firstOrNull() ?: "---"
-                                Text(
-                                    text = displayNote,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .size(6.dp)
-                                        .clip(CircleShape)
-                                        .background(if (activeTonicNotes.isNotEmpty()) TonicPadLedGreen else Color(0x44FFFFFF))
-                                )
-                            }
+                        // Carte Pad : Displays "-" by default when empty or "Analog Pad"
+                        val displayPadName = if (activeTonicPadName.isBlank() || activeTonicPadName.equals("Analog Pad", ignoreCase = true) || activeTonicPadName == "-") "-" else activeTonicPadName
 
-                            // Bouton rouge carré arrondi Stop ⏹
-                            Box(
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(StopButtonRed)
-                                    .clickable { onStopTonicDrone() }
-                                    .testTag("btn_stop_tonic_drone"),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(8.dp)
-                                        .background(Color.White)
-                                )
-                            }
-                        }
-
-                        // Carte Pad : [Nom dynamique du preset soundfont] (poussée vers le bas)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -615,7 +550,7 @@ fun DrumPadPage(
                             ) {
                                 Icon(Icons.Default.Waves, contentDescription = null, tint = Color.White, modifier = Modifier.size(11.dp))
                                 Text(
-                                    text = "Pad: $activeTonicPadName",
+                                    text = "Pad: $displayPadName",
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = Color.White,
@@ -626,7 +561,9 @@ fun DrumPadPage(
                             Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color(0x88FFFFFF), modifier = Modifier.size(13.dp))
                         }
 
-                        // Carte Kit : [Nom dynamique du drum kit] (poussée en bas) -> Clic ouvre le sélecteur de Kit
+                        // Carte Kit : [Nom dynamique du drum kit] -> Clic ouvre le sélecteur de Kit
+                        val displayKitName = if (activeDrumKitName.isBlank()) "DrumKit" else activeDrumKitName
+
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -660,7 +597,7 @@ fun DrumPadPage(
                             ) {
                                 Icon(Icons.Default.Apps, contentDescription = null, tint = Color.White, modifier = Modifier.size(11.dp))
                                 Text(
-                                    text = "Kit: $activeDrumKitName",
+                                    text = "Kit: $displayKitName",
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = Color.White,
@@ -797,90 +734,95 @@ fun DrumPadPage(
                         text = "DrumKit",
                         fontSize = 17.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = Color.White
-                    )
-                    Text(
-                        text = "Tap to preview • Long press to assign",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFF94A3B8)
+                        color = Color.White,
+                        modifier = Modifier.padding(bottom = 8.dp)
                     )
 
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Unified clean Liquid Glass list
-                    LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(5.dp),
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        items(effectiveAudioFiles) { sample ->
-                            val cleanName = sample.name
-                                .removeSuffix(".wav")
-                                .removeSuffix(".mp3")
-                                .removeSuffix(".ogg")
-                                .replace("_", " ")
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(38.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(
-                                        Brush.verticalGradient(
-                                            listOf(Color(0xFF283144), Color(0xFF1D2433))
-                                        )
-                                    )
-                                    .drawWithContent {
-                                        drawContent()
-                                        drawLine(
-                                            color = Color.White.copy(alpha = 0.10f),
-                                            start = Offset(4.dp.toPx(), 1f),
-                                            end = Offset(size.width - 4.dp.toPx(), 1f),
-                                            strokeWidth = 1.dp.toPx(),
-                                            cap = StrokeCap.Round
-                                        )
-                                    }
-                                    .pointerInput(sample) {
-                                        detectTapGestures(
-                                            onTap = {
-                                                onPreviewAudioFile(sample)
-                                            },
-                                            onLongPress = {
-                                                sampleToAssign = sample
-                                            }
-                                        )
-                                    }
-                                    .padding(horizontal = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.MusicNote,
-                                        contentDescription = null,
-                                        tint = Color(0xFF9BC0F8),
-                                        modifier = Modifier.size(15.dp)
-                                    )
-                                    Text(
-                                        text = cleanName,
-                                        fontSize = 11.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-
-                                Icon(
-                                    imageVector = Icons.Default.PlayArrow,
-                                    contentDescription = "Preview",
-                                    tint = Color.White.copy(alpha = 0.70f),
-                                    modifier = Modifier.size(16.dp)
+                    // Grouped Inset Card Container (iOS / macOS Grouped List Style as in reference image)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .shadow(4.dp, RoundedCornerShape(14.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color(0xFF252D3E), Color(0xFF191F2D))
                                 )
+                            )
+                            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(14.dp))
+                    ) {
+                        if (effectiveAudioFiles.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "No samples found in DrumPad folder",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color.White.copy(alpha = 0.6f),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                itemsIndexed(effectiveAudioFiles) { index, sample ->
+                                    val cleanName = sample.name
+                                        .removeSuffix(".wav")
+                                        .removeSuffix(".mp3")
+                                        .removeSuffix(".ogg")
+                                        .replace("_", " ")
+
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(44.dp)
+                                                .pointerInput(sample) {
+                                                    detectTapGestures(
+                                                        onTap = {
+                                                            onPreviewAudioFile(sample)
+                                                        },
+                                                        onLongPress = {
+                                                            sampleToAssign = sample
+                                                        }
+                                                    )
+                                                }
+                                                .padding(horizontal = 14.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = cleanName,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = Color.White,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f)
+                                            )
+
+                                            Icon(
+                                                imageVector = Icons.Default.PlayArrow,
+                                                contentDescription = "Preview",
+                                                tint = Color.White.copy(alpha = 0.75f),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+
+                                        if (index < effectiveAudioFiles.size - 1) {
+                                            HorizontalDivider(
+                                                modifier = Modifier.padding(horizontal = 12.dp),
+                                                thickness = 0.8.dp,
+                                                color = Color.White.copy(alpha = 0.08f)
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -1030,22 +972,7 @@ private fun SingleDrumPadBox(
                 )
             }
             .pointerInput(pad.id, isMixMode) {
-                if (isMixMode) {
-                    detectVerticalDragGestures(
-                        onDragStart = { accumulatedDrag = 0f },
-                        onVerticalDrag = { change, dragAmount ->
-                            change.consume()
-                            accumulatedDrag -= dragAmount
-                            if (kotlin.math.abs(accumulatedDrag) >= 12f) {
-                                val steps = (accumulatedDrag / 12f).toInt()
-                                val stepDelta = steps * 0.02f
-                                val newVol = (pad.volume + stepDelta).coerceIn(0f, 1f)
-                                onVolumeChange(newVol)
-                                accumulatedDrag -= steps * 12f
-                            }
-                        }
-                    )
-                } else {
+                if (!isMixMode) {
                     awaitEachGesture {
                         awaitFirstDown(requireUnconsumed = false)
                         onPadPressed()
@@ -1072,24 +999,23 @@ private fun SingleDrumPadBox(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                // Grand pourcentage blanc au centre avec boutons - / + tactiles
+                // Grand pourcentage blanc au centre avec boutons - / + à appui continu (press & hold)
                 Row(
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center
                 ) {
-                    Box(
+                    RepeatableIconButton(
+                        onAction = {
+                            val newVol = (pad.volume - 0.02f).coerceAtLeast(0f)
+                            onVolumeChange(newVol)
+                        },
                         modifier = Modifier
-                            .size(28.dp)
+                            .size(32.dp)
                             .clip(CircleShape)
-                            .background(Color(0x33000000))
-                            .clickable {
-                                val newVol = (pad.volume - 0.05f).coerceAtLeast(0f)
-                                onVolumeChange(newVol)
-                            },
-                        contentAlignment = Alignment.Center
+                            .background(Color(0x44000000))
                     ) {
-                        Icon(Icons.Default.Remove, contentDescription = "Volume moins", tint = Color.White, modifier = Modifier.size(14.dp))
+                        Icon(Icons.Default.Remove, contentDescription = "Volume moins", tint = Color.White, modifier = Modifier.size(16.dp))
                     }
 
                     Spacer(modifier = Modifier.width(6.dp))
@@ -1103,18 +1029,17 @@ private fun SingleDrumPadBox(
 
                     Spacer(modifier = Modifier.width(6.dp))
 
-                    Box(
+                    RepeatableIconButton(
+                        onAction = {
+                            val newVol = (pad.volume + 0.02f).coerceAtMost(1f)
+                            onVolumeChange(newVol)
+                        },
                         modifier = Modifier
-                            .size(28.dp)
+                            .size(32.dp)
                             .clip(CircleShape)
-                            .background(Color(0x33000000))
-                            .clickable {
-                                val newVol = (pad.volume + 0.05f).coerceAtMost(1f)
-                                onVolumeChange(newVol)
-                            },
-                        contentAlignment = Alignment.Center
+                            .background(Color(0x44000000))
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = "Volume plus", tint = Color.White, modifier = Modifier.size(14.dp))
+                        Icon(Icons.Default.Add, contentDescription = "Volume plus", tint = Color.White, modifier = Modifier.size(16.dp))
                     }
                 }
 
@@ -1249,5 +1174,42 @@ private fun SingleDrumPadBox(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun RepeatableIconButton(
+    onAction: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    val currentOnAction by rememberUpdatedState(onAction)
+
+    Box(
+        modifier = modifier
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    currentOnAction() // First step
+
+                    // Wait 250ms initial delay before continuous auto-step
+                    val holdTimer = withTimeoutOrNull(250) {
+                        waitForUpOrCancellation()
+                    }
+
+                    if (holdTimer == null) {
+                        while (true) {
+                            currentOnAction()
+                            val up = withTimeoutOrNull(45) {
+                                waitForUpOrCancellation()
+                            }
+                            if (up != null) break
+                        }
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        content()
     }
 }

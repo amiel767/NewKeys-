@@ -1160,13 +1160,10 @@ class AudioEngine(private val context: Context) {
                     NativeAudioBridge.safeTriggerDrumSample(newId, volume, 0.0f)
                 }
             }
-            // Also play via Direct PCM
-            val dummyPad = DrumPadItem(id = 1, sampleFileName = sampleFile.name, sampleFilePath = sampleFile.absolutePath)
-            playDirectDrumPcm(dummyPad, volume)
         } else {
-            NativeAudioBridge.safeTriggerDrumSample(1, volume, 0.0f)
-            val dummyPad = DrumPadItem(id = 1)
-            playDirectDrumPcm(dummyPad, volume)
+            // Map sample name cleanly to built-in drum synth voice if file isn't local
+            val mappedNote = mapSampleNameToDrumNote(sampleName, 1)
+            NativeAudioBridge.safeTriggerDrumSample(mappedNote, volume, 0.0f)
         }
     }
 

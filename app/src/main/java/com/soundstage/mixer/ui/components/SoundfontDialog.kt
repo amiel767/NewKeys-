@@ -32,11 +32,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -187,9 +189,46 @@ fun SoundfontDialog(
             modifier = Modifier
                 .width(620.dp) // Wider for landscape
                 .fillMaxHeight(0.92f)
+                .shadow(16.dp, RoundedCornerShape(26.dp), ambientColor = Color.Black, spotColor = Color(0xAA000000))
                 .clip(RoundedCornerShape(26.dp))
-                .background(Color(0xF00D1322)) // Solid crisp dark glass surface
-                .border(1.dp, Color(0x33A855F7), RoundedCornerShape(26.dp))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0xFF1B2232), Color(0xFF111724))
+                    )
+                )
+                .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(26.dp))
+                .drawWithContent {
+                    // Floating ambient aura bubbles with varied colors (Cyan, Purple, Amber)
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            listOf(Color(0x3038BDF8), Color.Transparent),
+                            center = Offset(size.width * 0.2f, size.height * 0.25f),
+                            radius = size.width * 0.45f
+                        )
+                    )
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            listOf(Color(0x288B5CF6), Color.Transparent),
+                            center = Offset(size.width * 0.8f, size.height * 0.75f),
+                            radius = size.width * 0.5f
+                        )
+                    )
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            listOf(Color(0x20F59E0B), Color.Transparent),
+                            center = Offset(size.width * 0.5f, size.height * 0.5f),
+                            radius = size.width * 0.35f
+                        )
+                    )
+                    drawContent()
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.15f),
+                        start = Offset(16.dp.toPx(), 1f),
+                        end = Offset(size.width - 16.dp.toPx(), 1f),
+                        strokeWidth = 1.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
                 .clickable(enabled = false) {}
                 .testTag("dialog_soundfont")
         ) {
@@ -234,7 +273,7 @@ fun SoundfontDialog(
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Normal
                                 ),
-                                cursorBrush = SolidColor(Color(0xFF00E5FF)),
+                                cursorBrush = SolidColor(Color(0xFF9BC0F8)),
                                 modifier = Modifier.weight(1f),
                                 decorationBox = { innerTextField ->
                                     if (searchQuery.isEmpty()) {
@@ -270,14 +309,14 @@ fun SoundfontDialog(
                                 modifier = Modifier
                                     .size(38.dp)
                                     .clip(CircleShape)
-                                    .background(Color(0xFF00E5FF))
+                                    .background(Color(0xFF9BC0F8))
                                     .clickable { onImportSf2() },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Add,
                                     contentDescription = "Import .sf2",
-                                    tint = Color(0xFF002B33),
+                                    tint = Color(0xFF101726),
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -327,7 +366,7 @@ fun SoundfontDialog(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(48.dp)
-                                    .background(if (isSelected) Color(0xFF00E5FF) else Color.Transparent)
+                                    .background(if (isSelected) Color(0xFF9BC0F8) else Color.Transparent)
                                     .clickable { onTabChange(tabKey) }
                                     .padding(horizontal = 12.dp),
                                 contentAlignment = Alignment.CenterStart
@@ -336,7 +375,7 @@ fun SoundfontDialog(
                                     text = tabLabel,
                                     fontSize = 12.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSelected) Color(0xFF0B101B) else Color.White
+                                    color = if (isSelected) Color(0xFF101726) else Color.White
                                 )
                             }
                         }
@@ -361,7 +400,7 @@ fun SoundfontDialog(
                                         Icon(
                                             imageVector = Icons.Default.MusicNote,
                                             contentDescription = null,
-                                            tint = NeonCyan,
+                                            tint = Color(0xFF9BC0F8),
                                             modifier = Modifier.size(28.dp)
                                         )
                                         Text(
@@ -375,15 +414,15 @@ fun SoundfontDialog(
                                         Box(
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(12.dp))
-                                                .background(Color(0x3300E5FF))
+                                                .background(Color(0x339BC0F8))
                                                 .clickable { onTabChange("other") }
                                                 .padding(horizontal = 14.dp, vertical = 7.dp)
                                         ) {
                                             Text(
-                                                text = "📁 Select .sf2 file",
+                                                text = "Select Sound",
                                                 fontSize = 12.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF00E5FF)
+                                                color = Color(0xFF9BC0F8)
                                             )
                                         }
                                     }
@@ -410,10 +449,10 @@ fun SoundfontDialog(
                                                 Box(
                                                     modifier = Modifier
                                                         .clip(RoundedCornerShape(8.dp))
-                                                        .background(if (isBankSelected) Color(0xFF00E5FF) else Color(0x18FFFFFF))
+                                                        .background(if (isBankSelected) Color(0xFF9BC0F8) else Color(0x18FFFFFF))
                                                         .border(
                                                             1.dp,
-                                                            if (isBankSelected) Color(0xFF00E5FF) else Color(0x22FFFFFF),
+                                                            if (isBankSelected) Color(0xFF9BC0F8) else Color(0x22FFFFFF),
                                                             RoundedCornerShape(8.dp)
                                                         )
                                                         .clickable { selectedBank = bankNum }
@@ -424,7 +463,7 @@ fun SoundfontDialog(
                                                         text = bankLabel,
                                                         fontSize = 11.sp,
                                                         fontWeight = if (isBankSelected) FontWeight.Bold else FontWeight.Medium,
-                                                        color = if (isBankSelected) Color(0xFF0B101B) else Color.White
+                                                        color = if (isBankSelected) Color(0xFF101726) else Color.White
                                                     )
                                                 }
                                             }
@@ -446,7 +485,7 @@ fun SoundfontDialog(
                                                     .fillMaxWidth()
                                                     .height(44.dp)
                                                     .clip(RoundedCornerShape(12.dp))
-                                                    .background(if (isSelected) Color(0x2A00E5FF) else Color(0x14FFFFFF))
+                                                    .background(if (isSelected) Color(0x2A9BC0F8) else Color(0x14FFFFFF))
                                                     .clickable {
                                                         if (onSelectPresetFull != null) {
                                                             onSelectPresetFull(preset)
@@ -463,14 +502,14 @@ fun SoundfontDialog(
                                                     modifier = Modifier
                                                         .size(26.dp)
                                                         .clip(CircleShape)
-                                                        .background(if (isSelected) Color(0xFF00E5FF) else Color(0x25FFFFFF)),
+                                                        .background(if (isSelected) Color(0xFF9BC0F8) else Color(0x25FFFFFF)),
                                                     contentAlignment = Alignment.Center
                                                 ) {
                                                     Text(
                                                         text = "${preset.id}",
                                                         fontSize = 10.5.sp,
                                                         fontWeight = FontWeight.ExtraBold,
-                                                        color = if (isSelected) Color(0xFF0B101B) else Color.White
+                                                        color = if (isSelected) Color(0xFF101726) else Color.White
                                                     )
                                                 }
 
@@ -486,7 +525,7 @@ fun SoundfontDialog(
                                                     Text(
                                                         text = "Bank ${preset.bankNumber} · Preset #${preset.id}",
                                                         fontSize = 9.5.sp,
-                                                        color = if (isSelected) Color(0xCC00E5FF) else Color(0x77FFFFFF)
+                                                        color = if (isSelected) Color(0xCC9BC0F8) else Color(0x77FFFFFF)
                                                     )
                                                 }
 
@@ -494,14 +533,14 @@ fun SoundfontDialog(
                                                     Box(
                                                         modifier = Modifier
                                                             .clip(RoundedCornerShape(8.dp))
-                                                            .background(Color(0x3300E5FF))
+                                                            .background(Color(0x339BC0F8))
                                                             .padding(horizontal = 7.dp, vertical = 2.dp)
                                                     ) {
                                                         Text(
                                                             text = "✓ ACTIVE",
                                                             fontSize = 9.5.sp,
                                                             fontWeight = FontWeight.ExtraBold,
-                                                            color = Color(0xFF00E5FF)
+                                                            color = Color(0xFF9BC0F8)
                                                         )
                                                     }
                                                 }
@@ -528,7 +567,7 @@ fun SoundfontDialog(
                                         Icon(
                                             imageVector = Icons.Default.Folder,
                                             contentDescription = null,
-                                            tint = NeonCyan,
+                                            tint = Color(0xFF9BC0F8),
                                             modifier = Modifier.size(32.dp)
                                         )
                                         Text(
@@ -544,14 +583,14 @@ fun SoundfontDialog(
                                                 modifier = Modifier
                                                     .size(56.dp)
                                                     .clip(CircleShape)
-                                                    .background(Color(0xFF00E5FF))
+                                                    .background(Color(0xFF9BC0F8))
                                                     .clickable { onImportSf2() },
                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 Icon(
                                                     imageVector = Icons.Default.Add,
                                                     contentDescription = "Importer un fichier .sf2",
-                                                    tint = Color(0xFF002B33),
+                                                    tint = Color(0xFF101726),
                                                     modifier = Modifier.size(28.dp)
                                                 )
                                             }
@@ -574,7 +613,7 @@ fun SoundfontDialog(
                                                 .fillMaxWidth()
                                                 .height(44.dp)
                                                 .clip(RoundedCornerShape(12.dp))
-                                                .background(if (isLoaded) Color(0x268B5CF6) else Color(0x14FFFFFF))
+                                                .background(if (isLoaded) Color(0x2A9BC0F8) else Color(0x14FFFFFF))
                                                 .combinedClickable(
                                                     onClick = {
                                                         if (!isDeletePrompt) {
@@ -604,7 +643,7 @@ fun SoundfontDialog(
                                                 Icon(
                                                     imageVector = Icons.Default.Folder,
                                                     contentDescription = null,
-                                                    tint = NeonCyan,
+                                                    tint = Color(0xFF9BC0F8),
                                                     modifier = Modifier.size(13.dp)
                                                 )
                                             }
@@ -662,10 +701,10 @@ fun SoundfontDialog(
                                                     modifier = Modifier
                                                         .size(24.dp)
                                                         .clip(CircleShape)
-                                                        .background(if (isLoaded) Color(0x3322D3EE) else Color(0x11FFFFFF))
+                                                        .background(if (isLoaded) Color(0x339BC0F8) else Color(0x11FFFFFF))
                                                         .border(
                                                             width = 1.2.dp,
-                                                            color = if (isLoaded) Color(0xFF22D3EE) else Color(0x44FFFFFF),
+                                                            color = if (isLoaded) Color(0xFF9BC0F8) else Color(0x44FFFFFF),
                                                             shape = CircleShape
                                                         )
                                                         .clickable {
@@ -682,7 +721,7 @@ fun SoundfontDialog(
                                                         Icon(
                                                             imageVector = Icons.Default.Check,
                                                             contentDescription = "Soundfont Chargée (cliquer pour décharger)",
-                                                            tint = Color(0xFF22D3EE),
+                                                            tint = Color(0xFF9BC0F8),
                                                             modifier = Modifier.size(14.dp)
                                                         )
                                                     }
