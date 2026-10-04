@@ -191,52 +191,32 @@ fun SoundfontDialog(
                 .fillMaxHeight(0.92f)
                 .shadow(16.dp, RoundedCornerShape(26.dp), ambientColor = Color.Black, spotColor = Color(0xAA000000))
                 .clip(RoundedCornerShape(26.dp))
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Color(0xFF1B2232), Color(0xFF111724))
-                    )
-                )
                 .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(26.dp))
-                .drawWithContent {
-                    // Floating ambient aura bubbles with varied colors (Cyan, Purple, Amber)
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            listOf(Color(0x3038BDF8), Color.Transparent),
-                            center = Offset(size.width * 0.2f, size.height * 0.25f),
-                            radius = size.width * 0.45f
-                        )
-                    )
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            listOf(Color(0x288B5CF6), Color.Transparent),
-                            center = Offset(size.width * 0.8f, size.height * 0.75f),
-                            radius = size.width * 0.5f
-                        )
-                    )
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            listOf(Color(0x20F59E0B), Color.Transparent),
-                            center = Offset(size.width * 0.5f, size.height * 0.5f),
-                            radius = size.width * 0.35f
-                        )
-                    )
-                    drawContent()
-                    drawLine(
-                        color = Color.White.copy(alpha = 0.15f),
-                        start = Offset(16.dp.toPx(), 1f),
-                        end = Offset(size.width - 16.dp.toPx(), 1f),
-                        strokeWidth = 1.dp.toPx(),
-                        cap = StrokeCap.Round
-                    )
-                }
                 .clickable(enabled = false) {}
                 .testTag("dialog_soundfont")
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 18.dp, vertical = 12.dp)
+            AmbientStudioBackground(
+                modifier = Modifier.fillMaxSize()
             ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .drawWithContent {
+                            drawContent()
+                            drawLine(
+                                color = Color.White.copy(alpha = 0.15f),
+                                start = Offset(16.dp.toPx(), 1f),
+                                end = Offset(size.width - 16.dp.toPx(), 1f),
+                                strokeWidth = 1.dp.toPx(),
+                                cap = StrokeCap.Round
+                            )
+                        }
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 18.dp, vertical = 12.dp)
+                    ) {
                 // ================= 1. CLEAN HEADER (SEARCH + ACTIONS) =================
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -737,4 +717,6 @@ fun SoundfontDialog(
             }
         }
     }
+}
+}
 }
