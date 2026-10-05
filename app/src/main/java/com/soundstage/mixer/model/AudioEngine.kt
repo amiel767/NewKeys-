@@ -246,6 +246,8 @@ class AudioEngine(private val context: Context) {
     var onMidiPitchBendListener: ((bendValue: Float) -> Unit)? = null
     var onMidiSustainListener: ((isPressed: Boolean) -> Unit)? = null
     var onMidiCcListener: ((channel: Int, cc: Int, value: Int) -> Unit)? = null
+    var onMidiProgramChangeListener: ((channel: Int, program: Int) -> Unit)? = null
+    var onMidiRawEventListener: ((channel: Int, command: Int, data1: Int, data2: Int) -> Unit)? = null
     var onDeviceListChanged: ((List<MidiDeviceItem>) -> Unit)? = null
 
     private val disabledMidiDeviceIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
@@ -526,7 +528,17 @@ class AudioEngine(private val context: Context) {
             listOf(midiChannelForSlot(channel))
         }
 
+        coroutineScope.launch(Dispatchers.Main) {
+            onMidiRawEventListener?.invoke(channel, command, data1, data2)
+        }
+
         when (command) {
+            0xC0 -> { // Program Change
+                coroutineScope.launch(Dispatchers.Main) {
+                    onMidiProgramChangeListener?.invoke(channel, data1)
+                }
+            }
+
             0x90 -> { // Note On (velocity == 0 is treated as Note Off)
                 if (data2 > 0) {
                     val rawVel = (data2 / 127f).coerceIn(0.01f, 1.0f)

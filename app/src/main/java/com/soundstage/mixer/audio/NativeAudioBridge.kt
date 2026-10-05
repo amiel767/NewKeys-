@@ -556,7 +556,7 @@ object NativeAudioBridge {
     fun safeTriggerDrumSample(sampleId: Int, velocity: Float = 0.9f, pan: Float = 0.0f) {
         if (isLibraryLoaded) {
             try {
-                triggerDrumSample(sampleId, velocity.coerceIn(0.01f, 1.0f), pan.coerceIn(-1.0f, 1.0f))
+                triggerDrumSample(sampleId, velocity.coerceIn(0.0f, 1.0f), pan.coerceIn(-1.0f, 1.0f))
             } catch (e: Throwable) {
                 Log.e("NativeAudioBridge", "Error invoking triggerDrumSample: ${e.message}")
             }

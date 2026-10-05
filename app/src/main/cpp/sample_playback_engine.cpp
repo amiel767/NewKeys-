@@ -372,7 +372,7 @@ void SamplePlaybackEngine::triggerSample(int sampleId, float velocity01, float p
     SamplerCommand cmd{};
     cmd.type = CommandType::TRIGGER;
     cmd.sampleId = sampleId;
-    cmd.velocity = std::clamp(velocity01, 0.01f, 1.0f);
+    cmd.velocity = std::clamp(velocity01, 0.0f, 1.0f);
     cmd.pan = std::clamp(pan, -1.0f, 1.0f);
     cmd.volume = 1.0f;
 
@@ -472,13 +472,12 @@ void SamplePlaybackEngine::processCommands() {
                         float leftPan = std::min(1.0f, 2.0f * (1.0f - panNorm));
                         float rightPan = std::min(1.0f, 2.0f * panNorm);
 
-                        // Dynamic velocity curve with punchy presence (1.0 at max, energetic punch across all hits)
-                        float vel = std::clamp(cmd.velocity, 0.05f, 1.0f);
-                        float punchGain = (vel < 0.9f) ? (0.25f + 0.75f * vel) : vel;
+                        // Direct linear gain based on pad volume & velocity
+                        float punchGain = std::clamp(cmd.velocity, 0.0f, 1.0f);
                         
                         v.gainLeft = punchGain * leftPan;
                         v.gainRight = punchGain * rightPan;
-                        v.active = true;
+                        v.active = (punchGain > 0.001f);
 
                         mTriggersExecuted.fetch_add(1, std::memory_order_relaxed);
                     }

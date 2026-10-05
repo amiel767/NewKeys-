@@ -1,0 +1,35 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+  <!-- Aesthetic Stacked Books Icon -->
+  <!-- Bottom Book -->
+  <path
+      android:fillColor="#FFFFFFFF"
+      android:pathData="M4,18 C4,17.45 4.45,17 5,17 L19,17 C19.55,17 20,17.45 20,18 L20,20 C20,20.55 19.55,21 19,21 L5,21 C4.45,21 4,20.55 4,20 Z"/>
+  <path
+      android:fillColor="#94A3B8"
+      android:pathData="M6,18 L7.5,18 L7.5,20 L6,20 Z"/>
+
+  <!-- Middle Book -->
+  <path
+      android:fillColor="#E2E8F0"
+      android:pathData="M3,12 C3,11.45 3.45,11 4,11 L18,11 C18.55,11 19,11.45 19,12 L19,14 C19,14.55 18.55,15 18,15 L4,15 C3.45,15 3,14.55 3,14 Z"/>
+  <path
+      android:fillColor="#94A3B8"
+      android:pathData="M5,12 L6.5,12 L6.5,14 L5,14 Z"/>
+
+  <!-- Top Book -->
+  <path
+      android:fillColor="#FFFFFF"
+      android:pathData="M5,6 C5,5.45 5.45,5 6,5 L20,5 C20.55,5 21,5.45 21,6 L21,8 C21,8.55 20.55,9 20,9 L6,9 C5.45,9 5,8.55 5,8 Z"/>
+  <path
+      android:fillColor="#94A3B8"
+      android:pathData="M7,6 L8.5,6 L8.5,8 L7,8 Z"/>
+
+  <!-- Bookmark Ribbon on Top Book -->
+  <path
+      android:fillColor="#9BC0F8"
+      android:pathData="M16,5 L16,9.5 L14.5,8 L13,9.5 L13,5 Z"/>
+</vector>

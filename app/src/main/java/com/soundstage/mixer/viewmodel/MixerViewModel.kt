@@ -196,13 +196,21 @@ data class MixerUiState(
     
     // Connected MIDI Devices
     val midiDevices: List<MidiDeviceItem> = emptyList(),
+
+    // MIDI Mapping & MIDI Learn
+    val midiMappings: List<MidiMappingItem> = emptyList(),
+    val learningActionType: MidiActionType? = null,
+    val lastMidiSummary: String = "",
+    val lastMidiTriggerTime: Long = 0L,
     
     // Screen & Scale Settings
     val keepScreenOn: Boolean = true,
     val selectedScaleMode: String = "Majeur",
     
-    // Live Notes & Chords
+    // Live Notes & Chords / Sheets Library
     val notesText: String = "",
+    val sheets: List<SheetItem> = emptyList(),
+    val activeSheetId: String? = null,
 
     // Snapshots / Sub-Scenes (Section 2)
     val isSnapshotArmMode: Boolean = false,
@@ -228,7 +236,24 @@ data class MixerUiState(
     val themeBgLightness: Float = 1.0f,
     val themeModulesLightness: Float = 1.0f,
     val themePaletteName: String = "Midnight Slate (Default)",
-    val trackColorSaturation: Float = 1.0f
+    val trackColorSaturation: Float = 1.0f,
+
+    // Loop Player & AOSP Internal Storage Browser Module
+    val drumRightPanelMode: Int = 0, // 0 = 8 Drum Pads, 1 = Loop Player
+    val loopPlayerFilePath: String? = null,
+    val loopPlayerFileName: String = "",
+    val loopPlayerDurationMs: Long = 0L,
+    val loopPlayerPositionMs: Long = 0L,
+    val loopPlayerProgress: Float = 0.0f,
+    val loopPlayerIsPlaying: Boolean = false,
+    val loopPlayerIsLooping: Boolean = true,
+    val loopPlayerPitchSemitones: Int = 0,
+    val loopPlayerStepMode: String = "DEFAULT",
+    val loopPlayerWaveform: FloatArray = FloatArray(0),
+    val loopPlayerVolume: Float = 1.0f,
+    val loopPlayerExplorerPath: String = "/storage/emulated/0",
+    val loopPlayerExplorerItems: List<com.soundstage.mixer.model.AudioStorageItem> = emptyList(),
+    val loopPlayerIsExplorerOpen: Boolean = false
 ) {
     val soundfontFiles: List<StorageItem> get() = realSoundfonts
     val loopAudioFiles: List<StorageItem> get() = realLoopFiles
@@ -246,6 +271,19 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(createInitialState())
     val uiState: StateFlow<MixerUiState> = _uiState.asStateFlow()
+
+    val externalLoopPlayer = com.soundstage.mixer.audio.ExternalLoopPlayerEngine(
+        application.applicationContext,
+        onPlaybackPositionUpdate = { posMs, durMs, prog ->
+            _uiState.update {
+                it.copy(
+                    loopPlayerPositionMs = posMs,
+                    loopPlayerDurationMs = durMs,
+                    loopPlayerProgress = prog
+                )
+            }
+        }
+    )
 
     private val drumPadLooper = com.soundstage.mixer.audio.DrumPadLooperEngine { pad, _ ->
         com.soundstage.mixer.audio.DrumPadSampleProvider.getOrGeneratePadPcm(application.applicationContext, pad)
@@ -313,6 +351,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
+        audioEngine.onMidiRawEventListener = { channel, command, data1, data2 ->
+            handleMidiMappingEvent(channel, command, data1, data2)
+        }
+
         // Connect multi-channel layer performance routing for USB MIDI
         audioEngine.activeLayerChannelsProvider = { midiNote ->
             getActivePerformanceChannels(midiNote)
@@ -332,6 +374,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 restoreSavedAppState()
             } catch (e: Exception) {
                 Log.w("MixerViewModel", "restoreSavedAppState warning: ${e.message}")
+            }
+            try {
+                loadGlobalSheets()
+            } catch (e: Exception) {
+                Log.w("MixerViewModel", "loadGlobalSheets warning: ${e.message}")
             }
             try {
                 refreshStorageFiles()
@@ -703,6 +750,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         super.onCleared()
         NativeAudioBridge.safeStopEngine()
         audioEngine.release()
+        externalLoopPlayer.release()
     }
 
     private fun createInitialState(): MixerUiState {
@@ -782,6 +830,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val initialScenes = emptyList<ScenePreset>()
 
         val defaultFx = (0..8).associateWith { FxParameters() }
+        val defaultMidiMaps = createDefaultMidiMappings()
 
         return MixerUiState(
             audioSlots = initialAudioSlots,
@@ -789,8 +838,18 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             drumPads = initialDrumPads,
             scenes = initialScenes,
             fxParameters = defaultFx,
+            midiMappings = defaultMidiMaps,
             currentTheme = AppTheme.CYBER_NEON
         )
+    }
+
+    private fun createDefaultMidiMappings(): List<MidiMappingItem> {
+        return MidiActionType.values().map { action ->
+            when (action) {
+                MidiActionType.MASTER_VOLUME -> MidiMappingItem(action, MidiControlType.CC, -1, 7)
+                else -> MidiMappingItem(action, action.defaultType, -1, -1)
+            }
+        }
     }
 
     // ================= REAL STORAGE & FILE REFRESH =================
@@ -1666,6 +1725,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         if (_uiState.value.isLoopPlaying) {
             audioEngine.setLoopBpm(bpm)
         }
+        externalLoopPlayer.setBpm(bpm)
     }
 
     // ================= RECORDING =================
@@ -2094,6 +2154,167 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateNotesText(text: String) {
         _uiState.update { it.copy(notesText = text) }
+        val activeId = _uiState.value.activeSheetId
+        if (activeId != null) {
+            _uiState.update { state ->
+                val updated = state.sheets.map { if (it.id == activeId) it.copy(content = text, updatedAt = System.currentTimeMillis()) else it }
+                state.copy(sheets = updated)
+            }
+            persistGlobalSheets()
+        }
+    }
+
+    fun loadGlobalSheets() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val file = File(fileManager.sheetsDir, "sheets_library.json")
+                if (file.exists()) {
+                    val jsonStr = file.readText()
+                    val arr = org.json.JSONArray(jsonStr)
+                    val loaded = mutableListOf<SheetItem>()
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.getJSONObject(i)
+                        loaded.add(
+                            SheetItem(
+                                id = obj.optString("id", java.util.UUID.randomUUID().toString()),
+                                title = obj.optString("title", "Untitled"),
+                                key = obj.optString("key", "C"),
+                                content = obj.optString("content", ""),
+                                colorIndex = obj.optInt("colorIndex", i),
+                                fontSize = obj.optInt("fontSize", 18),
+                                textColorHex = obj.optString("textColorHex", "#FFFFFF"),
+                                notationSystem = obj.optString("notationSystem", "STANDARD"),
+                                updatedAt = obj.optLong("updatedAt", System.currentTimeMillis())
+                            )
+                        )
+                    }
+                    _uiState.update {
+                        val active = loaded.firstOrNull()?.id
+                        val content = loaded.firstOrNull()?.content ?: it.notesText
+                        it.copy(sheets = loaded, activeSheetId = active, notesText = content)
+                    }
+                } else {
+                    // Empty library - do NOT create fake sample sheets
+                    _uiState.update { it.copy(sheets = emptyList(), activeSheetId = null) }
+                }
+            } catch (e: Exception) {
+                Log.w("MixerViewModel", "Error loading sheets library: ${e.message}")
+            }
+        }
+    }
+
+    private fun persistGlobalSheets() {
+        val sheetsToSave = _uiState.value.sheets
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                if (!fileManager.sheetsDir.exists()) fileManager.sheetsDir.mkdirs()
+                val file = File(fileManager.sheetsDir, "sheets_library.json")
+                val arr = org.json.JSONArray()
+                for (sheet in sheetsToSave) {
+                    val obj = org.json.JSONObject()
+                    obj.put("id", sheet.id)
+                    obj.put("title", sheet.title)
+                    obj.put("key", sheet.key)
+                    obj.put("content", sheet.content)
+                    obj.put("colorIndex", sheet.colorIndex)
+                    obj.put("fontSize", sheet.fontSize)
+                    obj.put("textColorHex", sheet.textColorHex)
+                    obj.put("notationSystem", sheet.notationSystem)
+                    obj.put("updatedAt", sheet.updatedAt)
+                    arr.put(obj)
+
+                    // Also persist human-readable individual file in Sheets/
+                    try {
+                        val safeName = sheet.title.replace("[^a-zA-Z0-9_.-]".toRegex(), "_")
+                        val individualFile = File(fileManager.sheetsDir, "$safeName.txt")
+                        val formattedSheet = buildString {
+                            appendLine("Title: ${sheet.title}")
+                            appendLine("Key: ${sheet.key}")
+                            appendLine("Updated: ${java.util.Date(sheet.updatedAt)}")
+                            appendLine("----------------------------------------")
+                            appendLine(sheet.content)
+                        }
+                        individualFile.writeText(formattedSheet)
+                    } catch (_: Exception) {}
+                }
+                file.writeText(arr.toString())
+            } catch (e: Exception) {
+                Log.w("MixerViewModel", "Error saving sheets library: ${e.message}")
+            }
+        }
+    }
+
+    fun createSheet(title: String, key: String = "C", content: String = ""): SheetItem {
+        val newSheet = SheetItem(
+            title = title.ifBlank { "Untitled Sheet" },
+            key = key.ifBlank { "C" },
+            content = content,
+            colorIndex = _uiState.value.sheets.size
+        )
+        _uiState.update {
+            it.copy(
+                sheets = listOf(newSheet) + it.sheets,
+                activeSheetId = newSheet.id,
+                notesText = newSheet.content
+            )
+        }
+        persistGlobalSheets()
+        return newSheet
+    }
+
+    fun updateSheet(
+        id: String,
+        title: String,
+        key: String,
+        content: String,
+        fontSize: Int = 18,
+        textColorHex: String = "#FFFFFF",
+        notationSystem: String = "STANDARD"
+    ) {
+        _uiState.update { state ->
+            val updated = state.sheets.map { sheet ->
+                if (sheet.id == id) {
+                    sheet.copy(
+                        title = title.ifBlank { sheet.title },
+                        key = key.ifBlank { sheet.key },
+                        content = content,
+                        fontSize = fontSize,
+                        textColorHex = textColorHex,
+                        notationSystem = notationSystem,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                } else sheet
+            }
+            state.copy(
+                sheets = updated,
+                notesText = if (state.activeSheetId == id) content else state.notesText
+            )
+        }
+        persistGlobalSheets()
+    }
+
+    fun deleteSheet(id: String) {
+        _uiState.update { state ->
+            val updated = state.sheets.filterNot { it.id == id }
+            val nextActive = if (state.activeSheetId == id) updated.firstOrNull()?.id else state.activeSheetId
+            val nextContent = updated.find { it.id == nextActive }?.content ?: ""
+            state.copy(
+                sheets = updated,
+                activeSheetId = nextActive,
+                notesText = nextContent
+            )
+        }
+        persistGlobalSheets()
+    }
+
+    fun selectActiveSheet(id: String?) {
+        _uiState.update { state ->
+            val target = state.sheets.find { it.id == id }
+            state.copy(
+                activeSheetId = id,
+                notesText = target?.content ?: state.notesText
+            )
+        }
     }
 
     fun closeDrumPad() {
@@ -3974,6 +4195,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectPatch(patchId: String) {
+        snapshotTransitionJob?.cancel()
         val state = _uiState.value
         // 1. Save current state into current active patch
         val patchesWithSavedCurrent = state.patches.map { p ->
@@ -3995,25 +4217,68 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
         val targetPatch = patchesWithSavedCurrent.find { it.id == patchId || it.name == patchId } ?: return
 
-        // 2. Load target patch settings and its own snapshots
-        val targetSnapshots = targetPatch.snapshots
+        // 2. Cut off active audio voices immediately
+        audioEngine.allNotesOff()
+        NativeAudioBridge.safeAllNotesOff()
+
+        // 3. Prepare target patch snapshots and ensure slot_default always exists for this patch
+        val targetSnapshots = targetPatch.snapshots.toMutableMap()
+        if (!targetSnapshots.containsKey("slot_default")) {
+            targetSnapshots["slot_default"] = SubSceneSnapshot(
+                slotName = "Default",
+                tracks = targetPatch.tracks.map { t ->
+                    TrackSnapshot(
+                        id = t.id,
+                        volume = t.volume,
+                        pan = t.pan,
+                        isMuted = t.isMuted,
+                        isSolo = t.isSolo,
+                        isEnabled = t.isEnabled,
+                        soundfontName = t.soundfontName,
+                        patchName = t.patchName,
+                        bank = t.bank,
+                        program = t.program,
+                        reverbSend = t.reverbMix,
+                        splitNoteMin = t.splitNoteMin,
+                        splitNoteMax = t.splitNoteMax,
+                        velocityCurve = t.velocityCurve
+                    )
+                },
+                globalTranspose = targetPatch.transpose,
+                globalOctaveShift = targetPatch.octave,
+                masterVolume = targetPatch.masterVolume,
+                visibleTracksCount = targetPatch.visibleTracksCount
+            )
+        }
         val targetConfiguredSlots = if (targetPatch.configuredSnapshotSlots.isNotEmpty()) targetPatch.configuredSnapshotSlots else listOf("slot_default")
         val targetCustomNames = targetPatch.snapshotCustomNames
         val targetActiveSlot = targetPatch.activeSnapshotSlot ?: "slot_default"
 
-        // Cleanly reset mute/solo states and apply patch parameters
-        val cleanedTracks = targetPatch.tracks.map { tr ->
-            tr.copy(
-                isMuted = false,
-                isSolo = false
-            )
+        // 4. Memory management: identify and unload soundfonts no longer in use by target patch
+        val targetSoundfontPaths = targetPatch.tracks.mapNotNull { tr ->
+            if (tr.soundfontName.isNotEmpty()) {
+                val f = File(fileManager.soundfontsDir, tr.soundfontName)
+                if (f.exists()) f.absolutePath else null
+            } else null
+        }.toSet()
+
+        state.audioSlots.forEach { slot ->
+            if (slot.soundFontId > 0 && !slot.soundFontPath.isNullOrEmpty()) {
+                if (!targetSoundfontPaths.contains(slot.soundFontPath)) {
+                    NativeAudioBridge.safeUnloadSoundFont(NativeAudioBridge.ENGINE_FADER, slot.soundFontId)
+                }
+            }
         }
+        NativeAudioBridge.safeTrimMemory()
+
+        // 5. Restore target tracks with their exact saved patch states (not carrying over old patch's mutes/solos)
+        val restoredTracks = if (targetPatch.tracks.isNotEmpty()) targetPatch.tracks else state.tracks
 
         _uiState.update { current ->
             current.copy(
                 patches = patchesWithSavedCurrent,
                 activePatchId = targetPatch.id,
-                tracks = if (cleanedTracks.isNotEmpty()) cleanedTracks else current.tracks,
+                tracks = restoredTracks,
                 audioSlots = if (targetPatch.audioSlots.isNotEmpty()) targetPatch.audioSlots else current.audioSlots,
                 visibleTracksCount = targetPatch.visibleTracksCount,
                 transpose = targetPatch.transpose,
@@ -4021,12 +4286,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 snapshots = targetSnapshots,
                 configuredSnapshotSlots = targetConfiguredSlots,
                 snapshotCustomNames = targetCustomNames,
-                activeSnapshotSlot = targetActiveSlot
+                activeSnapshotSlot = targetActiveSlot,
+                customLibreTracks = null // Reset custom libre state so it never recalls the previous patch
             )
         }
 
         // Apply soundfonts for loaded tracks
-        cleanedTracks.forEachIndexed { idx, track ->
+        restoredTracks.forEachIndexed { idx, track ->
             if (track.soundfontName.isNotEmpty()) {
                 val candidate = File(fileManager.soundfontsDir, track.soundfontName)
                 if (candidate.exists()) {
@@ -4198,7 +4464,35 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } else {
                 // 1st tap (or switching slot)
-                val targetSnapshot = currentState.snapshots[slotName]
+                val targetSnapshot = currentState.snapshots[slotName] ?: if (slotName == "slot_default") {
+                    val activePatch = currentState.patches.find { it.id == currentState.activePatchId }
+                    activePatch?.snapshots?.get("slot_default") ?: SubSceneSnapshot(
+                        slotName = "Default",
+                        tracks = (activePatch?.tracks ?: currentState.tracks).map { t ->
+                            TrackSnapshot(
+                                id = t.id,
+                                volume = t.volume,
+                                pan = t.pan,
+                                isMuted = t.isMuted,
+                                isSolo = t.isSolo,
+                                isEnabled = t.isEnabled,
+                                soundfontName = t.soundfontName,
+                                patchName = t.patchName,
+                                bank = t.bank,
+                                program = t.program,
+                                reverbSend = t.reverbMix,
+                                splitNoteMin = t.splitNoteMin,
+                                splitNoteMax = t.splitNoteMax,
+                                velocityCurve = t.velocityCurve
+                            )
+                        },
+                        globalTranspose = activePatch?.transpose ?: currentState.transpose,
+                        globalOctaveShift = activePatch?.octave ?: currentState.octave,
+                        masterVolume = activePatch?.masterVolume ?: currentState.masterTrack.volume,
+                        visibleTracksCount = activePatch?.visibleTracksCount ?: currentState.visibleTracksCount
+                    )
+                } else null
+
                 if (targetSnapshot != null) {
                     val savedCustomTracks = currentState.customLibreTracks ?: currentState.tracks
                     val targetTracks = currentState.tracks.map { tr ->
@@ -4220,13 +4514,23 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                                 splitNoteMax = snap.splitNoteMax,
                                 velocityCurve = snap.velocityCurve
                             )
-                        } else tr
+                        } else {
+                            // Track was added AFTER this snapshot was saved:
+                            // Keep soundfont and settings, but deactivate/mute it to protect the snapshot mix
+                            tr.copy(
+                                isEnabled = false,
+                                isMuted = true
+                            )
+                        }
                     }
 
                     // Cut off notes immediately on tracks that are turning off or muting to avoid hanging voices
                     targetTracks.forEachIndexed { idx, track ->
                         if (!track.isEnabled || track.isMuted) {
                             audioEngine.setChannelEnabled(idx, false)
+                            if (idx in 0..7) {
+                                NativeAudioBridge.safeAllNotesOff(idx)
+                            }
                         }
                         if (track.soundfontName.isNotEmpty()) {
                             val candidate = File(fileManager.soundfontsDir, track.soundfontName)
@@ -4240,8 +4544,19 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     audioEngine.globalOctaveShift = targetSnapshot.globalOctaveShift
                     audioEngine.globalTranspose = targetSnapshot.globalTranspose
 
+                    // Apply mute and solo states immediately to state and audio engine
+                    val initialInterpTracks = startTracks.mapIndexed { idx, startTr ->
+                        val targetTr = targetTracks.getOrNull(idx) ?: startTr
+                        startTr.copy(
+                            isMuted = targetTr.isMuted,
+                            isSolo = targetTr.isSolo,
+                            isEnabled = targetTr.isEnabled
+                        )
+                    }
+
                     _uiState.update {
                         it.copy(
+                            tracks = initialInterpTracks,
                             customLibreTracks = savedCustomTracks,
                             activeSnapshotSlot = slotName,
                             snapshotTransitionProgress = 0.0f,
@@ -4250,15 +4565,16 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                             visibleTracksCount = if (targetSnapshot.visibleTracksCount in 1..8) targetSnapshot.visibleTracksCount else currentState.visibleTracksCount
                         )
                     }
+                    applyTrackVolumes(_uiState.value)
                     persistCurrentState()
 
                     snapshotTransitionJob = viewModelScope.launch {
-                        val totalDurationMs = 1200L
-                        val steps = 48
+                        val totalDurationMs = 600L
+                        val steps = 24
                         val stepDelay = totalDurationMs / steps
                         for (step in 1..steps) {
                             val linearProgress = step.toFloat() / steps
-                            // Cosine progressive interpolation
+                            // Cosine progressive interpolation for smooth volume glide
                             val eased = (1f - kotlin.math.cos(linearProgress * kotlin.math.PI.toFloat())) / 2f
 
                             val interpolated = startTracks.mapIndexed { idx, startTr ->
@@ -4266,9 +4582,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                                 startTr.copy(
                                     volume = startTr.volume + (targetTr.volume - startTr.volume) * eased,
                                     pan = startTr.pan + (targetTr.pan - startTr.pan) * eased,
-                                    isMuted = if (eased >= 0.5f) targetTr.isMuted else startTr.isMuted,
-                                    isSolo = if (eased >= 0.5f) targetTr.isSolo else startTr.isSolo,
-                                    isEnabled = if (eased >= 0.5f) targetTr.isEnabled else startTr.isEnabled
+                                    isMuted = targetTr.isMuted,
+                                    isSolo = targetTr.isSolo,
+                                    isEnabled = targetTr.isEnabled
                                 )
                             }
                             _uiState.update {
@@ -4284,6 +4600,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         _uiState.update {
                             it.copy(tracks = targetTracks, snapshotTransitionProgress = 1.0f)
                         }
+                        applyTrackVolumes(_uiState.value)
                         persistCurrentStateDebounced()
                     }
                 } else {
@@ -4424,6 +4741,20 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             }
             state.copy(drumPads = updatedPads)
         }
+        persistCurrentStateDebounced()
+    }
+
+    fun adjustDrumPadVolume(padId: Int, delta: Float) {
+        _uiState.update { state ->
+            val updatedPads = state.drumPads.map { pad ->
+                if (pad.id == padId) {
+                    val newVol = (pad.volume + delta).coerceIn(0f, 1f)
+                    pad.copy(volume = newVol)
+                } else pad
+            }
+            state.copy(drumPads = updatedPads)
+        }
+        persistCurrentStateDebounced()
     }
 
     fun setDrumPadLoopBeats(padId: Int, beatsSetting: String) {
@@ -4433,6 +4764,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             }
             state.copy(drumPads = updatedPads)
         }
+        persistCurrentStateDebounced()
     }
 
     fun createBlankScene(name: String) {
@@ -4810,5 +5142,411 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleKeyboardLayer() {
         _uiState.update { it.copy(isKeyboardLayerExpanded = !it.isKeyboardLayerExpanded) }
+    }
+
+    // ================= MIDI LEARN & CONTROLLER MAPPING =================
+    fun startMidiLearn(actionType: MidiActionType) {
+        _uiState.update { it.copy(learningActionType = actionType) }
+    }
+
+    fun cancelMidiLearn() {
+        _uiState.update { it.copy(learningActionType = null) }
+    }
+
+    fun unmapMidiAction(actionType: MidiActionType) {
+        _uiState.update { state ->
+            val updated = state.midiMappings.map { m ->
+                if (m.actionType == actionType) {
+                    m.copy(controlNumber = -1, channel = -1)
+                } else m
+            }
+            state.copy(midiMappings = updated)
+        }
+        persistCurrentStateDebounced()
+    }
+
+    fun toggleMidiMappingEnabled(actionType: MidiActionType) {
+        _uiState.update { state ->
+            val updated = state.midiMappings.map { m ->
+                if (m.actionType == actionType) {
+                    m.copy(isEnabled = !m.isEnabled)
+                } else m
+            }
+            state.copy(midiMappings = updated)
+        }
+        persistCurrentStateDebounced()
+    }
+
+    fun updateMidiMappingManual(actionType: MidiActionType, type: MidiControlType, channel: Int, controlNum: Int) {
+        _uiState.update { state ->
+            val updated = state.midiMappings.map { m ->
+                if (m.actionType == actionType) {
+                    m.copy(midiType = type, channel = channel, controlNumber = controlNum, isEnabled = true)
+                } else m
+            }
+            state.copy(midiMappings = updated)
+        }
+        persistCurrentStateDebounced()
+    }
+
+    fun resetMidiMappingsToDefaults() {
+        _uiState.update { it.copy(midiMappings = createDefaultMidiMappings(), learningActionType = null) }
+        persistCurrentStateDebounced()
+    }
+
+    fun clearAllMidiMappings() {
+        _uiState.update { state ->
+            val cleared = state.midiMappings.map { it.copy(controlNumber = -1, channel = -1) }
+            state.copy(midiMappings = cleared, learningActionType = null)
+        }
+        persistCurrentStateDebounced()
+    }
+
+    fun panicAllNotesOff() {
+        audioEngine.allNotesOff()
+        _uiState.update { it.copy(pressedKeys = emptySet(), isMidiPedalPressed = false) }
+    }
+
+    fun selectPrevPatch() {
+        val state = _uiState.value
+        val patches = state.patches
+        if (patches.isEmpty()) return
+        val currentIdx = patches.indexOfFirst { it.id == state.activePatchId }
+        val prevIdx = if (currentIdx <= 0) patches.size - 1 else currentIdx - 1
+        selectPatch(patches[prevIdx].id)
+    }
+
+    fun selectNextPatch() {
+        val state = _uiState.value
+        val patches = state.patches
+        if (patches.isEmpty()) return
+        val currentIdx = patches.indexOfFirst { it.id == state.activePatchId }
+        val nextIdx = if (currentIdx < 0 || currentIdx >= patches.size - 1) 0 else currentIdx + 1
+        selectPatch(patches[nextIdx].id)
+    }
+
+    fun selectPrevSnapshot() {
+        val state = _uiState.value
+        val slots = state.configuredSnapshotSlots
+        if (slots.isEmpty()) return
+        val currentIdx = slots.indexOf(state.activeSnapshotSlot)
+        val prevIdx = if (currentIdx <= 0) slots.size - 1 else currentIdx - 1
+        onSnapshotSlotClick(slots[prevIdx])
+    }
+
+    fun selectNextSnapshot() {
+        val state = _uiState.value
+        val slots = state.configuredSnapshotSlots
+        if (slots.isEmpty()) return
+        val currentIdx = slots.indexOf(state.activeSnapshotSlot)
+        val nextIdx = if (currentIdx < 0 || currentIdx >= slots.size - 1) 0 else currentIdx + 1
+        onSnapshotSlotClick(slots[nextIdx])
+    }
+
+    fun toggleMuteTrackByIndex(index: Int) {
+        val tracks = _uiState.value.tracks
+        if (index in tracks.indices) {
+            onTrackMuteClick(tracks[index].id)
+        }
+    }
+
+    fun toggleSoloTrackByIndex(index: Int) {
+        val tracks = _uiState.value.tracks
+        if (index in tracks.indices) {
+            onTrackSoloClick(tracks[index].id)
+        }
+    }
+
+    private var tapTempoTimes = mutableListOf<Long>()
+    fun handleTapTempo() {
+        val now = System.currentTimeMillis()
+        tapTempoTimes.add(now)
+        if (tapTempoTimes.size > 4) {
+            tapTempoTimes.removeAt(0)
+        }
+        if (tapTempoTimes.size >= 2) {
+            val intervals = mutableListOf<Long>()
+            for (i in 1 until tapTempoTimes.size) {
+                val diff = tapTempoTimes[i] - tapTempoTimes[i - 1]
+                if (diff in 200..3000) {
+                    intervals.add(diff)
+                }
+            }
+            if (intervals.isNotEmpty()) {
+                val avgMs = intervals.average()
+                val calculatedBpm = (60000.0 / avgMs).toInt().coerceIn(30, 280)
+                setGlobalBpm(calculatedBpm)
+            }
+        }
+    }
+
+    private fun handleMidiMappingEvent(channel: Int, command: Int, data1: Int, data2: Int) {
+        val midiType = when (command) {
+            0x90 -> if (data2 > 0) MidiControlType.NOTE else return
+            0x80 -> return
+            0xB0 -> MidiControlType.CC
+            0xC0 -> MidiControlType.PROGRAM_CHANGE
+            else -> return
+        }
+        val ctrlNumber = data1
+        val value = data2
+
+        val learningType = _uiState.value.learningActionType
+        if (learningType != null) {
+            _uiState.update { state ->
+                val updated = state.midiMappings.map { m ->
+                    if (m.actionType == learningType) {
+                        m.copy(
+                            midiType = midiType,
+                            channel = channel,
+                            controlNumber = ctrlNumber,
+                            isEnabled = true
+                        )
+                    } else m
+                }
+                state.copy(
+                    midiMappings = updated,
+                    learningActionType = null,
+                    lastMidiSummary = "Assigned: ${learningType.title} ➔ ${midiType.name} #$ctrlNumber (Ch. ${channel + 1})",
+                    lastMidiTriggerTime = System.currentTimeMillis()
+                )
+            }
+            persistCurrentStateDebounced()
+            return
+        }
+
+        // Live execution
+        val summary = when (midiType) {
+            MidiControlType.CC -> "CC #$ctrlNumber (Ch. ${channel + 1}, Val $value)"
+            MidiControlType.NOTE -> "Note #$ctrlNumber (Ch. ${channel + 1}, Vel $value)"
+            MidiControlType.PROGRAM_CHANGE -> "PC #$ctrlNumber (Ch. ${channel + 1})"
+        }
+        _uiState.update { it.copy(lastMidiSummary = summary, lastMidiTriggerTime = System.currentTimeMillis()) }
+
+        val activeMappings = _uiState.value.midiMappings.filter { m ->
+            m.isEnabled && m.isAssigned && m.midiType == midiType && m.controlNumber == ctrlNumber &&
+                (m.channel < 0 || m.channel == channel)
+        }
+
+        for (m in activeMappings) {
+            executeMidiAction(m.actionType, value)
+        }
+    }
+
+    private fun executeMidiAction(action: MidiActionType, value: Int) {
+        when (action) {
+            MidiActionType.SNAPSHOT_DEFAULT -> onSnapshotSlotClick("slot_default")
+            MidiActionType.SNAPSHOT_1 -> onSnapshotSlotClick("slot_1")
+            MidiActionType.SNAPSHOT_2 -> onSnapshotSlotClick("slot_2")
+            MidiActionType.SNAPSHOT_3 -> onSnapshotSlotClick("slot_3")
+            MidiActionType.SNAPSHOT_4 -> onSnapshotSlotClick("slot_4")
+            MidiActionType.SNAPSHOT_PREV -> selectPrevSnapshot()
+            MidiActionType.SNAPSHOT_NEXT -> selectNextSnapshot()
+
+            MidiActionType.PATCH_PREV -> selectPrevPatch()
+            MidiActionType.PATCH_NEXT -> selectNextPatch()
+
+            MidiActionType.TRACK_1_MUTE -> toggleMuteTrackByIndex(0)
+            MidiActionType.TRACK_1_SOLO -> toggleSoloTrackByIndex(0)
+            MidiActionType.TRACK_1_VOL -> setTrackVolume(1, (value / 127f).coerceIn(0f, 1f))
+
+            MidiActionType.TRACK_2_MUTE -> toggleMuteTrackByIndex(1)
+            MidiActionType.TRACK_2_SOLO -> toggleSoloTrackByIndex(1)
+            MidiActionType.TRACK_2_VOL -> setTrackVolume(2, (value / 127f).coerceIn(0f, 1f))
+
+            MidiActionType.TRACK_3_MUTE -> toggleMuteTrackByIndex(2)
+            MidiActionType.TRACK_3_SOLO -> toggleSoloTrackByIndex(2)
+            MidiActionType.TRACK_3_VOL -> setTrackVolume(3, (value / 127f).coerceIn(0f, 1f))
+
+            MidiActionType.TRACK_4_MUTE -> toggleMuteTrackByIndex(3)
+            MidiActionType.TRACK_4_SOLO -> toggleSoloTrackByIndex(3)
+            MidiActionType.TRACK_4_VOL -> setTrackVolume(4, (value / 127f).coerceIn(0f, 1f))
+
+            MidiActionType.TRACK_5_MUTE -> toggleMuteTrackByIndex(4)
+            MidiActionType.TRACK_5_SOLO -> toggleSoloTrackByIndex(4)
+            MidiActionType.TRACK_5_VOL -> setTrackVolume(5, (value / 127f).coerceIn(0f, 1f))
+
+            MidiActionType.TRACK_6_MUTE -> toggleMuteTrackByIndex(5)
+            MidiActionType.TRACK_6_SOLO -> toggleSoloTrackByIndex(5)
+            MidiActionType.TRACK_6_VOL -> setTrackVolume(6, (value / 127f).coerceIn(0f, 1f))
+
+            MidiActionType.TRACK_7_MUTE -> toggleMuteTrackByIndex(6)
+            MidiActionType.TRACK_7_SOLO -> toggleSoloTrackByIndex(6)
+            MidiActionType.TRACK_7_VOL -> setTrackVolume(7, (value / 127f).coerceIn(0f, 1f))
+
+            MidiActionType.TRACK_8_MUTE -> toggleMuteTrackByIndex(7)
+            MidiActionType.TRACK_8_SOLO -> toggleSoloTrackByIndex(7)
+            MidiActionType.TRACK_8_VOL -> setTrackVolume(8, (value / 127f).coerceIn(0f, 1f))
+
+            MidiActionType.DRUMPAD_PAD_1 -> onDrumPadPressed(1)
+            MidiActionType.DRUMPAD_PAD_2 -> onDrumPadPressed(2)
+            MidiActionType.DRUMPAD_PAD_3 -> onDrumPadPressed(3)
+            MidiActionType.DRUMPAD_PAD_4 -> onDrumPadPressed(4)
+            MidiActionType.DRUMPAD_PAD_5 -> onDrumPadPressed(5)
+            MidiActionType.DRUMPAD_PAD_6 -> onDrumPadPressed(6)
+            MidiActionType.DRUMPAD_PAD_7 -> onDrumPadPressed(7)
+            MidiActionType.DRUMPAD_PAD_8 -> onDrumPadPressed(8)
+            MidiActionType.DRUMPAD_STOP_ALL -> stopDrumPlayback()
+
+            MidiActionType.MASTER_VOLUME -> setTrackVolume(0, (value / 127f).coerceIn(0f, 1f))
+            MidiActionType.PANIC_ALL_NOTES_OFF -> panicAllNotesOff()
+            MidiActionType.TAP_TEMPO -> handleTapTempo()
+            MidiActionType.METRONOME_TOGGLE -> toggleMetronome()
+            MidiActionType.TRANSPOSE_UP -> updateTranspose(_uiState.value.transpose + 1)
+            MidiActionType.TRANSPOSE_DOWN -> updateTranspose(_uiState.value.transpose - 1)
+            MidiActionType.OCTAVE_UP -> updateOctave(1)
+            MidiActionType.OCTAVE_DOWN -> updateOctave(-1)
+            MidiActionType.OPEN_PATCHES -> openPopup(ActivePopup.SCENE)
+            MidiActionType.OPEN_SETTINGS -> openSettingsDrawer()
+        }
+    }
+
+    // =========================================================================
+    // EXTERNAL LOOP PLAYER & AOSP STORAGE BROWSER CONTROLS
+    // =========================================================================
+
+    fun setDrumRightPanelMode(mode: Int) {
+        _uiState.update { it.copy(drumRightPanelMode = mode) }
+    }
+
+    fun loadAndPlayExternalLoopFile(file: java.io.File) {
+        externalLoopPlayer.loadAndPlay(file, autoPlay = true)
+        _uiState.update {
+            it.copy(
+                loopPlayerFilePath = file.absolutePath,
+                loopPlayerFileName = file.name,
+                loopPlayerIsPlaying = true,
+                loopPlayerWaveform = externalLoopPlayer.getWaveform(),
+                loopPlayerDurationMs = externalLoopPlayer.getDurationMs(),
+                loopPlayerIsExplorerOpen = false
+            )
+        }
+    }
+
+    fun toggleExternalLoopPlayPause() {
+        val willPlay = !_uiState.value.loopPlayerIsPlaying
+        if (willPlay) {
+            externalLoopPlayer.play()
+        } else {
+            externalLoopPlayer.pause()
+        }
+        _uiState.update {
+            it.copy(
+                loopPlayerIsPlaying = willPlay,
+                loopPlayerWaveform = externalLoopPlayer.getWaveform()
+            )
+        }
+    }
+
+    fun stopExternalLoopPlayer() {
+        externalLoopPlayer.stop()
+        _uiState.update {
+            it.copy(
+                loopPlayerIsPlaying = false,
+                loopPlayerPositionMs = 0L,
+                loopPlayerProgress = 0f
+            )
+        }
+    }
+
+    fun retriggerExternalLoopPlayer() {
+        externalLoopPlayer.retrigger()
+        _uiState.update { it.copy(loopPlayerIsPlaying = true) }
+    }
+
+    fun seekExternalLoopPlayer(progress: Float) {
+        val dur = _uiState.value.loopPlayerDurationMs
+        val targetMs = (progress * dur).toLong()
+        externalLoopPlayer.seekTo(targetMs)
+        _uiState.update {
+            it.copy(
+                loopPlayerPositionMs = targetMs,
+                loopPlayerProgress = progress
+            )
+        }
+    }
+
+    fun toggleExternalLoopLooping() {
+        val next = !_uiState.value.loopPlayerIsLooping
+        externalLoopPlayer.setLooping(next)
+        _uiState.update { it.copy(loopPlayerIsLooping = next) }
+    }
+
+    fun setExternalLoopPitchSemitones(semitones: Int) {
+        externalLoopPlayer.setPitchSemitones(semitones)
+        _uiState.update { it.copy(loopPlayerPitchSemitones = semitones) }
+    }
+
+    fun resetExternalLoopPitch() {
+        setExternalLoopPitchSemitones(0)
+    }
+
+    fun setExternalLoopStepMode(mode: String) {
+        externalLoopPlayer.setStepMode(mode)
+        _uiState.update { it.copy(loopPlayerStepMode = mode) }
+    }
+
+    fun setExternalLoopVolume(volume: Float) {
+        externalLoopPlayer.setVolume(volume)
+        _uiState.update { it.copy(loopPlayerVolume = volume) }
+    }
+
+    fun toggleExternalLoopExplorer() {
+        val next = !_uiState.value.loopPlayerIsExplorerOpen
+        _uiState.update { it.copy(loopPlayerIsExplorerOpen = next) }
+        if (next) {
+            refreshLoopPlayerExplorer(_uiState.value.loopPlayerExplorerPath)
+        }
+    }
+
+    fun navigateLoopPlayerExplorer(folderPath: String) {
+        refreshLoopPlayerExplorer(folderPath)
+    }
+
+    fun refreshLoopPlayerExplorer(dirPath: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val targetDir = java.io.File(dirPath).let {
+                if (it.exists() && it.isDirectory) it
+                else {
+                    val musicDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC)
+                    if (musicDir != null && musicDir.exists()) musicDir
+                    else getApplication<Application>().filesDir
+                }
+            }
+
+            val validExtensions = setOf("wav", "mp3", "ogg", "flac", "m4a", "aac")
+            val files = targetDir.listFiles()?.toList() ?: emptyList()
+
+            val directories = files
+                .filter { it.isDirectory && !it.name.startsWith(".") }
+                .sortedBy { it.name.lowercase() }
+                .map {
+                    com.soundstage.mixer.model.AudioStorageItem(
+                        name = it.name,
+                        path = it.absolutePath,
+                        isDirectory = true
+                    )
+                }
+
+            val audioFiles = files
+                .filter { !it.isDirectory && validExtensions.contains(it.extension.lowercase()) }
+                .sortedBy { it.name.lowercase() }
+                .map {
+                    com.soundstage.mixer.model.AudioStorageItem(
+                        name = it.name,
+                        path = it.absolutePath,
+                        isDirectory = false,
+                        sizeBytes = it.length()
+                    )
+                }
+
+            val combined = directories + audioFiles
+            _uiState.update {
+                it.copy(
+                    loopPlayerExplorerPath = targetDir.absolutePath,
+                    loopPlayerExplorerItems = combined
+                )
+            }
+        }
     }
 }

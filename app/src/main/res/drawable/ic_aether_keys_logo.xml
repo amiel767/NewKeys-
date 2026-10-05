@@ -1,0 +1,65 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="600dp"
+    android:height="600dp"
+    android:viewportWidth="600"
+    android:viewportHeight="600">
+
+    <!-- 1. APEX : Sommet biseauté (Plein blanc zénithal) -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M300,125 L360,160 L300,195 L240,160 Z" />
+
+    <!-- 2. JAMBAGE GAUCHE (Face éclairée : blanc pur satiné éclatant) -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M240,160 L300,195 L220,355 L160,320 Z" />
+
+    <!-- 3. BASE DU JAMBAGE GAUCHE (Biseau mécanique très clair) -->
+    <path
+        android:fillColor="#FFF8FAFC"
+        android:pathData="M160,320 L220,355 L260,378 L200,343 Z" />
+    <path
+        android:fillColor="#FFE2E8F0"
+        android:pathData="M200,343 L260,378 L300,460 L240,425 Z" />
+
+    <!-- 4. JAMBAGE DROIT (Face facettée d'ombre argentée neutre) -->
+    <path
+        android:fillColor="#FFCBD5E1"
+        android:pathData="M300,195 L360,160 L440,320 L380,355 Z" />
+
+    <!-- 5. BASE DU JAMBAGE DROIT (Pied droit biseauté) -->
+    <path
+        android:fillColor="#FF94A3B8"
+        android:pathData="M380,355 L440,320 L400,343 L340,378 Z" />
+    <path
+        android:fillColor="#FF64748B"
+        android:pathData="M340,378 L400,343 L360,425 L300,460 Z" />
+
+    <!-- 6. LA TOUCHE CENTRALE EN ÉLÉVATION (Traverse de touche en suspension) -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M300,257 L350,286 L300,315 L250,286 Z" />
+    <path
+        android:fillColor="#FFF8FAFC"
+        android:pathData="M250,286 L300,315 L300,360 L250,331 Z" />
+    <path
+        android:fillColor="#FF94A3B8"
+        android:pathData="M300,315 L350,286 L350,331 L300,360 Z" />
+
+    <!-- Arêtes de crête de précision -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.5"
+        android:strokeAlpha="0.95"
+        android:pathData="M300,125 L240,160" />
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeAlpha="0.8"
+        android:pathData="M300,125 L360,160" />
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.0"
+        android:strokeAlpha="0.9"
+        android:pathData="M300,257 L250,286" />
+</vector>

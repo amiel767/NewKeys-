@@ -51,6 +51,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.model.AppTheme
 import com.soundstage.mixer.model.MidiDeviceItem
+import com.soundstage.mixer.model.MidiMappingItem
+import com.soundstage.mixer.model.MidiActionType
+import com.soundstage.mixer.model.MidiControlType
 import com.soundstage.mixer.model.SoundGoodizerMode
 import com.soundstage.mixer.ui.theme.*
 import kotlin.math.roundToInt
@@ -72,6 +75,16 @@ fun SettingsDrawer(
     // MIDI
     midiDevices: List<MidiDeviceItem>,
     onToggleMidiDevice: (String) -> Unit,
+    midiMappings: List<MidiMappingItem> = emptyList(),
+    learningActionType: MidiActionType? = null,
+    lastMidiSummary: String = "",
+    onStartMidiLearn: (MidiActionType) -> Unit = {},
+    onCancelMidiLearn: () -> Unit = {},
+    onUnmapMidiAction: (MidiActionType) -> Unit = {},
+    onToggleMidiMappingEnabled: (MidiActionType) -> Unit = {},
+    onUpdateManualMidiMapping: (MidiActionType, MidiControlType, Int, Int) -> Unit = { _, _, _, _ -> },
+    onResetMidiMappings: () -> Unit = {},
+    onClearMidiMappings: () -> Unit = {},
     
     // Audio Engine / Buffer & Polyphony
     audioEngine: String = "Oboe (C++)",
@@ -159,7 +172,6 @@ fun SettingsDrawer(
                     .shadow(32.dp, RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp))
                     .clip(RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp))
                     .background(Color(0xFF181C28))
-                    .border(1.dp, Color(0xFF2C3549), RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp))
                     .clickable(enabled = false) {}
                     .padding(horizontal = 18.dp, vertical = 14.dp)
                     .testTag("settings_drawer_content")
@@ -169,6 +181,22 @@ fun SettingsDrawer(
                         MidiDevicesSubPage(
                             midiDevices = midiDevices,
                             onToggleDevice = onToggleMidiDevice,
+                            onBack = { onNavigateSubPage("main") }
+                        )
+                    }
+                    "midi_learn" -> {
+                        MidiLearnSubPage(
+                            mappings = midiMappings,
+                            learningActionType = learningActionType,
+                            lastMidiSummary = lastMidiSummary,
+                            connectedMidiCount = midiDevices.count { it.isConnected },
+                            onStartLearn = onStartMidiLearn,
+                            onCancelLearn = onCancelMidiLearn,
+                            onUnmapAction = onUnmapMidiAction,
+                            onToggleMappingEnabled = onToggleMidiMappingEnabled,
+                            onUpdateManualMapping = onUpdateManualMidiMapping,
+                            onResetDefaults = onResetMidiMappings,
+                            onClearAll = onClearMidiMappings,
                             onBack = { onNavigateSubPage("main") }
                         )
                     }
@@ -213,6 +241,7 @@ fun SettingsDrawer(
                             onClose = onClose,
                             onNavigateSubPage = onNavigateSubPage,
                             midiDevices = midiDevices,
+                            midiMappings = midiMappings,
                             audioBufferSize = audioBufferSize,
                             polyphony = polyphony,
                             selectedLanguage = selectedLanguage,
@@ -241,6 +270,7 @@ private fun AospMainSettingsPage(
     onClose: () -> Unit,
     onNavigateSubPage: (String) -> Unit,
     midiDevices: List<MidiDeviceItem>,
+    midiMappings: List<MidiMappingItem> = emptyList(),
     audioBufferSize: Int,
     polyphony: Int,
     selectedLanguage: String,
@@ -338,6 +368,17 @@ private fun AospMainSettingsPage(
                             title = "Buffer & Polyphony",
                             subtitle = "Buffer $audioBufferSize frames · Polyphony $polyphony voices",
                             onClick = { onNavigateSubPage("buffer_polyphony") }
+                        )
+
+                        AospDivider()
+
+                        AospSettingItem(
+                            icon = Icons.Default.Tune,
+                            iconTint = Color(0xFFF59E0B),
+                            iconBg = Color(0x18F59E0B),
+                            title = "MIDI Learn & Controllers",
+                            subtitle = "${midiMappings.count { it.isAssigned }} mapped action(s) · Pedals, Knobs & Faders",
+                            onClick = { onNavigateSubPage("midi_learn") }
                         )
                     }
                 }

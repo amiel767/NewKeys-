@@ -132,7 +132,6 @@ fun SceneDialog(
                     .shadow(24.dp, RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp))
                     .clip(RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp))
                     .background(Color(0xFF0F131A))
-                    .border(1.dp, Color(0xFF222838), RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp))
                     .clickable(enabled = false) {}
                     .padding(horizontal = 18.dp, vertical = 16.dp)
                     .testTag("scene_side_drawer_content")

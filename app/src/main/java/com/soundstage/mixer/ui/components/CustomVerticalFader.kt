@@ -54,8 +54,8 @@ fun CustomVerticalFader(
     showTicks: Boolean = true,
     trackWidth: Dp = 20.dp,
     trackHeight: Dp = 220.dp,
-    thumbWidth: Dp = 48.dp,
-    thumbHeight: Dp = 60.dp,
+    thumbWidth: Dp = 51.dp,
+    thumbHeight: Dp = 64.dp,
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
@@ -167,7 +167,7 @@ fun CustomVerticalFader(
         val offsetYPx = ((1f - localValue.coerceIn(0f, 1f)) * usableHeightPx).roundToInt()
         val bonnetCenterYPx = offsetYPx + thumbHeightPx / 2f
 
-        // ================= 1. SUNDAYKEYS PRECISION RAIL & AUDIO-REACTIVE LUMINOUS NEON =================
+        // ================= 1. PRECISION RAIL & AUDIO-RESPONSIVE GAUGE LINE =================
         val isAudioSoundActive = isEnabled && audioActivity > 0.015f
         val dynamicAura = auraColor.copy(alpha = 1.0f)
 
@@ -182,13 +182,15 @@ fun CustomVerticalFader(
             )
         }
 
+        val trackRadiusPx = with(density) { (trackWidth / 2f).toPx() }
+
         Box(
             modifier = Modifier
                 .width(trackWidth)
                 .fillMaxHeight(),
             contentAlignment = Alignment.Center
         ) {
-            // ================= REALISTIC OBLONG CAPSULE RAIL CHASSIS (LIGHTENED SLATE GROOVE) =================
+            // ================= REALISTIC OBLONG CAPSULE RAIL CHASSIS =================
             Image(
                 painter = painterResource(id = R.drawable.ic_fader_track),
                 contentDescription = "Fader Rail Track",
@@ -199,16 +201,14 @@ fun CustomVerticalFader(
                     .fillMaxHeight()
             )
 
-            // ================= CENTRAL NEON LINE: GLOWING IN THE GROOVE STRICTLY TERMINATED AT BOTTOM =================
-            if (isEnabled) {
-                // The physical travel boundaries of the thumb cap center and groove base
-                val topStopPx = (thumbHeightPx / 2f).coerceAtMost(containerHeightPx)
-                val bottomStopPx = with(density) { (containerHeightPx - 10.dp.toPx()).coerceAtLeast(topStopPx) }
-                val currentYPx = bonnetCenterYPx.coerceIn(topStopPx, bottomStopPx)
+            // ================= CENTRAL GAUGE LINE: ANCHORED EXACTLY FROM THUMB TO BOTTOM GROOVE STOP =================
+            if (isEnabled && containerHeightPx > (trackRadiusPx * 2f)) {
+                // The physical inner groove stop corresponds to the rail capsule's bottom inner terminus
+                val bottomStopPx = (containerHeightPx - trackRadiusPx).coerceAtLeast(trackRadiusPx)
+                val currentYPx = bonnetCenterYPx.coerceIn(trackRadiusPx, bottomStopPx)
                 val activeHeightPx = (bottomStopPx - currentYPx).coerceAtLeast(0f)
 
-                // 1. BASELINE TRACK LINE (Runs strictly from thumb cap center down to bottom travel stop)
-                if (activeHeightPx > 0f) {
+                if (activeHeightPx > 0.5f) {
                     Canvas(
                         modifier = Modifier
                             .width(trackWidth)
@@ -220,75 +220,57 @@ fun CustomVerticalFader(
                         val lineLeft = centerX - (lineWidthPx / 2f)
                         val lineCorner = CornerRadius(lineWidthPx / 2f, lineWidthPx / 2f)
 
-                        // ALWAYS VISIBLE: distinct rich track color in the groove; glows intensely with audio
-                        val idleGrooveAlpha = if (isAudioSoundActive) 0.35f else 0.20f
-                        val coreAlpha = if (isAudioSoundActive) 1.0f else 0.75f
+                        val coreAlpha = if (isAudioSoundActive) 0.95f else 0.75f
+                        val glowAlpha = if (isAudioSoundActive) (0.22f + audioActivity.coerceIn(0f, 1f) * 0.20f) else 0.10f
 
-                        // Soft slot cavity tint
+                        // Subtle diffused studio aura behind the line (clean, not neon)
                         drawRoundRect(
-                            color = dynamicAura.copy(alpha = idleGrooveAlpha),
-                            topLeft = Offset(lineLeft - 1f, currentYPx),
-                            size = Size(lineWidthPx + 2f, activeHeightPx),
-                            cornerRadius = lineCorner
+                            brush = Brush.verticalGradient(
+                                colors = listOf(
+                                    dynamicAura.copy(alpha = glowAlpha * 1.2f),
+                                    dynamicAura.copy(alpha = glowAlpha * 0.6f)
+                                ),
+                                startY = currentYPx,
+                                endY = bottomStopPx
+                            ),
+                            topLeft = Offset(lineLeft - 1.2.dp.toPx(), currentYPx),
+                            size = Size(lineWidthPx + 2.4.dp.toPx(), activeHeightPx),
+                            cornerRadius = CornerRadius((lineWidthPx + 2.4.dp.toPx()) / 2f, (lineWidthPx + 2.4.dp.toPx()) / 2f)
                         )
 
-                        // Core slot line
+                        // Core gauge line in exact track color
                         drawRoundRect(
-                            color = dynamicAura.copy(alpha = coreAlpha),
+                            brush = Brush.verticalGradient(
+                                colors = listOf(
+                                    dynamicAura.copy(alpha = coreAlpha),
+                                    dynamicAura.copy(alpha = (coreAlpha * 0.85f).coerceAtLeast(0.45f))
+                                ),
+                                startY = currentYPx,
+                                endY = bottomStopPx
+                            ),
                             topLeft = Offset(lineLeft, currentYPx),
                             size = Size(lineWidthPx, activeHeightPx),
                             cornerRadius = lineCorner
                         )
-                    }
 
-                    // 2. AUDIO-REACTIVE LUMINOUS LAYER (Pulsing glow ONLY when audio is actively sounding)
-                    if (isAudioSoundActive && audioActivity > 0.02f) {
-                        val intensity = audioActivity.coerceIn(0f, 1f)
-                        val coreLaserAlpha = (0.85f + intensity * 0.15f).coerceIn(0.85f, 1.0f)
-
-                        // Layer A: Saturated Core Glow
-                        Canvas(
-                            modifier = Modifier
-                                .width(trackWidth)
-                                .fillMaxHeight()
-                        ) {
-                            val w = size.width
-                            val centerX = (w / 2f).roundToInt().toFloat()
-                            val glowWidthPx = (6.dp.toPx()).roundToInt().toFloat()
-                            val glowLeft = centerX - (glowWidthPx / 2f)
-
+                        // Realistic LED bright filament active when audio plays
+                        if (isAudioSoundActive && audioActivity > 0.015f) {
+                            val ledIntensity = audioActivity.coerceIn(0f, 1f)
+                            val filamentWidthPx = (1.4.dp.toPx()).roundToInt().toFloat()
+                            val filamentLeft = centerX - (filamentWidthPx / 2f)
                             drawRoundRect(
                                 brush = Brush.verticalGradient(
                                     colors = listOf(
-                                        Color.White.copy(alpha = coreLaserAlpha),
-                                        dynamicAura.copy(alpha = coreLaserAlpha),
-                                        dynamicAura.copy(alpha = 0.90f)
+                                        Color.White.copy(alpha = (0.75f + ledIntensity * 0.20f).coerceIn(0.75f, 0.95f)),
+                                        dynamicAura.copy(alpha = (0.85f + ledIntensity * 0.15f).coerceIn(0.85f, 1.0f)),
+                                        dynamicAura.copy(alpha = 0.65f)
                                     ),
                                     startY = currentYPx,
                                     endY = bottomStopPx
                                 ),
-                                topLeft = Offset(glowLeft, currentYPx),
-                                size = Size(glowWidthPx, activeHeightPx),
-                                cornerRadius = CornerRadius(glowWidthPx / 2f)
-                            )
-                        }
-
-                        // Layer B: Incandescent White-Hot Laser Filament
-                        Canvas(
-                            modifier = Modifier
-                                .width(trackWidth)
-                                .fillMaxHeight()
-                        ) {
-                            val w = size.width
-                            val centerX = (w / 2f).roundToInt().toFloat()
-                            val filWidthPx = (1.8.dp.toPx()).roundToInt().toFloat()
-                            val filLeft = centerX - (filWidthPx / 2f)
-
-                            drawRoundRect(
-                                color = Color.White.copy(alpha = 0.95f),
-                                topLeft = Offset(filLeft, currentYPx),
-                                size = Size(filWidthPx, activeHeightPx),
-                                cornerRadius = CornerRadius(filWidthPx / 2f)
+                                topLeft = Offset(filamentLeft, currentYPx),
+                                size = Size(filamentWidthPx, activeHeightPx),
+                                cornerRadius = CornerRadius(filamentWidthPx / 2f, filamentWidthPx / 2f)
                             )
                         }
                     }
@@ -296,19 +278,25 @@ fun CustomVerticalFader(
             }
         }
 
-        // ================= 2. CAP / THUMB BONNET AUTHENTIC PNG ELEMENT =================
-        val lightenedBonnetMatrix = remember {
+        // ================= 2. CAP / THUMB BONNET AUTHENTIC PNG ELEMENT (+10% SIZE, SUBTLY LIGHTENED) =================
+        val lightenedThumbMatrix = remember {
             ColorMatrix(
                 floatArrayOf(
-                    1.28f, 0f, 0f, 0f, 26f,
-                    0f, 1.28f, 0f, 0f, 26f,
-                    0f, 0f, 1.30f, 0f, 28f,
+                    1.18f, 0f, 0f, 0f, 16f,
+                    0f, 1.18f, 0f, 0f, 16f,
+                    0f, 0f, 1.20f, 0f, 18f,
                     0f, 0f, 0f, 1.0f, 0f
                 )
             )
         }
 
-        // Fader Thumb Bonnet (enlarged, natural proportions, directly touchable)
+        val slotCoreAlpha = if (isAudioSoundActive) 1.0f else 0.88f
+        val slotCenterColor = if (isAudioSoundActive && audioActivity > 0.05f) {
+            Color.White.copy(alpha = (0.70f + audioActivity.coerceIn(0f, 1f) * 0.25f).coerceIn(0.70f, 0.95f))
+        } else {
+            dynamicAura.copy(alpha = 0.92f)
+        }
+
         Box(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -316,64 +304,48 @@ fun CustomVerticalFader(
                 .width(thumbWidth)
                 .height(thumbHeight)
                 .pointerInput(isEnabled, containerHeightPx, thumbHeightPx) {
-                if (!isEnabled) return@pointerInput
-                detectVerticalDragGestures(
-                    onDragStart = { isDragging = true },
-                    onDragEnd = { isDragging = false },
-                    onDragCancel = { isDragging = false },
-                    onVerticalDrag = { change, dragAmount ->
-                        change.consume()
-                        val usableHeight = (containerHeightPx - thumbHeightPx).coerceAtLeast(1f)
-                        val deltaFraction = dragAmount / usableHeight
-                        val newValue = (localValue - deltaFraction).coerceIn(0f, 1f)
-                        localValue = newValue
-                        currentOnValueChange(newValue)
-                    }
-                )
-            },
+                    if (!isEnabled) return@pointerInput
+                    detectVerticalDragGestures(
+                        onDragStart = { isDragging = true },
+                        onDragEnd = { isDragging = false },
+                        onDragCancel = { isDragging = false },
+                        onVerticalDrag = { change, dragAmount ->
+                            change.consume()
+                            val usableHeight = (containerHeightPx - thumbHeightPx).coerceAtLeast(1f)
+                            val deltaFraction = dragAmount / usableHeight
+                            val newValue = (localValue - deltaFraction).coerceIn(0f, 1f)
+                            localValue = newValue
+                            currentOnValueChange(newValue)
+                        }
+                    )
+                },
             contentAlignment = Alignment.Center
         ) {
-            // 1. Center backing matching the track's glowing color to fill the transparent center cutout
+            // 1. Exact slot fill backing (19.0dp x 3.8dp, offset Y -1.7dp) extending downwards to seal bottom cavity
             Box(
                 modifier = Modifier
-                    .width(thumbWidth * 0.58f)
-                    .height(14.dp)
-                    .clip(RoundedCornerShape(3.dp))
+                    .offset(y = (-1.7).dp)
+                    .width(19.0.dp)
+                    .height(3.8.dp)
+                    .clip(RoundedCornerShape(1.4.dp))
                     .background(
                         Brush.horizontalGradient(
                             listOf(
-                                dynamicAura.copy(alpha = 0.85f),
-                                dynamicAura,
-                                dynamicAura.copy(alpha = 0.85f)
+                                dynamicAura.copy(alpha = slotCoreAlpha * 0.82f),
+                                slotCenterColor,
+                                dynamicAura.copy(alpha = slotCoreAlpha * 0.82f)
                             )
                         )
                     )
             )
 
-            // 2. Authentic Bonnet PNG element with lighter grey metallic color matrix
+            // 2. Authentic Bonnet PNG element with natural transparent slot cutout
             Image(
                 painter = painterResource(id = R.drawable.ic_fader_thumb),
                 contentDescription = "Fader Thumb Cap",
                 contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize(),
-                colorFilter = ColorFilter.colorMatrix(lightenedBonnetMatrix)
-            )
-
-            // 3. Central neon indicator slit: bright and vivid over the groove
-            Box(
-                modifier = Modifier
-                    .width(thumbWidth * 0.52f)
-                    .height(7.5.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(
-                        Brush.horizontalGradient(
-                            listOf(
-                                dynamicAura.copy(alpha = 0.90f),
-                                Color.White,
-                                dynamicAura.copy(alpha = 0.90f)
-                            )
-                        )
-                    )
+                colorFilter = ColorFilter.colorMatrix(lightenedThumbMatrix),
+                modifier = Modifier.fillMaxSize()
             )
         }
     }

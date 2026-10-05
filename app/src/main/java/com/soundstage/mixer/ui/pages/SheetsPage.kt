@@ -1,10 +1,15 @@
 package com.soundstage.mixer.ui.pages
 
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,700 +30,1283 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import com.soundstage.mixer.R
+import com.soundstage.mixer.model.SheetItem
+import com.soundstage.mixer.ui.components.AmbientStudioBackground
+import com.soundstage.mixer.utils.ChordNotationConverter
+import com.soundstage.mixer.utils.NotationSystem
+import kotlinx.coroutines.delay
 
-private val SheetsPageDarkBg = Color(0xFF0F121C)
-private val StudioBlue = Color(0xFF3B82F6)
-private val CardBorderDark = Color(0xFF2C3549)
-private val ReliefBgBrush = Brush.verticalGradient(
-    listOf(Color(0xFF222836), Color(0xFF191F2C))
+private val SnapshotAccentColor = Color(0xFF9BC0F8)
+
+// Palette of colors for chord sheet text
+private val SheetTextPalette = listOf(
+    Pair("White", Color(0xFFFFFFFF)),
+    Pair("Ice Cyan", Color(0xFF67E8F9)),
+    Pair("Gold", Color(0xFFFDE047)),
+    Pair("Mint", Color(0xFF86EFAC)),
+    Pair("Sunset", Color(0xFFFDBA74)),
+    Pair("Lavender", Color(0xFFC4B5FD)),
+    Pair("Coral", Color(0xFFFDA4AF)),
+    Pair("Slate", Color(0xFFCBD5E1))
 )
 
 @Composable
 fun SheetsPage(
+    sheets: List<SheetItem>,
+    activeSheetId: String?,
+    onSelectSheet: (String) -> Unit,
+    onCreateSheet: (title: String, key: String, content: String) -> Unit,
+    onUpdateSheet: (id: String, title: String, key: String, content: String) -> Unit,
+    onDeleteSheet: (id: String) -> Unit,
     notesText: String,
     onNotesChange: (String) -> Unit,
     transpose: Int,
     onTransposeChange: (Int) -> Unit,
     onBackToMixer: () -> Unit,
+    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var isLiveViewMode by remember { mutableStateOf(false) }
-    var fontSizeSp by remember { mutableStateOf(14) }
+    var editingSheetId by remember { mutableStateOf<String?>(null) }
+    var searchQuery by remember { mutableStateOf("") }
 
-    val roots = listOf("C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B")
-    val commonChords = listOf("C", "Dm", "Em", "F", "G", "Am", "Bdim", "C7", "G7", "F#m", "Bb", "Eb")
-    val sectionTags = listOf("Intro", "Verse 1", "Verse 2", "Chorus", "Bridge", "Solo", "Outro")
+    // Global notation system across all of Sheets (Default: Nashville)
+    var globalNotation by remember { mutableStateOf(NotationSystem.NASHVILLE) }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(SheetsPageDarkBg)
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-            .testTag("sheets_page_root")
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+    val activeSheet = remember(sheets, editingSheetId) {
+        sheets.find { it.id == editingSheetId }
+    }
+
+    val filteredSheets = remember(sheets, searchQuery) {
+        if (searchQuery.isBlank()) {
+            sheets
+        } else {
+            sheets.filter {
+                it.title.contains(searchQuery, ignoreCase = true) ||
+                it.key.contains(searchQuery, ignoreCase = true) ||
+                it.content.contains(searchQuery, ignoreCase = true)
+            }
+        }
+    }
+
+    // Official Setlists ambient background with luminous floating bubbles
+    AmbientStudioBackground(modifier = modifier) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .testTag("sheets_full_page")
         ) {
-            // 1. TOP HEADER BAR
-            SheetsTopBar(
-                onBackToMixer = onBackToMixer,
-                transpose = transpose,
-                onTransposeChange = onTransposeChange,
-                isLiveViewMode = isLiveViewMode,
-                onToggleViewMode = { isLiveViewMode = !isLiveViewMode },
-                fontSizeSp = fontSizeSp,
-                onFontSizeChange = { fontSizeSp = it },
-                onClear = { onNotesChange("") },
-                onInsertSample = {
-                    if (notesText.isEmpty()) {
-                        onNotesChange(SAMPLE_CHORD_CHART)
-                    }
-                }
-            )
-
-            // 2. QUICK PALETTE BAR (Section tags & Chord chips)
-            SheetsPaletteBar(
-                sectionTags = sectionTags,
-                chords = commonChords,
-                onInsertTag = { tag ->
-                    val prefix = if (notesText.isEmpty() || notesText.endsWith("\n")) "" else "\n"
-                    onNotesChange("$notesText$prefix[$tag]\n")
-                },
-                onInsertChord = { chord ->
-                    val separator = if (notesText.isEmpty() || notesText.endsWith(" ") || notesText.endsWith("\n")) "" else " "
-                    onNotesChange("$notesText$separator$chord ")
-                }
-            )
-
-            // 3. MAIN EDITOR / LIVE STAGE AREA
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .shadow(3.dp, RoundedCornerShape(12.dp), ambientColor = Color.Black, spotColor = Color(0x88000000))
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(ReliefBgBrush)
-                    .border(1.dp, CardBorderDark, RoundedCornerShape(12.dp))
-                    .drawWithContent {
-                        drawContent()
-                        drawLine(
-                            color = Color.White.copy(alpha = 0.12f),
-                            start = Offset(8.dp.toPx(), 1f),
-                            end = Offset(size.width - 8.dp.toPx(), 1f),
-                            strokeWidth = 1.dp.toPx(),
-                            cap = StrokeCap.Round
-                        )
-                    }
-                    .padding(12.dp)
-            ) {
-                if (isLiveViewMode) {
-                    // LIVE PERFORMANCE VIEW
-                    LiveChordSheetViewer(
-                        content = notesText,
-                        fontSizeSp = fontSizeSp
+            if (activeSheet != null) {
+                // INVERTED 60% (Right) / 40% (Left) SPLIT SCREEN EDITOR
+                InvertedSplitScreenSheetEditor(
+                    sheet = activeSheet,
+                    globalNotation = globalNotation,
+                    onSave = { updatedTitle, updatedKey, updatedContent ->
+                        onUpdateSheet(activeSheet.id, updatedTitle, updatedKey, updatedContent)
+                        editingSheetId = null
+                    },
+                    onDelete = {
+                        onDeleteSheet(activeSheet.id)
+                        editingSheetId = null
+                    },
+                    onBack = { editingSheetId = null }
+                )
+            } else {
+                // MAIN SHEETS CATALOG (Style Setlists: Search + Notation left, Title center, Create+Settings right)
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    // 1. TOP HEADER (Exact Setlists layout + Notation toggle pill next to search)
+                    SheetsCatalogHeader(
+                        searchQuery = searchQuery,
+                        onSearchChange = { searchQuery = it },
+                        globalNotation = globalNotation,
+                        onToggleNotation = { globalNotation = globalNotation.next() },
+                        onBackToMixer = onBackToMixer,
+                        onOpenSettings = onOpenSettings,
+                        onCreateNew = {
+                            val newTitle = "New Song ${sheets.size + 1}"
+                            onCreateSheet(newTitle, "C", "")
+                            editingSheetId = sheets.firstOrNull()?.id
+                        }
                     )
-                } else {
-                    // EDITING MODE
-                    ChordSheetEditor(
-                        notesText = notesText,
-                        onNotesChange = onNotesChange,
-                        fontSizeSp = fontSizeSp
-                    )
+
+                    // 2. DIRECT CARDS GRID (No Recently used or All sections, no Cancel or Load)
+                    if (filteredSheets.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(64.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0x14FFFFFF)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_sheet_books),
+                                        contentDescription = "Sheets Library",
+                                        tint = Color(0x66FFFFFF),
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                }
+                                Text(
+                                    text = if (searchQuery.isBlank()) "No sheets in library" else "No matching sheets",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = if (searchQuery.isBlank()) "Create your first song sheet to start composing" else "Try another search keyword",
+                                    fontSize = 13.sp,
+                                    color = Color(0xFF94A3B8)
+                                )
+                                if (searchQuery.isBlank()) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Button(
+                                        colors = ButtonDefaults.buttonColors(containerColor = SnapshotAccentColor),
+                                        onClick = {
+                                            onCreateSheet("New Song", "C", "")
+                                            editingSheetId = sheets.firstOrNull()?.id
+                                        },
+                                        modifier = Modifier.testTag("btn_sheets_create_first")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Add,
+                                            contentDescription = "Create",
+                                            tint = Color(0xFF0F172A),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Create Sheet",
+                                            color = Color(0xFF0F172A),
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        LazyVerticalGrid(
+                            columns = GridCells.Adaptive(minSize = 280.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                            contentPadding = PaddingValues(bottom = 16.dp)
+                        ) {
+                            itemsIndexed(filteredSheets, key = { _, item -> item.id }) { index, sheet ->
+                                StaggeredSheetGridCard(
+                                    sheet = sheet,
+                                    index = index,
+                                    globalNotation = globalNotation,
+                                    onClick = {
+                                        editingSheetId = sheet.id
+                                        onSelectSheet(sheet.id)
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
             }
-
-            // 4. FOOTER STATUS BAR
-            SheetsFooterBar(
-                notesText = notesText,
-                isLiveMode = isLiveViewMode
-            )
         }
     }
 }
 
+// ======================================================================================
+// TOP BAR (Style Setlists: Mixer + Narrowed Search + Notation Pill on left, Title center, Create + Settings on right)
+// ======================================================================================
 @Composable
-private fun SheetsTopBar(
+private fun SheetsCatalogHeader(
+    searchQuery: String,
+    onSearchChange: (String) -> Unit,
+    globalNotation: NotationSystem,
+    onToggleNotation: () -> Unit,
     onBackToMixer: () -> Unit,
-    transpose: Int,
-    onTransposeChange: (Int) -> Unit,
-    isLiveViewMode: Boolean,
-    onToggleViewMode: () -> Unit,
-    fontSizeSp: Int,
-    onFontSizeChange: (Int) -> Unit,
-    onClear: () -> Unit,
-    onInsertSample: () -> Unit
+    onOpenSettings: () -> Unit,
+    onCreateNew: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp)
-            .shadow(2.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black, spotColor = Color(0x77000000))
-            .clip(RoundedCornerShape(10.dp))
-            .background(ReliefBgBrush)
-            .border(1.dp, CardBorderDark, RoundedCornerShape(10.dp))
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        // Left: Mixer return button + Search Bar + Notation Toggle Pill with relief
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.weight(1f)
+        ) {
+            // Mixer Return Button
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .shadow(2.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF1E2435))
+                    .clickable { onBackToMixer() }
+                    .testTag("btn_sheets_back_mixer"),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Tune,
+                    contentDescription = "Mixer",
+                    tint = Color.White,
+                    modifier = Modifier.size(19.dp)
+                )
+            }
+
+            // Search Bar (Narrowed slightly to give room to notation pill)
+            Box(
+                modifier = Modifier
+                    .widthIn(min = 160.dp, max = 220.dp)
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF1E2435))
+                    .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(10.dp))
+                    .padding(horizontal = 10.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "Search",
+                        tint = Color(0xFF94A3B8),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    BasicTextField(
+                        value = searchQuery,
+                        onValueChange = onSearchChange,
+                        singleLine = true,
+                        textStyle = TextStyle(
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Normal
+                        ),
+                        cursorBrush = SolidColor(SnapshotAccentColor),
+                        modifier = Modifier.fillMaxWidth(),
+                        decorationBox = { innerTextField ->
+                            if (searchQuery.isEmpty()) {
+                                Text(
+                                    text = "Search...",
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF64748B)
+                                )
+                            }
+                            innerTextField()
+                        }
+                    )
+                }
+            }
+
+            // GLOBAL NOTATION TOGGLE PILL (Tactile relief effect, single tap directly switches mode)
+            Box(
+                modifier = Modifier
+                    .height(40.dp)
+                    .shadow(3.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black, spotColor = Color(0x66000000))
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(0xFF283144), Color(0xFF1D2433))
+                        )
+                    )
+                    .drawWithContent {
+                        drawContent()
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.16f),
+                            start = Offset(4.dp.toPx(), 1f),
+                            end = Offset(size.width - 4.dp.toPx(), 1f),
+                            strokeWidth = 1.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    }
+                    .clickable { onToggleNotation() }
+                    .padding(horizontal = 12.dp)
+                    .testTag("btn_toggle_global_notation"),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = globalNotation.shortName,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = SnapshotAccentColor
+                )
+            }
+        }
+
+        // Center: Title "Sheets"
+        Text(
+            text = "Sheets",
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.White,
+            modifier = Modifier.padding(horizontal = 14.dp)
+        )
+
+        // Right: "+ Create New Sheet" button + Settings Gear icon
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
+            modifier = Modifier.weight(1f)
+        ) {
+            Button(
+                colors = ButtonDefaults.buttonColors(containerColor = SnapshotAccentColor),
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 9.dp),
+                onClick = { onCreateNew() },
+                modifier = Modifier.testTag("btn_sheets_create_new")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = null,
+                    tint = Color(0xFF0F172A),
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "Create New Sheet",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF0F172A)
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .shadow(2.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF1E2435))
+                    .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(10.dp))
+                    .clickable { onOpenSettings() }
+                    .testTag("btn_sheets_settings"),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = "Settings",
+                    tint = Color(0xFFCBD5E1),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+}
+
+// ======================================================================================
+// STAGGERED GRID CARD (With fluid cascading delay animation & Global Notation conversion)
+// ======================================================================================
+@Composable
+private fun StaggeredSheetGridCard(
+    sheet: SheetItem,
+    index: Int,
+    globalNotation: NotationSystem,
+    onClick: () -> Unit
+) {
+    val keyColor = sheet.getKeyColor()
+
+    var isAnimated by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay((index * 40L).coerceAtMost(400L))
+        isAnimated = true
+    }
+
+    val alpha by animateFloatAsState(
+        targetValue = if (isAnimated) 1f else 0f,
+        animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
+        label = "sheet_card_alpha"
+    )
+
+    val translateY by animateFloatAsState(
+        targetValue = if (isAnimated) 0f else 24f,
+        animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
+        label = "sheet_card_slide"
+    )
+
+    // Convert preview lines to active global notation (e.g. Nashville numbers)
+    val convertedContent = remember(sheet.content, sheet.key, globalNotation) {
+        ChordNotationConverter.convertSheetText(
+            text = sheet.content,
+            songKey = sheet.key,
+            targetSystem = globalNotation,
+            isMinor = sheet.key.contains("m") && !sheet.key.contains("maj")
+        )
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(138.dp)
+            .graphicsLayer {
+                this.alpha = alpha
+                this.translationY = translateY
+            }
+            .shadow(3.dp, RoundedCornerShape(16.dp), ambientColor = Color.Black, spotColor = Color(0x66000000))
+            .clip(RoundedCornerShape(16.dp))
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color(0xFF222836), Color(0xFF191F2C))
+                )
+            )
             .drawWithContent {
                 drawContent()
                 drawLine(
-                    color = Color.White.copy(alpha = 0.12f),
+                    color = Color.White.copy(alpha = 0.10f),
                     start = Offset(6.dp.toPx(), 1f),
                     end = Offset(size.width - 6.dp.toPx(), 1f),
                     strokeWidth = 1.dp.toPx(),
                     cap = StrokeCap.Round
                 )
             }
-            .padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+            .clickable { onClick() }
+            .padding(14.dp)
+            .testTag("grid_sheet_card_${sheet.id}")
     ) {
-        // Back to Mixer button
-        Row(
-            modifier = Modifier
-                .height(34.dp)
-                .shadow(2.dp, RoundedCornerShape(8.dp))
-                .clip(RoundedCornerShape(8.dp))
-                .background(Brush.verticalGradient(listOf(Color(0xFF283144), Color(0xFF1D2433))))
-                .border(1.dp, CardBorderDark, RoundedCornerShape(8.dp))
-                .clickable { onBackToMixer() }
-                .padding(horizontal = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Back to Mixer",
-                tint = Color.White,
-                modifier = Modifier.size(16.dp)
-            )
-            Text(
-                text = "Mixer",
-                color = Color.White,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-        Text(
-            text = "Sheets & Chord Charts",
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color.White
-        )
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        // Transpose Stepper
-        TransposeStepper(
-            transpose = transpose,
-            onTransposeChange = onTransposeChange
-        )
-
-        // Font Size Stepper
-        FontSizeStepper(
-            fontSizeSp = fontSizeSp,
-            onFontSizeChange = onFontSizeChange
-        )
-
-        // View Mode Toggle (Live View vs Editor)
-        Box(
-            modifier = Modifier
-                .height(34.dp)
-                .shadow(2.dp, RoundedCornerShape(8.dp))
-                .clip(RoundedCornerShape(8.dp))
-                .background(
-                    if (isLiveViewMode) Brush.verticalGradient(listOf(Color(0xFF2563EB), Color(0xFF1D4ED8)))
-                    else Brush.verticalGradient(listOf(Color(0xFF252D3D), Color(0xFF1B2230)))
-                )
-                .border(
-                    1.dp,
-                    if (isLiveViewMode) Color(0xFF60A5FA) else CardBorderDark,
-                    RoundedCornerShape(8.dp)
-                )
-                .clickable { onToggleViewMode() }
-                .padding(horizontal = 10.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = if (isLiveViewMode) "Live View" else "Editor",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-        }
-
-        // Sample Chart button if empty
-        TextButton(
-            onClick = onInsertSample,
-            modifier = Modifier.height(34.dp),
-            contentPadding = PaddingValues(horizontal = 8.dp)
-        ) {
-            Text(
-                text = "Sample",
-                fontSize = 11.sp,
-                color = StudioBlue
-            )
-        }
-
-        // Clear button
-        TextButton(
-            onClick = onClear,
-            modifier = Modifier.height(34.dp),
-            contentPadding = PaddingValues(horizontal = 8.dp)
-        ) {
-            Text(
-                text = "Clear",
-                fontSize = 11.sp,
-                color = Color(0xFFEF4444)
-            )
-        }
-    }
-}
-
-@Composable
-private fun SheetsPaletteBar(
-    sectionTags: List<String>,
-    chords: List<String>,
-    onInsertTag: (String) -> Unit,
-    onInsertChord: (String) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(38.dp)
-            .horizontalScroll(rememberScrollState()),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Text(
-            text = "Sections:",
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF8E99AF)
-        )
-
-        sectionTags.forEach { tag ->
-            Box(
-                modifier = Modifier
-                    .height(28.dp)
-                    .shadow(1.dp, RoundedCornerShape(6.dp))
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Brush.verticalGradient(listOf(Color(0xFF252D3D), Color(0xFF1B2230))))
-                    .border(1.dp, Color(0xFF333E54), RoundedCornerShape(6.dp))
-                    .drawWithContent {
-                        drawContent()
-                        drawLine(
-                            color = Color.White.copy(alpha = 0.10f),
-                            start = Offset(2.dp.toPx(), 1f),
-                            end = Offset(size.width - 2.dp.toPx(), 1f),
-                            strokeWidth = 1.dp.toPx(),
-                            cap = StrokeCap.Round
-                        )
-                    }
-                    .clickable { onInsertTag(tag) }
-                    .padding(horizontal = 8.dp),
-                contentAlignment = Alignment.Center
+            // Header Row: Title + Key Chip
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = tag,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFFE2E8F0)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.width(6.dp))
-
-        Box(
-            modifier = Modifier
-                .width(1.dp)
-                .height(18.dp)
-                .background(Color.White.copy(alpha = 0.12f))
-        )
-
-        Spacer(modifier = Modifier.width(6.dp))
-
-        Text(
-            text = "Chords:",
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF8E99AF)
-        )
-
-        chords.forEach { chord ->
-            Box(
-                modifier = Modifier
-                    .height(28.dp)
-                    .widthIn(min = 34.dp)
-                    .shadow(1.dp, RoundedCornerShape(6.dp))
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Brush.verticalGradient(listOf(Color(0xFF283144), Color(0xFF1E2534))))
-                    .border(1.dp, Color(0xFF3B4863), RoundedCornerShape(6.dp))
-                    .drawWithContent {
-                        drawContent()
-                        drawLine(
-                            color = Color.White.copy(alpha = 0.12f),
-                            start = Offset(2.dp.toPx(), 1f),
-                            end = Offset(size.width - 2.dp.toPx(), 1f),
-                            strokeWidth = 1.dp.toPx(),
-                            cap = StrokeCap.Round
-                        )
-                    }
-                    .clickable { onInsertChord(chord) }
-                    .padding(horizontal = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = chord,
-                    fontSize = 11.sp,
+                    text = sheet.title,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
                 )
-            }
-        }
-    }
-}
 
-@Composable
-private fun ChordSheetEditor(
-    notesText: String,
-    onNotesChange: (String) -> Unit,
-    fontSizeSp: Int
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color(0xFF12151F))
-            .border(1.dp, Color(0xFF202636), RoundedCornerShape(8.dp))
-            .padding(12.dp)
-    ) {
-        if (notesText.isEmpty()) {
-            Text(
-                text = "Write or paste chord charts and lyrics here...\n\nExample format:\n[Intro]\nC   G   Am   F\n\n[Verse 1]\nC                G\nI close my eyes and hear the sound\nAm               F\nThe stage is alive tonight\n\n[Chorus]\nF        G        C\nSinging loud under the lights",
-                color = Color(0xFF6B7280),
-                fontSize = fontSizeSp.sp,
-                fontFamily = FontFamily.Monospace,
-                lineHeight = (fontSizeSp + 6).sp
-            )
-        }
-
-        BasicTextField(
-            value = notesText,
-            onValueChange = onNotesChange,
-            modifier = Modifier
-                .fillMaxSize()
-                .testTag("sheets_fullscreen_editor"),
-            textStyle = TextStyle(
-                color = Color.White,
-                fontSize = fontSizeSp.sp,
-                fontFamily = FontFamily.Monospace,
-                lineHeight = (fontSizeSp + 6).sp
-            ),
-            cursorBrush = SolidColor(StudioBlue)
-        )
-    }
-}
-
-@Composable
-private fun LiveChordSheetViewer(
-    content: String,
-    fontSizeSp: Int
-) {
-    val scrollState = rememberScrollState()
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color(0xFF12151F))
-            .border(1.dp, Color(0xFF202636), RoundedCornerShape(8.dp))
-            .padding(16.dp)
-            .verticalScroll(scrollState)
-    ) {
-        if (content.isBlank()) {
-            Text(
-                text = "No chords or lyrics entered yet. Switch to Editor mode or tap 'Sample'.",
-                color = Color(0xFF6B7280),
-                fontSize = fontSizeSp.sp,
-                fontFamily = FontFamily.Monospace
-            )
-        } else {
-            val lines = content.lines()
-            val annotated = buildAnnotatedString {
-                lines.forEachIndexed { index, line ->
-                    val trimmed = line.trim()
-                    when {
-                        // Section header like [Intro] or [Chorus]
-                        trimmed.startsWith("[") && trimmed.endsWith("]") -> {
-                            withStyle(
-                                SpanStyle(
-                                    color = Color(0xFFF59E0B),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = (fontSizeSp + 2).sp
-                                )
-                            ) {
-                                append(line)
-                            }
-                        }
-                        // Heuristic chord line (short tokens, common chord patterns)
-                        isLikelyChordLine(trimmed) -> {
-                            withStyle(
-                                SpanStyle(
-                                    color = StudioBlue,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = (fontSizeSp + 1).sp
-                                )
-                            ) {
-                                append(line)
-                            }
-                        }
-                        // Regular lyric line
-                        else -> {
-                            withStyle(
-                                SpanStyle(
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Normal,
-                                    fontSize = fontSizeSp.sp
-                                )
-                            ) {
-                                append(line)
-                            }
-                        }
-                    }
-                    if (index < lines.size - 1) {
-                        append("\n")
-                    }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(keyColor.copy(alpha = 0.18f))
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = sheet.key,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = keyColor
+                    )
                 }
             }
 
-            Text(
-                text = annotated,
-                fontFamily = FontFamily.Monospace,
-                lineHeight = (fontSizeSp + 6).sp
-            )
+            // Preview Text (Converted dynamically to Nashville / Roman / Solfège, no prompt text below)
+            if (convertedContent.isNotEmpty()) {
+                val annotatedContent = buildAnnotatedString {
+                    val lines = convertedContent.lines().take(3)
+                    lines.forEachIndexed { i, line ->
+                        if (line.trim().startsWith("[") && line.contains("]")) {
+                            val tag = line.substringBefore("]") + "]"
+                            val rest = line.substringAfter("]")
+                            withStyle(SpanStyle(color = Color(0xFF60A5FA), fontWeight = FontWeight.SemiBold)) {
+                                append(tag)
+                            }
+                            withStyle(SpanStyle(color = Color(0xFFCBD5E1))) {
+                                append(rest)
+                            }
+                        } else {
+                            withStyle(SpanStyle(color = Color(0xFF94A3B8))) {
+                                append(line)
+                            }
+                        }
+                        if (i < lines.size - 1) append("\n")
+                    }
+                }
+
+                Text(
+                    text = annotatedContent,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            } else {
+                Text(
+                    text = "No chords written yet",
+                    fontSize = 12.sp,
+                    color = Color(0xFF64748B)
+                )
+            }
+
+            // Empty spacer replacing the deleted "tap to open in split screen" text
+            Spacer(modifier = Modifier.height(2.dp))
         }
     }
 }
 
+// ======================================================================================
+// INVERTED SPLIT SCREEN FULL PAGE EDITOR
+// Left (40%): Tools & Settings + Header (Back, Title, Tonality, Delete, Save)
+// Right (60%): Clean Document Page stretching FULL HEIGHT up to top of screen!
+// ======================================================================================
 @Composable
-private fun TransposeStepper(
-    transpose: Int,
-    onTransposeChange: (Int) -> Unit
+private fun InvertedSplitScreenSheetEditor(
+    sheet: SheetItem,
+    globalNotation: NotationSystem,
+    onSave: (title: String, key: String, content: String) -> Unit,
+    onDelete: () -> Unit,
+    onBack: () -> Unit
 ) {
+    var title by remember { mutableStateOf(sheet.title) }
+    var selectedKeyRoot by remember {
+        val root = ChordNotationConverter.extractRoot(sheet.key) ?: "C"
+        mutableStateOf(root)
+    }
+    var isMinorMode by remember {
+        mutableStateOf(sheet.key.contains("m") && !sheet.key.contains("maj"))
+    }
+    val fullKeyName by remember {
+        derivedStateOf { if (isMinorMode) "${selectedKeyRoot}m" else selectedKeyRoot }
+    }
+
+    var content by remember { mutableStateOf(sheet.content) }
+    var currentFontSize by remember { mutableIntStateOf(sheet.fontSize.coerceIn(12, 32)) }
+    var selectedTextColor by remember { mutableStateOf(sheet.getTextColor()) }
+
+    // Centered Bubble Popups
+    var showTonalityBubble by remember { mutableStateOf(false) }
+    var showColorBubble by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    // Last inserted chord tracking for smart extension attachment
+    var lastInsertedChord by remember { mutableStateOf<String?>(null) }
+
+    // Smart diatonic chords generated based on Root Key, Mode (Major/Minor) and active Global Notation
+    val diatonicChords = remember(selectedKeyRoot, isMinorMode, globalNotation) {
+        ChordNotationConverter.getDiatonicChords(selectedKeyRoot, isMinorMode, globalNotation)
+    }
+
     Row(
-        modifier = Modifier
-            .height(34.dp)
-            .shadow(2.dp, RoundedCornerShape(8.dp))
-            .clip(RoundedCornerShape(8.dp))
-            .background(Brush.verticalGradient(listOf(Color(0xFF222836), Color(0xFF191F2C))))
-            .border(1.dp, CardBorderDark, RoundedCornerShape(8.dp))
-            .drawWithContent {
-                drawContent()
-                drawLine(
-                    color = Color.White.copy(alpha = 0.12f),
-                    start = Offset(4.dp.toPx(), 1f),
-                    end = Offset(size.width - 4.dp.toPx(), 1f),
-                    strokeWidth = 1.dp.toPx(),
-                    cap = StrokeCap.Round
-                )
-            },
-        verticalAlignment = Alignment.CenterVertically
+        modifier = Modifier.fillMaxSize(),
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        // ==============================================================================
+        // LEFT PANE (40%): Tools, Settings & Action Header
+        // ==============================================================================
         Box(
             modifier = Modifier
-                .width(28.dp)
                 .fillMaxHeight()
-                .clickable { onTransposeChange((transpose - 1).coerceIn(-12, 12)) },
-            contentAlignment = Alignment.Center
+                .weight(0.40f)
+                .shadow(4.dp, RoundedCornerShape(18.dp), ambientColor = Color.Black, spotColor = Color(0x66000000))
+                .clip(RoundedCornerShape(18.dp))
+                .background(Color(0xFF161A26))
+                .drawWithContent {
+                    drawContent()
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.12f),
+                        start = Offset(8.dp.toPx(), 1f),
+                        end = Offset(size.width - 8.dp.toPx(), 1f),
+                        strokeWidth = 1.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
+                .padding(14.dp)
+                .testTag("editor_left_tools_panel")
         ) {
-            Text(text = "−", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-        }
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // 1. TOP HEADER OF LEFT PANEL: Back, Title, Tonality, Delete, Save Sheet
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        // Back Button
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(Color(0x1AFFFFFF))
+                                .clickable { onBack() }
+                                .testTag("btn_editor_back"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
 
-        Box(
-            modifier = Modifier
-                .width(1.dp)
-                .fillMaxHeight(0.65f)
-                .background(Color.White.copy(alpha = 0.12f))
-        )
+                        // Compact Tonality Button (No arrow, clicks to open centered bubble popup)
+                        Box(
+                            modifier = Modifier
+                                .height(34.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0x22FFFFFF))
+                                .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(8.dp))
+                                .clickable { showTonalityBubble = true }
+                                .padding(horizontal = 10.dp)
+                                .testTag("btn_editor_tonality"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = fullKeyName,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
 
-        Box(
-            modifier = Modifier
-                .padding(horizontal = 8.dp)
-                .clickable { onTransposeChange(0) },
-            contentAlignment = Alignment.Center
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(text = "Transp", color = Color(0xFF8E99AF), fontSize = 10.sp, fontWeight = FontWeight.Medium)
-                Text(
-                    text = if (transpose > 0) "+$transpose" else "$transpose",
-                    color = StudioBlue,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                        // Delete Button (Corbeille with Snapshot Accent Color background!)
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(SnapshotAccentColor)
+                                .clickable { showDeleteConfirm = true }
+                                .testTag("btn_editor_delete"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete",
+                                tint = Color(0xFF0F172A),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        // Save Sheet Action Button
+                        Box(
+                            modifier = Modifier
+                                .height(34.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(SnapshotAccentColor)
+                                .clickable { onSave(title, fullKeyName, content) }
+                                .padding(horizontal = 12.dp)
+                                .testTag("btn_editor_save"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Save Sheet",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF0F172A)
+                            )
+                        }
+                    }
+
+                    // Editable Song Title Field
+                    BasicTextField(
+                        value = title,
+                        onValueChange = { title = it },
+                        singleLine = true,
+                        textStyle = TextStyle(
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        cursorBrush = SolidColor(SnapshotAccentColor),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0x14FFFFFF))
+                            .padding(horizontal = 10.dp, vertical = 7.dp)
+                            .testTag("input_song_title"),
+                        decorationBox = { innerTextField ->
+                            if (title.isEmpty()) {
+                                Text(
+                                    text = "Song Title...",
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0x4DFFFFFF)
+                                )
+                            }
+                            innerTextField()
+                        }
+                    )
+                }
+
+                HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+
+                // 2. TYPOGRAPHY & COLOR
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "TYPOGRAPHY & COLOR",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF94A3B8),
+                        letterSpacing = 0.5.sp
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Font Size Stepper [-]
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0x18FFFFFF))
+                                .clickable {
+                                    if (currentFontSize > 12) currentFontSize -= 2
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(text = "−", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+
+                        // Size Label
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(34.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0x12FFFFFF)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "$currentFontSize pt",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+
+                        // Font Size Stepper [+]
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0x18FFFFFF))
+                                .clickable {
+                                    if (currentFontSize < 32) currentFontSize += 2
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(text = "+", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+
+                        // Compact Color Pill (No arrow, clicks to open centered bubble popup)
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0x18FFFFFF))
+                                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                            .clickable { showColorBubble = true }
+                            .padding(6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .clip(CircleShape)
+                                    .background(selectedTextColor)
+                            )
+                        }
+                    }
+
+                    // Font Size Preset Pills
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(14 to "S", 18 to "M", 22 to "L", 26 to "XL").forEach { (sz, label) ->
+                            val isSelected = currentFontSize == sz
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (isSelected) SnapshotAccentColor else Color(0x14FFFFFF))
+                                    .clickable { currentFontSize = sz }
+                                    .padding(vertical = 5.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "$label ($sz)",
+                                    fontSize = 10.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) Color(0xFF0F172A) else Color(0xFF94A3B8)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 3. STRUCTURE TAGS (Positioned immediately below Typography & Color)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "STRUCTURE TAGS",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF94A3B8),
+                        letterSpacing = 0.5.sp
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        listOf("Intro", "Verse", "Chorus", "Bridge", "Pre-Chorus", "Solo", "Outro").forEach { tag ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0x18FFFFFF))
+                                    .clickable {
+                                        val prefix = if (content.isEmpty() || content.endsWith("\n")) "" else "\n\n"
+                                        content = "$content$prefix[$tag]\n"
+                                        lastInsertedChord = null
+                                    }
+                                    .padding(horizontal = 9.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = "[$tag]",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFFCBD5E1)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 4. SMART CHORD PALETTE & FULL EXTENSIONS
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "CHORDS (${globalNotation.shortName})",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF94A3B8),
+                            letterSpacing = 0.5.sp
+                        )
+                        if (lastInsertedChord != null) {
+                            Text(
+                                text = "Active: $lastInsertedChord",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = SnapshotAccentColor
+                            )
+                        }
+                    }
+
+                    // Core Diatonic Chords
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        diatonicChords.forEach { chord ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0x22FFFFFF))
+                                    .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        val separator = if (content.isEmpty() || content.endsWith(" ") || content.endsWith("\n")) "" else " · "
+                                        content = "$content$separator$chord"
+                                        lastInsertedChord = chord
+                                    }
+                                    .padding(horizontal = 11.dp, vertical = 7.dp)
+                            ) {
+                                Text(
+                                    text = chord,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    }
+
+                    // Full Extensions Bar (No neon blue! Refined slate with Snapshot Accent borders)
+                    Text(
+                        text = "EXTENSIONS (Applies to active chord)",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF64748B),
+                        letterSpacing = 0.3.sp
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        ChordNotationConverter.fullExtensions.forEach { ext ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFF222B3D))
+                                    .border(1.dp, SnapshotAccentColor.copy(alpha = 0.35f), RoundedCornerShape(6.dp))
+                                    .clickable {
+                                        val active = lastInsertedChord
+                                        if (active != null) {
+                                            val modified = ChordNotationConverter.applyExtension(active, ext)
+                                            if (content.endsWith(active)) {
+                                                content = content.substring(0, content.length - active.length) + modified
+                                            } else {
+                                                content = "$content$ext"
+                                            }
+                                            lastInsertedChord = modified
+                                        } else {
+                                            content = if (content.isEmpty() || content.endsWith(" ")) "$content$ext" else "$content $ext"
+                                        }
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 5.dp)
+                            ) {
+                                Text(
+                                    text = ext,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = SnapshotAccentColor
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 5. QUICK ACTIONS
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "QUICK ACTIONS",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF94A3B8),
+                        letterSpacing = 0.5.sp
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Bar Line |
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0x16FFFFFF))
+                                .clickable {
+                                    val sep = if (content.isEmpty() || content.endsWith(" ")) "" else " "
+                                    content = "$content$sep| "
+                                    lastInsertedChord = null
+                                }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(text = "Bar Line |", fontSize = 11.sp, color = Color.White)
+                        }
+
+                        // Clear Text
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0x14EF4444))
+                                .clickable {
+                                    content = ""
+                                    lastInsertedChord = null
+                                }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(text = "Clear Text", fontSize = 11.sp, color = Color(0xFFEF4444))
+                        }
+                    }
+                }
             }
         }
 
+        // ==============================================================================
+        // RIGHT PANE (60%): Clean Document Page stretching FULL HEIGHT up to top!
+        // ==============================================================================
         Box(
             modifier = Modifier
-                .width(1.dp)
-                .fillMaxHeight(0.65f)
-                .background(Color.White.copy(alpha = 0.12f))
-        )
-
-        Box(
-            modifier = Modifier
-                .width(28.dp)
                 .fillMaxHeight()
-                .clickable { onTransposeChange((transpose + 1).coerceIn(-12, 12)) },
-            contentAlignment = Alignment.Center
+                .weight(0.60f)
+                .shadow(4.dp, RoundedCornerShape(18.dp), ambientColor = Color.Black, spotColor = Color(0x66000000))
+                .clip(RoundedCornerShape(18.dp))
+                .background(Color(0xFF191F2C))
+                .drawWithContent {
+                    drawContent()
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.12f),
+                        start = Offset(8.dp.toPx(), 1f),
+                        end = Offset(size.width - 8.dp.toPx(), 1f),
+                        strokeWidth = 1.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
+                .padding(20.dp)
+                .testTag("editor_right_sheet_page")
         ) {
-            Text(text = "+", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-        }
-    }
-}
-
-@Composable
-private fun FontSizeStepper(
-    fontSizeSp: Int,
-    onFontSizeChange: (Int) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .height(34.dp)
-            .shadow(2.dp, RoundedCornerShape(8.dp))
-            .clip(RoundedCornerShape(8.dp))
-            .background(Brush.verticalGradient(listOf(Color(0xFF222836), Color(0xFF191F2C))))
-            .border(1.dp, CardBorderDark, RoundedCornerShape(8.dp))
-            .drawWithContent {
-                drawContent()
-                drawLine(
-                    color = Color.White.copy(alpha = 0.12f),
-                    start = Offset(4.dp.toPx(), 1f),
-                    end = Offset(size.width - 4.dp.toPx(), 1f),
-                    strokeWidth = 1.dp.toPx(),
-                    cap = StrokeCap.Round
-                )
-            },
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .width(26.dp)
-                .fillMaxHeight()
-                .clickable { onFontSizeChange((fontSizeSp - 1).coerceIn(10, 24)) },
-            contentAlignment = Alignment.Center
-        ) {
-            Text(text = "−", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-        }
-
-        Box(
-            modifier = Modifier
-                .width(1.dp)
-                .fillMaxHeight(0.65f)
-                .background(Color.White.copy(alpha = 0.12f))
-        )
-
-        Box(
-            modifier = Modifier.padding(horizontal = 6.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "${fontSizeSp}sp",
-                color = Color.White,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold
+            BasicTextField(
+                value = content,
+                onValueChange = {
+                    content = it
+                    lastInsertedChord = null
+                },
+                textStyle = TextStyle(
+                    color = selectedTextColor,
+                    fontSize = currentFontSize.sp,
+                    fontFamily = FontFamily.Monospace,
+                    lineHeight = (currentFontSize * 1.55f).sp
+                ),
+                cursorBrush = SolidColor(SnapshotAccentColor),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .testTag("input_sheet_content"),
+                decorationBox = { innerTextField ->
+                    if (content.isEmpty()) {
+                        Text(
+                            text = "Type your chords and lyrics here...\n\nExample:\n[Intro] 1 · 6m · 4 · 5\n\n[Verse 1]\n1               5\nAmazing grace, how sweet the sound\n6m              4\nThat saved a wretch like me",
+                            fontSize = currentFontSize.sp,
+                            fontFamily = FontFamily.Monospace,
+                            lineHeight = (currentFontSize * 1.55f).sp,
+                            color = Color(0x4DFFFFFF)
+                        )
+                    }
+                    innerTextField()
+                }
             )
         }
+    }
 
-        Box(
-            modifier = Modifier
-                .width(1.dp)
-                .fillMaxHeight(0.65f)
-                .background(Color.White.copy(alpha = 0.12f))
-        )
+    // ==================================================================================
+    // CENTERED BUBBLE POP-UP: TONALITY SELECTOR
+    // Elastic spring animation, Snapshot Accent colors, Major/Minor toggle
+    // ==================================================================================
+    if (showTonalityBubble) {
+        Dialog(onDismissRequest = { showTonalityBubble = false }) {
+            Box(
+                modifier = Modifier
+                    .width(300.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color(0xFF1E2435))
+                    .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(18.dp))
+                    .padding(16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "Song Key & Mode",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
 
-        Box(
-            modifier = Modifier
-                .width(26.dp)
-                .fillMaxHeight()
-                .clickable { onFontSizeChange((fontSizeSp + 1).coerceIn(10, 24)) },
-            contentAlignment = Alignment.Center
-        ) {
-            Text(text = "+", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    // Major / Minor Mode Toggle Switch
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0x18FFFFFF))
+                            .padding(3.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (!isMinorMode) SnapshotAccentColor else Color.Transparent)
+                                .clickable { isMinorMode = false }
+                                .padding(vertical = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Major",
+                                fontSize = 12.sp,
+                                fontWeight = if (!isMinorMode) FontWeight.Bold else FontWeight.Normal,
+                                color = if (!isMinorMode) Color(0xFF0F172A) else Color(0xFF94A3B8)
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isMinorMode) SnapshotAccentColor else Color.Transparent)
+                                .clickable { isMinorMode = true }
+                                .padding(vertical = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Minor",
+                                fontSize = 12.sp,
+                                fontWeight = if (isMinorMode) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isMinorMode) Color(0xFF0F172A) else Color(0xFF94A3B8)
+                            )
+                        }
+                    }
+
+                    // 12 Roots Grid (Selected note uses Snapshot Accent Color!)
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        ChordNotationConverter.roots.chunked(4).forEach { rowRoots ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                rowRoots.forEach { r ->
+                                    val isSel = (r == selectedKeyRoot)
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (isSel) SnapshotAccentColor else Color(0x14FFFFFF))
+                                            .clickable {
+                                                selectedKeyRoot = r
+                                                showTonalityBubble = false
+                                            }
+                                            .padding(vertical = 8.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = r,
+                                            fontSize = 13.sp,
+                                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isSel) Color(0xFF0F172A) else Color(0xFFCBD5E1)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
-}
 
-@Composable
-private fun SheetsFooterBar(
-    notesText: String,
-    isLiveMode: Boolean
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = "Mode: ${if (isLiveMode) "Live Performance View" else "Editor Mode"}",
-            fontSize = 11.sp,
-            color = Color(0xFF8E99AF)
-        )
-        Text(
-            text = "${notesText.length} characters • ${notesText.lines().size} lines",
-            fontSize = 11.sp,
-            color = Color(0xFF8E99AF)
+    // ==================================================================================
+    // CENTERED BUBBLE POP-UP: TEXT COLOR PALETTE
+    // ==================================================================================
+    if (showColorBubble) {
+        Dialog(onDismissRequest = { showColorBubble = false }) {
+            Box(
+                modifier = Modifier
+                    .width(280.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color(0xFF1E2435))
+                    .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(18.dp))
+                    .padding(16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "Select Text Color",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+
+                    SheetTextPalette.chunked(4).forEach { rowColors ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            rowColors.forEach { (name, color) ->
+                                val isSel = selectedTextColor == color
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(color)
+                                        .border(
+                                            width = if (isSel) 3.dp else 1.dp,
+                                            color = if (isSel) SnapshotAccentColor else Color(0x33FFFFFF),
+                                            shape = CircleShape
+                                        )
+                                        .clickable {
+                                            selectedTextColor = color
+                                            showColorBubble = false
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (isSel) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(8.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFF0F172A))
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Delete Confirmation Dialog (Styled with Snapshot Accent color)
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete Sheet", color = Color.White) },
+            text = { Text("Are you sure you want to delete \"${sheet.title}\"?", color = Color(0xFFCBD5E1)) },
+            containerColor = Color(0xFF1E2435),
+            confirmButton = {
+                Button(
+                    colors = ButtonDefaults.buttonColors(containerColor = SnapshotAccentColor),
+                    onClick = {
+                        onDelete()
+                        showDeleteConfirm = false
+                    }
+                ) {
+                    Text("Delete", color = Color(0xFF0F172A), fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancel", color = Color(0xFF94A3B8))
+                }
+            }
         )
     }
 }
-
-private fun isLikelyChordLine(line: String): Boolean {
-    if (line.isBlank()) return false
-    val tokens = line.split("\\s+".toRegex()).filter { it.isNotEmpty() }
-    if (tokens.isEmpty()) return false
-    val chordRegex = "^[A-G][b#]?(m|maj|min|dim|aug|sus[24]?|[0-9])?(/[A-G][b#]?)?$".toRegex()
-    val matchCount = tokens.count { token -> chordRegex.matches(token) }
-    return matchCount >= (tokens.size * 0.6f).coerceAtLeast(1f)
-}
-
-private const val SAMPLE_CHORD_CHART = """[Intro]
-C   G   Am   F
-
-[Verse 1]
-C                G
-Walking through the city night
-Am               F
-Every melody feels so right
-C                G
-Keys are glowing on the board
-Am               F
-Finding every perfect chord
-
-[Chorus]
-F        G        C        Am
-SoundStage playing loud and clear
-F        G        C
-Music rising far and near
-
-[Bridge]
-Dm               Em
-Hold the note and let it ring
-F                G
-Hear the whole arena sing
-
-[Outro]
-C   G   Am   F
-C
-"""

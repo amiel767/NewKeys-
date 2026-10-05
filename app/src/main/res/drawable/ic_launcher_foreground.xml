@@ -3,6 +3,6 @@
     <item
         android:width="68dp"
         android:height="68dp"
-        android:drawable="@drawable/ic_soundstage_logo"
+        android:drawable="@drawable/ic_aether_keys_logo"
         android:gravity="center" />
 </layer-list>

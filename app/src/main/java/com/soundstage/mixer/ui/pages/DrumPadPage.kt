@@ -42,7 +42,12 @@ import kotlinx.coroutines.withTimeoutOrNull
 import com.soundstage.mixer.model.DrumPadItem
 import com.soundstage.mixer.model.ScenePreset
 import com.soundstage.mixer.model.StorageItem
+import com.soundstage.mixer.model.AudioStorageItem
 import com.soundstage.mixer.ui.components.AmbientStudioBackground
+import com.soundstage.mixer.ui.components.ExternalLoopPlayerDaw
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import kotlinx.coroutines.launch
 import com.soundstage.mixer.ui.theme.*
 
 // Palettes Material You fidèles aux maquettes SVG (soundstage_drumpad.svg et soundstage_drumpad_mix.svg)
@@ -100,9 +105,38 @@ fun DrumPadPage(
     onAssignSampleToPad: (Int, StorageItem) -> Unit = { _, _ -> },
     onPadPressed: (Int) -> Unit,
     onPadReleased: (Int) -> Unit,
-    onPadVolumeChange: (Int, Float) -> Unit,
+    onPadVolumeChange: (Int, Float) -> Unit = { _, _ -> },
+    onPadVolumeDelta: (Int, Float) -> Unit = { _, _ -> },
     onLoopBeatsChange: (Int, String) -> Unit = { _, _ -> },
     onBackToMixer: () -> Unit,
+    rightPanelMode: Int = 0,
+    onRightPanelModeChange: (Int) -> Unit = {},
+    loopFileName: String = "",
+    loopFilePath: String? = null,
+    loopDurationMs: Long = 0L,
+    loopPositionMs: Long = 0L,
+    loopProgress: Float = 0.0f,
+    loopIsPlaying: Boolean = false,
+    loopIsLooping: Boolean = true,
+    loopPitchSemitones: Int = 0,
+    loopStepMode: String = "DEFAULT",
+    loopWaveform: FloatArray = FloatArray(0),
+    loopVolume: Float = 1.0f,
+    loopExplorerPath: String = "/storage/emulated/0",
+    loopExplorerItems: List<AudioStorageItem> = emptyList(),
+    loopIsExplorerOpen: Boolean = false,
+    onToggleLoopPlayPause: () -> Unit = {},
+    onStopLoop: () -> Unit = {},
+    onRetriggerLoop: () -> Unit = {},
+    onSeekLoopProgress: (Float) -> Unit = {},
+    onToggleLoopLooping: () -> Unit = {},
+    onChangeLoopPitch: (Int) -> Unit = {},
+    onResetLoopPitch: () -> Unit = {},
+    onSelectLoopStepMode: (String) -> Unit = {},
+    onLoopVolumeChange: (Float) -> Unit = {},
+    onToggleLoopExplorer: () -> Unit = {},
+    onNavigateLoopExplorer: (String) -> Unit = {},
+    onSelectLoopAudioFile: (java.io.File) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val chromaticSharps = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
@@ -118,13 +152,22 @@ fun DrumPadPage(
     var sampleToAssign by remember { mutableStateOf<StorageItem?>(null) }
 
     // Real audio files strictly from folder (no fake hardcoded fallback samples)
-    val effectiveAudioFiles = audioFiles
+    val effectiveAudioFiles = remember(audioFiles) {
+        audioFiles.filter { it.path.isNotEmpty() && java.io.File(it.path).exists() }
+    }
 
     AmbientStudioBackground(
         modifier = modifier
             .fillMaxSize()
             .testTag("drumpad_page_root")
     ) {
+        val pagerState = rememberPagerState(initialPage = rightPanelMode.coerceIn(0, 1)) { 2 }
+        val coroutineScope = rememberCoroutineScope()
+
+        LaunchedEffect(pagerState.currentPage) {
+            onRightPanelModeChange(pagerState.currentPage)
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -169,12 +212,55 @@ fun DrumPadPage(
                     )
                 }
 
-                Text(
-                    text = "Soundstage",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
+                // Relief Mode Switch Case: DrumPad > or Loop Player <
+                Box(
+                    modifier = Modifier
+                        .height(30.dp)
+                        .shadow(2.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color(0xFF333E56), Color(0xFF222B3D))
+                            )
+                        )
+                        .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(8.dp))
+                        .drawWithContent {
+                            drawContent()
+                            drawLine(
+                                color = Color.White.copy(alpha = 0.22f),
+                                start = Offset(4.dp.toPx(), 1f),
+                                end = Offset(size.width - 4.dp.toPx(), 1f),
+                                strokeWidth = 1.dp.toPx(),
+                                cap = StrokeCap.Round
+                            )
+                        }
+                        .clickable {
+                            coroutineScope.launch {
+                                val target = if (pagerState.currentPage == 0) 1 else 0
+                                pagerState.animateScrollToPage(target)
+                            }
+                        }
+                        .padding(horizontal = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = if (pagerState.currentPage == 0) "DrumPad" else "Loop Player",
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Icon(
+                            imageVector = if (pagerState.currentPage == 0) Icons.Default.ChevronRight else Icons.Default.ChevronLeft,
+                            contentDescription = "Switch View",
+                            tint = Color(0xFF8BB5F8),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.weight(1f))
 
@@ -610,62 +696,108 @@ fun DrumPadPage(
                     }
                 }
 
-                // ================= FLANC DROIT : LES 8 DRUM PADS (GRILLE 2x4) =================
-                Column(
+                // ================= FLANC DROIT : DRUM PADS (PAGE 0) & LOOP PLAYER DAW (PAGE 1) =================
+                Box(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                        .fillMaxHeight()
                 ) {
-                    // Rangée 1 (Pads D1 à D4)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        for (i in 0 until 4) {
-                            val pad = drumPads.getOrNull(i) ?: DrumPadItem(id = i + 1, label = "Pad ${i + 1}")
+                    HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier.fillMaxSize()
+                    ) { page ->
+                        when (page) {
+                            0 -> {
+                                // PAGE 0: 8 DRUM PADS MATRIX (2x4)
+                                Column(
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    // Row 1 (D1 to D4)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .weight(1f),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        for (i in 0 until 4) {
+                                            val pad = drumPads.getOrNull(i) ?: DrumPadItem(id = i + 1, label = "Pad ${i + 1}")
+                                            Box(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .fillMaxHeight()
+                                            ) {
+                                                SingleDrumPadBox(
+                                                    pad = pad,
+                                                    isMixMode = isMixMode,
+                                                    onPadPressed = { onPadPressed(pad.id) },
+                                                    onPadReleased = { onPadReleased(pad.id) },
+                                                    onVolumeChange = { onPadVolumeChange(pad.id, it) },
+                                                    onVolumeDelta = { onPadVolumeDelta(pad.id, it) },
+                                                    onLoopBeatsChange = { beats -> onLoopBeatsChange(pad.id, beats) }
+                                                )
+                                            }
+                                        }
+                                    }
 
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                            ) {
-                                SingleDrumPadBox(
-                                    pad = pad,
-                                    isMixMode = isMixMode,
-                                    onPadPressed = { onPadPressed(pad.id) },
-                                    onPadReleased = { onPadReleased(pad.id) },
-                                    onVolumeChange = { onPadVolumeChange(pad.id, it) },
-                                    onLoopBeatsChange = { beats -> onLoopBeatsChange(pad.id, beats) }
-                                )
+                                    // Row 2 (D5 to D8)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .weight(1f),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        for (i in 4 until 8) {
+                                            val pad = drumPads.getOrNull(i) ?: DrumPadItem(id = i + 1, label = "")
+                                            Box(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .fillMaxHeight()
+                                            ) {
+                                                SingleDrumPadBox(
+                                                    pad = pad,
+                                                    isMixMode = isMixMode,
+                                                    onPadPressed = { onPadPressed(pad.id) },
+                                                    onPadReleased = { onPadReleased(pad.id) },
+                                                    onVolumeChange = { onPadVolumeChange(pad.id, it) },
+                                                    onVolumeDelta = { onPadVolumeDelta(pad.id, it) },
+                                                    onLoopBeatsChange = { beats -> onLoopBeatsChange(pad.id, beats) }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
-                        }
-                    }
-
-                    // Rangée 2 (Pads D5 à D8)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        for (i in 4 until 8) {
-                            val pad = drumPads.getOrNull(i) ?: DrumPadItem(id = i + 1, label = "Pad ${i + 1}")
-
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                            ) {
-                                SingleDrumPadBox(
-                                    pad = pad,
-                                    isMixMode = isMixMode,
-                                    onPadPressed = { onPadPressed(pad.id) },
-                                    onPadReleased = { onPadReleased(pad.id) },
-                                    onVolumeChange = { onPadVolumeChange(pad.id, it) },
-                                    onLoopBeatsChange = { beats -> onLoopBeatsChange(pad.id, beats) }
+                            1 -> {
+                                // PAGE 1: PROFESSIONAL EXTERNAL LOOP PLAYER & AOSP BROWSER
+                                ExternalLoopPlayerDaw(
+                                    fileName = loopFileName,
+                                    filePath = loopFilePath,
+                                    durationMs = loopDurationMs,
+                                    positionMs = loopPositionMs,
+                                    progress = loopProgress,
+                                    isPlaying = loopIsPlaying,
+                                    isLooping = loopIsLooping,
+                                    pitchSemitones = loopPitchSemitones,
+                                    stepMode = loopStepMode,
+                                    waveform = loopWaveform,
+                                    volume = loopVolume,
+                                    currentExplorerPath = loopExplorerPath,
+                                    explorerItems = loopExplorerItems,
+                                    isExplorerOpen = loopIsExplorerOpen,
+                                    onTogglePlayPause = onToggleLoopPlayPause,
+                                    onStop = onStopLoop,
+                                    onRetrigger = onRetriggerLoop,
+                                    onSeekProgress = onSeekLoopProgress,
+                                    onToggleLoop = onToggleLoopLooping,
+                                    onChangePitch = onChangeLoopPitch,
+                                    onResetPitch = onResetLoopPitch,
+                                    onSelectStepMode = onSelectLoopStepMode,
+                                    onVolumeChange = onLoopVolumeChange,
+                                    onToggleExplorer = onToggleLoopExplorer,
+                                    onNavigateExplorerFolder = onNavigateLoopExplorer,
+                                    onSelectAudioFile = onSelectLoopAudioFile,
+                                    modifier = Modifier.fillMaxSize()
                                 )
                             }
                         }
@@ -938,11 +1070,26 @@ private fun SingleDrumPadBox(
     onPadPressed: () -> Unit,
     onPadReleased: () -> Unit,
     onVolumeChange: (Float) -> Unit,
+    onVolumeDelta: (Float) -> Unit = {},
     onLoopBeatsChange: (String) -> Unit = {}
 ) {
     val volPercent = (pad.volume * 100).toInt()
 
-    var accumulatedDrag by remember(pad.id) { mutableFloatStateOf(0f) }
+    val cleanLabel = remember(pad.label, pad.sampleFileName, pad.sampleFilePath, pad.sf2Note) {
+        when {
+            pad.sampleFileName.isNotEmpty() -> pad.sampleFileName.removeSuffix(".wav").removeSuffix(".mp3").replace("_", " ")
+            pad.sampleFilePath.isNotEmpty() -> java.io.File(pad.sampleFilePath).nameWithoutExtension.replace("_", " ")
+            pad.sf2Note.isNotEmpty() -> pad.sf2Note
+            else -> {
+                val lower = pad.label.trim().lowercase()
+                if (lower.isEmpty() || lower.startsWith("pad") || lower in listOf("kick", "snare", "hat", "clap", "open hat", "wood", "tumb", "tom 1", "tom 2", "tom 3", "sub kick", "kick 1", "clap 1", "wood 1", "tumb 1")) {
+                    ""
+                } else {
+                    pad.label
+                }
+            }
+        }
+    }
 
     val padBgBrush = if (pad.isPressed) {
         Brush.verticalGradient(
@@ -991,7 +1138,7 @@ private fun SingleDrumPadBox(
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = pad.label,
+                    text = cleanLabel,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
@@ -1007,8 +1154,7 @@ private fun SingleDrumPadBox(
                 ) {
                     RepeatableIconButton(
                         onAction = {
-                            val newVol = (pad.volume - 0.02f).coerceAtLeast(0f)
-                            onVolumeChange(newVol)
+                            onVolumeDelta(-0.02f)
                         },
                         modifier = Modifier
                             .size(32.dp)
@@ -1031,8 +1177,7 @@ private fun SingleDrumPadBox(
 
                     RepeatableIconButton(
                         onAction = {
-                            val newVol = (pad.volume + 0.02f).coerceAtMost(1f)
-                            onVolumeChange(newVol)
+                            onVolumeDelta(0.02f)
                         },
                         modifier = Modifier
                             .size(32.dp)
@@ -1124,7 +1269,7 @@ private fun SingleDrumPadBox(
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = pad.label,
+                    text = cleanLabel,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
@@ -1190,17 +1335,17 @@ private fun RepeatableIconButton(
             .pointerInput(Unit) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
-                    currentOnAction() // First step
+                    currentOnAction() // First step immediately
 
-                    // Wait 250ms initial delay before continuous auto-step
-                    val holdTimer = withTimeoutOrNull(250) {
+                    // Wait 220ms initial delay before continuous auto-repeat
+                    val releasedEarly = withTimeoutOrNull(220) {
                         waitForUpOrCancellation()
                     }
 
-                    if (holdTimer == null) {
+                    if (releasedEarly == null) {
                         while (true) {
                             currentOnAction()
-                            val up = withTimeoutOrNull(45) {
+                            val up = withTimeoutOrNull(35) {
                                 waitForUpOrCancellation()
                             }
                             if (up != null) break

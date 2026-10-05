@@ -4,85 +4,156 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.R
-import com.soundstage.mixer.ui.theme.*
 import kotlinx.coroutines.delay
 
+/**
+ * Immersive Fullscreen SplashScreen for Æther Keys:
+ * - Edge-to-edge Deep Studio Navy background (#0B1329)
+ * - Step 1: Architectural Monogram Logo appears in center
+ * - Step 2: "Æ" appears centered under the logo
+ * - Step 3: "ther" emerges, pushing "Æ" smoothly to the left
+ * - Step 4: "Keys" drops from above with a crisp, cushioned impact
+ * - Fluid synchronization without rush
+ */
 @Composable
 fun LiveKeysSplashScreen(
     onFinished: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var isVisible by remember { mutableStateOf(true) }
-    var startFadeIn by remember { mutableStateOf(false) }
+
+    // Animation Stage Controller
+    var logoVisible by remember { mutableStateOf(false) }
+    var aeVisible by remember { mutableStateOf(false) }
+    var therEmerge by remember { mutableStateOf(false) }
+    var keysDrop by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        delay(60)
-        startFadeIn = true
+        // 1. Logo fades & scales in
+        delay(100)
+        logoVisible = true
+
+        // 2. "Æ" appears centered
+        delay(600)
+        aeVisible = true
+
+        // 3. "ther" emerges & pushes "Æ" left
+        delay(550)
+        therEmerge = true
+
+        // 4. "Keys" drops down with cushioned impact
+        delay(450)
+        keysDrop = true
+
+        // 5. Breathing settle phase
         delay(1100)
         isVisible = false
-        delay(250)
+        delay(400)
         onFinished()
     }
 
-    val animatedFade by animateFloatAsState(
-        targetValue = if (startFadeIn && isVisible) 1f else 0f,
-        animationSpec = tween(400, easing = FastOutSlowInEasing),
-        label = "splash_fade"
+    // Logo animations
+    val logoAlpha by animateFloatAsState(
+        targetValue = if (logoVisible) 1f else 0f,
+        animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+        label = "logoAlpha"
+    )
+    val logoScale by animateFloatAsState(
+        targetValue = if (logoVisible) 1f else 0.85f,
+        animationSpec = tween(durationMillis = 750, easing = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)),
+        label = "logoScale"
+    )
+
+    // "Æ" animations (Appears centered, then pushed left)
+    val aeAlpha by animateFloatAsState(
+        targetValue = if (aeVisible) 1f else 0f,
+        animationSpec = tween(durationMillis = 450, easing = FastOutSlowInEasing),
+        label = "aeAlpha"
+    )
+    val aeScale by animateFloatAsState(
+        targetValue = if (aeVisible) 1f else 0.75f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        label = "aeScale"
+    )
+    val aeShiftX by animateDpAsState(
+        targetValue = if (therEmerge) (-48).dp else 0.dp,
+        animationSpec = spring(
+            dampingRatio = 0.75f,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "aeShiftX"
+    )
+
+    // "ther" animations (Emerges from behind Æ as it shifts left)
+    val therAlpha by animateFloatAsState(
+        targetValue = if (therEmerge) 1f else 0f,
+        animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+        label = "therAlpha"
+    )
+    val therSlideX by animateDpAsState(
+        targetValue = if (therEmerge) (-44).dp else (-80).dp,
+        animationSpec = spring(
+            dampingRatio = 0.75f,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "therSlideX"
+    )
+
+    // "Keys" animations (Drops from top with impact spring)
+    val keysAlpha by animateFloatAsState(
+        targetValue = if (keysDrop) 1f else 0f,
+        animationSpec = tween(durationMillis = 400, easing = LinearOutSlowInEasing),
+        label = "keysAlpha"
+    )
+    val keysOffsetY by animateDpAsState(
+        targetValue = if (keysDrop) 0.dp else (-55).dp,
+        animationSpec = spring(
+            dampingRatio = 0.62f,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "keysOffsetY"
     )
 
     AnimatedVisibility(
         visible = isVisible,
-        enter = fadeIn(tween(300)),
-        exit = fadeOut(tween(250)),
+        enter = fadeIn(tween(250)),
+        exit = fadeOut(tween(400)),
         modifier = modifier
     ) {
-        val infiniteTransition = rememberInfiniteTransition(label = "splash_pulse")
-        val scale by infiniteTransition.animateFloat(
-            initialValue = 0.96f,
-            targetValue = 1.04f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(1200, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "scale"
-        )
-        val glowAlpha by infiniteTransition.animateFloat(
-            initialValue = 0.5f,
-            targetValue = 1.0f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(900, easing = LinearEasing),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "glowAlpha"
-        )
-
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF06070B))
-                .clickable {
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFF090F20),
+                            Color(0xFF0B1329),
+                            Color(0xFF050813)
+                        )
+                    )
+                )
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) {
                     isVisible = false
                     onFinished()
                 }
@@ -90,102 +161,79 @@ fun LiveKeysSplashScreen(
             contentAlignment = Alignment.Center
         ) {
             Column(
-                modifier = Modifier
-                    .alpha(animatedFade)
-                    .scale(scale),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                // Glowing SoundStage Delta Loop Logo
+                // 1. Architectural Vector Monogram Logo
                 Box(
                     modifier = Modifier
-                        .size(150.dp)
-                        .shadow(40.dp, RoundedCornerShape(32.dp), spotColor = Color(0x9900E5FF))
-                        .clip(RoundedCornerShape(32.dp))
-                        .background(Color(0xFF080A10))
-                        .border(
-                            1.8.dp,
-                            Brush.linearGradient(
-                                listOf(
-                                    Color(0xFFFF2A55).copy(alpha = glowAlpha),
-                                    Color(0xFF9D00FF).copy(alpha = glowAlpha),
-                                    Color(0xFF00E5FF).copy(alpha = glowAlpha)
-                                )
-                            ),
-                            RoundedCornerShape(32.dp)
-                        )
-                        .padding(12.dp),
+                        .size(190.dp)
+                        .scale(logoScale)
+                        .alpha(logoAlpha),
                     contentAlignment = Alignment.Center
                 ) {
                     Image(
-                        painter = painterResource(id = R.drawable.ic_soundstage_logo),
-                        contentDescription = "SoundStage Final Logo",
-                        modifier = Modifier
-                            .fillMaxSize()
+                        painter = painterResource(id = R.drawable.ic_aether_keys_logo),
+                        contentDescription = "Æther Keys Monogram",
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
 
-                Spacer(modifier = Modifier.height(22.dp))
+                Spacer(modifier = Modifier.height(34.dp))
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                // 2. Large Cinematic Title: "Æ" -> "ther" emerges -> "Keys" drops from above
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(60.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = "SOUND",
-                        fontSize = 30.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 6.sp,
-                        color = Color.White
-                    )
-                    Text(
-                        text = "STAGE",
-                        fontSize = 30.sp,
-                        fontWeight = FontWeight.Light,
-                        letterSpacing = 5.sp,
-                        color = NeonCyan
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                Text(
-                    text = "PROFESSIONAL LIVE AUDIO ENGINE",
-                    fontSize = 9.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 2.5.sp,
-                    color = Color(0x99FFFFFF),
-                    textAlign = TextAlign.Center
-                )
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Glowing Neon Equalizer Waves Animation
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    listOf(18.dp, 30.dp, 42.dp, 24.dp, 36.dp, 18.dp, 28.dp).forEachIndexed { idx, h ->
-                        val barScale by infiniteTransition.animateFloat(
-                            initialValue = 0.4f,
-                            targetValue = 1.0f,
-                            animationSpec = infiniteRepeatable(
-                                animation = tween(400 + idx * 90, easing = FastOutSlowInEasing),
-                                repeatMode = RepeatMode.Reverse
-                            ),
-                            label = "eq_bar_$idx"
-                        )
-                        Box(
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        // "Æ"
+                        Text(
+                            text = "Æ",
+                            fontSize = 44.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.SansSerif,
+                            color = Color.White,
                             modifier = Modifier
-                                .width(3.5.dp)
-                                .height(h * barScale)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(
-                                    Brush.verticalGradient(
-                                        listOf(Color(0xFF00E5FF), Color(0xFF9D00FF), Color(0xFFFF2A55))
-                                    )
-                                )
+                                .offset(x = aeShiftX)
+                                .scale(aeScale)
+                                .alpha(aeAlpha)
                         )
+
+                        // "ther" emerging as Æ moves left
+                        Text(
+                            text = "ther",
+                            fontSize = 44.sp,
+                            fontWeight = FontWeight.Medium,
+                            fontFamily = FontFamily.SansSerif,
+                            letterSpacing = 1.sp,
+                            color = Color(0xFFF1F5F9),
+                            modifier = Modifier
+                                .offset(x = therSlideX)
+                                .alpha(therAlpha)
+                        )
+
+                        Spacer(modifier = Modifier.width(if (therEmerge) 14.dp else 0.dp))
+
+                        // "Keys" dropping from top
+                        if (therEmerge) {
+                            Text(
+                                text = "Keys",
+                                fontSize = 44.sp,
+                                fontWeight = FontWeight.Light,
+                                fontFamily = FontFamily.SansSerif,
+                                letterSpacing = 3.sp,
+                                color = Color(0xFFA5C8FF),
+                                modifier = Modifier
+                                    .offset(x = (-44).dp, y = keysOffsetY)
+                                    .alpha(keysAlpha)
+                            )
+                        }
                     }
                 }
             }

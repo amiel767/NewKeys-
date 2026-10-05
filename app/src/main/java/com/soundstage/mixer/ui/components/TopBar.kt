@@ -368,7 +368,7 @@ fun TopBar(
             ) {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_quill),
-                    contentDescription = "Notes & Grilles d'accords",
+                    contentDescription = "Sheets & Chords",
                     tint = Color.White,
                     modifier = Modifier.size(19.dp)
                 )
@@ -509,7 +509,7 @@ fun TopBar(
             ) {
                 Icon(
                     imageVector = Icons.Default.Settings,
-                    contentDescription = "Réglages",
+                    contentDescription = "Settings",
                     tint = TextDim,
                     modifier = Modifier.size(18.dp)
                 )
