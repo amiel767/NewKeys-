@@ -32,8 +32,9 @@ object ChordNotationConverter {
 
     // Complete rich chord extensions palette requested by user
     val fullExtensions = listOf(
-        "m", "7", "maj7", "m7", "sus2", "sus4", "add9",
-        "9", "m9", "maj9", "11", "m11", "13", "m13",
+        "m", "7", "maj7", "11", "13", "b", "#",
+        "m7", "sus2", "sus4", "add9",
+        "9", "m9", "maj9", "m11", "m13",
         "dim", "dim7", "aug", "6", "m6", "6/9", "7b5", "7#5", "7b9", "7#9", "/bass"
     )
 
@@ -93,7 +94,7 @@ object ChordNotationConverter {
         }
 
         // If chord is in Nashville notation (e.g. "1", "2m", "6m")
-        if (trimmed.all { it.isDigit() || it == 'm' || it == '°' }) {
+        if (trimmed.all { it.isDigit() || it == 'm' || it == '°' || it == '#' || it == 'b' }) {
             val baseNumber = trimmed.filter { it.isDigit() }
             val hasMinor = trimmed.contains("m")
             return when (cleanExt) {
@@ -104,8 +105,10 @@ object ChordNotationConverter {
                 "sus4" -> "${baseNumber}sus4"
                 "add9" -> if (hasMinor) "${baseNumber}m(add9)" else "${baseNumber}add9"
                 "9" -> if (hasMinor) "${baseNumber}m9" else "${baseNumber}9"
-                "11" -> "${baseNumber}11"
-                "13" -> "${baseNumber}13"
+                "11" -> if (hasMinor) "${baseNumber}m11" else "${baseNumber}11"
+                "13" -> if (hasMinor) "${baseNumber}m13" else "${baseNumber}13"
+                "b" -> if (trimmed.startsWith("#")) "b" + trimmed.removePrefix("#") else if (trimmed.startsWith("b")) trimmed else "b$trimmed"
+                "#" -> if (trimmed.startsWith("b")) "#" + trimmed.removePrefix("b") else if (trimmed.startsWith("#")) trimmed else "#$trimmed"
                 "dim", "dim7" -> "${baseNumber}dim"
                 "aug" -> "${baseNumber}aug"
                 "6" -> if (hasMinor) "${baseNumber}m6" else "${baseNumber}6"
@@ -118,6 +121,24 @@ object ChordNotationConverter {
         var suffix = trimmed.substring(root.length)
 
         when (cleanExt) {
+            "b" -> {
+                return if (root.endsWith("#")) {
+                    root.dropLast(1) + suffix
+                } else if (root.endsWith("b")) {
+                    root + suffix
+                } else {
+                    "${root}b$suffix"
+                }
+            }
+            "#" -> {
+                return if (root.endsWith("b")) {
+                    root.dropLast(1) + suffix
+                } else if (root.endsWith("#")) {
+                    root + suffix
+                } else {
+                    "${root}#$suffix"
+                }
+            }
             "7" -> {
                 suffix = if (suffix.startsWith("m") && !suffix.startsWith("maj")) "m7"
                 else if (suffix.startsWith("dim")) "dim7"
@@ -132,9 +153,9 @@ object ChordNotationConverter {
             "9" -> suffix = if (suffix.startsWith("m")) "m9" else "9"
             "m9" -> suffix = "m9"
             "maj9" -> suffix = "maj9"
-            "11" -> suffix = if (suffix.startsWith("m")) "m11" else "11"
+            "11" -> suffix = if (suffix.startsWith("m") && !suffix.startsWith("maj")) "m11" else "11"
             "m11" -> suffix = "m11"
-            "13" -> suffix = if (suffix.startsWith("m")) "m13" else "13"
+            "13" -> suffix = if (suffix.startsWith("m") && !suffix.startsWith("maj")) "m13" else "13"
             "m13" -> suffix = "m13"
             "dim", "dim7" -> suffix = cleanExt
             "aug" -> suffix = "aug"

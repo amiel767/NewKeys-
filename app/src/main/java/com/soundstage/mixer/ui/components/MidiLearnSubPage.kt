@@ -3,6 +3,7 @@ package com.soundstage.mixer.ui.components
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.*
@@ -56,10 +57,19 @@ fun MidiLearnSubPage(
     onResetDefaults: () -> Unit,
     onClearAll: () -> Unit,
     onBack: () -> Unit,
+    onExpandedChange: (Boolean) -> Unit = {},
+    midiDebounceEnabled: Boolean = true,
+    midiDebounceMs: Long = 60L,
+    onToggleMidiDebounce: () -> Unit = {},
+    onUpdateMidiDebounceMs: (Long) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     // Navigation State: null = Level 1 (Catalogue), non-null = Level 2 (Category Actions)
     var selectedCategory by remember { mutableStateOf<MidiActionCategory?>(null) }
+
+    LaunchedEffect(selectedCategory) {
+        onExpandedChange(selectedCategory != null)
+    }
     // Manual Edit State: non-null = Level 3 (Manual Wheel Edit Page)
     var manualEditAction by remember { mutableStateOf<MidiMappingItem?>(null) }
 
@@ -116,6 +126,10 @@ fun MidiLearnSubPage(
                     mappings = mappings,
                     connectedMidiCount = connectedMidiCount,
                     lastMidiSummary = lastMidiSummary,
+                    midiDebounceEnabled = midiDebounceEnabled,
+                    midiDebounceMs = midiDebounceMs,
+                    onToggleMidiDebounce = onToggleMidiDebounce,
+                    onUpdateMidiDebounceMs = onUpdateMidiDebounceMs,
                     onSelectCategory = { category -> selectedCategory = category },
                     onResetDefaults = { showResetConfirm = true },
                     onClearAll = { showClearConfirm = true },
@@ -182,6 +196,10 @@ private fun MidiSectionsCataloguePage(
     mappings: List<MidiMappingItem>,
     connectedMidiCount: Int,
     lastMidiSummary: String,
+    midiDebounceEnabled: Boolean,
+    midiDebounceMs: Long,
+    onToggleMidiDebounce: () -> Unit,
+    onUpdateMidiDebounceMs: (Long) -> Unit,
     onSelectCategory: (MidiActionCategory) -> Unit,
     onResetDefaults: () -> Unit,
     onClearAll: () -> Unit,
@@ -329,7 +347,105 @@ private fun MidiSectionsCataloguePage(
                 }
             }
 
-            // CARD 2: MANAGEMENT & ACTIONS
+            // CARD 2: SMART HARDWARE FILTER (ANTI-JITTER / DEBOUNCE)
+            item {
+                MidiReliefCard(title = "SMART HARDWARE FILTER (ANTI-JITTER)") {
+                    Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onToggleMidiDebounce() }
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0x1810B981)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Security,
+                                        contentDescription = "Debounce",
+                                        tint = Color(0xFF10B981),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Column {
+                                    Text(
+                                        text = "Anti-Jitter / Debounce Filter",
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = TextPrimary
+                                    )
+                                    Text(
+                                        text = "Eliminates parasitic burst signals from worn buttons & encoders",
+                                        fontSize = 11.sp,
+                                        color = TextDim
+                                    )
+                                }
+                            }
+                            Switch(
+                                checked = midiDebounceEnabled,
+                                onCheckedChange = { onToggleMidiDebounce() },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = Color(0xFF10B981)
+                                )
+                            )
+                        }
+
+                        if (midiDebounceEnabled) {
+                            MidiRowDivider()
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Filter Sensitivity Window",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = Color(0xFFCBD5E1)
+                                    )
+                                    Text(
+                                        text = "${midiDebounceMs} ms",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF10B981)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Slider(
+                                    value = midiDebounceMs.toFloat(),
+                                    onValueChange = { onUpdateMidiDebounceMs(it.toLong()) },
+                                    valueRange = 15f..150f,
+                                    steps = 9,
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = Color(0xFF10B981),
+                                        activeTrackColor = Color(0xFF10B981),
+                                        inactiveTrackColor = Color(0xFF334155)
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // CARD 3: MANAGEMENT & ACTIONS
             item {
                 MidiReliefCard(title = "MANAGEMENT & PRESETS") {
                     Column {
@@ -425,74 +541,54 @@ private fun CategoryActionsListPage(
                     )
                 }
             }
-        }
 
-        // LISTENING BANNER (When Learn is active)
-        if (learningActionType != null) {
-            val infiniteTransition = rememberInfiniteTransition(label = "learning_pulse")
-            val pulseAlpha by infiniteTransition.animateFloat(
-                initialValue = 0.25f,
-                targetValue = 0.90f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(600, easing = LinearEasing),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = "pulse_alpha"
-            )
+            // Compact Listening Badge aligned at header position (Requested in Screenshot 1)
+            if (learningActionType != null) {
+                val infiniteTransition = rememberInfiniteTransition(label = "learning_pulse")
+                val pulseAlpha by infiniteTransition.animateFloat(
+                    initialValue = 0.25f,
+                    targetValue = 0.90f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(600, easing = LinearEasing),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "pulse_alpha"
+                )
 
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0xFFF59E0B).copy(alpha = pulseAlpha * 0.22f))
-                    .padding(horizontal = 14.dp, vertical = 11.dp)
-            ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Color(0xFFF59E0B).copy(alpha = pulseAlpha * 0.22f))
+                        .border(1.dp, Color(0xFFF59E0B).copy(alpha = 0.65f), RoundedCornerShape(20.dp))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFFF59E0B))
-                        )
-                        Column {
-                            Text(
-                                text = "LISTENING FOR CONTROLLER...",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFF59E0B),
-                                letterSpacing = 0.5.sp
-                            )
-                            Text(
-                                text = "Move fader or hit pad for: ${learningActionType.title}",
-                                fontSize = 12.sp,
-                                color = Color.White,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFF59E0B))
+                    )
+                    Text(
+                        text = "Listening: ${learningActionType.title}",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
                             .background(Color(0x33FFFFFF))
                             .clickable { onCancelLearn() }
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Text(
                             text = "Cancel",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
                     }
@@ -500,28 +596,71 @@ private fun CategoryActionsListPage(
             }
         }
 
-        // ACTIONS LIST CARD
-        LazyColumn(
+        // ACTIONS LIST CARD (TWO PARALLEL PANES TO PREVENT ENDLESS SCROLLING)
+        val halfCount = (mappings.size + 1) / 2
+        val col1Items = mappings.take(halfCount)
+        val col2Items = mappings.drop(halfCount)
+
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            item {
-                MidiReliefCard(title = "${category.displayName.uppercase()} ACTIONS") {
-                    Column {
-                        mappings.forEachIndexed { index, item ->
-                            ActionMappingRow(
-                                item = item,
-                                isLearning = (learningActionType == item.actionType),
-                                onStartLearn = { onStartLearn(item.actionType) },
-                                onUnmap = { onUnmapAction(item.actionType) },
-                                onToggleEnabled = { onToggleMappingEnabled(item.actionType) },
-                                onEditManual = { onEditManual(item) }
-                            )
+            // Pane 1 (Left Column)
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                item {
+                    MidiReliefCard(title = "${category.displayName.uppercase()} ${if (col2Items.isNotEmpty()) "(PART 1)" else "ACTIONS"}") {
+                        Column {
+                            col1Items.forEachIndexed { index, item ->
+                                ActionMappingRow(
+                                    item = item,
+                                    isLearning = (learningActionType == item.actionType),
+                                    onStartLearn = { onStartLearn(item.actionType) },
+                                    onUnmap = { onUnmapAction(item.actionType) },
+                                    onToggleEnabled = { onToggleMappingEnabled(item.actionType) },
+                                    onEditManual = { onEditManual(item) }
+                                )
 
-                            if (index < mappings.size - 1) {
-                                MidiRowDivider()
+                                if (index < col1Items.size - 1) {
+                                    MidiRowDivider()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Pane 2 (Right Column)
+            if (col2Items.isNotEmpty()) {
+                LazyColumn(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    item {
+                        MidiReliefCard(title = "${category.displayName.uppercase()} (PART 2)") {
+                            Column {
+                                col2Items.forEachIndexed { index, item ->
+                                    ActionMappingRow(
+                                        item = item,
+                                        isLearning = (learningActionType == item.actionType),
+                                        onStartLearn = { onStartLearn(item.actionType) },
+                                        onUnmap = { onUnmapAction(item.actionType) },
+                                        onToggleEnabled = { onToggleMappingEnabled(item.actionType) },
+                                        onEditManual = { onEditManual(item) }
+                                    )
+
+                                    if (index < col2Items.size - 1) {
+                                        MidiRowDivider()
+                                    }
+                                }
                             }
                         }
                     }

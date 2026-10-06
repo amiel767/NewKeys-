@@ -221,22 +221,6 @@ fun SceneDialog(
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
-
-                            // Close Button (X)
-                            IconButton(
-                                onClick = onClose,
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0x1AFFFFFF))
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Close",
-                                    tint = Color(0xFF94A3B8),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
                         }
                     }
 

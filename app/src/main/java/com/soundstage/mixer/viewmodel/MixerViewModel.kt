@@ -202,6 +202,8 @@ data class MixerUiState(
     val learningActionType: MidiActionType? = null,
     val lastMidiSummary: String = "",
     val lastMidiTriggerTime: Long = 0L,
+    val midiDebounceEnabled: Boolean = true,
+    val midiDebounceMs: Long = 60L,
     
     // Screen & Scale Settings
     val keepScreenOn: Boolean = true,
@@ -211,6 +213,9 @@ data class MixerUiState(
     val notesText: String = "",
     val sheets: List<SheetItem> = emptyList(),
     val activeSheetId: String? = null,
+    val floatingSheet: SheetItem? = null,
+    val floatingSheetIsLeft: Boolean = false,
+    val floatingSheetScale: Float = 1.0f,
 
     // Snapshots / Sub-Scenes (Section 2)
     val isSnapshotArmMode: Boolean = false,
@@ -280,6 +285,14 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     loopPlayerPositionMs = posMs,
                     loopPlayerDurationMs = durMs,
                     loopPlayerProgress = prog
+                )
+            }
+        },
+        onWaveformLoaded = { wf, durMs ->
+            _uiState.update {
+                it.copy(
+                    loopPlayerWaveform = wf,
+                    loopPlayerDurationMs = durMs
                 )
             }
         }
@@ -367,6 +380,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 fileManager.ensureDirectoriesExist()
+                _uiState.update { it.copy(loopPlayerExplorerPath = fileManager.loopsDir.absolutePath) }
+                refreshLoopPlayerExplorer(fileManager.loopsDir.absolutePath)
             } catch (e: Exception) {
                 Log.w("MixerViewModel", "ensureDirectoriesExist warning: ${e.message}")
             }
@@ -536,7 +551,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         themeBgLightness = saved.themeBgLightness ?: state.themeBgLightness,
                         themeModulesLightness = saved.themeModulesLightness ?: state.themeModulesLightness,
                         trackColorSaturation = saved.trackColorSaturation ?: state.trackColorSaturation,
-                        isFaderAutoFit = saved.isFaderAutoFit ?: state.isFaderAutoFit
+                        isFaderAutoFit = saved.isFaderAutoFit ?: state.isFaderAutoFit,
+                        midiMappings = if (saved.midiMappings.isNotEmpty()) saved.midiMappings else state.midiMappings,
+                        midiDebounceEnabled = saved.midiDebounceEnabled ?: state.midiDebounceEnabled,
+                        midiDebounceMs = saved.midiDebounceMs ?: state.midiDebounceMs
                     )
                 }
 
@@ -551,6 +569,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 val effectiveMasterVol = saved.masterVolume ?: _uiState.value.masterTrack.volume
                 audioEngine.masterVolume = effectiveMasterVol
                 NativeAudioBridge.safeSetMasterVolume(effectiveMasterVol)
+
+                // Restored track volumes - apply directly to audio engine so startup volumes are accurate
+                applyTrackVolumes(_uiState.value)
 
                 // Restore Master FX (EQ, Reverb, Delay, Chorus, Compressor, SoundGoodizer)
                 val masterFx = saved.fxParameters[0]
@@ -738,7 +759,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             trackColorSaturation = state.trackColorSaturation,
             isFaderAutoFit = state.isFaderAutoFit,
             patches = updatedPatches,
-            activePatchId = state.activePatchId
+            activePatchId = state.activePatchId,
+            midiMappings = state.midiMappings,
+            midiDebounceEnabled = state.midiDebounceEnabled,
+            midiDebounceMs = state.midiDebounceMs
         )
         // Full auto-save: automatically sync to the current project's .scene file if a project is actively open
         if (state.activeProjectName.isNotEmpty() && state.activeProjectName != "None") {
@@ -2223,10 +2247,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     obj.put("updatedAt", sheet.updatedAt)
                     arr.put(obj)
 
-                    // Also persist human-readable individual file in Sheets/
+                    // Also persist human-readable individual file in Sheets/ (.lsheet format)
                     try {
                         val safeName = sheet.title.replace("[^a-zA-Z0-9_.-]".toRegex(), "_")
-                        val individualFile = File(fileManager.sheetsDir, "$safeName.txt")
+                        val individualFile = File(fileManager.sheetsDir, "$safeName.lsheet")
                         val formattedSheet = buildString {
                             appendLine("Title: ${sheet.title}")
                             appendLine("Key: ${sheet.key}")
@@ -2315,6 +2339,31 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 notesText = target?.content ?: state.notesText
             )
         }
+    }
+
+    fun openFloatingSheet(sheet: SheetItem) {
+        _uiState.update {
+            it.copy(
+                floatingSheet = sheet,
+                currentPage = AppScreenPage.MIXER
+            )
+        }
+    }
+
+    fun toggleFloatingSheetPosition() {
+        _uiState.update { it.copy(floatingSheetIsLeft = !it.floatingSheetIsLeft) }
+    }
+
+    fun setFloatingSheetPosition(isLeft: Boolean) {
+        _uiState.update { it.copy(floatingSheetIsLeft = isLeft) }
+    }
+
+    fun updateFloatingSheetScale(scale: Float) {
+        _uiState.update { it.copy(floatingSheetScale = scale.coerceIn(0.75f, 1.5f)) }
+    }
+
+    fun closeFloatingSheet() {
+        _uiState.update { it.copy(floatingSheet = null) }
     }
 
     fun closeDrumPad() {
@@ -4271,6 +4320,14 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
         NativeAudioBridge.safeTrimMemory()
 
+        // 4b. Clear all active voices, reset sustain, pitch and modulation to avoid any cross-patch bleed/parasites
+        for (ch in 0..7) {
+            NativeAudioBridge.safeAllNotesOff(ch)
+            NativeAudioBridge.safeControlChange(ch, 64, 0) // Sustain pedal off
+            NativeAudioBridge.safePitchBend(ch, 8192) // Pitch bend center
+            NativeAudioBridge.safeControlChange(ch, 1, 0) // Modulation wheel zero
+        }
+
         // 5. Restore target tracks with their exact saved patch states (not carrying over old patch's mutes/solos)
         val restoredTracks = if (targetPatch.tracks.isNotEmpty()) targetPatch.tracks else state.tracks
 
@@ -4562,7 +4619,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                             snapshotTransitionProgress = 0.0f,
                             transpose = targetSnapshot.globalTranspose,
                             octave = targetSnapshot.globalOctaveShift,
-                            visibleTracksCount = if (targetSnapshot.visibleTracksCount in 1..8) targetSnapshot.visibleTracksCount else currentState.visibleTracksCount
+                            visibleTracksCount = maxOf(currentState.visibleTracksCount, if (targetSnapshot.visibleTracksCount in 1..8) targetSnapshot.visibleTracksCount else currentState.visibleTracksCount)
                         )
                     }
                     applyTrackVolumes(_uiState.value)
@@ -5328,9 +5385,34 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 (m.channel < 0 || m.channel == channel)
         }
 
+        val now = System.currentTimeMillis()
+        val debounceActive = _uiState.value.midiDebounceEnabled
+        val debounceMs = _uiState.value.midiDebounceMs
+
         for (m in activeMappings) {
+            if (debounceActive) {
+                val lastTime = midiActionLastTriggerTime[m.actionType] ?: 0L
+                val elapsed = now - lastTime
+                if (elapsed < debounceMs) {
+                    // Suppress mechanical jitter/bounce burst from worn controller
+                    continue
+                }
+                midiActionLastTriggerTime[m.actionType] = now
+            }
             executeMidiAction(m.actionType, value)
         }
+    }
+
+    private val midiActionLastTriggerTime = java.util.concurrent.ConcurrentHashMap<MidiActionType, Long>()
+
+    fun toggleMidiDebounce() {
+        _uiState.update { it.copy(midiDebounceEnabled = !it.midiDebounceEnabled) }
+        persistCurrentStateDebounced()
+    }
+
+    fun updateMidiDebounceMs(ms: Long) {
+        _uiState.update { it.copy(midiDebounceMs = ms.coerceIn(15L, 200L)) }
+        persistCurrentStateDebounced()
     }
 
     private fun executeMidiAction(action: MidiActionType, value: Int) {

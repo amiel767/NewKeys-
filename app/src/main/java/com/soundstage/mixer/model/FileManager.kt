@@ -46,7 +46,7 @@ class FileManager(private val context: Context) {
     val baseDir: File
         get() {
             return try {
-                val extDir = File(Environment.getExternalStorageDirectory(), "SoundStage")
+                val extDir = File(Environment.getExternalStorageDirectory(), "Æther Keys")
                 if (!extDir.exists()) {
                     extDir.mkdirs()
                 }
@@ -55,18 +55,18 @@ class FileManager(private val context: Context) {
                 } else if (extDir.exists()) {
                     extDir
                 } else {
-                    val appExtDir = File(context.getExternalFilesDir(null), "SoundStage")
+                    val appExtDir = File(context.getExternalFilesDir(null), "Æther Keys")
                     if (!appExtDir.exists()) appExtDir.mkdirs()
                     if (appExtDir.exists()) {
                         appExtDir
                     } else {
-                        val musicDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "SoundStage")
+                        val musicDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "Æther Keys")
                         if (!musicDir.exists()) musicDir.mkdirs()
-                        if (musicDir.exists()) musicDir else File(context.filesDir, "SoundStage").apply { if (!exists()) mkdirs() }
+                        if (musicDir.exists()) musicDir else File(context.filesDir, "Æther Keys").apply { if (!exists()) mkdirs() }
                     }
                 }
             } catch (_: Exception) {
-                val internalDir = File(context.filesDir, "SoundStage")
+                val internalDir = File(context.filesDir, "Æther Keys")
                 if (!internalDir.exists()) internalDir.mkdirs()
                 internalDir
             }

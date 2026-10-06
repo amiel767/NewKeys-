@@ -115,20 +115,24 @@ fun MixerScreen(
     )
     val safeBottomPadding = animatedBottomPadding.coerceAtLeast(0.dp)
 
-    // Fullscreen Stage Container
+    // Fullscreen Stage Container (Unpadded for 100% full-bleed overlays like SplashScreen)
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .padding(
-                start = 6.dp,
-                end = 6.dp,
-                top = 6.dp,
-                bottom = safeBottomPadding
-            )
             .testTag("mixer_screen_root")
     ) {
-        AnimatedContent(
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(
+                    start = 6.dp,
+                    end = 6.dp,
+                    top = 6.dp,
+                    bottom = safeBottomPadding
+                )
+        ) {
+            AnimatedContent(
             targetState = uiState.currentPage,
             transitionSpec = {
                 fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(220))
@@ -239,7 +243,8 @@ fun MixerScreen(
                         transpose = uiState.transpose,
                         onTransposeChange = { viewModel.updateTranspose(it) },
                         onBackToMixer = { viewModel.navigateBackToMixer() },
-                        onOpenSettings = { viewModel.openSettingsDrawer() }
+                        onOpenSettings = { viewModel.openSettingsDrawer() },
+                        onOpenFloatingSheet = { viewModel.openFloatingSheet(it) }
                     )
                 }
                 AppScreenPage.MIXER -> {
@@ -283,7 +288,7 @@ fun MixerScreen(
                     isMidiPedalPressed = uiState.isMidiPedalPressed,
                     onToggleSustain = { viewModel.toggleSustain() },
                     onOpenNotes = {
-                        viewModel.openSheetsDrawer()
+                        viewModel.navigateToPage(AppScreenPage.SHEETS)
                     },
                     onOpenDrumPad = {
                         viewModel.navigateToPage(AppScreenPage.DRUMPAD)
@@ -883,6 +888,10 @@ fun MixerScreen(
             onUpdateManualMidiMapping = { action, type, ch, num -> viewModel.updateMidiMappingManual(action, type, ch, num) },
             onResetMidiMappings = { viewModel.resetMidiMappingsToDefaults() },
             onClearMidiMappings = { viewModel.clearAllMidiMappings() },
+            midiDebounceEnabled = uiState.midiDebounceEnabled,
+            midiDebounceMs = uiState.midiDebounceMs,
+            onToggleMidiDebounce = { viewModel.toggleMidiDebounce() },
+            onUpdateMidiDebounceMs = { viewModel.updateMidiDebounceMs(it) },
             audioEngine = uiState.audioEngine,
             onSelectAudioEngine = { viewModel.setAudioEngine(it) },
             audioBufferSize = uiState.audioBufferSize,
@@ -919,28 +928,21 @@ fun MixerScreen(
             onToggleFaderAutoFit = { viewModel.toggleFaderAutoFit() }
         )
 
-        // Sheets & Chords Sliding Side Drawer Overlay
-        SheetsDrawer(
-            isOpen = uiState.isSheetsDrawerOpen,
-            onClose = { viewModel.closeSheetsDrawer() },
-            sheets = uiState.sheets,
-            activeSheetId = uiState.activeSheetId,
-            onSelectSheet = { viewModel.selectActiveSheet(it) },
-            onCreateSheet = { title, key, content -> viewModel.createSheet(title, key, content) },
-            onUpdateSheet = { id, title, key, content -> viewModel.updateSheet(id, title, key, content) },
-            onDeleteSheet = { viewModel.deleteSheet(it) },
-            notesText = uiState.notesText,
-            onNotesChange = { viewModel.updateNotesText(it) },
-            transpose = uiState.transpose,
-            onTransposeChange = { viewModel.updateTranspose(it) },
-            onOpenFullPage = {
-                viewModel.closeSheetsDrawer()
-                viewModel.navigateToPage(AppScreenPage.SHEETS)
-            },
-            modifier = Modifier
-                .fillMaxSize()
-                .zIndex(115f)
-        )
+        // Floating Sheet Window (Spotify style, 0 contour, free drag + magnetic snap, double-tap dismiss)
+        if (uiState.floatingSheet != null && uiState.currentPage == AppScreenPage.MIXER) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(85f)
+            ) {
+                FloatingSheetWindow(
+                    sheet = uiState.floatingSheet,
+                    scale = uiState.floatingSheetScale,
+                    onScaleChange = { viewModel.updateFloatingSheetScale(it) },
+                    onClose = { viewModel.closeFloatingSheet() }
+                )
+            }
+        }
 
         // Patches Sliding Side Drawer (Exact sliding drawer from right matching Settings)
         SceneDialog(
@@ -997,10 +999,16 @@ fun MixerScreen(
             )
         }
 
-        // Startup Splash Screen Animation
+        // Close inner padded box
+        }
+
+        // Startup Splash Screen Animation (100% Edge-to-Edge Fullscreen Overlay)
         if (!isSplashFinished) {
             LiveKeysSplashScreen(
-                onFinished = { isSplashFinished = true }
+                onFinished = { isSplashFinished = true },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(999f)
             )
         }
     }

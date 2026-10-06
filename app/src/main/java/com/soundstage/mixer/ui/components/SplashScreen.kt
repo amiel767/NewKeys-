@@ -26,12 +26,11 @@ import kotlinx.coroutines.delay
 
 /**
  * Immersive Fullscreen SplashScreen for Æther Keys:
- * - Edge-to-edge Deep Studio Navy background (#0B1329)
- * - Step 1: Architectural Monogram Logo appears in center
- * - Step 2: "Æ" appears centered under the logo
- * - Step 3: "ther" emerges, pushing "Æ" smoothly to the left
- * - Step 4: "Keys" drops from above with a crisp, cushioned impact
- * - Fluid synchronization without rush
+ * - 100% Edge-to-Edge Deep Studio Navy background (#0B1329) with no outer borders
+ * - Logo slides down smoothly from the top to settle at its central position
+ * - "Æther" slides in smoothly from the LEFT
+ * - "Keys" slides in smoothly from the RIGHT
+ * - Both converge into a unified, perfectly centered typographic title
  */
 @Composable
 fun LiveKeysSplashScreen(
@@ -41,101 +40,82 @@ fun LiveKeysSplashScreen(
     var isVisible by remember { mutableStateOf(true) }
 
     // Animation Stage Controller
-    var logoVisible by remember { mutableStateOf(false) }
-    var aeVisible by remember { mutableStateOf(false) }
-    var therEmerge by remember { mutableStateOf(false) }
-    var keysDrop by remember { mutableStateOf(false) }
+    var logoStage by remember { mutableStateOf(false) }
+    var textStage by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        // 1. Logo fades & scales in
-        delay(100)
-        logoVisible = true
+        // Step 1: Logo descends from above and settles
+        delay(120)
+        logoStage = true
 
-        // 2. "Æ" appears centered
-        delay(600)
-        aeVisible = true
+        // Step 2: "Æther" and "Keys" glide in symmetrically from Left & Right
+        delay(500)
+        textStage = true
 
-        // 3. "ther" emerges & pushes "Æ" left
-        delay(550)
-        therEmerge = true
-
-        // 4. "Keys" drops down with cushioned impact
-        delay(450)
-        keysDrop = true
-
-        // 5. Breathing settle phase
-        delay(1100)
+        // Step 3: Breathing phase then seamless exit
+        delay(1600)
         isVisible = false
-        delay(400)
+        delay(350)
         onFinished()
     }
 
-    // Logo animations
+    // 1. Logo Animations (Slides from Top to Center)
     val logoAlpha by animateFloatAsState(
-        targetValue = if (logoVisible) 1f else 0f,
-        animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+        targetValue = if (logoStage) 1f else 0f,
+        animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing),
         label = "logoAlpha"
     )
     val logoScale by animateFloatAsState(
-        targetValue = if (logoVisible) 1f else 0.85f,
-        animationSpec = tween(durationMillis = 750, easing = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)),
+        targetValue = if (logoStage) 1f else 0.88f,
+        animationSpec = spring(
+            dampingRatio = 0.78f,
+            stiffness = Spring.StiffnessLow
+        ),
         label = "logoScale"
     )
-
-    // "Æ" animations (Appears centered, then pushed left)
-    val aeAlpha by animateFloatAsState(
-        targetValue = if (aeVisible) 1f else 0f,
-        animationSpec = tween(durationMillis = 450, easing = FastOutSlowInEasing),
-        label = "aeAlpha"
-    )
-    val aeScale by animateFloatAsState(
-        targetValue = if (aeVisible) 1f else 0.75f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
-        label = "aeScale"
-    )
-    val aeShiftX by animateDpAsState(
-        targetValue = if (therEmerge) (-48).dp else 0.dp,
+    val logoOffsetY by animateDpAsState(
+        targetValue = if (logoStage) 0.dp else (-70).dp,
         animationSpec = spring(
-            dampingRatio = 0.75f,
+            dampingRatio = 0.76f,
             stiffness = Spring.StiffnessLow
         ),
-        label = "aeShiftX"
+        label = "logoOffsetY"
     )
 
-    // "ther" animations (Emerges from behind Æ as it shifts left)
-    val therAlpha by animateFloatAsState(
-        targetValue = if (therEmerge) 1f else 0f,
-        animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
-        label = "therAlpha"
+    // 2. "Æther" Animations (Glides in from Left)
+    val aetherAlpha by animateFloatAsState(
+        targetValue = if (textStage) 1f else 0f,
+        animationSpec = tween(durationMillis = 550, easing = FastOutSlowInEasing),
+        label = "aetherAlpha"
     )
-    val therSlideX by animateDpAsState(
-        targetValue = if (therEmerge) (-44).dp else (-80).dp,
+    val aetherSlideX by animateDpAsState(
+        targetValue = if (textStage) 0.dp else (-80).dp,
         animationSpec = spring(
-            dampingRatio = 0.75f,
+            dampingRatio = 0.80f,
             stiffness = Spring.StiffnessLow
         ),
-        label = "therSlideX"
+        label = "aetherSlideX"
     )
 
-    // "Keys" animations (Drops from top with impact spring)
+    // 3. "Keys" Animations (Glides in from Right)
     val keysAlpha by animateFloatAsState(
-        targetValue = if (keysDrop) 1f else 0f,
-        animationSpec = tween(durationMillis = 400, easing = LinearOutSlowInEasing),
+        targetValue = if (textStage) 1f else 0f,
+        animationSpec = tween(durationMillis = 550, easing = FastOutSlowInEasing),
         label = "keysAlpha"
     )
-    val keysOffsetY by animateDpAsState(
-        targetValue = if (keysDrop) 0.dp else (-55).dp,
+    val keysSlideX by animateDpAsState(
+        targetValue = if (textStage) 0.dp else 80.dp,
         animationSpec = spring(
-            dampingRatio = 0.62f,
-            stiffness = Spring.StiffnessMediumLow
+            dampingRatio = 0.80f,
+            stiffness = Spring.StiffnessLow
         ),
-        label = "keysOffsetY"
+        label = "keysSlideX"
     )
 
     AnimatedVisibility(
         visible = isVisible,
-        enter = fadeIn(tween(250)),
-        exit = fadeOut(tween(400)),
+        enter = fadeIn(tween(200)),
+        exit = fadeOut(tween(350)),
         modifier = modifier
     ) {
         Box(
@@ -164,10 +144,11 @@ fun LiveKeysSplashScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                // 1. Architectural Vector Monogram Logo
+                // Architectural Monogram Logo descending from top
                 Box(
                     modifier = Modifier
-                        .size(190.dp)
+                        .size(175.dp)
+                        .offset(y = logoOffsetY)
                         .scale(logoScale)
                         .alpha(logoAlpha),
                     contentAlignment = Alignment.Center
@@ -179,61 +160,43 @@ fun LiveKeysSplashScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(34.dp))
+                Spacer(modifier = Modifier.height(18.dp))
 
-                // 2. Large Cinematic Title: "Æ" -> "ther" emerges -> "Keys" drops from above
+                // Typographic Title: "Æther" (from Left) & "Keys" (from Right) converging at Center
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(60.dp),
+                        .wrapContentSize(Alignment.Center),
                     contentAlignment = Alignment.Center
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // "Æ"
+                        // "Æther" - Single unified word
                         Text(
-                            text = "Æ",
-                            fontSize = 44.sp,
+                            text = "Æther",
+                            fontSize = 42.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.SansSerif,
+                            letterSpacing = 0.5.sp,
                             color = Color.White,
                             modifier = Modifier
-                                .offset(x = aeShiftX)
-                                .scale(aeScale)
-                                .alpha(aeAlpha)
+                                .offset(x = aetherSlideX)
+                                .alpha(aetherAlpha)
                         )
 
-                        // "ther" emerging as Æ moves left
+                        // "Keys" - Studio Glacier Blue
                         Text(
-                            text = "ther",
-                            fontSize = 44.sp,
+                            text = "Keys",
+                            fontSize = 42.sp,
                             fontWeight = FontWeight.Medium,
                             fontFamily = FontFamily.SansSerif,
                             letterSpacing = 1.sp,
-                            color = Color(0xFFF1F5F9),
+                            color = Color(0xFF8BB5F8),
                             modifier = Modifier
-                                .offset(x = therSlideX)
-                                .alpha(therAlpha)
+                                .offset(x = keysSlideX)
+                                .alpha(keysAlpha)
                         )
-
-                        Spacer(modifier = Modifier.width(if (therEmerge) 14.dp else 0.dp))
-
-                        // "Keys" dropping from top
-                        if (therEmerge) {
-                            Text(
-                                text = "Keys",
-                                fontSize = 44.sp,
-                                fontWeight = FontWeight.Light,
-                                fontFamily = FontFamily.SansSerif,
-                                letterSpacing = 3.sp,
-                                color = Color(0xFFA5C8FF),
-                                modifier = Modifier
-                                    .offset(x = (-44).dp, y = keysOffsetY)
-                                    .alpha(keysAlpha)
-                            )
-                        }
                     }
                 }
             }

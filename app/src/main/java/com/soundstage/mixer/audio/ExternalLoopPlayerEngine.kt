@@ -27,7 +27,8 @@ import kotlin.math.pow
  */
 class ExternalLoopPlayerEngine(
     private val context: Context,
-    private val onPlaybackPositionUpdate: (currentMs: Long, durationMs: Long, progress: Float) -> Unit = { _, _, _ -> }
+    private val onPlaybackPositionUpdate: (currentMs: Long, durationMs: Long, progress: Float) -> Unit = { _, _, _ -> },
+    private val onWaveformLoaded: (waveform: FloatArray, durationMs: Long) -> Unit = { _, _ -> }
 ) {
     companion object {
         private const val TAG = "ExternalLoopPlayer"
@@ -56,7 +57,8 @@ class ExternalLoopPlayerEngine(
     private var baseBpm: Float = 120f
     private var currentGlobalBpm: Float = 120f
     private var pitchSemiTones: Int = 0
-    private var activeStepMode: String = "DEFAULT"
+    private var activeStepMode: String = "Auto"
+    private var stepStartFrame: Int = 0
 
     // Waveform Cache
     private var cachedWaveform: FloatArray = FloatArray(0)
@@ -113,6 +115,7 @@ class ExternalLoopPlayerEngine(
                 totalFrames = (rawPcmFloat?.size ?: 0) / CHANNELS
                 currentDurationMs = ((totalFrames.toDouble() / TARGET_SAMPLE_RATE) * 1000).toLong()
                 currentPositionFrame = 0
+                onWaveformLoaded(cached.second, currentDurationMs)
                 if (autoPlay) play()
                 return
             }
@@ -147,6 +150,8 @@ class ExternalLoopPlayerEngine(
                             memoryCache[file.absolutePath] = Pair(pcm, waveform)
                         }
                     }
+
+                    onWaveformLoaded(waveform, currentDurationMs)
 
                     if (autoPlay) {
                         play()
@@ -261,11 +266,16 @@ class ExternalLoopPlayerEngine(
     }
 
     /**
-     * Sets step mode (DEFAULT, 1 BAR, 2 BARS, 4 BARS, 8 BARS, 16 BARS).
+     * Sets step mode (Auto, 2, 4, 8, 16 BARS).
+     * Anchors the step start frame immediately at the current playback position.
      */
     @Synchronized
     fun setStepMode(mode: String) {
         activeStepMode = mode
+        stepStartFrame = 0
+        if (currentPositionFrame >= calculateEffectiveLoopEndFrame()) {
+            currentPositionFrame = 0
+        }
     }
 
     /**
@@ -335,57 +345,84 @@ class ExternalLoopPlayerEngine(
         }
 
         playbackJob = scope.launch(Dispatchers.IO) {
-            val pcm = rawPcmFloat ?: return@launch
-            val chunkFrames = 1024
-            val chunkFloats = chunkFrames * CHANNELS
-            val tempBuffer = FloatArray(chunkFloats)
+            try {
+                val pcm = rawPcmFloat ?: return@launch
+                val chunkFrames = 1024
+                val chunkFloats = chunkFrames * CHANNELS
+                val tempBuffer = FloatArray(chunkFloats)
+                var lastNotifyMs = 0L
 
-            while (isActive && isPlaying) {
-                val effectiveEndFrame = calculateEffectiveLoopEndFrame()
+                while (isActive && isPlaying) {
+                    val pcmArray = rawPcmFloat ?: break
+                    val pcmSize = pcmArray.size
+                    if (pcmSize <= 0) break
 
-                if (currentPositionFrame >= effectiveEndFrame) {
-                    if (isLooping) {
-                        currentPositionFrame = 0
-                    } else {
-                        withContext(Dispatchers.Main) {
-                            stop()
+                    val startFrame = if (activeStepMode == "Auto" || activeStepMode == "DEFAULT") 0 else stepStartFrame
+                    val effectiveEndFrame = min(totalFrames, calculateEffectiveLoopEndFrame())
+
+                    if (currentPositionFrame >= effectiveEndFrame || currentPositionFrame < 0) {
+                        if (isLooping && effectiveEndFrame > startFrame) {
+                            currentPositionFrame = startFrame
+                        } else {
+                            withContext(Dispatchers.Main) {
+                                stop()
+                            }
+                            break
                         }
-                        break
+                    }
+
+                    val framesToRead = min(chunkFrames, max(1, effectiveEndFrame - currentPositionFrame))
+                    val floatsToRead = framesToRead * CHANNELS
+                    val sourceOffset = currentPositionFrame * CHANNELS
+
+                    if (sourceOffset < 0 || sourceOffset >= pcmSize) {
+                        currentPositionFrame = startFrame
+                        continue
+                    }
+
+                    val actualFloatsToRead = min(floatsToRead, pcmSize - sourceOffset)
+                    if (actualFloatsToRead <= 0) {
+                        currentPositionFrame = startFrame
+                        continue
+                    }
+
+                    System.arraycopy(pcmArray, sourceOffset, tempBuffer, 0, actualFloatsToRead)
+
+                    val track = audioTrack ?: break
+                    val written = track.write(tempBuffer, 0, actualFloatsToRead, AudioTrack.WRITE_BLOCKING)
+                    if (written > 0) {
+                        currentPositionFrame += (written / CHANNELS)
+                        val posMs = ((currentPositionFrame.toDouble() / TARGET_SAMPLE_RATE) * 1000).toLong()
+
+                        // Throttle UI updates to max 25 FPS (~40ms) to prevent main-thread flooding
+                        if (abs(posMs - lastNotifyMs) >= 40L || posMs == 0L) {
+                            lastNotifyMs = posMs
+                            withContext(Dispatchers.Main) {
+                                notifyPosition(posMs)
+                            }
+                        }
+                    } else {
+                        delay(5)
                     }
                 }
-
-                val framesToRead = min(chunkFrames, effectiveEndFrame - currentPositionFrame)
-                val floatsToRead = framesToRead * CHANNELS
-                val sourceOffset = currentPositionFrame * CHANNELS
-
-                System.arraycopy(pcm, sourceOffset, tempBuffer, 0, floatsToRead)
-
-                val written = audioTrack?.write(tempBuffer, 0, floatsToRead, AudioTrack.WRITE_BLOCKING) ?: 0
-                if (written > 0) {
-                    currentPositionFrame += (written / CHANNELS)
-                    val posMs = ((currentPositionFrame.toDouble() / TARGET_SAMPLE_RATE) * 1000).toLong()
-                    withContext(Dispatchers.Main) {
-                        notifyPosition(posMs)
-                    }
-                } else {
-                    delay(5)
-                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Playback loop exception", e)
             }
         }
     }
 
     private fun calculateEffectiveLoopEndFrame(): Int {
         if (totalFrames <= 0) return 0
-        if (activeStepMode == "DEFAULT") return totalFrames
+        if (activeStepMode.equals("Auto", ignoreCase = true) || activeStepMode.equals("DEFAULT", ignoreCase = true)) {
+            return totalFrames
+        }
 
         // Quantize loop duration to Bars relative to BPM
-        // 1 Bar in 4/4 at BPM = (4 * 60 / BPM) seconds
-        val barMultiplier = when (activeStepMode) {
-            "1 BAR" -> 1
-            "2 BARS" -> 2
-            "4 BARS" -> 4
-            "8 BARS" -> 8
-            "16 BARS" -> 16
+        val barMultiplier = activeStepMode.filter { it.isDigit() }.toIntOrNull() ?: when (activeStepMode.uppercase().trim()) {
+            "2", "2 BARS" -> 2
+            "4", "4 BARS" -> 4
+            "8", "8 BARS" -> 8
+            "16", "16 BARS" -> 16
             else -> 0
         }
 
@@ -393,7 +430,8 @@ class ExternalLoopPlayerEngine(
             val secondsPerBar = (4f * 60f) / currentGlobalBpm.coerceAtLeast(30f)
             val stepSeconds = secondsPerBar * barMultiplier
             val stepFrames = (stepSeconds * TARGET_SAMPLE_RATE).toInt()
-            return min(totalFrames, max(TARGET_SAMPLE_RATE / 4, stepFrames))
+            val endFrame = stepStartFrame + stepFrames
+            return min(totalFrames, max(TARGET_SAMPLE_RATE / 4, endFrame))
         }
 
         return totalFrames

@@ -1,8 +1,7 @@
 package com.soundstage.mixer.ui.components
 
 import androidx.compose.animation.*
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -85,6 +84,10 @@ fun SettingsDrawer(
     onUpdateManualMidiMapping: (MidiActionType, MidiControlType, Int, Int) -> Unit = { _, _, _, _ -> },
     onResetMidiMappings: () -> Unit = {},
     onClearMidiMappings: () -> Unit = {},
+    midiDebounceEnabled: Boolean = true,
+    midiDebounceMs: Long = 60L,
+    onToggleMidiDebounce: () -> Unit = {},
+    onUpdateMidiDebounceMs: (Long) -> Unit = {},
     
     // Audio Engine / Buffer & Polyphony
     audioEngine: String = "Oboe (C++)",
@@ -154,6 +157,32 @@ fun SettingsDrawer(
         )
     }
 
+    var isMidiLearnExpanded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(subPage) {
+        if (subPage != "midi_learn") {
+            isMidiLearnExpanded = false
+        }
+    }
+
+    val animatedDrawerWidthFraction by animateFloatAsState(
+        targetValue = if (subPage == "midi_learn" && isMidiLearnExpanded) 0.92f else 0.58f,
+        animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessLow),
+        label = "drawer_width_fraction"
+    )
+
+    val animatedDrawerMinWidth by animateDpAsState(
+        targetValue = if (subPage == "midi_learn" && isMidiLearnExpanded) 760.dp else 400.dp,
+        animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessLow),
+        label = "drawer_min_width"
+    )
+
+    val animatedDrawerMaxWidth by animateDpAsState(
+        targetValue = if (subPage == "midi_learn" && isMidiLearnExpanded) 980.dp else 520.dp,
+        animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessLow),
+        label = "drawer_max_width"
+    )
+
     AnimatedVisibility(
         visible = isOpen,
         enter = slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(280)) + fadeIn(tween(200)),
@@ -167,8 +196,8 @@ fun SettingsDrawer(
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
-                    .widthIn(min = 400.dp, max = 520.dp)
-                    .fillMaxWidth(0.58f)
+                    .widthIn(min = animatedDrawerMinWidth, max = animatedDrawerMaxWidth)
+                    .fillMaxWidth(animatedDrawerWidthFraction)
                     .shadow(32.dp, RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp))
                     .clip(RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp))
                     .background(Color(0xFF181C28))
@@ -197,7 +226,12 @@ fun SettingsDrawer(
                             onUpdateManualMapping = onUpdateManualMidiMapping,
                             onResetDefaults = onResetMidiMappings,
                             onClearAll = onClearMidiMappings,
-                            onBack = { onNavigateSubPage("main") }
+                            onBack = { onNavigateSubPage("main") },
+                            onExpandedChange = { isMidiLearnExpanded = it },
+                            midiDebounceEnabled = midiDebounceEnabled,
+                            midiDebounceMs = midiDebounceMs,
+                            onToggleMidiDebounce = onToggleMidiDebounce,
+                            onUpdateMidiDebounceMs = onUpdateMidiDebounceMs
                         )
                     }
                     "buffer_polyphony", "audio" -> {
@@ -321,22 +355,6 @@ private fun AospMainSettingsPage(
                         color = Color.White
                     )
                 }
-            }
-
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .background(Color(0x1AFFFFFF))
-                    .clickable { onClose() },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "Close",
-                    tint = TextPrimary,
-                    modifier = Modifier.size(16.dp)
-                )
             }
         }
 

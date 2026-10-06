@@ -5,11 +5,11 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,6 +17,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -31,38 +33,83 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import com.soundstage.mixer.R
 import com.soundstage.mixer.model.SheetItem
-import com.soundstage.mixer.ui.components.AmbientStudioBackground
 import com.soundstage.mixer.utils.ChordNotationConverter
 import com.soundstage.mixer.utils.NotationSystem
 import kotlinx.coroutines.delay
 
-private val SnapshotAccentColor = Color(0xFF9BC0F8)
+// ======================================================================================
+// COLOR TOKENS EXACTLY MATCHING THE SVG DESIGN & BRIEF
+// ======================================================================================
+private val BgGradientTop = Color(0xFF121A32)
+private val BgGradientBottom = Color(0xFF0A0E1C)
+private val PrimaryBlueAccent = Color(0xFF9DB8EA)
+private val PrimaryBlueBtn = Color(0xFFBDD3F9)
+private val PrimaryBlueBtnText = Color(0xFF172036)
+private val AmberAccent = Color(0xFFF5A524)
+private val ChipBg = Color(0xFF262E45)
+private val ChipBorder = Color(0xFF3A4560)
+private val SlateTextSecondary = Color(0xFF8F9BB8)
 
-// Palette of colors for chord sheet text
-private val SheetTextPalette = listOf(
-    Pair("White", Color(0xFFFFFFFF)),
+// 5 Readable Handwritten Styles & 5 Lyrics Styles
+enum class SheetFontStyle(
+    val label: String,
+    val isHandwritten: Boolean,
+    val fontFamily: FontFamily,
+    val fontStyle: FontStyle = FontStyle.Normal
+) {
+    HAND_ARCHITECT("Architects Daughter", true, FontFamily.Cursive),
+    HAND_CAVEAT("Caveat", true, FontFamily.Cursive),
+    HAND_PATRICK("Patrick Hand", true, FontFamily.Cursive),
+    HAND_KALAM("Kalam", true, FontFamily.Cursive),
+    HAND_SHADOW("Shadows Into Light", true, FontFamily.Cursive),
+
+    LYRIC_INTER("Inter Sans", false, FontFamily.SansSerif),
+    LYRIC_MONO("Roboto Mono", false, FontFamily.Monospace),
+    LYRIC_MONTSERRAT("Montserrat", false, FontFamily.SansSerif),
+    LYRIC_POPPINS("Poppins", false, FontFamily.SansSerif),
+    LYRIC_OUTFIT("Outfit", false, FontFamily.SansSerif)
+}
+
+// Notepad Page Colors from the SVG
+val PageThemeColors = listOf(
+    Pair("Night Slate", Color(0xFF181D2F)),
+    Pair("Vintage Cream", Color(0xFFF4ECD8)),
+    Pair("Blueprint Blue", Color(0xFF2C4D94)),
+    Pair("Sage Forest", Color(0xFF1B2824)),
+    Pair("Plum Wine", Color(0xFF281D2B)),
+    Pair("Kraft Olive", Color(0xFF2A281A))
+)
+
+// Ink / Text Colors
+val InkColors = listOf(
+    Pair("White", Color(0xFFF2F5FF)),
     Pair("Ice Cyan", Color(0xFF67E8F9)),
     Pair("Gold", Color(0xFFFDE047)),
     Pair("Mint", Color(0xFF86EFAC)),
     Pair("Sunset", Color(0xFFFDBA74)),
     Pair("Lavender", Color(0xFFC4B5FD)),
-    Pair("Coral", Color(0xFFFDA4AF)),
-    Pair("Slate", Color(0xFFCBD5E1))
+    Pair("Charcoal Ink", Color(0xFF1E293B))
 )
+
+// Active Editor Ribbon Tabs
+enum class EditorTab {
+    CHORDS, SYMBOLS, TEXT, PAGE
+}
 
 @Composable
 fun SheetsPage(
@@ -78,362 +125,447 @@ fun SheetsPage(
     onTransposeChange: (Int) -> Unit,
     onBackToMixer: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenFloatingSheet: (SheetItem) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var editingSheetId by remember { mutableStateOf<String?>(null) }
     var searchQuery by remember { mutableStateOf("") }
+    var activeFilter by remember { mutableStateOf("All") }
 
-    // Global notation system across all of Sheets (Default: Nashville)
+    // Fixed Segmented Toggle: 1-7 (Nashville) vs A-G (Standard)
     var globalNotation by remember { mutableStateOf(NotationSystem.NASHVILLE) }
 
     val activeSheet = remember(sheets, editingSheetId) {
         sheets.find { it.id == editingSheetId }
     }
 
-    val filteredSheets = remember(sheets, searchQuery) {
-        if (searchQuery.isBlank()) {
-            sheets
+    // Default sample sheets if list is empty (so cards show beautifully right away)
+    val displaySheets = remember(sheets) {
+        if (sheets.isEmpty()) {
+            listOf(
+                SheetItem(
+                    id = "sample_1",
+                    title = "New Song",
+                    key = "C",
+                    tempo = 120,
+                    timeSignature = "4/4",
+                    swing = 54,
+                    colorIndex = 0,
+                    content = "[Intro]\n| 1 | 3m | 6 | 4 - 5 |\n\n[Verse]\n| 2m | 3m | 5 | 6m |\n| 6m | 5 | <4> | ^ 1 |\n\n[Chorus]\n|: 1 | 5 | 6m | 4 |\n| 1 | 5 | 4 < 5 | 1 :| x2"
+                ),
+                SheetItem(
+                    id = "sample_2",
+                    title = "Gospel in G",
+                    key = "G",
+                    tempo = 72,
+                    timeSignature = "6/8",
+                    swing = 50,
+                    colorIndex = 1,
+                    content = "[Intro]\n| 1 | 4 | 1 | 4 - 5 |\n\n[Verse]\n| 6m | 4 | 1 | 5 |\n| 1 | 4 | 5 | 1 |"
+                ),
+                SheetItem(
+                    id = "sample_3",
+                    title = "Sunrise Pad",
+                    key = "A",
+                    tempo = 96,
+                    timeSignature = "4/4",
+                    swing = 52,
+                    colorIndex = 2,
+                    content = "[Verse]\n| 1 | 5 | 6m | 4 |\n| 1 | 5 | 4 - 5 | 1 |\n\n[Chorus]\n|: 4 | 1 | 5 | 6m :| x2"
+                ),
+                SheetItem(
+                    id = "sample_4",
+                    title = "Morning Funk",
+                    key = "E",
+                    tempo = 104,
+                    timeSignature = "4/4",
+                    swing = 58,
+                    colorIndex = 0,
+                    content = "[Groove]\n| 1 | 1 | 4 | 4 |\n| 5 | 4 | 1 | 1 - 5 |"
+                ),
+                SheetItem(
+                    id = "sample_5",
+                    title = "Slow Burn",
+                    key = "D",
+                    tempo = 68,
+                    timeSignature = "4/4",
+                    swing = 50,
+                    colorIndex = 1,
+                    content = "[Verse]\n| 6m | 6m | 4 | 4 |\n| 1 | 5 | 6m | 6m |"
+                )
+            )
         } else {
-            sheets.filter {
+            sheets
+        }
+    }
+
+    val filteredSheets = remember(displaySheets, searchQuery, activeFilter) {
+        var list = if (searchQuery.isBlank()) displaySheets else {
+            displaySheets.filter {
                 it.title.contains(searchQuery, ignoreCase = true) ||
                 it.key.contains(searchQuery, ignoreCase = true) ||
                 it.content.contains(searchQuery, ignoreCase = true)
             }
         }
+        if (activeFilter == "Favorites") {
+            list = list.filter { it.isFavorite }
+        }
+        list
     }
 
-    // Official Setlists ambient background with luminous floating bubbles
-    AmbientStudioBackground(modifier = modifier) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp, vertical = 12.dp)
-                .testTag("sheets_full_page")
-        ) {
-            if (activeSheet != null) {
-                // INVERTED 60% (Right) / 40% (Left) SPLIT SCREEN EDITOR
-                InvertedSplitScreenSheetEditor(
-                    sheet = activeSheet,
-                    globalNotation = globalNotation,
-                    onSave = { updatedTitle, updatedKey, updatedContent ->
-                        onUpdateSheet(activeSheet.id, updatedTitle, updatedKey, updatedContent)
-                        editingSheetId = null
-                    },
-                    onDelete = {
-                        onDeleteSheet(activeSheet.id)
-                        editingSheetId = null
-                    },
-                    onBack = { editingSheetId = null }
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(BgGradientTop, BgGradientBottom)
                 )
-            } else {
-                // MAIN SHEETS CATALOG (Style Setlists: Search + Notation left, Title center, Create+Settings right)
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+            )
+            .padding(horizontal = 20.dp, vertical = 14.dp)
+            .testTag("sheets_main_container")
+    ) {
+        if (activeSheet != null) {
+            // ==========================================================================
+            // 2. ÉDITEUR SHEETS (aether-keys-sheets-editor.svg)
+            // ==========================================================================
+            SvgSheetsEditor(
+                sheet = activeSheet,
+                globalNotation = globalNotation,
+                onSave = { newTitle, newKey, newContent, newTempo, newSig ->
+                    onUpdateSheet(activeSheet.id, newTitle, newKey, newContent)
+                    editingSheetId = null
+                },
+                onDelete = {
+                    onDeleteSheet(activeSheet.id)
+                    editingSheetId = null
+                },
+                onBack = { editingSheetId = null }
+            )
+        } else {
+            // ==========================================================================
+            // 1. ACCUEIL SHEETS (aether-keys-sheets-home-v2.svg)
+            // ==========================================================================
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // --- TOP HEADER BAR (Filter, Search, 1-7 | A-G Switch, Title, Create Button, Settings) ---
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // 1. TOP HEADER (Exact Setlists layout + Notation toggle pill next to search)
-                    SheetsCatalogHeader(
-                        searchQuery = searchQuery,
-                        onSearchChange = { searchQuery = it },
-                        globalNotation = globalNotation,
-                        onToggleNotation = { globalNotation = globalNotation.next() },
-                        onBackToMixer = onBackToMixer,
-                        onOpenSettings = onOpenSettings,
-                        onCreateNew = {
-                            val newTitle = "New Song ${sheets.size + 1}"
-                            onCreateSheet(newTitle, "C", "")
-                            editingSheetId = sheets.firstOrNull()?.id
-                        }
-                    )
-
-                    // 2. DIRECT CARDS GRID (No Recently used or All sections, no Cancel or Load)
-                    if (filteredSheets.isEmpty()) {
+                    // Left: Filter Button + Search Bar + Segmented 1-7 | A-G Switch
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // Filter button (equalizer icon)
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f),
+                                .size(42.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(ChipBg)
+                                .border(1.dp, ChipBorder, RoundedCornerShape(12.dp))
+                                .clickable { onBackToMixer() }
+                                .testTag("btn_sheets_filter"),
                             contentAlignment = Alignment.Center
                         ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = "Mixer",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        // Search Bar
+                        Box(
+                            modifier = Modifier
+                                .width(220.dp)
+                                .height(42.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(ChipBg)
+                                .border(1.dp, ChipBorder, RoundedCornerShape(12.dp))
+                                .padding(horizontal = 12.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = "Search",
+                                    tint = SlateTextSecondary,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                                BasicTextField(
+                                    value = searchQuery,
+                                    onValueChange = { searchQuery = it },
+                                    singleLine = true,
+                                    textStyle = TextStyle(
+                                        color = Color.White,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Normal
+                                    ),
+                                    cursorBrush = SolidColor(PrimaryBlueAccent),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    decorationBox = { innerTextField ->
+                                        if (searchQuery.isEmpty()) {
+                                            Text(
+                                                text = "Search...",
+                                                fontSize = 13.sp,
+                                                color = SlateTextSecondary
+                                            )
+                                        }
+                                        innerTextField()
+                                    }
+                                )
+                            }
+                        }
+
+                        // Segmented 1-7 | A-G Switch (Fixed Width Pill)
+                        Box(
+                            modifier = Modifier
+                                .height(42.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(ChipBg)
+                                .border(1.dp, ChipBorder, RoundedCornerShape(12.dp))
+                                .padding(3.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                // 1-7 (Nashville)
+                                val isNashville = globalNotation == NotationSystem.NASHVILLE
                                 Box(
                                     modifier = Modifier
-                                        .size(64.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0x14FFFFFF)),
+                                        .height(36.dp)
+                                        .width(48.dp)
+                                        .clip(RoundedCornerShape(9.dp))
+                                        .background(if (isNashville) PrimaryBlueBtn else Color.Transparent)
+                                        .clickable { globalNotation = NotationSystem.NASHVILLE },
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(
-                                        painter = painterResource(id = R.drawable.ic_sheet_books),
-                                        contentDescription = "Sheets Library",
-                                        tint = Color(0x66FFFFFF),
-                                        modifier = Modifier.size(32.dp)
+                                    Text(
+                                        text = "1-7",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isNashville) PrimaryBlueBtnText else SlateTextSecondary
                                     )
                                 }
-                                Text(
-                                    text = if (searchQuery.isBlank()) "No sheets in library" else "No matching sheets",
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                                Text(
-                                    text = if (searchQuery.isBlank()) "Create your first song sheet to start composing" else "Try another search keyword",
-                                    fontSize = 13.sp,
-                                    color = Color(0xFF94A3B8)
-                                )
-                                if (searchQuery.isBlank()) {
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Button(
-                                        colors = ButtonDefaults.buttonColors(containerColor = SnapshotAccentColor),
-                                        onClick = {
-                                            onCreateSheet("New Song", "C", "")
-                                            editingSheetId = sheets.firstOrNull()?.id
-                                        },
-                                        modifier = Modifier.testTag("btn_sheets_create_first")
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Add,
-                                            contentDescription = "Create",
-                                            tint = Color(0xFF0F172A),
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "Create Sheet",
-                                            color = Color(0xFF0F172A),
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
+
+                                // A-G (Standard)
+                                Box(
+                                    modifier = Modifier
+                                        .height(36.dp)
+                                        .width(48.dp)
+                                        .clip(RoundedCornerShape(9.dp))
+                                        .background(if (!isNashville) PrimaryBlueBtn else Color.Transparent)
+                                        .clickable { globalNotation = NotationSystem.STANDARD },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "A-G",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (!isNashville) PrimaryBlueBtnText else SlateTextSecondary
+                                    )
                                 }
                             }
                         }
-                    } else {
-                        LazyVerticalGrid(
-                            columns = GridCells.Adaptive(minSize = 280.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f),
-                            horizontalArrangement = Arrangement.spacedBy(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(14.dp),
-                            contentPadding = PaddingValues(bottom = 16.dp)
+                    }
+
+                    // Center: "Sheets" Title
+                    Text(
+                        text = "Sheets",
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+
+                    // Right: "+ Create New Sheet" primary button + Settings Gear
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlueBtn),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 11.dp),
+                            onClick = {
+                                val created = SheetItem(
+                                    title = "New Song",
+                                    key = "C",
+                                    content = "[Intro]\n| 1 | 3m | 6 | 4 - 5 |\n\n[Verse]\n| 2m | 3m | 5 | 6m |"
+                                )
+                                onCreateSheet(created.title, created.key, created.content)
+                                editingSheetId = created.id
+                            },
+                            modifier = Modifier.testTag("btn_sheets_create_new")
                         ) {
-                            itemsIndexed(filteredSheets, key = { _, item -> item.id }) { index, sheet ->
-                                StaggeredSheetGridCard(
-                                    sheet = sheet,
-                                    index = index,
-                                    globalNotation = globalNotation,
-                                    onClick = {
-                                        editingSheetId = sheet.id
-                                        onSelectSheet(sheet.id)
-                                    }
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = null,
+                                tint = PrimaryBlueBtnText,
+                                modifier = Modifier.size(19.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Create New Sheet",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = PrimaryBlueBtnText
+                            )
+                        }
+
+                        // Settings button
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(ChipBg)
+                                .border(1.dp, ChipBorder, RoundedCornerShape(12.dp))
+                                .clickable { onOpenSettings() }
+                                .testTag("btn_sheets_settings"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Settings",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
                     }
                 }
-            }
-        }
-    }
-}
 
-// ======================================================================================
-// TOP BAR (Style Setlists: Mixer + Narrowed Search + Notation Pill on left, Title center, Create + Settings on right)
-// ======================================================================================
-@Composable
-private fun SheetsCatalogHeader(
-    searchQuery: String,
-    onSearchChange: (String) -> Unit,
-    globalNotation: NotationSystem,
-    onToggleNotation: () -> Unit,
-    onBackToMixer: () -> Unit,
-    onOpenSettings: () -> Unit,
-    onCreateNew: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        // Left: Mixer return button + Search Bar + Notation Toggle Pill with relief
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.weight(1f)
-        ) {
-            // Mixer Return Button
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .shadow(2.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF1E2435))
-                    .clickable { onBackToMixer() }
-                    .testTag("btn_sheets_back_mixer"),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Tune,
-                    contentDescription = "Mixer",
-                    tint = Color.White,
-                    modifier = Modifier.size(19.dp)
-                )
-            }
-
-            // Search Bar (Narrowed slightly to give room to notation pill)
-            Box(
-                modifier = Modifier
-                    .widthIn(min = 160.dp, max = 220.dp)
-                    .height(40.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF1E2435))
-                    .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(10.dp))
-                    .padding(horizontal = 10.dp),
-                contentAlignment = Alignment.CenterStart
-            ) {
+                // --- SUB-HEADER: Filters (All · 12, Favorites, Setlists) + Tri Recent ---
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Search",
-                        tint = Color(0xFF94A3B8),
-                        modifier = Modifier.size(16.dp)
-                    )
-                    BasicTextField(
-                        value = searchQuery,
-                        onValueChange = onSearchChange,
-                        singleLine = true,
-                        textStyle = TextStyle(
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Normal
-                        ),
-                        cursorBrush = SolidColor(SnapshotAccentColor),
-                        modifier = Modifier.fillMaxWidth(),
-                        decorationBox = { innerTextField ->
-                            if (searchQuery.isEmpty()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(
+                            "All · ${displaySheets.size}" to "All",
+                            "Favorites" to "Favorites",
+                            "Setlists" to "Setlists"
+                        ).forEach { (label, key) ->
+                            val isSelected = activeFilter == key
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (isSelected) PrimaryBlueBtn else ChipBg)
+                                    .clickable { activeFilter = key }
+                                    .padding(horizontal = 14.dp, vertical = 7.dp)
+                            ) {
                                 Text(
-                                    text = "Search...",
+                                    text = label,
                                     fontSize = 12.sp,
-                                    color = Color(0xFF64748B)
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) PrimaryBlueBtnText else Color.White
                                 )
                             }
-                            innerTextField()
                         }
-                    )
-                }
-            }
+                    }
 
-            // GLOBAL NOTATION TOGGLE PILL (Tactile relief effect, single tap directly switches mode)
-            Box(
-                modifier = Modifier
-                    .height(40.dp)
-                    .shadow(3.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black, spotColor = Color(0x66000000))
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color(0xFF283144), Color(0xFF1D2433))
-                        )
-                    )
-                    .drawWithContent {
-                        drawContent()
-                        drawLine(
-                            color = Color.White.copy(alpha = 0.16f),
-                            start = Offset(4.dp.toPx(), 1f),
-                            end = Offset(size.width - 4.dp.toPx(), 1f),
-                            strokeWidth = 1.dp.toPx(),
-                            cap = StrokeCap.Round
+                    // Sort: Recent
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(ChipBg)
+                            .padding(horizontal = 14.dp, vertical = 7.dp)
+                    ) {
+                        Text(
+                            text = "Recent ▾",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = SlateTextSecondary
                         )
                     }
-                    .clickable { onToggleNotation() }
-                    .padding(horizontal = 12.dp)
-                    .testTag("btn_toggle_global_notation"),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = globalNotation.shortName,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = SnapshotAccentColor
-                )
-            }
-        }
+                }
 
-        // Center: Title "Sheets"
-        Text(
-            text = "Sheets",
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color.White,
-            modifier = Modifier.padding(horizontal = 14.dp)
-        )
+                // --- HORIZONTAL CAROUSEL OF CARDS (LazyRow) ---
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        contentPadding = PaddingValues(vertical = 10.dp)
+                    ) {
+                        // Existing Song Cards
+                        itemsIndexed(filteredSheets, key = { _, item -> item.id }) { index, sheet ->
+                            SvgHomeSheetCard(
+                                sheet = sheet,
+                                index = index,
+                                globalNotation = globalNotation,
+                                onClick = {
+                                    editingSheetId = sheet.id
+                                    onSelectSheet(sheet.id)
+                                },
+                                onDoubleClick = {
+                                    onOpenFloatingSheet(sheet)
+                                }
+                            )
+                        }
 
-        // Right: "+ Create New Sheet" button + Settings Gear icon
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
-            modifier = Modifier.weight(1f)
-        ) {
-            Button(
-                colors = ButtonDefaults.buttonColors(containerColor = SnapshotAccentColor),
-                shape = RoundedCornerShape(10.dp),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 9.dp),
-                onClick = { onCreateNew() },
-                modifier = Modifier.testTag("btn_sheets_create_new")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = null,
-                    tint = Color(0xFF0F172A),
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "Create New Sheet",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF0F172A)
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .shadow(2.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF1E2435))
-                    .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(10.dp))
-                    .clickable { onOpenSettings() }
-                    .testTag("btn_sheets_settings"),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = "Settings",
-                    tint = Color(0xFFCBD5E1),
-                    modifier = Modifier.size(20.dp)
-                )
+                        // Last Dotted Quick Start Card "+ New Sheet"
+                        item {
+                            SvgQuickStartNewSheetCard(
+                                onCreateBlank = {
+                                    val newS = SheetItem(title = "New Song", key = "C", content = "[Intro]\n| 1 | 3m | 6 | 4 - 5 |")
+                                    onCreateSheet(newS.title, newS.key, newS.content)
+                                    editingSheetId = newS.id
+                                },
+                                onCreateBlues = {
+                                    val newS = SheetItem(
+                                        title = "12-Bar Blues",
+                                        key = "E",
+                                        content = "[12-Bar Blues]\n| 1 | 1 | 1 | 1 |\n| 4 | 4 | 1 | 1 |\n| 5 | 4 | 1 | 5 |"
+                                    )
+                                    onCreateSheet(newS.title, newS.key, newS.content)
+                                    editingSheetId = newS.id
+                                },
+                                onCreate1564 = {
+                                    val newS = SheetItem(
+                                        title = "Pop Progression",
+                                        key = "G",
+                                        content = "[Progression 1-5-6m-4]\n| 1 | 5 | 6m | 4 |\n| 1 | 5 | 6m | 4 |"
+                                    )
+                                    onCreateSheet(newS.title, newS.key, newS.content)
+                                    editingSheetId = newS.id
+                                }
+                            )
+                        }
+                    }
+                }
             }
         }
     }
 }
 
 // ======================================================================================
-// STAGGERED GRID CARD (With fluid cascading delay animation & Global Notation conversion)
+// SVG HOME SHEET CARD (Exact layout from aether-keys-sheets-home-v2.svg)
 // ======================================================================================
 @Composable
-private fun StaggeredSheetGridCard(
+private fun SvgHomeSheetCard(
     sheet: SheetItem,
     index: Int,
     globalNotation: NotationSystem,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDoubleClick: () -> Unit = {}
 ) {
-    val keyColor = sheet.getKeyColor()
+    val pageColors = PageThemeColors[Math.abs(sheet.colorIndex % PageThemeColors.size)].second
+    val isLightPage = pageColors == Color(0xFFF4ECD8)
+    val cardTextColor = if (isLightPage) Color(0xFF1E293B) else Color.White
+    val chordTextColor = if (isLightPage) Color(0xFF0F172A) else Color(0xFFF1F5F9)
 
     var isAnimated by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
@@ -444,16 +576,10 @@ private fun StaggeredSheetGridCard(
     val alpha by animateFloatAsState(
         targetValue = if (isAnimated) 1f else 0f,
         animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
-        label = "sheet_card_alpha"
+        label = "svg_sheet_card_alpha"
     )
 
-    val translateY by animateFloatAsState(
-        targetValue = if (isAnimated) 0f else 24f,
-        animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
-        label = "sheet_card_slide"
-    )
-
-    // Convert preview lines to active global notation (e.g. Nashville numbers)
+    // Convert chart content to active notation
     val convertedContent = remember(sheet.content, sheet.key, globalNotation) {
         ChordNotationConverter.convertSheetText(
             text = sheet.content,
@@ -465,123 +591,217 @@ private fun StaggeredSheetGridCard(
 
     Box(
         modifier = Modifier
-            .fillMaxWidth()
-            .height(138.dp)
-            .graphicsLayer {
-                this.alpha = alpha
-                this.translationY = translateY
-            }
-            .shadow(3.dp, RoundedCornerShape(16.dp), ambientColor = Color.Black, spotColor = Color(0x66000000))
-            .clip(RoundedCornerShape(16.dp))
-            .background(
-                Brush.verticalGradient(
-                    listOf(Color(0xFF222836), Color(0xFF191F2C))
-                )
-            )
+            .width(310.dp)
+            .fillMaxHeight(0.92f)
+            .graphicsLayer { this.alpha = alpha }
+            .shadow(6.dp, RoundedCornerShape(24.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+            .clip(RoundedCornerShape(24.dp))
+            .background(pageColors)
             .drawWithContent {
                 drawContent()
+                // Top white highlight line (~16%)
                 drawLine(
-                    color = Color.White.copy(alpha = 0.10f),
-                    start = Offset(6.dp.toPx(), 1f),
-                    end = Offset(size.width - 6.dp.toPx(), 1f),
-                    strokeWidth = 1.dp.toPx(),
+                    color = Color.White.copy(alpha = if (isLightPage) 0.35f else 0.16f),
+                    start = Offset(12.dp.toPx(), 1.5f),
+                    end = Offset(size.width - 12.dp.toPx(), 1.5f),
+                    strokeWidth = 1.5.dp.toPx(),
                     cap = StrokeCap.Round
                 )
             }
-            .clickable { onClick() }
-            .padding(14.dp)
-            .testTag("grid_sheet_card_${sheet.id}")
+            .pointerInput(sheet.id) {
+                detectTapGestures(
+                    onTap = { onClick() },
+                    onDoubleTap = { onDoubleClick() }
+                )
+            }
+            .padding(18.dp)
+            .testTag("svg_sheet_card_${sheet.id}")
     ) {
         Column(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Header Row: Title + Key Chip
+            // Header: Handwritten Title + Amber Key Chip Badge
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = sheet.title,
-                    fontSize = 15.sp,
+                    text = sheet.title.ifBlank { "Untitled Sheet" },
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White,
+                    fontFamily = FontFamily.Cursive,
+                    color = cardTextColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
 
+                // Amber Square-Rounded Key Badge (#F5A524)
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(keyColor.copy(alpha = 0.18f))
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                        .size(32.dp)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(AmberAccent.copy(alpha = if (isLightPage) 0.35f else 0.26f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = sheet.key,
-                        fontSize = 12.sp,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        color = keyColor
+                        color = if (isLightPage) Color(0xFFB45309) else AmberAccent
                     )
                 }
             }
 
-            // Preview Text (Converted dynamically to Nashville / Roman / Solfège, no prompt text below)
-            if (convertedContent.isNotEmpty()) {
-                val annotatedContent = buildAnnotatedString {
-                    val lines = convertedContent.lines().take(3)
-                    lines.forEachIndexed { i, line ->
-                        if (line.trim().startsWith("[") && line.contains("]")) {
-                            val tag = line.substringBefore("]") + "]"
-                            val rest = line.substringAfter("]")
-                            withStyle(SpanStyle(color = Color(0xFF60A5FA), fontWeight = FontWeight.SemiBold)) {
-                                append(tag)
-                            }
-                            withStyle(SpanStyle(color = Color(0xFFCBD5E1))) {
-                                append(rest)
-                            }
-                        } else {
-                            withStyle(SpanStyle(color = Color(0xFF94A3B8))) {
-                                append(line)
-                            }
-                        }
-                        if (i < lines.size - 1) append("\n")
+            // Body: 2 Lines of Inline Measure Grid in handwritten font (e.g. | 1 | 4 | 1 | 4 - 5 |)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val lines = convertedContent.lines().filter { it.isNotBlank() && !it.trim().startsWith("[") }.take(2)
+                if (lines.isEmpty()) {
+                    Text(
+                        text = "|  1  |  4  |  5  |  1  |\n|  6m |  4  |  5  |  1  |",
+                        fontSize = 16.sp,
+                        fontFamily = FontFamily.Cursive,
+                        fontWeight = FontWeight.SemiBold,
+                        color = chordTextColor.copy(alpha = 0.6f),
+                        lineHeight = 22.sp
+                    )
+                } else {
+                    lines.forEach { line ->
+                        Text(
+                            text = line,
+                            fontSize = 17.sp,
+                            fontFamily = FontFamily.Cursive,
+                            fontWeight = FontWeight.Bold,
+                            color = chordTextColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
-
-                Text(
-                    text = annotatedContent,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
-            } else {
-                Text(
-                    text = "No chords written yet",
-                    fontSize = 12.sp,
-                    color = Color(0xFF64748B)
-                )
             }
 
-            // Empty spacer replacing the deleted "tap to open in split screen" text
-            Spacer(modifier = Modifier.height(2.dp))
+            // Footer: BPM · 4/4 on left, Date on right
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "${sheet.tempo} BPM · ${sheet.timeSignature}",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = if (isLightPage) Color(0xFF64748B) else SlateTextSecondary
+                )
+
+                Text(
+                    text = "Oct 4",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = if (isLightPage) Color(0xFF64748B) else SlateTextSecondary
+                )
+            }
         }
     }
 }
 
 // ======================================================================================
-// INVERTED SPLIT SCREEN FULL PAGE EDITOR
-// Left (40%): Tools & Settings + Header (Back, Title, Tonality, Delete, Save)
-// Right (60%): Clean Document Page stretching FULL HEIGHT up to top of screen!
+// DOTTED QUICK START CARD "+ New Sheet"
 // ======================================================================================
 @Composable
-private fun InvertedSplitScreenSheetEditor(
+private fun SvgQuickStartNewSheetCard(
+    onCreateBlank: () -> Unit,
+    onCreateBlues: () -> Unit,
+    onCreate1564: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .width(280.dp)
+            .fillMaxHeight(0.92f)
+            .clip(RoundedCornerShape(24.dp))
+            .background(Color(0xFF161C2C).copy(alpha = 0.65f))
+            .border(1.5.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(24.dp))
+            .padding(18.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = null,
+                tint = PrimaryBlueAccent,
+                modifier = Modifier.size(36.dp)
+            )
+
+            Text(
+                text = "New Sheet",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Cursive,
+                color = Color.White
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // 3 Quick Starts
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(ChipBg)
+                        .border(1.dp, ChipBorder, RoundedCornerShape(8.dp))
+                        .clickable { onCreateBlank() }
+                        .padding(horizontal = 9.dp, vertical = 5.dp)
+                ) {
+                    Text(text = "Blank", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Medium)
+                }
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(ChipBg)
+                        .border(1.dp, ChipBorder, RoundedCornerShape(8.dp))
+                        .clickable { onCreateBlues() }
+                        .padding(horizontal = 9.dp, vertical = 5.dp)
+                ) {
+                    Text(text = "12-bar Blues", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Medium)
+                }
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(ChipBg)
+                        .border(1.dp, ChipBorder, RoundedCornerShape(8.dp))
+                        .clickable { onCreate1564() }
+                        .padding(horizontal = 9.dp, vertical = 5.dp)
+                ) {
+                    Text(text = "1-5-6m-4", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Medium)
+                }
+            }
+        }
+    }
+}
+
+// ======================================================================================
+// SVG SHEETS EDITOR (aether-keys-sheets-editor.svg)
+// Left Panel: Chords / Symbols / Text / Page. Right Panel: Handwritten Word-like Chart Page
+// ======================================================================================
+@Composable
+private fun SvgSheetsEditor(
     sheet: SheetItem,
     globalNotation: NotationSystem,
-    onSave: (title: String, key: String, content: String) -> Unit,
+    onSave: (title: String, key: String, content: String, tempo: Int, timeSig: String) -> Unit,
     onDelete: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -598,713 +818,775 @@ private fun InvertedSplitScreenSheetEditor(
     }
 
     var content by remember { mutableStateOf(sheet.content) }
-    var currentFontSize by remember { mutableIntStateOf(sheet.fontSize.coerceIn(12, 32)) }
-    var selectedTextColor by remember { mutableStateOf(sheet.getTextColor()) }
+    var currentFontSize by remember { mutableIntStateOf(sheet.fontSize.coerceIn(14, 32)) }
+    var selectedFontStyle by remember { mutableStateOf(SheetFontStyle.HAND_ARCHITECT) }
+    var selectedPageThemeIndex by remember { mutableIntStateOf(sheet.colorIndex) }
+    var selectedInkColor by remember { mutableStateOf(InkColors[0].second) }
 
-    // Centered Bubble Popups
-    var showTonalityBubble by remember { mutableStateOf(false) }
-    var showColorBubble by remember { mutableStateOf(false) }
-    var showDeleteConfirm by remember { mutableStateOf(false) }
-
-    // Last inserted chord tracking for smart extension attachment
+    var isLyricsMode by remember { mutableStateOf(false) }
+    var activeTab by remember { mutableStateOf(EditorTab.CHORDS) }
     var lastInsertedChord by remember { mutableStateOf<String?>(null) }
+    var showMoreMenu by remember { mutableStateOf(false) }
+    var showTonalityDialog by remember { mutableStateOf(false) }
 
-    // Smart diatonic chords generated based on Root Key, Mode (Major/Minor) and active Global Notation
+    val pageColor = PageThemeColors[Math.abs(selectedPageThemeIndex % PageThemeColors.size)].second
+    val isLightPage = pageColor == Color(0xFFF4ECD8)
+    val documentTextColor = if (isLightPage) Color(0xFF1E293B) else selectedInkColor
+
     val diatonicChords = remember(selectedKeyRoot, isMinorMode, globalNotation) {
         ChordNotationConverter.getDiatonicChords(selectedKeyRoot, isMinorMode, globalNotation)
     }
 
     Row(
         modifier = Modifier.fillMaxSize(),
-        horizontalArrangement = Arrangement.spacedBy(14.dp)
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // ==============================================================================
-        // LEFT PANE (40%): Tools, Settings & Action Header
+        // LEFT PANEL (36%): Full Height Tool Ribbon (Chords, Symbols, Text, Page)
         // ==============================================================================
         Box(
             modifier = Modifier
                 .fillMaxHeight()
-                .weight(0.40f)
-                .shadow(4.dp, RoundedCornerShape(18.dp), ambientColor = Color.Black, spotColor = Color(0x66000000))
-                .clip(RoundedCornerShape(18.dp))
-                .background(Color(0xFF161A26))
-                .drawWithContent {
-                    drawContent()
-                    drawLine(
-                        color = Color.White.copy(alpha = 0.12f),
-                        start = Offset(8.dp.toPx(), 1f),
-                        end = Offset(size.width - 8.dp.toPx(), 1f),
-                        strokeWidth = 1.dp.toPx(),
-                        cap = StrokeCap.Round
-                    )
-                }
+                .weight(0.36f)
+                .shadow(6.dp, RoundedCornerShape(20.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color(0xFF131926))
+                .border(1.dp, Color(0xFF1F283B), RoundedCornerShape(20.dp))
                 .padding(14.dp)
-                .testTag("editor_left_tools_panel")
+                .testTag("svg_editor_left_panel")
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // 1. TOP HEADER OF LEFT PANEL: Back, Title, Tonality, Delete, Save Sheet
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                // 1. TOP HEADER ROW: [<-] [Key C] [Chart | Lyrics] [Save] [...]
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    // Back arrow
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(ChipBg)
+                            .clickable { onBack() }
+                            .testTag("btn_editor_back"),
+                        contentAlignment = Alignment.Center
                     ) {
-                        // Back Button
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    // Key badge [C]
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(ChipBg)
+                            .border(1.dp, ChipBorder, RoundedCornerShape(9.dp))
+                            .clickable { showTonalityDialog = true }
+                            .testTag("btn_editor_key_badge"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = fullKeyName,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+
+                    // Segmented [Chart | Lyrics]
+                    Box(
+                        modifier = Modifier
+                            .height(36.dp)
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(ChipBg)
+                            .padding(2.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .height(32.dp)
+                                    .clip(RoundedCornerShape(7.dp))
+                                    .background(if (!isLyricsMode) PrimaryBlueBtn else Color.Transparent)
+                                    .clickable { isLyricsMode = false }
+                                    .padding(horizontal = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Chart",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (!isLyricsMode) PrimaryBlueBtnText else SlateTextSecondary
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .height(32.dp)
+                                    .clip(RoundedCornerShape(7.dp))
+                                    .background(if (isLyricsMode) PrimaryBlueBtn else Color.Transparent)
+                                    .clickable { isLyricsMode = true }
+                                    .padding(horizontal = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Lyrics",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isLyricsMode) PrimaryBlueBtnText else SlateTextSecondary
+                                )
+                            }
+                        }
+                    }
+
+                    // Save Button
+                    Button(
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlueBtn),
+                        shape = RoundedCornerShape(9.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp),
+                        onClick = { onSave(title, fullKeyName, content, sheet.tempo, sheet.timeSignature) },
+                        modifier = Modifier.testTag("btn_editor_save")
+                    ) {
+                        Text(
+                            text = "Save",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = PrimaryBlueBtnText
+                        )
+                    }
+
+                    // More Menu (...)
+                    Box {
                         Box(
                             modifier = Modifier
-                                .size(34.dp)
+                                .size(36.dp)
                                 .clip(CircleShape)
-                                .background(Color(0x1AFFFFFF))
-                                .clickable { onBack() }
-                                .testTag("btn_editor_back"),
+                                .background(ChipBg)
+                                .clickable { showMoreMenu = true },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back",
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "More",
                                 tint = Color.White,
                                 modifier = Modifier.size(18.dp)
                             )
                         }
 
-                        // Compact Tonality Button (No arrow, clicks to open centered bubble popup)
-                        Box(
-                            modifier = Modifier
-                                .height(34.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0x22FFFFFF))
-                                .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(8.dp))
-                                .clickable { showTonalityBubble = true }
-                                .padding(horizontal = 10.dp)
-                                .testTag("btn_editor_tonality"),
-                            contentAlignment = Alignment.Center
+                        DropdownMenu(
+                            expanded = showMoreMenu,
+                            onDismissRequest = { showMoreMenu = false }
                         ) {
-                            Text(
-                                text = fullKeyName,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
+                            DropdownMenuItem(
+                                text = { Text("Clear Sheet") },
+                                onClick = {
+                                    content = ""
+                                    showMoreMenu = false
+                                }
                             )
-                        }
-
-                        // Delete Button (Corbeille with Snapshot Accent Color background!)
-                        Box(
-                            modifier = Modifier
-                                .size(34.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(SnapshotAccentColor)
-                                .clickable { showDeleteConfirm = true }
-                                .testTag("btn_editor_delete"),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Delete,
-                                contentDescription = "Delete",
-                                tint = Color(0xFF0F172A),
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-
-                        // Save Sheet Action Button
-                        Box(
-                            modifier = Modifier
-                                .height(34.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(SnapshotAccentColor)
-                                .clickable { onSave(title, fullKeyName, content) }
-                                .padding(horizontal = 12.dp)
-                                .testTag("btn_editor_save"),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Save Sheet",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF0F172A)
+                            DropdownMenuItem(
+                                text = { Text("Delete Sheet", color = Color(0xFFEF4444)) },
+                                onClick = {
+                                    showMoreMenu = false
+                                    onDelete()
+                                }
                             )
                         }
                     }
+                }
 
-                    // Editable Song Title Field
-                    BasicTextField(
-                        value = title,
-                        onValueChange = { title = it },
-                        singleLine = true,
-                        textStyle = TextStyle(
-                            color = Color.White,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
-                        ),
-                        cursorBrush = SolidColor(SnapshotAccentColor),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0x14FFFFFF))
-                            .padding(horizontal = 10.dp, vertical = 7.dp)
-                            .testTag("input_song_title"),
-                        decorationBox = { innerTextField ->
-                            if (title.isEmpty()) {
-                                Text(
-                                    text = "Song Title...",
-                                    fontSize = 17.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0x4DFFFFFF)
-                                )
-                            }
-                            innerTextField()
+                // 2. RIBBON TABS (Chords, Symbols, Text, Page)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    EditorTab.values().forEach { tab ->
+                        val isSelected = activeTab == tab
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { activeTab = tab }
+                                .padding(vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = tab.name.lowercase().replaceFirstChar { it.uppercase() },
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) Color.White else SlateTextSecondary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.6f)
+                                    .height(2.dp)
+                                    .background(if (isSelected) PrimaryBlueAccent else Color.Transparent)
+                            )
                         }
-                    )
+                    }
                 }
 
                 HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
 
-                // 2. TYPOGRAPHY & COLOR
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        text = "TYPOGRAPHY & COLOR",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF94A3B8),
-                        letterSpacing = 0.5.sp
-                    )
+                // 3. TAB SPECIFIC CONTENT
+                when (activeTab) {
+                    EditorTab.CHORDS -> {
+                        // CHORDS · NASHVILLE (Degree Keyboard 1 to 7)
+                        Text(
+                            text = "CHORDS · ${globalNotation.shortName.uppercase()}",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = SlateTextSecondary,
+                            letterSpacing = 0.5.sp
+                        )
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        // Font Size Stepper [-]
-                        Box(
-                            modifier = Modifier
-                                .size(34.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0x18FFFFFF))
-                                .clickable {
-                                    if (currentFontSize > 12) currentFontSize -= 2
-                                },
-                            contentAlignment = Alignment.Center
+                        // Row 1: Tall Pill Keys 1 to 7
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Text(text = "−", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            val degreeLabels = if (globalNotation == NotationSystem.NASHVILLE) {
+                                listOf("1", "2", "3", "4", "5", "6", "7")
+                            } else {
+                                diatonicChords.take(7)
+                            }
+
+                            degreeLabels.forEach { deg ->
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(46.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFF20293C))
+                                        .border(1.dp, ChipBorder, RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            val sep = if (content.isEmpty() || content.endsWith(" ") || content.endsWith("\n") || content.endsWith("| ")) "" else " "
+                                            content = "$content$sep$deg"
+                                            lastInsertedChord = deg
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = deg,
+                                        fontSize = 18.sp,
+                                        fontFamily = FontFamily.Cursive,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
+                            }
                         }
 
-                        // Size Label
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(34.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0x12FFFFFF)),
-                            contentAlignment = Alignment.Center
+                        // Row 2: Accidentals & Modifiers (b, #, / bass, N.C., %)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Text(
-                                text = "$currentFontSize pt",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
+                            listOf("b", "#", "/ bass", "N.C.", "%").forEach { mod ->
+                                Box(
+                                    modifier = Modifier
+                                        .weight(if (mod.length > 2) 1.5f else 1f)
+                                        .height(34.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color(0xFF1A2234))
+                                        .border(1.dp, ChipBorder.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            val active = lastInsertedChord
+                                            if (active != null) {
+                                                val modified = ChordNotationConverter.applyExtension(active, mod)
+                                                if (content.endsWith(active)) {
+                                                    content = content.substring(0, content.length - active.length) + modified
+                                                } else {
+                                                    content = "$content $mod"
+                                                }
+                                                lastInsertedChord = modified
+                                            } else {
+                                                content = "$content $mod"
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = mod,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFFCBD5E1)
+                                    )
+                                }
+                            }
                         }
 
-                        // Font Size Stepper [+]
-                        Box(
-                            modifier = Modifier
-                                .size(34.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0x18FFFFFF))
-                                .clickable {
-                                    if (currentFontSize < 32) currentFontSize += 2
-                                },
-                            contentAlignment = Alignment.Center
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        // EXTENSIONS · ACTIVE CHORD (Row 1 & Row 2)
+                        Text(
+                            text = "EXTENSIONS · ACTIVE CHORD",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = SlateTextSecondary,
+                            letterSpacing = 0.5.sp
+                        )
+
+                        // Ext Row 1
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Text(text = "+", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            listOf("m", "7", "maj7", "m7", "sus2", "sus4", "11").forEach { ext ->
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(30.dp)
+                                        .clip(RoundedCornerShape(7.dp))
+                                        .background(Color(0xFF1E2638))
+                                        .border(1.dp, ChipBorder.copy(alpha = 0.6f), RoundedCornerShape(7.dp))
+                                        .clickable {
+                                            val active = lastInsertedChord
+                                            if (active != null) {
+                                                val modified = ChordNotationConverter.applyExtension(active, ext)
+                                                if (content.endsWith(active)) {
+                                                    content = content.substring(0, content.length - active.length) + modified
+                                                } else {
+                                                    content = "$content$ext"
+                                                }
+                                                lastInsertedChord = modified
+                                            } else {
+                                                content = "$content$ext"
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(text = ext, fontSize = 11.sp, color = Color(0xFFE2E8F0), fontWeight = FontWeight.Medium)
+                                }
+                            }
                         }
 
-                        // Compact Color Pill (No arrow, clicks to open centered bubble popup)
-                        Box(
-                            modifier = Modifier
-                                .size(34.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0x18FFFFFF))
-                                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
-                            .clickable { showColorBubble = true }
-                            .padding(6.dp),
-                            contentAlignment = Alignment.Center
+                        // Ext Row 2
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(18.dp)
-                                    .clip(CircleShape)
-                                    .background(selectedTextColor)
-                            )
+                            listOf("add9", "6", "9", "dim", "aug", "5", "13").forEach { ext ->
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(30.dp)
+                                        .clip(RoundedCornerShape(7.dp))
+                                        .background(Color(0xFF1E2638))
+                                        .border(1.dp, ChipBorder.copy(alpha = 0.6f), RoundedCornerShape(7.dp))
+                                        .clickable {
+                                            val active = lastInsertedChord
+                                            if (active != null) {
+                                                val modified = ChordNotationConverter.applyExtension(active, ext)
+                                                if (content.endsWith(active)) {
+                                                    content = content.substring(0, content.length - active.length) + modified
+                                                } else {
+                                                    content = "$content$ext"
+                                                }
+                                                lastInsertedChord = modified
+                                            } else {
+                                                content = "$content$ext"
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(text = ext, fontSize = 11.sp, color = Color(0xFFE2E8F0), fontWeight = FontWeight.Medium)
+                                }
+                            }
                         }
-                    }
 
-                    // Font Size Preset Pills
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        listOf(14 to "S", 18 to "M", 22 to "L", 26 to "XL").forEach { (sz, label) ->
-                            val isSelected = currentFontSize == sz
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        // PASSING CHORD SECTION (Split 2, Split 4, Passing 4 - 5)
+                        Text(
+                            text = "PASSING CHORD",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = SlateTextSecondary,
+                            letterSpacing = 0.5.sp
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(if (isSelected) SnapshotAccentColor else Color(0x14FFFFFF))
-                                    .clickable { currentFontSize = sz }
-                                    .padding(vertical = 5.dp),
+                                    .height(34.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFF1E2638))
+                                    .clickable { content = "$content | 1 - 5 |" },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = "$label ($sz)",
-                                    fontSize = 10.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isSelected) Color(0xFF0F172A) else Color(0xFF94A3B8)
-                                )
+                                Text("Split 2", fontSize = 11.sp, color = Color.White)
                             }
-                        }
-                    }
-                }
 
-                // 3. STRUCTURE TAGS (Positioned immediately below Typography & Color)
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        text = "STRUCTURE TAGS",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF94A3B8),
-                        letterSpacing = 0.5.sp
-                    )
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                    ) {
-                        listOf("Intro", "Verse", "Chorus", "Bridge", "Pre-Chorus", "Solo", "Outro").forEach { tag ->
                             Box(
                                 modifier = Modifier
+                                    .weight(1f)
+                                    .height(34.dp)
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(Color(0x18FFFFFF))
-                                    .clickable {
-                                        val prefix = if (content.isEmpty() || content.endsWith("\n")) "" else "\n\n"
-                                        content = "$content$prefix[$tag]\n"
-                                        lastInsertedChord = null
-                                    }
-                                    .padding(horizontal = 9.dp, vertical = 6.dp)
+                                    .background(Color(0xFF1E2638))
+                                    .clickable { content = "$content | 1 - 4 - 5 - 1 |" },
+                                contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = "[$tag]",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFFCBD5E1)
-                                )
+                                Text("Split 4", fontSize = 11.sp, color = Color.White)
+                            }
+
+                            // Passing X - Y (Amber outlined button)
+                            Box(
+                                modifier = Modifier
+                                    .weight(1.3f)
+                                    .height(34.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(AmberAccent.copy(alpha = 0.12f))
+                                    .border(1.dp, AmberAccent, RoundedCornerShape(8.dp))
+                                    .clickable { content = "$content 4 - 5" },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("Passing 4 - 5", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = AmberAccent)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        // EDIT TOOLS (6 Icons with labels below: Undo, Redo, Dup bar, Copy line, Transpose, Page)
+                        Text(
+                            text = "EDIT",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = SlateTextSecondary,
+                            letterSpacing = 0.5.sp
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            listOf(
+                                Triple("Undo", Icons.AutoMirrored.Filled.Undo) {
+                                    if (content.isNotEmpty()) content = content.dropLast(1)
+                                },
+                                Triple("Redo", Icons.AutoMirrored.Filled.Redo) {},
+                                Triple("Dup bar", Icons.Default.ContentCopy) {
+                                    content = "$content | 1 |"
+                                },
+                                Triple("Copy line", Icons.Default.Menu) {
+                                    content = "$content\n| 1 | 4 | 5 | 1 |"
+                                },
+                                Triple("Transpose", Icons.Default.Exposure) {
+                                    showTonalityDialog = true
+                                },
+                                Triple("Page", Icons.Default.Palette) {
+                                    activeTab = EditorTab.PAGE
+                                }
+                            ).forEach { (label, icon, onClickAction) ->
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.clickable { onClickAction() }
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(RoundedCornerShape(9.dp))
+                                            .background(Color(0xFF1E2638)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(imageVector = icon, contentDescription = label, tint = Color.White, modifier = Modifier.size(17.dp))
+                                    }
+                                    Spacer(modifier = Modifier.height(3.dp))
+                                    Text(text = label, fontSize = 9.sp, color = SlateTextSecondary)
+                                }
+                            }
+                        }
+                    }
+
+                    EditorTab.SYMBOLS -> {
+                        // STRUCTURE TAGS
+                        Text("STRUCTURE TAGS", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = SlateTextSecondary)
+                        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf("Intro", "Verse", "Chorus", "Bridge", "Pre-Chorus", "Solo", "Outro").forEach { tag ->
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(ChipBg)
+                                        .clickable {
+                                            val pfx = if (content.isEmpty() || content.endsWith("\n")) "" else "\n\n"
+                                            content = "$content$pfx[$tag]\n| "
+                                        }
+                                        .padding(horizontal = 9.dp, vertical = 6.dp)
+                                ) {
+                                    Text("[$tag]", fontSize = 11.sp, color = Color(0xFFCBD5E1), fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        // EXPRESSIVE AMBER SYMBOLS
+                        Text("EXPRESSIVE SYMBOLS", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = SlateTextSecondary)
+                        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf(
+                                "< 4 > (Held / Tenuto)" to "<4>",
+                                "^ (Fermata)" to "^",
+                                "< (Push)" to "<",
+                                "|: (Repeat Start)" to "|:",
+                                ":| x2 (Repeat End)" to ":| x2"
+                            ).forEach { (label, sym) ->
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(AmberAccent.copy(alpha = 0.14f))
+                                        .border(1.dp, AmberAccent.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                        .clickable { content = "$content $sym" }
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Text(text = label, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = AmberAccent)
+                                }
+                            }
+                        }
+                    }
+
+                    EditorTab.TEXT -> {
+                        // 5 HANDWRITTEN + 5 LYRICS FONTS
+                        Text("FONTS", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = SlateTextSecondary)
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            SheetFontStyle.values().forEach { style ->
+                                val isSelected = selectedFontStyle == style
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isSelected) PrimaryBlueBtn else ChipBg)
+                                        .clickable { selectedFontStyle = style }
+                                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = style.label,
+                                        fontFamily = style.fontFamily,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) PrimaryBlueBtnText else Color.White
+                                    )
+                                    Text(
+                                        text = if (style.isHandwritten) "Handwritten" else "Lyrics",
+                                        fontSize = 10.sp,
+                                        color = if (isSelected) PrimaryBlueBtnText.copy(alpha = 0.7f) else SlateTextSecondary
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        // FONT SIZE CONTROLS
+                        Text("FONT SIZE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = SlateTextSecondary)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).background(ChipBg).clickable { if (currentFontSize > 12) currentFontSize -= 2 }, contentAlignment = Alignment.Center) {
+                                Text("-", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                            Text("$currentFontSize pt", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                            Box(modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).background(ChipBg).clickable { if (currentFontSize < 36) currentFontSize += 2 }, contentAlignment = Alignment.Center) {
+                                Text("+", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                        }
+                    }
+
+                    EditorTab.PAGE -> {
+                        // PAGE THEMES
+                        Text("PAGE THEME & PAPER", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = SlateTextSecondary)
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            PageThemeColors.forEachIndexed { idx, (name, col) ->
+                                val isSelected = selectedPageThemeIndex == idx
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(ChipBg)
+                                        .border(if (isSelected) 1.5.dp else 0.dp, PrimaryBlueAccent, RoundedCornerShape(8.dp))
+                                    .clickable { selectedPageThemeIndex = idx }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Box(modifier = Modifier.size(20.dp).clip(CircleShape).background(col))
+                                    Text(text = name, fontSize = 13.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, color = Color.White)
+                                }
                             }
                         }
                     }
                 }
+            }
+        }
 
-                // 4. SMART CHORD PALETTE & FULL EXTENSIONS
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        // ==============================================================================
+        // RIGHT PANEL (64%): Word-like Document Page (aether-keys-sheets-editor.svg)
+        // ==============================================================================
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .weight(0.64f)
+                .shadow(10.dp, RoundedCornerShape(22.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                .clip(RoundedCornerShape(22.dp))
+                .background(pageColor)
+                .padding(24.dp)
+                .testTag("svg_editor_document_page")
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // Header: Large Handwritten Title with underline stretching to right
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(
-                            text = "CHORDS (${globalNotation.shortName})",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF94A3B8),
-                            letterSpacing = 0.5.sp
-                        )
-                        if (lastInsertedChord != null) {
-                            Text(
-                                text = "Active: $lastInsertedChord",
-                                fontSize = 10.sp,
+                        BasicTextField(
+                            value = title,
+                            onValueChange = { title = it },
+                            singleLine = true,
+                            textStyle = TextStyle(
+                                color = documentTextColor,
+                                fontSize = 28.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = SnapshotAccentColor
-                            )
-                        }
+                                fontFamily = selectedFontStyle.fontFamily
+                            ),
+                            cursorBrush = SolidColor(PrimaryBlueAccent),
+                            modifier = Modifier.weight(1f)
+                        )
                     }
 
-                    // Core Diatonic Chords
-                    Row(
+                    // Fine underline extending to the right
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        diatonicChords.forEach { chord ->
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color(0x22FFFFFF))
-                                    .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(8.dp))
-                                    .clickable {
-                                        val separator = if (content.isEmpty() || content.endsWith(" ") || content.endsWith("\n")) "" else " · "
-                                        content = "$content$separator$chord"
-                                        lastInsertedChord = chord
-                                    }
-                                    .padding(horizontal = 11.dp, vertical = 7.dp)
-                            ) {
-                                Text(
-                                    text = chord,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                            }
-                        }
-                    }
-
-                    // Full Extensions Bar (No neon blue! Refined slate with Snapshot Accent borders)
-                    Text(
-                        text = "EXTENSIONS (Applies to active chord)",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF64748B),
-                        letterSpacing = 0.3.sp
+                            .height(1.5.dp)
+                            .background(documentTextColor.copy(alpha = 0.25f))
                     )
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                    ) {
-                        ChordNotationConverter.fullExtensions.forEach { ext ->
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(Color(0xFF222B3D))
-                                    .border(1.dp, SnapshotAccentColor.copy(alpha = 0.35f), RoundedCornerShape(6.dp))
-                                    .clickable {
-                                        val active = lastInsertedChord
-                                        if (active != null) {
-                                            val modified = ChordNotationConverter.applyExtension(active, ext)
-                                            if (content.endsWith(active)) {
-                                                content = content.substring(0, content.length - active.length) + modified
-                                            } else {
-                                                content = "$content$ext"
-                                            }
-                                            lastInsertedChord = modified
-                                        } else {
-                                            content = if (content.isEmpty() || content.endsWith(" ")) "$content$ext" else "$content $ext"
-                                        }
-                                    }
-                                    .padding(horizontal = 8.dp, vertical = 5.dp)
-                            ) {
-                                Text(
-                                    text = ext,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = SnapshotAccentColor
-                                )
-                            }
-                        }
-                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+
+                    // Subtitle Metadata (Key C · 120 BPM · 4/4 · Swing 54 %)
+                    Text(
+                        text = "Key $fullKeyName · ${sheet.tempo} BPM · ${sheet.timeSignature} · Swing ${sheet.swing} %",
+                        fontSize = 12.sp,
+                        fontStyle = FontStyle.Italic,
+                        color = documentTextColor.copy(alpha = 0.7f)
+                    )
                 }
 
-                // 5. QUICK ACTIONS
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        text = "QUICK ACTIONS",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF94A3B8),
-                        letterSpacing = 0.5.sp
-                    )
+                // Chart Document Body Text Field (Full Width & Height)
+                BasicTextField(
+                    value = content,
+                    onValueChange = { content = it },
+                    textStyle = TextStyle(
+                        color = documentTextColor,
+                        fontSize = currentFontSize.sp,
+                        fontFamily = selectedFontStyle.fontFamily,
+                        lineHeight = (currentFontSize + 12).sp
+                    ),
+                    cursorBrush = SolidColor(PrimaryBlueAccent),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .testTag("svg_chart_content_input"),
+                    decorationBox = { innerTextField ->
+                        if (content.isEmpty()) {
+                            Text(
+                                text = "[Intro]\n| 1 | 3m | 6 | 4 - 5 |\n\n[Verse]\n| 2m | 3m | 5 | 6m |\n| 6m | 5 | <4> | ^ 1 |\n\n[Chorus]\n|: 1 | 5 | 6m | 4 |\n| 1 | 5 | 4 < 5 | 1 :| x2",
+                                color = documentTextColor.copy(alpha = 0.35f),
+                                fontSize = currentFontSize.sp,
+                                fontFamily = selectedFontStyle.fontFamily
+                            )
+                        }
+                        innerTextField()
+                    }
+                )
+            }
+        }
+    }
 
+    // TONALITY ROOT & MODE PICKER DIALOG
+    if (showTonalityDialog) {
+        AlertDialog(
+            onDismissRequest = { showTonalityDialog = false },
+            title = {
+                Text(
+                    text = "Select Tonality",
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // Bar Line |
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0x16FFFFFF))
-                                .clickable {
-                                    val sep = if (content.isEmpty() || content.endsWith(" ")) "" else " "
-                                    content = "$content$sep| "
-                                    lastInsertedChord = null
-                                }
-                                .padding(vertical = 8.dp),
-                            contentAlignment = Alignment.Center
+                        Button(
+                            colors = ButtonDefaults.buttonColors(containerColor = if (!isMinorMode) PrimaryBlueBtn else ChipBg),
+                            shape = RoundedCornerShape(8.dp),
+                            onClick = { isMinorMode = false },
+                            modifier = Modifier.weight(1f)
                         ) {
-                            Text(text = "Bar Line |", fontSize = 11.sp, color = Color.White)
+                            Text("Major", color = if (!isMinorMode) PrimaryBlueBtnText else Color.White, fontWeight = FontWeight.Bold)
                         }
-
-                        // Clear Text
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0x14EF4444))
-                                .clickable {
-                                    content = ""
-                                    lastInsertedChord = null
-                                }
-                                .padding(vertical = 8.dp),
-                            contentAlignment = Alignment.Center
+                        Button(
+                            colors = ButtonDefaults.buttonColors(containerColor = if (isMinorMode) PrimaryBlueBtn else ChipBg),
+                            shape = RoundedCornerShape(8.dp),
+                            onClick = { isMinorMode = true },
+                            modifier = Modifier.weight(1f)
                         ) {
-                            Text(text = "Clear Text", fontSize = 11.sp, color = Color(0xFFEF4444))
-                        }
-                    }
-                }
-            }
-        }
-
-        // ==============================================================================
-        // RIGHT PANE (60%): Clean Document Page stretching FULL HEIGHT up to top!
-        // ==============================================================================
-        Box(
-            modifier = Modifier
-                .fillMaxHeight()
-                .weight(0.60f)
-                .shadow(4.dp, RoundedCornerShape(18.dp), ambientColor = Color.Black, spotColor = Color(0x66000000))
-                .clip(RoundedCornerShape(18.dp))
-                .background(Color(0xFF191F2C))
-                .drawWithContent {
-                    drawContent()
-                    drawLine(
-                        color = Color.White.copy(alpha = 0.12f),
-                        start = Offset(8.dp.toPx(), 1f),
-                        end = Offset(size.width - 8.dp.toPx(), 1f),
-                        strokeWidth = 1.dp.toPx(),
-                        cap = StrokeCap.Round
-                    )
-                }
-                .padding(20.dp)
-                .testTag("editor_right_sheet_page")
-        ) {
-            BasicTextField(
-                value = content,
-                onValueChange = {
-                    content = it
-                    lastInsertedChord = null
-                },
-                textStyle = TextStyle(
-                    color = selectedTextColor,
-                    fontSize = currentFontSize.sp,
-                    fontFamily = FontFamily.Monospace,
-                    lineHeight = (currentFontSize * 1.55f).sp
-                ),
-                cursorBrush = SolidColor(SnapshotAccentColor),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .testTag("input_sheet_content"),
-                decorationBox = { innerTextField ->
-                    if (content.isEmpty()) {
-                        Text(
-                            text = "Type your chords and lyrics here...\n\nExample:\n[Intro] 1 · 6m · 4 · 5\n\n[Verse 1]\n1               5\nAmazing grace, how sweet the sound\n6m              4\nThat saved a wretch like me",
-                            fontSize = currentFontSize.sp,
-                            fontFamily = FontFamily.Monospace,
-                            lineHeight = (currentFontSize * 1.55f).sp,
-                            color = Color(0x4DFFFFFF)
-                        )
-                    }
-                    innerTextField()
-                }
-            )
-        }
-    }
-
-    // ==================================================================================
-    // CENTERED BUBBLE POP-UP: TONALITY SELECTOR
-    // Elastic spring animation, Snapshot Accent colors, Major/Minor toggle
-    // ==================================================================================
-    if (showTonalityBubble) {
-        Dialog(onDismissRequest = { showTonalityBubble = false }) {
-            Box(
-                modifier = Modifier
-                    .width(300.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(Color(0xFF1E2435))
-                    .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(18.dp))
-                    .padding(16.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = "Song Key & Mode",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-
-                    // Major / Minor Mode Toggle Switch
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0x18FFFFFF))
-                            .padding(3.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (!isMinorMode) SnapshotAccentColor else Color.Transparent)
-                                .clickable { isMinorMode = false }
-                                .padding(vertical = 6.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Major",
-                                fontSize = 12.sp,
-                                fontWeight = if (!isMinorMode) FontWeight.Bold else FontWeight.Normal,
-                                color = if (!isMinorMode) Color(0xFF0F172A) else Color(0xFF94A3B8)
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (isMinorMode) SnapshotAccentColor else Color.Transparent)
-                                .clickable { isMinorMode = true }
-                                .padding(vertical = 6.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Minor",
-                                fontSize = 12.sp,
-                                fontWeight = if (isMinorMode) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isMinorMode) Color(0xFF0F172A) else Color(0xFF94A3B8)
-                            )
+                            Text("Minor", color = if (isMinorMode) PrimaryBlueBtnText else Color.White, fontWeight = FontWeight.Bold)
                         }
                     }
 
-                    // 12 Roots Grid (Selected note uses Snapshot Accent Color!)
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        ChordNotationConverter.roots.chunked(4).forEach { rowRoots ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                rowRoots.forEach { r ->
-                                    val isSel = (r == selectedKeyRoot)
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(if (isSel) SnapshotAccentColor else Color(0x14FFFFFF))
-                                            .clickable {
-                                                selectedKeyRoot = r
-                                                showTonalityBubble = false
-                                            }
-                                            .padding(vertical = 8.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = r,
-                                            fontSize = 13.sp,
-                                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
-                                            color = if (isSel) Color(0xFF0F172A) else Color(0xFFCBD5E1)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // ==================================================================================
-    // CENTERED BUBBLE POP-UP: TEXT COLOR PALETTE
-    // ==================================================================================
-    if (showColorBubble) {
-        Dialog(onDismissRequest = { showColorBubble = false }) {
-            Box(
-                modifier = Modifier
-                    .width(280.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(Color(0xFF1E2435))
-                    .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(18.dp))
-                    .padding(16.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = "Select Text Color",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-
-                    SheetTextPalette.chunked(4).forEach { rowColors ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            rowColors.forEach { (name, color) ->
-                                val isSel = selectedTextColor == color
+                    val roots = listOf("C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B")
+                    roots.chunked(4).forEach { row ->
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            row.forEach { r ->
+                                val isSel = selectedKeyRoot == r
                                 Box(
                                     modifier = Modifier
-                                        .size(34.dp)
-                                        .clip(CircleShape)
-                                        .background(color)
-                                        .border(
-                                            width = if (isSel) 3.dp else 1.dp,
-                                            color = if (isSel) SnapshotAccentColor else Color(0x33FFFFFF),
-                                            shape = CircleShape
-                                        )
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isSel) PrimaryBlueBtn else ChipBg)
                                         .clickable {
-                                            selectedTextColor = color
-                                            showColorBubble = false
-                                        },
+                                            selectedKeyRoot = r
+                                            showTonalityDialog = false
+                                        }
+                                        .padding(vertical = 10.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    if (isSel) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(8.dp)
-                                                .clip(CircleShape)
-                                                .background(Color(0xFF0F172A))
-                                        )
-                                    }
+                                    Text(text = r, fontWeight = FontWeight.Bold, color = if (isSel) PrimaryBlueBtnText else Color.White)
                                 }
                             }
                         }
                     }
                 }
-            }
-        }
-    }
-
-    // Delete Confirmation Dialog (Styled with Snapshot Accent color)
-    if (showDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("Delete Sheet", color = Color.White) },
-            text = { Text("Are you sure you want to delete \"${sheet.title}\"?", color = Color(0xFFCBD5E1)) },
-            containerColor = Color(0xFF1E2435),
-            confirmButton = {
-                Button(
-                    colors = ButtonDefaults.buttonColors(containerColor = SnapshotAccentColor),
-                    onClick = {
-                        onDelete()
-                        showDeleteConfirm = false
-                    }
-                ) {
-                    Text("Delete", color = Color(0xFF0F172A), fontWeight = FontWeight.Bold)
-                }
             },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text("Cancel", color = Color(0xFF94A3B8))
+            confirmButton = {
+                TextButton(onClick = { showTonalityDialog = false }) {
+                    Text("Done", color = PrimaryBlueAccent)
                 }
             }
         )

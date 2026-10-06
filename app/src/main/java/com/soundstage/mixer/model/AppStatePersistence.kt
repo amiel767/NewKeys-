@@ -58,6 +58,9 @@ class AppStatePersistence(context: Context) {
         private const val KEY_FADER_AUTO_FIT = "is_fader_auto_fit"
         private const val KEY_PATCHES_JSON = "patches_json"
         private const val KEY_ACTIVE_PATCH_ID = "active_patch_id"
+        private const val KEY_MIDI_MAPPINGS_JSON = "midi_mappings_json"
+        private const val KEY_MIDI_DEBOUNCE_ENABLED = "midi_debounce_enabled"
+        private const val KEY_MIDI_DEBOUNCE_MS = "midi_debounce_ms"
     }
 
     data class SavedTrackData(
@@ -136,7 +139,10 @@ class AppStatePersistence(context: Context) {
         val trackColorSaturation: Float? = null,
         val isFaderAutoFit: Boolean? = null,
         val patches: List<PatchItem> = emptyList(),
-        val activePatchId: String? = null
+        val activePatchId: String? = null,
+        val midiMappings: List<MidiMappingItem> = emptyList(),
+        val midiDebounceEnabled: Boolean? = null,
+        val midiDebounceMs: Long? = null
     )
 
     fun saveAppState(
@@ -178,7 +184,10 @@ class AppStatePersistence(context: Context) {
         trackColorSaturation: Float = 1.0f,
         isFaderAutoFit: Boolean = false,
         patches: List<PatchItem> = emptyList(),
-        activePatchId: String? = null
+        activePatchId: String? = null,
+        midiMappings: List<MidiMappingItem> = emptyList(),
+        midiDebounceEnabled: Boolean = true,
+        midiDebounceMs: Long = 60L
     ) {
         try {
             val tracksArray = JSONArray()
@@ -379,6 +388,19 @@ class AppStatePersistence(context: Context) {
                 patchesArray.put(pObj)
             }
 
+            val midiMappingsArray = JSONArray()
+            midiMappings.forEach { m ->
+                val mObj = JSONObject().apply {
+                    put("action", m.actionType.name)
+                    put("type", m.midiType.name)
+                    put("channel", m.channel)
+                    put("ctrl", m.controlNumber)
+                    put("enabled", m.isEnabled)
+                    put("mode", m.mode.name)
+                }
+                midiMappingsArray.put(mObj)
+            }
+
             prefs.edit().apply {
                 putString(KEY_THEME, currentTheme.name)
                 putInt(KEY_BPM, bpm)
@@ -419,6 +441,9 @@ class AppStatePersistence(context: Context) {
                 putBoolean(KEY_FADER_AUTO_FIT, isFaderAutoFit)
                 putString(KEY_PATCHES_JSON, patchesArray.toString())
                 putString(KEY_ACTIVE_PATCH_ID, activePatchId)
+                putString(KEY_MIDI_MAPPINGS_JSON, midiMappingsArray.toString())
+                putBoolean(KEY_MIDI_DEBOUNCE_ENABLED, midiDebounceEnabled)
+                putLong(KEY_MIDI_DEBOUNCE_MS, midiDebounceMs)
                 apply()
             }
         } catch (e: Exception) {
@@ -783,6 +808,38 @@ class AppStatePersistence(context: Context) {
                 }
             }
 
+            val restoredMidiMappings = mutableListOf<MidiMappingItem>()
+            val midiJson = prefs.getString(KEY_MIDI_MAPPINGS_JSON, null)
+            if (!midiJson.isNullOrEmpty()) {
+                try {
+                    val mArr = JSONArray(midiJson)
+                    for (i in 0 until mArr.length()) {
+                        val mObj = mArr.getJSONObject(i)
+                        val actionName = mObj.optString("action", "")
+                        val action = try { MidiActionType.valueOf(actionName) } catch (_: Exception) { null }
+                        if (action != null) {
+                            val type = try { MidiControlType.valueOf(mObj.optString("type", "CC")) } catch (_: Exception) { MidiControlType.CC }
+                            val mode = try { MidiControlMode.valueOf(mObj.optString("mode", "MOMENTARY")) } catch (_: Exception) { MidiControlMode.MOMENTARY }
+                            restoredMidiMappings.add(
+                                MidiMappingItem(
+                                    actionType = action,
+                                    midiType = type,
+                                    channel = mObj.optInt("channel", -1),
+                                    controlNumber = mObj.optInt("ctrl", -1),
+                                    isEnabled = mObj.optBoolean("enabled", true),
+                                    mode = mode
+                                )
+                            )
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error parsing saved midi mappings: ${e.message}")
+                }
+            }
+
+            val midiDebounceEnabled = if (prefs.contains(KEY_MIDI_DEBOUNCE_ENABLED)) prefs.getBoolean(KEY_MIDI_DEBOUNCE_ENABLED, true) else null
+            val midiDebounceMs = if (prefs.contains(KEY_MIDI_DEBOUNCE_MS)) prefs.getLong(KEY_MIDI_DEBOUNCE_MS, 60L) else null
+
             return RestoredAppState(
                 themeName = themeName,
                 bpm = bpm,
@@ -822,7 +879,10 @@ class AppStatePersistence(context: Context) {
                 configuredSnapshotSlots = configuredSlotsList,
                 snapshotCustomNames = customNamesMap,
                 patches = restoredPatches,
-                activePatchId = activePatchId
+                activePatchId = activePatchId,
+                midiMappings = restoredMidiMappings,
+                midiDebounceEnabled = midiDebounceEnabled,
+                midiDebounceMs = midiDebounceMs
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error loading app state: ${e.message}")
