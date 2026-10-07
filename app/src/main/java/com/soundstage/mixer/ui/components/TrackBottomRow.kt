@@ -4,11 +4,18 @@
 
 package com.soundstage.mixer.ui.components
 
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.*
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -17,22 +24,29 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -41,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
 
 private object RowTokens {
     // Matière sobre et élégante (même famille que S / M)
@@ -67,6 +82,7 @@ fun TrackBottomRow(
     onFx: () -> Unit,
     onSettings: () -> Unit,
     onToggle: () -> Unit,
+    onUnload: () -> Unit = {},
     modifier: Modifier = Modifier,
     height: Dp = 22.dp,
 ) {
@@ -83,7 +99,7 @@ fun TrackBottomRow(
         KeyButton(trackColor, active, Modifier.weight(1f), onSettings) {
             DiscreetSlidersIcon()
         }
-        PowerKey(trackColor, active, height, onToggle)
+        PowerKey(trackColor, active, height, onToggle, onUnload)
     }
 }
 
@@ -153,11 +169,20 @@ private fun DiscreetSlidersIcon() {
     }
 }
 
-// ───────────── On/Off : bouton carré à ombre douce et sans halo agressif ─────────────
+// ───────────── On/Off : bouton carré à ombre douce et bulle corbeille sur appui long ─────────────
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun PowerKey(trackColor: Color, active: Boolean, keySize: Dp, onClick: () -> Unit) {
+private fun PowerKey(
+    trackColor: Color,
+    active: Boolean,
+    keySize: Dp,
+    onClick: () -> Unit,
+    onUnload: () -> Unit = {}
+) {
     val shape = RoundedCornerShape(4.dp)
+    var showTrashBubble by remember { mutableStateOf(false) }
+
     val border = if (active) {
         scaleColor(trackColor, 1.15f).copy(alpha = 0.65f)
     } else {
@@ -170,10 +195,25 @@ private fun PowerKey(trackColor: Color, active: Boolean, keySize: Dp, onClick: (
         Brush.verticalGradient(listOf(RowTokens.OffTop, RowTokens.OffBottom))
     }
 
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.94f else 1f, label = "powerPress")
+
     Box(
         Modifier
             .size(keySize)
-            .rowClick(onClick)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .combinedClickable(
+                interactionSource = source,
+                indication = null,
+                onClick = onClick,
+                onLongClick = {
+                    showTrashBubble = true
+                }
+            )
             // Ombre adoucie sans halo débordant
             .drawBehind {
                 drawRoundRect(
@@ -208,7 +248,89 @@ private fun PowerKey(trackColor: Color, active: Boolean, keySize: Dp, onClick: (
             val iconColor = if (active) Color.White else RowTokens.OffIcon
             drawPower(iconColor)
         }
+
+        // Bulle flottante corbeille sur appui long (sans contours, avec animation de flottement physique)
+        if (showTrashBubble) {
+            val floatTransition = rememberInfiniteTransition(label = "bubble_floating")
+            val floatOffset by floatTransition.animateFloat(
+                initialValue = -120f,
+                targetValue = -135f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(1200, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "float_offset"
+            )
+            val floatScale by floatTransition.animateFloat(
+                initialValue = 1.0f,
+                targetValue = 1.05f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(1200, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "float_scale"
+            )
+
+            Popup(
+                alignment = Alignment.TopCenter,
+                offset = androidx.compose.ui.unit.IntOffset(0, floatOffset.toInt()),
+                onDismissRequest = { showTrashBubble = false }
+            ) {
+                Box(
+                    modifier = Modifier
+                        .graphicsLayer {
+                            scaleX = floatScale
+                            scaleY = floatScale
+                        }
+                        .shadow(12.dp, CircleShape, ambientColor = trackColor, spotColor = Color.Black)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    scaleColor(trackColor, 1.25f),
+                                    scaleColor(trackColor, 0.85f),
+                                    Color(0xFF141722)
+                                )
+                            )
+                        )
+                        .combinedClickable(
+                            onClick = {
+                                onUnload()
+                                showTrashBubble = false
+                            }
+                        )
+                        .padding(10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(Modifier.size(16.dp)) {
+                        drawTrashCan(Color.White)
+                    }
+                }
+            }
+        }
     }
+}
+
+private fun DrawScope.drawTrashCan(color: Color) {
+    val sw = 1.3.dp.toPx()
+    val w = size.width
+    val h = size.height
+
+    // Lid
+    drawLine(color, Offset(w * 0.2f, h * 0.28f), Offset(w * 0.8f, h * 0.28f), sw, StrokeCap.Round)
+    // Lid handle
+    drawLine(color, Offset(w * 0.4f, h * 0.18f), Offset(w * 0.6f, h * 0.18f), sw, StrokeCap.Round)
+    // Can body
+    val bodyPath = Path().apply {
+        moveTo(w * 0.26f, h * 0.32f)
+        lineTo(w * 0.32f, h * 0.88f)
+        lineTo(w * 0.68f, h * 0.88f)
+        lineTo(w * 0.74f, h * 0.32f)
+    }
+    drawPath(bodyPath, color, style = Stroke(sw, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+    // Vertical ribs
+    drawLine(color, Offset(w * 0.42f, h * 0.42f), Offset(w * 0.44f, h * 0.78f), sw, StrokeCap.Round)
+    drawLine(color, Offset(w * 0.58f, h * 0.42f), Offset(w * 0.56f, h * 0.78f), sw, StrokeCap.Round)
 }
 
 private fun DrawScope.drawPower(color: Color) {

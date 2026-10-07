@@ -426,16 +426,17 @@ private fun IconBadge(trackColor: Color, size: Dp, content: @Composable () -> Un
     ) { content() }
 }
 
-/** Petit bouton carré, même matière que S / M. */
+/** Bouton circulaire standard assorti au reste de l'application */
 @Composable
 private fun KeyButton(icon: IconKind, onClick: () -> Unit) {
     Box(
         Modifier
             .size(34.dp)
-            .ssClick(onClick)
-            .ssSurface(RoundedCornerShape(9.dp), Ss.KeyBrush, Ss.KeyBorder),
+            .clip(CircleShape)
+            .background(Color(0x1AFFFFFF))
+            .clickable { onClick() },
         contentAlignment = Alignment.Center,
-    ) { SsIcon(icon, Color(0xFFC9CFDD), 16.dp) }
+    ) { SsIcon(icon, Color.White, 16.dp) }
 }
 
 @Composable

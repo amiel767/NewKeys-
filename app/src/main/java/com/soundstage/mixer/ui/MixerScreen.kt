@@ -948,6 +948,8 @@ fun MixerScreen(
             onSelectBufferSize = { viewModel.setAudioBufferSize(it) },
             polyphony = uiState.polyphony,
             onSelectPolyphony = { viewModel.setPolyphony(it) },
+            fluidSynthGain = uiState.fluidSynthGain,
+            onFluidSynthGainChange = { viewModel.setFluidSynthGain(it) },
             selectedLanguage = uiState.selectedLanguage,
             onSelectLanguage = { viewModel.setSelectedLanguage(it) },
             masterPunch = uiState.masterPunch,

@@ -299,6 +299,7 @@ fun VerticalTrackChannel(
                 onFx = onFxClick,
                 onSettings = onTrackSettingsClick,
                 onToggle = onPowerToggle,
+                onUnload = onDeleteTrack,
                 height = 22.dp
             )
         } else {

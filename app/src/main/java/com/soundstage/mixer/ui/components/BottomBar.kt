@@ -126,7 +126,7 @@ fun BottomBar(
         ) {
         // ================= 1. DAW PRO REAL SYSTEM RESOURCE MONITOR (CPU & RAM) =================
         val runtime = remember { Runtime.getRuntime() }
-        var memoryMb by remember { mutableIntStateOf(65) }
+        var memoryMb by remember { mutableIntStateOf(48) }
         var cpuPercent by remember { mutableIntStateOf(8) }
 
         LaunchedEffect(Unit) {
@@ -135,12 +135,10 @@ fun BottomBar(
             var prevWallTime = System.currentTimeMillis()
 
             while (true) {
-                val jvmUsed = (runtime.totalMemory() - runtime.freeMemory())
-                val maxMem = runtime.maxMemory().coerceAtLeast(1024 * 1024 * 128)
-                val nativeUsed = android.os.Debug.getNativeHeapAllocatedSize()
-                val totalUsed = jvmUsed + nativeUsed
-                val calcPercent = ((totalUsed.toDouble() / (maxMem.toDouble() * 1.6)) * 100.0).roundToInt()
-                memoryMb = calcPercent.coerceIn(1, 99)
+                val jvmUsedBytes = runtime.totalMemory() - runtime.freeMemory()
+                val nativeUsedBytes = android.os.Debug.getNativeHeapAllocatedSize()
+                val totalUsedMb = ((jvmUsedBytes + nativeUsedBytes) / (1024L * 1024L)).toInt()
+                memoryMb = totalUsedMb.coerceAtLeast(1)
 
                 val curCpuTime = android.os.Process.getElapsedCpuTime()
                 val curWallTime = System.currentTimeMillis()
@@ -149,7 +147,7 @@ fun BottomBar(
 
                 if (deltaWall > 0) {
                     val rawLoad = ((deltaCpu.toFloat() / (deltaWall * cores)) * 100f).roundToInt()
-                    cpuPercent = rawLoad.coerceIn(2, 99)
+                    cpuPercent = rawLoad.coerceIn(1, 99)
                 }
 
                 prevCpuTime = curCpuTime
@@ -160,7 +158,7 @@ fun BottomBar(
 
         Box(
             modifier = Modifier
-                .width(78.dp)
+                .width(82.dp)
                 .height(barHeight)
                 .shadow(2.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
                 .clip(RoundedCornerShape(8.dp))
@@ -209,7 +207,7 @@ fun BottomBar(
                         maxLines = 1
                     )
                 }
-                // RAM indicator
+                // RAM indicator (Mo)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(3.5.dp)
@@ -221,7 +219,7 @@ fun BottomBar(
                             .background(Color(0xFF38BDF8))
                     )
                     Text(
-                        text = "RAM ${memoryMb}%",
+                        text = "RAM ${memoryMb} Mo",
                         fontSize = 8.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFFCBD5E1),

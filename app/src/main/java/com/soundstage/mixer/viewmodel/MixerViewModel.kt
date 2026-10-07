@@ -185,6 +185,7 @@ data class MixerUiState(
     val audioEngine: String = "Oboe (C++)",
     val audioBufferSize: Int = 256,
     val polyphony: Int = 128,
+    val fluidSynthGain: Float = 1.0f,
     val selectedLanguage: String = "English",
     val selectedAppLanguage: AppLanguage = AppLanguage.ENGLISH,
     val globalVelocityMin: Float = 0.10f,
@@ -373,8 +374,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         // Connect multi-channel layer performance routing for USB MIDI
-        audioEngine.activeLayerChannelsProvider = { midiNote ->
-            getActivePerformanceChannels(midiNote)
+        audioEngine.activeLayerChannelsProvider = { midiNote, incomingChannel ->
+            getActivePerformanceChannels(midiNote, incomingChannel)
         }
         audioEngine.trackVelocityCurveProvider = { ch ->
             _uiState.value.tracks.getOrNull(ch)?.velocityCurve ?: 0.5f
@@ -2068,18 +2069,24 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun getActivePerformanceChannels(midiNote: Int? = null): List<Int> {
+    fun getActivePerformanceChannels(midiNote: Int? = null, incomingChannel: Int? = null): List<Int> {
         val state = _uiState.value
         val anySolo = state.tracks.any { it.isSolo }
 
         // Dynamic Keyboard Layer Mapper: route notes strictly within each active track's assigned key range (splitNoteMin..splitNoteMax)
+        // AND strictly match the track's configured MIDI channel:
+        // track.midiChannel == 0 -> OMNI (accepts all channels)
+        // track.midiChannel in 1..16 -> accepts only messages where incomingChannel == (track.midiChannel - 1)
         val activeChannels = state.tracks.mapIndexedNotNull { idx, track ->
             val isAllowed = track.isEnabled && !track.isMuted && (!anySolo || track.isSolo)
             if (isAllowed) {
-                val isWithinRange = (midiNote == null) || (midiNote in track.splitNoteMin..track.splitNoteMax)
-                if (isWithinRange) {
-                    val slot = state.audioSlots.getOrNull(idx)
-                    if (slot != null && slot.soundFontId > 0) idx else null
+                val isChannelMatch = (incomingChannel == null) || (track.midiChannel == 0) || (incomingChannel == track.midiChannel - 1)
+                if (isChannelMatch) {
+                    val isWithinRange = (midiNote == null) || (midiNote in track.splitNoteMin..track.splitNoteMax)
+                    if (isWithinRange) {
+                        val slot = state.audioSlots.getOrNull(idx)
+                        if (slot != null && slot.soundFontId > 0) idx else null
+                    } else null
                 } else null
             } else null
         }
@@ -2087,7 +2094,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         return if (activeChannels.isNotEmpty()) {
             activeChannels
         } else {
-            listOf(midiChannelForSlot(state.activeSoundfontSlotId))
+            if (incomingChannel != null) {
+                emptyList()
+            } else {
+                listOf(midiChannelForSlot(state.activeSoundfontSlotId))
+            }
         }
     }
 
@@ -4782,6 +4793,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         audioEngine.setPolyphony(poly)
     }
 
+    fun setFluidSynthGain(gain: Float) {
+        val clamped = gain.coerceIn(0.2f, 3.0f)
+        _uiState.update { it.copy(fluidSynthGain = clamped) }
+        audioEngine.fluidSynthGain = clamped
+        persistCurrentStateDebounced()
+    }
+
     fun setSelectedLanguage(lang: String) {
         val appLang = when {
             lang.contains("Français", ignoreCase = true) || lang == "fr" -> AppLanguage.FRENCH
@@ -5375,15 +5393,17 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleMuteTrackByIndex(index: Int) {
         val tracks = _uiState.value.tracks
-        if (index in tracks.indices) {
-            onTrackMuteClick(tracks[index].id)
+        val targetTrack = tracks.getOrNull(index) ?: tracks.find { it.id == index + 1 }
+        if (targetTrack != null) {
+            onTrackMuteClick(targetTrack.id)
         }
     }
 
     fun toggleSoloTrackByIndex(index: Int) {
         val tracks = _uiState.value.tracks
-        if (index in tracks.indices) {
-            onTrackSoloClick(tracks[index].id)
+        val targetTrack = tracks.getOrNull(index) ?: tracks.find { it.id == index + 1 }
+        if (targetTrack != null) {
+            onTrackSoloClick(targetTrack.id)
         }
     }
 

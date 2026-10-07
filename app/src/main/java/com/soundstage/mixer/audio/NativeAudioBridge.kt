@@ -69,6 +69,7 @@ object NativeAudioBridge {
     external fun setTrackTranspose(engineIndex: Int, channel: Int, semitones: Int)
     external fun pitchBend(engineIndex: Int, channel: Int, bendValue: Int)
     external fun setMasterVolume(volume01: Float)
+    external fun setFluidSynthGain(gain: Float)
     external fun setPolyphony(engineIndex: Int, polyphony: Int)
     external fun setBufferSize(bufferSize: Int)
     external fun setMasterEq(lowGainDb: Float, midGainDb: Float, highGainDb: Float)
@@ -366,6 +367,16 @@ object NativeAudioBridge {
                 setMasterVolume(volume01.coerceIn(0f, 1f))
             } catch (e: Throwable) {
                 Log.e("NativeAudioBridge", "Error invoking setMasterVolume: ${e.message}")
+            }
+        }
+    }
+
+    fun safeSetFluidSynthGain(gain: Float) {
+        if (isLibraryLoaded) {
+            try {
+                setFluidSynthGain(gain.coerceIn(0.1f, 4.0f))
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking setFluidSynthGain: ${e.message}")
             }
         }
     }

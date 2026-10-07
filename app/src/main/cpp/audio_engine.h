@@ -744,7 +744,12 @@ public:
     void setMasterGain(float gain) {
         float clamped = std::clamp(gain, 0.0f, 1.0f);
         mMasterGain = clamped * 1.0f;
-        mSynthEngine.setGain(clamped * 2.2f);
+        mSynthEngine.setGain(clamped * mFluidSynthGain.load(std::memory_order_relaxed));
+    }
+    void setFluidSynthGain(float gain) {
+        float clamped = std::clamp(gain, 0.1f, 4.0f);
+        mFluidSynthGain.store(clamped, std::memory_order_relaxed);
+        mSynthEngine.setGain(mMasterGain * clamped);
     }
     void setDrumMasterVolume(float vol) {
         mDrumMasterVolume = vol;
@@ -858,6 +863,8 @@ private:
     std::atomic<int> mConfiguredBufferSize{512};
     std::atomic<bool> mBypassMasterFX{false};
     std::vector<float> mFloatRenderBuffer;
+
+    std::atomic<float> mFluidSynthGain{1.2f};
 
     // Sub-Bass 4-pole Butterworth HPF
     StereoBiquad mSubBassCut1;

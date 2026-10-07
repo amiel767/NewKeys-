@@ -607,17 +607,88 @@ private fun CategoryActionsListPage(
                 .weight(1f),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Pane 1 (Left Column)
-            LazyColumn(
+            // Pane 1 (Left Column) - Fixed Header Title + Scrollable List inside
+            Column(
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxHeight(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .fillMaxHeight()
             ) {
-                item {
-                    MidiReliefCard(title = "${category.displayName.uppercase()} ${if (col2Items.isNotEmpty()) "(PART 1)" else "ACTIONS"}") {
-                        Column {
-                            col1Items.forEachIndexed { index, item ->
+                Text(
+                    text = "${category.displayName.uppercase()} ${if (col2Items.isNotEmpty()) "(PART 1)" else "ACTIONS"}",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF94A3B8),
+                    letterSpacing = 0.8.sp,
+                    modifier = Modifier.padding(start = 6.dp, bottom = 5.dp)
+                )
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color(0xFF222836), Color(0xFF191F2C))
+                            )
+                        )
+                        .border(1.dp, Color(0x33475569), RoundedCornerShape(16.dp))
+                ) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(col1Items.size) { index ->
+                            val item = col1Items[index]
+                            ActionMappingRow(
+                                item = item,
+                                isLearning = (learningActionType == item.actionType),
+                                onStartLearn = { onStartLearn(item.actionType) },
+                                onUnmap = { onUnmapAction(item.actionType) },
+                                onToggleEnabled = { onToggleMappingEnabled(item.actionType) },
+                                onEditManual = { onEditManual(item) }
+                            )
+
+                            if (index < col1Items.size - 1) {
+                                MidiRowDivider()
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Pane 2 (Right Column) - Fixed Header Title + Scrollable List inside
+            if (col2Items.isNotEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                ) {
+                    Text(
+                        text = "${category.displayName.uppercase()} (PART 2)",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF94A3B8),
+                        letterSpacing = 0.8.sp,
+                        modifier = Modifier.padding(start = 6.dp, bottom = 5.dp)
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color(0xFF222836), Color(0xFF191F2C))
+                                )
+                            )
+                            .border(1.dp, Color(0x33475569), RoundedCornerShape(16.dp))
+                    ) {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            items(col2Items.size) { index ->
+                                val item = col2Items[index]
                                 ActionMappingRow(
                                     item = item,
                                     isLearning = (learningActionType == item.actionType),
@@ -627,39 +698,8 @@ private fun CategoryActionsListPage(
                                     onEditManual = { onEditManual(item) }
                                 )
 
-                                if (index < col1Items.size - 1) {
+                                if (index < col2Items.size - 1) {
                                     MidiRowDivider()
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Pane 2 (Right Column)
-            if (col2Items.isNotEmpty()) {
-                LazyColumn(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    item {
-                        MidiReliefCard(title = "${category.displayName.uppercase()} (PART 2)") {
-                            Column {
-                                col2Items.forEachIndexed { index, item ->
-                                    ActionMappingRow(
-                                        item = item,
-                                        isLearning = (learningActionType == item.actionType),
-                                        onStartLearn = { onStartLearn(item.actionType) },
-                                        onUnmap = { onUnmapAction(item.actionType) },
-                                        onToggleEnabled = { onToggleMappingEnabled(item.actionType) },
-                                        onEditManual = { onEditManual(item) }
-                                    )
-
-                                    if (index < col2Items.size - 1) {
-                                        MidiRowDivider()
-                                    }
                                 }
                             }
                         }

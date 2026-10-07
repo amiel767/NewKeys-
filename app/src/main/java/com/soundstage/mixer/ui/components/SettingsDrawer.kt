@@ -105,6 +105,8 @@ fun SettingsDrawer(
     onSelectPolyphony: (Int) -> Unit,
     isLowLatency: Boolean = true,
     onToggleLowLatency: () -> Unit = {},
+    fluidSynthGain: Float = 1.2f,
+    onFluidSynthGainChange: (Float) -> Unit = {},
     
     // Language
     selectedLanguage: String,
@@ -247,6 +249,8 @@ fun SettingsDrawer(
                             onSelectBufferSize = onSelectBufferSize,
                             polyphony = polyphony,
                             onSelectPolyphony = onSelectPolyphony,
+                            fluidSynthGain = fluidSynthGain,
+                            onFluidSynthGainChange = onFluidSynthGainChange,
                             onBack = { onNavigateSubPage("main") }
                         )
                     }
@@ -593,13 +597,14 @@ private fun AospCard(
                 .clip(RoundedCornerShape(16.dp))
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color(0xFF222836), Color(0xFF191F2C))
+                        listOf(Color(0xFF1E293B), Color(0xFF0F172A))
                     )
                 )
+                .border(1.dp, Color(0x2838BDF8), RoundedCornerShape(16.dp))
                 .drawWithContent {
                     drawContent()
                     drawLine(
-                        color = Color.White.copy(alpha = 0.10f),
+                        color = Color.White.copy(alpha = 0.12f),
                         start = Offset(6.dp.toPx(), 1f),
                         end = Offset(size.width - 6.dp.toPx(), 1f),
                         strokeWidth = 1.dp.toPx(),
@@ -685,27 +690,28 @@ private fun MidiDevicesSubPage(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(
+            Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0x14FFFFFF))
-                    .clickable { onBack() }
-                    .padding(horizontal = 10.dp, vertical = 5.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x1AFFFFFF))
+                    .clickable { onBack() },
+                contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back",
-                    tint = Color(0xFF3B82F6),
-                    modifier = Modifier.size(14.dp)
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
                 )
-                Text(text = "Back", fontSize = 10.sp, color = Color(0xFF3B82F6))
             }
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(text = "USB MIDI Devices", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Column {
+                Text(text = "USB MIDI Devices", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Text(text = "${midiDevices.count { it.isConnected }} device(s) connected", fontSize = 11.sp, color = Color(0xFF10B981))
+            }
         }
 
         if (midiDevices.isEmpty()) {
@@ -783,6 +789,8 @@ private fun BufferPolyphonySubPage(
     onSelectBufferSize: (Int) -> Unit,
     polyphony: Int,
     onSelectPolyphony: (Int) -> Unit,
+    fluidSynthGain: Float = 1.2f,
+    onFluidSynthGainChange: (Float) -> Unit = {},
     onBack: () -> Unit
 ) {
     val bufferSizes = listOf(64, 128, 256, 512, 1024)
@@ -793,27 +801,28 @@ private fun BufferPolyphonySubPage(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(
+            Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0x14FFFFFF))
-                    .clickable { onBack() }
-                    .padding(horizontal = 10.dp, vertical = 5.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x1AFFFFFF))
+                    .clickable { onBack() },
+                contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back",
-                    tint = Color(0xFF3B82F6),
-                    modifier = Modifier.size(14.dp)
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
                 )
-                Text(text = "Back", fontSize = 10.sp, color = Color(0xFF3B82F6))
             }
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(text = "Buffer & Polyphony", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Column {
+                Text(text = "Buffer, Polyphony & Gain", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Text(text = "Audio engine headroom & latency", fontSize = 11.sp, color = TextDim)
+            }
         }
 
         LazyColumn(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -902,6 +911,67 @@ private fun BufferPolyphonySubPage(
                     }
                 }
             }
+
+            item {
+                AospCard(title = "FluidSynth Master Gain") {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Synth Output Headroom",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = "%.2fx (Std: 1.20x)".format(fluidSynthGain),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (fluidSynthGain > 1.5f) Color(0xFFF59E0B) else Color(0xFF9BC0F8)
+                            )
+                        }
+
+                        Slider(
+                            value = fluidSynthGain,
+                            onValueChange = onFluidSynthGainChange,
+                            valueRange = 0.2f..2.5f,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(22.dp),
+                            colors = SliderDefaults.colors(
+                                thumbColor = Color.White,
+                                activeTrackColor = if (fluidSynthGain > 1.5f) Color(0xFFF59E0B) else Color(0xFF9BC0F8),
+                                inactiveTrackColor = Color(0x28FFFFFF)
+                            )
+                        )
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0x18F59E0B))
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "⚠️ Warning:",
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFF59E0B)
+                            )
+                            Text(
+                                text = "Gains above 1.50x may cause digital clipping on heavy polyphonic chords.",
+                                fontSize = 9.sp,
+                                color = Color(0xFFCBD5E1)
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -919,27 +989,28 @@ private fun LanguageSelectorSubPage(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(
+            Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0x14FFFFFF))
-                    .clickable { onBack() }
-                    .padding(horizontal = 10.dp, vertical = 5.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x1AFFFFFF))
+                    .clickable { onBack() },
+                contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back",
-                    tint = Color(0xFF3B82F6),
-                    modifier = Modifier.size(14.dp)
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
                 )
-                Text(text = "Back", fontSize = 10.sp, color = Color(0xFF3B82F6))
             }
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(text = "Language", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Column {
+                Text(text = "Language", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Text(text = "Choose UI display language", fontSize = 11.sp, color = TextDim)
+            }
         }
 
         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -949,8 +1020,8 @@ private fun LanguageSelectorSubPage(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
-                        .background(if (isSel) Color(0xFF1E2C3D) else Color(0xFF1E212E))
-                        .border(1.dp, if (isSel) Color(0xFF3B82F6) else Color(0x14FFFFFF), RoundedCornerShape(12.dp))
+                        .background(if (isSel) Color(0xFF1E3A8A) else Color(0xFF1E2433))
+                        .border(1.dp, if (isSel) Color(0xFF38BDF8) else Color(0x2838BDF8), RoundedCornerShape(12.dp))
                         .clickable { onSelectLanguage(lang) }
                         .padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -964,7 +1035,7 @@ private fun LanguageSelectorSubPage(
                         modifier = Modifier.weight(1f)
                     )
                     if (isSel) {
-                        Text(text = "✓", fontSize = 14.sp, color = Color(0xFF3B82F6), fontWeight = FontWeight.Bold)
+                        Text(text = "✓", fontSize = 14.sp, color = Color(0xFF38BDF8), fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -1086,29 +1157,27 @@ private fun ThemeSettingsSubPage(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(
+            Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0x14FFFFFF))
-                    .clickable { onBack() }
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x1AFFFFFF))
+                    .clickable { onBack() },
+                contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back",
-                    tint = Color(0xFF3B82F6),
-                    modifier = Modifier.size(14.dp)
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
                 )
-                Text(text = "Back", fontSize = 11.sp, color = Color(0xFF3B82F6))
             }
-            Spacer(modifier = Modifier.width(12.dp))
             Text(
                 text = "UI Settings",
-                fontSize = 15.sp,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White
             )

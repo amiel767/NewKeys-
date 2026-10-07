@@ -219,6 +219,14 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_setMasterVolume(
 }
 
 JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setFluidSynthGain(
+        JNIEnv *env,
+        jobject /* this */,
+        jfloat gain) {
+    gAudioEngine.setFluidSynthGain(gain);
+}
+
+JNIEXPORT void JNICALL
 Java_com_soundstage_mixer_audio_NativeAudioBridge_setPolyphony(
         JNIEnv *env,
         jobject /* this */,

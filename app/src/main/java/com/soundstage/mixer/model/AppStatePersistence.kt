@@ -216,7 +216,6 @@ class AppStatePersistence(context: Context) {
                         put("humanize", t.velocityConfig.humanize)
                         put("fixedEnabled", t.velocityConfig.fixedEnabled)
                         put("fixedValue", t.velocityConfig.fixedValue)
-                        put("invert", t.velocityConfig.invert)
                         val nodesArr = JSONArray()
                         t.velocityConfig.nodes.forEach { n ->
                             nodesArr.put(JSONObject().apply {
@@ -553,8 +552,7 @@ class AppStatePersistence(context: Context) {
                                         offset = velObj.optInt("offset", 0),
                                         humanize = velObj.optInt("humanize", 0),
                                         fixedEnabled = velObj.optBoolean("fixedEnabled", false),
-                                        fixedValue = velObj.optInt("fixedValue", 100),
-                                        invert = velObj.optBoolean("invert", false)
+                                        fixedValue = velObj.optInt("fixedValue", 100)
                                     )
                                 } else {
                                     VelocityConfig()

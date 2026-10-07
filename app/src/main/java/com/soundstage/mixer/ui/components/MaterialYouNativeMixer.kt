@@ -17,9 +17,11 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
@@ -41,6 +43,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -105,6 +108,7 @@ fun MaterialYouNativeMixer(
     onTrackNameClick: (Int) -> Unit,
     onFxClick: (Int) -> Unit,
     onPowerToggle: (Int) -> Unit = {},
+    onUnloadTrack: (Int) -> Unit = {},
     onTrackSettingsClick: (Int) -> Unit = {},
     // Top bar parameters
     transpose: Int,
@@ -199,6 +203,7 @@ fun MaterialYouNativeMixer(
                     onTrackNameClick = { onTrackNameClick(track.id) },
                     onFxClick = { onFxClick(track.id) },
                     onPowerToggle = { onPowerToggle(track.id) },
+                    onUnloadTrack = { onUnloadTrack(track.id) },
                     onTrackSettingsClick = { onTrackSettingsClick(track.id) },
                     modifier = Modifier
                         .weight(1f)
@@ -522,6 +527,7 @@ private fun StepperWidget(
  * - Custom Vertical Fader with real-time radial glow bloom and LED column
  * - FX button + Track power led
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MaterialYouChannelStrip(
     track: TrackChannel,
@@ -533,10 +539,12 @@ private fun MaterialYouChannelStrip(
     onTrackNameClick: () -> Unit,
     onFxClick: () -> Unit,
     onPowerToggle: () -> Unit = {},
+    onUnloadTrack: () -> Unit = {},
     onTrackSettingsClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val isEnabled = track.isEnabled
+    var showTrashBubble by remember { mutableStateOf(false) }
     val audioActivity = if (isEnabled) maxOf(track.peakMeterL, track.peakMeterR).coerceIn(0f, 1f) else 0f
     val baseIdleAlpha = if (isEnabled) 0.30f else 0.10f
     val reactiveAlpha = (baseIdleAlpha + audioActivity * 0.70f).coerceIn(0.10f, 1.0f)
@@ -816,7 +824,10 @@ private fun MaterialYouChannelStrip(
                         .clip(RoundedCornerShape(6.dp))
                         .background(powerBg)
                         .border(1.dp, powerBorder, RoundedCornerShape(6.dp))
-                        .clickable { onPowerToggle() },
+                        .combinedClickable(
+                            onClick = { onPowerToggle() },
+                            onLongClick = { showTrashBubble = true }
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
@@ -825,6 +836,76 @@ private fun MaterialYouChannelStrip(
                             .clip(CircleShape)
                             .background(if (isEnabled) Color.White else Color(0x33FFFFFF))
                     )
+
+                    if (showTrashBubble) {
+                        val floatTransition = rememberInfiniteTransition(label = "m3_bubble_floating")
+                        val floatOffset by floatTransition.animateFloat(
+                            initialValue = -120f,
+                            targetValue = -135f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(1200, easing = FastOutSlowInEasing),
+                                repeatMode = RepeatMode.Reverse
+                            ),
+                            label = "m3_float_offset"
+                        )
+                        val floatScale by floatTransition.animateFloat(
+                            initialValue = 1.0f,
+                            targetValue = 1.05f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(1200, easing = FastOutSlowInEasing),
+                                repeatMode = RepeatMode.Reverse
+                            ),
+                            label = "m3_float_scale"
+                        )
+
+                        androidx.compose.ui.window.Popup(
+                            alignment = Alignment.TopCenter,
+                            offset = androidx.compose.ui.unit.IntOffset(0, floatOffset.toInt()),
+                            onDismissRequest = { showTrashBubble = false }
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .graphicsLayer {
+                                        scaleX = floatScale
+                                        scaleY = floatScale
+                                    }
+                                    .shadow(12.dp, CircleShape, ambientColor = accentColor, spotColor = Color.Black)
+                                    .clip(CircleShape)
+                                    .background(
+                                        Brush.verticalGradient(
+                                            listOf(
+                                                accentColor.copy(alpha = 0.95f),
+                                                accentColor.copy(alpha = 0.70f),
+                                                Color(0xFF141722)
+                                            )
+                                        )
+                                    )
+                                    .clickable {
+                                        onUnloadTrack()
+                                        showTrashBubble = false
+                                    }
+                                    .padding(10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Canvas(Modifier.size(16.dp)) {
+                                    val sw = 1.3.dp.toPx()
+                                    val w = size.width
+                                    val h = size.height
+                                    drawLine(Color.White, Offset(w * 0.2f, h * 0.28f), Offset(w * 0.8f, h * 0.28f), sw, StrokeCap.Round)
+                                    drawLine(Color.White, Offset(w * 0.4f, h * 0.18f), Offset(w * 0.6f, h * 0.18f), sw, StrokeCap.Round)
+                                    val bodyPath = Path().apply {
+                                        moveTo(w * 0.26f, h * 0.32f)
+                                        lineTo(w * 0.32f, h * 0.88f)
+                                        lineTo(w * 0.68f, h * 0.88f)
+                                        lineTo(w * 0.74f, h * 0.32f)
+                                    }
+                                    drawPath(bodyPath, Color.White, style = Stroke(sw, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+                                    drawLine(Color.White, Offset(w * 0.42f, h * 0.42f), Offset(w * 0.44f, h * 0.78f), sw, StrokeCap.Round)
+                                    drawLine(Color.White, Offset(w * 0.58f, h * 0.42f), Offset(w * 0.56f, h * 0.78f), sw, StrokeCap.Round)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
