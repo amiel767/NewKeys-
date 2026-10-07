@@ -16,9 +16,11 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
 import com.soundstage.mixer.audio.NativeAudioBridge
+import com.soundstage.mixer.ui.components.VelocityProcessor
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.*
 
 /**
@@ -316,6 +318,12 @@ class AudioEngine(private val context: Context) {
     private val activeTonicPitches = mutableSetOf<Int>()
     private val activeShimmerPitches = mutableSetOf<Int>()
 
+    private val trackVelocityProcessors = ConcurrentHashMap<Int, VelocityProcessor>()
+
+    fun setTrackVelocityProcessor(channel: Int, processor: VelocityProcessor) {
+        trackVelocityProcessors[channel] = processor
+    }
+
     var trackVelocityCurveProvider: ((channel: Int) -> Float)? = null
 
     private fun applyVelocityCurve(velocity: Float, curve: Float): Float {
@@ -541,18 +549,15 @@ class AudioEngine(private val context: Context) {
 
             0x90 -> { // Note On (velocity == 0 is treated as Note Off)
                 if (data2 > 0) {
-                    val rawVel = (data2 / 127f).coerceIn(0.01f, 1.0f)
                     val activeChannels = targetChannels.toList()
                     activeMidiNoteMap[data1] = ActiveMidiNote(effectiveNote, activeChannels)
                     activeHeldNotes.add(effectiveNote)
                     sustainedNotesToRelease.remove(effectiveNote)
 
-                    var displayVelInt = (rawVel * 127f).toInt().coerceIn(1, 127)
+                    var displayVelInt = data2
                     activeChannels.forEach { ch ->
-                        val curve = trackVelocityCurveProvider?.invoke(ch) ?: 0.5f
-                        val curvedVel = applyVelocityCurve(rawVel, curve)
-                        val scaledVel = globalVelocityMin + curvedVel * (globalVelocityMax - globalVelocityMin)
-                        val chVelInt = (scaledVel * 127f).toInt().coerceIn(1, 127)
+                        val processor = trackVelocityProcessors[ch]
+                        val chVelInt = processor?.process(data2) ?: data2
                         displayVelInt = chVelInt
                         playMidiNote(effectiveNote, chVelInt, ch)
                     }
@@ -703,7 +708,9 @@ class AudioEngine(private val context: Context) {
     fun noteOn(noteName: String, velocity: Float = 0.85f, channel: Int = activeTargetChannel) {
         val baseMidi = noteNameToMidi(noteName)
         val midiNote = (baseMidi + globalOctaveShift * 12).coerceIn(0, 127)
-        val velInt = (velocity.coerceIn(0.01f, 1f) * 127f).toInt().coerceIn(1, 127)
+        val rawVelInt = (velocity.coerceIn(0.01f, 1f) * 127f).roundToInt().coerceIn(1, 127)
+        val processor = trackVelocityProcessors[channel]
+        val velInt = processor?.process(rawVelInt) ?: rawVelInt
         activeHeldNotes.add(midiNote)
         sustainedNotesToRelease.remove(midiNote)
         playMidiNote(midiNote, velInt, channel)

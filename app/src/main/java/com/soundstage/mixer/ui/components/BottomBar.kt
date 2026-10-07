@@ -135,11 +135,12 @@ fun BottomBar(
             var prevWallTime = System.currentTimeMillis()
 
             while (true) {
-                // Precise App PSS & Heap RAM consumption (JVM + Native FluidSynth / AudioTrack heap)
-                val jvmUsedMb = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024)
-                val nativeUsedMb = android.os.Debug.getNativeHeapAllocatedSize() / (1024 * 1024)
-                val totalAppMb = (jvmUsedMb + nativeUsedMb).toInt()
-                memoryMb = totalAppMb.coerceIn(12, 9999)
+                val jvmUsed = (runtime.totalMemory() - runtime.freeMemory())
+                val maxMem = runtime.maxMemory().coerceAtLeast(1024 * 1024 * 128)
+                val nativeUsed = android.os.Debug.getNativeHeapAllocatedSize()
+                val totalUsed = jvmUsed + nativeUsed
+                val calcPercent = ((totalUsed.toDouble() / (maxMem.toDouble() * 1.6)) * 100.0).roundToInt()
+                memoryMb = calcPercent.coerceIn(1, 99)
 
                 val curCpuTime = android.os.Process.getElapsedCpuTime()
                 val curWallTime = System.currentTimeMillis()
@@ -220,7 +221,7 @@ fun BottomBar(
                             .background(Color(0xFF38BDF8))
                     )
                     Text(
-                        text = "RAM ${memoryMb}M",
+                        text = "RAM ${memoryMb}%",
                         fontSize = 8.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFFCBD5E1),

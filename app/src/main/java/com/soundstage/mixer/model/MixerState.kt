@@ -5,9 +5,10 @@ import com.soundstage.mixer.ui.theme.NeonCyan
 import com.soundstage.mixer.ui.theme.NeonMagenta
 import com.soundstage.mixer.ui.theme.MuteRed
 import com.soundstage.mixer.ui.theme.SoloAmber
+import com.soundstage.mixer.ui.components.VelocityConfig
 
 enum class ActivePopup {
-    NONE, DRUM_PAD, TONIC_PAD, NOTES, SCENE, EFFECTS, SOUNDFONT, STYLE, MIDI, LOOPS
+    NONE, DRUM_PAD, TONIC_PAD, NOTES, SCENE, EFFECTS, SOUNDFONT, STYLE, MIDI, LOOPS, TRACK_SETTINGS, VELOCITY_SETTINGS
 }
 
 enum class AppScreenPage {
@@ -134,8 +135,11 @@ data class TrackChannel(
     val reverbSize: Float = 0.60f,
     val reverbDecay: Float = 0.45f,
     val velocityCurve: Float = 0.5f, // 0 = Soft, 0.5 = Linear, 1 = Hard
+    val velocityConfig: VelocityConfig = VelocityConfig(),
     val splitNoteMin: Int = 24, // C1
     val splitNoteMax: Int = 108, // C7
+    val midiChannel: Int = 1, // 0 = Omni, 1..16 = Ch 1-16
+    val selectedMidiDeviceId: String? = null, // null = All devices
     // Peak meters (0f..1f)
     val peakMeterL: Float = 0.0f,
     val peakMeterR: Float = 0.0f

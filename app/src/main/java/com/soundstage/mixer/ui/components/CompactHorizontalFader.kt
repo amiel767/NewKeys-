@@ -41,6 +41,7 @@ fun CompactHorizontalFaderStrip(
     onSoloClick: () -> Unit = {},
     onTrackNameClick: () -> Unit = {},
     onFxClick: () -> Unit = {},
+    onTrackSettingsClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val isMaster = track.isMaster
@@ -240,6 +241,7 @@ fun CompactHorizontalFadersRack(
     onSoloClick: (Int) -> Unit,
     onTrackNameClick: (Int) -> Unit,
     onFxClick: (Int) -> Unit,
+    onTrackSettingsClick: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     LazyRow(
@@ -258,7 +260,8 @@ fun CompactHorizontalFadersRack(
                 onMuteClick = { onMuteClick(track.id) },
                 onSoloClick = { onSoloClick(track.id) },
                 onTrackNameClick = { onTrackNameClick(track.id) },
-                onFxClick = { onFxClick(track.id) }
+                onFxClick = { onFxClick(track.id) },
+                onTrackSettingsClick = { onTrackSettingsClick(track.id) }
             )
         }
     }

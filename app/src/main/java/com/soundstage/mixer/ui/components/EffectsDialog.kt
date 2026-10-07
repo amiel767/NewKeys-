@@ -68,12 +68,10 @@ fun EffectsDialog(
             "sg" to "Maximizer"
         )
     } else {
-        listOf(
-            "velocity" to "Velocity"
-        )
+        emptyList()
     }
 
-    val effectiveTab = if (trackId != 0) "velocity" else activeTab
+    val effectiveTab = if (trackId != 0) "none" else activeTab
 
     Box(
         modifier = modifier
@@ -293,85 +291,6 @@ fun EffectsDialog(
                                         size = 46.dp
                                     )
                                 }
-                            }
-                        }
-                    }
-                    "velocity" -> {
-                        var curveValue by remember(track?.velocityCurve) { mutableFloatStateOf(track?.velocityCurve ?: 0.5f) }
-
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = 10.dp),
-                            verticalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            Column {
-                                Text(
-                                    text = "DYNAMIC VELOCITY CURVE",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextPrimary
-                                )
-                                Text(
-                                    text = "Adjust keyboard strike sensitivity and response curve for this track.",
-                                    fontSize = 9.sp,
-                                    color = TextDim
-                                )
-                            }
-
-                            // Dynamic Visualizer Curve
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(90.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(Color(0xFF080A10))
-                                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(10.dp))
-                            ) {
-                                Canvas(modifier = Modifier.fillMaxSize()) {
-                                    val w = size.width
-                                    val h = size.height
-                                    val ctrlY = h - (curveValue * h)
-                                    val path = Path().apply {
-                                        moveTo(0f, h)
-                                        quadraticTo(w * 0.5f, ctrlY, w, 0f)
-                                    }
-                                    drawPath(path, NeonCyan, style = Stroke(width = 3f))
-                                }
-                            }
-
-                            Column {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(text = "Soft Touch", fontSize = 9.sp, color = TextDim)
-                                    Text(
-                                        text = when {
-                                            curveValue < 0.35f -> "Soft"
-                                            curveValue > 0.65f -> "Hard"
-                                            else -> "Linear"
-                                        },
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = NeonCyan
-                                    )
-                                    Text(text = "Hard Touch", fontSize = 9.sp, color = TextDim)
-                                }
-
-                                Slider(
-                                    value = curveValue,
-                                    onValueChange = {
-                                        curveValue = it
-                                        onSetVelocityCurve(it)
-                                    },
-                                    colors = SliderDefaults.colors(
-                                        thumbColor = NeonCyan,
-                                        activeTrackColor = NeonCyan,
-                                        inactiveTrackColor = Color(0x1AFFFFFF)
-                                    ),
-                                    modifier = Modifier.fillMaxWidth()
-                                )
                             }
                         }
                     }
@@ -820,6 +739,21 @@ fun EffectsDialog(
                                 onUpdateFx { it.copy(sgMode = newMode) }
                             }
                         )
+                    }
+                    else -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (trackId == 0) "Master FX Rack" else "Track $trackId FX Rack (Empty)",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextDim
+                            )
+                        }
                     }
                 }
             }

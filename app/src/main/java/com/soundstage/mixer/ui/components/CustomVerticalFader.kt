@@ -1,5 +1,8 @@
 package com.soundstage.mixer.ui.components
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -52,8 +55,8 @@ fun CustomVerticalFader(
     audioActivity: Float = 0f,
     isEnabled: Boolean = true,
     showTicks: Boolean = true,
-    trackWidth: Dp = 20.dp,
-    trackHeight: Dp = 220.dp,
+    trackWidth: Dp = 18.dp,
+    trackHeight: Dp = 205.dp,
     thumbWidth: Dp = 51.dp,
     thumbHeight: Dp = 64.dp,
     modifier: Modifier = Modifier
@@ -167,22 +170,31 @@ fun CustomVerticalFader(
         val offsetYPx = ((1f - localValue.coerceIn(0f, 1f)) * usableHeightPx).roundToInt()
         val bonnetCenterYPx = offsetYPx + thumbHeightPx / 2f
 
-        // ================= 1. PRECISION RAIL & AUDIO-RESPONSIVE GAUGE LINE =================
+        // ================= 1. PRECISION CODE-DRAWN FADER RAIL =================
         val isAudioSoundActive = isEnabled && audioActivity > 0.015f
         val dynamicAura = auraColor.copy(alpha = 1.0f)
 
-        val lightenedTrackMatrix = remember {
-            ColorMatrix(
-                floatArrayOf(
-                    1.40f, 0f, 0f, 0f, 32f,
-                    0f, 1.40f, 0f, 0f, 32f,
-                    0f, 0f, 1.45f, 0f, 36f,
-                    0f, 0f, 0f, 1.0f, 0f
-                )
-            )
+        val trackWidthPx = with(density) { trackWidth.toPx() }
+        val railScale = trackWidthPx / 86f
+        val grooveInsetYPx = 36f * railScale
+        val grooveUsableHeightPx = containerHeightPx - 2f * grooveInsetYPx
+
+        val calculatedLevel = if (!isEnabled || grooveUsableHeightPx <= 0f) {
+            0f
+        } else {
+            (((containerHeightPx - grooveInsetYPx) - bonnetCenterYPx) / grooveUsableHeightPx).coerceIn(0f, 1f)
         }
 
-        val trackRadiusPx = with(density) { (trackWidth / 2f).toPx() }
+        val targetGlow = if (isEnabled) audioActivity.coerceIn(0f, 1f) else 0f
+        val animatedGlow by animateFloatAsState(
+            targetValue = targetGlow,
+            animationSpec = if (targetGlow > 0.05f) {
+                tween(durationMillis = 40)
+            } else {
+                tween(durationMillis = 350, easing = FastOutSlowInEasing)
+            },
+            label = "faderRailGlow"
+        )
 
         Box(
             modifier = Modifier
@@ -190,92 +202,14 @@ fun CustomVerticalFader(
                 .fillMaxHeight(),
             contentAlignment = Alignment.Center
         ) {
-            // ================= REALISTIC OBLONG CAPSULE RAIL CHASSIS =================
-            Image(
-                painter = painterResource(id = R.drawable.ic_fader_track),
-                contentDescription = "Fader Rail Track",
-                contentScale = ContentScale.FillBounds,
-                colorFilter = ColorFilter.colorMatrix(lightenedTrackMatrix),
+            FaderRail(
+                accent = auraColor,
                 modifier = Modifier
                     .width(trackWidth)
-                    .fillMaxHeight()
+                    .fillMaxHeight(),
+                level = calculatedLevel,
+                glow = animatedGlow
             )
-
-            // ================= CENTRAL GAUGE LINE: ANCHORED EXACTLY FROM THUMB TO BOTTOM GROOVE STOP =================
-            if (isEnabled && containerHeightPx > (trackRadiusPx * 2f)) {
-                // The physical inner groove stop corresponds to the rail capsule's bottom inner terminus
-                val bottomStopPx = (containerHeightPx - trackRadiusPx).coerceAtLeast(trackRadiusPx)
-                val currentYPx = bonnetCenterYPx.coerceIn(trackRadiusPx, bottomStopPx)
-                val activeHeightPx = (bottomStopPx - currentYPx).coerceAtLeast(0f)
-
-                if (activeHeightPx > 0.5f) {
-                    Canvas(
-                        modifier = Modifier
-                            .width(trackWidth)
-                            .fillMaxHeight()
-                    ) {
-                        val w = size.width
-                        val centerX = (w / 2f).roundToInt().toFloat()
-                        val lineWidthPx = (3.dp.toPx()).roundToInt().toFloat()
-                        val lineLeft = centerX - (lineWidthPx / 2f)
-                        val lineCorner = CornerRadius(lineWidthPx / 2f, lineWidthPx / 2f)
-
-                        val coreAlpha = if (isAudioSoundActive) 0.95f else 0.75f
-                        val glowAlpha = if (isAudioSoundActive) (0.22f + audioActivity.coerceIn(0f, 1f) * 0.20f) else 0.10f
-
-                        // Subtle diffused studio aura behind the line (clean, not neon)
-                        drawRoundRect(
-                            brush = Brush.verticalGradient(
-                                colors = listOf(
-                                    dynamicAura.copy(alpha = glowAlpha * 1.2f),
-                                    dynamicAura.copy(alpha = glowAlpha * 0.6f)
-                                ),
-                                startY = currentYPx,
-                                endY = bottomStopPx
-                            ),
-                            topLeft = Offset(lineLeft - 1.2.dp.toPx(), currentYPx),
-                            size = Size(lineWidthPx + 2.4.dp.toPx(), activeHeightPx),
-                            cornerRadius = CornerRadius((lineWidthPx + 2.4.dp.toPx()) / 2f, (lineWidthPx + 2.4.dp.toPx()) / 2f)
-                        )
-
-                        // Core gauge line in exact track color
-                        drawRoundRect(
-                            brush = Brush.verticalGradient(
-                                colors = listOf(
-                                    dynamicAura.copy(alpha = coreAlpha),
-                                    dynamicAura.copy(alpha = (coreAlpha * 0.85f).coerceAtLeast(0.45f))
-                                ),
-                                startY = currentYPx,
-                                endY = bottomStopPx
-                            ),
-                            topLeft = Offset(lineLeft, currentYPx),
-                            size = Size(lineWidthPx, activeHeightPx),
-                            cornerRadius = lineCorner
-                        )
-
-                        // Realistic LED bright filament active when audio plays
-                        if (isAudioSoundActive && audioActivity > 0.015f) {
-                            val ledIntensity = audioActivity.coerceIn(0f, 1f)
-                            val filamentWidthPx = (1.4.dp.toPx()).roundToInt().toFloat()
-                            val filamentLeft = centerX - (filamentWidthPx / 2f)
-                            drawRoundRect(
-                                brush = Brush.verticalGradient(
-                                    colors = listOf(
-                                        Color.White.copy(alpha = (0.75f + ledIntensity * 0.20f).coerceIn(0.75f, 0.95f)),
-                                        dynamicAura.copy(alpha = (0.85f + ledIntensity * 0.15f).coerceIn(0.85f, 1.0f)),
-                                        dynamicAura.copy(alpha = 0.65f)
-                                    ),
-                                    startY = currentYPx,
-                                    endY = bottomStopPx
-                                ),
-                                topLeft = Offset(filamentLeft, currentYPx),
-                                size = Size(filamentWidthPx, activeHeightPx),
-                                cornerRadius = CornerRadius(filamentWidthPx / 2f, filamentWidthPx / 2f)
-                            )
-                        }
-                    }
-                }
-            }
         }
 
         // ================= 2. CAP / THUMB BONNET AUTHENTIC PNG ELEMENT (+10% SIZE, SUBTLY LIGHTENED) =================

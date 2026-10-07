@@ -47,8 +47,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.model.AppTheme
+import com.soundstage.mixer.model.TrackChannel
 import com.soundstage.mixer.model.MidiDeviceItem
 import com.soundstage.mixer.model.MidiMappingItem
 import com.soundstage.mixer.model.MidiActionType
@@ -84,10 +87,14 @@ fun SettingsDrawer(
     onUpdateManualMidiMapping: (MidiActionType, MidiControlType, Int, Int) -> Unit = { _, _, _, _ -> },
     onResetMidiMappings: () -> Unit = {},
     onClearMidiMappings: () -> Unit = {},
-    midiDebounceEnabled: Boolean = true,
-    midiDebounceMs: Long = 60L,
+    midiDebounceEnabled: Boolean = false,
+    midiDebounceMs: Long = 30L,
     onToggleMidiDebounce: () -> Unit = {},
     onUpdateMidiDebounceMs: (Long) -> Unit = {},
+    tracks: List<TrackChannel> = emptyList(),
+    selectedMidiOutputDevice: String = "All Connected Devices",
+    onSelectMidiOutputDevice: (String) -> Unit = {},
+    onUpdateTrackMidiChannel: (Int, Int) -> Unit = { _, _ -> },
     
     // Audio Engine / Buffer & Polyphony
     audioEngine: String = "Oboe (C++)",
@@ -314,9 +321,9 @@ private fun AospMainSettingsPage(
     onSpatialWidenerChange: (Float) -> Unit,
     keepScreenOn: Boolean,
     onToggleKeepScreenOn: () -> Unit,
-    velocityMin: Float,
-    velocityMax: Float,
-    onVelocityRangeChange: (Float, Float) -> Unit,
+    velocityMin: Float = 0f,
+    velocityMax: Float = 1f,
+    onVelocityRangeChange: (Float, Float) -> Unit = { _, _ -> },
     useFlats: Boolean = false,
     onToggleUseFlats: () -> Unit = {}
 ) {
@@ -556,40 +563,6 @@ private fun AospMainSettingsPage(
                                     uncheckedTrackColor = Color(0xFF33384A)
                                 )
                             )
-                        }
-                    }
-                }
-            }
-
-            // CARD 4: DYNAMICS & VELOCITY
-            item {
-                AospCard(title = "Dynamics & Velocity") {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        // Velocity Min/Max
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Velocity Range (Min - Max): ${(velocityMin * 127).roundToInt()} - ${(velocityMax * 127).roundToInt()}",
-                                    fontSize = 9.sp,
-                                    color = TextDim
-                                )
-                                val safeMin = minOf(velocityMin, velocityMax).coerceIn(0f, 1f)
-                                val safeMax = maxOf(velocityMin, velocityMax).coerceIn(0f, 1f)
-                                androidx.compose.material3.RangeSlider(
-                                    value = safeMin..safeMax,
-                                    onValueChange = { range -> onVelocityRangeChange(range.start, range.endInclusive) },
-                                    valueRange = 0f..1f,
-                                    colors = SliderDefaults.colors(thumbColor = Color(0xFF3B82F6), activeTrackColor = Color(0xFF3B82F6))
-                                )
-                            }
                         }
                     }
                 }
@@ -1377,6 +1350,209 @@ private fun ThemeSliderCard(
                     tint = Color(0xFFCBD5E1),
                     modifier = Modifier.size(16.dp)
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MidiRoutingSubPage(
+    midiDevices: List<MidiDeviceItem>,
+    tracks: List<TrackChannel>,
+    selectedMidiOutputDevice: String,
+    onSelectMidiOutputDevice: (String) -> Unit,
+    onUpdateTrackMidiChannel: (Int, Int) -> Unit,
+    onBack: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x18FFFFFF))
+                    .clickable { onBack() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+            Text(
+                text = "MIDI Output & Channel Routing",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+        }
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // CARD 1: USB MIDI OUTPUT DEVICE
+            item {
+                AospCard(title = "USB MIDI Output Device") {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "Select active MIDI hardware output port:",
+                            fontSize = 11.sp,
+                            color = Color(0xFF94A3B8)
+                        )
+                        val outputOptions = mutableListOf("All Connected Devices", "None (Internal Only)")
+                        outputOptions.addAll(midiDevices.filter { it.isConnected }.map { it.name })
+
+                        outputOptions.distinct().forEach { devName ->
+                            val isSelected = selectedMidiOutputDevice.equals(devName, ignoreCase = true)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSelected) Color(0x223B82F6) else Color(0x0CFFFFFF))
+                                    .border(1.dp, if (isSelected) Color(0xFF3B82F6) else Color(0x18FFFFFF), RoundedCornerShape(8.dp))
+                                    .clickable { onSelectMidiOutputDevice(devName) }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Usb,
+                                        contentDescription = null,
+                                        tint = if (isSelected) Color(0xFF3B82F6) else Color(0xFF94A3B8),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = devName,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) Color.White else Color(0xFFCBD5E1)
+                                    )
+                                }
+                                if (isSelected) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFF3B82F6))
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // CARD 2: TRACK MIDI CHANNEL ROUTING
+            item {
+                AospCard(title = "Track MIDI Channel Assignment") {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Assign MIDI input channels to tracks for instant multi-channel routing:",
+                            fontSize = 11.sp,
+                            color = Color(0xFF94A3B8)
+                        )
+
+                        if (tracks.isEmpty()) {
+                            Text(
+                                text = "No active tracks available",
+                                fontSize = 11.5.sp,
+                                color = Color(0xFF64748B)
+                            )
+                        } else {
+                            tracks.forEach { track ->
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0x12FFFFFF))
+                                        .border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(10.dp))
+                                        .padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(8.dp)
+                                                    .clip(CircleShape)
+                                                    .background(getTrackThemeColor(track.id, track.isMaster))
+                                            )
+                                            Text(
+                                                text = "Track ${track.id}: ${track.name}",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White
+                                            )
+                                        }
+
+                                        val soundLabel = if (track.patchName.isNotBlank()) track.patchName else if (track.soundfontName.isNotBlank()) track.soundfontName else "Default"
+                                        Text(
+                                            text = soundLabel,
+                                            fontSize = 10.5.sp,
+                                            color = Color(0xFF94A3B8)
+                                        )
+                                    }
+
+                                    // MIDI Channel Buttons Row
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        val channelOptions = listOf(-1 to "OMNI") + (0..15).map { it to "Ch.${it + 1}" }
+                                        channelOptions.forEach { (chVal, chLabel) ->
+                                            val isChSelected = track.midiChannel == chVal
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(if (isChSelected) Color(0xFF3B82F6) else Color(0x1AFFFFFF))
+                                                    .clickable { onUpdateTrackMidiChannel(track.id, chVal) }
+                                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = chLabel,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = if (isChSelected) FontWeight.Bold else FontWeight.Normal,
+                                                    color = if (isChSelected) Color.White else Color(0xFFCBD5E1)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

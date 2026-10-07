@@ -58,7 +58,7 @@ fun MidiLearnSubPage(
     onClearAll: () -> Unit,
     onBack: () -> Unit,
     onExpandedChange: (Boolean) -> Unit = {},
-    midiDebounceEnabled: Boolean = true,
+    midiDebounceEnabled: Boolean = false,
     midiDebounceMs: Long = 60L,
     onToggleMidiDebounce: () -> Unit = {},
     onUpdateMidiDebounceMs: (Long) -> Unit = {},
@@ -429,10 +429,10 @@ private fun MidiSectionsCataloguePage(
                                 }
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Slider(
-                                    value = midiDebounceMs.toFloat(),
+                                    value = midiDebounceMs.toFloat().coerceIn(5f, 120f),
                                     onValueChange = { onUpdateMidiDebounceMs(it.toLong()) },
-                                    valueRange = 15f..150f,
-                                    steps = 9,
+                                    valueRange = 5f..120f,
+                                    steps = 22,
                                     colors = SliderDefaults.colors(
                                         thumbColor = Color(0xFF10B981),
                                         activeTrackColor = Color(0xFF10B981),

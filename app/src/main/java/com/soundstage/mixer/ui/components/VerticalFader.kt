@@ -42,6 +42,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.soundstage.mixer.model.TrackChannel
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material3.Icon
+import androidx.compose.ui.draw.drawWithContent
 import com.soundstage.mixer.ui.theme.*
 import kotlin.math.PI
 import kotlin.math.abs
@@ -110,6 +114,7 @@ fun VerticalTrackChannel(
     onSoloClick: () -> Unit = {},
     onTrackNameClick: () -> Unit = {},
     onFxClick: () -> Unit = {},
+    onTrackSettingsClick: () -> Unit = {},
     showTicks: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -267,7 +272,7 @@ fun VerticalTrackChannel(
             }
         }
 
-        Spacer(modifier = Modifier.height(3.dp))
+        Spacer(modifier = Modifier.height(5.dp))
 
         // ================= 3. VERTICAL FADER WITH REALISTIC 3D BONNET & AUDIO-REACTIVE VU =================
         FaderSliderWithVuMeter(
@@ -284,70 +289,18 @@ fun VerticalTrackChannel(
                 .fillMaxWidth()
         )
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(5.dp))
 
         // ================= 4. BOTTOM ACTION BUTTONS =================
         if (!isMaster) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(24.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // FX Button
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(23.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0xFF162132))
-                        .border(1.dp, Color(0x3322D3EE), RoundedCornerShape(6.dp))
-                        .clickable { onFxClick() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "FX",
-                        fontSize = 8.5.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = NeonCyanLight
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(3.dp))
-
-                // Power Square Button with Long-press for Delete Channel bubble
-                val powerBg by animateColorAsState(
-                    targetValue = if (isEnabled) Color(0xFF0077B6) else Color(0xFF1A1F2C),
-                    animationSpec = tween(100),
-                    label = "power_bg"
-                )
-                val powerBorder = if (isEnabled) NeonCyan else Color(0x1EFFFFFF)
-                val powerDotColor = if (isEnabled) Color(0xFF90E0EF) else Color(0x44FFFFFF)
-
-                Box(
-                    modifier = Modifier
-                        .size(23.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(powerBg)
-                        .border(1.dp, powerBorder, RoundedCornerShape(6.dp))
-                        .pointerInput(track.id) {
-                            detectTapGestures(
-                                onTap = { onPowerToggle() },
-                                onLongPress = { showDeleteBubble = true }
-                            )
-                        }
-                        .testTag("power_btn_${track.id}"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(7.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(powerDotColor)
-                    )
-                }
-            }
+            TrackBottomRow(
+                trackColor = vibrantLedColor,
+                active = track.isEnabled,
+                onFx = onFxClick,
+                onSettings = onTrackSettingsClick,
+                onToggle = onPowerToggle,
+                height = 22.dp
+            )
         } else {
             // Master Track: FX Button
             Box(
@@ -550,8 +503,8 @@ fun FaderSliderWithVuMeter(
             audioActivity = audioActivity,
             isEnabled = isEnabled,
             showTicks = showTicks,
-            trackWidth = 20.dp,
-            trackHeight = 220.dp,
+            trackWidth = 18.dp,
+            trackHeight = 205.dp,
             thumbWidth = 51.dp,
             thumbHeight = 64.dp,
             modifier = Modifier.fillMaxSize()

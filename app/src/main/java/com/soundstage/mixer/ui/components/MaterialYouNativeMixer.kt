@@ -28,7 +28,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -103,6 +104,8 @@ fun MaterialYouNativeMixer(
     onSoloClick: (Int) -> Unit,
     onTrackNameClick: (Int) -> Unit,
     onFxClick: (Int) -> Unit,
+    onPowerToggle: (Int) -> Unit = {},
+    onTrackSettingsClick: (Int) -> Unit = {},
     // Top bar parameters
     transpose: Int,
     onTransposeChange: (Int) -> Unit,
@@ -195,6 +198,8 @@ fun MaterialYouNativeMixer(
                     onSoloClick = { onSoloClick(track.id) },
                     onTrackNameClick = { onTrackNameClick(track.id) },
                     onFxClick = { onFxClick(track.id) },
+                    onPowerToggle = { onPowerToggle(track.id) },
+                    onTrackSettingsClick = { onTrackSettingsClick(track.id) },
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
@@ -527,6 +532,8 @@ private fun MaterialYouChannelStrip(
     onSoloClick: () -> Unit,
     onTrackNameClick: () -> Unit,
     onFxClick: () -> Unit,
+    onPowerToggle: () -> Unit = {},
+    onTrackSettingsClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val isEnabled = track.isEnabled
@@ -711,48 +718,112 @@ private fun MaterialYouChannelStrip(
 
             Spacer(modifier = Modifier.height(3.dp))
 
-            // D. BOTTOM FX BUTTON & POWER INDICATOR
+            // D. BOTTOM ACTION BUTTONS: UNIFIED (FX | SETTINGS) + SQUARE POWER
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(22.dp),
+                    .height(24.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // FX & Settings Unified Block
                 Box(
                     modifier = Modifier
-                        .weight(1f)
+                        .weight(1.8f)
                         .fillMaxHeight()
-                        .clip(RoundedCornerShape(5.dp))
-                        .background(Color(0xFF1C202C))
-                        .border(1.dp, Color(0xFF262A3A), RoundedCornerShape(5.dp))
-                        .clickable { onFxClick() },
-                    contentAlignment = Alignment.Center
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color(0xFF222634), Color(0xFF181B26))
+                            )
+                        )
+                        .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(6.dp))
+                        .drawWithContent {
+                            drawContent()
+                            drawLine(
+                                color = Color.White.copy(alpha = 0.12f),
+                                start = Offset(3.dp.toPx(), 1f),
+                                end = Offset(size.width - 3.dp.toPx(), 1f),
+                                strokeWidth = 1.dp.toPx(),
+                                cap = StrokeCap.Round
+                            )
+                        }
                 ) {
-                    Text(
-                        text = "FX",
-                        fontSize = 8.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF8E94A8)
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clickable { onFxClick() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "FX",
+                                fontSize = 8.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isEnabled) Color(0xFF90E0EF) else Color(0x6690E0EF)
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .width(1.dp)
+                                .fillMaxHeight(0.60f)
+                                .background(Color(0x22FFFFFF))
+                        )
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clickable { onTrackSettingsClick() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Tune,
+                                contentDescription = "Settings",
+                                tint = if (isEnabled) Color(0xFFCBD5E1) else Color(0x66CBD5E1),
+                                modifier = Modifier.size(11.dp)
+                            )
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.width(3.dp))
 
+                // Independent Square Power Button (no text, glowing/faded)
+                val powerBg = if (isEnabled) {
+                    Brush.radialGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.35f),
+                            accentColor.copy(alpha = 0.70f),
+                            accentColor.copy(alpha = 0.85f)
+                        )
+                    )
+                } else {
+                    Brush.verticalGradient(
+                        listOf(Color(0xFF222634), Color(0xFF181B26))
+                    )
+                }
+                val powerBorder = if (isEnabled) accentColor.copy(alpha = 0.70f) else Color(0x22FFFFFF)
+
                 Box(
                     modifier = Modifier
-                        .size(22.dp)
-                        .clip(RoundedCornerShape(5.dp))
-                        .background(Color(0xFF1C202C))
-                        .border(1.dp, Color(0xFF262A3A), RoundedCornerShape(5.dp))
-                        .clickable { onFxClick() },
+                        .size(24.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(powerBg)
+                        .border(1.dp, powerBorder, RoundedCornerShape(6.dp))
+                        .clickable { onPowerToggle() },
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(7.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(if (isEnabled) accentColor else Color(0x33FFFFFF))
+                            .size(5.dp)
+                            .clip(CircleShape)
+                            .background(if (isEnabled) Color.White else Color(0x33FFFFFF))
                     )
                 }
             }

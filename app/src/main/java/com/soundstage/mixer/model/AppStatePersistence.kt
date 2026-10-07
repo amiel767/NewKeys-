@@ -3,6 +3,9 @@ package com.soundstage.mixer.model
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import com.soundstage.mixer.ui.components.CurveNode
+import com.soundstage.mixer.ui.components.VelocityConfig
+import com.soundstage.mixer.ui.components.VelocityPresets
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -76,6 +79,7 @@ class AppStatePersistence(context: Context) {
         val reverbPreset: String,
         val reverbMix: Float,
         val velocityCurve: Float = 0.5f,
+        val velocityConfig: VelocityConfig = VelocityConfig(),
         val splitNoteMin: Int = 24,
         val splitNoteMax: Int = 108
     )
@@ -172,7 +176,7 @@ class AppStatePersistence(context: Context) {
         configuredSnapshotSlots: List<String> = listOf("slot_default"),
         snapshotCustomNames: Map<String, String> = emptyMap(),
         visibleTracksCount: Int = 1,
-        activeProjectName: String = "Setlist 1",
+        activeProjectName: String = "",
         themeHue: Float = 185f,
         themeSaturation: Float = 0.85f,
         themeNuance: Float = 0.50f,
@@ -186,8 +190,8 @@ class AppStatePersistence(context: Context) {
         patches: List<PatchItem> = emptyList(),
         activePatchId: String? = null,
         midiMappings: List<MidiMappingItem> = emptyList(),
-        midiDebounceEnabled: Boolean = true,
-        midiDebounceMs: Long = 60L
+        midiDebounceEnabled: Boolean = false,
+        midiDebounceMs: Long = 30L
     ) {
         try {
             val tracksArray = JSONArray()
@@ -205,6 +209,24 @@ class AppStatePersistence(context: Context) {
                     put("reverbPreset", t.reverbPreset)
                     put("reverbMix", t.reverbMix.toDouble())
                     put("velocityCurve", t.velocityCurve.toDouble())
+                    val velObj = JSONObject().apply {
+                        put("floor", t.velocityConfig.floor)
+                        put("ceiling", t.velocityConfig.ceiling)
+                        put("offset", t.velocityConfig.offset)
+                        put("humanize", t.velocityConfig.humanize)
+                        put("fixedEnabled", t.velocityConfig.fixedEnabled)
+                        put("fixedValue", t.velocityConfig.fixedValue)
+                        put("invert", t.velocityConfig.invert)
+                        val nodesArr = JSONArray()
+                        t.velocityConfig.nodes.forEach { n ->
+                            nodesArr.put(JSONObject().apply {
+                                put("x", n.x)
+                                put("y", n.y)
+                            })
+                        }
+                        put("nodes", nodesArr)
+                    }
+                    put("velocityConfig", velObj)
                     put("splitNoteMin", t.splitNoteMin)
                     put("splitNoteMax", t.splitNoteMax)
                 }
@@ -510,6 +532,34 @@ class AppStatePersistence(context: Context) {
                             reverbPreset = obj.optString("reverbPreset", "Concert Hall"),
                             reverbMix = obj.optDouble("reverbMix", 0.20).toFloat(),
                             velocityCurve = obj.optDouble("velocityCurve", 0.5).toFloat(),
+                            velocityConfig = run {
+                                val velObj = obj.optJSONObject("velocityConfig")
+                                if (velObj != null) {
+                                    val nodesArr = velObj.optJSONArray("nodes")
+                                    val parsedNodes = if (nodesArr != null && nodesArr.length() > 0) {
+                                        val list = mutableListOf<CurveNode>()
+                                        for (ni in 0 until nodesArr.length()) {
+                                            val no = nodesArr.optJSONObject(ni)
+                                            if (no != null) {
+                                                list.add(CurveNode(no.optInt("x", 0), no.optInt("y", 0)))
+                                            }
+                                        }
+                                        if (list.size >= 2) list else VelocityPresets.Linear
+                                    } else VelocityPresets.Linear
+                                    VelocityConfig(
+                                        nodes = parsedNodes,
+                                        floor = velObj.optInt("floor", 0),
+                                        ceiling = velObj.optInt("ceiling", 127),
+                                        offset = velObj.optInt("offset", 0),
+                                        humanize = velObj.optInt("humanize", 0),
+                                        fixedEnabled = velObj.optBoolean("fixedEnabled", false),
+                                        fixedValue = velObj.optInt("fixedValue", 100),
+                                        invert = velObj.optBoolean("invert", false)
+                                    )
+                                } else {
+                                    VelocityConfig()
+                                }
+                            },
                             splitNoteMin = obj.optInt("splitNoteMin", 24),
                             splitNoteMax = obj.optInt("splitNoteMax", 108)
                         )
@@ -837,8 +887,8 @@ class AppStatePersistence(context: Context) {
                 }
             }
 
-            val midiDebounceEnabled = if (prefs.contains(KEY_MIDI_DEBOUNCE_ENABLED)) prefs.getBoolean(KEY_MIDI_DEBOUNCE_ENABLED, true) else null
-            val midiDebounceMs = if (prefs.contains(KEY_MIDI_DEBOUNCE_MS)) prefs.getLong(KEY_MIDI_DEBOUNCE_MS, 60L) else null
+            val midiDebounceEnabled = if (prefs.contains(KEY_MIDI_DEBOUNCE_ENABLED)) prefs.getBoolean(KEY_MIDI_DEBOUNCE_ENABLED, false) else null
+            val midiDebounceMs = if (prefs.contains(KEY_MIDI_DEBOUNCE_MS)) prefs.getLong(KEY_MIDI_DEBOUNCE_MS, 30L) else null
 
             return RestoredAppState(
                 themeName = themeName,

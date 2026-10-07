@@ -7,6 +7,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.soundstage.mixer.audio.NativeAudioBridge
 import com.soundstage.mixer.model.*
+import com.soundstage.mixer.ui.components.VelocityConfig
+import com.soundstage.mixer.ui.components.VelocityProcessor
 import com.soundstage.mixer.ui.theme.*
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -202,8 +204,9 @@ data class MixerUiState(
     val learningActionType: MidiActionType? = null,
     val lastMidiSummary: String = "",
     val lastMidiTriggerTime: Long = 0L,
-    val midiDebounceEnabled: Boolean = true,
-    val midiDebounceMs: Long = 60L,
+    val midiDebounceEnabled: Boolean = false,
+    val midiDebounceMs: Long = 30L,
+    val selectedMidiOutputDevice: String = "All Connected Devices",
     
     // Screen & Scale Settings
     val keepScreenOn: Boolean = true,
@@ -258,7 +261,8 @@ data class MixerUiState(
     val loopPlayerVolume: Float = 1.0f,
     val loopPlayerExplorerPath: String = "/storage/emulated/0",
     val loopPlayerExplorerItems: List<com.soundstage.mixer.model.AudioStorageItem> = emptyList(),
-    val loopPlayerIsExplorerOpen: Boolean = false
+    val loopPlayerIsExplorerOpen: Boolean = false,
+    val activeTrackSettingsId: Int? = null
 ) {
     val soundfontFiles: List<StorageItem> get() = realSoundfonts
     val loopAudioFiles: List<StorageItem> get() = realLoopFiles
@@ -375,6 +379,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         audioEngine.trackVelocityCurveProvider = { ch ->
             _uiState.value.tracks.getOrNull(ch)?.velocityCurve ?: 0.5f
         }
+        _uiState.value.tracks.forEach { track ->
+            audioEngine.setTrackVelocityProcessor(track.id - 1, VelocityProcessor(track.velocityConfig))
+        }
 
         // Restore persisted state from previous session
         viewModelScope.launch(Dispatchers.IO) {
@@ -449,6 +456,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                                     reverbPreset = savedT.reverbPreset,
                                     reverbMix = savedT.reverbMix,
                                     velocityCurve = savedT.velocityCurve,
+                                    velocityConfig = savedT.velocityConfig,
                                     splitNoteMin = savedT.splitNoteMin,
                                     splitNoteMax = savedT.splitNoteMax
                                 )
@@ -679,6 +687,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                             }
                         }
                     }
+                }
+                _uiState.value.tracks.forEach { track ->
+                    audioEngine.setTrackVelocityProcessor(track.id - 1, VelocityProcessor(track.velocityConfig))
                 }
             } else {
                 // First run / no saved state: do not preload anything, stay clean on PROJECTS page
@@ -936,16 +947,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
 
-                val effectiveScenes = if (realScenes.isEmpty()) {
-                    listOf(
-                        ScenePreset(
-                            id = "Setlist 1",
-                            name = "Setlist 1",
-                            timestamp = "Active",
-                            color = NeonCyan
-                        )
-                    )
-                } else realScenes
+                val effectiveScenes = realScenes
 
                 val loopDirItems = fileManager.listItemsInDirectory(fileManager.loopsDir.absolutePath)
                 val midiDirItems = fileManager.listItemsInDirectory(fileManager.midiDir.absolutePath)
@@ -3945,7 +3947,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         val nextActive = if (state.activeSceneId.equals(sceneId, ignoreCase = true) || 
                                              state.activeSceneId.equals("$sceneId.scene", ignoreCase = true) || 
                                              state.activeProjectName.equals(sceneId, ignoreCase = true)) {
-                            updatedScenes.firstOrNull()?.id ?: "Setlist 1"
+                            updatedScenes.firstOrNull()?.id ?: ""
                         } else state.activeSceneId
                         val nextProjectName = if (state.activeProjectName.equals(sceneId, ignoreCase = true)) nextActive else state.activeProjectName
                         state.copy(
@@ -3977,11 +3979,52 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun garbageCollectUnusedSoundFonts() {
+        val state = _uiState.value
+        val visibleTracks = state.tracks.take(state.visibleTracksCount)
+        val activeSoundfontNames = visibleTracks.filter { it.isEnabled && it.soundfontName.isNotEmpty() }
+            .map { it.soundfontName }
+            .toSet()
+
+        val activeSfPaths = activeSoundfontNames.mapNotNull { name ->
+            val f = File(fileManager.soundfontsDir, name)
+            if (f.exists()) f.absolutePath else null
+        }.toSet()
+
+        val activeSfIds = mutableSetOf<Int>()
+        state.audioSlots.forEachIndexed { idx, slot ->
+            if (idx < state.visibleTracksCount && visibleTracks.getOrNull(idx)?.isEnabled == true) {
+                if (slot.soundFontId > 0 && !slot.soundFontPath.isNullOrEmpty() && activeSfPaths.contains(slot.soundFontPath)) {
+                    activeSfIds.add(slot.soundFontId)
+                }
+            }
+        }
+
+        // Unload any slot soundfonts that are not in activeSfIds
+        _uiState.update { current ->
+            val updatedSlots = current.audioSlots.mapIndexed { idx, slot ->
+                if (idx >= current.visibleTracksCount || visibleTracks.getOrNull(idx)?.isEnabled != true) {
+                    if (slot.soundFontId > 0 && !activeSfIds.contains(slot.soundFontId)) {
+                        NativeAudioBridge.safeUnloadSoundFont(NativeAudioBridge.ENGINE_FADER, slot.soundFontId)
+                        Log.d("SoundFontUnload", "Garbage collected unused soundfont ID=${slot.soundFontId} from RAM")
+                    }
+                    slot.copy(soundFontId = -1, soundFontPath = null, patchName = null, presets = emptyList())
+                } else slot
+            }
+            current.copy(audioSlots = updatedSlots)
+        }
+        NativeAudioBridge.safeTrimMemory()
+    }
+
     fun removeTrack(trackId: Int) {
+        val targetIdx = trackId - 1
+        if (targetIdx in 0..7) {
+            audioEngine.setChannelEnabled(targetIdx, false)
+            NativeAudioBridge.safeAllNotesOff(targetIdx)
+        }
         _uiState.update { current ->
             if (current.visibleTracksCount > 1) {
                 val newCount = current.visibleTracksCount - 1
-                val targetIdx = trackId - 1
                 val updatedTracks = current.tracks.mapIndexed { idx, track ->
                     if (track.id == trackId) {
                         track.copy(isEnabled = false, volume = 0.65f, soundfontName = "", patchName = "")
@@ -3989,12 +4032,26 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         track.copy(isEnabled = false)
                     } else track
                 }
+                val updatedSlots = current.audioSlots.mapIndexed { idx, slot ->
+                    if (idx == targetIdx || idx >= newCount) {
+                        if (slot.soundFontId > 0) {
+                            val stillUsed = updatedTracks.take(newCount).any { it.isEnabled && it.soundfontName.isNotEmpty() && slot.soundFontPath?.endsWith(it.soundfontName) == true }
+                            if (!stillUsed) {
+                                NativeAudioBridge.safeUnloadSoundFont(NativeAudioBridge.ENGINE_FADER, slot.soundFontId)
+                            }
+                        }
+                        slot.copy(soundFontId = -1, soundFontPath = null, patchName = null, presets = emptyList())
+                    } else slot
+                }
                 current.copy(
                     visibleTracksCount = newCount,
-                    tracks = updatedTracks
+                    tracks = updatedTracks,
+                    audioSlots = updatedSlots
                 )
             } else current
         }
+        NativeAudioBridge.safeTrimMemory()
+        persistCurrentStateDebounced()
     }
 
     fun addSnapshotSlot(name: String) {
@@ -4179,7 +4236,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateActiveScene() {
         val currentActiveId = _uiState.value.activeSceneId.ifEmpty {
-            _uiState.value.activeProjectName.ifEmpty { "Setlist 1" }
+            _uiState.value.activeProjectName
         }
         saveCurrentScene(currentActiveId)
     }
@@ -5173,6 +5230,22 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     private data class Quad(val a: Float, val b: Float, val c: Float, val d: Float)
 
+    fun updateTrackVelocityConfig(trackId: Int, config: VelocityConfig) {
+        _uiState.update { state ->
+            val updated = state.tracks.map { track ->
+                if (track.id == trackId) track.copy(velocityConfig = config) else track
+            }
+            state.copy(tracks = updated)
+        }
+        val processor = VelocityProcessor(config)
+        audioEngine.setTrackVelocityProcessor(trackId - 1, processor)
+        persistCurrentStateDebounced()
+    }
+
+    fun openVelocitySettings(trackId: Int) {
+        _uiState.update { it.copy(activePopup = ActivePopup.VELOCITY_SETTINGS, activeTrackSettingsId = trackId) }
+    }
+
     fun setTrackVelocityCurve(trackId: Int, curve: Float) {
         _uiState.update { state ->
             val updated = state.tracks.map { track ->
@@ -5405,23 +5478,183 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     private val midiActionLastTriggerTime = java.util.concurrent.ConcurrentHashMap<MidiActionType, Long>()
 
+    fun openTrackSettings(trackId: Int) {
+        _uiState.update { it.copy(activeTrackSettingsId = trackId, activePopup = ActivePopup.TRACK_SETTINGS) }
+    }
+
+    fun closeTrackSettings() {
+        _uiState.update {
+            it.copy(
+                activeTrackSettingsId = null,
+                activePopup = if (it.activePopup == ActivePopup.TRACK_SETTINGS) ActivePopup.NONE else it.activePopup
+            )
+        }
+    }
+
+    fun recallSnapshotDirect(slotName: String) {
+        val currentState = _uiState.value
+        snapshotTransitionJob?.cancel()
+
+        val activePatch = currentState.patches.find { it.id == currentState.activePatchId }
+        val targetSnapshot = currentState.snapshots[slotName]
+            ?: activePatch?.snapshots?.get(slotName)
+            ?: if (slotName == "slot_default") {
+                activePatch?.snapshots?.get("slot_default") ?: SubSceneSnapshot(
+                    slotName = "Default",
+                    tracks = (activePatch?.tracks ?: currentState.tracks).map { t ->
+                        TrackSnapshot(
+                            id = t.id,
+                            volume = t.volume,
+                            pan = t.pan,
+                            isMuted = t.isMuted,
+                            isSolo = t.isSolo,
+                            isEnabled = t.isEnabled,
+                            soundfontName = t.soundfontName,
+                            patchName = t.patchName,
+                            bank = t.bank,
+                            program = t.program,
+                            reverbSend = t.reverbMix,
+                            splitNoteMin = t.splitNoteMin,
+                            splitNoteMax = t.splitNoteMax,
+                            velocityCurve = t.velocityCurve
+                        )
+                    },
+                    globalTranspose = activePatch?.transpose ?: currentState.transpose,
+                    globalOctaveShift = activePatch?.octave ?: currentState.octave,
+                    masterVolume = activePatch?.masterVolume ?: currentState.masterTrack.volume,
+                    visibleTracksCount = activePatch?.visibleTracksCount ?: currentState.visibleTracksCount
+                )
+            } else null
+
+        if (targetSnapshot != null) {
+            val targetTracks = currentState.tracks.map { tr ->
+                val snap = targetSnapshot.tracks.find { it.id == tr.id }
+                if (snap != null) {
+                    val sfName = if (snap.soundfontName.isNotEmpty()) snap.soundfontName else tr.soundfontName
+                    val patchName = if (snap.soundfontName.isNotEmpty()) snap.patchName else tr.patchName
+                    tr.copy(
+                        volume = snap.volume,
+                        pan = snap.pan,
+                        isMuted = snap.isMuted,
+                        isSolo = snap.isSolo,
+                        isEnabled = snap.isEnabled,
+                        soundfontName = sfName,
+                        patchName = patchName,
+                        bank = snap.bank,
+                        program = snap.program,
+                        splitNoteMin = snap.splitNoteMin,
+                        splitNoteMax = snap.splitNoteMax,
+                        velocityCurve = snap.velocityCurve
+                    )
+                } else {
+                    tr.copy(isEnabled = false, isMuted = true)
+                }
+            }
+
+            targetTracks.forEachIndexed { idx, track ->
+                if (!track.isEnabled || track.isMuted) {
+                    audioEngine.setChannelEnabled(idx, false)
+                    if (idx in 0..7) {
+                        NativeAudioBridge.safeAllNotesOff(idx)
+                    }
+                }
+                if (track.soundfontName.isNotEmpty()) {
+                    val candidate = File(fileManager.soundfontsDir, track.soundfontName)
+                    if (candidate.exists()) {
+                        loadSoundFontForSlot(idx, candidate.absolutePath, track.bank, track.program, track.patchName, saveAfterLoad = false)
+                    }
+                }
+            }
+
+            audioEngine.globalOctaveShift = targetSnapshot.globalOctaveShift
+            audioEngine.globalTranspose = targetSnapshot.globalTranspose
+
+            targetTracks.forEachIndexed { idx, track ->
+                val effectiveVol = if (track.isMuted || !track.isEnabled) 0f else track.volume
+                NativeAudioBridge.safeSetTrackVolume(idx, effectiveVol)
+                NativeAudioBridge.safeSetTrackPan(idx, track.pan)
+            }
+
+            _uiState.update { state ->
+                state.copy(
+                    activeSnapshotSlot = slotName,
+                    tracks = targetTracks,
+                    transpose = targetSnapshot.globalTranspose,
+                    octave = targetSnapshot.globalOctaveShift,
+                    visibleTracksCount = targetSnapshot.visibleTracksCount,
+                    snapshotTransitionProgress = 1.0f
+                )
+            }
+            garbageCollectUnusedSoundFonts()
+            persistCurrentStateDebounced()
+        }
+    }
+
     fun toggleMidiDebounce() {
         _uiState.update { it.copy(midiDebounceEnabled = !it.midiDebounceEnabled) }
         persistCurrentStateDebounced()
     }
 
     fun updateMidiDebounceMs(ms: Long) {
-        _uiState.update { it.copy(midiDebounceMs = ms.coerceIn(15L, 200L)) }
+        _uiState.update { it.copy(midiDebounceMs = ms.coerceIn(5L, 120L)) }
+        persistCurrentStateDebounced()
+    }
+
+    fun selectMidiOutputDevice(deviceName: String) {
+        _uiState.update { it.copy(selectedMidiOutputDevice = deviceName) }
+        persistCurrentStateDebounced()
+    }
+
+    fun updateTrackMidiDevice(trackId: Int, deviceId: String?) {
+        _uiState.update { state ->
+            val updatedTracks = state.tracks.map { tr ->
+                if (tr.id == trackId) tr.copy(selectedMidiDeviceId = deviceId) else tr
+            }
+            state.copy(tracks = updatedTracks)
+        }
+        persistCurrentStateDebounced()
+    }
+
+    fun updateTrackMidiChannel(trackId: Int, channel: Int) {
+        _uiState.update { state ->
+            val updatedTracks = state.tracks.map { tr ->
+                if (tr.id == trackId) tr.copy(midiChannel = channel) else tr
+            }
+            val updatedAudioSlots = state.audioSlots.map { slot ->
+                if (slot.slotId == trackId - 1) slot.copy(midiChannel = channel) else slot
+            }
+            state.copy(tracks = updatedTracks, audioSlots = updatedAudioSlots)
+        }
         persistCurrentStateDebounced()
     }
 
     private fun executeMidiAction(action: MidiActionType, value: Int) {
+        val isContinuous = action.name.endsWith("_VOL") || action.name.endsWith("_PUNCH") ||
+            action.name.endsWith("_GOODIZER") || action.name.endsWith("_PARAM")
+
+        // For button actions (toggles, triggers, snapshots, patches), ignore release events (val <= 0)
+        if (!isContinuous && value <= 0) {
+            return
+        }
+
         when (action) {
-            MidiActionType.SNAPSHOT_DEFAULT -> onSnapshotSlotClick("slot_default")
-            MidiActionType.SNAPSHOT_1 -> onSnapshotSlotClick("slot_1")
-            MidiActionType.SNAPSHOT_2 -> onSnapshotSlotClick("slot_2")
-            MidiActionType.SNAPSHOT_3 -> onSnapshotSlotClick("slot_3")
-            MidiActionType.SNAPSHOT_4 -> onSnapshotSlotClick("slot_4")
+            MidiActionType.SNAPSHOT_DEFAULT -> recallSnapshotDirect("slot_default")
+            MidiActionType.SNAPSHOT_1 -> {
+                val slot = _uiState.value.configuredSnapshotSlots.getOrNull(1)
+                if (slot != null) recallSnapshotDirect(slot)
+            }
+            MidiActionType.SNAPSHOT_2 -> {
+                val slot = _uiState.value.configuredSnapshotSlots.getOrNull(2)
+                if (slot != null) recallSnapshotDirect(slot)
+            }
+            MidiActionType.SNAPSHOT_3 -> {
+                val slot = _uiState.value.configuredSnapshotSlots.getOrNull(3)
+                if (slot != null) recallSnapshotDirect(slot)
+            }
+            MidiActionType.SNAPSHOT_4 -> {
+                val slot = _uiState.value.configuredSnapshotSlots.getOrNull(4)
+                if (slot != null) recallSnapshotDirect(slot)
+            }
             MidiActionType.SNAPSHOT_PREV -> selectPrevSnapshot()
             MidiActionType.SNAPSHOT_NEXT -> selectNextSnapshot()
 

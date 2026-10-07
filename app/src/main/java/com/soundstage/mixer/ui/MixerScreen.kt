@@ -380,6 +380,7 @@ fun MixerScreen(
                                         onSoloClick = { viewModel.onTrackSoloClick(track.id) },
                                         onTrackNameClick = { viewModel.openSoundfontForSlot(track.id - 1) },
                                         onFxClick = { viewModel.openEffectsForTrack(track.id) },
+                                        onTrackSettingsClick = { viewModel.openTrackSettings(track.id) },
                                         showTicks = showTicks,
                                         modifier = itemModifier
                                     )
@@ -456,6 +457,7 @@ fun MixerScreen(
                                 onSoloClick = { id -> viewModel.onTrackSoloClick(id) },
                                 onTrackNameClick = { id -> viewModel.openSoundfontForSlot(id - 1) },
                                 onFxClick = { id -> viewModel.openEffectsForTrack(id) },
+                                onTrackSettingsClick = { id -> viewModel.openTrackSettings(id) },
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .align(Alignment.Center)
@@ -867,6 +869,50 @@ fun MixerScreen(
                     onUpdateLastPath = { viewModel.updateLastLoopsPath(it) }
                 )
             }
+            ActivePopup.TRACK_SETTINGS -> {
+                val targetTrack = uiState.tracks.find { it.id == uiState.activeTrackSettingsId }
+                if (targetTrack != null) {
+                    TrackSettingsDialog(
+                        trackNumber = targetTrack.id,
+                        soundName = if (targetTrack.patchName.isNotBlank()) targetTrack.patchName else if (targetTrack.soundfontName.isNotBlank()) targetTrack.soundfontName else "Default GM",
+                        trackColor = getTrackThemeColor(targetTrack.id, targetTrack.isMaster),
+                        devices = uiState.midiDevices.map { MidiDevice(id = it.id, name = it.name, connected = it.isConnected) },
+                        selectedDeviceId = targetTrack.selectedMidiDeviceId,
+                        midiChannel = targetTrack.midiChannel,
+                        onSelectDevice = { deviceId -> viewModel.updateTrackMidiDevice(targetTrack.id, deviceId) },
+                        onSelectChannel = { channel -> viewModel.updateTrackMidiChannel(targetTrack.id, channel) },
+                        onSetVelocityCurve = { curve -> viewModel.setTrackVelocityCurve(targetTrack.id, curve) },
+                        velocityConfig = targetTrack.velocityConfig,
+                        onVelocityConfigChange = { newConfig -> viewModel.updateTrackVelocityConfig(targetTrack.id, newConfig) },
+                        onOpenVelocity = {},
+                        onDismiss = { viewModel.closeTrackSettings() },
+                        velocityCurve = { t ->
+                            val vCurve = VelocityCurve(targetTrack.velocityConfig.nodes)
+                            vCurve.at(t * 127f) / 127f
+                        }
+                    )
+                }
+            }
+            ActivePopup.VELOCITY_SETTINGS -> {
+                val targetTrack = uiState.tracks.find { it.id == uiState.activeTrackSettingsId }
+                if (targetTrack != null) {
+                    VelocitySettingsDialog(
+                        trackNumber = targetTrack.id,
+                        soundName = if (targetTrack.patchName.isNotBlank()) targetTrack.patchName else if (targetTrack.soundfontName.isNotBlank()) targetTrack.soundfontName else "Default GM",
+                        trackColor = getTrackThemeColor(targetTrack.id, targetTrack.isMaster),
+                        config = targetTrack.velocityConfig,
+                        onConfigChange = { newConfig ->
+                            viewModel.updateTrackVelocityConfig(targetTrack.id, newConfig)
+                        },
+                        onBack = {
+                            viewModel.openTrackSettings(targetTrack.id)
+                        },
+                        onDismiss = {
+                            viewModel.closeTrackSettings()
+                        }
+                    )
+                }
+            }
             else -> {}
         }
 
@@ -892,6 +938,10 @@ fun MixerScreen(
             midiDebounceMs = uiState.midiDebounceMs,
             onToggleMidiDebounce = { viewModel.toggleMidiDebounce() },
             onUpdateMidiDebounceMs = { viewModel.updateMidiDebounceMs(it) },
+            tracks = uiState.tracks,
+            selectedMidiOutputDevice = uiState.selectedMidiOutputDevice,
+            onSelectMidiOutputDevice = { viewModel.selectMidiOutputDevice(it) },
+            onUpdateTrackMidiChannel = { trackId, channel -> viewModel.updateTrackMidiChannel(trackId, channel) },
             audioEngine = uiState.audioEngine,
             onSelectAudioEngine = { viewModel.setAudioEngine(it) },
             audioBufferSize = uiState.audioBufferSize,
