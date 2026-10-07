@@ -1,4 +1,4 @@
-name: Build & Upload Debug APK
+name: Build & Release Debug APK
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    name: Build Debug APK & Publish to build-artifacts
+    name: Build Debug APK & Create Release
     runs-on: ubuntu-latest
 
     steps:
@@ -83,37 +83,16 @@ jobs:
           echo "Found APK at: $APK_PATH"
           echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
 
-      - name: Publish APK to build-artifacts branch
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         if: steps.find_apk.outputs.apk_path != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
+        with:
+          tag_name: v${{ github.run_number }}
+          name: "Release v${{ github.run_number }} (Debug APK)"
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: ${{ steps.find_apk.outputs.apk_path }}
 
-          APK_SOURCE="${{ steps.find_apk.outputs.apk_path }}"
-          APK_NAME="app-debug-${{ github.run_number }}.apk"
-
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          # Keep only the latest 5 APKs for compactness
-          git fetch origin build-artifacts || true
-          git checkout -B build-artifacts
-
-          mkdir -p apk
-          if [ -d "apk" ]; then
-            ls -t apk/*.apk 2>/dev/null | tail -n +6 | xargs -r rm -f
-          fi
-
-          cp "$APK_SOURCE" "apk/$APK_NAME"
-
-          git add -A apk
-          if git diff --cached --quiet; then
-            echo "No APK changes to commit"
-          else
-            git commit -m "Upload debug APK for run #${{ github.run_number }}"
-            git push origin HEAD:build-artifacts --force-with-lease
-          fi
-
-          echo "APK published to branch build-artifacts: apk/$APK_NAME"
