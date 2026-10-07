@@ -1,4 +1,4 @@
-name: Build & Release Debug APK
+name: Build & Upload Debug APK
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    name: Build Debug APK & Create Release
+    name: Build Debug APK & Publish to build-artifacts
     runs-on: ubuntu-latest
 
     steps:
@@ -42,7 +42,14 @@ jobs:
           fi
           if [ ! -f "debug.keystore" ]; then
             echo "Generating debug keystore..."
-            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+            keytool -genkey -v -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
           fi
           mkdir -p app
           cp debug.keystore app/debug.keystore 2>/dev/null || true
@@ -69,26 +76,44 @@ jobs:
           if [ -z "$APK_PATH" ]; then
             APK_PATH=$(find . -name "*.apk" 2>/dev/null | head -n 1)
           fi
+          if [ -z "$APK_PATH" ]; then
+            echo "No APK generated"
+            exit 1
+          fi
           echo "Found APK at: $APK_PATH"
-          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+          echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
 
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
+      - name: Publish APK to build-artifacts branch
         if: steps.find_apk.outputs.apk_path != ''
-        with:
-          name: app-debug
-          path: ${{ steps.find_apk.outputs.apk_path }}
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        if: (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch') && steps.find_apk.outputs.apk_path != ''
-        with:
-          tag_name: release-${{ github.run_number }}
-          name: "Release v${{ github.run_number }} (Debug APK)"
-          body: |
-            ## SoundStage Live Mixer
-            - **Commit**: `${{ github.sha }}`
-            - **Build**: Automated Debug APK
-          files: ${{ steps.find_apk.outputs.apk_path }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          APK_SOURCE="${{ steps.find_apk.outputs.apk_path }}"
+          APK_NAME="app-debug-${{ github.run_number }}.apk"
+
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Keep only the latest 5 APKs for compactness
+          git fetch origin build-artifacts || true
+          git checkout -B build-artifacts
+
+          mkdir -p apk
+          if [ -d "apk" ]; then
+            ls -t apk/*.apk 2>/dev/null | tail -n +6 | xargs -r rm -f
+          fi
+
+          cp "$APK_SOURCE" "apk/$APK_NAME"
+
+          git add -A apk
+          if git diff --cached --quiet; then
+            echo "No APK changes to commit"
+          else
+            git commit -m "Upload debug APK for run #${{ github.run_number }}"
+            git push origin HEAD:build-artifacts --force-with-lease
+          fi
+
+          echo "APK published to branch build-artifacts: apk/$APK_NAME"
