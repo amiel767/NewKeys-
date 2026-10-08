@@ -600,7 +600,7 @@ private fun AospCard(
                         listOf(Color(0xFF1E293B), Color(0xFF0F172A))
                     )
                 )
-                .border(1.dp, Color(0x2838BDF8), RoundedCornerShape(16.dp))
+                .border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(16.dp))
                 .drawWithContent {
                     drawContent()
                     drawLine(
@@ -958,15 +958,16 @@ private fun BufferPolyphonySubPage(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
-                                text = "⚠️ Warning:",
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFF59E0B)
+                                text = "⚠️",
+                                fontSize = 9.5.sp
                             )
                             Text(
-                                text = "Gains above 1.50x may cause digital clipping on heavy polyphonic chords.",
-                                fontSize = 9.sp,
-                                color = Color(0xFFCBD5E1)
+                                text = "Warning: High gain may cause digital clipping.",
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFFFDE68A),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -1021,7 +1022,7 @@ private fun LanguageSelectorSubPage(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
                         .background(if (isSel) Color(0xFF1E3A8A) else Color(0xFF1E2433))
-                        .border(1.dp, if (isSel) Color(0xFF38BDF8) else Color(0x2838BDF8), RoundedCornerShape(12.dp))
+                        .border(1.dp, if (isSel) Color(0x66FFFFFF) else Color(0x18FFFFFF), RoundedCornerShape(12.dp))
                         .clickable { onSelectLanguage(lang) }
                         .padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,

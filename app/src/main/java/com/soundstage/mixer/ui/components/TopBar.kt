@@ -709,7 +709,7 @@ fun LoopsFloatingPanel(
                             color = TextPrimary
                         )
                         Text(
-                            text = if (activeLoopFile != null) activeLoopFile.name else "Aucune boucle active",
+                            text = if (activeLoopFile != null) activeLoopFile.name else "No active loop",
                             fontSize = 9.sp,
                             color = if (isLoopPlaying) NeonCyan else TextDim
                         )

@@ -318,7 +318,7 @@ fun NotesDialog(
                                 modifier = Modifier.size(36.dp)
                             )
                             Text(
-                                text = "Aucune note enregistrée",
+                                text = "No saved notes",
                                 fontSize = 12.sp,
                                 color = TextDim,
                                 fontWeight = FontWeight.Medium

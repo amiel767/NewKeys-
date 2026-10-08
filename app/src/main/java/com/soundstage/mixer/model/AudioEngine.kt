@@ -111,8 +111,47 @@ class AudioEngine(private val context: Context) {
         } catch (e: Exception) {
             Log.w(TAG, "Could not register headsetPlugReceiver: ${e.message}")
         }
+        // Acquire continuous audio focus immediately to completely disable audio ducking
+        requestContinuousAudioFocus()
         // Immediately start and lock stream parameters with full dynamic headroom
         reconnectAudioStream()
+    }
+
+    // =========================================================================
+    // CONTINUOUS AUDIO FOCUS MANAGER - TOTAL DUCKING PREVENTION
+    // =========================================================================
+    @Volatile private var audioFocusRequest: android.media.AudioFocusRequest? = null
+
+    fun requestContinuousAudioFocus() {
+        val am = audioManager ?: return
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                val attr = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build()
+                val request = android.media.AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                    .setAudioAttributes(attr)
+                    .setAcceptsDelayedFocusGain(false)
+                    .setWillPauseWhenDucked(false) // TOTAL DUCKING DISABLE: OS is forbidden from dipping volume!
+                    .setOnAudioFocusChangeListener { focusChange ->
+                        // Strict zero-ducking policy: preserve full dynamic volume
+                        Log.d(TAG, "AudioFocus changed: $focusChange (Audio Ducking disabled)")
+                    }
+                    .build()
+                audioFocusRequest = request
+                am.requestAudioFocus(request)
+            } else {
+                @Suppress("DEPRECATION")
+                am.requestAudioFocus(
+                    { /* No ducking */ },
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.AUDIOFOCUS_GAIN
+                )
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "requestContinuousAudioFocus failed: ${e.message}")
+        }
     }
 
     fun restoreAllEngineParameters() {
@@ -143,6 +182,7 @@ class AudioEngine(private val context: Context) {
     fun reconnectAudioStream() {
         reconnectJob?.cancel()
         reconnectJob = coroutineScope.launch(Dispatchers.IO) {
+            requestContinuousAudioFocus()
             NativeAudioBridge.safeStartEngine(0)
             restoreAllEngineParameters()
         }
@@ -153,6 +193,7 @@ class AudioEngine(private val context: Context) {
         reconnectJob = coroutineScope.launch(Dispatchers.IO) {
             // Settle time for Linux kernel jack switch and Android audio policy router
             kotlinx.coroutines.delay(220)
+            requestContinuousAudioFocus()
             NativeAudioBridge.safeStartEngine(0)
             restoreAllEngineParameters()
         }

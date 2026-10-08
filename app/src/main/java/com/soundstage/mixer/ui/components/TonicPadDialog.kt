@@ -381,7 +381,7 @@ internal fun TonicPadContent(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "Aucun preset disponible.\nSélectionnez un fichier dans l'onglet Soundfonts (.sf2)",
+                                text = "No presets available.\nSelect a file in the Soundfonts (.sf2) tab",
                                 fontSize = 10.sp,
                                 color = TextDim,
                                 textAlign = TextAlign.Center
@@ -428,7 +428,7 @@ internal fun TonicPadContent(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "Aucun .sf2 dans /LiveKeys/SoundFonts\nDéposez vos fichiers SoundFont pour les charger",
+                                text = "No .sf2 in /LiveKeys/SoundFonts\nPlace your SoundFont files here to load them",
                                 fontSize = 10.sp,
                                 color = TextDim,
                                 textAlign = TextAlign.Center

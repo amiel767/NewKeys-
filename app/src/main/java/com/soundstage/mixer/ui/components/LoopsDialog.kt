@@ -636,7 +636,7 @@ private fun LoopListContent(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "Aucun fichier audio dans ce dossier",
+                            text = "No audio file in this folder",
                             fontSize = 11.sp,
                             color = TextDim2
                         )

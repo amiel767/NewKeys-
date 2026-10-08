@@ -1086,7 +1086,7 @@ internal fun MainDrumPadSquareContent(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
-                                            text = "Aucun fichier audio trouvé dans ce dossier",
+                                            text = "No audio file found in this folder",
                                             fontSize = 9.5.sp,
                                             color = Color(0xFF64748B)
                                         )
@@ -1230,7 +1230,7 @@ internal fun MainDrumPadSquareContent(
                                             Text(text = "🔄", fontSize = 24.sp)
                                             Spacer(modifier = Modifier.height(6.dp))
                                             Text(
-                                                text = "Aucune boucle enregistrée pour le moment.",
+                                                text = "No saved loop at the moment.",
                                                 fontSize = 10.sp,
                                                 color = Color(0xFF94A3B8)
                                             )
@@ -1865,7 +1865,7 @@ private fun DrumSoundfontPickerSubView(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "Aucun preset disponible.\nSélectionnez un fichier dans l'onglet Soundfonts (.sf2)",
+                        text = "No presets available.\nSelect a file in the Soundfonts (.sf2) tab",
                         fontSize = 10.sp,
                         color = TextDim,
                         textAlign = TextAlign.Center
@@ -1918,7 +1918,7 @@ private fun DrumSoundfontPickerSubView(
                                 .padding(16.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(text = "Aucun fichier .sf2 trouvé", fontSize = 10.sp, color = TextDim)
+                            Text(text = "No .sf2 file found", fontSize = 10.sp, color = TextDim)
                         }
                     }
                 } else {

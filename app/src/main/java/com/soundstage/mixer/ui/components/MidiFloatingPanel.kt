@@ -207,7 +207,7 @@ fun MidiFloatingPanel(
                             modifier = Modifier.size(24.dp)
                         )
                         Text(
-                            text = "Aucun fichier MIDI trouvé dans /LiveKeys/Midi",
+                            text = "No MIDI file found in /LiveKeys/Midi",
                             fontSize = 9.5.sp,
                             color = TextDim
                         )

@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -646,34 +647,22 @@ fun SoundfontDialog(
 
                                             AnimatedVisibility(
                                                 visible = isDeletePrompt,
-                                                enter = slideInHorizontally { it } + fadeIn(),
-                                                exit = slideOutHorizontally { it } + fadeOut()
+                                                enter = scaleIn(initialScale = 0.35f, animationSpec = spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessMediumLow)) + fadeIn(tween(180)),
+                                                exit = scaleOut(targetScale = 0.35f, animationSpec = tween(150)) + fadeOut(tween(150))
                                             ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(28.dp)
-                                                        .clip(CircleShape)
-                                                        .background(Color(0xFFFF2A55))
-                                                        .clickable {
-                                                            if (onDeleteSf2File != null) {
-                                                                onDeleteSf2File.invoke(file)
-                                                            } else {
-                                                                val javaFile = java.io.File(file.path)
-                                                                if (javaFile.exists()) {
-                                                                    javaFile.delete()
-                                                                }
+                                                FloatingTrashBubble(
+                                                    onClick = {
+                                                        if (onDeleteSf2File != null) {
+                                                            onDeleteSf2File.invoke(file)
+                                                        } else {
+                                                            val javaFile = java.io.File(file.path)
+                                                            if (javaFile.exists()) {
+                                                                javaFile.delete()
                                                             }
-                                                            pendingDeleteFile = null
-                                                        },
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Delete,
-                                                        contentDescription = "Delete",
-                                                        tint = Color.White,
-                                                        modifier = Modifier.size(15.dp)
-                                                    )
-                                                }
+                                                        }
+                                                        pendingDeleteFile = null
+                                                    }
+                                                )
                                             }
 
                                             if (!isDeletePrompt) {
@@ -719,4 +708,52 @@ fun SoundfontDialog(
     }
 }
 }
+}
+
+@Composable
+private fun FloatingTrashBubble(
+    onClick: () -> Unit
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "floating_trash_bubble")
+    val floatOffsetY by infiniteTransition.animateFloat(
+        initialValue = -2.5f,
+        targetValue = 2.5f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "trash_float_y"
+    )
+    val floatScale by infiniteTransition.animateFloat(
+        initialValue = 0.96f,
+        targetValue = 1.04f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "trash_float_scale"
+    )
+
+    Box(
+        modifier = Modifier
+            .offset(y = floatOffsetY.dp)
+            .graphicsLayer {
+                scaleX = floatScale
+                scaleY = floatScale
+            }
+            .size(30.dp)
+            .shadow(4.dp, CircleShape, ambientColor = Color(0x66FF2A55), spotColor = Color(0x99FF2A55))
+            .clip(CircleShape)
+            .background(Color(0xFFFF2A55))
+            // Strict rule: Aucune bordure / aucun contour
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.Delete,
+            contentDescription = "Delete",
+            tint = Color.White,
+            modifier = Modifier.size(15.dp)
+        )
+    }
 }

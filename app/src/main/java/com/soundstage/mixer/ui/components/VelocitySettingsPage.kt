@@ -98,17 +98,19 @@ object VelocityPresets {
     private fun n(vararg ys: Int) = xs.indices.map { CurveNode(xs[it], ys[it]) }
 
     val Linear = n(0, 32, 64, 96, 127)
-    val Soft = n(0, 52, 84, 107, 127)        // Jeu expressif / nuances pianissimo étendues
-    val Hard = n(0, 14, 42, 80, 127)         // Jeu percutant / contrôle de dynamique forte
-    val SCurve = n(0, 18, 64, 110, 127)      // Réponse acoustique naturelle
-    val Compress = n(32, 68, 95, 114, 127)   // Plage dynamique resserrée pour lead/electro
+    val Soft = n(0, 52, 84, 107, 127)        // Soft: high sensitivity, soft touch produces loud dynamic sound
+    val Hard = n(0, 14, 42, 80, 127)         // Hard: heavy touch required, preserves pianissimo on soft touch
+    val SCurve = n(0, 18, 64, 110, 127)      // Natural S-curve
+    val Compress = n(32, 68, 95, 114, 127)   // Compressed dynamic range
+    val Custom = emptyList<CurveNode>()
 
     val all: List<Pair<String, List<CurveNode>>> = listOf(
         "Linear" to Linear,
         "Soft" to Soft,
         "Hard" to Hard,
         "S-curve" to SCurve,
-        "Compress" to Compress
+        "Compress" to Compress,
+        "Custom" to Custom
     )
 }
 
@@ -193,7 +195,7 @@ private object Vel {
     val TextMuted = Color(0xFF64748B)
     val BlueA = Color(0xFF9BC0F8)
     val BlueB = Color(0xFF8FB6F2)
-    val BlueBorder = Color(0x33000000)
+    val BlueBorder = Color.Transparent
     val OnBlue = Color(0xFF101726)
     val Well = Color(0xFF0F141E)
     val WellBorder = Color(0xFF283346)
@@ -709,8 +711,12 @@ private fun PresetGrid(preset: String, columns: Int, onPick: (List<CurveNode>) -
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .height(28.dp)
-                    .velClick { onPick(nodes) }
+                    .height(30.dp)
+                    .velClick {
+                        if (nodes.isNotEmpty()) {
+                            onPick(nodes)
+                        }
+                    }
                     .velSurface(
                         shape = RoundedCornerShape(7.dp),
                         brush = if (isSel) Vel.BlueBrush else Vel.KeyBrush,
@@ -827,22 +833,22 @@ private fun FaderSlider(value: Int, range: IntRange, track: Color, enabled: Bool
     Canvas(
         Modifier
             .fillMaxWidth()
-            .height(20.dp)
+            .height(38.dp)
             .pointerInput(range, enabled) {
-                if (enabled) detectTapGestures { o -> onC(valueAt(o.x, size.width.toFloat(), 8.dp.toPx())) }
+                if (enabled) detectTapGestures { o -> onC(valueAt(o.x, size.width.toFloat(), 12.dp.toPx())) }
             }
             .pointerInput(range, enabled) {
                 if (enabled) detectHorizontalDragGestures { ch, _ ->
-                    ch.consume(); onC(valueAt(ch.position.x, size.width.toFloat(), 8.dp.toPx()))
+                    ch.consume(); onC(valueAt(ch.position.x, size.width.toFloat(), 12.dp.toPx()))
                 }
             }
     ) {
         val w = size.width; val h = size.height
-        val m = 8.dp.toPx()
+        val m = 12.dp.toPx()
         val frac = if (range.last == range.first) 0f else (value - range.first).toFloat() / (range.last - range.first)
         val cx = m + frac.coerceIn(0f, 1f) * (w - 2 * m)
         val cy = h / 2f
-        val rh = 4.dp.toPx()
+        val rh = 7.dp.toPx()
 
         // Rail
         drawRoundRect(Color(0xFF0F141E), Offset(m, cy - rh / 2f), Size(w - 2 * m, rh), CornerRadius(rh / 2f))
@@ -851,16 +857,16 @@ private fun FaderSlider(value: Int, range: IntRange, track: Color, enabled: Bool
         }
 
         // Handle
-        val hw = 14.dp.toPx(); val hh = 14.dp.toPx()
-        drawRoundRect(Color.Black.copy(alpha = 0.35f), Offset(cx - hw / 2f, cy - hh / 2f + 1.dp.toPx()), Size(hw, hh), CornerRadius(3.5.dp.toPx()))
+        val hw = 20.dp.toPx(); val hh = 24.dp.toPx()
+        drawRoundRect(Color.Black.copy(alpha = 0.35f), Offset(cx - hw / 2f, cy - hh / 2f + 1.dp.toPx()), Size(hw, hh), CornerRadius(5.dp.toPx()))
         drawRoundRect(
             brush = Brush.verticalGradient(listOf(Color(0xFF475569), Color(0xFF1E293B))),
             topLeft = Offset(cx - hw / 2f, cy - hh / 2f),
             size = Size(hw, hh),
-            cornerRadius = CornerRadius(3.5.dp.toPx())
+            cornerRadius = CornerRadius(5.dp.toPx())
         )
-        drawRoundRect(Color.White.copy(alpha = 0.2f), Offset(cx - hw / 2f, cy - hh / 2f), Size(hw, hh), CornerRadius(3.5.dp.toPx()), style = Stroke(1.dp.toPx()))
-        drawLine(if (enabled) track else Color.Gray, Offset(cx, cy - 3.dp.toPx()), Offset(cx, cy + 3.dp.toPx()), 1.5.dp.toPx(), StrokeCap.Round)
+        drawRoundRect(Color.White.copy(alpha = 0.2f), Offset(cx - hw / 2f, cy - hh / 2f), Size(hw, hh), CornerRadius(5.dp.toPx()), style = Stroke(1.dp.toPx()))
+        drawLine(if (enabled) track else Color.Gray, Offset(cx, cy - 5.dp.toPx()), Offset(cx, cy + 5.dp.toPx()), 2.dp.toPx(), StrokeCap.Round)
     }
 }
 

@@ -51,7 +51,8 @@ bool SoundfontEngine::init(int sampleRate, int polyphony, const char* instanceNa
     for (int ch = 0; ch < kMaxChannels; ++ch) {
         fluid_synth_set_channel_type(mSynth, ch, CHANNEL_TYPE_MELODIC);
         mTransposeSemitones[ch].store(0, std::memory_order_relaxed);
-        fluid_synth_cc(mSynth, ch, 7, 127);  // Volume max
+        mChannelVolumes[ch].store(108, std::memory_order_relaxed);
+        fluid_synth_cc(mSynth, ch, 7, 108);  // Default healthy volume
         fluid_synth_cc(mSynth, ch, 10, 64);  // Pan Center
         fluid_synth_cc(mSynth, ch, 11, 127); // Expression Full
     }
@@ -106,7 +107,8 @@ int SoundfontEngine::loadSoundFont(const std::string &absolutePath) {
                 for (int ch = 0; ch < kMaxChannels; ++ch) {
                     fluid_synth_set_channel_type(mSynth, ch, CHANNEL_TYPE_MELODIC);
                     mTransposeSemitones[ch].store(0, std::memory_order_relaxed);
-                    fluid_synth_cc(mSynth, ch, 7, 127);
+                    mChannelVolumes[ch].store(108, std::memory_order_relaxed);
+                    fluid_synth_cc(mSynth, ch, 7, 108);
                     fluid_synth_cc(mSynth, ch, 10, 64);
                     fluid_synth_cc(mSynth, ch, 11, 127);
                 }
@@ -122,9 +124,8 @@ int SoundfontEngine::loadSoundFont(const std::string &absolutePath) {
     auto it = mPathToSfontId.find(absolutePath);
     if (it != mPathToSfontId.end()) {
         int existingId = it->second;
-        mSfontRefCount[existingId]++;
-        LOGI("[%s] Reusing existing loaded SoundFont ID: %d for path: %s (refCount: %d)",
-             mInstanceName.c_str(), existingId, absolutePath.c_str(), mSfontRefCount[existingId]);
+        LOGI("[%s] Reusing existing loaded SoundFont ID: %d for path: %s",
+             mInstanceName.c_str(), existingId, absolutePath.c_str());
         return existingId;
     }
 
@@ -140,7 +141,7 @@ int SoundfontEngine::loadSoundFont(const std::string &absolutePath) {
     mSfontIdToPath[sfontId] = absolutePath;
     mSfontRefCount[sfontId] = 1;
 
-    LOGI("[%s] Loaded SoundFont into Shared Pool successfully (ID: %d, refCount=1): %s",
+    LOGI("[%s] Loaded SoundFont into Shared Pool successfully (ID: %d): %s",
          mInstanceName.c_str(), sfontId, absolutePath.c_str());
     return sfontId;
 }
@@ -150,17 +151,10 @@ int SoundfontEngine::unloadSoundFont(int sfontId) {
     std::lock_guard<std::recursive_mutex> lock(mMutex);
     if (!mSynth) return -1;
 
-    // Check ref count in shared pool
-    auto refIt = mSfontRefCount.find(sfontId);
-    if (refIt != mSfontRefCount.end()) {
-        refIt->second--;
-        LOGI("[%s] Decremented SoundFont ID: %d refCount to %d", mInstanceName.c_str(), sfontId, refIt->second);
-        if (refIt->second > 0) {
-            // Still in use by other channels/tracks -> Keep in memory!
-            return 0;
-        }
-        // refCount is 0 -> Clean up from maps and free RAM from FluidSynth
-        std::string path = mSfontIdToPath[sfontId];
+    // Purge from tracking maps
+    auto it = mSfontIdToPath.find(sfontId);
+    if (it != mSfontIdToPath.end()) {
+        std::string path = it->second;
         mPathToSfontId.erase(path);
         mSfontIdToPath.erase(sfontId);
         mSfontRefCount.erase(sfontId);
@@ -262,25 +256,17 @@ void SoundfontEngine::executeProgramSelect(int channel, int soundFontId, int ban
 
     int result = FLUID_FAILED;
     fluid_sfont_t* sfont = nullptr;
-    int targetSfId = soundFontId;
 
     if (soundFontId > 0) {
         sfont = fluid_synth_get_sfont_by_id(mSynth, soundFontId);
     }
 
-    if (!sfont && fluid_synth_sfcount(mSynth) > 0) {
-        sfont = fluid_synth_get_sfont(mSynth, 0);
-        if (sfont) {
-            targetSfId = fluid_sfont_get_id(sfont);
-        }
-    }
-
-    if (sfont && targetSfId > 0) {
-        fluid_synth_sfont_select(mSynth, channel, targetSfId);
-        result = fluid_synth_program_select(mSynth, channel, targetSfId, bank, preset);
+    if (sfont && soundFontId > 0) {
+        fluid_synth_sfont_select(mSynth, channel, soundFontId);
+        result = fluid_synth_program_select(mSynth, channel, soundFontId, bank, preset);
         if (result != FLUID_OK) {
             LOGW("program_select failed for ch=%d, sfId=%d, bank=%d, preset=%d. Retrying with first available preset...",
-                 channel, targetSfId, bank, preset);
+                 channel, soundFontId, bank, preset);
             fluid_sfont_iteration_start(sfont);
             fluid_preset_t* firstPreset = fluid_sfont_iteration_next(sfont);
             if (firstPreset) {
@@ -288,16 +274,21 @@ void SoundfontEngine::executeProgramSelect(int channel, int soundFontId, int ban
                 int fbProg = fluid_preset_get_num(firstPreset);
                 LOGI("Found fallback preset: bank=%d, prog=%d (%s) for ch=%d",
                      fbBank, fbProg, fluid_preset_get_name(firstPreset), channel);
-                result = fluid_synth_program_select(mSynth, channel, targetSfId, fbBank, fbProg);
+                result = fluid_synth_program_select(mSynth, channel, soundFontId, fbBank, fbProg);
             }
         }
-    }
-    if (result != FLUID_OK) {
+    } else if (soundFontId <= 0) {
         fluid_synth_bank_select(mSynth, channel, bank);
         result = fluid_synth_program_change(mSynth, channel, preset);
     }
-    LOGI("executeProgramSelect completed for ch=%d, sfId=%d (target=%d), bank=%d, preset=%d -> %s",
-         channel, soundFontId, targetSfId, bank, preset, (result == FLUID_OK ? "SUCCESS" : "FAILED"));
+    // Instantly restore and enforce channel CC 7 (Volume) and CC 11 (Expression)
+    // so sound is heard immediately upon loading/selecting presets without touching fader!
+    int currentVol = mChannelVolumes[channel].load(std::memory_order_relaxed);
+    if (currentVol <= 0) currentVol = 108;
+    fluid_synth_cc(mSynth, channel, 7, currentVol);
+    fluid_synth_cc(mSynth, channel, 11, 127);
+    LOGI("executeProgramSelect completed for ch=%d, sfId=%d, bank=%d, preset=%d -> %s (vol=%d)",
+         channel, soundFontId, bank, preset, (result == FLUID_OK ? "SUCCESS" : "FAILED"), currentVol);
 }
 
 bool SoundfontEngine::selectProgram(int channel, int soundFontId, int bank, int preset) {
@@ -400,6 +391,7 @@ void SoundfontEngine::setChannelVolume(int channel, float volume01) {
     // Mapping directly ensures true full dynamics, punchy transients, and zero volume recession!
     int ccVal = static_cast<int>(std::round(clampedVol * 127.0f));
     ccVal = std::clamp(ccVal, 0, 127);
+    mChannelVolumes[channel].store(ccVal, std::memory_order_relaxed);
 
     EngineMidiEvent ev;
     ev.type = EngineMidiEvent::CC;

@@ -46,29 +46,33 @@ class FileManager(private val context: Context) {
     val baseDir: File
         get() {
             return try {
-                val extDir = File(Environment.getExternalStorageDirectory(), "Æther Keys")
-                if (!extDir.exists()) {
-                    extDir.mkdirs()
+                // Priority: Public external storage created by the app (/storage/emulated/0/SoundStage or Æther Keys)
+                val extSoundStage = File(Environment.getExternalStorageDirectory(), "SoundStage")
+                val extAether = File(Environment.getExternalStorageDirectory(), "Æther Keys")
+                val targetExt = if (extSoundStage.exists()) extSoundStage else if (extAether.exists()) extAether else extSoundStage
+                if (!targetExt.exists()) {
+                    targetExt.mkdirs()
                 }
-                if (extDir.exists() && extDir.canWrite()) {
-                    extDir
-                } else if (extDir.exists()) {
-                    extDir
+                if (targetExt.exists()) {
+                    targetExt
                 } else {
-                    val appExtDir = File(context.getExternalFilesDir(null), "Æther Keys")
+                    // Fallback to app external storage (on external SD/storage, NEVER /data)
+                    val appExtDir = File(context.getExternalFilesDir(null), "SoundStage")
                     if (!appExtDir.exists()) appExtDir.mkdirs()
                     if (appExtDir.exists()) {
                         appExtDir
                     } else {
-                        val musicDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "Æther Keys")
+                        val musicDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "SoundStage")
                         if (!musicDir.exists()) musicDir.mkdirs()
-                        if (musicDir.exists()) musicDir else File(context.filesDir, "Æther Keys").apply { if (!exists()) mkdirs() }
+                        if (musicDir.exists()) musicDir else targetExt
                     }
                 }
             } catch (_: Exception) {
-                val internalDir = File(context.filesDir, "Æther Keys")
-                if (!internalDir.exists()) internalDir.mkdirs()
-                internalDir
+                // Fallback guaranteed to remain on external storage
+                val fallbackExt = context.getExternalFilesDir(null)?.let { File(it, "SoundStage") }
+                    ?: File(Environment.getExternalStorageDirectory(), "SoundStage")
+                if (!fallbackExt.exists()) fallbackExt.mkdirs()
+                fallbackExt
             }
         }
 

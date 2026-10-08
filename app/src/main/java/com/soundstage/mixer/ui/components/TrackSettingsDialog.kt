@@ -348,7 +348,7 @@ private fun VelocityPage(
                 .height(115.dp)
                 .clip(RoundedCornerShape(10.dp))
                 .background(Ss.CardTop)
-                .border(1.dp, Ss.CardBorder, RoundedCornerShape(10.dp))
+                .border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(10.dp))
                 .padding(10.dp)
         ) {
             CurvePreview(trackColor, velocityCurve)
@@ -363,21 +363,37 @@ private fun VelocityPage(
             },
             valueRange = 0.0f..1.0f,
             colors = SliderDefaults.colors(
-                thumbColor = trackColor,
-                activeTrackColor = trackColor,
-                inactiveTrackColor = Ss.KeyBorder
+                thumbColor = Color(0xFF9BC0F8),
+                activeTrackColor = Color(0xFF9BC0F8),
+                inactiveTrackColor = Color(0xFF283144)
             ),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .padding(horizontal = 4.dp)
         )
 
         SectionLabel("PRESETS")
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf("Soft Touch" to 0.15f, "Linear (1:1)" to 0.50f, "Hard Touch" to 0.85f).forEach { (lbl, valVal) ->
-                val isSelected = abs(curveValue - valVal) < 0.08f
+            val presets = listOf(
+                "Soft Touch" to 0.15f,
+                "Linear (1:1)" to 0.50f,
+                "Hard Touch" to 0.85f
+            )
+            val isPresetMatch = presets.any { abs(curveValue - it.second) < 0.06f }
+
+            presets.forEach { (lbl, valVal) ->
+                val isSelected = abs(curveValue - valVal) < 0.06f
                 ChannelChip(lbl, isSelected, Modifier.weight(1f), 38.dp) {
                     curveValue = valVal
                     onSetVelocityCurve(valVal)
                 }
+            }
+
+            // Custom Preset Chip
+            val isCustomSelected = !isPresetMatch
+            ChannelChip("Custom", isCustomSelected, Modifier.weight(1f), 38.dp) {
+                // Kept when user adjusts slider manually
             }
         }
     }
@@ -577,32 +593,34 @@ private fun ChannelChip(
     selected: Boolean,
     modifier: Modifier,
     height: Dp,
-    trackColor: Color = Ss.BlueA,
+    trackColor: Color = Color(0xFF9BC0F8),
     onClick: () -> Unit
 ) {
     val shape = RoundedCornerShape(8.dp)
     val selBrush = Brush.verticalGradient(
         listOf(
-            lerp(Ss.CardTop, trackColor, 0.38f),
-            lerp(Ss.CardBottom, trackColor, 0.20f),
+            Color(0xFF9BC0F8),
+            Color(0xFF8FB6F2)
         )
     )
-    val selBorder = trackColor.copy(alpha = 0.70f)
+    val unselBrush = Brush.verticalGradient(
+        listOf(
+            Color(0xFF283144),
+            Color(0xFF1D2433)
+        )
+    )
     Box(
         modifier
             .height(height)
-            .ssClick(onClick)
-            .ssSurface(
-                shape,
-                if (selected) selBrush else Ss.KeyBrush,
-                if (selected) selBorder else Ss.KeyBorder,
-            ),
+            .clip(shape)
+            .background(if (selected) selBrush else unselBrush)
+            .ssClick(onClick),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             label,
-            color = if (selected) Color.White else Color(0xFFC9CFDD),
-            fontSize = 13.sp,
+            color = if (selected) Color(0xFF101726) else Color(0xFFC9CFDD),
+            fontSize = 12.sp,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
         )
     }

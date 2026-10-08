@@ -260,7 +260,7 @@ data class MixerUiState(
     val loopPlayerStepMode: String = "DEFAULT",
     val loopPlayerWaveform: FloatArray = FloatArray(0),
     val loopPlayerVolume: Float = 1.0f,
-    val loopPlayerExplorerPath: String = "/storage/emulated/0",
+    val loopPlayerExplorerPath: String = "/storage/emulated/0/SoundStage/Loops",
     val loopPlayerExplorerItems: List<com.soundstage.mixer.model.AudioStorageItem> = emptyList(),
     val loopPlayerIsExplorerOpen: Boolean = false,
     val activeTrackSettingsId: Int? = null
@@ -2117,14 +2117,14 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val v = velocity.coerceIn(0.01f, 1.0f)
         return when {
             curve < 0.48f -> {
-                // Soft (vers la gauche) : atténue la vélocité pour un jeu doux et expressif
+                // Soft (vers la gauche / 0.15f) : booste la sensibilité pour qu'un toucher léger sonne fort
                 val factor = (0.5f - curve) * 2f
-                (Math.pow(v.toDouble(), 1.0 + factor * 1.5)).toFloat()
+                (Math.pow(v.toDouble(), (1.0 - factor * 0.6).coerceAtLeast(0.3))).toFloat()
             }
             curve > 0.52f -> {
-                // Hard (vers la droite) : booste la vélocité pour une frappe percutante et forte
+                // Hard (vers la droite / 0.85f) : exige une frappe forte, conserve le pianissimo sur toucher léger
                 val factor = (curve - 0.5f) * 2f
-                (Math.pow(v.toDouble(), (1.0 - factor * 0.6).coerceAtLeast(0.3))).toFloat()
+                (Math.pow(v.toDouble(), 1.0 + factor * 1.5)).toFloat()
             }
             else -> v
         }.coerceIn(0.05f, 1.0f)
@@ -2971,6 +2971,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
 
+                // Sync channel volume immediately so fader movement is not required to hear sound
+                val targetVol = _uiState.value.tracks.getOrNull(slotId)?.volume ?: 0.8f
+                val effectiveVol = if (_uiState.value.tracks.getOrNull(slotId)?.isMuted == true) 0f else targetVol
+                audioEngine.setChannelVolume(targetChannel, effectiveVol)
+                NativeAudioBridge.safeSetTrackVolume(targetChannel, effectiveVol)
+
                 // Re-validate program selection for all other active audio slots to ensure complete isolation
                 val currentSlots = _uiState.value.audioSlots
                 for (s in currentSlots) {
@@ -3115,7 +3121,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                             s.copy(
                                 soundFontId = -1,
                                 soundFontPath = "",
-                                patchName = "Aucun",
+                                patchName = "No Instrument",
                                 bank = 0,
                                 preset = 0,
                                 presets = emptyList()
@@ -3127,7 +3133,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                             if (idx == slotId) {
                                 t.copy(
                                     soundfontName = "",
-                                    patchName = "Aucun",
+                                    patchName = "No Instrument",
                                     bank = 0,
                                     program = 0
                                 )
@@ -4659,7 +4665,22 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         }
                         if (track.soundfontName.isNotEmpty()) {
                             val candidate = File(fileManager.soundfontsDir, track.soundfontName)
-                            if (candidate.exists()) {
+                            val currentSlot = currentState.audioSlots.getOrNull(idx)
+                            if (currentSlot != null && currentSlot.soundFontId > 0 &&
+                                (currentSlot.soundFontPath == candidate.absolutePath || currentSlot.soundFontPath?.endsWith(track.soundfontName) == true)
+                            ) {
+                                // Already loaded in memory! Just switch preset & bank directly without re-reading file or leaking RAM
+                                audioEngine.setChannelProgram(idx, track.program, track.bank)
+                                NativeAudioBridge.safeSelectProgram(
+                                    engineIndex = NativeAudioBridge.ENGINE_FADER,
+                                    channel = idx,
+                                    soundFontId = currentSlot.soundFontId,
+                                    bank = track.bank,
+                                    preset = track.program
+                                )
+                                val effectiveVol = if (track.isMuted || !track.isEnabled) 0f else track.volume
+                                NativeAudioBridge.safeSetTrackVolume(idx, effectiveVol)
+                            } else if (candidate.exists()) {
                                 loadSoundFontForSlot(idx, candidate.absolutePath, track.bank, track.program, track.patchName, saveAfterLoad = false)
                             }
                         }
@@ -5431,18 +5452,21 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun handleMidiMappingEvent(channel: Int, command: Int, data1: Int, data2: Int) {
-        val midiType = when (command) {
-            0x90 -> if (data2 > 0) MidiControlType.NOTE else return
-            0x80 -> return
+        val statusCmd = if (command >= 0x80) (command and 0xF0) else command
+        val midiType = when (statusCmd) {
+            0x90 -> MidiControlType.NOTE
+            0x80 -> MidiControlType.NOTE
             0xB0 -> MidiControlType.CC
             0xC0 -> MidiControlType.PROGRAM_CHANGE
             else -> return
         }
         val ctrlNumber = data1
-        val value = data2
+        val value = if (statusCmd == 0x80) 0 else data2
 
         val learningType = _uiState.value.learningActionType
         if (learningType != null) {
+            // When learning, require a positive press (ignore release/NoteOff)
+            if (value <= 0) return
             _uiState.update { state ->
                 val updated = state.midiMappings.map { m ->
                     if (m.actionType == learningType) {
@@ -5580,7 +5604,21 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 if (track.soundfontName.isNotEmpty()) {
                     val candidate = File(fileManager.soundfontsDir, track.soundfontName)
-                    if (candidate.exists()) {
+                    val currentSlot = currentState.audioSlots.getOrNull(idx)
+                    if (currentSlot != null && currentSlot.soundFontId > 0 &&
+                        (currentSlot.soundFontPath == candidate.absolutePath || currentSlot.soundFontPath?.endsWith(track.soundfontName) == true)
+                    ) {
+                        audioEngine.setChannelProgram(idx, track.program, track.bank)
+                        NativeAudioBridge.safeSelectProgram(
+                            engineIndex = NativeAudioBridge.ENGINE_FADER,
+                            channel = idx,
+                            soundFontId = currentSlot.soundFontId,
+                            bank = track.bank,
+                            preset = track.program
+                        )
+                        val effectiveVol = if (track.isMuted || !track.isEnabled) 0f else track.volume
+                        NativeAudioBridge.safeSetTrackVolume(idx, effectiveVol)
+                    } else if (candidate.exists()) {
                         loadSoundFontForSlot(idx, candidate.absolutePath, track.bank, track.program, track.patchName, saveAfterLoad = false)
                     }
                 }
@@ -5605,7 +5643,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     snapshotTransitionProgress = 1.0f
                 )
             }
-            garbageCollectUnusedSoundFonts()
             persistCurrentStateDebounced()
         }
     }
@@ -5651,29 +5688,36 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     private fun executeMidiAction(action: MidiActionType, value: Int) {
         val isContinuous = action.name.endsWith("_VOL") || action.name.endsWith("_PUNCH") ||
             action.name.endsWith("_GOODIZER") || action.name.endsWith("_PARAM")
+        val isDrumPad = action.name.startsWith("DRUMPAD_PAD_")
 
-        // For button actions (toggles, triggers, snapshots, patches), ignore release events (val <= 0)
-        if (!isContinuous && value <= 0) {
-            return
+        // For button actions (toggles, triggers, snapshots, patches), trigger on positive press (> 0),
+        // or also support toggle controllers when configured
+        val isButtonAction = !isContinuous && !isDrumPad
+        if (isButtonAction) {
+            val mapping = _uiState.value.midiMappings.find { it.actionType == action }
+            val isToggle = mapping?.mode == MidiControlMode.TOGGLE
+            if (value <= 0 && !isToggle) {
+                return
+            }
         }
 
         when (action) {
-            MidiActionType.SNAPSHOT_DEFAULT -> recallSnapshotDirect("slot_default")
+            MidiActionType.SNAPSHOT_DEFAULT -> onSnapshotSlotClick("slot_default")
             MidiActionType.SNAPSHOT_1 -> {
-                val slot = _uiState.value.configuredSnapshotSlots.getOrNull(1)
-                if (slot != null) recallSnapshotDirect(slot)
+                val slot = _uiState.value.configuredSnapshotSlots.getOrNull(0) ?: "slot_1"
+                onSnapshotSlotClick(slot)
             }
             MidiActionType.SNAPSHOT_2 -> {
-                val slot = _uiState.value.configuredSnapshotSlots.getOrNull(2)
-                if (slot != null) recallSnapshotDirect(slot)
+                val slot = _uiState.value.configuredSnapshotSlots.getOrNull(1) ?: "slot_2"
+                onSnapshotSlotClick(slot)
             }
             MidiActionType.SNAPSHOT_3 -> {
-                val slot = _uiState.value.configuredSnapshotSlots.getOrNull(3)
-                if (slot != null) recallSnapshotDirect(slot)
+                val slot = _uiState.value.configuredSnapshotSlots.getOrNull(2) ?: "slot_3"
+                onSnapshotSlotClick(slot)
             }
             MidiActionType.SNAPSHOT_4 -> {
-                val slot = _uiState.value.configuredSnapshotSlots.getOrNull(4)
-                if (slot != null) recallSnapshotDirect(slot)
+                val slot = _uiState.value.configuredSnapshotSlots.getOrNull(3) ?: "slot_4"
+                onSnapshotSlotClick(slot)
             }
             MidiActionType.SNAPSHOT_PREV -> selectPrevSnapshot()
             MidiActionType.SNAPSHOT_NEXT -> selectNextSnapshot()
@@ -5713,14 +5757,14 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             MidiActionType.TRACK_8_SOLO -> toggleSoloTrackByIndex(7)
             MidiActionType.TRACK_8_VOL -> setTrackVolume(8, (value / 127f).coerceIn(0f, 1f))
 
-            MidiActionType.DRUMPAD_PAD_1 -> onDrumPadPressed(1)
-            MidiActionType.DRUMPAD_PAD_2 -> onDrumPadPressed(2)
-            MidiActionType.DRUMPAD_PAD_3 -> onDrumPadPressed(3)
-            MidiActionType.DRUMPAD_PAD_4 -> onDrumPadPressed(4)
-            MidiActionType.DRUMPAD_PAD_5 -> onDrumPadPressed(5)
-            MidiActionType.DRUMPAD_PAD_6 -> onDrumPadPressed(6)
-            MidiActionType.DRUMPAD_PAD_7 -> onDrumPadPressed(7)
-            MidiActionType.DRUMPAD_PAD_8 -> onDrumPadPressed(8)
+            MidiActionType.DRUMPAD_PAD_1 -> if (value > 0) onDrumPadPressed(1) else onDrumPadReleased(1)
+            MidiActionType.DRUMPAD_PAD_2 -> if (value > 0) onDrumPadPressed(2) else onDrumPadReleased(2)
+            MidiActionType.DRUMPAD_PAD_3 -> if (value > 0) onDrumPadPressed(3) else onDrumPadReleased(3)
+            MidiActionType.DRUMPAD_PAD_4 -> if (value > 0) onDrumPadPressed(4) else onDrumPadReleased(4)
+            MidiActionType.DRUMPAD_PAD_5 -> if (value > 0) onDrumPadPressed(5) else onDrumPadReleased(5)
+            MidiActionType.DRUMPAD_PAD_6 -> if (value > 0) onDrumPadPressed(6) else onDrumPadReleased(6)
+            MidiActionType.DRUMPAD_PAD_7 -> if (value > 0) onDrumPadPressed(7) else onDrumPadReleased(7)
+            MidiActionType.DRUMPAD_PAD_8 -> if (value > 0) onDrumPadPressed(8) else onDrumPadReleased(8)
             MidiActionType.DRUMPAD_STOP_ALL -> stopDrumPlayback()
 
             MidiActionType.MASTER_VOLUME -> setTrackVolume(0, (value / 127f).coerceIn(0f, 1f))
@@ -5842,10 +5886,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             val targetDir = java.io.File(dirPath).let {
                 if (it.exists() && it.isDirectory) it
+                else if (fileManager.loopsDir.exists()) fileManager.loopsDir
                 else {
-                    val musicDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC)
-                    if (musicDir != null && musicDir.exists()) musicDir
-                    else getApplication<Application>().filesDir
+                    fileManager.ensureDirectoriesExist()
+                    fileManager.loopsDir
                 }
             }
 

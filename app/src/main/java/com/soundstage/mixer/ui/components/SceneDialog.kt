@@ -2,8 +2,13 @@ package com.soundstage.mixer.ui.components
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -375,46 +380,83 @@ fun SceneDialog(
                                                 label = "delete_anim_${patch.id}"
                                             ) { pending ->
                                                 if (pending) {
+                                                    val infiniteTransition = rememberInfiniteTransition(label = "bubble_float")
+                                                    val floatOffset by infiniteTransition.animateFloat(
+                                                        initialValue = -2.5f,
+                                                        targetValue = 2.5f,
+                                                        animationSpec = infiniteRepeatable(
+                                                            animation = tween(1400, easing = FastOutSlowInEasing),
+                                                            repeatMode = RepeatMode.Reverse
+                                                        ),
+                                                        label = "float_y"
+                                                    )
+
                                                     Row(
+                                                        modifier = Modifier
+                                                            .graphicsLayer { translationY = floatOffset * density }
+                                                            .shadow(6.dp, RoundedCornerShape(16.dp), ambientColor = Color.Black, spotColor = Color(0x66000000))
+                                                            .clip(RoundedCornerShape(16.dp))
+                                                            .background(
+                                                                Brush.horizontalGradient(
+                                                                    listOf(Color(0xFFE11D48), Color(0xFFBE123C))
+                                                                )
+                                                            )
+                                                            .padding(horizontal = 8.dp, vertical = 4.dp),
                                                         verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                                                     ) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .clip(RoundedCornerShape(6.dp))
-                                                                .background(Color(0xFFDC2626))
-                                                                .clickable {
-                                                                    onDeletePatch(patch.id)
-                                                                    pendingDeleteSceneId = null
-                                                                }
-                                                                .padding(horizontal = 6.dp, vertical = 3.dp)
-                                                        ) {
-                                                            Text("Delete", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                                        }
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .clip(RoundedCornerShape(6.dp))
-                                                                .background(Color(0xFF333D52))
-                                                                .clickable { pendingDeleteSceneId = null }
-                                                                .padding(horizontal = 4.dp, vertical = 3.dp)
-                                                        ) {
-                                                            Icon(Icons.Default.Close, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
-                                                        }
-                                                    }
-                                                } else {
-                                                    IconButton(
-                                                        onClick = { pendingDeleteSceneId = patch.id },
-                                                        modifier = Modifier.size(28.dp)
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.Delete,
-                                                            contentDescription = "Delete",
-                                                            tint = Color(0xFF64748B),
-                                                            modifier = Modifier.size(15.dp)
-                                                        )
-                                                    }
-                                                }
-                                            }
+                                                        Row(
+                                                             modifier = Modifier
+                                                                 .clickable {
+                                                                     onDeletePatch(patch.id)
+                                                                     pendingDeleteSceneId = null
+                                                                 },
+                                                             verticalAlignment = Alignment.CenterVertically,
+                                                             horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                         ) {
+                                                             Icon(
+                                                                 imageVector = Icons.Default.Delete,
+                                                                 contentDescription = "Confirm Delete",
+                                                                 tint = Color.White,
+                                                                 modifier = Modifier.size(13.dp)
+                                                             )
+                                                             Text(
+                                                                 text = "Delete",
+                                                                 fontSize = 11.sp,
+                                                                 fontWeight = FontWeight.Bold,
+                                                                 color = Color.White
+                                                             )
+                                                         }
+                                                         Box(
+                                                             modifier = Modifier
+                                                                 .size(18.dp)
+                                                                 .clip(CircleShape)
+                                                                 .background(Color(0x33000000))
+                                                                 .clickable { pendingDeleteSceneId = null },
+                                                             contentAlignment = Alignment.Center
+                                                         ) {
+                                                             Icon(
+                                                                 imageVector = Icons.Default.Close,
+                                                                 contentDescription = "Cancel",
+                                                                 tint = Color.White,
+                                                                 modifier = Modifier.size(11.dp)
+                                                             )
+                                                         }
+                                                     }
+                                                 } else {
+                                                     IconButton(
+                                                         onClick = { pendingDeleteSceneId = patch.id },
+                                                         modifier = Modifier.size(28.dp)
+                                                     ) {
+                                                         Icon(
+                                                             imageVector = Icons.Default.Delete,
+                                                             contentDescription = "Delete",
+                                                             tint = Color(0xFF64748B),
+                                                             modifier = Modifier.size(15.dp)
+                                                         )
+                                                     }
+                                                 }
+                                             }
 
                                             if (isSelected) {
                                                 Box(

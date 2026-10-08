@@ -31,11 +31,13 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.withTimeoutOrNull
@@ -45,6 +47,21 @@ import com.soundstage.mixer.model.StorageItem
 import com.soundstage.mixer.model.AudioStorageItem
 import com.soundstage.mixer.ui.components.AmbientStudioBackground
 import com.soundstage.mixer.ui.components.ExternalLoopPlayerDaw
+import com.soundstage.mixer.ui.components.LoopPlayerScreen
+import com.soundstage.mixer.ui.components.LoopPlayerUiState
+import com.soundstage.mixer.ui.components.LoopPlayerActions
+import com.soundstage.mixer.ui.components.LoopPlayerLogic
+import com.soundstage.mixer.ui.components.LoopKeyTheory
+import com.soundstage.mixer.ui.components.LoopEntry
+import com.soundstage.mixer.ui.components.LoopFolder
+import com.soundstage.mixer.ui.components.LoopFile
+import com.soundstage.mixer.ui.components.Crumb
+import com.soundstage.mixer.ui.components.LoopSort
+import com.soundstage.mixer.ui.components.LoopFilter
+import com.soundstage.mixer.ui.components.LoopStatus
+import com.soundstage.mixer.ui.components.FxType
+import com.soundstage.mixer.ui.components.FxState
+import com.soundstage.mixer.audio.AudioKeyBpmDetector
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import kotlinx.coroutines.launch
@@ -122,7 +139,7 @@ fun DrumPadPage(
     loopStepMode: String = "DEFAULT",
     loopWaveform: FloatArray = FloatArray(0),
     loopVolume: Float = 1.0f,
-    loopExplorerPath: String = "/storage/emulated/0",
+    loopExplorerPath: String = "/storage/emulated/0/SoundStage/Loops",
     loopExplorerItems: List<AudioStorageItem> = emptyList(),
     loopIsExplorerOpen: Boolean = false,
     onToggleLoopPlayPause: () -> Unit = {},
@@ -173,13 +190,12 @@ fun DrumPadPage(
                 .fillMaxSize()
                 .padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 4.dp)
         ) {
-            // ================= 1. BARRE SUPÉRIEURE (CLEAN & RELIEF BENTO) =================
+            // ================= 1. BARRE SUPERIEURE (BENTO RELIEF STYLE) =================
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(42.dp)
-                    .shadow(2.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
-                    .clip(RoundedCornerShape(10.dp))
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
                     .background(
                         Brush.verticalGradient(
                             listOf(Color(0xFF283144), Color(0xFF1D2433))
@@ -195,60 +211,40 @@ fun DrumPadPage(
                             cap = StrokeCap.Round
                         )
                     }
-                    .padding(horizontal = 10.dp),
+                    .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Retour Mixeur
-                IconButton(
+                // Back to Mixer (Bento raised square)
+                BentoTopBarButton(
                     onClick = onBackToMixer,
-                    modifier = Modifier.size(32.dp).testTag("btn_drumpad_back_mixer")
+                    modifier = Modifier.size(34.dp).testTag("btn_drumpad_back_mixer")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Tune,
-                        contentDescription = "Retour Mixeur",
+                        contentDescription = "Mixer",
                         tint = Color.White,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
 
-                // Relief Mode Switch Case: DrumPad > or Loop Player <
-                Box(
-                    modifier = Modifier
-                        .height(30.dp)
-                        .shadow(2.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color(0xFF333E56), Color(0xFF222B3D))
-                            )
-                        )
-                        .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(8.dp))
-                        .drawWithContent {
-                            drawContent()
-                            drawLine(
-                                color = Color.White.copy(alpha = 0.22f),
-                                start = Offset(4.dp.toPx(), 1f),
-                                end = Offset(size.width - 4.dp.toPx(), 1f),
-                                strokeWidth = 1.dp.toPx(),
-                                cap = StrokeCap.Round
-                            )
+                // Mode Switcher Case: DrumPad <-> Loop Player
+                BentoTopBarButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            val target = if (pagerState.currentPage == 0) 1 else 0
+                            pagerState.animateScrollToPage(target)
                         }
-                        .clickable {
-                            coroutineScope.launch {
-                                val target = if (pagerState.currentPage == 0) 1 else 0
-                                pagerState.animateScrollToPage(target)
-                            }
-                        }
-                        .padding(horizontal = 10.dp),
-                    contentAlignment = Alignment.Center
+                    },
+                    modifier = Modifier.height(34.dp)
                 ) {
                     Row(
+                        modifier = Modifier.padding(horizontal = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(
-                            text = if (pagerState.currentPage == 0) "DrumPad" else "Loop Player",
+                            text = if (pagerState.currentPage == 0) "Loop Player" else "DrumPad",
                             fontSize = 12.5.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
@@ -264,58 +260,46 @@ fun DrumPadPage(
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                // Feel Swing %
-                Box(
-                    modifier = Modifier
-                        .height(28.dp)
-                        .shadow(1.5.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color(0xFF283144), Color(0xFF1D2433))
-                            )
-                        )
-                        .drawWithContent {
-                            drawContent()
-                            drawLine(
-                                color = Color.White.copy(alpha = 0.12f),
-                                start = Offset(4.dp.toPx(), 1f),
-                                end = Offset(size.width - 4.dp.toPx(), 1f),
-                                strokeWidth = 1.dp.toPx(),
-                                cap = StrokeCap.Round
-                            )
-                        }
-                        .clickable {
+                if (pagerState.currentPage == 0) {
+                    // Feel Swing % (DrumPad mode only)
+                    BentoTopBarButton(
+                        onClick = {
                             val nextSwing = if (feelSwing >= 75) 0 else feelSwing + 25
                             onFeelSwingChange(nextSwing)
-                        }
-                        .padding(horizontal = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        },
+                        modifier = Modifier.height(34.dp)
                     ) {
-                        Icon(Icons.Default.Waves, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
-                        Text("Feel Swing $feelSwing %", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(Icons.Default.Waves, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                            Text("Swing $feelSwing%", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
                     }
                 }
 
-                // BPM avec boutons - et +
-                Row(
+                // BPM Case: ALWAYS VISIBLE in both DrumPad and Loop Player modes!
+                Box(
                     modifier = Modifier
-                        .height(28.dp)
-                        .shadow(1.5.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
-                        .clip(RoundedCornerShape(8.dp))
+                        .height(34.dp)
+                        .shadow(3.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
+                        .clip(RoundedCornerShape(10.dp))
                         .background(
                             Brush.verticalGradient(
-                                listOf(Color(0xFF283144), Color(0xFF1D2433))
+                                listOf(Color(0xFF2F394D), Color(0xFF252D3D))
                             )
+                        )
+                        .border(
+                            1.dp,
+                            Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.12f), Color.Transparent)),
+                            RoundedCornerShape(10.dp)
                         )
                         .drawWithContent {
                             drawContent()
                             drawLine(
-                                color = Color.White.copy(alpha = 0.12f),
+                                color = Color.White.copy(alpha = 0.16f),
                                 start = Offset(4.dp.toPx(), 1f),
                                 end = Offset(size.width - 4.dp.toPx(), 1f),
                                 strokeWidth = 1.dp.toPx(),
@@ -323,100 +307,78 @@ fun DrumPadPage(
                             )
                         }
                         .padding(horizontal = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(20.dp)
-                            .clip(CircleShape)
-                            .background(Color(0x22FFFFFF))
-                            .clickable { onBpmChange((bpm - 1).coerceAtLeast(40)) },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Default.Remove, contentDescription = "BPM moins", tint = Color.White, modifier = Modifier.size(12.dp))
-                    }
-
-                    Text("$bpm BPM", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(horizontal = 4.dp))
-
-                    Box(
-                        modifier = Modifier
-                            .size(20.dp)
-                            .clip(CircleShape)
-                            .background(Color(0x22FFFFFF))
-                            .clickable { onBpmChange((bpm + 1).coerceAtMost(240)) },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = "BPM plus", tint = Color.White, modifier = Modifier.size(12.dp))
-                    }
-                }
-
-                // Bouton Mix (Active le mode faders verticaux)
-                Box(
-                    modifier = Modifier
-                        .height(28.dp)
-                        .shadow(1.5.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(
-                            if (isMixMode) {
-                                Brush.verticalGradient(listOf(Color(0xFF9BC0F8), Color(0xFF8FB6F2)))
-                            } else {
-                                Brush.verticalGradient(listOf(Color(0xFF283144), Color(0xFF1D2433)))
-                            }
-                        )
-                        .drawWithContent {
-                            drawContent()
-                            if (!isMixMode) {
-                                drawLine(
-                                    color = Color.White.copy(alpha = 0.12f),
-                                    start = Offset(4.dp.toPx(), 1f),
-                                    end = Offset(size.width - 4.dp.toPx(), 1f),
-                                    strokeWidth = 1.dp.toPx(),
-                                    cap = StrokeCap.Round
-                                )
-                            }
-                        }
-                        .clickable { onToggleMixMode() }
-                        .padding(horizontal = 8.dp)
-                        .testTag("btn_drumpad_mix_mode"),
                     contentAlignment = Alignment.Center
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Tune,
-                            contentDescription = "Mix",
-                            tint = if (isMixMode) Color(0xFF101726) else Color.White,
-                            modifier = Modifier.size(13.dp)
-                        )
+                        BentoStepButton("−") { onBpmChange((bpm - 1).coerceAtLeast(40)) }
+
                         Text(
-                            text = "Mix",
-                            fontSize = 11.sp,
+                            "$bpm BPM",
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (isMixMode) Color(0xFF101726) else Color.White
+                            color = Color.White,
+                            modifier = Modifier.padding(horizontal = 6.dp)
                         )
+
+                        BentoStepButton("+") { onBpmChange((bpm + 1).coerceAtMost(240)) }
+                    }
+                }
+
+                if (pagerState.currentPage == 0) {
+                    // Mix Button (DrumPad mode only)
+                    BentoTopBarButton(
+                        onClick = onToggleMixMode,
+                        modifier = Modifier.height(34.dp).testTag("btn_drumpad_mix_mode"),
+                        isActive = isMixMode
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = "Mix",
+                                tint = if (isMixMode) Color(0xFF101726) else Color.White,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "Mix",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isMixMode) Color(0xFF101726) else Color.White
+                            )
+                        }
                     }
                 }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // ================= 2. CORPS PRINCIPAL (TONICPAD GAUCHE + DRUMPADS DROITE) =================
-            Row(
+            // ================= 2. CORPS PRINCIPAL PAGER =================
+            HorizontalPager(
+                state = pagerState,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // ================= FLANC GAUCHE : TONIC PAD =================
-                Column(
-                    modifier = Modifier
-                        .width(180.dp)
-                        .fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
+                    .weight(1f)
+            ) { page ->
+                when (page) {
+                    0 -> {
+                        // ================= PAGE 0: VUE COMPLETE DRUMPAD (TONIC PAD GAUCHE + 8 DRUMPADS DROITE) =================
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // ================= FLANC GAUCHE : TONIC PAD =================
+                            Column(
+                                modifier = Modifier
+                                    .width(180.dp)
+                                    .fillMaxHeight(),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
                     // Grille 4x3 de notes chromatiques (étendue vers le haut)
                     Column(
                         modifier = Modifier
@@ -696,114 +658,96 @@ fun DrumPadPage(
                     }
                 }
 
-                // ================= FLANC DROIT : DRUM PADS (PAGE 0) & LOOP PLAYER DAW (PAGE 1) =================
-                Box(
+                // ================= FLANC DROIT : 8 DRUM PADS MATRIX (2x4) =================
+                Column(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxHeight()
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    HorizontalPager(
-                        state = pagerState,
-                        modifier = Modifier.fillMaxSize()
-                    ) { page ->
-                        when (page) {
-                            0 -> {
-                                // PAGE 0: 8 DRUM PADS MATRIX (2x4)
-                                Column(
-                                    modifier = Modifier.fillMaxSize(),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    // Row 1 (D1 to D4)
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .weight(1f),
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        for (i in 0 until 4) {
-                                            val pad = drumPads.getOrNull(i) ?: DrumPadItem(id = i + 1, label = "Pad ${i + 1}")
-                                            Box(
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .fillMaxHeight()
-                                            ) {
-                                                SingleDrumPadBox(
-                                                    pad = pad,
-                                                    isMixMode = isMixMode,
-                                                    onPadPressed = { onPadPressed(pad.id) },
-                                                    onPadReleased = { onPadReleased(pad.id) },
-                                                    onVolumeChange = { onPadVolumeChange(pad.id, it) },
-                                                    onVolumeDelta = { onPadVolumeDelta(pad.id, it) },
-                                                    onLoopBeatsChange = { beats -> onLoopBeatsChange(pad.id, beats) }
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    // Row 2 (D5 to D8)
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .weight(1f),
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        for (i in 4 until 8) {
-                                            val pad = drumPads.getOrNull(i) ?: DrumPadItem(id = i + 1, label = "")
-                                            Box(
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .fillMaxHeight()
-                                            ) {
-                                                SingleDrumPadBox(
-                                                    pad = pad,
-                                                    isMixMode = isMixMode,
-                                                    onPadPressed = { onPadPressed(pad.id) },
-                                                    onPadReleased = { onPadReleased(pad.id) },
-                                                    onVolumeChange = { onPadVolumeChange(pad.id, it) },
-                                                    onVolumeDelta = { onPadVolumeDelta(pad.id, it) },
-                                                    onLoopBeatsChange = { beats -> onLoopBeatsChange(pad.id, beats) }
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
+                    // Row 1 (D1 to D4)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        for (i in 0 until 4) {
+                            val pad = drumPads.getOrNull(i) ?: DrumPadItem(id = i + 1, label = "Pad ${i + 1}")
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                            ) {
+                                SingleDrumPadBox(
+                                    pad = pad,
+                                    isMixMode = isMixMode,
+                                    onPadPressed = { onPadPressed(pad.id) },
+                                    onPadReleased = { onPadReleased(pad.id) },
+                                    onVolumeChange = { onPadVolumeChange(pad.id, it) },
+                                    onVolumeDelta = { onPadVolumeDelta(pad.id, it) },
+                                    onLoopBeatsChange = { beats -> onLoopBeatsChange(pad.id, beats) }
+                                )
                             }
-                            1 -> {
-                                // PAGE 1: PROFESSIONAL EXTERNAL LOOP PLAYER & AOSP BROWSER
-                                ExternalLoopPlayerDaw(
-                                    fileName = loopFileName,
-                                    filePath = loopFilePath,
-                                    durationMs = loopDurationMs,
-                                    positionMs = loopPositionMs,
-                                    progress = loopProgress,
-                                    isPlaying = loopIsPlaying,
-                                    isLooping = loopIsLooping,
-                                    pitchSemitones = loopPitchSemitones,
-                                    stepMode = loopStepMode,
-                                    waveform = loopWaveform,
-                                    volume = loopVolume,
-                                    currentExplorerPath = loopExplorerPath,
-                                    explorerItems = loopExplorerItems,
-                                    isExplorerOpen = loopIsExplorerOpen,
-                                    onTogglePlayPause = onToggleLoopPlayPause,
-                                    onStop = onStopLoop,
-                                    onRetrigger = onRetriggerLoop,
-                                    onSeekProgress = onSeekLoopProgress,
-                                    onToggleLoop = onToggleLoopLooping,
-                                    onChangePitch = onChangeLoopPitch,
-                                    onResetPitch = onResetLoopPitch,
-                                    onSelectStepMode = onSelectLoopStepMode,
-                                    onVolumeChange = onLoopVolumeChange,
-                                    onToggleExplorer = onToggleLoopExplorer,
-                                    onNavigateExplorerFolder = onNavigateLoopExplorer,
-                                    onSelectAudioFile = onSelectLoopAudioFile,
-                                    modifier = Modifier.fillMaxSize()
+                        }
+                    }
+
+                    // Row 2 (D5 to D8)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        for (i in 4 until 8) {
+                            val pad = drumPads.getOrNull(i) ?: DrumPadItem(id = i + 1, label = "")
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                            ) {
+                                SingleDrumPadBox(
+                                    pad = pad,
+                                    isMixMode = isMixMode,
+                                    onPadPressed = { onPadPressed(pad.id) },
+                                    onPadReleased = { onPadReleased(pad.id) },
+                                    onVolumeChange = { onPadVolumeChange(pad.id, it) },
+                                    onVolumeDelta = { onPadVolumeDelta(pad.id, it) },
+                                    onLoopBeatsChange = { beats -> onLoopBeatsChange(pad.id, beats) }
                                 )
                             }
                         }
                     }
                 }
             }
+        }
+        1 -> {
+            // PAGE 1: LOOP PLAYER (ÆTHER KEYS)
+            LoopPlayerDawContainer(
+                loopFileName = loopFileName,
+                loopFilePath = loopFilePath,
+                loopProgress = loopProgress,
+                loopIsPlaying = loopIsPlaying,
+                loopPitchSemitones = loopPitchSemitones,
+                loopStepMode = loopStepMode,
+                loopWaveform = loopWaveform,
+                loopVolume = loopVolume,
+                loopExplorerPath = loopExplorerPath,
+                loopExplorerItems = loopExplorerItems,
+                bpm = bpm,
+                onToggleLoopPlayPause = onToggleLoopPlayPause,
+                onSeekLoopProgress = onSeekLoopProgress,
+                onChangeLoopPitch = onChangeLoopPitch,
+                onSelectLoopStepMode = onSelectLoopStepMode,
+                onLoopVolumeChange = onLoopVolumeChange,
+                onNavigateLoopExplorer = onNavigateLoopExplorer,
+                onSelectLoopAudioFile = onSelectLoopAudioFile,
+                onPreviewAudioFile = onPreviewAudioFile,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+                        }
+                    }
         }
 
         // ================= OUTSIDE SCRIM BACKDROP (TOUCH OUTSIDE TO DISMISS) =================
@@ -1356,5 +1300,337 @@ private fun RepeatableIconButton(
         contentAlignment = Alignment.Center
     ) {
         content()
+    }
+}
+
+@Composable
+private fun LoopPlayerDawContainer(
+    loopFileName: String,
+    loopFilePath: String?,
+    loopProgress: Float,
+    loopIsPlaying: Boolean,
+    loopPitchSemitones: Int,
+    loopStepMode: String,
+    loopWaveform: FloatArray,
+    loopVolume: Float,
+    loopExplorerPath: String,
+    loopExplorerItems: List<AudioStorageItem>,
+    bpm: Int,
+    onToggleLoopPlayPause: () -> Unit,
+    onSeekLoopProgress: (Float) -> Unit,
+    onChangeLoopPitch: (Int) -> Unit,
+    onSelectLoopStepMode: (String) -> Unit,
+    onLoopVolumeChange: (Float) -> Unit,
+    onNavigateLoopExplorer: (String) -> Unit,
+    onSelectLoopAudioFile: (java.io.File) -> Unit,
+    onPreviewAudioFile: (StorageItem) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var query by rememberSaveable { mutableStateOf("") }
+    var sort by rememberSaveable { mutableStateOf(LoopSort.NearestBpm) }
+    var filters by rememberSaveable { mutableStateOf(emptySet<LoopFilter>()) }
+    var favorites by remember { mutableStateOf(setOf<String>()) }
+    var recents by remember { mutableStateOf(mapOf<String, Long>()) }
+
+    var localVolume by remember { mutableFloatStateOf(loopVolume.coerceIn(0f, 1f)) }
+    var localMuted by remember { mutableStateOf(false) }
+    var localPan by remember { mutableFloatStateOf(0f) }
+    var localFx by remember {
+        mutableStateOf(FxType.values().associateWith { FxState() })
+    }
+
+    LaunchedEffect(loopExplorerPath) {
+        if (loopExplorerItems.isEmpty()) {
+            onNavigateLoopExplorer(loopExplorerPath)
+        }
+    }
+
+    val breadcrumb = remember(loopExplorerPath) {
+        val list = mutableListOf<Crumb>()
+        val f = java.io.File(loopExplorerPath)
+        val folderName = if (f.name.isNotBlank()) f.name else "Loops"
+        list.add(Crumb(loopExplorerPath, folderName))
+        list
+    }
+
+    val entries = remember(loopExplorerItems, favorites, recents) {
+        loopExplorerItems.map { item ->
+            if (item.isDirectory) {
+                LoopFolder(
+                    id = item.path,
+                    name = item.name,
+                    itemCount = 0
+                )
+            } else {
+                val detected = AudioKeyBpmDetector.detectKeyAndBpm(item.name, java.io.File(item.path))
+                LoopFile(
+                    id = item.path,
+                    name = item.name,
+                    bpm = detected.bpm,
+                    keyLabel = detected.key,
+                    bars = 4,
+                    isFavorite = favorites.contains(item.path),
+                    lastPlayedAt = recents[item.path] ?: 0L
+                )
+            }
+        }
+    }
+
+    val status = when {
+        loopIsPlaying -> LoopStatus.Playing
+        !loopFilePath.isNullOrEmpty() -> LoopStatus.Ready
+        else -> LoopStatus.Idle
+    }
+
+    val totalBars = 4
+    val posBar = ((loopProgress * totalBars).toInt() % totalBars) + 1
+    val posBeat = (((loopProgress * totalBars * 4).toInt()) % 4) + 1
+
+    val keyInfo = remember(loopFileName, loopPitchSemitones) {
+        val detected = if (loopFileName.isNotBlank()) {
+            AudioKeyBpmDetector.detectKeyAndBpm(loopFileName, loopFilePath?.let { java.io.File(it) })
+        } else null
+        val origKey = detected?.key?.ifBlank { "C" } ?: "C"
+        val parsed = LoopKeyTheory.parse(origKey) ?: (0 to false)
+        val roots = listOf("C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B")
+        val shiftedIndex = (parsed.first + (loopPitchSemitones % 12) + 12) % 12
+        val shiftedRoot = roots[shiftedIndex]
+        Triple(shiftedRoot, parsed.second, origKey)
+    }
+
+    val wavePeaks = remember(loopWaveform) {
+        if (loopWaveform.isNotEmpty()) loopWaveform.toList() else emptyList()
+    }
+
+    val uiState = LoopPlayerUiState(
+        breadcrumb = breadcrumb,
+        entries = entries,
+        query = query,
+        sort = sort,
+        filters = filters,
+        selectedId = loopFilePath,
+        playingId = if (loopIsPlaying) loopFilePath else null,
+        status = status,
+        loopName = loopFileName.ifBlank { "" },
+        positionBar = posBar,
+        positionBeat = posBeat,
+        progress = loopProgress.coerceIn(0f, 1f),
+        totalBars = totalBars,
+        waveform = wavePeaks,
+        currentBpm = bpm,
+        keyRoot = keyInfo.first,
+        isMinor = keyInfo.second,
+        originalKeyLabel = keyInfo.third,
+        semitoneShift = loopPitchSemitones,
+        timeSignature = "4/4",
+        stepLabel = loopStepMode.ifBlank { "Auto" },
+        volume = localVolume,
+        muted = localMuted,
+        pan = localPan,
+        fx = localFx
+    )
+
+    var lastSeekMs by remember { mutableLongStateOf(0L) }
+
+    val actions = remember(uiState) {
+        object : LoopPlayerActions {
+            override fun onOpenFolder(id: String) {
+                onNavigateLoopExplorer(id)
+            }
+
+            override fun onNavigateUp() {
+                val parent = java.io.File(loopExplorerPath).parentFile?.absolutePath ?: "/storage/emulated/0/SoundStage/Loops"
+                onNavigateLoopExplorer(parent)
+            }
+
+            override fun onBreadcrumbClick(index: Int) {
+                breadcrumb.getOrNull(index)?.id?.let { onNavigateLoopExplorer(it) }
+            }
+
+            override fun onSelectFile(id: String) {
+                onSelectLoopAudioFile(java.io.File(id))
+                recents = recents + (id to System.currentTimeMillis())
+            }
+
+            override fun onToggleFavorite(id: String) {
+                favorites = if (favorites.contains(id)) favorites - id else favorites + id
+            }
+
+            override fun onPreviewStart(id: String) {
+                onPreviewAudioFile(StorageItem(name = java.io.File(id).name, path = id, isDirectory = false))
+            }
+
+            override fun onPreviewStop() {}
+
+            override fun onQueryChange(q: String) {
+                query = q
+            }
+
+            override fun onSortChange(s: LoopSort) {
+                sort = s
+            }
+
+            override fun onFilterToggle(f: LoopFilter) {
+                filters = if (filters.contains(f)) filters - f else filters + f
+            }
+
+            override fun onTogglePlay() {
+                onToggleLoopPlayPause()
+            }
+
+            override fun onSeek(fraction: Float) {
+                val now = System.currentTimeMillis()
+                if (now - lastSeekMs >= 30L) {
+                    lastSeekMs = now
+                    onSeekLoopProgress(fraction)
+                }
+            }
+
+            override fun onKeyStep(delta: Int) {
+                onChangeLoopPitch(loopPitchSemitones + delta)
+            }
+
+            override fun onMinorChange(minor: Boolean) {
+                // TODO(loop-player): Major/Minor shift if supported by pitch shifter
+            }
+
+            override fun onStepChange(delta: Int) {
+                val steps = listOf("DEFAULT", "AUTO", "1/4", "1/8", "1/16")
+                val curIdx = steps.indexOf(loopStepMode).coerceAtLeast(0)
+                val nextIdx = (curIdx + delta + steps.size) % steps.size
+                onSelectLoopStepMode(steps[nextIdx])
+            }
+
+            override fun onSignatureClick() {}
+
+            override fun onVolumeChange(position: Float) {
+                localVolume = position
+                val gain = LoopPlayerLogic.volumeGain(position, localMuted)
+                onLoopVolumeChange(gain)
+            }
+
+            override fun onMuteToggle() {
+                localMuted = !localMuted
+                val gain = LoopPlayerLogic.volumeGain(localVolume, !localMuted)
+                onLoopVolumeChange(gain)
+            }
+
+            override fun onPanChange(pan: Float) {
+                localPan = pan
+            }
+
+            override fun onFxEnabledChange(type: FxType, enabled: Boolean) {
+                val old = localFx[type] ?: FxState()
+                localFx = localFx + (type to old.copy(enabled = enabled))
+            }
+
+            override fun onFxAmountChange(type: FxType, amount: Float) {
+                val old = localFx[type] ?: FxState()
+                localFx = localFx + (type to old.copy(amount = amount))
+            }
+        }
+    }
+
+    LoopPlayerScreen(
+        state = uiState,
+        actions = actions,
+        modifier = modifier
+    )
+}
+
+@Composable
+private fun BentoTopBarButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    isActive: Boolean = false,
+    content: @Composable () -> Unit
+) {
+    var pressed by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(
+        if (pressed) 0.94f else 1f,
+        spring(dampingRatio = 0.6f, stiffness = 500f),
+        label = "bento_topbar_btn"
+    )
+    val shape = RoundedCornerShape(10.dp)
+    val bgBrush = if (isActive) {
+        Brush.verticalGradient(listOf(Color(0xFF9BC0F8), Color(0xFF8FB6F2)))
+    } else {
+        Brush.verticalGradient(listOf(Color(0xFF2F394D), Color(0xFF252D3D)))
+    }
+
+    Box(
+        modifier = modifier
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .shadow(3.dp, shape, ambientColor = Color.Black, spotColor = Color(0x99000000))
+            .clip(shape)
+            .background(bgBrush)
+            .border(
+                1.dp,
+                Brush.verticalGradient(listOf(Color.White.copy(alpha = if (isActive) 0.25f else 0.12f), Color.Transparent)),
+                shape
+            )
+            .drawWithContent {
+                drawContent()
+                if (!isActive) {
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.16f),
+                        start = Offset(4.dp.toPx(), 1f),
+                        end = Offset(size.width - 4.dp.toPx(), 1f),
+                        strokeWidth = 1.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
+            }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        pressed = true
+                        tryAwaitRelease()
+                        pressed = false
+                    },
+                    onTap = { onClick() }
+                )
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun BentoStepButton(label: String, onClick: () -> Unit) {
+    var pressed by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(
+        if (pressed) 0.90f else 1f,
+        spring(dampingRatio = 0.55f, stiffness = 600f),
+        label = "bento_step_btn"
+    )
+    Box(
+        modifier = Modifier
+            .size(24.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .shadow(1.5.dp, CircleShape, ambientColor = Color.Black, spotColor = Color(0x99000000))
+            .clip(CircleShape)
+            .background(Color(0xFF1E2638))
+            .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        pressed = true
+                        tryAwaitRelease()
+                        pressed = false
+                    },
+                    onTap = { onClick() }
+                )
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.White,
+            textAlign = TextAlign.Center
+        )
     }
 }

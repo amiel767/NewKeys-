@@ -199,6 +199,7 @@ private:
     fluid_synth_t *mSynth = nullptr;
     mutable std::recursive_mutex mMutex;
     std::array<std::atomic<int>, kMaxChannels> mTransposeSemitones{};
+    std::array<std::atomic<int>, kMaxChannels> mChannelVolumes{};
     std::vector<float> mTempRenderBuffer;
     LockFreeRingBuffer<EngineMidiEvent, 2048> mEventQueue;
     bool mWasHighLoad = false;
