@@ -1113,12 +1113,16 @@ private fun NavBar(
             ) { IconBack(LpColors.Ink, Modifier.size(16.dp)) }
         }
 
-        // Folder name with icon
+        // Folder name with back arrow icon to navigate internal storage
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .pressable(0.95f, onTap = { actions.onNavigateUp() })
+                .padding(horizontal = 4.dp, vertical = 2.dp)
         ) {
-            IconFolder(LpColors.Blue, Modifier.size(width = 16.dp, height = 13.dp))
+            IconBack(LpColors.Blue, Modifier.size(14.dp))
             Text(
                 currentFolderName,
                 style = lpText(13.5.sp, FontWeight.Bold, LpColors.Ink),

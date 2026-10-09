@@ -139,34 +139,23 @@ fun TrackSettingsDialog(
     var page by rememberSaveable { mutableStateOf(Page.Main) }
     val panelShape = RoundedCornerShape(18.dp)
 
-    val targetWidth = when (page) {
-        Page.Velocity -> 750.dp
-        else -> 520.dp
-    }
-    val targetHeightFraction = when (page) {
-        Page.Velocity -> 0.94f
-        else -> 0.85f
-    }
-    val animatedWidth by animateDpAsState(targetValue = targetWidth, animationSpec = tween(220), label = "dialogWidth")
-    val animatedHeight by animateFloatAsState(targetValue = targetHeightFraction, animationSpec = tween(220), label = "dialogHeight")
-
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Box(
             Modifier
-                .width(animatedWidth)
+                .width(720.dp)
                 .widthIn(max = 780.dp)
                 .fillMaxWidth(0.95f)
-                .fillMaxHeight(animatedHeight)
+                .fillMaxHeight(0.92f)
                 .clip(panelShape)
                 .background(Brush.verticalGradient(listOf(Ss.Bg, lerp(Ss.Bg, trackColor, 0.10f))))
                 .border(1.dp, Ss.PanelBorder, panelShape)
         ) {
             AnimatedContent(
                 targetState = page,
-                transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(100)) },
+                transitionSpec = { fadeIn(tween(140)) togetherWith fadeOut(tween(90)) },
                 label = "trackSettingsPage",
             ) { current ->
                 when (current) {

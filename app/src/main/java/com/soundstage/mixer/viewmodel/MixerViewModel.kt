@@ -5465,8 +5465,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
         val learningType = _uiState.value.learningActionType
         if (learningType != null) {
-            // When learning, require a positive press (ignore release/NoteOff)
-            if (value <= 0) return
+            // When learning, require a positive press (ignore release/NoteOff, but allow Program Change which has value=0)
+            if (midiType != MidiControlType.PROGRAM_CHANGE && value <= 0) return
             _uiState.update { state ->
                 val updated = state.midiMappings.map { m ->
                     if (m.actionType == learningType) {
@@ -5507,20 +5507,21 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val debounceMs = _uiState.value.midiDebounceMs
 
         for (m in activeMappings) {
-            if (debounceActive) {
-                val lastTime = midiActionLastTriggerTime[m.actionType] ?: 0L
+            if (debounceActive && debounceMs > 0) {
+                // Precise jitter filter per control identity: prevents mechanical bounce bursts
+                val controlKey = "${channel}_${midiType.name}_$ctrlNumber"
+                val lastTime = midiControlLastTriggerTime[controlKey] ?: 0L
                 val elapsed = now - lastTime
                 if (elapsed < debounceMs) {
-                    // Suppress mechanical jitter/bounce burst from worn controller
                     continue
                 }
-                midiActionLastTriggerTime[m.actionType] = now
+                midiControlLastTriggerTime[controlKey] = now
             }
             executeMidiAction(m.actionType, value)
         }
     }
 
-    private val midiActionLastTriggerTime = java.util.concurrent.ConcurrentHashMap<MidiActionType, Long>()
+    private val midiControlLastTriggerTime = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     fun openTrackSettings(trackId: Int) {
         _uiState.update { it.copy(activeTrackSettingsId = trackId, activePopup = ActivePopup.TRACK_SETTINGS) }

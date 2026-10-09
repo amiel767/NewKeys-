@@ -57,8 +57,8 @@ fun CustomVerticalFader(
     showTicks: Boolean = true,
     trackWidth: Dp = 18.dp,
     trackHeight: Dp = 205.dp,
-    thumbWidth: Dp = 51.dp,
-    thumbHeight: Dp = 64.dp,
+    thumbWidth: Dp = 32.dp,
+    thumbHeight: Dp = 40.dp,
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
@@ -255,31 +255,17 @@ fun CustomVerticalFader(
                 },
             contentAlignment = Alignment.Center
         ) {
-            // 1. Exact slot fill backing (19.0dp x 3.8dp, offset Y -1.7dp) extending downwards to seal bottom cavity
-            Box(
-                modifier = Modifier
-                    .offset(y = (-1.7).dp)
-                    .width(19.0.dp)
-                    .height(3.8.dp)
-                    .clip(RoundedCornerShape(1.4.dp))
-                    .background(
-                        Brush.horizontalGradient(
-                            listOf(
-                                dynamicAura.copy(alpha = slotCoreAlpha * 0.82f),
-                                slotCenterColor,
-                                dynamicAura.copy(alpha = slotCoreAlpha * 0.82f)
-                            )
-                        )
-                    )
-            )
-
-            // 2. Authentic Bonnet PNG element with natural transparent slot cutout
-            Image(
-                painter = painterResource(id = R.drawable.ic_fader_thumb),
-                contentDescription = "Fader Thumb Cap",
-                contentScale = ContentScale.Fit,
-                colorFilter = ColorFilter.colorMatrix(lightenedThumbMatrix),
-                modifier = Modifier.fillMaxSize()
+            // Authentic Bonnet drawn in code via FaderThumb
+            // Base glow of 0.28f at rest ensures distinct and vivid LED visibility even with no sound
+            val thumbGlow = if (isEnabled) {
+                0.28f + 0.72f * animatedGlow
+            } else {
+                0.12f
+            }
+            FaderThumb(
+                accent = auraColor,
+                modifier = Modifier.fillMaxSize(),
+                glow = thumbGlow
             )
         }
     }

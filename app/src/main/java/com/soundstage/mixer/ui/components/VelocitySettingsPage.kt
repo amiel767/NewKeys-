@@ -98,8 +98,8 @@ object VelocityPresets {
     private fun n(vararg ys: Int) = xs.indices.map { CurveNode(xs[it], ys[it]) }
 
     val Linear = n(0, 32, 64, 96, 127)
+    val Hard = n(0, 14, 42, 80, 127)         // Hard: preserves pianissimo on soft touch, requires firmer press for fortissimo
     val Soft = n(0, 52, 84, 107, 127)        // Soft: high sensitivity, soft touch produces loud dynamic sound
-    val Hard = n(0, 14, 42, 80, 127)         // Hard: heavy touch required, preserves pianissimo on soft touch
     val SCurve = n(0, 18, 64, 110, 127)      // Natural S-curve
     val Compress = n(32, 68, 95, 114, 127)   // Compressed dynamic range
     val Custom = emptyList<CurveNode>()

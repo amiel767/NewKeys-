@@ -1510,9 +1510,20 @@ private fun LoopPlayerDawContainer(
             }
 
             override fun onMuteToggle() {
-                localMuted = !localMuted
-                val gain = LoopPlayerLogic.volumeGain(localVolume, !localMuted)
-                onLoopVolumeChange(gain)
+                if (!localMuted) {
+                    // 1st press: mute the loop sound
+                    localMuted = true
+                    val gain = LoopPlayerLogic.volumeGain(localVolume, false)
+                    onLoopVolumeChange(gain)
+                } else {
+                    // 2nd press: disable / stop the loop playback and reset mute
+                    localMuted = false
+                    val gain = LoopPlayerLogic.volumeGain(localVolume, true)
+                    onLoopVolumeChange(gain)
+                    if (loopIsPlaying) {
+                        onToggleLoopPlayPause()
+                    }
+                }
             }
 
             override fun onPanChange(pan: Float) {

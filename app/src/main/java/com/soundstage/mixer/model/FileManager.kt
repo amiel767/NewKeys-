@@ -77,7 +77,15 @@ class FileManager(private val context: Context) {
         }
 
     val soundfontsDir: File get() = File(baseDir, "SoundFonts")
-    val loopsDir: File get() = File(baseDir, "Loops")
+    val loopsDir: File
+        get() {
+            val extAether = File(Environment.getExternalStorageDirectory(), "Æther Keys")
+            val aetherLoops = File(extAether, "Loops")
+            if (!aetherLoops.exists()) {
+                aetherLoops.mkdirs()
+            }
+            return if (aetherLoops.exists()) aetherLoops else File(baseDir, "Loops")
+        }
     val drumPadDir: File get() = File(baseDir, "DrumPad")
     val drumPadLoopDir: File get() = File(drumPadDir, "DrumPad loop")
     val setlistsDir: File get() = File(baseDir, "Setlists")

@@ -9,6 +9,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.min
 
 /**
  * High-performance, off-audio-thread audio decoder.
@@ -18,6 +19,8 @@ import java.nio.ByteOrder
 object AudioDecoder {
     private const val TAG = "AudioDecoder"
     private const val TARGET_SAMPLE_RATE = 48000
+    // Limit max loop cache to 3 minutes (180s) to guarantee zero GC stutter and strict RAM bounding
+    private const val MAX_DECODE_FRAMES = TARGET_SAMPLE_RATE * 180
 
     data class DecodedAudio(
         val pcmData: FloatArray,
@@ -121,7 +124,7 @@ object AudioDecoder {
 
             // Resample & convert to Interleaved Stereo Float32 at 48000 Hz
             val resampleRatio = TARGET_SAMPLE_RATE.toDouble() / inputSampleRate.toDouble()
-            val targetFrames = (inputFrames * resampleRatio).toInt().coerceAtLeast(1)
+            val targetFrames = min(MAX_DECODE_FRAMES, (inputFrames * resampleRatio).toInt().coerceAtLeast(1))
             val outputFloatPcm = FloatArray(targetFrames * 2)
 
             for (f in 0 until targetFrames) {
