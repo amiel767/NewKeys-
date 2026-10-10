@@ -1,0 +1,6 @@
+{
+  "summary":  "Plan détaillé pour l'intégration complète du module Sheets selon les instructions d'Amiel et la fiche de spécification 00-SPEC-sheets.md :\n1. Vérification et installation de toutes les polices requises dans res/font (Architects Daughter, Caveat, Kalam, Patrick Hand, Plus Jakarta Sans, Fira Code, JetBrains Mono).\n2. Intégration et validation des sources du package com.aetherkeys.sheets (Data, Model, UI, VM, Export).\n3. Branchement unique et propre de SheetsRoot dans MixerScreen.kt via SheetsRepository.\n4. Compilation et vérification stricte de l'application.",
+  "updatedAt":  "2026-10-09T19:27:07.328656094Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

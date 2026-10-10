@@ -2894,6 +2894,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             soundFontLoadMutex.withLock {
                 val oldSfId = slot.soundFontId
 
+                // Anti-pop / Anti-crack: smoothly silence the channel and all notes before swapping soundfonts
+                // to prevent DC offset pulse or abrupt buffer discontinuity ("TACK")
+                NativeAudioBridge.safeAllNotesOff(targetChannel)
+                NativeAudioBridge.safeSetTrackVolume(targetChannel, 0f)
+
                 Log.d("SoundFontLoad", "[DIAGNOSTIC] Requested load for slot=$slotId, raw sf2Path=$sf2Path")
 
                 // Ensure file path is accessible by native C++ fopen (bridge external storage files if needed)
@@ -4402,8 +4407,35 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             NativeAudioBridge.safeControlChange(ch, 1, 0) // Modulation wheel zero
         }
 
-        // 5. Restore target tracks with their exact saved patch states (not carrying over old patch's mutes/solos)
-        val restoredTracks = if (targetPatch.tracks.isNotEmpty()) targetPatch.tracks else state.tracks
+        // 5. Restore target tracks from active snapshot if available (or exact saved patch states)
+        // This ensures Solo/Mute (S/M) and snapshot settings are immediately active without needing a back-and-forth click!
+        val snapshotToApply = targetSnapshots[targetActiveSlot] ?: targetSnapshots["slot_default"]
+        val restoredTracks = if (snapshotToApply != null && snapshotToApply.tracks.isNotEmpty()) {
+            val baseTracks = if (targetPatch.tracks.isNotEmpty()) targetPatch.tracks else state.tracks
+            baseTracks.map { tr ->
+                val snap = snapshotToApply.tracks.find { it.id == tr.id }
+                if (snap != null) {
+                    tr.copy(
+                        volume = snap.volume,
+                        pan = snap.pan,
+                        isMuted = snap.isMuted,
+                        isSolo = snap.isSolo,
+                        isEnabled = snap.isEnabled,
+                        soundfontName = if (snap.soundfontName.isNotEmpty()) snap.soundfontName else tr.soundfontName,
+                        patchName = if (snap.soundfontName.isNotEmpty()) snap.patchName else tr.patchName,
+                        bank = snap.bank,
+                        program = snap.program,
+                        splitNoteMin = snap.splitNoteMin,
+                        splitNoteMax = snap.splitNoteMax,
+                        velocityCurve = snap.velocityCurve
+                    )
+                } else tr
+            }
+        } else if (targetPatch.tracks.isNotEmpty()) {
+            targetPatch.tracks
+        } else {
+            state.tracks
+        }
 
         _uiState.update { current ->
             current.copy(
@@ -4411,9 +4443,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 activePatchId = targetPatch.id,
                 tracks = restoredTracks,
                 audioSlots = if (targetPatch.audioSlots.isNotEmpty()) targetPatch.audioSlots else current.audioSlots,
-                visibleTracksCount = targetPatch.visibleTracksCount,
-                transpose = targetPatch.transpose,
-                octave = targetPatch.octave,
+                visibleTracksCount = snapshotToApply?.visibleTracksCount ?: targetPatch.visibleTracksCount,
+                transpose = snapshotToApply?.globalTranspose ?: targetPatch.transpose,
+                octave = snapshotToApply?.globalOctaveShift ?: targetPatch.octave,
                 snapshots = targetSnapshots,
                 configuredSnapshotSlots = targetConfiguredSlots,
                 snapshotCustomNames = targetCustomNames,
@@ -4432,8 +4464,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         applyTrackVolumes(_uiState.value)
-        audioEngine.globalTranspose = targetPatch.transpose
-        audioEngine.globalOctaveShift = targetPatch.octave
+        audioEngine.globalTranspose = snapshotToApply?.globalTranspose ?: targetPatch.transpose
+        audioEngine.globalOctaveShift = snapshotToApply?.globalOctaveShift ?: targetPatch.octave
 
         saveCurrentProjectDirect()
     }
@@ -5517,7 +5549,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 midiControlLastTriggerTime[controlKey] = now
             }
-            executeMidiAction(m.actionType, value)
+            executeMidiAction(m.actionType, value, isProgramChange = (midiType == MidiControlType.PROGRAM_CHANGE))
         }
     }
 
@@ -5686,15 +5718,16 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         persistCurrentStateDebounced()
     }
 
-    private fun executeMidiAction(action: MidiActionType, value: Int) {
+    private fun executeMidiAction(action: MidiActionType, value: Int, isProgramChange: Boolean = false) {
         val isContinuous = action.name.endsWith("_VOL") || action.name.endsWith("_PUNCH") ||
             action.name.endsWith("_GOODIZER") || action.name.endsWith("_PARAM")
         val isDrumPad = action.name.startsWith("DRUMPAD_PAD_")
 
         // For button actions (toggles, triggers, snapshots, patches), trigger on positive press (> 0),
-        // or also support toggle controllers when configured
+        // or also support toggle controllers when configured.
+        // Program Changes (PC) carry program number without velocity byte and must always trigger.
         val isButtonAction = !isContinuous && !isDrumPad
-        if (isButtonAction) {
+        if (isButtonAction && !isProgramChange) {
             val mapping = _uiState.value.midiMappings.find { it.actionType == action }
             val isToggle = mapping?.mode == MidiControlMode.TOGGLE
             if (value <= 0 && !isToggle) {

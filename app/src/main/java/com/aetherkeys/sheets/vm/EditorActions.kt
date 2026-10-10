@@ -1,0 +1,51 @@
+package com.aetherkeys.sheets.vm
+
+import com.aetherkeys.sheets.model.*
+
+enum class StyleScope { Sheet, Section }
+
+/** Everything the editor UI can ask for. Implemented by SheetEditorViewModel. */
+interface EditorActions {
+    fun undo()
+    fun redo()
+    fun selectSection(id: String)
+    fun selectBar(sectionId: String, barId: String)
+    fun selectSlot(slot: Int)
+    fun nextBar()
+    fun prevBar()
+    fun typeDegree(n: Int)
+    fun toggleQuality(q: Quality)
+    fun toggleExt(e: Ext)
+    fun alter(delta: Int)
+    fun startBass()
+    fun toggleNoChord()
+    fun toggleRepeatPrevious()
+    fun clearBar()
+    fun setSplit(s: Split)
+    fun duplicateBar()
+    fun copyLine()
+    fun deleteBar()
+    fun addBar()
+    fun transpose(semitones: Int)
+    fun setSongKey(pc: Int)
+    fun setSectionKey(sectionId: String, pc: Int?)
+    fun toggleMark(m: Mark)
+    fun toggleRepeatStart()
+    fun toggleRepeatEnd()
+    fun setRepeatCount(n: Int)
+    fun toggleVolta(n: Int)
+    fun addSection(kind: SectionKind)
+    fun renameSection(id: String, name: String)
+    fun deleteSection(id: String)
+    fun moveSection(id: String, dir: Int)
+    fun setLyric(barId: String, text: String)
+    fun setTitle(title: String)
+    fun setBpm(bpm: Int)
+    fun setTimeSig(beats: Int, unit: Int)
+    fun setChordFont(id: String, scope: StyleScope)
+    fun setLyricsFont(id: String, scope: StyleScope)
+    fun setChordSize(sp: Float, scope: StyleScope)
+    fun setBarsPerLine(n: Int, scope: StyleScope)
+    fun setPagination(p: Pagination)
+    fun setColor(argb: Long, scope: StyleScope)
+}

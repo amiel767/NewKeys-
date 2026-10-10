@@ -44,6 +44,8 @@ import com.soundstage.mixer.ui.pages.ProjectsPage
 import com.soundstage.mixer.ui.pages.SheetsPage
 import com.soundstage.mixer.ui.theme.*
 import com.soundstage.mixer.viewmodel.MixerViewModel
+import com.aetherkeys.sheets.ui.SheetsRoot
+import com.aetherkeys.sheets.data.SheetsRepository
 
 @Composable
 fun MixerScreen(
@@ -142,17 +144,74 @@ fun MixerScreen(
         ) { currentPage ->
             when (currentPage) {
                 AppScreenPage.PROJECTS -> {
-                    val hasActive = !uiState.activeProjectName.isNullOrBlank() && uiState.activeProjectName != "None" && !uiState.activeSceneId.isNullOrBlank() && uiState.activeSceneId != "None"
-                    ProjectsPage(
-                        projects = uiState.scenes,
-                        hasActiveProject = hasActive,
-                        onOpenProject = { viewModel.openProject(it) },
-                        onCreateNewProject = { name, isBlank -> viewModel.createNewProject(name, isBlank) },
-                        onDeleteProject = { viewModel.deleteProject(it) },
-                        onOpenSettings = { viewModel.openSettingsDrawer() },
-                        themeHue = uiState.themeHue,
-                        themeBgSaturation = uiState.themeBgSaturation,
-                        themeBgLightness = uiState.themeBgLightness
+                    val activeId = uiState.activeProjectName.takeIf { !it.isNullOrBlank() && it != "None" } ?: uiState.activeSceneId.takeIf { !it.isNullOrBlank() && it != "None" }
+                    val setlistsList = uiState.scenes.mapIndexed { index, scene ->
+                        com.aetherkeys.setlists.Setlist(
+                            id = scene.id,
+                            name = scene.name,
+                            patchCount = if (scene.patches.isNotEmpty()) scene.patches.size else scene.patchesCount,
+                            color = com.aetherkeys.setlists.SetlistColor.values()[index % com.aetherkeys.setlists.SetlistColor.values().size],
+                            lastUsedAt = System.currentTimeMillis() - index * 3600_000L
+                        )
+                    }
+                    var queryState by remember { mutableStateOf("") }
+                    var sortState by remember { mutableStateOf(com.aetherkeys.setlists.SetlistSort.Recent) }
+                    var onlyPinnedState by remember { mutableStateOf(false) }
+                    var prefsState by remember { mutableStateOf(com.aetherkeys.setlists.SetlistsPrefs()) }
+                    var lastDeletedSetlist by remember { mutableStateOf<com.aetherkeys.setlists.Setlist?>(null) }
+
+                    val setlistsState = com.aetherkeys.setlists.SetlistsUiState(
+                        setlists = setlistsList,
+                        openSetlistId = activeId,
+                        lastOpenedId = activeId,
+                        isLoading = false,
+                        query = queryState,
+                        sort = sortState,
+                        onlyPinned = onlyPinnedState,
+                        prefs = prefsState
+                    )
+
+                    val setlistsActions = remember {
+                        object : com.aetherkeys.setlists.SetlistsActions {
+                            override fun onCancel() {
+                                if (setlistsState.isBackEnabled) {
+                                    viewModel.navigateToPage(AppScreenPage.MIXER)
+                                }
+                            }
+                            override fun onOpenSetlist(id: String) {
+                                viewModel.openProject(id)
+                            }
+                            override fun onCreateSetlist(name: String, mode: com.aetherkeys.setlists.CreateMode) {
+                                viewModel.createNewProject(name, isBlank = mode == com.aetherkeys.setlists.CreateMode.Blank)
+                            }
+                            override fun onRenameSetlist(id: String, name: String) {}
+                            override fun onChangeColor(id: String, color: com.aetherkeys.setlists.SetlistColor) {}
+                            override fun onDuplicateSetlist(id: String) {
+                                viewModel.createNewProject("$id copy", isBlank = false)
+                            }
+                            override fun onTogglePin(id: String) {}
+                            override fun onDeleteSetlist(id: String) {
+                                lastDeletedSetlist = setlistsList.find { it.id == id }
+                                viewModel.deleteProject(id)
+                            }
+                            override fun onUndoDelete() {
+                                lastDeletedSetlist?.let {
+                                    viewModel.createNewProject(it.name, isBlank = true)
+                                }
+                                lastDeletedSetlist = null
+                            }
+                            override fun onQueryChange(query: String) { queryState = query }
+                            override fun onSortChange(sort: com.aetherkeys.setlists.SetlistSort) { sortState = sort }
+                            override fun onOnlyPinnedChange(only: Boolean) { onlyPinnedState = only }
+                            override fun onPrefsChange(prefs: com.aetherkeys.setlists.SetlistsPrefs) { prefsState = prefs }
+                            override fun onResetPrefs() { prefsState = com.aetherkeys.setlists.SetlistsPrefs() }
+                            override fun onOpenAppSettings() { viewModel.openSettingsDrawer() }
+                        }
+                    }
+
+                    com.aetherkeys.setlists.SetlistsScreen(
+                        state = setlistsState,
+                        actions = setlistsActions
                     )
                 }
                 AppScreenPage.DRUMPAD -> {
@@ -231,20 +290,10 @@ fun MixerScreen(
                     )
                 }
                 AppScreenPage.SHEETS -> {
-                    SheetsPage(
-                        sheets = uiState.sheets,
-                        activeSheetId = uiState.activeSheetId,
-                        onSelectSheet = { viewModel.selectActiveSheet(it) },
-                        onCreateSheet = { title, key, content -> viewModel.createSheet(title, key, content) },
-                        onUpdateSheet = { id, title, key, content -> viewModel.updateSheet(id, title, key, content) },
-                        onDeleteSheet = { viewModel.deleteSheet(it) },
-                        notesText = uiState.notesText,
-                        onNotesChange = { viewModel.updateNotesText(it) },
-                        transpose = uiState.transpose,
-                        onTransposeChange = { viewModel.updateTranspose(it) },
-                        onBackToMixer = { viewModel.navigateBackToMixer() },
-                        onOpenSettings = { viewModel.openSettingsDrawer() },
-                        onOpenFloatingSheet = { viewModel.openFloatingSheet(it) }
+                    SheetsRoot(
+                        repo = SheetsRepository(viewModel.fileManager.sheetsDir),
+                        bottomInset = safeBottomPadding,
+                        onBackToMixer = { viewModel.navigateBackToMixer() }
                     )
                 }
                 AppScreenPage.MIXER -> {
