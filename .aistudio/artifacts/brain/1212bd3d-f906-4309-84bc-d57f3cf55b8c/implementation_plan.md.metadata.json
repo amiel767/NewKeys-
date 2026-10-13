@@ -1,6 +1,6 @@
 {
-  "summary":  "Plan détaillé pour l'intégration complète du module Sheets selon les instructions d'Amiel et la fiche de spécification 00-SPEC-sheets.md :\n1. Vérification et installation de toutes les polices requises dans res/font (Architects Daughter, Caveat, Kalam, Patrick Hand, Plus Jakarta Sans, Fira Code, JetBrains Mono).\n2. Intégration et validation des sources du package com.aetherkeys.sheets (Data, Model, UI, VM, Export).\n3. Branchement unique et propre de SheetsRoot dans MixerScreen.kt via SheetsRepository.\n4. Compilation et vérification stricte de l'application.",
-  "updatedAt":  "2026-10-09T19:27:07.328656094Z",
+  "summary":  "Revised implementation plan: Restore Patches overlay on touch, access Setlists exclusively from the button inside Patches overlay, and wire all settings and setlists parameters cleanly with MixerViewModel and AppStatePersistence.",
+  "updatedAt":  "2026-10-11T20:28:28.135448549Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

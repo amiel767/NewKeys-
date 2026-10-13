@@ -2,6 +2,22 @@
 
 package com.aetherkeys.setlists
 
+/*
+ * ÆTHER KEYS — SETLISTS SCREEN (final design)
+ *
+ * Scope: this file contains ONLY the Setlists screen and its pure logic. It does not touch the
+ * DrumPad, the Loop Player, the mixer, the audio engine, or the global top bar.
+ * A setlist is a folder that stores patches: the business logic lives in the app and is wired
+ * through [SetlistsActions] / [SetlistsUiState]. Everything the user sees is in English.
+ *
+ * Requirements: Jetpack Compose (foundation 1.7+ for LazyItemScope.animateItem), material3 (Text only),
+ * ui-tooling-preview (for the @Preview only). java.time needs minSdk 26 or core library desugaring.
+ * For the "Create" sheet to rise above the keyboard: windowSoftInputMode = adjustResize and
+ * WindowCompat.setDecorFitsSystemWindows(window, false).
+ *
+ * Entry point: [SetlistsScreen].
+ */
+
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -75,7 +91,6 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
@@ -120,6 +135,7 @@ import kotlinx.coroutines.launch
 // 1. MODELS
 // ════════════════════════════════════════════════════════════════════════════════════════
 
+/** Four tones with the same luminosity and a moderate saturation: none of them dominates. */
 enum class SetlistColor(val base: Color, val text: Color) {
     Blue(Color(0xFF8FB2E8), Color(0xFFA9C6F0)),
     Amber(Color(0xFFD8A24A), Color(0xFFE6BC73)),
@@ -133,6 +149,7 @@ data class Setlist(
     val patchCount: Int,
     val color: SetlistColor,
     val isPinned: Boolean = false,
+    /** Epoch millis of the last time the setlist was opened. */
     val lastUsedAt: Long = 0L
 )
 
@@ -142,6 +159,7 @@ enum class OpenGesture(val label: String) { Tap("Tap"), DoubleTap("Double tap"),
 
 enum class CreateMode { Blank, Duplicate }
 
+/** Page-level preferences (opened by the gear). Persist them on the app side. */
 data class SetlistsPrefs(
     val animatedBackground: Boolean = true,
     val cardAuras: Boolean = true,
@@ -156,26 +174,34 @@ data class SetlistsPrefs(
 
 data class SetlistsUiState(
     val setlists: List<Setlist> = emptyList(),
+    /** The setlist currently loaded in the app, or null (first launch / none open). */
     val openSetlistId: String? = null,
+    /** The last setlist that was opened (kept even when none is open right now). */
     val lastOpenedId: String? = null,
     val isLoading: Boolean = false,
     val query: String = "",
     val sort: SetlistSort = SetlistSort.Recent,
     val onlyPinned: Boolean = false,
     val prefs: SetlistsPrefs = SetlistsPrefs(),
+    /** True when the system asks for reduced motion (e.g. animator duration scale = 0). */
     val reducedMotion: Boolean = false
 ) {
+    /** The global Back button (returns to the mixer) must only be enabled when this is true. */
     val isBackEnabled: Boolean get() = openSetlistId != null
 }
 
+/** Every method has an empty default body: wire what you need first. */
 interface SetlistsActions {
     fun onCancel() {}
+    /** Load the setlist, mark it as open and last opened, update lastUsedAt, return to the mixer. */
     fun onOpenSetlist(id: String) {}
+    /** [mode] Blank = no patches. Duplicate = copy of the currently open setlist. Color: see [SetlistsLogic.autoColor]. */
     fun onCreateSetlist(name: String, mode: CreateMode) {}
     fun onRenameSetlist(id: String, name: String) {}
     fun onChangeColor(id: String, color: SetlistColor) {}
     fun onDuplicateSetlist(id: String) {}
     fun onTogglePin(id: String) {}
+    /** Delete immediately; the host must keep the last deleted setlist so that [onUndoDelete] can restore it. */
     fun onDeleteSetlist(id: String) {}
     fun onUndoDelete() {}
     fun onQueryChange(query: String) {}
@@ -183,13 +209,14 @@ interface SetlistsActions {
     fun onOnlyPinnedChange(only: Boolean) {}
     fun onPrefsChange(prefs: SetlistsPrefs) {}
     fun onResetPrefs() {}
+    /** "All app settings" link inside the page settings panel. */
     fun onOpenAppSettings() {}
 }
 
 object NoOpSetlistsActions : SetlistsActions
 
 // ════════════════════════════════════════════════════════════════════════════════════════
-// 2. PURE LOGIC
+// 2. PURE LOGIC (unit-testable, no Android dependency except java.time)
 // ════════════════════════════════════════════════════════════════════════════════════════
 
 object SetlistsLogic {
@@ -198,6 +225,7 @@ object SetlistsLogic {
 
     fun patchLabel(n: Int) = if (n == 1) "patch" else "patches"
 
+    /** "Setlist N" with the first free N. */
     fun nextDefaultName(existing: List<Setlist>): String {
         var n = existing.size + 1
         while (existing.any { it.name == "Setlist $n" }) n++
@@ -206,6 +234,10 @@ object SetlistsLogic {
 
     fun isNameValid(name: String) = name.trim().isNotEmpty() && name.length <= MAX_NAME
 
+    /**
+     * Automatic color on creation: the least used color (ties: palette order).
+     * For a duplicate pass the source color: the copy takes the next one in the palette.
+     */
     fun autoColor(existing: List<Setlist>, after: SetlistColor? = null): SetlistColor {
         val all = SetlistColor.values()
         if (after != null) return all[(after.ordinal + 1) % all.size]
@@ -213,9 +245,11 @@ object SetlistsLogic {
         return all[counts.indexOf(counts.minOrNull() ?: 0)]
     }
 
+    /** The 4 most recently used setlists. Fixed: not affected by search, sort or the Pinned filter. */
     fun topCards(all: List<Setlist>): List<Setlist> =
         all.sortedByDescending { it.lastUsedAt }.take(TOP_CARDS)
 
+    /** Search + Pinned filter + sort. Pinned setlists stay on top when [pinnedOnTop] is true. */
     fun visibleList(
         all: List<Setlist>,
         query: String,
@@ -235,6 +269,7 @@ object SetlistsLogic {
             .sortedWith(cmp)
     }
 
+    /** "Today, 21:51" / "Yesterday, 18:20" / "Oct 6". */
     fun formatLastUsed(
         timestampMs: Long,
         nowMs: Long = System.currentTimeMillis(),
@@ -314,6 +349,7 @@ private fun Modifier.slSunk(shape: Shape): Modifier = this
     }
     .border(1.dp, white(0.05f), shape)
 
+/** Press = light spring scale-down. Apply BEFORE the surface/shadow modifiers. */
 @Composable
 private fun Modifier.slTap(scaleDown: Float = 0.96f, onTap: () -> Unit): Modifier {
     var pressed by remember { mutableStateOf(false) }
@@ -331,6 +367,7 @@ private fun Modifier.slTap(scaleDown: Float = 0.96f, onTap: () -> Unit): Modifie
         }
 }
 
+/** Open gesture driven by the "Open a setlist with" preference. */
 @Composable
 private fun Modifier.slOpenGesture(
     mode: OpenGesture,
@@ -365,6 +402,7 @@ private fun Modifier.slOpenGesture(
         }
 }
 
+/** Staggered entrance (30 ms per item). [animateIn] false = already seen, no replay on scroll. */
 @Composable
 private fun Modifier.slRise(index: Int, animateIn: Boolean): Modifier {
     val p = remember { Animatable(if (animateIn) 0f else 1f) }
@@ -488,6 +526,7 @@ fun SetlistsScreen(
             )
 
             if (!empty) {
+                // Fixed zone: never moves when the list scrolls.
                 Column(
                     Modifier
                         .fillMaxWidth()
@@ -535,6 +574,7 @@ fun SetlistsScreen(
                 }
             }
 
+            // Only this area scrolls.
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when {
                     state.isLoading -> Column(
@@ -590,6 +630,7 @@ fun SetlistsScreen(
             }
         }
 
+        // ── overlays ──
         val ov = overlay
         if (ov is SlOverlay.Menu) {
             val target = setlists.firstOrNull { it.id == ov.id }
@@ -682,6 +723,10 @@ fun SetlistsScreen(
         }
     }
 }
+
+// ────────────────────────────────────────────────────────────────────────────────────────
+// 4.1 TOP BAR
+// ────────────────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun SlTopBar(
@@ -820,6 +865,10 @@ private fun SlPrimaryButton(onClick: () -> Unit, content: @Composable () -> Unit
     ) { content() }
 }
 
+// ────────────────────────────────────────────────────────────────────────────────────────
+// 4.2 FIXED ZONE: header row (All setlists · Pinned · Sort by)
+// ────────────────────────────────────────────────────────────────────────────────────────
+
 @Composable
 private fun SlLabel(text: String, modifier: Modifier = Modifier) {
     Text(
@@ -885,6 +934,7 @@ private fun SlChip(label: String, selected: Boolean, onClick: () -> Unit, icon: 
     }
 }
 
+/** Segmented control with a spring-loaded sliding thumb. Pass a width (fixed or fillMaxWidth). */
 @Composable
 private fun <T> SlSegmented(
     options: List<Pair<T, String>>,
@@ -932,6 +982,10 @@ private fun <T> SlSegmented(
     }
 }
 
+// ────────────────────────────────────────────────────────────────────────────────────────
+// 4.3 TOP CARD (aura + faint tinted contour, no side bar, no monogram)
+// ────────────────────────────────────────────────────────────────────────────────────────
+
 @Composable
 private fun SetlistCard(
     s: Setlist,
@@ -956,6 +1010,7 @@ private fun SetlistCard(
         if (!prefs.cardAuras) 0f else if (isOpen) 0.20f else if (isLast) 0.14f else 0.10f,
         tween(400), label = "aura"
     )
+    // The aura is a small tinted bubble drifting very slowly (60–80 s per leg).
     val dur = (60 + (s.id.hashCode().absoluteValue % 5) * 5) * 1000
     val inf = rememberInfiniteTransition(label = "auraDrift")
     val dx: State<Float> = if (animate) inf.animateFloat(
@@ -1024,6 +1079,7 @@ private fun SetlistCard(
     }
 }
 
+/** "OPEN" in the color of the card or row where it sits. */
 @Composable
 private fun OpenTag(c: SetlistColor) {
     val shape = RoundedCornerShape(6.dp)
@@ -1050,6 +1106,10 @@ private fun MenuDotsButton(size: Dp, onClick: (Rect) -> Unit) {
         contentAlignment = Alignment.Center
     ) { SlIcon(SlIconKind.Dots, Color(0xFF7B859A), Modifier.size(size * 0.6f)) }
 }
+
+// ────────────────────────────────────────────────────────────────────────────────────────
+// 4.4 LIST ROW (neutral; only the patch dots carry color) with swipe-left delete
+// ────────────────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun SetlistRow(
@@ -1086,6 +1146,7 @@ private fun SetlistRow(
             .slRise(index, animateIn)
             .onSizeChanged { widthPx = it.width }
     ) {
+        // Delete pill, detached from the row by an 8 dp gap.
         Box(
             Modifier
                 .align(Alignment.CenterEnd)
@@ -1186,6 +1247,7 @@ private fun SetlistRow(
     }
 }
 
+/** One dot per patch, in order. Color only lives here (and in the card aura). */
 @Composable
 private fun PatchDots(n: Int, color: Color, max: Int = 12) {
     val c = min(n, max)
@@ -1199,6 +1261,7 @@ private fun PatchDots(n: Int, color: Color, max: Int = 12) {
     }
 }
 
+/** The new value slides in from below whenever the number changes. */
 @Composable
 private fun RollNumber(value: Int, style: TextStyle) {
     val offset = remember { Animatable(0f) }
@@ -1218,6 +1281,10 @@ private fun RollNumber(value: Int, style: TextStyle) {
         }
     )
 }
+
+// ────────────────────────────────────────────────────────────────────────────────────────
+// 4.5 EMPTY STATE
+// ────────────────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun SlEmptyState(onCreate: () -> Unit) {
@@ -1257,6 +1324,10 @@ private fun SlEmptyState(onCreate: () -> Unit) {
     }
 }
 
+// ────────────────────────────────────────────────────────────────────────────────────────
+// 4.6 LIVING BACKGROUND HALOS (4 soft bubbles, 62–110 s cycles, tint follows the open setlist)
+// ────────────────────────────────────────────────────────────────────────────────────────
+
 private data class HaloCfg(
     val base: Color, val radiusDp: Float, val ax: Float, val ay: Float, val by: Float,
     val fx: Float, val fy: Float, val px: Float, val py: Float, val alpha: Float, val mix: Float
@@ -1277,7 +1348,7 @@ private fun SlHalos(tint: Color?, animate: Boolean, modifier: Modifier) {
         var last = 0L
         while (true) {
             androidx.compose.runtime.withFrameMillis { t ->
-                if (t - last >= 33L) { last = t; timeMs = t }
+                if (t - last >= 33L) { last = t; timeMs = t } // ~30 fps cap
             }
         }
     }
@@ -1305,6 +1376,10 @@ private fun SlHalos(tint: Color?, animate: Boolean, modifier: Modifier) {
         }
     }
 }
+
+// ────────────────────────────────────────────────────────────────────────────────────────
+// 4.7 ITEM MENU (⋮): Pin · Rename · Change color · Duplicate · Delete
+// ────────────────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun SlItemMenu(
@@ -1402,6 +1477,10 @@ private fun MenuRow(icon: SlIconKind, label: String, color: Color, onClick: () -
         Text(label, style = slText(13.5.sp, FontWeight.SemiBold, color))
     }
 }
+
+// ────────────────────────────────────────────────────────────────────────────────────────
+// 4.8 CREATE SHEET (name field + Duplicate / Blank)
+// ────────────────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun SlCreateSheet(
@@ -1557,6 +1636,10 @@ private fun CreateTile(
     }
 }
 
+// ────────────────────────────────────────────────────────────────────────────────────────
+// 4.9 PAGE SETTINGS PANEL (opened by the gear; NOT the global settings overlay)
+// ────────────────────────────────────────────────────────────────────────────────────────
+
 @Composable
 private fun SlSettingsPanel(
     prefs: SetlistsPrefs,
@@ -1651,6 +1734,10 @@ private fun SlSwitch(on: Boolean, onChange: (Boolean) -> Unit) {
     }
 }
 
+// ────────────────────────────────────────────────────────────────────────────────────────
+// 4.10 SNACKBAR (with Undo for deletions)
+// ────────────────────────────────────────────────────────────────────────────────────────
+
 @Composable
 private fun SlSnackbar(snack: SlSnack, onUndo: () -> Unit, modifier: Modifier) {
     val shape = RoundedCornerShape(14.dp)
@@ -1694,6 +1781,7 @@ private fun SlSnackbar(snack: SlSnack, onUndo: () -> Unit, modifier: Modifier) {
     }
 }
 
+/** Fade + small rise on first composition (menus, panels, snackbar). */
 @Composable
 private fun Modifier.slAppear(): Modifier {
     val p = remember { Animatable(0f) }
@@ -1705,6 +1793,10 @@ private fun Modifier.slAppear(): Modifier {
         scaleX = s; scaleY = s
     }
 }
+
+// ════════════════════════════════════════════════════════════════════════════════════════
+// 5. ICONS (drawn, no material-icons dependency)
+// ════════════════════════════════════════════════════════════════════════════════════════
 
 private enum class SlIconKind { Search, Gear, Plus, Dots, Pin, Trash, Copy, Check, Close, Edit, Swatch, Lock }
 

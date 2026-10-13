@@ -1,5 +1,8 @@
 package com.soundstage.mixer.ui.pages
 
+import com.soundstage.mixer.ui.settings.mappable
+
+
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
@@ -678,6 +681,7 @@ fun DrumPadPage(
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxHeight()
+                                    .mappable("drum.pad${pad.id}")
                             ) {
                                 SingleDrumPadBox(
                                     pad = pad,
@@ -705,6 +709,7 @@ fun DrumPadPage(
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxHeight()
+                                    .mappable("drum.pad${pad.id}")
                             ) {
                                 SingleDrumPadBox(
                                     pad = pad,

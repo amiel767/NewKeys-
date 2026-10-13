@@ -1,5 +1,8 @@
 package com.soundstage.mixer.ui.components
 
+import com.soundstage.mixer.ui.settings.mappable
+
+
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
@@ -241,6 +244,7 @@ fun VerticalTrackChannel(
                     
                     Box(
                         modifier = Modifier
+                            .mappable("mixer.t${track.id}.solo")
                             .weight(1f)
                             .height(22.dp)
                             .clip(RoundedCornerShape(4.dp))
@@ -258,6 +262,7 @@ fun VerticalTrackChannel(
 
                     Box(
                         modifier = Modifier
+                            .mappable("mixer.t${track.id}.mute")
                             .weight(1f)
                             .height(22.dp)
                             .clip(RoundedCornerShape(4.dp))
@@ -285,6 +290,7 @@ fun VerticalTrackChannel(
             ledColor = vibrantLedColor,
             showTicks = showTicks,
             modifier = Modifier
+                .mappable(if (isMaster) "mixer.master" else "mixer.t${track.id}.fader")
                 .weight(1f)
                 .fillMaxWidth()
         )

@@ -1,5 +1,8 @@
 package com.soundstage.mixer.ui.components
 
+import com.soundstage.mixer.ui.settings.mappable
+
+
 import android.app.ActivityManager
 import android.content.Context
 import androidx.compose.animation.*
@@ -505,7 +508,8 @@ fun BottomBar(
             val slotKeys = configuredSnapshotSlots
             val isAdaptiveStretch = slotKeys.size >= 4
 
-            slotKeys.forEach { slotKey ->
+            slotKeys.forEachIndexed { index, slotKey ->
+                val snapCtrlId = if (slotKey == "slot_default") "mixer.default" else "mixer.snap${index.coerceAtLeast(1)}" 
                 val defaultLabel = when (slotKey) {
                     "slot_default" -> "Default"
                     else -> snapshotCustomNames[slotKey] ?: "Snapshot"
@@ -554,6 +558,7 @@ fun BottomBar(
 
                 Box(
                     modifier = slotModifier
+                        .mappable(snapCtrlId)
                         .shadow(
                             elevation = if (isActive) 0.dp else 2.5.dp,
                             shape = RoundedCornerShape(8.dp),
@@ -701,6 +706,7 @@ fun BottomBar(
         // ================= 5. MASTER FADER =================
         Row(
             modifier = Modifier
+                .mappable("mixer.master")
                 .width(masterFaderWidth)
                 .height(barHeight)
                 .shadow(2.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black, spotColor = Color(0x99000000))

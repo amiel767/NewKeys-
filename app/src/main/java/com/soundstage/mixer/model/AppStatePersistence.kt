@@ -953,4 +953,84 @@ class AppStatePersistence(context: Context) {
             defaultPath
         }
     }
+
+    fun saveString(key: String, value: String) {
+        try {
+            prefs.edit().putString(key, value).apply()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving string for $key: ${e.message}")
+        }
+    }
+
+    fun getString(key: String, defaultValue: String): String {
+        return try {
+            prefs.getString(key, defaultValue) ?: defaultValue
+        } catch (e: Exception) {
+            defaultValue
+        }
+    }
+
+    fun saveBoolean(key: String, value: Boolean) {
+        try {
+            prefs.edit().putBoolean(key, value).apply()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving boolean for $key: ${e.message}")
+        }
+    }
+
+    fun getBoolean(key: String, defaultValue: Boolean): Boolean {
+        return try {
+            prefs.getBoolean(key, defaultValue)
+        } catch (e: Exception) {
+            defaultValue
+        }
+    }
+
+    fun saveInt(key: String, value: Int) {
+        try {
+            prefs.edit().putInt(key, value).apply()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving int for $key: ${e.message}")
+        }
+    }
+
+    fun getInt(key: String, defaultValue: Int): Int {
+        return try {
+            prefs.getInt(key, defaultValue)
+        } catch (e: Exception) {
+            defaultValue
+        }
+    }
+
+    fun saveFloat(key: String, value: Float) {
+        try {
+            prefs.edit().putFloat(key, value).apply()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving float for $key: ${e.message}")
+        }
+    }
+
+    fun getFloat(key: String, defaultValue: Float): Float {
+        return try {
+            prefs.getFloat(key, defaultValue)
+        } catch (e: Exception) {
+            defaultValue
+        }
+    }
+
+    fun saveLong(key: String, value: Long) {
+        try {
+            prefs.edit().putLong(key, value).apply()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving long for $key: ${e.message}")
+        }
+    }
+
+    fun getLong(key: String, defaultValue: Long): Long {
+        return try {
+            prefs.getLong(key, defaultValue)
+        } catch (e: Exception) {
+            defaultValue
+        }
+    }
 }

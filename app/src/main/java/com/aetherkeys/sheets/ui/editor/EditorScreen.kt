@@ -374,12 +374,18 @@ private fun PageTab(
             ToolChip("Standard", { onSetNotation(Notation.Standard) }, selected = settings.notation == Notation.Standard)
         }
         OverlineLabel("Song key")
-        ChipFlow { Theory.KEY_NAMES.forEachIndexed { pc, n -> ToolChip(n, { a.setSongKey(pc) }, selected = sheet.keyPc == pc) } }
+        ChipFlow {
+            for ((pc, n) in Theory.KEY_NAMES.withIndex()) {
+                ToolChip(n, { a.setSongKey(pc) }, selected = sheet.keyPc == pc)
+            }
+        }
         if (section != null) {
             OverlineLabel("Key of “${section.name}”")
             ChipFlow {
                 ToolChip("Song", { a.setSectionKey(section.id, null) }, selected = section.keyPc == null)
-                Theory.KEY_NAMES.forEachIndexed { pc, n -> ToolChip(n, { a.setSectionKey(section.id, pc) }, selected = section.keyPc == pc) }
+                for ((pc, n) in Theory.KEY_NAMES.withIndex()) {
+                    ToolChip(n, { a.setSectionKey(section.id, pc) }, selected = section.keyPc == pc)
+                }
             }
         }
         OverlineLabel("Tempo · ${sheet.bpm} BPM")

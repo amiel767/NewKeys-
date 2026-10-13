@@ -42,262 +42,34 @@ import com.soundstage.mixer.ui.components.*
 import com.soundstage.mixer.ui.pages.DrumPadPage
 import com.soundstage.mixer.ui.pages.ProjectsPage
 import com.soundstage.mixer.ui.pages.SheetsPage
+import com.soundstage.mixer.ui.settings.NoOpSettingsActions
+import com.soundstage.mixer.ui.settings.SettingsScreen
+import com.soundstage.mixer.ui.settings.SettingsState
+import com.soundstage.mixer.ui.setlists.NoOpSetlistsActions
+import com.soundstage.mixer.ui.setlists.SetlistsScreen
+import com.soundstage.mixer.ui.setlists.SetlistsUiState
+import com.soundstage.mixer.ui.settings.*
+import com.soundstage.mixer.ui.setlists.*
 import com.soundstage.mixer.ui.theme.*
 import com.soundstage.mixer.viewmodel.MixerViewModel
+import androidx.compose.ui.unit.Dp
+import androidx.compose.foundation.ScrollState
+import com.soundstage.mixer.viewmodel.MixerUiState
+import com.soundstage.mixer.ui.components.DetectedChord
 import com.aetherkeys.sheets.ui.SheetsRoot
 import com.aetherkeys.sheets.data.SheetsRepository
 
 @Composable
-fun MixerScreen(
+private fun MixerMainPageContent(
+    uiState: MixerUiState,
     viewModel: MixerViewModel,
-    modifier: Modifier = Modifier,
-    onRequestManageStoragePermission: () -> Unit = {}
+    safeBottomPadding: Dp,
+    detectedChord: DetectedChord?,
+    isKeyboardVisible: Boolean,
+    trackScrollState: ScrollState,
+    onImportDrumPadAudio: () -> Unit = {}
 ) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    var isSplashFinished by remember { mutableStateOf(false) }
-
-    val sf2PickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenMultipleDocuments()
-    ) { uris ->
-        if (!uris.isNullOrEmpty()) {
-            viewModel.importSoundFontUris(uris)
-        }
-    }
-
-    val drumPadPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenMultipleDocuments()
-    ) { uris ->
-        if (!uris.isNullOrEmpty()) {
-            viewModel.importDrumPadUris(uris)
-        }
-    }
-
-    val loopPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenMultipleDocuments()
-    ) { uris ->
-        if (!uris.isNullOrEmpty()) {
-            viewModel.importLoopUris(uris)
-        }
-    }
-
-    // Real-time zero-latency chord analysis from pressed keys
-    val rawChord = remember(uiState.pressedKeys) {
-        ChordCalculator.detect(uiState.pressedKeys)
-    }
-    val detectedChord = remember(rawChord, uiState.useFlats) {
-        if (uiState.useFlats && rawChord != null) {
-            fun String.toFlats(): String = this
-                .replace("C#", "Db")
-                .replace("D#", "Eb")
-                .replace("F#", "Gb")
-                .replace("G#", "Ab")
-                .replace("A#", "Bb")
-            
-            com.soundstage.mixer.ui.components.DetectedChord(
-                primaryName = rawChord.primaryName.toFlats(),
-                equivalentName = rawChord.equivalentName.toFlats(),
-                variantName = rawChord.variantName.toFlats(),
-                alternateNames = rawChord.alternateNames.toFlats(),
-                alternateName2 = rawChord.alternateName2.toFlats(),
-                formula = rawChord.formula,
-                notesList = rawChord.notesList.map { it.toFlats() }
-            )
-        } else rawChord
-    }
-
-    val isKeyboardVisible = uiState.keyboardHeightFraction > 0f
-
-    val animatedBottomPadding by animateDpAsState(
-        targetValue = if (isKeyboardVisible) 0.dp else 6.dp,
-        animationSpec = tween(
-            durationMillis = 260,
-            easing = FastOutSlowInEasing
-        ),
-        label = "bottomPaddingAnim"
-    )
-    val safeBottomPadding = animatedBottomPadding.coerceAtLeast(0.dp)
-
-    // Fullscreen Stage Container (Unpadded for 100% full-bleed overlays like SplashScreen)
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .testTag("mixer_screen_root")
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(
-                    start = 6.dp,
-                    end = 6.dp,
-                    top = 6.dp,
-                    bottom = safeBottomPadding
-                )
-        ) {
-            AnimatedContent(
-            targetState = uiState.currentPage,
-            transitionSpec = {
-                fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(220))
-            },
-            label = "screen_page_switch",
-            modifier = Modifier.fillMaxSize()
-        ) { currentPage ->
-            when (currentPage) {
-                AppScreenPage.PROJECTS -> {
-                    val activeId = uiState.activeProjectName.takeIf { !it.isNullOrBlank() && it != "None" } ?: uiState.activeSceneId.takeIf { !it.isNullOrBlank() && it != "None" }
-                    val setlistsList = uiState.scenes.mapIndexed { index, scene ->
-                        com.aetherkeys.setlists.Setlist(
-                            id = scene.id,
-                            name = scene.name,
-                            patchCount = if (scene.patches.isNotEmpty()) scene.patches.size else scene.patchesCount,
-                            color = com.aetherkeys.setlists.SetlistColor.values()[index % com.aetherkeys.setlists.SetlistColor.values().size],
-                            lastUsedAt = System.currentTimeMillis() - index * 3600_000L
-                        )
-                    }
-                    var queryState by remember { mutableStateOf("") }
-                    var sortState by remember { mutableStateOf(com.aetherkeys.setlists.SetlistSort.Recent) }
-                    var onlyPinnedState by remember { mutableStateOf(false) }
-                    var prefsState by remember { mutableStateOf(com.aetherkeys.setlists.SetlistsPrefs()) }
-                    var lastDeletedSetlist by remember { mutableStateOf<com.aetherkeys.setlists.Setlist?>(null) }
-
-                    val setlistsState = com.aetherkeys.setlists.SetlistsUiState(
-                        setlists = setlistsList,
-                        openSetlistId = activeId,
-                        lastOpenedId = activeId,
-                        isLoading = false,
-                        query = queryState,
-                        sort = sortState,
-                        onlyPinned = onlyPinnedState,
-                        prefs = prefsState
-                    )
-
-                    val setlistsActions = remember {
-                        object : com.aetherkeys.setlists.SetlistsActions {
-                            override fun onCancel() {
-                                if (setlistsState.isBackEnabled) {
-                                    viewModel.navigateToPage(AppScreenPage.MIXER)
-                                }
-                            }
-                            override fun onOpenSetlist(id: String) {
-                                viewModel.openProject(id)
-                            }
-                            override fun onCreateSetlist(name: String, mode: com.aetherkeys.setlists.CreateMode) {
-                                viewModel.createNewProject(name, isBlank = mode == com.aetherkeys.setlists.CreateMode.Blank)
-                            }
-                            override fun onRenameSetlist(id: String, name: String) {}
-                            override fun onChangeColor(id: String, color: com.aetherkeys.setlists.SetlistColor) {}
-                            override fun onDuplicateSetlist(id: String) {
-                                viewModel.createNewProject("$id copy", isBlank = false)
-                            }
-                            override fun onTogglePin(id: String) {}
-                            override fun onDeleteSetlist(id: String) {
-                                lastDeletedSetlist = setlistsList.find { it.id == id }
-                                viewModel.deleteProject(id)
-                            }
-                            override fun onUndoDelete() {
-                                lastDeletedSetlist?.let {
-                                    viewModel.createNewProject(it.name, isBlank = true)
-                                }
-                                lastDeletedSetlist = null
-                            }
-                            override fun onQueryChange(query: String) { queryState = query }
-                            override fun onSortChange(sort: com.aetherkeys.setlists.SetlistSort) { sortState = sort }
-                            override fun onOnlyPinnedChange(only: Boolean) { onlyPinnedState = only }
-                            override fun onPrefsChange(prefs: com.aetherkeys.setlists.SetlistsPrefs) { prefsState = prefs }
-                            override fun onResetPrefs() { prefsState = com.aetherkeys.setlists.SetlistsPrefs() }
-                            override fun onOpenAppSettings() { viewModel.openSettingsDrawer() }
-                        }
-                    }
-
-                    com.aetherkeys.setlists.SetlistsScreen(
-                        state = setlistsState,
-                        actions = setlistsActions
-                    )
-                }
-                AppScreenPage.DRUMPAD -> {
-                    val tonicSlot = uiState.audioSlots.find { it.slotId == 9 }
-                    val tonicVol = tonicSlot?.volume ?: 0.85f
-                    DrumPadPage(
-                        drumPads = uiState.drumPads,
-                        isMixMode = uiState.isDrumPadMixMode,
-                        onToggleMixMode = { viewModel.toggleDrumPadMixMode() },
-                        feelSwing = uiState.drumFeelSwing,
-                        onFeelSwingChange = { viewModel.setDrumFeelSwing(it) },
-                        bpm = uiState.bpm,
-                        onBpmChange = { viewModel.setGlobalBpm(it) },
-                        activeTonicNotes = uiState.activeTonicNotes,
-                        onTonicNoteClick = { viewModel.onTonicNoteClick(it) },
-                        useFlats = uiState.useFlats,
-                        onToggleUseFlats = { viewModel.toggleUseFlats() },
-                        activeTonicPadName = uiState.activeTonicPadName,
-                        onOpenTonicSoundPicker = {
-                            viewModel.openSoundfontForSlot(9)
-                        },
-                        activeDrumKitName = uiState.activeDrumKitName,
-                        onOpenDrumKitPicker = { viewModel.toggleDrumPadMiniBrowser() },
-                        onStopTonicDrone = { viewModel.onTonicNoteClick("") },
-                        tonicOctaveRange = uiState.tonicOctaveRange,
-                        onTonicOctaveMinus = { viewModel.onTonicOctaveMinus() },
-                        onTonicOctavePlus = { viewModel.onTonicOctavePlus() },
-                        isMultiPadEnabled = uiState.isMultiPadEnabled,
-                        onToggleMultiPad = { viewModel.toggleMultiPad() },
-                        tonicVolume = tonicVol,
-                        onTonicVolumeChange = { viewModel.setTonicVolume(it) },
-                        tonicShimmer = uiState.tonicShimmer,
-                        onTonicShimmerChange = { viewModel.setTonicShimmer(it) },
-                        isMiniBrowserOpen = uiState.isDrumPadMiniBrowserOpen,
-                        onToggleMiniBrowser = { viewModel.toggleDrumPadMiniBrowser() },
-                        onCloseMiniBrowser = { viewModel.closeDrumPadMiniBrowser() },
-                        audioFiles = uiState.drumPadAudioFiles,
-                        onPreviewAudioFile = { viewModel.playDrumSample(it) },
-                        onAssignSampleToPad = { padId, sample ->
-                            viewModel.assignDrumSampleOrLoop(padId, sample.name, sample.path, isLoop = false)
-                        },
-                        onPadPressed = { viewModel.onDrumPadPressed(it) },
-                        onPadReleased = { viewModel.onDrumPadReleased(it) },
-                        onPadVolumeChange = { padId, vol -> viewModel.setDrumPadVolumeDirect(padId, vol) },
-                        onPadVolumeDelta = { padId, delta -> viewModel.adjustDrumPadVolume(padId, delta) },
-                        onLoopBeatsChange = { padId, beats -> viewModel.setDrumPadLoopBeats(padId, beats) },
-                        onBackToMixer = { viewModel.navigateBackToMixer() },
-                        rightPanelMode = uiState.drumRightPanelMode,
-                        onRightPanelModeChange = { viewModel.setDrumRightPanelMode(it) },
-                        loopFileName = uiState.loopPlayerFileName,
-                        loopFilePath = uiState.loopPlayerFilePath,
-                        loopDurationMs = uiState.loopPlayerDurationMs,
-                        loopPositionMs = uiState.loopPlayerPositionMs,
-                        loopProgress = uiState.loopPlayerProgress,
-                        loopIsPlaying = uiState.loopPlayerIsPlaying,
-                        loopIsLooping = uiState.loopPlayerIsLooping,
-                        loopPitchSemitones = uiState.loopPlayerPitchSemitones,
-                        loopStepMode = uiState.loopPlayerStepMode,
-                        loopWaveform = uiState.loopPlayerWaveform,
-                        loopVolume = uiState.loopPlayerVolume,
-                        loopExplorerPath = uiState.loopPlayerExplorerPath,
-                        loopExplorerItems = uiState.loopPlayerExplorerItems,
-                        loopIsExplorerOpen = uiState.loopPlayerIsExplorerOpen,
-                        onToggleLoopPlayPause = { viewModel.toggleExternalLoopPlayPause() },
-                        onStopLoop = { viewModel.stopExternalLoopPlayer() },
-                        onRetriggerLoop = { viewModel.retriggerExternalLoopPlayer() },
-                        onSeekLoopProgress = { viewModel.seekExternalLoopPlayer(it) },
-                        onToggleLoopLooping = { viewModel.toggleExternalLoopLooping() },
-                        onChangeLoopPitch = { viewModel.setExternalLoopPitchSemitones(it) },
-                        onResetLoopPitch = { viewModel.resetExternalLoopPitch() },
-                        onSelectLoopStepMode = { viewModel.setExternalLoopStepMode(it) },
-                        onLoopVolumeChange = { viewModel.setExternalLoopVolume(it) },
-                        onToggleLoopExplorer = { viewModel.toggleExternalLoopExplorer() },
-                        onNavigateLoopExplorer = { viewModel.navigateLoopPlayerExplorer(it) },
-                        onSelectLoopAudioFile = { viewModel.loadAndPlayExternalLoopFile(it) }
-                    )
-                }
-                AppScreenPage.SHEETS -> {
-                    SheetsRoot(
-                        repo = SheetsRepository(viewModel.fileManager.sheetsDir),
-                        bottomInset = safeBottomPadding,
-                        onBackToMixer = { viewModel.navigateBackToMixer() }
-                    )
-                }
-                AppScreenPage.MIXER -> {
-                    // Full-screen Studio Layout (No enclosing bento box, edge-to-edge layout)
+// Full-screen Studio Layout (No enclosing bento box, edge-to-edge layout)
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -347,7 +119,7 @@ fun MixerScreen(
                     },
                     onPanic = { viewModel.triggerPanic() },
                     onOpenScenes = {
-                        if (uiState.activePopup == ActivePopup.SCENE) viewModel.closePopup() else viewModel.openPopup(ActivePopup.SCENE)
+                        viewModel.navigateToPage(AppScreenPage.SETLISTS)
                     },
                     onOpenSettings = { viewModel.openSettingsDrawer() },
                     onBackToProjects = { viewModel.navigateToProjectsHome() },
@@ -378,7 +150,7 @@ fun MixerScreen(
                         label = "fader_mode_transition"
                     ) { verticalMode ->
                         if (verticalMode) {
-                            val trackScrollState = rememberScrollState()
+                            // trackScrollState lifted to MixerScreen level
                             val overlayWidth = if (isPadOpen) (this@BoxWithConstraints.maxWidth * 0.50f) else 0.dp
                             val visibleTracks = uiState.tracks.take(uiState.visibleTracksCount.coerceIn(1, 8))
                             val showAddButton = uiState.visibleTracksCount < 8 && !isPadOpen
@@ -595,7 +367,7 @@ fun MixerScreen(
                                             onAssignPadSampleOrLoop = { padId, sample, isLoop ->
                                                 viewModel.assignDrumSampleOrLoop(padId, sample.name, sample.path, isLoop)
                                             },
-                                            onImportAudioFile = { drumPadPickerLauncher.launch(arrayOf("audio/*", "*/*")) },
+                                            onImportAudioFile = { onImportDrumPadAudio() },
                                             isRecording = uiState.isDrumLoopRecording,
                                             isArmed = uiState.isDrumLoopArmed,
                                             onToggleArmLoop = { viewModel.toggleArmDrumLoop() },
@@ -831,8 +603,399 @@ fun MixerScreen(
             }
                     }
                 }
+
+
+
+@Composable
+fun MixerScreen(
+    viewModel: MixerViewModel,
+    modifier: Modifier = Modifier,
+    onRequestManageStoragePermission: () -> Unit = {}
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    var isSplashFinished by remember { mutableStateOf(false) }
+
+    val sf2PickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (!uris.isNullOrEmpty()) {
+            viewModel.importSoundFontUris(uris)
+        }
+    }
+
+    val drumPadPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (!uris.isNullOrEmpty()) {
+            viewModel.importDrumPadUris(uris)
+        }
+    }
+
+    val loopPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (!uris.isNullOrEmpty()) {
+            viewModel.importLoopUris(uris)
+        }
+    }
+
+    // Real-time zero-latency chord analysis from pressed keys
+    val rawChord = remember(uiState.pressedKeys) {
+        ChordCalculator.detect(uiState.pressedKeys)
+    }
+    val detectedChord = remember(rawChord, uiState.useFlats) {
+        if (uiState.useFlats && rawChord != null) {
+            fun String.toFlats(): String = this
+                .replace("C#", "Db")
+                .replace("D#", "Eb")
+                .replace("F#", "Gb")
+                .replace("G#", "Ab")
+                .replace("A#", "Bb")
+            
+            com.soundstage.mixer.ui.components.DetectedChord(
+                primaryName = rawChord.primaryName.toFlats(),
+                equivalentName = rawChord.equivalentName.toFlats(),
+                variantName = rawChord.variantName.toFlats(),
+                alternateNames = rawChord.alternateNames.toFlats(),
+                alternateName2 = rawChord.alternateName2.toFlats(),
+                formula = rawChord.formula,
+                notesList = rawChord.notesList.map { it.toFlats() }
+            )
+        } else rawChord
+    }
+
+    val isKeyboardVisible = uiState.keyboardHeightFraction > 0f
+
+    val animatedBottomPadding by animateDpAsState(
+        targetValue = if (isKeyboardVisible) 0.dp else 6.dp,
+        animationSpec = tween(
+            durationMillis = 260,
+            easing = FastOutSlowInEasing
+        ),
+        label = "bottomPaddingAnim"
+    )
+    val safeBottomPadding = animatedBottomPadding.coerceAtLeast(0.dp)
+    val trackScrollState = rememberScrollState()
+
+    // Fullscreen Stage Container (Unpadded for 100% full-bleed overlays like SplashScreen)
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .testTag("mixer_screen_root")
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(
+                    start = 6.dp,
+                    end = 6.dp,
+                    top = 6.dp,
+                    bottom = safeBottomPadding
+                )
+        ) {
+            AnimatedContent(
+            targetState = uiState.currentPage,
+            transitionSpec = {
+                fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(220))
+            },
+            label = "screen_page_switch",
+            modifier = Modifier.fillMaxSize()
+        ) { currentPage ->
+            when (currentPage) {
+                AppScreenPage.PROJECTS, AppScreenPage.SETLISTS -> {
+                    SetlistsScreen(
+                        state = SetlistsUiState(
+                            setlists = uiState.scenes.map { scene ->
+                                Setlist(
+                                    id = scene.id,
+                                    name = scene.name,
+                                    patchCount = scene.patchesCount,
+                                    color = SetlistColor.Blue,
+                                    isPinned = false,
+                                    lastUsedAt = System.currentTimeMillis()
+                                )
+                            },
+                            openSetlistId = uiState.activeSceneId.ifEmpty { null },
+                            lastOpenedId = uiState.lastOpenedSetlistId,
+                            isLoading = uiState.isSetlistsLoading,
+                            query = uiState.setlistsQuery,
+                            sort = uiState.setlistsSort,
+                            onlyPinned = uiState.setlistsOnlyPinned,
+                            prefs = uiState.setlistsPrefs
+                        ),
+                        actions = object : SetlistsActions {
+                            override fun onCancel() { viewModel.navigateBackToMixer() }
+                            override fun onOpenSetlist(id: String) { viewModel.openSetlistFromScreen(id) }
+                            override fun onCreateSetlist(name: String, mode: CreateMode) { viewModel.createSetlistFromScreen(name, mode) }
+                            override fun onRenameSetlist(id: String, name: String) { viewModel.renameSetlistFromScreen(id, name) }
+                            override fun onChangeColor(id: String, color: SetlistColor) { viewModel.changeSetlistColor(id, color) }
+                            override fun onDuplicateSetlist(id: String) { viewModel.duplicateSetlistFromScreen(id) }
+                            override fun onTogglePin(id: String) { viewModel.togglePinSetlist(id) }
+                            override fun onDeleteSetlist(id: String) { viewModel.deleteSetlistWithUndo(id) }
+                            override fun onUndoDelete() { viewModel.undoDeleteSetlist() }
+                            override fun onQueryChange(query: String) { viewModel.setSetlistsQuery(query) }
+                            override fun onSortChange(sort: SetlistSort) { viewModel.setSetlistsSort(sort) }
+                            override fun onOnlyPinnedChange(only: Boolean) { viewModel.setSetlistsOnlyPinned(only) }
+                            override fun onPrefsChange(prefs: SetlistsPrefs) { viewModel.updateSetlistsPrefs(prefs) }
+                            override fun onResetPrefs() { viewModel.resetSetlistsPrefs() }
+                            override fun onOpenAppSettings() { viewModel.openSettingsDrawer() }
+                        }
+                    )
+                }
+                AppScreenPage.DRUMPAD -> {
+                    val tonicSlot = uiState.audioSlots.find { it.slotId == 9 }
+                    val tonicVol = tonicSlot?.volume ?: 0.85f
+                    DrumPadPage(
+                        drumPads = uiState.drumPads,
+                        isMixMode = uiState.isDrumPadMixMode,
+                        onToggleMixMode = { viewModel.toggleDrumPadMixMode() },
+                        feelSwing = uiState.drumFeelSwing,
+                        onFeelSwingChange = { viewModel.setDrumFeelSwing(it) },
+                        bpm = uiState.bpm,
+                        onBpmChange = { viewModel.setGlobalBpm(it) },
+                        activeTonicNotes = uiState.activeTonicNotes,
+                        onTonicNoteClick = { viewModel.onTonicNoteClick(it) },
+                        useFlats = uiState.useFlats,
+                        onToggleUseFlats = { viewModel.toggleUseFlats() },
+                        activeTonicPadName = uiState.activeTonicPadName,
+                        onOpenTonicSoundPicker = {
+                            viewModel.openSoundfontForSlot(9)
+                        },
+                        activeDrumKitName = uiState.activeDrumKitName,
+                        onOpenDrumKitPicker = { viewModel.toggleDrumPadMiniBrowser() },
+                        onStopTonicDrone = { viewModel.onTonicNoteClick("") },
+                        tonicOctaveRange = uiState.tonicOctaveRange,
+                        onTonicOctaveMinus = { viewModel.onTonicOctaveMinus() },
+                        onTonicOctavePlus = { viewModel.onTonicOctavePlus() },
+                        isMultiPadEnabled = uiState.isMultiPadEnabled,
+                        onToggleMultiPad = { viewModel.toggleMultiPad() },
+                        tonicVolume = tonicVol,
+                        onTonicVolumeChange = { viewModel.setTonicVolume(it) },
+                        tonicShimmer = uiState.tonicShimmer,
+                        onTonicShimmerChange = { viewModel.setTonicShimmer(it) },
+                        isMiniBrowserOpen = uiState.isDrumPadMiniBrowserOpen,
+                        onToggleMiniBrowser = { viewModel.toggleDrumPadMiniBrowser() },
+                        onCloseMiniBrowser = { viewModel.closeDrumPadMiniBrowser() },
+                        audioFiles = uiState.drumPadAudioFiles,
+                        onPreviewAudioFile = { viewModel.playDrumSample(it) },
+                        onAssignSampleToPad = { padId, sample ->
+                            viewModel.assignDrumSampleOrLoop(padId, sample.name, sample.path, isLoop = false)
+                        },
+                        onPadPressed = { viewModel.onDrumPadPressed(it) },
+                        onPadReleased = { viewModel.onDrumPadReleased(it) },
+                        onPadVolumeChange = { padId, vol -> viewModel.setDrumPadVolumeDirect(padId, vol) },
+                        onPadVolumeDelta = { padId, delta -> viewModel.adjustDrumPadVolume(padId, delta) },
+                        onLoopBeatsChange = { padId, beats -> viewModel.setDrumPadLoopBeats(padId, beats) },
+                        onBackToMixer = { viewModel.navigateBackToMixer() },
+                        rightPanelMode = uiState.drumRightPanelMode,
+                        onRightPanelModeChange = { viewModel.setDrumRightPanelMode(it) },
+                        loopFileName = uiState.loopPlayerFileName,
+                        loopFilePath = uiState.loopPlayerFilePath,
+                        loopDurationMs = uiState.loopPlayerDurationMs,
+                        loopPositionMs = uiState.loopPlayerPositionMs,
+                        loopProgress = uiState.loopPlayerProgress,
+                        loopIsPlaying = uiState.loopPlayerIsPlaying,
+                        loopIsLooping = uiState.loopPlayerIsLooping,
+                        loopPitchSemitones = uiState.loopPlayerPitchSemitones,
+                        loopStepMode = uiState.loopPlayerStepMode,
+                        loopWaveform = uiState.loopPlayerWaveform,
+                        loopVolume = uiState.loopPlayerVolume,
+                        loopExplorerPath = uiState.loopPlayerExplorerPath,
+                        loopExplorerItems = uiState.loopPlayerExplorerItems,
+                        loopIsExplorerOpen = uiState.loopPlayerIsExplorerOpen,
+                        onToggleLoopPlayPause = { viewModel.toggleExternalLoopPlayPause() },
+                        onStopLoop = { viewModel.stopExternalLoopPlayer() },
+                        onRetriggerLoop = { viewModel.retriggerExternalLoopPlayer() },
+                        onSeekLoopProgress = { viewModel.seekExternalLoopPlayer(it) },
+                        onToggleLoopLooping = { viewModel.toggleExternalLoopLooping() },
+                        onChangeLoopPitch = { viewModel.setExternalLoopPitchSemitones(it) },
+                        onResetLoopPitch = { viewModel.resetExternalLoopPitch() },
+                        onSelectLoopStepMode = { viewModel.setExternalLoopStepMode(it) },
+                        onLoopVolumeChange = { viewModel.setExternalLoopVolume(it) },
+                        onToggleLoopExplorer = { viewModel.toggleExternalLoopExplorer() },
+                        onNavigateLoopExplorer = { viewModel.navigateLoopPlayerExplorer(it) },
+                        onSelectLoopAudioFile = { viewModel.loadAndPlayExternalLoopFile(it) }
+                    )
+                }
+                AppScreenPage.SHEETS -> {
+                    SheetsRoot(
+                        repo = SheetsRepository(viewModel.fileManager.sheetsDir),
+                        bottomInset = safeBottomPadding,
+                        onBackToMixer = { viewModel.navigateBackToMixer() }
+                    )
+                }
+                AppScreenPage.MIXER -> {
+                    MixerMainPageContent(
+                        uiState = uiState,
+                        viewModel = viewModel,
+                        safeBottomPadding = safeBottomPadding,
+                        detectedChord = detectedChord,
+                        isKeyboardVisible = isKeyboardVisible,
+                        trackScrollState = trackScrollState,
+                        onImportDrumPadAudio = { drumPadPickerLauncher.launch(arrayOf("audio/*", "*/*")) }
+                    )
+                }
+                AppScreenPage.SETTINGS -> {
+                val settingsState = SettingsState(
+                    tab = uiState.settingsTab,
+                    query = uiState.settingsQuery,
+                    bufferSize = uiState.audioBufferSize,
+                    maxPolyphony = uiState.polyphony,
+                    headroom = uiState.headroom,
+                    autoFit = uiState.isFaderAutoFit,
+                    hue = uiState.themeHue,
+                    accentSaturation = uiState.themeSaturation,
+                    backgroundTone = uiState.themeBgLightness,
+                    backgroundLightness = uiState.themeBgLightness,
+                    antiJitter = uiState.antiJitter,
+                    jitterWindowMs = uiState.jitterWindowMs,
+                    keepScreenOn = uiState.keepScreenOn,
+                    notation = if (uiState.useFlats) Notation.Flats else Notation.Sharps,
+                    mappingPage = uiState.mappingPage,
+                    listeningId = uiState.mappingListeningControlId,
+                    conflict = uiState.mappingConflict,
+                    otherActionsOpen = uiState.mappingOtherActionsOpen,
+                    mappings = viewModel.getActiveSettingsStateMappings(),
+                    catalog = MappingCatalog.controls
+                )
+                val settingsActions = object : SettingsActions {
+                    override fun onBack() { viewModel.navigateBackToMixer() }
+                    override fun onTabSelected(tab: SettingsTab) { viewModel.onSettingsTabSelected(tab) }
+                    override fun onQueryChange(query: String) { viewModel.onSettingsQueryChanged(query) }
+                    override fun onBufferSizeChange(size: Int) { viewModel.setAudioBufferSize(size) }
+                    override fun onMaxPolyphonyChange(voices: Int) { viewModel.setPolyphony(voices) }
+                    override fun onHeadroomChange(value: Float) { viewModel.setHeadroom(value) }
+                    override fun onAutoFitChange(enabled: Boolean) { viewModel.setFaderAutoFit(enabled) }
+                    override fun onHueChange(value: Float) { viewModel.setThemeHue(value) }
+                    override fun onAccentSaturationChange(value: Float) { viewModel.setThemeAccentSaturation(value) }
+                    override fun onBackgroundToneChange(value: Float) { viewModel.setThemeBgLightness(value) }
+                    override fun onBackgroundLightnessChange(value: Float) { viewModel.setThemeBgLightness(value) }
+                    override fun onResetColors() { viewModel.resetThemeToDefault() }
+                    override fun onAntiJitterChange(enabled: Boolean) { viewModel.setAntiJitter(enabled) }
+                    override fun onJitterWindowChange(ms: Int) { viewModel.setJitterWindowMs(ms) }
+                    override fun onOpenMapping(page: MappingPage) { viewModel.onOpenMappingMode(page) }
+                    override fun onResetMappingsToDefaults() { viewModel.resetMidiMappingsToDefaults() }
+                    override fun onClearAllMappings() { viewModel.clearAllMidiMappings() }
+                    override fun onNotationChange(notation: Notation) { viewModel.toggleUseFlats() }
+                    override fun onKeepScreenOnChange(enabled: Boolean) { viewModel.setKeepScreenOn(enabled) }
+                    override fun onOpenLanguage() {}
+                    override fun onOpenAppSettings() {}
+                    override fun onCloseMapping() { viewModel.onCloseMappingMode() }
+                    override fun onStartListening(controlId: String) { viewModel.startMappingListening(controlId) }
+                    override fun onCancelListening() { viewModel.cancelMappingListening() }
+                    override fun onClearMapping(controlId: String) { viewModel.clearMappingForControl(controlId) }
+                    override fun onReplaceConflict() { viewModel.replaceMappingConflict() }
+                    override fun onToggleOtherActions() { viewModel.toggleMappingOtherActions() }
+                }
+
+                if (uiState.mappingPage == null) {
+                    SettingsScreen(
+                        state = settingsState,
+                        actions = settingsActions,
+                        background = SettingsTheme.backgroundBrush(settingsState)
+                    )
+                } else {
+                    MappingMode(
+                        state = settingsState,
+                        actions = settingsActions,
+                        pageContent = {
+                            when (uiState.mappingPage) {
+                                MappingPage.Mixer -> {
+                                    MixerMainPageContent(
+                                        uiState = uiState,
+                                        viewModel = viewModel,
+                                        safeBottomPadding = safeBottomPadding,
+                                        detectedChord = detectedChord,
+                                        isKeyboardVisible = isKeyboardVisible,
+                                        trackScrollState = trackScrollState,
+                                        onImportDrumPadAudio = { drumPadPickerLauncher.launch(arrayOf("audio/*", "*/*")) }
+                                    )
+                                }
+                                MappingPage.DrumPad -> {
+                                    val tonicSlot = uiState.audioSlots.find { it.slotId == 9 }
+                                    val tonicVol = tonicSlot?.volume ?: 0.85f
+                                    DrumPadPage(
+                                        drumPads = uiState.drumPads,
+                                        isMixMode = uiState.isDrumPadMixMode,
+                                        onToggleMixMode = { viewModel.toggleDrumPadMixMode() },
+                                        feelSwing = uiState.drumFeelSwing,
+                                        onFeelSwingChange = { viewModel.setDrumFeelSwing(it) },
+                                        bpm = uiState.bpm,
+                                        onBpmChange = { viewModel.setGlobalBpm(it) },
+                                        activeTonicNotes = uiState.activeTonicNotes,
+                                        onTonicNoteClick = { viewModel.onTonicNoteClick(it) },
+                                        useFlats = uiState.useFlats,
+                                        onToggleUseFlats = { viewModel.toggleUseFlats() },
+                                        activeTonicPadName = uiState.activeTonicPadName,
+                                        onOpenTonicSoundPicker = {
+                                            viewModel.openSoundfontForSlot(9)
+                                        },
+                                        activeDrumKitName = uiState.activeDrumKitName,
+                                        onOpenDrumKitPicker = { viewModel.toggleDrumPadMiniBrowser() },
+                                        onStopTonicDrone = { viewModel.onTonicNoteClick("") },
+                                        tonicOctaveRange = uiState.tonicOctaveRange,
+                                        onTonicOctaveMinus = { viewModel.onTonicOctaveMinus() },
+                                        onTonicOctavePlus = { viewModel.onTonicOctavePlus() },
+                                        isMultiPadEnabled = uiState.isMultiPadEnabled,
+                                        onToggleMultiPad = { viewModel.toggleMultiPad() },
+                                        tonicVolume = tonicVol,
+                                        onTonicVolumeChange = { viewModel.setTonicVolume(it) },
+                                        tonicShimmer = uiState.tonicShimmer,
+                                        onTonicShimmerChange = { viewModel.setTonicShimmer(it) },
+                                        isMiniBrowserOpen = uiState.isDrumPadMiniBrowserOpen,
+                                        onToggleMiniBrowser = { viewModel.toggleDrumPadMiniBrowser() },
+                                        onCloseMiniBrowser = { viewModel.closeDrumPadMiniBrowser() },
+                                        audioFiles = uiState.drumPadAudioFiles,
+                                        onPreviewAudioFile = { viewModel.playDrumSample(it) },
+                                        onAssignSampleToPad = { padId, sample ->
+                                            viewModel.assignDrumSampleOrLoop(padId, sample.name, sample.path, isLoop = false)
+                                        },
+                                        onPadPressed = { viewModel.onDrumPadPressed(it) },
+                                        onPadReleased = { viewModel.onDrumPadReleased(it) },
+                                        onPadVolumeChange = { padId, vol -> viewModel.setDrumPadVolumeDirect(padId, vol) },
+                                        onPadVolumeDelta = { padId, delta -> viewModel.adjustDrumPadVolume(padId, delta) },
+                                        onLoopBeatsChange = { padId, beats -> viewModel.setDrumPadLoopBeats(padId, beats) },
+                                        onBackToMixer = { viewModel.navigateBackToMixer() },
+                                        rightPanelMode = uiState.drumRightPanelMode,
+                                        onRightPanelModeChange = { viewModel.setDrumRightPanelMode(it) },
+                                        loopFileName = uiState.loopPlayerFileName,
+                                        loopFilePath = uiState.loopPlayerFilePath,
+                                        loopDurationMs = uiState.loopPlayerDurationMs,
+                                        loopPositionMs = uiState.loopPlayerPositionMs,
+                                        loopProgress = uiState.loopPlayerProgress,
+                                        loopIsPlaying = uiState.loopPlayerIsPlaying,
+                                        loopIsLooping = uiState.loopPlayerIsLooping,
+                                        loopPitchSemitones = uiState.loopPlayerPitchSemitones,
+                                        loopStepMode = uiState.loopPlayerStepMode,
+                                        loopWaveform = uiState.loopPlayerWaveform,
+                                        loopVolume = uiState.loopPlayerVolume,
+                                        loopExplorerPath = uiState.loopPlayerExplorerPath,
+                                        loopExplorerItems = uiState.loopPlayerExplorerItems,
+                                        loopIsExplorerOpen = uiState.loopPlayerIsExplorerOpen,
+                                        onToggleLoopPlayPause = { viewModel.toggleExternalLoopPlayPause() },
+                                        onStopLoop = { viewModel.stopExternalLoopPlayer() },
+                                        onRetriggerLoop = { viewModel.retriggerExternalLoopPlayer() },
+                                        onSeekLoopProgress = { viewModel.seekExternalLoopPlayer(it) },
+                                        onToggleLoopLooping = { viewModel.toggleExternalLoopLooping() },
+                                        onChangeLoopPitch = { viewModel.setExternalLoopPitchSemitones(it) },
+                                        onResetLoopPitch = { viewModel.resetExternalLoopPitch() },
+                                        onSelectLoopStepMode = { viewModel.setExternalLoopStepMode(it) },
+                                        onLoopVolumeChange = { viewModel.setExternalLoopVolume(it) },
+                                        onToggleLoopExplorer = { viewModel.toggleExternalLoopExplorer() },
+                                        onNavigateLoopExplorer = { viewModel.navigateLoopPlayerExplorer(it) },
+                                        onSelectLoopAudioFile = { viewModel.loadAndPlayExternalLoopFile(it) }
+                                    )
+                                }
+                                else -> {}
+                            }
+                        },
+                        pageScroll = if (uiState.mappingPage == MappingPage.Mixer && !uiState.isFaderAutoFit) trackScrollState else null
+                    )
+                }
             }
         }
+    }
 
         when (uiState.activePopup) {
             ActivePopup.EFFECTS -> {
@@ -1114,3 +1277,5 @@ fun MixerScreen(
         }
     }
 }
+
+

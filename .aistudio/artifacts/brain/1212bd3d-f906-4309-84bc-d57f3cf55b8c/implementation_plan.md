@@ -1,35 +1,65 @@
-# Plan d'implémentation — Module Sheets (Æther Keys)
+# Patches Overlay & Setlists Integration Plan (Revised)
 
-## 1. Contexte & Objectif
-Intégrer et valider l'ensemble du module Sheets (`com.aetherkeys.sheets`) conformément à la spec `00-SPEC-sheets.md` et aux instructions agent `01-INSTRUCTIONS-AGENT.md`.
+## Summary
+Restore the Patches overlay accessible on touching the box, ensuring the Setlists screen is accessed exclusively from the button/case inside the Patches overlay window (reverting any direct startup change), and wire all settings and setlists parameters cleanly with `MixerViewModel` and `AppStatePersistence`.
 
----
+## User Review & Critical Decisions
 
-## 2. Étapes du Plan
+> [!IMPORTANT]
+> - **Startup Flow**: Keep standard startup (Mixer / Patches overlay), do NOT set Setlists as direct app launch screen.
+> - **Patches Overlay**: Restore Patches overlay modal/drawer triggered on touching the patch box.
+> - **Setlists Navigation**: Access Setlists screen solely via the button/case inside the Patches overlay.
+> - **Parameter Wiring**: Wire all Settings and Setlists parameters properly into `MixerViewModel` and `AppStatePersistence`.
 
-### Étape 1 : Polices et Ressources
-- Vérifier la présence de toutes les polices dans `app/src/main/res/font/` :
-  - `architects_daughter.ttf`
-  - `caveat.ttf`
-  - `fira_code.ttf`
-  - `jetbrains_mono.ttf`
-  - `kalam.ttf`
-  - `patrick_hand.ttf`
-  - `plus_jakarta_sans.ttf`
+- **Confirmed Decision 1**: Patches overlay restored on touch.
+- **Confirmed Decision 2**: Setlists entry point restricted to Patches overlay button.
 
-### Étape 2 : Vérification du package `com.aetherkeys.sheets`
-- S'assurer que tous les fichiers du module (Data, Model, Export, UI, VM) sont bien présents sous l'arborescence `com.aetherkeys.sheets`.
-- Vérifier les imports de ressources (`R` package).
+## 1. Overview & Core Concept
 
-### Étape 3 : Branchement du Point d'Entrée
-- Configurer l'appel à `SheetsRoot` dans `MixerScreen.kt` :
-  ```kotlin
-  SheetsRoot(
-      repo = SheetsRepository(viewModel.fileManager.sheetsDir),
-      bottomInset = safeBottomPadding,
-      onBackToMixer = { viewModel.navigateBackToMixer() }
-  )
-  ```
+- **What It Does**: Preserves the standard app startup flow while restoring the Patches overlay modal on touch. Users can open the Setlists page from within the Patches overlay, and all settings and setlists parameters are fully wired and persisted via `MixerViewModel` and `AppStatePersistence`.
+- **Target Audience**: Musicians using the sound stage mixer.
+- **Key Value**: Intuitive navigation matching original design while integrating new setlists and settings capabilities.
 
-### Étape 4 : Compilation & Validation
-- Exécuter `compile_applet` pour garantir un build sans erreur.
+## 2. User Experience & Visual Design
+
+- **Key User Flows**:
+  1. App launch -> Normal startup screen (Mixer).
+  2. Tap patch box -> Opens Patches overlay window.
+  3. Tap Setlists button in Patches overlay -> Navigates to `SetlistsScreen`.
+  4. Settings & Preferences -> Adjusted and persisted seamlessly.
+
+## 3. Key Product Decisions & Trade-Offs
+
+- **Decision 1**: Restore Patches Overlay Trigger
+  - *Chosen Approach*: Reconnect touch listener on patch box to show Patches overlay.
+  - *Why*: Matches user request and preserves expected navigation flow.
+- **Decision 2**: Setlists Entry Point
+  - *Chosen Approach*: Navigation button inside Patches overlay.
+  - *Why*: Keeps Setlists contextual to patches management.
+
+## 4. Technical Architecture & Data Strategy
+
+```
+┌──────────────────────────────────────────────┐
+│                  MixerScreen                 │
+│         (Tap patch box -> Show Overlay)      │
+└──────────────────────┬───────────────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────┐
+│                Patches Overlay               │
+│      (Tap Setlists button -> Navigate)       │
+└──────────────────────┬───────────────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────┐
+│                 SetlistsScreen               │
+└──────────────────────┬───────────────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────┐
+│          MixerViewModel & Persistence        │
+└──────────────────────────────────────────────┘
+```
+
+- **Data Model & State**: Fully bound parameters for settings and setlists in `MixerViewModel` backed by `AppStatePersistence`.

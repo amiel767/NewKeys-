@@ -10,6 +10,8 @@ import com.soundstage.mixer.model.*
 import com.soundstage.mixer.ui.components.VelocityConfig
 import com.soundstage.mixer.ui.components.VelocityProcessor
 import com.soundstage.mixer.ui.theme.*
+import com.soundstage.mixer.ui.setlists.*
+import com.soundstage.mixer.ui.settings.*
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -107,7 +109,7 @@ data class MixerUiState(
     val pitchBend: Float = 0.0f,
     
     // Fullscreen Pages Navigation
-    val currentPage: AppScreenPage = AppScreenPage.PROJECTS,
+    val currentPage: AppScreenPage = AppScreenPage.SETLISTS,
     val visibleTracksCount: Int = 1,
     val activeProjectName: String = "",
     
@@ -208,10 +210,30 @@ data class MixerUiState(
     val midiDebounceEnabled: Boolean = false,
     val midiDebounceMs: Long = 30L,
     val selectedMidiOutputDevice: String = "All Connected Devices",
+
+    // MIDI Mapping Mode (SettingsScreen overlay)
+    val mappingPage: MappingPage? = null,
+    val mappingListeningControlId: String? = null,
+    val mappingConflict: MidiConflict? = null,
+    val mappingOtherActionsOpen: Boolean = false,
+    val settingsTab: SettingsTab = SettingsTab.Audio,
+    val settingsQuery: String = "",
+
+    // Setlists Screen State
+    val lastOpenedSetlistId: String? = null,
+    val setlistsQuery: String = "",
+    val setlistsSort: SetlistSort = SetlistSort.Recent,
+    val setlistsOnlyPinned: Boolean = false,
+    val setlistsPrefs: SetlistsPrefs = SetlistsPrefs(),
+    val isSetlistsLoading: Boolean = false,
+    val lastDeletedScene: ScenePreset? = null,
     
     // Screen & Scale Settings
     val keepScreenOn: Boolean = true,
     val selectedScaleMode: String = "Majeur",
+    val headroom: Float = 1.00f,
+    val antiJitter: Boolean = true,
+    val jitterWindowMs: Int = 15,
     
     // Live Notes & Chords / Sheets Library
     val notesText: String = "",
@@ -523,7 +545,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
                     state.copy(
                         currentTheme = restoredTheme,
-                        currentPage = AppScreenPage.PROJECTS,
+                        currentPage = AppScreenPage.SETLISTS,
                         bpm = saved.bpm ?: state.bpm,
                         transpose = saved.transpose ?: state.transpose,
                         octave = saved.octave ?: state.octave,
@@ -563,7 +585,22 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         isFaderAutoFit = saved.isFaderAutoFit ?: state.isFaderAutoFit,
                         midiMappings = if (saved.midiMappings.isNotEmpty()) saved.midiMappings else state.midiMappings,
                         midiDebounceEnabled = saved.midiDebounceEnabled ?: state.midiDebounceEnabled,
-                        midiDebounceMs = saved.midiDebounceMs ?: state.midiDebounceMs
+                        midiDebounceMs = saved.midiDebounceMs ?: state.midiDebounceMs,
+                        settingsTab = runCatching { SettingsTab.valueOf(appStatePersistence.getString("last_settings_tab", SettingsTab.Audio.name)) }.getOrDefault(SettingsTab.Audio),
+                        lastOpenedSetlistId = appStatePersistence.getString("setlist_last_opened", "").ifEmpty { null },
+                        setlistsSort = runCatching { SetlistSort.valueOf(appStatePersistence.getString("setlists_sort", SetlistSort.Recent.name)) }.getOrDefault(SetlistSort.Recent),
+                        setlistsOnlyPinned = appStatePersistence.getBoolean("setlists_only_pinned", false),
+                        setlistsPrefs = SetlistsPrefs(
+                            animatedBackground = appStatePersistence.getBoolean("setlists_pref_anim_bg", true),
+                            cardAuras = appStatePersistence.getBoolean("setlists_pref_auras", true),
+                            compactRows = appStatePersistence.getBoolean("setlists_pref_compact", false),
+                            patchDots = appStatePersistence.getBoolean("setlists_pref_dots", true),
+                            openWith = runCatching { OpenGesture.valueOf(appStatePersistence.getString("setlists_pref_open_with", OpenGesture.Tap.name)) }.getOrDefault(OpenGesture.Tap),
+                            pinnedOnTop = appStatePersistence.getBoolean("setlists_pref_pinned_top", true),
+                            rememberSort = appStatePersistence.getBoolean("setlists_pref_rem_sort", true),
+                            lockDeletion = appStatePersistence.getBoolean("setlists_pref_lock_del", false),
+                            haptics = appStatePersistence.getBoolean("setlists_pref_haptics", true)
+                        )
                     )
                 }
 
@@ -694,7 +731,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } else {
                 // First run / no saved state: do not preload anything, stay clean on PROJECTS page
-                _uiState.update { it.copy(currentPage = AppScreenPage.PROJECTS, activeProjectName = "", activeSceneId = "") }
+                _uiState.update { it.copy(currentPage = AppScreenPage.SETLISTS, activeProjectName = "", activeSceneId = "") }
             }
         } catch (e: Exception) {
             Log.e("MixerViewModel", "Error restoring saved app state: ${e.message}", e)
@@ -4253,7 +4290,222 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun navigateToProjectsHome() {
-        _uiState.update { it.copy(currentPage = AppScreenPage.PROJECTS) }
+        _uiState.update { it.copy(currentPage = AppScreenPage.SETLISTS) }
+    }
+
+    // ================= SETLISTS SCREEN (V2 FINAL DESIGN ACTIONS) =================
+    fun openSetlistFromScreen(id: String) {
+        val target = _uiState.value.scenes.find { it.id == id || it.name == id } ?: return
+        val now = System.currentTimeMillis()
+        appStatePersistence.saveLong("setlist_used_${target.id}", now)
+        appStatePersistence.saveString("setlist_last_opened", target.id)
+        _uiState.update { it.copy(lastOpenedSetlistId = target.id) }
+        openProject(target.name)
+    }
+
+    fun createSetlistFromScreen(name: String, mode: CreateMode) {
+        val cleanName = name.trim().ifEmpty { "Setlist ${_uiState.value.scenes.size + 1}" }
+        val now = System.currentTimeMillis()
+        appStatePersistence.saveLong("setlist_used_$cleanName", now)
+        
+        viewModelScope.launch(Dispatchers.IO) {
+            val defaultPatchId = "patch_${System.currentTimeMillis()}"
+            if (mode == CreateMode.Duplicate && _uiState.value.activeProjectName.isNotEmpty() && _uiState.value.activeProjectName != "None") {
+                val current = _uiState.value
+                val initialPatch = PatchItem(
+                    id = defaultPatchId,
+                    name = "Patch 1",
+                    tracks = current.tracks,
+                    audioSlots = current.audioSlots,
+                    visibleTracksCount = current.visibleTracksCount,
+                    transpose = current.transpose,
+                    octave = current.octave,
+                    masterVolume = current.masterTrack.volume,
+                    snapshots = current.snapshots,
+                    configuredSnapshotSlots = current.configuredSnapshotSlots,
+                    snapshotCustomNames = current.snapshotCustomNames,
+                    activeSnapshotSlot = current.activeSnapshotSlot
+                )
+                val jsonToSave = org.json.JSONObject().apply {
+                    put("name", cleanName)
+                    put("bpm", current.bpm)
+                    put("transpose", current.transpose)
+                    put("octave", current.octave)
+                    put("tonicBrightness", current.tonicBrightness)
+                    put("tonicShimmer", current.tonicShimmer)
+                    put("drumVolume", current.drumVolume)
+                    put("drumReverb", current.drumReverb)
+                    put("masterVolume", current.masterTrack.volume)
+                    put("patches", org.json.JSONArray().apply {
+                        current.patches.ifEmpty { listOf(initialPatch) }.forEach { p ->
+                            put(org.json.JSONObject().apply {
+                                put("id", p.id)
+                                put("name", p.name)
+                            })
+                        }
+                    })
+                }.toString()
+                fileManager.saveSceneFile(cleanName, jsonToSave)
+            } else {
+                val fresh = createInitialState()
+                val initialPatch = PatchItem(
+                    id = defaultPatchId,
+                    name = "Patch 1",
+                    tracks = fresh.tracks,
+                    audioSlots = fresh.audioSlots,
+                    visibleTracksCount = 1,
+                    transpose = 0,
+                    octave = 0,
+                    masterVolume = 0.85f,
+                    snapshots = emptyMap(),
+                    configuredSnapshotSlots = listOf("slot_default"),
+                    activeSnapshotSlot = "slot_default"
+                )
+                val jsonToSave = org.json.JSONObject().apply {
+                    put("name", cleanName)
+                    put("bpm", 120)
+                    put("transpose", 0)
+                    put("octave", 0)
+                    put("tonicBrightness", 0.7)
+                    put("tonicShimmer", 0.15)
+                    put("drumVolume", 0.75)
+                    put("drumReverb", 0.24)
+                    put("masterVolume", 0.85)
+                    put("patches", org.json.JSONArray().apply {
+                        put(org.json.JSONObject().apply {
+                            put("id", initialPatch.id)
+                            put("name", initialPatch.name)
+                        })
+                    })
+                }.toString()
+                fileManager.saveSceneFile(cleanName, jsonToSave)
+            }
+            refreshStorageFiles()
+        }
+    }
+
+    fun renameSetlistFromScreen(id: String, newName: String) {
+        val cleanNew = newName.trim().ifEmpty { return }
+        viewModelScope.launch(Dispatchers.IO) {
+            val sceneFiles = fileManager.getSceneFiles()
+            val target = sceneFiles.find { it.name.equals(id, ignoreCase = true) || it.name.equals("$id.lkproj", ignoreCase = true) }
+            if (target != null) {
+                val oldFile = File(target.path)
+                val newFile = File(oldFile.parentFile, "$cleanNew.${oldFile.extension}")
+                if (!newFile.exists()) {
+                    oldFile.renameTo(newFile)
+                }
+                // Also migrate color/pin/usedAt keys
+                val col = appStatePersistence.getString("setlist_col_$id", "")
+                if (col.isNotEmpty()) appStatePersistence.saveString("setlist_col_$cleanNew", col)
+                val pin = appStatePersistence.getBoolean("setlist_pin_$id", false)
+                if (pin) appStatePersistence.saveBoolean("setlist_pin_$cleanNew", true)
+                val used = appStatePersistence.getLong("setlist_used_$id", 0L)
+                if (used > 0) appStatePersistence.saveLong("setlist_used_$cleanNew", used)
+                
+                withContext(Dispatchers.Main) {
+                    _uiState.update { state ->
+                        if (state.activeProjectName.equals(id, ignoreCase = true)) {
+                            state.copy(activeProjectName = cleanNew, activeSceneId = cleanNew)
+                        } else state
+                    }
+                }
+                refreshStorageFiles()
+            }
+        }
+    }
+
+    fun changeSetlistColor(id: String, color: SetlistColor) {
+        appStatePersistence.saveString("setlist_col_$id", color.name)
+        _uiState.update { it.copy(lastMidiTriggerTime = System.currentTimeMillis()) } // trigger recomposition
+    }
+
+    fun togglePinSetlist(id: String) {
+        val cur = appStatePersistence.getBoolean("setlist_pin_$id", false)
+        appStatePersistence.saveBoolean("setlist_pin_$id", !cur)
+        _uiState.update { it.copy(lastMidiTriggerTime = System.currentTimeMillis()) }
+    }
+
+    fun duplicateSetlistFromScreen(id: String) {
+        val sourceScene = _uiState.value.scenes.find { it.id == id || it.name == id } ?: return
+        val copyName = "${sourceScene.name} copy"
+        viewModelScope.launch(Dispatchers.IO) {
+            val sceneFiles = fileManager.getSceneFiles()
+            val sourceFile = sceneFiles.find { it.name.equals(id, ignoreCase = true) || it.name.equals("$id.lkproj", ignoreCase = true) }
+            val content = if (sourceFile != null) fileManager.loadSceneFile(sourceFile.path) else null
+            if (content != null) {
+                fileManager.saveSceneFile(copyName, content)
+            }
+            val sourceColorName = appStatePersistence.getString("setlist_col_$id", SetlistColor.Blue.name)
+            val sourceColor = runCatching { SetlistColor.valueOf(sourceColorName) }.getOrDefault(SetlistColor.Blue)
+            val nextCol = SetlistsLogic.autoColor(emptyList(), after = sourceColor)
+            appStatePersistence.saveString("setlist_col_$copyName", nextCol.name)
+            appStatePersistence.saveLong("setlist_used_$copyName", System.currentTimeMillis())
+            refreshStorageFiles()
+        }
+    }
+
+    fun deleteSetlistWithUndo(id: String) {
+        val target = _uiState.value.scenes.find { it.id == id || it.name == id }
+        _uiState.update { it.copy(lastDeletedScene = target) }
+        deleteScene(id)
+    }
+
+    fun undoDeleteSetlist() {
+        val deleted = _uiState.value.lastDeletedScene ?: return
+        _uiState.update { it.copy(lastDeletedScene = null) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val jsonToSave = org.json.JSONObject().apply {
+                put("name", deleted.name)
+                put("bpm", 120)
+                put("patches", org.json.JSONArray().apply {
+                    deleted.patches.forEach { p ->
+                        put(org.json.JSONObject().apply {
+                            put("id", p.id)
+                            put("name", p.name)
+                        })
+                    }
+                })
+            }.toString()
+            fileManager.saveSceneFile(deleted.name, jsonToSave)
+            refreshStorageFiles()
+        }
+    }
+
+    fun setSetlistsQuery(query: String) {
+        _uiState.update { it.copy(setlistsQuery = query) }
+    }
+
+    fun setSetlistsSort(sort: SetlistSort) {
+        _uiState.update { it.copy(setlistsSort = sort) }
+        if (_uiState.value.setlistsPrefs.rememberSort) {
+            appStatePersistence.saveString("setlists_sort", sort.name)
+        }
+    }
+
+    fun setSetlistsOnlyPinned(onlyPinned: Boolean) {
+        _uiState.update { it.copy(setlistsOnlyPinned = onlyPinned) }
+        if (_uiState.value.setlistsPrefs.rememberSort) {
+            appStatePersistence.saveBoolean("setlists_only_pinned", onlyPinned)
+        }
+    }
+
+    fun updateSetlistsPrefs(prefs: SetlistsPrefs) {
+        _uiState.update { it.copy(setlistsPrefs = prefs) }
+        appStatePersistence.saveBoolean("setlists_pref_anim_bg", prefs.animatedBackground)
+        appStatePersistence.saveBoolean("setlists_pref_auras", prefs.cardAuras)
+        appStatePersistence.saveBoolean("setlists_pref_compact", prefs.compactRows)
+        appStatePersistence.saveBoolean("setlists_pref_dots", prefs.patchDots)
+        appStatePersistence.saveString("setlists_pref_open_with", prefs.openWith.name)
+        appStatePersistence.saveBoolean("setlists_pref_pinned_top", prefs.pinnedOnTop)
+        appStatePersistence.saveBoolean("setlists_pref_rem_sort", prefs.rememberSort)
+        appStatePersistence.saveBoolean("setlists_pref_lock_del", prefs.lockDeletion)
+        appStatePersistence.saveBoolean("setlists_pref_haptics", prefs.haptics)
+    }
+
+    fun resetSetlistsPrefs() {
+        val def = SetlistsPrefs()
+        updateSetlistsPrefs(def)
     }
 
     fun updateActiveScene() {
@@ -4800,13 +5052,243 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         appStatePersistence.saveLastPath("last_drumpad_path", path)
     }
 
-    // ================= SETTINGS DRAWER & FL SOUNDGOODIZER =================
+    // ================= SETTINGS FULL-SCREEN PAGE & MIDI MAPPING (FINAL DESIGN) =================
     fun openSettingsDrawer() {
-        _uiState.update { it.copy(isSettingsDrawerOpen = true, settingsSubPage = "main") }
+        _uiState.update { it.copy(currentPage = AppScreenPage.SETTINGS) }
     }
 
     fun closeSettingsDrawer() {
-        _uiState.update { it.copy(isSettingsDrawerOpen = false) }
+        _uiState.update { it.copy(currentPage = AppScreenPage.MIXER) }
+    }
+
+    fun onSettingsTabSelected(tab: SettingsTab) {
+        _uiState.update { it.copy(settingsTab = tab) }
+        appStatePersistence.saveString("last_settings_tab", tab.name)
+    }
+
+    fun onSettingsQueryChanged(query: String) {
+        _uiState.update { it.copy(settingsQuery = query) }
+    }
+
+    fun onOpenMappingMode(page: MappingPage) {
+        _uiState.update { 
+            it.copy(
+                mappingPage = page,
+                mappingListeningControlId = null,
+                mappingConflict = null,
+                mappingOtherActionsOpen = false
+            )
+        }
+    }
+
+    fun onCloseMappingMode() {
+        _uiState.update { 
+            it.copy(
+                mappingPage = null,
+                mappingListeningControlId = null,
+                mappingConflict = null,
+                mappingOtherActionsOpen = false,
+                currentPage = AppScreenPage.SETTINGS,
+                settingsTab = SettingsTab.Midi
+            )
+        }
+    }
+
+    fun startMappingListening(controlId: String) {
+        _uiState.update { 
+            it.copy(
+                mappingListeningControlId = controlId,
+                mappingConflict = null
+            )
+        }
+    }
+
+    fun cancelMappingListening() {
+        _uiState.update { 
+            it.copy(
+                mappingListeningControlId = null,
+                mappingConflict = null
+            )
+        }
+    }
+
+    fun toggleMappingOtherActions() {
+        _uiState.update { it.copy(mappingOtherActionsOpen = !it.mappingOtherActionsOpen) }
+    }
+
+    fun clearMappingForControl(controlId: String) {
+        val action = mapControlIdToActionType(controlId) ?: return
+        unmapMidiAction(action)
+    }
+
+    fun replaceMappingConflict() {
+        val conf = _uiState.value.mappingConflict ?: return
+        val currentCtrlId = conf.controlId
+        val otherCtrlId = conf.otherId
+        val targetAction = mapControlIdToActionType(currentCtrlId)
+        val otherAction = mapControlIdToActionType(otherCtrlId)
+
+        if (targetAction != null) {
+            val incomingMidiType = when (conf.message.family) {
+                MidiFamily.ControlChange, MidiFamily.Panic, MidiFamily.Transport, MidiFamily.Snapshot -> MidiControlType.CC
+                MidiFamily.Note -> MidiControlType.NOTE
+                MidiFamily.ProgramChange -> MidiControlType.PROGRAM_CHANGE
+            }
+            val incomingChannel = conf.message.channel ?: -1
+            val incomingCtrlNum = conf.message.number
+
+            _uiState.update { state ->
+                val updated = state.midiMappings.map { m ->
+                    when (m.actionType) {
+                        targetAction -> m.copy(
+                            midiType = incomingMidiType,
+                            channel = incomingChannel,
+                            controlNumber = incomingCtrlNum,
+                            isEnabled = true
+                        )
+                        otherAction -> m.copy(
+                            controlNumber = -1,
+                            channel = -1
+                        )
+                        else -> m
+                    }
+                }
+                state.copy(
+                    midiMappings = updated,
+                    mappingListeningControlId = null,
+                    mappingConflict = null
+                )
+            }
+            persistCurrentStateDebounced()
+        }
+    }
+
+    fun mapControlIdToActionType(id: String): MidiActionType? = when (id) {
+        "mixer.master" -> MidiActionType.MASTER_VOLUME
+        "mixer.t1.fader" -> MidiActionType.TRACK_1_VOL
+        "mixer.t1.mute" -> MidiActionType.TRACK_1_MUTE
+        "mixer.t1.solo" -> MidiActionType.TRACK_1_SOLO
+        "mixer.t2.fader" -> MidiActionType.TRACK_2_VOL
+        "mixer.t2.mute" -> MidiActionType.TRACK_2_MUTE
+        "mixer.t2.solo" -> MidiActionType.TRACK_2_SOLO
+        "mixer.t3.fader" -> MidiActionType.TRACK_3_VOL
+        "mixer.t3.mute" -> MidiActionType.TRACK_3_MUTE
+        "mixer.t3.solo" -> MidiActionType.TRACK_3_SOLO
+        "mixer.t4.fader" -> MidiActionType.TRACK_4_VOL
+        "mixer.t4.mute" -> MidiActionType.TRACK_4_MUTE
+        "mixer.t4.solo" -> MidiActionType.TRACK_4_SOLO
+        "mixer.t5.fader" -> MidiActionType.TRACK_5_VOL
+        "mixer.t5.mute" -> MidiActionType.TRACK_5_MUTE
+        "mixer.t5.solo" -> MidiActionType.TRACK_5_SOLO
+        "mixer.t6.fader" -> MidiActionType.TRACK_6_VOL
+        "mixer.t6.mute" -> MidiActionType.TRACK_6_MUTE
+        "mixer.t6.solo" -> MidiActionType.TRACK_6_SOLO
+        "mixer.t7.fader" -> MidiActionType.TRACK_7_VOL
+        "mixer.t7.mute" -> MidiActionType.TRACK_7_MUTE
+        "mixer.t7.solo" -> MidiActionType.TRACK_7_SOLO
+        "mixer.t8.fader" -> MidiActionType.TRACK_8_VOL
+        "mixer.t8.mute" -> MidiActionType.TRACK_8_MUTE
+        "mixer.t8.solo" -> MidiActionType.TRACK_8_SOLO
+        "mixer.default" -> MidiActionType.SNAPSHOT_DEFAULT
+        "mixer.snap1" -> MidiActionType.SNAPSHOT_1
+        "mixer.snap2" -> MidiActionType.SNAPSHOT_2
+        "mixer.snap3" -> MidiActionType.SNAPSHOT_3
+        "mixer.snap4" -> MidiActionType.SNAPSHOT_4
+        "mixer.panic" -> MidiActionType.PANIC_ALL_NOTES_OFF
+        "mixer.tap" -> MidiActionType.TAP_TEMPO
+        "mixer.metro" -> MidiActionType.METRONOME_TOGGLE
+        "mixer.prevSnap" -> MidiActionType.SNAPSHOT_PREV
+        "mixer.nextSnap" -> MidiActionType.SNAPSHOT_NEXT
+        "drum.pad1" -> MidiActionType.DRUMPAD_PAD_1
+        "drum.pad2" -> MidiActionType.DRUMPAD_PAD_2
+        "drum.pad3" -> MidiActionType.DRUMPAD_PAD_3
+        "drum.pad4" -> MidiActionType.DRUMPAD_PAD_4
+        "drum.pad5" -> MidiActionType.DRUMPAD_PAD_5
+        "drum.pad6" -> MidiActionType.DRUMPAD_PAD_6
+        "drum.pad7" -> MidiActionType.DRUMPAD_PAD_7
+        "drum.pad8" -> MidiActionType.DRUMPAD_PAD_8
+        "drum.stop" -> MidiActionType.DRUMPAD_STOP_ALL
+        else -> null
+    }
+
+    fun mapActionTypeToControlId(action: MidiActionType): String? = when (action) {
+        MidiActionType.MASTER_VOLUME -> "mixer.master"
+        MidiActionType.TRACK_1_VOL -> "mixer.t1.fader"
+        MidiActionType.TRACK_1_MUTE -> "mixer.t1.mute"
+        MidiActionType.TRACK_1_SOLO -> "mixer.t1.solo"
+        MidiActionType.TRACK_2_VOL -> "mixer.t2.fader"
+        MidiActionType.TRACK_2_MUTE -> "mixer.t2.mute"
+        MidiActionType.TRACK_2_SOLO -> "mixer.t2.solo"
+        MidiActionType.TRACK_3_VOL -> "mixer.t3.fader"
+        MidiActionType.TRACK_3_MUTE -> "mixer.t3.mute"
+        MidiActionType.TRACK_3_SOLO -> "mixer.t3.solo"
+        MidiActionType.TRACK_4_VOL -> "mixer.t4.fader"
+        MidiActionType.TRACK_4_MUTE -> "mixer.t4.mute"
+        MidiActionType.TRACK_4_SOLO -> "mixer.t4.solo"
+        MidiActionType.TRACK_5_VOL -> "mixer.t5.fader"
+        MidiActionType.TRACK_5_MUTE -> "mixer.t5.mute"
+        MidiActionType.TRACK_5_SOLO -> "mixer.t5.solo"
+        MidiActionType.TRACK_6_VOL -> "mixer.t6.fader"
+        MidiActionType.TRACK_6_MUTE -> "mixer.t6.mute"
+        MidiActionType.TRACK_6_SOLO -> "mixer.t6.solo"
+        MidiActionType.TRACK_7_VOL -> "mixer.t7.fader"
+        MidiActionType.TRACK_7_MUTE -> "mixer.t7.mute"
+        MidiActionType.TRACK_7_SOLO -> "mixer.t7.solo"
+        MidiActionType.TRACK_8_VOL -> "mixer.t8.fader"
+        MidiActionType.TRACK_8_MUTE -> "mixer.t8.mute"
+        MidiActionType.TRACK_8_SOLO -> "mixer.t8.solo"
+        MidiActionType.SNAPSHOT_DEFAULT -> "mixer.default"
+        MidiActionType.SNAPSHOT_1 -> "mixer.snap1"
+        MidiActionType.SNAPSHOT_2 -> "mixer.snap2"
+        MidiActionType.SNAPSHOT_3 -> "mixer.snap3"
+        MidiActionType.SNAPSHOT_4 -> "mixer.snap4"
+        MidiActionType.PANIC_ALL_NOTES_OFF -> "mixer.panic"
+        MidiActionType.TAP_TEMPO -> "mixer.tap"
+        MidiActionType.METRONOME_TOGGLE -> "mixer.metro"
+        MidiActionType.SNAPSHOT_PREV -> "mixer.prevSnap"
+        MidiActionType.SNAPSHOT_NEXT -> "mixer.nextSnap"
+        MidiActionType.DRUMPAD_PAD_1 -> "drum.pad1"
+        MidiActionType.DRUMPAD_PAD_2 -> "drum.pad2"
+        MidiActionType.DRUMPAD_PAD_3 -> "drum.pad3"
+        MidiActionType.DRUMPAD_PAD_4 -> "drum.pad4"
+        MidiActionType.DRUMPAD_PAD_5 -> "drum.pad5"
+        MidiActionType.DRUMPAD_PAD_6 -> "drum.pad6"
+        MidiActionType.DRUMPAD_PAD_7 -> "drum.pad7"
+        MidiActionType.DRUMPAD_PAD_8 -> "drum.pad8"
+        MidiActionType.DRUMPAD_STOP_ALL -> "drum.stop"
+        else -> null
+    }
+
+    fun getActiveSettingsStateMappings(): Map<String, MidiMessage> {
+        val map = mutableMapOf<String, MidiMessage>()
+        _uiState.value.midiMappings.filter { it.isAssigned }.forEach { item ->
+            val ctrlId = mapActionTypeToControlId(item.actionType)
+            if (ctrlId != null) {
+                val family = when (item.actionType.category) {
+                    MidiActionCategory.SNAPSHOTS -> MidiFamily.Snapshot
+                    MidiActionCategory.GLOBAL -> when (item.actionType) {
+                        MidiActionType.PANIC_ALL_NOTES_OFF -> MidiFamily.Panic
+                        MidiActionType.TAP_TEMPO, MidiActionType.METRONOME_TOGGLE -> MidiFamily.Transport
+                        else -> when (item.midiType) {
+                            MidiControlType.CC -> MidiFamily.ControlChange
+                            MidiControlType.NOTE -> MidiFamily.Note
+                            MidiControlType.PROGRAM_CHANGE -> MidiFamily.ProgramChange
+                        }
+                    }
+                    MidiActionCategory.DRUMPAD -> when (item.actionType) {
+                        MidiActionType.DRUMPAD_STOP_ALL -> MidiFamily.Transport
+                        else -> MidiFamily.Note
+                    }
+                    else -> when (item.midiType) {
+                        MidiControlType.CC -> MidiFamily.ControlChange
+                        MidiControlType.NOTE -> MidiFamily.Note
+                        MidiControlType.PROGRAM_CHANGE -> MidiFamily.ProgramChange
+                    }
+                }
+                map[ctrlId] = MidiMessage(family, item.controlNumber, if (item.channel < 0) null else (item.channel + 1))
+            }
+        }
+        return map
     }
 
     // ================= SHEETS DRAWER OVERLAY =================
@@ -4844,6 +5326,26 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     fun setPolyphony(poly: Int) {
         _uiState.update { it.copy(polyphony = poly) }
         audioEngine.setPolyphony(poly)
+    }
+
+    fun setHeadroom(value: Float) {
+        _uiState.update { it.copy(headroom = value.coerceIn(0.5f, 2.0f)) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setFaderAutoFit(enabled: Boolean) {
+        _uiState.update { it.copy(isFaderAutoFit = enabled) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setAntiJitter(enabled: Boolean) {
+        _uiState.update { it.copy(antiJitter = enabled) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setJitterWindowMs(ms: Int) {
+        _uiState.update { it.copy(jitterWindowMs = ms.coerceIn(1, 30)) }
+        persistCurrentStateDebounced()
     }
 
     fun setFluidSynthGain(gain: Float) {
@@ -5494,6 +5996,57 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
         val ctrlNumber = data1
         val value = if (statusCmd == 0x80) 0 else data2
+
+        // Mapping Mode Learning (Settings & Mapping screen)
+        val mappingListeningId = _uiState.value.mappingListeningControlId
+        if (mappingListeningId != null) {
+            if (midiType != MidiControlType.PROGRAM_CHANGE && value <= 0) return
+            val incomingFamily = when (midiType) {
+                MidiControlType.CC -> MidiFamily.ControlChange
+                MidiControlType.NOTE -> MidiFamily.Note
+                MidiControlType.PROGRAM_CHANGE -> MidiFamily.ProgramChange
+            }
+            val incomingMsg = MidiMessage(incomingFamily, ctrlNumber, channel + 1)
+            val currentMappings = getActiveSettingsStateMappings()
+            val conflictId = SettingsLogic.findConflict(currentMappings, mappingListeningId, incomingMsg)
+
+            if (conflictId != null) {
+                _uiState.update { 
+                    it.copy(
+                        mappingConflict = MidiConflict(
+                            controlId = mappingListeningId,
+                            otherId = conflictId,
+                            message = incomingMsg
+                        )
+                    )
+                }
+            } else {
+                val targetAction = mapControlIdToActionType(mappingListeningId)
+                if (targetAction != null) {
+                    _uiState.update { state ->
+                        val updated = state.midiMappings.map { m ->
+                            if (m.actionType == targetAction) {
+                                m.copy(
+                                    midiType = midiType,
+                                    channel = channel,
+                                    controlNumber = ctrlNumber,
+                                    isEnabled = true
+                                )
+                            } else m
+                        }
+                        state.copy(
+                            midiMappings = updated,
+                            mappingListeningControlId = null,
+                            mappingConflict = null,
+                            lastMidiSummary = "Assigned: ${targetAction.title} ➔ ${midiType.name} #$ctrlNumber (Ch. ${channel + 1})",
+                            lastMidiTriggerTime = System.currentTimeMillis()
+                        )
+                    }
+                    persistCurrentStateDebounced()
+                }
+            }
+            return
+        }
 
         val learningType = _uiState.value.learningActionType
         if (learningType != null) {
