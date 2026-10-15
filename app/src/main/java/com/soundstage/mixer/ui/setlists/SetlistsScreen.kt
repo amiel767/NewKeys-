@@ -76,6 +76,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -131,6 +132,7 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.soundstage.mixer.ui.theme.AppColors
 
 // ════════════════════════════════════════════════════════════════════════════════════════
 // 1. MODELS
@@ -138,10 +140,10 @@ import kotlinx.coroutines.launch
 
 /** Four tones with the same luminosity and a moderate saturation: none of them dominates. */
 enum class SetlistColor(val base: Color, val text: Color) {
-    Blue(Color(0xFF8FB2E8), Color(0xFFA9C6F0)),
-    Amber(Color(0xFFD8A24A), Color(0xFFE6BC73)),
-    Rose(Color(0xFFC2587A), Color(0xFFDB8AA3)),
-    Sage(Color(0xFF86A394), Color(0xFFA5BFB1))
+    Blue(AppColors.SetlistBlue, Color(0xFFA9C6F0)),
+    Amber(AppColors.SetlistAmber, Color(0xFFE6BC73)),
+    Rose(AppColors.SetlistRose, Color(0xFFDB8AA3)),
+    Sage(AppColors.SetlistSage, Color(0xFFA5BFB1))
 }
 
 data class Setlist(
@@ -292,21 +294,21 @@ object SetlistsLogic {
 // ════════════════════════════════════════════════════════════════════════════════════════
 
 internal object SlColors {
-    val BgTop = Color(0xFF141B27)
-    val BgBottom = Color(0xFF0F141D)
-    val Ink = Color(0xFFE9EDF5)
-    val Soft = Color(0xFFDCE2EE)
-    val Mute = Color(0xFF8690A4)
-    val Dim = Color(0xFF6F7A90)
-    val Accent = Color(0xFF8FB2E8)
-    val AccentDeep = Color(0xFF7FA3DD)
-    val AccentText = Color(0xFF0F1726)
-    val Danger = Color(0xFF7A2E45)
-    val DangerArmed = Color(0xFFB8465F)
-    val DangerText = Color(0xFFE8708F)
-    val PanelTop = Color(0xFF232C3E)
-    val PanelBottom = Color(0xFF1A2230)
-    val Well = Color(0xFF0F141D)
+    val BgTop = AppColors.BgTop
+    val BgBottom = AppColors.BgBottom
+    val Ink = AppColors.Ink
+    val Soft = AppColors.Soft
+    val Mute = AppColors.Mute
+    val Dim = AppColors.Dim
+    val Accent = AppColors.Accent
+    val AccentDeep = AppColors.AccentDeep
+    val AccentText = AppColors.AccentText
+    val Danger = AppColors.Danger
+    val DangerArmed = AppColors.DangerArmed
+    val DangerText = AppColors.DangerText
+    val PanelTop = AppColors.PanelTop
+    val PanelBottom = AppColors.PanelBottom
+    val Well = AppColors.Well
 }
 
 private fun white(a: Float) = Color.White.copy(alpha = a)
@@ -323,7 +325,7 @@ private class SlHaptics(private val h: HapticFeedback, private val on: Boolean) 
 }
 
 private fun Modifier.slSurface(shape: Shape, open: Boolean = false, elevation: Dp = 3.dp): Modifier = this
-    .shadow(elevation, shape, ambientColor = Color.Black, spotColor = Color.Black)
+    .shadow(elevation, shape, ambientColor = Color.Black.copy(alpha = 0.30f), spotColor = Color.Black.copy(alpha = 0.30f))
     .clip(shape)
     .background(
         Brush.verticalGradient(
@@ -331,8 +333,38 @@ private fun Modifier.slSurface(shape: Shape, open: Boolean = false, elevation: D
         )
     )
 
+private fun Modifier.slSurfaceTinted(
+    shape: Shape,
+    tint: Color,
+    open: Boolean = false,
+    elevation: Dp = 3.dp,
+): Modifier = this
+    .shadow(
+        elevation, shape,
+        ambientColor = Color.Black.copy(alpha = 0.30f),
+        spotColor = Color.Black.copy(alpha = 0.30f),
+    )
+    .clip(shape)
+    .background(
+        Brush.verticalGradient(
+            if (open) listOf(white(0.11f), white(0.06f))
+            else listOf(white(0.07f), white(0.035f))
+        )
+    )
+    .background(
+        Brush.linearGradient(
+            colors = listOf(
+                tint.copy(alpha = if (open) 0.30f else 0.22f),
+                tint.copy(alpha = if (open) 0.14f else 0.10f),
+                tint.copy(alpha = if (open) 0.06f else 0.04f),
+            ),
+            start = Offset.Zero,
+            end = Offset.Infinite,
+        )
+    )
+
 private fun Modifier.slPanel(shape: Shape = RoundedCornerShape(18.dp)): Modifier = this
-    .shadow(14.dp, shape, ambientColor = Color.Black, spotColor = Color.Black)
+    .shadow(14.dp, shape, ambientColor = Color.Black.copy(alpha = 0.30f), spotColor = Color.Black.copy(alpha = 0.30f))
     .clip(shape)
     .background(Brush.verticalGradient(listOf(SlColors.PanelTop, SlColors.PanelBottom)))
     .border(1.dp, white(0.10f), shape)
@@ -1004,13 +1036,8 @@ private fun SetlistCard(
 ) {
     val shape = RoundedCornerShape(16.dp)
     val c = s.color
-    val contour by animateFloatAsState(
-        if (isOpen) 0.40f else if (isLast) 0.32f else 0.24f, tween(400), label = "contour"
-    )
-    val auraAlpha by animateFloatAsState(
-        if (!prefs.cardAuras) 0f else if (isOpen) 0.20f else if (isLast) 0.14f else 0.10f,
-        tween(400), label = "aura"
-    )
+    val contour by animateFloatAsState(if (isOpen) 0.40f else if (isLast) 0.32f else 0.24f, tween(400), label = "contour")
+    val auraAlpha by animateFloatAsState(if (!prefs.cardAuras) 0f else if (isOpen) 0.28f else if (isLast) 0.22f else 0.16f, tween(400), label = "aura")
     // The aura is a small tinted bubble drifting very slowly (60–80 s per leg).
     val dur = (60 + (s.id.hashCode().absoluteValue % 5) * 5) * 1000
     val inf = rememberInfiniteTransition(label = "auraDrift")
@@ -1026,28 +1053,42 @@ private fun SetlistCard(
             .height(96.dp)
             .slRise(index, animateIn)
             .slOpenGesture(prefs.openWith, onOpen, onHint)
-            .slSurface(shape, open = isOpen, elevation = 3.dp)
+            .slSurfaceTinted(shape, tint = c.base, open = isOpen, elevation = 3.dp)
             .drawBehind {
                 if (auraAlpha > 0.001f) {
-                    val r = 85.dp.toPx()
+                    val r = 110.dp.toPx()
                     val center = Offset(45.dp.toPx() + dx.value.dp.toPx(), 35.dp.toPx() + dy.value.dp.toPx())
                     drawCircle(
                         brush = Brush.radialGradient(
                             0f to c.base.copy(alpha = auraAlpha),
-                            0.96f to c.base.copy(alpha = 0f),
+                            0.66f to c.base.copy(alpha = 0f),
                             center = center, radius = r
                         ),
                         radius = r, center = center
                     )
                 }
             }
-            .border(
-                1.dp,
-                Brush.linearGradient(
-                    listOf(c.base.copy(alpha = contour), c.base.copy(alpha = contour * 0.35f), white(0.05f))
-                ),
-                shape
-            )
+            .drawWithContent {
+                drawContent()
+                val sw = 1.dp.toPx()
+                val inset = sw / 2f
+                val r = 16.dp.toPx() - inset
+                drawRoundRect(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            c.base.copy(alpha = contour),
+                            c.base.copy(alpha = contour * 0.35f),
+                            white(0.05f)
+                        ),
+                        start = Offset.Zero,
+                        end = Offset(size.width, size.height)
+                    ),
+                    topLeft = Offset(inset, inset),
+                    size = Size(size.width - sw, size.height - sw),
+                    cornerRadius = CornerRadius(r),
+                    style = Stroke(width = sw)
+                )
+            }
             .padding(start = 14.dp, top = 12.dp, end = 8.dp, bottom = 10.dp)
     ) {
         Column(Modifier.fillMaxSize()) {
@@ -1369,7 +1410,7 @@ private fun SlHalos(tint: Color?, animate: Boolean, modifier: Modifier) {
             drawCircle(
                 brush = Brush.radialGradient(
                     0f to col.copy(alpha = b.alpha),
-                    0.96f to col.copy(alpha = 0f),
+                    0.68f to col.copy(alpha = 0f),
                     center = center, radius = r
                 ),
                 radius = r, center = center
@@ -1510,8 +1551,7 @@ private fun SlCreateSheet(
         Box(Modifier.fillMaxSize().imePadding(), contentAlignment = Alignment.Center) {
             Column(
                 Modifier
-                    .fillMaxWidth(0.94f)
-                    .widthIn(max = 600.dp)
+                    .width(460.dp)
                     .slAppear()
                     .slPanel(RoundedCornerShape(22.dp))
                     .pointerInput(Unit) { detectTapGestures { } }

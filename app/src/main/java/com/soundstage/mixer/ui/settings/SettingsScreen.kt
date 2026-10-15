@@ -735,34 +735,6 @@ private fun InterfaceSection(state: SettingsState, actions: SettingsActions) {
     ) {
         SetSwitch(state.autoFit, actions::onAutoFitChange)
     }
-
-    SectionLabel(
-        "Colors",
-        trailing = {
-            val changed = state.hue != SettingsDefaults.HUE ||
-                state.accentSaturation != SettingsDefaults.ACCENT_SATURATION ||
-                state.backgroundTone != SettingsDefaults.BACKGROUND_TONE ||
-                state.backgroundLightness != SettingsDefaults.BACKGROUND_LIGHTNESS
-            Text(
-                "Reset colors",
-                style = setText(12.sp, FontWeight.Bold, SetColors.Mute),
-                modifier = Modifier
-                    .alpha(if (changed) 1f else 0f)
-                    .tapScale(0.96f) { if (changed) actions.onResetColors() }
-            )
-        }
-    )
-    SliderRow("Primary interface hue", null, state.hue, 0f, SettingsRanges.HUE_MAX, 1f, SettingsDefaults.HUE,
-        { "${it.toInt()}°" }, actions::onHueChange)
-    SetDivider()
-    SliderRow("Accent color saturation", null, state.accentSaturation, 0f, SettingsRanges.SAT_MAX, 0.05f,
-        SettingsDefaults.ACCENT_SATURATION, { String.format(java.util.Locale.US, "%.2fx", it) }, actions::onAccentSaturationChange)
-    SetDivider()
-    SliderRow("Background tone saturation", null, state.backgroundTone, 0f, SettingsRanges.TONE_MAX, 0.05f,
-        SettingsDefaults.BACKGROUND_TONE, { String.format(java.util.Locale.US, "%.2fx", it) }, actions::onBackgroundToneChange)
-    SetDivider()
-    SliderRow("Background lightness", null, state.backgroundLightness, SettingsRanges.LIGHT_MIN, SettingsRanges.LIGHT_MAX, 0.05f,
-        SettingsDefaults.BACKGROUND_LIGHTNESS, { String.format(java.util.Locale.US, "%.2fx", it) }, actions::onBackgroundLightnessChange)
 }
 
 @Composable

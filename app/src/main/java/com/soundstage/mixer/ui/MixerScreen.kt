@@ -50,14 +50,22 @@ import com.soundstage.mixer.ui.setlists.SetlistsScreen
 import com.soundstage.mixer.ui.setlists.SetlistsUiState
 import com.soundstage.mixer.ui.settings.*
 import com.soundstage.mixer.ui.setlists.*
+import com.soundstage.mixer.ui.setlists.SetlistColor
 import com.soundstage.mixer.ui.theme.*
+import com.soundstage.mixer.ui.theme.AppColors
 import com.soundstage.mixer.viewmodel.MixerViewModel
 import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.ScrollState
 import com.soundstage.mixer.viewmodel.MixerUiState
 import com.soundstage.mixer.ui.components.DetectedChord
 import com.aetherkeys.sheets.ui.SheetsRoot
+import com.soundstage.mixer.ui.patches.PatchesOverlay
+import com.soundstage.mixer.ui.patches.PatchesUiState
+import com.soundstage.mixer.ui.patches.Patch
+import com.soundstage.mixer.ui.patches.PatchesActions
 import com.aetherkeys.sheets.data.SheetsRepository
+
+private val com.soundstage.mixer.model.PatchItem.snapshotCount: Int get() = snapshots.size
 
 @Composable
 private fun MixerMainPageContent(
@@ -119,7 +127,7 @@ private fun MixerMainPageContent(
                     },
                     onPanic = { viewModel.triggerPanic() },
                     onOpenScenes = {
-                        viewModel.navigateToPage(AppScreenPage.SETLISTS)
+                        viewModel.openPopup(ActivePopup.SCENE)
                     },
                     onOpenSettings = { viewModel.openSettingsDrawer() },
                     onBackToProjects = { viewModel.navigateToProjectsHome() },
@@ -711,7 +719,7 @@ fun MixerScreen(
                                     id = scene.id,
                                     name = scene.name,
                                     patchCount = scene.patchesCount,
-                                    color = SetlistColor.Blue,
+                                    color = scene.color.toSetlistColor(),
                                     isPinned = false,
                                     lastUsedAt = System.currentTimeMillis()
                                 )
@@ -893,7 +901,7 @@ fun MixerScreen(
                     SettingsScreen(
                         state = settingsState,
                         actions = settingsActions,
-                        background = SettingsTheme.backgroundBrush(settingsState)
+                        background = Brush.verticalGradient(listOf(AppColors.BgTop, AppColors.BgBottom))
                     )
                 } else {
                     MappingMode(
@@ -1209,21 +1217,33 @@ fun MixerScreen(
         }
 
         // Patches Sliding Side Drawer (Exact sliding drawer from right matching Settings)
-        SceneDialog(
-            isOpen = uiState.activePopup == ActivePopup.SCENE,
-            patches = uiState.patches,
-            activePatchId = uiState.activePatchId,
-            onSelectPatch = { viewModel.selectPatch(it) },
-            onCreateNewPatch = { name, isBlank -> viewModel.createNewPatch(name, isBlank) },
-            onDeletePatch = { viewModel.deletePatch(it) },
-            onRenamePatch = { id, newName -> viewModel.renamePatch(id, newName) },
-            onUpdateActiveScene = { viewModel.updateActiveScene() },
-            onNavigateHome = { viewModel.navigateToProjectsHome() },
-            onClose = { viewModel.closePopup() },
-            modifier = Modifier
-                .fillMaxSize()
-                .zIndex(120f)
-        )
+        if (uiState.activePopup == ActivePopup.SCENE) {
+            PatchesOverlay(
+                state = PatchesUiState(
+                    patches = uiState.patches.map { p ->
+                        Patch(
+                            id = p.id,
+                            name = p.name,
+                            snapshotCount = p.snapshotCount,
+                        )
+                    },
+                    activePatchId = uiState.activePatchId,
+                ),
+                actions = object : PatchesActions {
+                    override fun onClose() { viewModel.closePopup() }
+                    override fun onSelectPatch(id: String) { viewModel.selectPatch(id) }
+                    override fun onToggleActive(id: String) { viewModel.selectPatch(id) }
+                    override fun onRenamePatch(id: String) {}
+                    override fun onDeletePatch(id: String) { viewModel.deletePatch(id) }
+                    override fun onCreatePatch(name: String, duplicateFrom: String?) {
+                        viewModel.createNewPatch(name, duplicateFrom == null)
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(120f)
+            )
+        }
 
         // Material 3 Storage Permission Explanation Dialog
         if (uiState.showStoragePermissionDialog) {
@@ -1277,5 +1297,16 @@ fun MixerScreen(
         }
     }
 }
+
+private fun androidx.compose.ui.graphics.Color.toSetlistColor(): SetlistColor {
+    val candidates = SetlistColor.values()
+    return candidates.minByOrNull { c ->
+        val dr = (red - c.base.red) * (red - c.base.red)
+        val dg = (green - c.base.green) * (green - c.base.green)
+        val db = (blue - c.base.blue) * (blue - c.base.blue)
+        dr + dg + db
+    } ?: SetlistColor.Blue
+}
+
 
 
