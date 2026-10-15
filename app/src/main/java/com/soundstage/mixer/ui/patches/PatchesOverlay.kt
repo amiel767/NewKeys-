@@ -119,10 +119,13 @@ data class PatchesUiState(
 
 interface PatchesActions {
     fun onClose() {}
+    fun onOpenSetlists() {}
     fun onSelectPatch(id: String) {}
     fun onToggleActive(id: String) {}
     fun onRenamePatch(id: String) {}
+    fun onRenamePatchConfirmed(id: String, name: String) {}
     fun onDeletePatch(id: String) {}
+    fun onUndoDeletePatch() {}
     fun onCreatePatch(name: String, duplicateFrom: String?) {}
 }
 
@@ -245,6 +248,8 @@ fun PatchesOverlay(
 
     var sheetOpen by remember { mutableStateOf(false) }
     var snackName by remember { mutableStateOf<String?>(null) }
+    var renamingId by remember { mutableStateOf<String?>(null) }
+    var renameValue by remember { mutableStateOf("") }
 
     val p by animateFloatAsState(
         if (visible) 1f else 0f,
@@ -279,7 +284,12 @@ fun PatchesOverlay(
                 ) { /* absorb taps in empty areas */ },
         ) {
             Column(Modifier.fillMaxSize()) {
-                DrawerHeader(state = state, haptics = haptics, onClose = { actions.onClose() })
+                DrawerHeader(
+                    state = state,
+                    haptics = haptics,
+                    onClose = { actions.onClose() },
+                    onOpenSetlists = { actions.onOpenSetlists() }
+                )
 
                 Box(
                     Modifier
@@ -309,9 +319,18 @@ fun PatchesOverlay(
                                     patch = patch,
                                     index = i,
                                     active = active,
+                                    renaming = renamingId == patch.id,
+                                    renameValue = if (renamingId == patch.id) renameValue else patch.name,
+                                    onRenameValueChange = { renameValue = it },
+                                    onRenameConfirm = {
+                                        if (renameValue.trim().isNotEmpty()) {
+                                            actions.onRenamePatchConfirmed(patch.id, renameValue.trim())
+                                        }
+                                        renamingId = null
+                                    },
                                     onSelect = { haptics.tick(); actions.onSelectPatch(patch.id) },
                                     onToggleActive = { haptics.tick(); actions.onToggleActive(patch.id) },
-                                    onRename = { haptics.tick(); actions.onRenamePatch(patch.id) },
+                                    onRename = { haptics.tick(); renamingId = patch.id; renameValue = patch.name },
                                     onDelete = {
                                         snackName = patch.name
                                         actions.onDeletePatch(patch.id)
@@ -338,7 +357,7 @@ fun PatchesOverlay(
                     UndoSnack(
                         name = name,
                         onUndo = {
-                            actions.onCreatePatch(name, null)
+                            actions.onUndoDeletePatch()
                             snackName = null
                         },
                     )
@@ -371,6 +390,7 @@ private fun DrawerHeader(
     state: PatchesUiState,
     haptics: PatchHaptics,
     onClose: () -> Unit,
+    onOpenSetlists: () -> Unit = {},
 ) {
     Row(
         Modifier
@@ -395,7 +415,10 @@ private fun DrawerHeader(
         Row(
             Modifier
                 .height(30.dp)
-                .patchTap(0.94f) { }
+                .patchTap(0.94f) {
+                    haptics.tick()
+                    onOpenSetlists()
+                }
                 .clip(RoundedCornerShape(15.dp))
                 .background(white(0.06f))
                 .border(1.dp, white(0.08f), RoundedCornerShape(15.dp))
@@ -504,6 +527,10 @@ private fun DrawerFooter(haptics: PatchHaptics, onNew: () -> Unit) {
         patch: Patch,
         index: Int,
         active: Boolean,
+        renaming: Boolean,
+        renameValue: String,
+        onRenameValueChange: (String) -> Unit,
+        onRenameConfirm: () -> Unit,
         onSelect: () -> Unit,
         onToggleActive: () -> Unit,
         onRename: () -> Unit,
@@ -637,12 +664,32 @@ private fun DrawerFooter(haptics: PatchHaptics, onNew: () -> Unit) {
                 }
 
                 Column(Modifier.weight(1f)) {
-                    Text(
-                        patch.name,
-                        style = patchText(15.sp, FontWeight.Bold),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    if (renaming) {
+                        val fieldShape = RoundedCornerShape(8.dp)
+                        BasicTextField(
+                            value = renameValue,
+                            onValueChange = { if (it.length <= 40) onRenameValueChange(it) },
+                            singleLine = true,
+                            textStyle = patchText(14.sp, FontWeight.SemiBold, PatchColors.TitleSoft),
+                            cursorBrush = SolidColor(PatchColors.Accent),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = { onRenameConfirm() }),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(30.dp)
+                                .clip(fieldShape)
+                                .background(PatchColors.Well)
+                                .border(1.dp, PatchColors.Accent.copy(alpha = 0.40f), fieldShape)
+                                .padding(horizontal = 8.dp, vertical = 5.dp),
+                        )
+                    } else {
+                        Text(
+                            patch.name,
+                            style = patchText(15.sp, FontWeight.Bold),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                     Text(
                         "${patch.snapshotCount} ${if (patch.snapshotCount == 1) "Snapshot" else "Snapshots"}",
                         style = patchText(11.5.sp, color = PatchColors.Mute),

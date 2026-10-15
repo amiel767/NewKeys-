@@ -11,6 +11,7 @@ import com.soundstage.mixer.ui.components.VelocityConfig
 import com.soundstage.mixer.ui.components.VelocityProcessor
 import com.soundstage.mixer.ui.theme.*
 import com.soundstage.mixer.ui.setlists.*
+import com.soundstage.mixer.ui.setlists.SetlistColor
 import com.soundstage.mixer.ui.settings.*
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -109,7 +110,7 @@ data class MixerUiState(
     val pitchBend: Float = 0.0f,
     
     // Fullscreen Pages Navigation
-    val currentPage: AppScreenPage = AppScreenPage.SETLISTS,
+    val currentPage: AppScreenPage = AppScreenPage.MIXER,
     val visibleTracksCount: Int = 1,
     val activeProjectName: String = "",
     
@@ -285,6 +286,14 @@ data class MixerUiState(
     val loopPlayerExplorerPath: String = "/storage/emulated/0/SoundStage/Loops",
     val loopPlayerExplorerItems: List<com.soundstage.mixer.model.AudioStorageItem> = emptyList(),
     val loopPlayerIsExplorerOpen: Boolean = false,
+    val sfFavorites: Set<String> = emptySet(),
+    val sfCategoryOverrides: Map<String, String> = emptyMap(),
+    val sfParsedPresets: Map<String, List<com.soundstage.mixer.model.SF2PresetInfo>> = emptyMap(),
+    val sfParsingFiles: Set<String> = emptySet(),
+    val sfLoadingFileId: String? = null,
+    val sfLoadingProgress: Float? = null,
+    val sfImportingName: String? = null,
+    val sfImportingProgress: Float? = null,
     val activeTrackSettingsId: Int? = null
 ) {
     val soundfontFiles: List<StorageItem> get() = realSoundfonts
@@ -335,10 +344,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     private var refreshStorageJob: Job? = null
     private var lastTapTimeMap = mutableMapOf<Int, Long>()
 
-    init {
-        startPeakMeterSimulation()
+    private var engineStarted = false
 
-        // Start Native FluidSynth engine asynchronously to prevent freezing UI thread on startup
+    private fun ensureEngineStarted() {
+        if (engineStarted) return
+        engineStarted = true
         viewModelScope.launch(Dispatchers.Default) {
             NativeAudioBridge.safeStartEngine()
             audioEngine.setBufferSize(_uiState.value.audioBufferSize)
@@ -346,11 +356,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             val masterVol = _uiState.value.masterTrack.volume
             audioEngine.masterVolume = masterVol
             NativeAudioBridge.safeSetMasterVolume(masterVol)
-            _uiState.value.tracks.forEachIndexed { index, track ->
-                NativeAudioBridge.safeSetTrackVolume(index, track.volume)
-                NativeAudioBridge.safeSetTrackPan(index, track.pan)
-            }
         }
+    }
+
+    init {
+        startPeakMeterSimulation()
 
         // Detect and register USB MIDI Hardware devices
         val initialMidiDevs = audioEngine.getConnectedUsbMidiDevices()
@@ -408,6 +418,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
         // Restore persisted state from previous session
         viewModelScope.launch(Dispatchers.IO) {
+            android.util.Log.d("MIXER_BOOT", "boot -> currentPage=${_uiState.value.currentPage}")
             try {
                 fileManager.ensureDirectoriesExist()
                 _uiState.update { it.copy(loopPlayerExplorerPath = fileManager.loopsDir.absolutePath) }
@@ -430,6 +441,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 Log.w("MixerViewModel", "refreshStorageFiles warning: ${e.message}")
             }
+            android.util.Log.d("MIXER_BOOT", "boot state restored; engineStarted=$engineStarted")
             
             // Non-intrusive permission check on startup (Android 11+)
             try {
@@ -545,7 +557,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
                     state.copy(
                         currentTheme = restoredTheme,
-                        currentPage = AppScreenPage.SETLISTS,
+                        currentPage = AppScreenPage.MIXER,
                         bpm = saved.bpm ?: state.bpm,
                         transpose = saved.transpose ?: state.transpose,
                         octave = saved.octave ?: state.octave,
@@ -600,138 +612,16 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                             rememberSort = appStatePersistence.getBoolean("setlists_pref_rem_sort", true),
                             lockDeletion = appStatePersistence.getBoolean("setlists_pref_lock_del", false),
                             haptics = appStatePersistence.getBoolean("setlists_pref_haptics", true)
-                        )
+                        ),
+                        sfFavorites = saved.sfFavorites,
+                        sfCategoryOverrides = saved.sfCategoryOverrides,
                     )
                 }
 
-                // Preload drums safely outside state update only if active project
-                if (!saved.activeProjectName.isNullOrBlank()) {
-                    drumPreloadList.forEach { path ->
-                        try { audioEngine.preloadDrumSample(path) } catch (_: Exception) {}
-                    }
-                }
 
-                // Apply restored parameters to native DSP
-                val effectiveMasterVol = saved.masterVolume ?: _uiState.value.masterTrack.volume
-                audioEngine.masterVolume = effectiveMasterVol
-                NativeAudioBridge.safeSetMasterVolume(effectiveMasterVol)
-
-                // Restored track volumes - apply directly to audio engine so startup volumes are accurate
-                applyTrackVolumes(_uiState.value)
-
-                // Restore Master FX (EQ, Reverb, Delay, Chorus, Compressor, SoundGoodizer)
-                val masterFx = saved.fxParameters[0]
-                if (masterFx != null) {
-                    val lowDb = (masterFx.eqLow - 0.5f) * 24.0f
-                    val midDb = (masterFx.eqMid - 0.5f) * 24.0f
-                    val highDb = (masterFx.eqHigh - 0.5f) * 24.0f
-                    audioEngine.setMasterEq(lowDb, midDb, highDb)
-                    audioEngine.setMasterReverb(
-                        enabled = masterFx.isReverbEnabled,
-                        size = masterFx.reverbSize,
-                        decay = masterFx.reverbDecay,
-                        damp = masterFx.reverbDamp,
-                        mix = masterFx.reverbMix
-                    )
-                    val isDelayActive = masterFx.isDelayEnabled && masterFx.delayMix > 0.005f
-                    audioEngine.setMasterDelay(
-                        enabled = isDelayActive,
-                        timeSec = 0.05f + masterFx.delayTime * 0.95f,
-                        feedback = if (isDelayActive) masterFx.delayFeedback else 0f,
-                        mix = if (isDelayActive) masterFx.delayMix else 0f,
-                        pingPong = masterFx.delayPingPong > 0.5f
-                    )
-                    val isChorusActive = masterFx.isChorusEnabled && masterFx.chorusMix > 0.005f
-                    audioEngine.setMasterChorus(
-                        enabled = isChorusActive,
-                        rateHz = 0.2f + masterFx.chorusRate * 4.8f,
-                        depthMs = 1.0f + masterFx.chorusDepth * 14.0f,
-                        mix = if (isChorusActive) masterFx.chorusMix else 0f
-                    )
-                    val compThreshold = -36f + masterFx.compThresh * 28f
-                    val compRatioVal = 1.5f + masterFx.compRatio * 8.5f
-                    val makeupGain = if (masterFx.isCompEnabled) {
-                        val reductionEst = (-compThreshold) * (1f - 1f / compRatioVal)
-                        (reductionEst * 0.75f).coerceIn(0f, 15f)
-                    } else 0f
-                    audioEngine.setMasterCompressor(
-                        enabled = masterFx.isCompEnabled,
-                        thresholdDb = compThreshold,
-                        ratio = compRatioVal,
-                        attackMs = 1.0f + masterFx.compAttack * 40f,
-                        releaseMs = 20.0f + masterFx.compRelease * 350f,
-                        makeupGainDb = makeupGain
-                    )
-                    val modeStr = when (masterFx.sgMode) {
-                        0 -> "A"
-                        1 -> "B"
-                        2 -> "C"
-                        3 -> "D"
-                        else -> "A"
-                    }
-                    audioEngine.soundGoodizerMode = modeStr
-                    audioEngine.isSoundGoodizerEnabled = masterFx.isSgEnabled
-                    audioEngine.soundGoodizerAmount = masterFx.sgAmount
-                    NativeAudioBridge.safeSetSoundGoodizer(masterFx.isSgEnabled, masterFx.sgMode, masterFx.sgAmount)
-                } else {
-                    val restoredMode = saved.soundGoodizerMode?.let { name ->
-                        try { SoundGoodizerMode.valueOf(name) } catch (_: Exception) { null }
-                    } ?: _uiState.value.soundGoodizerMode
-                    val sgAmt = saved.soundGoodizerAmount ?: _uiState.value.soundGoodizer
-                    audioEngine.soundGoodizerMode = restoredMode.name
-                    audioEngine.soundGoodizerAmount = sgAmt
-                    NativeAudioBridge.safeSetSoundGoodizer(audioEngine.isSoundGoodizerEnabled, restoredMode.ordinal, sgAmt)
-                }
-
-                saved.tracks.forEach { t ->
-                    val ch = (t.id - 1).coerceIn(0, 7)
-                    NativeAudioBridge.safeSetTrackVolume(ch, t.volume)
-                    NativeAudioBridge.safeSetTrackPan(ch, t.pan)
-                    val trackFx = saved.fxParameters[t.id]
-                    val reverbMix = if (trackFx != null && trackFx.isReverbEnabled) trackFx.reverbMix else t.reverbMix
-                    audioEngine.setChannelReverb(ch, reverbMix)
-                    val chorusMix = if (trackFx != null && trackFx.isChorusEnabled) trackFx.chorusMix else 0f
-                    audioEngine.setChannelChorus(ch, chorusMix)
-                }
-
-                var hasLoadedAnySlot = false
-                if (hasActive) {
-                    if (saved.audioSlots.isNotEmpty()) {
-                        saved.audioSlots.forEach { savedSlot ->
-                            val savedTrack = saved.tracks.find { it.id == (savedSlot.slotId + 1) }
-                            val candidatePath = when {
-                                !savedSlot.soundFontPath.isNullOrEmpty() && File(savedSlot.soundFontPath).exists() -> savedSlot.soundFontPath
-                                savedTrack != null && savedTrack.soundfontName.isNotEmpty() && File(fileManager.soundfontsDir, savedTrack.soundfontName).exists() -> File(fileManager.soundfontsDir, savedTrack.soundfontName).absolutePath
-                                !savedSlot.soundFontPath.isNullOrEmpty() && File(fileManager.soundfontsDir, File(savedSlot.soundFontPath).name).exists() -> File(fileManager.soundfontsDir, File(savedSlot.soundFontPath).name).absolutePath
-                                !savedSlot.patchName.isNullOrEmpty() && File(fileManager.soundfontsDir, savedSlot.patchName).exists() -> File(fileManager.soundfontsDir, savedSlot.patchName).absolutePath
-                                else -> null
-                            }
-                            if (candidatePath != null) {
-                                loadSoundFontForSlot(savedSlot.slotId, candidatePath, savedSlot.bank, savedSlot.preset, savedSlot.patchName, saveAfterLoad = false)
-                                hasLoadedAnySlot = true
-                            }
-                        }
-                    }
-
-                    // If audioSlots were empty or missing paths, check saved tracks for soundfont names
-                    if (!hasLoadedAnySlot && saved.tracks.isNotEmpty()) {
-                        saved.tracks.forEachIndexed { index, track ->
-                            if (track.soundfontName.isNotEmpty()) {
-                                val candidate = File(fileManager.soundfontsDir, track.soundfontName)
-                                if (candidate.exists()) {
-                                    loadSoundFontForSlot(index, candidate.absolutePath, bank = track.bank, preset = track.program, patchName = track.patchName, saveAfterLoad = false)
-                                    hasLoadedAnySlot = true
-                                }
-                            }
-                        }
-                    }
-                }
-                _uiState.value.tracks.forEach { track ->
-                    audioEngine.setTrackVelocityProcessor(track.id - 1, VelocityProcessor(track.velocityConfig))
-                }
             } else {
-                // First run / no saved state: do not preload anything, stay clean on PROJECTS page
-                _uiState.update { it.copy(currentPage = AppScreenPage.SETLISTS, activeProjectName = "", activeSceneId = "") }
+                // First run / no saved state: start clean on MIXER page
+                _uiState.update { it.copy(currentPage = AppScreenPage.MIXER, activeProjectName = "", activeSceneId = "") }
             }
         } catch (e: Exception) {
             Log.e("MixerViewModel", "Error restoring saved app state: ${e.message}", e)
@@ -811,7 +701,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             activePatchId = state.activePatchId,
             midiMappings = state.midiMappings,
             midiDebounceEnabled = state.midiDebounceEnabled,
-            midiDebounceMs = state.midiDebounceMs
+            midiDebounceMs = state.midiDebounceMs,
+            sfFavorites = state.sfFavorites,
+            sfCategoryOverrides = state.sfCategoryOverrides
         )
         // Full auto-save: automatically sync to the current project's .scene file if a project is actively open
         if (state.activeProjectName.isNotEmpty() && state.activeProjectName != "None") {
@@ -975,11 +867,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         e.printStackTrace()
                     }
 
+                    val savedColorName = appStatePersistence.getString("setlist_col_$cleanName", SetlistColor.Blue.name)
+                    val savedColor = runCatching { SetlistColor.valueOf(savedColorName) }.getOrDefault(SetlistColor.Blue)
                     ScenePreset(
                         id = cleanName,
                         name = cleanName,
                         timestamp = if (f.formattedDate.isNotEmpty()) f.formattedDate else "Recently used",
-                        color = NeonCyan,
+                        color = savedColor.base,
                         patchesCount = patchesList.size,
                         patches = patchesList
                     )
@@ -3224,7 +3118,47 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun toggleSfFavorite(key: String) {
+        _uiState.update { state ->
+            val next = if (state.sfFavorites.contains(key)) state.sfFavorites - key else state.sfFavorites + key
+            state.copy(sfFavorites = next)
+        }
+        persistCurrentStateDebounced()
+    }
+
+    fun moveSfToCategory(key: String, categoryId: String) {
+        _uiState.update { state ->
+            state.copy(sfCategoryOverrides = state.sfCategoryOverrides + (key to categoryId))
+        }
+        persistCurrentStateDebounced()
+    }
+
+    fun parseSfInBackground(filePath: String) {
+        val state = _uiState.value
+        if (state.sfParsedPresets.containsKey(filePath)) return
+        if (state.sfParsingFiles.contains(filePath)) return
+        _uiState.update { it.copy(sfParsingFiles = it.sfParsingFiles + filePath) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val file = File(filePath)
+            val parsed = try {
+                kotlinx.coroutines.withTimeoutOrNull(2_500L) {
+                    com.soundstage.mixer.model.SF2Parser.parsePresets(file)
+                } ?: emptyList()
+            } catch (e: Exception) {
+                Log.w("MixerViewModel", "SF2 parse failed for $filePath: ${e.message}")
+                emptyList()
+            }
+            withContext(Dispatchers.Main) {
+                _uiState.update { it.copy(
+                    sfParsedPresets = it.sfParsedPresets + (filePath to parsed),
+                    sfParsingFiles = it.sfParsingFiles - filePath,
+                ) }
+            }
+        }
+    }
+
     fun selectScene(sceneId: String) {
+        ensureEngineStarted()
         snapshotTransitionJob?.cancel()
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -3952,11 +3886,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 val updatedScenes = sceneFiles.map { f ->
                     val isCurrent = f.name.equals(name, ignoreCase = true)
                     val currentPatchesList = if (isCurrent) currentPatches else emptyList()
+                    val savedColorName = appStatePersistence.getString("setlist_col_${f.name}", SetlistColor.Blue.name)
+                    val savedColor = runCatching { SetlistColor.valueOf(savedColorName) }.getOrDefault(SetlistColor.Blue)
                     ScenePreset(
                         id = f.name,
                         name = f.name,
                         timestamp = if (f.formattedDate.isNotEmpty()) f.formattedDate else "Recently used",
-                        color = NeonCyan,
+                        color = savedColor.base,
                         patchesCount = currentPatchesList.size,
                         patches = currentPatchesList
                     )
@@ -3994,11 +3930,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 fileManager.deleteSceneFile(sceneId)
                 val refreshedFiles = fileManager.getSceneFiles()
                 val updatedScenes = refreshedFiles.map { f ->
+                    val savedColorName = appStatePersistence.getString("setlist_col_${f.name}", SetlistColor.Blue.name)
+                    val savedColor = runCatching { SetlistColor.valueOf(savedColorName) }.getOrDefault(SetlistColor.Blue)
                     ScenePreset(
                         id = f.name,
                         name = f.name,
                         timestamp = f.formattedSize,
-                        color = NeonCyan
+                        color = savedColor.base
                     )
                 }
                 withContext(Dispatchers.Main) {
@@ -4197,6 +4135,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun openProject(projectName: String) {
+        ensureEngineStarted()
         val currentActive = _uiState.value.activeProjectName
         if (projectName.equals(currentActive, ignoreCase = true) && currentActive.isNotEmpty() && currentActive != "None") {
             // Already active Setlist is loaded in memory - instantly switch page without interrupting audio!
@@ -4417,7 +4356,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun changeSetlistColor(id: String, color: SetlistColor) {
         appStatePersistence.saveString("setlist_col_$id", color.name)
-        _uiState.update { it.copy(lastMidiTriggerTime = System.currentTimeMillis()) } // trigger recomposition
+        _uiState.update { state ->
+            state.copy(
+                scenes = state.scenes.map { s ->
+                    if (s.id == id || s.name == id) s.copy(color = color.base) else s
+                }
+            )
+        }
     }
 
     fun togglePinSetlist(id: String) {
@@ -4724,6 +4669,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deletePatch(patchId: String) {
         val state = _uiState.value
+        val idx = state.patches.indexOfFirst { it.id == patchId || it.name == patchId }
+        if (idx >= 0) {
+            lastDeletedPatch = state.patches[idx]
+            lastDeletedPatchIndex = idx
+        }
         val updatedPatches = state.patches.filterNot { it.id == patchId || it.name == patchId }
         val nextActivePatch = updatedPatches.lastOrNull()
         _uiState.update { current ->
@@ -4738,6 +4688,22 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 audioSlots = nextActivePatch?.audioSlots ?: current.audioSlots
             )
         }
+        saveCurrentProjectDirect()
+    }
+
+    private var lastDeletedPatch: PatchItem? = null
+    private var lastDeletedPatchIndex: Int = -1
+
+    fun undoDeletePatch() {
+        val p = lastDeletedPatch ?: return
+        val idx = lastDeletedPatchIndex
+        _uiState.update { state ->
+            val list = state.patches.toMutableList()
+            list.add(idx.coerceIn(0, list.size), p)
+            state.copy(patches = list)
+        }
+        lastDeletedPatch = null
+        lastDeletedPatchIndex = -1
         saveCurrentProjectDirect()
     }
 
@@ -5509,7 +5475,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 fileManager.saveSceneFile(name, json.toString())
                 val sceneFiles = fileManager.getSceneFiles()
                 val updatedScenes = sceneFiles.map { f ->
-                    ScenePreset(id = f.name, name = f.name, timestamp = f.formattedSize, color = NeonCyan)
+                    val savedColorName = appStatePersistence.getString("setlist_col_${f.name}", SetlistColor.Blue.name)
+                    val savedColor = runCatching { SetlistColor.valueOf(savedColorName) }.getOrDefault(SetlistColor.Blue)
+                    ScenePreset(id = f.name, name = f.name, timestamp = f.formattedSize, color = savedColor.base)
                 }
                 _uiState.update { it.copy(scenes = updatedScenes, activeSceneId = name) }
                 // Appliquer immédiatement cette scène vierge

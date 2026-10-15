@@ -64,6 +64,12 @@ import com.soundstage.mixer.ui.patches.PatchesUiState
 import com.soundstage.mixer.ui.patches.Patch
 import com.soundstage.mixer.ui.patches.PatchesActions
 import com.aetherkeys.sheets.data.SheetsRepository
+import com.soundstage.mixer.ui.components.SoundfontWindow
+import com.soundstage.mixer.ui.components.SoundfontWindowState
+import com.soundstage.mixer.ui.components.SoundfontVariant
+import com.soundstage.mixer.ui.components.SfRow
+import com.soundstage.mixer.ui.components.SfWindowActions
+import com.soundstage.mixer.model.SoundfontPreset
 
 private val com.soundstage.mixer.model.PatchItem.snapshotCount: Int get() = snapshots.size
 
@@ -1027,24 +1033,91 @@ fun MixerScreen(
                 val activePresetId = slot?.preset ?: 0
                 val activeTrack = uiState.tracks.getOrNull(uiState.activeSoundfontSlotId)
                 val activeSfName = activeTrack?.soundfontName.orEmpty()
+                val activeBank = slot?.bank ?: 0
 
-                SoundfontDialog(
-                    trackId = uiState.activeSoundfontSlotId,
-                    source = if (uiState.activeSoundfontSlotId == 8) "drum" else if (uiState.activeSoundfontSlotId == 9) "pad" else "track",
-                    presets = activePresets,
-                    bankFiles = uiState.soundfontBankFiles,
-                    soundfontStorageFiles = uiState.realSoundfonts,
-                    selectedPresetId = activePresetId,
-                    selectedSoundfontName = activeSfName,
-                    onSelectPreset = { viewModel.selectSf2Preset(it) },
-                    onSelectPresetFull = { viewModel.selectSf2Preset(it) },
-                    onSelectSf2File = { viewModel.loadSoundfontFromStorage(it) },
-                    onUnloadSoundFont = { viewModel.unloadSoundFontFromSlot() },
-                    onDeleteSf2File = { viewModel.deleteSoundFontFile(it) },
-                    activeTab = uiState.activeSf2Tab,
-                    onTabChange = { viewModel.setSf2Tab(it) },
-                    onImportSf2 = { sf2PickerLauncher.launch(arrayOf("*/*")) },
-                    onClose = { viewModel.closePopup() }
+                val variant = when (uiState.activeSoundfontSlotId) {
+                    8 -> SoundfontVariant.Drum
+                    9 -> SoundfontVariant.Pad
+                    else -> SoundfontVariant.Track
+                }
+
+                val loadedFileId = activeSfName.ifEmpty { null }
+
+                val availableBanks = remember(activePresets) {
+                    activePresets.map { it.bankNumber }.distinct().sorted()
+                }
+
+                val sfWindowState = SoundfontWindowState(
+                    isOpen = true,
+                    variant = variant,
+                    loadedFileId = loadedFileId,
+                    loadedFileName = activeSfName,
+                    loadedPresets = activePresets,
+                    loadedBank = activeBank,
+                    loadedPresetId = activePresetId,
+                    loadedBanks = availableBanks,
+                    files = uiState.realSoundfonts.map { item ->
+                        val parsed = uiState.sfParsedPresets[item.path]
+                        SfRow.File(
+                            key = item.name,
+                            name = item.name,
+                            sizeBytes = item.size,
+                            formattedSize = item.formattedSize,
+                            isLoaded = item.name == activeSfName,
+                            presetCount = parsed?.size ?: 0,
+                        )
+                    },
+                    favorites = uiState.sfFavorites,
+                    overrides = uiState.sfCategoryOverrides,
+                    parsedPresets = uiState.sfParsedPresets.mapValues { (_, v) -> v.map { SoundfontPreset(it.preset, it.displayName, it.bank) } },
+                    parsingFiles = uiState.sfParsingFiles,
+                    loadingFileId = null,
+                    loadingProgress = null,
+                    importingName = null,
+                    importingProgress = null,
+                )
+
+                SoundfontWindow(
+                    state = sfWindowState,
+                    actions = object : SfWindowActions {
+                        override fun onClose() { viewModel.closePopup() }
+
+                        override fun onSelectPreset(row: SfRow.Preset) {
+                            viewModel.selectSf2Preset(SoundfontPreset(row.presetId, row.name, row.bankNumber))
+                        }
+
+                        override fun onLoadFile(fileId: String) {
+                            val item = uiState.realSoundfonts.firstOrNull { it.name == fileId } ?: return
+                            viewModel.loadSoundfontFromStorage(item)
+                        }
+
+                        override fun onCancelLoad() {}
+
+                        override fun onToggleFavorite(key: String) {
+                            viewModel.toggleSfFavorite(key)
+                        }
+
+                        override fun onMoveToCategory(key: String, categoryId: String) {
+                            viewModel.moveSfToCategory(key, categoryId)
+                        }
+
+                        override fun onImportFile() {
+                            sf2PickerLauncher.launch(arrayOf("*/*"))
+                        }
+
+                        override fun onDeleteFile(fileId: String) {
+                            val item = uiState.realSoundfonts.firstOrNull { it.name == fileId } ?: return
+                            viewModel.deleteSoundFontFile(item)
+                        }
+
+                        override fun onRequestParse(fileId: String) {
+                            val item = uiState.realSoundfonts.firstOrNull { it.name == fileId } ?: return
+                            viewModel.parseSfInBackground(item.path)
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .zIndex(120f)
                 )
             }
             ActivePopup.LOOPS -> {
@@ -1231,10 +1304,16 @@ fun MixerScreen(
                 ),
                 actions = object : PatchesActions {
                     override fun onClose() { viewModel.closePopup() }
+                    override fun onOpenSetlists() {
+                        viewModel.closePopup()
+                        viewModel.navigateToProjectsHome()
+                    }
                     override fun onSelectPatch(id: String) { viewModel.selectPatch(id) }
                     override fun onToggleActive(id: String) { viewModel.selectPatch(id) }
                     override fun onRenamePatch(id: String) {}
+                    override fun onRenamePatchConfirmed(id: String, name: String) { viewModel.renamePatch(id, name) }
                     override fun onDeletePatch(id: String) { viewModel.deletePatch(id) }
+                    override fun onUndoDeletePatch() { viewModel.undoDeletePatch() }
                     override fun onCreatePatch(name: String, duplicateFrom: String?) {
                         viewModel.createNewPatch(name, duplicateFrom == null)
                     }

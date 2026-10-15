@@ -64,6 +64,8 @@ class AppStatePersistence(context: Context) {
         private const val KEY_MIDI_MAPPINGS_JSON = "midi_mappings_json"
         private const val KEY_MIDI_DEBOUNCE_ENABLED = "midi_debounce_enabled"
         private const val KEY_MIDI_DEBOUNCE_MS = "midi_debounce_ms"
+        private const val KEY_SF_FAVORITES = "sf_favorites"
+        private const val KEY_SF_CATEGORY_OVERRIDES = "sf_category_overrides"
     }
 
     data class SavedTrackData(
@@ -146,7 +148,9 @@ class AppStatePersistence(context: Context) {
         val activePatchId: String? = null,
         val midiMappings: List<MidiMappingItem> = emptyList(),
         val midiDebounceEnabled: Boolean? = null,
-        val midiDebounceMs: Long? = null
+        val midiDebounceMs: Long? = null,
+        val sfFavorites: Set<String> = emptySet(),
+        val sfCategoryOverrides: Map<String, String> = emptyMap()
     )
 
     fun saveAppState(
@@ -191,7 +195,9 @@ class AppStatePersistence(context: Context) {
         activePatchId: String? = null,
         midiMappings: List<MidiMappingItem> = emptyList(),
         midiDebounceEnabled: Boolean = false,
-        midiDebounceMs: Long = 30L
+        midiDebounceMs: Long = 30L,
+        sfFavorites: Set<String> = emptySet(),
+        sfCategoryOverrides: Map<String, String> = emptyMap()
     ) {
         try {
             val tracksArray = JSONArray()
@@ -465,6 +471,14 @@ class AppStatePersistence(context: Context) {
                 putString(KEY_MIDI_MAPPINGS_JSON, midiMappingsArray.toString())
                 putBoolean(KEY_MIDI_DEBOUNCE_ENABLED, midiDebounceEnabled)
                 putLong(KEY_MIDI_DEBOUNCE_MS, midiDebounceMs)
+
+                val sfFavArray = JSONArray()
+                sfFavorites.forEach { sfFavArray.put(it) }
+                val sfOverridesObj = JSONObject()
+                sfCategoryOverrides.forEach { (k, v) -> sfOverridesObj.put(k, v) }
+                putString(KEY_SF_FAVORITES, sfFavArray.toString())
+                putString(KEY_SF_CATEGORY_OVERRIDES, sfOverridesObj.toString())
+
                 apply()
             }
         } catch (e: Exception) {
@@ -888,6 +902,25 @@ class AppStatePersistence(context: Context) {
             val midiDebounceEnabled = if (prefs.contains(KEY_MIDI_DEBOUNCE_ENABLED)) prefs.getBoolean(KEY_MIDI_DEBOUNCE_ENABLED, false) else null
             val midiDebounceMs = if (prefs.contains(KEY_MIDI_DEBOUNCE_MS)) prefs.getLong(KEY_MIDI_DEBOUNCE_MS, 30L) else null
 
+            val sfFavoritesSet = mutableSetOf<String>()
+            prefs.getString(KEY_SF_FAVORITES, null)?.let { raw ->
+                try {
+                    val arr = JSONArray(raw)
+                    for (i in 0 until arr.length()) sfFavoritesSet.add(arr.getString(i))
+                } catch (_: Exception) {}
+            }
+            val sfOverridesMap = mutableMapOf<String, String>()
+            prefs.getString(KEY_SF_CATEGORY_OVERRIDES, null)?.let { raw ->
+                try {
+                    val obj = JSONObject(raw)
+                    val keys = obj.keys()
+                    while (keys.hasNext()) {
+                        val k = keys.next()
+                        sfOverridesMap[k] = obj.getString(k)
+                    }
+                } catch (_: Exception) {}
+            }
+
             return RestoredAppState(
                 themeName = themeName,
                 bpm = bpm,
@@ -930,7 +963,9 @@ class AppStatePersistence(context: Context) {
                 activePatchId = activePatchId,
                 midiMappings = restoredMidiMappings,
                 midiDebounceEnabled = midiDebounceEnabled,
-                midiDebounceMs = midiDebounceMs
+                midiDebounceMs = midiDebounceMs,
+                sfFavorites = sfFavoritesSet,
+                sfCategoryOverrides = sfOverridesMap
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error loading app state: ${e.message}")
