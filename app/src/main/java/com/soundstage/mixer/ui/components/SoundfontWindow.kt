@@ -3,37 +3,22 @@
 
 package com.soundstage.mixer.ui.components
 
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.PointerInputScope
-import androidx.compose.foundation.gestures.detectTapGestures
-
 /*
  * SoundfontWindow.kt — nouvelle fenêtre Soundfonts (Æther Keys)
  *
- * Ce fichier remplace SoundfontDialog.kt. Il est autonome : il prend un state
- * immuable + des actions, calcule tout localement, et ne parle à aucun moteur.
- * Le câblage ViewModel se fera dans un commit séparé.
+ * Remplace SoundfontDialog.kt. Autonome : state immuable + actions, aucun
+ * moteur touché. Le câblage ViewModel se fait dans MixerScreen.kt.
  *
- * Non inclus volontairement :
- *  - Audition sonore (supprimée par décision produit).
- *  - Drag & drop preset → catégorie (remplacé par le menu ⋮ → Move to…).
- *
- * Repris de l'ancien SoundfontDialog.kt :
- *  - Structure modale 660×372, header search + import + close.
- *  - Bank selector horizontal, liste LazyColumn avec scroll persisté.
- *  - FloatingTrashBubble pour la suppression.
- *
- * Ajouté :
- *  - 15 catégories (13 + Favorites + Other), classifieur par nom, overrides manuels.
+ * Fonctionnalités :
+ *  - 15 catégories (Favorites en premier, Other en dernier).
+ *  - Classifieur regex par nom + overrides manuels persistants.
  *  - Favoris globaux (clé = fileId|bank|presetId).
- *  - Compteurs animés par catégorie.
- *  - Menu contextuel ⋮ → Add to favorites / Move to…
- *  - Highlight du terme recherché.
+ *  - Catégories vides masquées SAUF si toutes vides (sidebar jamais vide).
+ *  - Onglets Presets/All dans la colonne gauche, en haut.
+ *  - Recherche avec highlight.
+ *  - Swipe gauche sur FICHIER uniquement → trash animé → delete au relâchement.
+ *  - Undo 5 s avec barre de progression.
  *  - Variants Track / Pad / Drum.
- *  - Progress ring au chargement (simulé à partir de la taille du fichier).
- *  - A-Z index simplifié (lettre flottante pendant le scroll de "All").
- *  - Sheet "Move to…" en bas de la fenêtre.
- *  - Snackbar interne à la fenêtre.
  */
 
 import androidx.compose.animation.AnimatedVisibility
@@ -41,31 +26,25 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -88,13 +67,13 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -102,17 +81,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -129,19 +109,18 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.soundstage.mixer.model.SoundfontPreset
 import com.soundstage.mixer.ui.theme.AppColors
-import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 // ════════════════════════════════════════════════════════════════════════════════════════
 // 1. MODELS
 // ════════════════════════════════════════════════════════════════════════════════════════
 
-/** Contexte d'ouverture : un slot de mix, un pad (slot 9), ou le DrumPad (slot 8). */
 enum class SoundfontVariant { Track, Pad, Drum }
 
-/** Catégories du classifieur. Favorites et Other sont fixes. */
 enum class SfCategory(val id: String, val label: String) {
+    Favorite("fav", "Favorites"),
     Piano("piano", "Piano"),
     Keys("keys", "Keys"),
     Organ("organ", "Organ"),
@@ -155,7 +134,6 @@ enum class SfCategory(val id: String, val label: String) {
     Mallets("mallets", "Mallets"),
     Drums("drums", "Drums & Perc"),
     Fx("fx", "FX"),
-    Favorite("fav", "Favorites"),
     Other("other", "Other");
 
     companion object {
@@ -163,13 +141,12 @@ enum class SfCategory(val id: String, val label: String) {
     }
 }
 
-/** Une ligne de la colonne de droite : un preset ou un fichier .sf2. */
 sealed interface SfRow {
     val key: String
     val name: String
 
     data class Preset(
-        override val key: String,             // "fileId|bank|presetId"
+        override val key: String,
         override val name: String,
         val presetId: Int,
         val bankNumber: Int,
@@ -178,49 +155,35 @@ sealed interface SfRow {
     ) : SfRow
 
     data class File(
-        override val key: String,             // fileId (path)
+        override val key: String,
         override val name: String,
         val sizeBytes: Long,
         val formattedSize: String,
         val isLoaded: Boolean,
-        val presetCount: Int,                 // 0 si non parsé
+        val presetCount: Int,
     ) : SfRow
 }
 
-/** État complet de la fenêtre, fourni par le ViewModel au composable. */
 data class SoundfontWindowState(
     val isOpen: Boolean,
     val variant: SoundfontVariant,
-
-    // — SF actuellement chargé (source de l'onglet Presets)
     val loadedFileId: String? = null,
     val loadedFileName: String = "",
     val loadedPresets: List<SoundfontPreset> = emptyList(),
     val loadedBank: Int = 0,
     val loadedPresetId: Int = 0,
-    val loadedBanks: List<Int> = emptyList(),   // banks distincts disponibles
-
-    // — Liste des .sf2 dans le stockage (source de l'onglet All)
+    val loadedBanks: List<Int> = emptyList(),
     val files: List<SfRow.File> = emptyList(),
-
-    // — Préférences
     val favorites: Set<String> = emptySet(),
     val overrides: Map<String, String> = emptyMap(),
-
-    // — Cache des presets parsés par fileId (path)
     val parsedPresets: Map<String, List<SoundfontPreset>> = emptyMap(),
     val parsingFiles: Set<String> = emptySet(),
-
-    // — Chargement en cours
     val loadingFileId: String? = null,
     val loadingProgress: Float? = null,
-
-    // — Import en cours
     val importingName: String? = null,
     val importingProgress: Float? = null,
 )
 
-/** Actions émises par la fenêtre. Toutes optionnelles (NoOp par défaut). */
 interface SfWindowActions {
     fun onClose() {}
     fun onSelectPreset(row: SfRow.Preset) {}
@@ -236,7 +199,7 @@ interface SfWindowActions {
 object NoOpSfWindowActions : SfWindowActions
 
 // ════════════════════════════════════════════════════════════════════════════════════════
-// 2. CLASSIFIER (regex, ordre = priorité)
+// 2. CLASSIFIER
 // ════════════════════════════════════════════════════════════════════════════════════════
 
 private object SfClassifier {
@@ -261,17 +224,14 @@ private object SfClassifier {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════════
-// 3. STYLE (locale à la fenêtre, dérivée de la palette canonique)
+// 3. STYLE
 // ════════════════════════════════════════════════════════════════════════════════════════
 
 private object SfColors {
     val PanelTop = AppColors.PanelTop
     val PanelBottom = AppColors.PanelBottom
-    val Well = AppColors.Well
     val Ink = AppColors.Ink
-    val Soft = AppColors.Soft
     val Mute = AppColors.Mute
-    val Dim = AppColors.Dim
     val Accent = AppColors.Accent
     val AccentDeep = AppColors.AccentDeep
     val AccentText = AppColors.AccentText
@@ -281,6 +241,8 @@ private object SfColors {
     val Backdrop = Color(0x9E060910)
     val BackdropSheet = Color(0xB3060914)
     val Title = Color(0xFFF4F6FB)
+    val Rose = Color(0xFFC2587A)
+    val RoseDeep = Color(0xFF8A3B56)
 }
 
 private fun white(a: Float) = Color.White.copy(alpha = a)
@@ -291,7 +253,6 @@ private fun sfText(
     color: Color = SfColors.Ink
 ): TextStyle = TextStyle(fontSize = size, fontWeight = weight, color = color, fontFeatureSettings = "tnum")
 
-/** Surface pressable avec spring court. À appliquer AVANT les modificateurs de rendu. */
 @Composable
 private fun Modifier.sfTap(scaleDown: Float = 0.96f, onTap: () -> Unit): Modifier {
     var pressed by remember { mutableStateOf(false) }
@@ -303,40 +264,16 @@ private fun Modifier.sfTap(scaleDown: Float = 0.96f, onTap: () -> Unit): Modifie
     val tap by rememberUpdatedState(onTap)
     return this
         .graphicsLayer { scaleX = s; scaleY = s }
-        .clickable(
-            interactionSource = remember { MutableInteractionSource() },
-            indication = null,
-        ) {
-            tap()
-        }
-        .drawBehind { /* no-op */ }
-        .then(
-            Modifier.pointerInputSfPress { pressed = it }
-        )
-}
-
-/** Petit helper pour piloter `pressed` sans re-créer de pointerInput. */
-@Composable
-private fun Modifier.pointerInputSfPress(set: (Boolean) -> Unit): Modifier = this
-    .pointerInputUnitCustom(set)
-
-@Composable
-private fun Modifier.pointerInputUnitCustom(set: (Boolean) -> Unit): Modifier {
-    val setNow by rememberUpdatedState(set)
-    return this.then(
-        Modifier.pointerInput(Unit) {
+        .pointerInput(Unit) {
             detectTapGestures(
                 onPress = {
-                    setNow(true)
-                    try {
-                        tryAwaitRelease()
-                    } finally {
-                        setNow(false)
-                    }
-                }
+                    pressed = true
+                    tryAwaitRelease()
+                    pressed = false
+                },
+                onTap = { tap() }
             )
         }
-    )
 }
 
 private fun Modifier.topHairline(alpha: Float = 0.10f): Modifier = this.drawBehind {
@@ -363,22 +300,18 @@ fun SoundfontWindow(
     actions: SfWindowActions = NoOpSfWindowActions,
     modifier: Modifier = Modifier,
 ) {
-    // — Réinitialisations à l'ouverture
     var tab by remember { mutableStateOf(SfTab.Presets) }
     var query by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf<SfCategory?>(null) }
     var selectedBank by remember { mutableIntStateOf(state.loadedBank) }
 
-    // Menus et snackbar locaux
     var contextMenu by remember { mutableStateOf<ContextMenu?>(null) }
     var moveSheet by remember { mutableStateOf<SfRow?>(null) }
-    var snack by remember { mutableStateOf<Snack?>(null) }
-    var trashTarget by remember { mutableStateOf<SfRow.File?>(null) }
+    var pendingDelete by remember { mutableStateOf<SfRow.File?>(null) }
+    var pendingDeleteKey by remember { mutableStateOf<Long?>(null) }
 
-    // Direction de transition entre onglets
-    var slideDir by remember { mutableIntStateOf(1) }
+    val hiddenFileKeys = remember { mutableStateOf(setOf<String>()) }
 
-    // Réinitialise à l'ouverture du variant Pad → catégorie Pads par défaut
     LaunchedEffect(state.isOpen, state.variant) {
         if (state.isOpen) {
             tab = SfTab.Presets
@@ -389,10 +322,10 @@ fun SoundfontWindow(
                 SoundfontVariant.Track -> null
             }
             selectedBank = state.loadedBank
+            hiddenFileKeys.value = emptySet()
         }
     }
 
-    // Sync bank avec le state
     LaunchedEffect(state.loadedBank, state.loadedFileId) {
         if (state.loadedBanks.isNotEmpty() && selectedBank !in state.loadedBanks) {
             selectedBank = state.loadedBanks.first()
@@ -401,29 +334,30 @@ fun SoundfontWindow(
         }
     }
 
-    // — Calcul des lignes visibles
     val searching = query.trim().isNotEmpty()
 
-    val presetsAll: List<SfRow.Preset> = remember(
-        state.loadedFileId, state.loadedPresets, state.loadedFileName
-    ) {
+    val presetsAll: List<SfRow.Preset> = remember(state.loadedFileId, state.loadedPresets) {
         val fileId = state.loadedFileId ?: ""
         state.loadedPresets.map { p ->
-            val cleanBankLabel = "Bank ${p.bankNumber}"
             SfRow.Preset(
                 key = "$fileId|${p.bankNumber}|${p.id}",
                 name = p.name,
                 presetId = p.id,
                 bankNumber = p.bankNumber,
-                bankLabel = cleanBankLabel,
+                bankLabel = "Bank ${p.bankNumber}",
                 fileId = fileId,
             )
         }
     }
 
-    val currentRows: List<SfRow> = remember(tab, presetsAll, state.files, searching, selectedBank, selectedCategory, query, state.overrides, state.favorites, state.parsedPresets) {
+    val currentRows: List<SfRow> = remember(
+        tab, presetsAll, state.files, searching, selectedBank, selectedCategory,
+        query, state.overrides, state.favorites, hiddenFileKeys.value
+    ) {
         when (tab) {
-            SfTab.All -> state.files.map { it as SfRow }
+            SfTab.All -> state.files
+                .filter { it.key !in hiddenFileKeys.value }
+                .map { it as SfRow }
             SfTab.Presets -> {
                 var list = presetsAll
                 if (!searching && state.loadedBanks.size > 1) {
@@ -438,8 +372,8 @@ fun SoundfontWindow(
                     } else if (cat == SfCategory.Favorite) {
                         state.favorites.contains(row.key)
                     } else {
-                        val effective = state.overrides[row.key] ?: SfClassifier.classify(row.name).id
-                        effective == cat.id
+                        val eff = state.overrides[row.key] ?: SfClassifier.classify(row.name).id
+                        eff == cat.id
                     }
                 }
                 list as List<SfRow>
@@ -447,13 +381,14 @@ fun SoundfontWindow(
         }
     }
 
-    // — Compteurs par catégorie (calculés sur la source avant filtre de catégorie)
-    val countsByCategory: Map<SfCategory, Int> = remember(tab, presetsAll, state.files, selectedBank, state.overrides, state.favorites) {
+    val countsByCategory: Map<SfCategory, Int> = remember(
+        tab, presetsAll, state.files, selectedBank, state.overrides, state.favorites, hiddenFileKeys.value
+    ) {
         val result = mutableMapOf<SfCategory, Int>()
         SfCategory.values().forEach { result[it] = 0 }
         when (tab) {
             SfTab.All -> {
-                state.files.forEach {
+                state.files.filter { it.key !in hiddenFileKeys.value }.forEach {
                     val c = SfCategory.fromId(state.overrides[it.key]) ?: SfClassifier.classify(it.name)
                     result[c] = (result[c] ?: 0) + 1
                 }
@@ -463,25 +398,22 @@ fun SoundfontWindow(
                 list.forEach {
                     val c = SfCategory.fromId(state.overrides[it.key]) ?: SfClassifier.classify(it.name)
                     result[c] = (result[c] ?: 0) + 1
-                    if (state.favorites.contains(it.key)) result[SfCategory.Favorite] = (result[SfCategory.Favorite] ?: 0) + 1
+                    if (state.favorites.contains(it.key)) {
+                        result[SfCategory.Favorite] = (result[SfCategory.Favorite] ?: 0) + 1
+                    }
                 }
             }
         }
         result
     }
 
-    val visibleCats: List<SfCategory> = SfCategory.values()
-        .filter { (countsByCategory[it] ?: 0) > 0 }
-        .let { all -> all.filter { it != SfCategory.Favorite } + all.filter { it == SfCategory.Favorite } } // Favorites à la fin visuellement
-
-    // — Effet : snackbar auto-hide
-    LaunchedEffect(snack?.key) {
-        val s = snack ?: return@LaunchedEffect
-        kotlinx.coroutines.delay(s.durationMs)
-        if (snack?.key == s.key) snack = null
+    val allZero = countsByCategory.values.all { it == 0 }
+    val visibleCats: List<SfCategory> = if (allZero) {
+        SfCategory.values().toList()
+    } else {
+        SfCategory.values().filter { (countsByCategory[it] ?: 0) > 0 }
     }
 
-    // — Scrim + modal
     Box(modifier = modifier.fillMaxSize().zIndex(50f)) {
         AnimatedVisibility(
             visible = state.isOpen,
@@ -501,7 +433,10 @@ fun SoundfontWindow(
 
         AnimatedVisibility(
             visible = state.isOpen,
-            enter = scaleIn(initialScale = 0.55f, animationSpec = spring(dampingRatio = 0.7f, stiffness = 380f)) + fadeIn(tween(220)),
+            enter = scaleIn(
+                initialScale = 0.55f,
+                animationSpec = spring(dampingRatio = 0.7f, stiffness = 380f)
+            ) + fadeIn(tween(220)),
             exit = scaleOut(targetScale = 0.75f, animationSpec = tween(180)) + fadeOut(tween(160)),
         ) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -518,7 +453,6 @@ fun SoundfontWindow(
                             indication = null,
                         ) { /* absorb */ }
                 ) {
-                    // — Header
                     SfHeader(
                         query = query,
                         onQueryChange = { query = it },
@@ -532,8 +466,17 @@ fun SoundfontWindow(
                             .height(44.dp)
                     )
 
-                    // — Sidebar catégories
-                    SfCategorySidebar(
+                    SfLeftColumn(
+                        tab = tab,
+                        onTabChange = { t ->
+                            tab = t
+                            selectedCategory = when (state.variant) {
+                                SoundfontVariant.Pad -> SfCategory.Pads
+                                SoundfontVariant.Drum -> SfCategory.Drums
+                                SoundfontVariant.Track -> null
+                            }
+                            query = ""
+                        },
                         categories = visibleCats,
                         counts = countsByCategory,
                         selected = selectedCategory,
@@ -545,47 +488,27 @@ fun SoundfontWindow(
                             .fillMaxHeight()
                     )
 
-                    // — Colonne droite
                     Column(
                         Modifier
                             .align(Alignment.TopStart)
                             .padding(start = 182.dp, end = 14.dp, top = 68.dp, bottom = 14.dp)
                             .fillMaxSize()
                     ) {
-                        // Onglets Presets / All
-                        SfTabStrip(
-                            tab = tab,
-                            onChange = { t ->
-                                slideDir = if (t == SfTab.All) 1 else -1
-                                tab = t
-                                selectedCategory = when (state.variant) {
-                                    SoundfontVariant.Pad -> SfCategory.Pads
-                                    SoundfontVariant.Drum -> SfCategory.Drums
-                                    SoundfontVariant.Track -> null
-                                }
-                                query = ""
-                            },
-                            modifier = Modifier.fillMaxWidth().height(34.dp)
-                        )
-
-                        // Banks (Presets multi-bank)
                         if (tab == SfTab.Presets && state.loadedBanks.size > 1) {
                             SfBankBar(
                                 banks = state.loadedBanks,
                                 selected = selectedBank,
                                 onSelect = { b -> selectedBank = b },
                                 modifier = Modifier
-                                    .padding(top = 8.dp)
                                     .fillMaxWidth()
                                     .height(30.dp)
                             )
+                            Spacer(Modifier.height(8.dp))
                         }
 
-                        // Chip de filtre actif
                         if (selectedCategory != null || searching) {
                             Row(
                                 Modifier
-                                    .padding(top = 8.dp)
                                     .fillMaxWidth()
                                     .height(24.dp),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -601,7 +524,10 @@ fun SoundfontWindow(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(5.dp),
                                     ) {
-                                        Text(selectedCategory!!.label, style = sfText(11.5.sp, FontWeight.Bold, Color(0xFFC7CFDD)))
+                                        Text(
+                                            selectedCategory!!.label,
+                                            style = sfText(11.5.sp, FontWeight.Bold, Color(0xFFC7CFDD))
+                                        )
                                         SfIcon(SfIconKind.X, Color(0xFFC7CFDD), Modifier.size(11.dp), stroke = 2.6.dp)
                                     }
                                 }
@@ -612,12 +538,11 @@ fun SoundfontWindow(
                                     )
                                 }
                             }
+                            Spacer(Modifier.height(8.dp))
                         }
 
-                        // Liste
                         Box(
                             Modifier
-                                .padding(top = 8.dp)
                                 .fillMaxWidth()
                                 .weight(1f)
                         ) {
@@ -638,7 +563,11 @@ fun SoundfontWindow(
                                 onCancelLoad = { actions.onCancelLoad() },
                                 onToggleFavorite = { key -> actions.onToggleFavorite(key) },
                                 onOpenMenu = { ctx -> contextMenu = ctx },
-                                slideDir = slideDir,
+                                onRequestDeleteFile = { row ->
+                                    hiddenFileKeys.value = hiddenFileKeys.value + row.key
+                                    pendingDelete = row
+                                    pendingDeleteKey = System.nanoTime()
+                                },
                             )
                         }
                     }
@@ -646,7 +575,6 @@ fun SoundfontWindow(
             }
         }
 
-        // — Menu contextuel
         contextMenu?.let { ctx ->
             SfContextMenu(
                 ctx = ctx,
@@ -661,12 +589,17 @@ fun SoundfontWindow(
                     contextMenu = null
                 },
                 onDeleteFile = if (ctx.row is SfRow.File) {
-                    { trashTarget = ctx.row as SfRow.File; contextMenu = null }
+                    {
+                        val f = ctx.row as SfRow.File
+                        hiddenFileKeys.value = hiddenFileKeys.value + f.key
+                        pendingDelete = f
+                        pendingDeleteKey = System.nanoTime()
+                        contextMenu = null
+                    }
                 } else null
             )
         }
 
-        // — Sheet Move to…
         moveSheet?.let { row ->
             SfMoveSheet(
                 row = row,
@@ -674,45 +607,44 @@ fun SoundfontWindow(
                 onDismiss = { moveSheet = null },
                 onPick = { cat ->
                     actions.onMoveToCategory(row.key, cat.id)
-                    snack = Snack("Moved to ${cat.label}", System.nanoTime(), 1800L)
                     moveSheet = null
                 }
             )
         }
 
-        // — Confirmation delete
-        trashTarget?.let { target ->
-            SfDeleteConfirm(
-                name = target.name,
-                onCancel = { trashTarget = null },
-                onConfirm = {
-                    actions.onDeleteFile(target.key)
-                    trashTarget = null
-                }
-            )
-        }
-
-        // — Snackbar
-        snack?.let { s ->
+        pendingDelete?.let { file ->
+            val k = pendingDeleteKey ?: System.nanoTime()
             Box(
                 Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 26.dp)
                     .zIndex(90f)
             ) {
-                SfSnackbar(s) { snack = null }
+                SfUndoSnackbar(
+                    keyId = k,
+                    text = "\"${file.name}\" deleted",
+                    onUndo = {
+                        hiddenFileKeys.value = hiddenFileKeys.value - file.key
+                        pendingDelete = null
+                        pendingDeleteKey = null
+                    },
+                    onExpire = {
+                        actions.onDeleteFile(file.key)
+                        pendingDelete = null
+                        pendingDeleteKey = null
+                    }
+                )
             }
         }
     }
 }
 
+private enum class SfTab { Presets, All }
+private data class ContextMenu(val row: SfRow, val x: Float, val y: Float)
+
 // ════════════════════════════════════════════════════════════════════════════════════════
 // 5. HEADER
 // ════════════════════════════════════════════════════════════════════════════════════════
-
-private enum class SfTab { Presets, All }
-private data class ContextMenu(val row: SfRow, val x: Float, val y: Float)
-private data class Snack(val text: String, val key: Long, val durationMs: Long)
 
 @Composable
 private fun SfHeader(
@@ -723,8 +655,11 @@ private fun SfHeader(
     onClose: () -> Unit,
     modifier: Modifier
 ) {
-    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        // Search field
+    Row(
+        modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
         val shape = RoundedCornerShape(14.dp)
         Row(
             Modifier
@@ -769,7 +704,6 @@ private fun SfHeader(
             }
         }
 
-        // Import
         Box(
             Modifier
                 .size(42.dp)
@@ -783,7 +717,6 @@ private fun SfHeader(
             SfIcon(SfIconKind.Plus, SfColors.AccentText, Modifier.size(19.dp), stroke = 2.6.dp)
         }
 
-        // Close
         Box(
             Modifier
                 .size(42.dp)
@@ -799,11 +732,13 @@ private fun SfHeader(
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════════
-// 6. SIDEBAR CATÉGORIES
+// 6. LEFT COLUMN — Tabs + Categories
 // ════════════════════════════════════════════════════════════════════════════════════════
 
 @Composable
-private fun SfCategorySidebar(
+private fun SfLeftColumn(
+    tab: SfTab,
+    onTabChange: (SfTab) -> Unit,
     categories: List<SfCategory>,
     counts: Map<SfCategory, Int>,
     selected: SfCategory?,
@@ -812,6 +747,15 @@ private fun SfCategorySidebar(
 ) {
     val listState = rememberLazyListState()
     Column(modifier) {
+        SfTabStrip(
+            tab = tab,
+            onChange = onTabChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(32.dp)
+        )
+        Spacer(Modifier.height(10.dp))
+
         Text(
             "Category",
             style = TextStyle(
@@ -833,9 +777,9 @@ private fun SfCategorySidebar(
         ) {
             items(categories.size, key = { categories[it].id }) { i ->
                 val c = categories[i]
-                val isFav = c == SfCategory.Favorite
                 val on = selected == c
                 val count = counts[c] ?: 0
+                val isFav = c == SfCategory.Favorite
 
                 val rowBg by animateColorAsState(
                     if (on) white(0.11f) else Color.Transparent,
@@ -851,17 +795,6 @@ private fun SfCategorySidebar(
                     tween(200),
                     label = "catFg"
                 )
-
-                // Séparateur au-dessus de Favorites
-                if (isFav && i > 0) {
-                    Box(
-                        Modifier
-                            .padding(horizontal = 8.dp, vertical = 3.dp)
-                            .fillMaxWidth()
-                            .height(1.dp)
-                            .background(white(0.07f))
-                    )
-                }
 
                 Row(
                     Modifier
@@ -890,10 +823,6 @@ private fun SfCategorySidebar(
         }
     }
 }
-
-// ════════════════════════════════════════════════════════════════════════════════════════
-// 7. ONGLETS + BANKS
-// ════════════════════════════════════════════════════════════════════════════════════════
 
 @Composable
 private fun SfTabStrip(
@@ -940,7 +869,7 @@ private fun SfTabStrip(
                 ) {
                     Text(
                         if (t == SfTab.Presets) "Presets" else "All",
-                        style = sfText(12.5.sp, FontWeight.Bold, c),
+                        style = sfText(12.sp, FontWeight.Bold, c),
                         maxLines = 1
                     )
                 }
@@ -948,6 +877,10 @@ private fun SfTabStrip(
         }
     }
 }
+
+// ════════════════════════════════════════════════════════════════════════════════════════
+// 7. BANK BAR
+// ════════════════════════════════════════════════════════════════════════════════════════
 
 @Composable
 private fun SfBankBar(
@@ -1000,7 +933,7 @@ private fun SfBankBar(
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════════
-// 8. LISTE
+// 8. LIST
 // ════════════════════════════════════════════════════════════════════════════════════════
 
 @Composable
@@ -1021,14 +954,12 @@ private fun SfList(
     onCancelLoad: () -> Unit,
     onToggleFavorite: (String) -> Unit,
     onOpenMenu: (ContextMenu) -> Unit,
-    slideDir: Int
+    onRequestDeleteFile: (SfRow.File) -> Unit,
 ) {
     val listState = rememberLazyListState()
 
-    // Lettre flottante pendant le scroll de "All"
     var letter by remember { mutableStateOf<String?>(null) }
     var letterAlpha by remember { mutableFloatStateOf(0f) }
-    var lastScrollTick by remember { mutableStateOf(0L) }
 
     LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset, tab) {
         if (tab != SfTab.All || query.isNotBlank()) {
@@ -1042,24 +973,20 @@ private fun SfList(
             val c = first.name.first()
             letter = if (c.isLetter()) c.uppercase() else "#"
             letterAlpha = 1f
-            lastScrollTick = System.currentTimeMillis()
             kotlinx.coroutines.delay(900)
-            if (System.currentTimeMillis() - lastScrollTick >= 900) {
-                letterAlpha = 0f
-                kotlinx.coroutines.delay(220)
-                letter = null
-            }
+            letterAlpha = 0f
+            kotlinx.coroutines.delay(220)
+            letter = null
         }
     }
 
-    // Empty
     if (rows.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
                 when {
                     importingName != null -> "Importing $importingName…"
                     tab == SfTab.All -> "No soundfonts found."
-                    query.isNotBlank() -> "Nothing matches “$query”."
+                    query.isNotBlank() -> "Nothing matches \"$query\"."
                     else -> "Nothing here yet."
                 },
                 style = sfText(13.5.sp, color = SfColors.Label)
@@ -1069,19 +996,12 @@ private fun SfList(
     }
 
     Box(Modifier.fillMaxSize()) {
-        // Root container qui supporte la transition entre onglets
         LazyColumn(
             state = listState,
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    // Petit slide au changement d'onglet
-                    translationX = if (slideDir > 0) 0f else 0f
-                },
+            modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(4.dp),
             contentPadding = PaddingValues(top = 2.dp, bottom = 12.dp)
         ) {
-            // Import progress en haut
             if (importingName != null && tab == SfTab.All) {
                 item(key = "importing") {
                     SfImportRow(name = importingName, progress = importingProgress ?: 0f)
@@ -1103,15 +1023,7 @@ private fun SfList(
                             isFavorite = favorites.contains(row.key),
                             onTap = { onSelectPreset(row) },
                             onToggleFavorite = { onToggleFavorite(row.key) },
-                            onOpenMenu = { anchor ->
-                                onOpenMenu(
-                                    ContextMenu(
-                                        row = row,
-                                        x = anchor.x,
-                                        y = anchor.y
-                                    )
-                                )
-                            }
+                            onOpenMenu = { onOpenMenu(ContextMenu(row, 0f, 0f)) },
                         )
                     }
                     is SfRow.File -> {
@@ -1122,26 +1034,16 @@ private fun SfList(
                             query = query,
                             isLoading = isLoadingThis,
                             loadingProgress = if (isLoadingThis) (loadingProgress ?: 0f) else 0f,
-                            onTap = {
-                                if (!isLoadingThis) onLoadFile(row.key)
-                            },
+                            onTap = { if (!isLoadingThis) onLoadFile(row.key) },
                             onCancelLoad = onCancelLoad,
-                            onOpenMenu = { anchor ->
-                                onOpenMenu(
-                                    ContextMenu(
-                                        row = row,
-                                        x = anchor.x,
-                                        y = anchor.y
-                                    )
-                                )
-                            }
+                            onOpenMenu = { onOpenMenu(ContextMenu(row, 0f, 0f)) },
+                            onDeleteCommit = { onRequestDeleteFile(row) },
                         )
                     }
                 }
             }
         }
 
-        // Lettre flottante à droite
         AnimatedVisibility(
             visible = letter != null && letterAlpha > 0.01f,
             enter = fadeIn(tween(160)) + scaleIn(initialScale = 0.6f, animationSpec = tween(180)),
@@ -1169,7 +1071,7 @@ private fun SfList(
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════════
-// 9. ROWS
+// 9. PRESET ROW (no swipe)
 // ════════════════════════════════════════════════════════════════════════════════════════
 
 @Composable
@@ -1212,7 +1114,6 @@ private fun SfPresetRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // Badge numéro
         Text(
             row.presetId.toString(),
             style = sfText(11.sp, FontWeight.Bold, Color(0xFF6F7A90)),
@@ -1220,7 +1121,6 @@ private fun SfPresetRow(
             modifier = Modifier.width(24.dp)
         )
 
-        // Nom + label bank
         Row(
             Modifier.weight(1f),
             verticalAlignment = Alignment.CenterVertically,
@@ -1241,7 +1141,6 @@ private fun SfPresetRow(
             }
         }
 
-        // Badge ACTIVE
         if (active) {
             Row(
                 Modifier
@@ -1264,7 +1163,6 @@ private fun SfPresetRow(
             }
         }
 
-        // Favori
         Box(
             Modifier
                 .size(28.dp)
@@ -1280,19 +1178,20 @@ private fun SfPresetRow(
             )
         }
 
-        // Dots menu
         Box(
             Modifier
                 .size(26.dp)
-                .sfTap(0.90f) {
-                    onOpenMenu(Offset.Zero) // re-calculé côté parent si besoin
-                },
+                .sfTap(0.90f) { onOpenMenu(Offset.Zero) },
             contentAlignment = Alignment.Center
         ) {
             SfIcon(SfIconKind.Dots, Color(0xFF6F7A90), Modifier.size(15.dp))
         }
     }
 }
+
+// ════════════════════════════════════════════════════════════════════════════════════════
+// 10. FILE ROW (swipe → trash, delete on release after threshold)
+// ════════════════════════════════════════════════════════════════════════════════════════
 
 @Composable
 private fun SfFileRow(
@@ -1303,100 +1202,183 @@ private fun SfFileRow(
     loadingProgress: Float,
     onTap: () -> Unit,
     onCancelLoad: () -> Unit,
-    onOpenMenu: (Offset) -> Unit
+    onOpenMenu: (Offset) -> Unit,
+    onDeleteCommit: () -> Unit,
 ) {
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
     val enter = remember { Animatable(0f) }
+    val offset = remember { Animatable(0f) }
+    var armed by remember { mutableStateOf(false) }
+    var widthPx by remember { mutableIntStateOf(0) }
+    val gapPx = with(density) { 8.dp.toPx() }
+    val revealMax = with(density) { 76.dp.toPx() }
+
     LaunchedEffect(row.key) {
         kotlinx.coroutines.delay((index.coerceAtMost(8) * 16).toLong())
         enter.animateTo(1f, tween(240, easing = FastOutSlowInEasing))
     }
 
-    Row(
+    val pillWidthPx = (-offset.value - gapPx).coerceAtLeast(0f)
+    val revealFraction = (pillWidthPx / revealMax).coerceIn(0f, 1f)
+
+    val armedScale by animateFloatAsState(
+        if (armed) 1.15f else 1f,
+        spring(dampingRatio = 0.45f, stiffness = 520f),
+        label = "trashScale"
+    )
+    val armedRotation by animateFloatAsState(
+        if (armed) -14f else 0f,
+        spring(dampingRatio = 0.5f, stiffness = 500f),
+        label = "trashRot"
+    )
+
+    Box(
         Modifier
             .fillMaxWidth()
-            .height(40.dp)
+            .height(44.dp)
             .graphicsLayer {
                 alpha = enter.value
                 translationY = (1f - enter.value) * 6.dp.toPx()
             }
-            .sfTap(0.985f, onTap)
-            .shadow(3.dp, RowShape, ambientColor = Color.Black, spotColor = Color(0x99000000))
-            .clip(RowShape)
-            .background(
-                Brush.verticalGradient(
-                    if (row.isLoaded) listOf(white(0.11f), white(0.06f))
-                    else listOf(white(0.07f), white(0.035f))
-                )
-            )
-            .border(1.dp, if (row.isLoaded) white(0.17f) else white(0.06f), RowShape)
-            .topHairline(if (row.isLoaded) 0.14f else 0.07f)
-            .padding(start = 12.dp, end = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+            .onSizeChanged { widthPx = it.width }
     ) {
-        // Icône fichier
         Box(
-            Modifier.size(24.dp),
+            Modifier
+                .align(Alignment.CenterEnd)
+                .fillMaxHeight()
+                .width(with(density) { pillWidthPx.toDp() })
+                .clip(RowShape)
+                .background(Brush.verticalGradient(listOf(SfColors.Rose, SfColors.RoseDeep))),
             contentAlignment = Alignment.Center
         ) {
-            SfIcon(SfIconKind.File, Color(0xFF7B859A), Modifier.size(17.dp))
+            if (pillWidthPx > with(density) { 28.dp.toPx() }) {
+                Box(
+                    Modifier.graphicsLayer {
+                        val s = revealFraction * armedScale
+                        scaleX = s
+                        scaleY = s
+                        rotationZ = armedRotation
+                        alpha = revealFraction
+                    }
+                ) {
+                    SfIcon(
+                        SfIconKind.Trash,
+                        Color.White,
+                        Modifier.size(20.dp),
+                        stroke = 2.dp
+                    )
+                }
+            }
         }
 
-        // Nom + taille
         Row(
-            Modifier.weight(1f),
+            Modifier
+                .offset { IntOffset(offset.value.roundToInt(), 0) }
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    var total = 0f
+                    val resist = 24.dp.toPx()
+                    detectHorizontalDragGestures(
+                        onDragStart = { total = 0f },
+                        onDragEnd = {
+                            scope.launch {
+                                if (armed) {
+                                    offset.animateTo(-widthPx.toFloat(), tween(180))
+                                    armed = false
+                                    onDeleteCommit()
+                                } else {
+                                    offset.animateTo(0f, spring(dampingRatio = 0.7f, stiffness = 400f))
+                                    armed = false
+                                }
+                            }
+                        },
+                        onDragCancel = {
+                            scope.launch {
+                                offset.animateTo(0f, spring(dampingRatio = 0.7f, stiffness = 400f))
+                            }
+                            armed = false
+                        },
+                        onHorizontalDrag = { change, dx ->
+                            change.consume()
+                            total += dx
+                            val d = min(0f, total)
+                            val eff = if (d > -resist) d else -resist + (d + resist) * 0.75f
+                            scope.launch { offset.snapTo(eff) }
+                            val threshold = min(widthPx * 0.4f, 200.dp.toPx())
+                            val a = eff <= -threshold
+                            if (a != armed) armed = a
+                        }
+                    )
+                }
+                .sfTap(0.985f, onTap)
+                .shadow(3.dp, RowShape, ambientColor = Color.Black, spotColor = Color(0x99000000))
+                .clip(RowShape)
+                .background(
+                    Brush.verticalGradient(
+                        if (row.isLoaded) listOf(white(0.11f), white(0.06f))
+                        else listOf(white(0.07f), white(0.035f))
+                    )
+                )
+                .border(1.dp, if (row.isLoaded) white(0.17f) else white(0.06f), RowShape)
+                .topHairline(if (row.isLoaded) 0.14f else 0.07f)
+                .padding(start = 12.dp, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            Box(
+                Modifier.size(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                SfIcon(SfIconKind.File, Color(0xFF7B859A), Modifier.size(17.dp))
+            }
+
             HighlightedText(
                 text = row.name,
                 query = query,
                 style = sfText(14.5.sp, FontWeight.Bold, SfColors.Ink),
-                modifier = Modifier.weight(1f, fill = false)
+                modifier = Modifier.weight(1f)
             )
-        }
 
-        // Taille
-        Text(
-            row.formattedSize,
-            style = sfText(12.sp, FontWeight.SemiBold, Color(0xFF7B859A)),
-            maxLines = 1,
-            modifier = Modifier.widthIn(min = 58.dp)
-        )
+            Text(
+                row.formattedSize,
+                style = sfText(12.sp, FontWeight.SemiBold, Color(0xFF7B859A)),
+                maxLines = 1,
+                modifier = Modifier.widthIn(min = 58.dp)
+            )
 
-        // Progress ring ou badge LOADED
-        if (isLoading) {
-            SfProgressRing(progress = loadingProgress, onCancel = onCancelLoad)
-        } else if (row.isLoaded) {
-            Row(
-                Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(white(0.10f))
-                    .padding(horizontal = 8.dp, vertical = 3.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                SfIcon(SfIconKind.Check, SfColors.Accent, Modifier.size(11.dp), stroke = 3.dp)
-                Text(
-                    "LOADED",
-                    style = TextStyle(
-                        fontSize = 9.5.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = 1.1.sp,
-                        color = Color(0xFFC7CFDD)
+            if (isLoading) {
+                SfProgressRing(progress = loadingProgress, onCancel = onCancelLoad)
+            } else if (row.isLoaded) {
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(white(0.10f))
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    SfIcon(SfIconKind.Check, SfColors.Accent, Modifier.size(11.dp), stroke = 3.dp)
+                    Text(
+                        "LOADED",
+                        style = TextStyle(
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 1.1.sp,
+                            color = Color(0xFFC7CFDD)
+                        )
                     )
-                )
+                }
             }
-        }
 
-        // Dots menu
-        Box(
-            Modifier
-                .size(26.dp)
-                .sfTap(0.90f) { onOpenMenu(Offset.Zero) },
-            contentAlignment = Alignment.Center
-        ) {
-            SfIcon(SfIconKind.Dots, Color(0xFF6F7A90), Modifier.size(15.dp))
+            Box(
+                Modifier
+                    .size(26.dp)
+                    .sfTap(0.90f) { onOpenMenu(Offset.Zero) },
+                contentAlignment = Alignment.Center
+            ) {
+                SfIcon(SfIconKind.Dots, Color(0xFF6F7A90), Modifier.size(15.dp))
+            }
         }
     }
 }
@@ -1437,7 +1419,7 @@ private fun SfImportRow(name: String, progress: Float) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════════
-// 10. PROGRESS RING
+// 11. PROGRESS RING
 // ════════════════════════════════════════════════════════════════════════════════════════
 
 @Composable
@@ -1454,14 +1436,12 @@ private fun SfProgressRing(progress: Float, onCancel: () -> Unit) {
             val r = (size.minDimension - stroke) / 2f
             val cx = size.width / 2f
             val cy = size.height / 2f
-            // Track
             drawCircle(
                 color = Color.White.copy(alpha = 0.12f),
                 radius = r,
                 center = Offset(cx, cy),
                 style = Stroke(width = stroke)
             )
-            // Progress arc (start at top)
             drawArc(
                 color = SfColors.Accent,
                 startAngle = -90f,
@@ -1477,7 +1457,7 @@ private fun SfProgressRing(progress: Float, onCancel: () -> Unit) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════════
-// 11. MENU CONTEXTUEL
+// 12. CONTEXT MENU
 // ════════════════════════════════════════════════════════════════════════════════════════
 
 @Composable
@@ -1489,7 +1469,6 @@ private fun SfContextMenu(
     onMoveTo: () -> Unit,
     onDeleteFile: (() -> Unit)?
 ) {
-    // Backdrop tap-outside
     Box(
         Modifier
             .fillMaxSize()
@@ -1499,7 +1478,6 @@ private fun SfContextMenu(
                 indication = null,
             ) { onDismiss() }
     ) {
-        val row = ctx.row
         Column(
             Modifier
                 .align(Alignment.Center)
@@ -1558,7 +1536,7 @@ private fun SfMenuItem(label: String, color: Color = Color(0xFFDCE2EE), onClick:
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════════
-// 12. SHEET MOVE TO…
+// 13. MOVE SHEET
 // ════════════════════════════════════════════════════════════════════════════════════════
 
 @Composable
@@ -1578,10 +1556,8 @@ private fun SfMoveSheet(
             ) { onDismiss() },
         contentAlignment = Alignment.BottomCenter
     ) {
-        // Scrim
         Box(Modifier.fillMaxSize().background(SfColors.BackdropSheet))
 
-        // Panel
         Column(
             Modifier
                 .fillMaxWidth()
@@ -1619,8 +1595,7 @@ private fun SfMoveSheet(
 
             Spacer(Modifier.height(12.dp))
 
-            // Catégories cliquables
-            androidx.compose.foundation.layout.FlowRow(
+            FlowRow(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(7.dp),
                 verticalArrangement = Arrangement.spacedBy(7.dp)
@@ -1633,14 +1608,22 @@ private fun SfMoveSheet(
                             .height(32.dp)
                             .clip(RoundedCornerShape(16.dp))
                             .background(if (on) SfColors.Accent.copy(alpha = 0.14f) else white(0.04f))
-                            .border(1.dp, if (on) SfColors.Accent.copy(alpha = 0.6f) else white(0.10f), RoundedCornerShape(16.dp))
+                            .border(
+                                1.dp,
+                                if (on) SfColors.Accent.copy(alpha = 0.6f) else white(0.10f),
+                                RoundedCornerShape(16.dp)
+                            )
                             .sfTap(0.95f) { onPick(c) }
                             .padding(horizontal = 14.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             c.label,
-                            style = sfText(12.5.sp, FontWeight.Bold, if (on) SfColors.Accent else Color(0xFFC7CFDD)),
+                            style = sfText(
+                                12.5.sp,
+                                FontWeight.Bold,
+                                if (on) SfColors.Accent else Color(0xFFC7CFDD)
+                            ),
                             maxLines = 1
                         )
                     }
@@ -1651,89 +1634,64 @@ private fun SfMoveSheet(
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════════
-// 13. CONFIRM DELETE
+// 14. UNDO SNACKBAR (5s with progress bar)
 // ════════════════════════════════════════════════════════════════════════════════════════
 
 @Composable
-private fun SfDeleteConfirm(name: String, onCancel: () -> Unit, onConfirm: () -> Unit) {
-    Box(
-        Modifier
-            .fillMaxSize()
-            .zIndex(85f)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-            ) { onCancel() },
-        contentAlignment = Alignment.Center
-    ) {
-        Box(Modifier.fillMaxSize().background(SfColors.BackdropSheet))
-        Column(
-            Modifier
-                .width(360.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(Brush.verticalGradient(listOf(Color(0xFF2A3447), Color(0xFF1E2736))))
-                .border(1.dp, white(0.12f), RoundedCornerShape(20.dp))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                ) { /* absorb */ }
-                .padding(18.dp)
-        ) {
-            Text("Delete soundfont?", style = sfText(15.sp, FontWeight.ExtraBold, SfColors.Title))
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "Permanently delete « $name »?",
-                style = sfText(13.sp, color = Color(0xFFB0BEC5))
-            )
-            Spacer(Modifier.height(16.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                Box(
-                    Modifier
-                        .height(34.dp)
-                        .sfTap(0.96f, onCancel)
-                        .clip(RoundedCornerShape(11.dp))
-                        .background(white(0.05f))
-                        .border(1.dp, white(0.10f), RoundedCornerShape(11.dp))
-                        .padding(horizontal = 16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("Cancel", style = sfText(13.sp, FontWeight.Bold, Color(0xFFC7CFDD)))
-                }
-                Spacer(Modifier.width(10.dp))
-                Box(
-                    Modifier
-                        .height(34.dp)
-                        .sfTap(0.96f, onConfirm)
-                        .clip(RoundedCornerShape(11.dp))
-                        .background(Brush.verticalGradient(listOf(Color(0xFFC2587A), Color(0xFF8A3B56))))
-                        .padding(horizontal = 16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("Delete", style = sfText(13.sp, FontWeight.ExtraBold, Color.White))
-                }
-            }
-        }
+private fun SfUndoSnackbar(
+    keyId: Long,
+    text: String,
+    onUndo: () -> Unit,
+    onExpire: () -> Unit,
+) {
+    val progress = remember(keyId) { Animatable(1f) }
+    LaunchedEffect(keyId) {
+        progress.animateTo(0f, tween(5000, easing = LinearEasing))
+        onExpire()
     }
-}
-
-// ════════════════════════════════════════════════════════════════════════════════════════
-// 14. SNACKBAR
-// ════════════════════════════════════════════════════════════════════════════════════════
-
-@Composable
-private fun SfSnackbar(snack: Snack, onDismiss: () -> Unit) {
     val shape = RoundedCornerShape(14.dp)
-    Row(
+    Column(
         Modifier
             .shadow(12.dp, shape, ambientColor = Color.Black, spotColor = Color(0xAA000000))
             .clip(shape)
             .background(Color(0xF2222C40))
-            .border(1.dp, white(0.10f), shape)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
+            .border(1.dp, white(0.10f), shape),
     ) {
-        Text(snack.text, style = sfText(13.5.sp, FontWeight.SemiBold, SfColors.Ink))
+        Row(
+            Modifier.padding(horizontal = 16.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(text, style = sfText(13.5.sp, FontWeight.SemiBold, SfColors.Ink))
+            Spacer(Modifier.weight(1f))
+            Box(
+                Modifier
+                    .sfTap(0.9f, onUndo)
+                    .padding(4.dp),
+            ) {
+                Text(
+                    "UNDO",
+                    style = TextStyle(
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 1.sp,
+                        color = SfColors.Accent,
+                    )
+                )
+            }
+        }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(3.dp)
+                .drawBehind {
+                    val p = progress.value
+                    drawRect(
+                        color = SfColors.Accent,
+                        size = Size(size.width * p, size.height),
+                    )
+                }
+        )
     }
 }
 
@@ -1775,10 +1733,10 @@ private fun HighlightedText(
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════════
-// 16. ICONS (drawn, no material-icons dependency)
+// 16. ICONS
 // ════════════════════════════════════════════════════════════════════════════════════════
 
-private enum class SfIconKind { Search, Plus, X, Check, Star, Dots, File }
+private enum class SfIconKind { Search, Plus, X, Check, Star, Dots, File, Trash }
 
 @Composable
 private fun SfIcon(
@@ -1792,7 +1750,7 @@ private fun SfIcon(
         val w = size.width
         val h = size.height
         val sw = stroke.toPx()
-        val st = Stroke(sw, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round)
+        val st = Stroke(sw, cap = StrokeCap.Round, join = StrokeJoin.Round)
         fun line(x1: Float, y1: Float, x2: Float, y2: Float) =
             drawLine(color, Offset(w * x1, h * y1), Offset(w * x2, h * y2), sw, StrokeCap.Round)
 
@@ -1801,9 +1759,18 @@ private fun SfIcon(
                 drawCircle(color, w * 0.30f, Offset(w * 0.45f, h * 0.45f), style = st)
                 line(0.68f, 0.68f, 0.92f, 0.92f)
             }
-            SfIconKind.Plus -> { line(0.5f, 0.1f, 0.5f, 0.9f); line(0.1f, 0.5f, 0.9f, 0.5f) }
-            SfIconKind.X -> { line(0.15f, 0.15f, 0.85f, 0.85f); line(0.85f, 0.15f, 0.15f, 0.85f) }
-            SfIconKind.Check -> { line(0.2f, 0.52f, 0.42f, 0.74f); line(0.42f, 0.74f, 0.82f, 0.28f) }
+            SfIconKind.Plus -> {
+                line(0.5f, 0.1f, 0.5f, 0.9f)
+                line(0.1f, 0.5f, 0.9f, 0.5f)
+            }
+            SfIconKind.X -> {
+                line(0.15f, 0.15f, 0.85f, 0.85f)
+                line(0.85f, 0.15f, 0.15f, 0.85f)
+            }
+            SfIconKind.Check -> {
+                line(0.2f, 0.52f, 0.42f, 0.74f)
+                line(0.42f, 0.74f, 0.82f, 0.28f)
+            }
             SfIconKind.Dots -> {
                 val r = w * 0.10f
                 drawCircle(color, r, Offset(w / 2f, h * 0.20f))
@@ -1811,7 +1778,7 @@ private fun SfIcon(
                 drawCircle(color, r, Offset(w / 2f, h * 0.80f))
             }
             SfIconKind.Star -> {
-                val path = androidx.compose.ui.graphics.Path()
+                val path = Path()
                 val cx = w / 2f
                 val cy = h / 2f
                 val outer = w * 0.45f
@@ -1835,6 +1802,21 @@ private fun SfIcon(
                 line(0.62f, 0.13f, 0.62f, 0.30f)
                 line(0.62f, 0.30f, 0.78f, 0.30f)
             }
+            SfIconKind.Trash -> {
+                line(0.20f, 0.25f, 0.80f, 0.25f)
+                line(0.40f, 0.25f, 0.40f, 0.13f)
+                line(0.40f, 0.13f, 0.60f, 0.13f)
+                line(0.60f, 0.13f, 0.60f, 0.25f)
+                val bodyPath = Path().apply {
+                    moveTo(w * 0.28f, h * 0.30f)
+                    lineTo(w * 0.32f, h * 0.87f)
+                    lineTo(w * 0.68f, h * 0.87f)
+                    lineTo(w * 0.72f, h * 0.30f)
+                }
+                drawPath(bodyPath, color, style = st)
+                line(0.42f, 0.42f, 0.42f, 0.74f)
+                line(0.58f, 0.42f, 0.58f, 0.74f)
+            }
         }
     }
 }
@@ -1846,7 +1828,6 @@ private fun SfIcon(
 @Preview(widthDp = 891, heightDp = 411, showBackground = true, backgroundColor = 0xFF141B27)
 @Composable
 private fun PreviewSoundfontWindow() {
-    // Fausses données pour visualiser sans ViewModel
     val fakePresets = listOf(
         SoundfontPreset(0, "Grand Piano", 0),
         SoundfontPreset(4, "Electric Piano", 0),
@@ -1886,14 +1867,10 @@ private fun PreviewSoundfontWindow() {
                 loadedPresetId = 4,
                 loadedBanks = listOf(0),
                 files = fakeFiles,
-                favorites = setOf("rh|0|4", "gu|0|16"),
+                favorites = setOf("rh|0|4", "rh|0|16"),
                 overrides = emptyMap(),
                 parsedPresets = emptyMap(),
                 parsingFiles = emptySet(),
-                loadingFileId = null,
-                loadingProgress = null,
-                importingName = null,
-                importingProgress = null,
             )
         )
     }
@@ -1904,7 +1881,7 @@ private fun PreviewSoundfontWindow() {
             override fun onSelectPreset(row: SfRow.Preset) {
                 state = state.copy(loadedPresetId = row.presetId, loadedBank = row.bankNumber)
             }
-            override fun onLoadFile(fileId: String) { /* simulerait un chargement */ }
+            override fun onLoadFile(fileId: String) {}
             override fun onToggleFavorite(key: String) {
                 state = state.copy(
                     favorites = if (state.favorites.contains(key)) state.favorites - key else state.favorites + key
@@ -1913,7 +1890,7 @@ private fun PreviewSoundfontWindow() {
             override fun onMoveToCategory(key: String, categoryId: String) {
                 state = state.copy(overrides = state.overrides + (key to categoryId))
             }
-            override fun onImportFile() { /* simulerait un import */ }
+            override fun onImportFile() {}
             override fun onDeleteFile(fileId: String) {
                 state = state.copy(files = state.files.filterNot { it.key == fileId })
             }

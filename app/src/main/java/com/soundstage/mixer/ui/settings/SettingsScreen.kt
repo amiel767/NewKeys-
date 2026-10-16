@@ -219,6 +219,12 @@ data class SettingsState(
     val mappingPage: MappingPage? = null,
     val listeningId: String? = null,
     val conflict: MidiConflict? = null,
+    // Extended Audio (persisted)
+    val audioEngine: String = "oboe",
+    val fluidSynthGain: Float = 1.20f,
+    // System (persisted)
+    val hapticsEnabled: Boolean = true,
+    val reducedMotion: Boolean = false,
     val otherActionsOpen: Boolean = false
 )
 
@@ -231,6 +237,7 @@ object SettingsDefaults {
     const val BACKGROUND_TONE = 1.60f
     const val BACKGROUND_LIGHTNESS = 1.00f
     const val JITTER_WINDOW_MS = 15
+    const val FLUID_GAIN = 1.20f
 
     /** Standard mapping restored by "Reset to defaults": master volume on CC#7, omni. */
     val mappings: Map<String, MidiMessage> = mapOf(
@@ -280,6 +287,10 @@ interface SettingsActions {
     fun onKeepScreenOnChange(enabled: Boolean) {}
     fun onOpenLanguage() {}
     fun onOpenAppSettings() {}
+    fun onAudioEngineChange(engine: String) {}
+    fun onFluidSynthGainChange(value: Float) {}
+    fun onHapticsChange(enabled: Boolean) {}
+    fun onReducedMotionChange(enabled: Boolean) {}
 
     // ── mapping mode ──
     /** Switching between Mixer and DrumPad closes the mapping mode (see brief). */
@@ -315,7 +326,9 @@ object SettingsLogic {
     val index: List<Entry> = listOf(
         Entry("Audio buffer size", SettingsTab.Audio, "latency buffer ms"),
         Entry("Maximum polyphony", SettingsTab.Audio, "voices notes"),
-        Entry("Synth output headroom", SettingsTab.Audio, "gain clipping"),
+        Entry("Audio engine", SettingsTab.Audio, "oboe opensl driver"),
+        Entry("Synth output headroom", SettingsTab.Audio, "gain clipping safety"),
+        Entry("FluidSynth gain", SettingsTab.Audio, "fluidsynth output gain"),
         Entry("Auto-fit faders", SettingsTab.Interface, "layout scroll mixer"),
         Entry("Primary interface hue", SettingsTab.Interface, "color theme"),
         Entry("Accent color saturation", SettingsTab.Interface, "color"),
@@ -327,9 +340,10 @@ object SettingsLogic {
         Entry("Map DrumPad", SettingsTab.Midi, "midi learn pads"),
         Entry("Reset to defaults", SettingsTab.Midi, "midi mapping"),
         Entry("Clear all mappings", SettingsTab.Midi, "midi mapping"),
-        Entry("Language", SettingsTab.System, "english"),
         Entry("Musical notation", SettingsTab.System, "sharps flats"),
-        Entry("Keep screen on", SettingsTab.System, "sleep")
+        Entry("Keep screen on", SettingsTab.System, "sleep"),
+        Entry("Haptics", SettingsTab.System, "vibration feedback"),
+        Entry("Reduced motion", SettingsTab.System, "animation accessibility")
     )
 
     fun search(query: String): List<Entry> {
@@ -700,11 +714,23 @@ private fun AudioSection(state: SettingsState, actions: SettingsActions) {
             modifier = Modifier.fillMaxWidth()
         )
     }
+    SetDivider()
+    SettingRow(
+        title = "Audio engine",
+        hint = "Oboe uses AAudio low-latency. OpenSL ES is the fallback for older or unsupported devices."
+    ) {
+        Segmented(
+            options = listOf("oboe" to "Oboe", "opensl" to "OpenSL"),
+            selected = state.audioEngine,
+            onSelect = actions::onAudioEngineChange,
+            modifier = Modifier.width(190.dp)
+        )
+    }
 
     SectionLabel("Output")
     SliderRow(
         title = "Synth output headroom",
-        hint = "FluidSynth master gain · Standard: ${String.format(java.util.Locale.US, "%.2fx", SettingsRanges.HEADROOM_STD)}",
+        hint = "Safety peak ceiling before the master bus.",
         value = state.headroom,
         min = SettingsRanges.HEADROOM_MIN,
         max = SettingsRanges.HEADROOM_MAX,
@@ -724,6 +750,29 @@ private fun AudioSection(state: SettingsState, actions: SettingsActions) {
             modifier = Modifier.padding(bottom = 10.dp)
         )
     }
+    SetDivider()
+    SliderRow(
+        title = "FluidSynth gain",
+        hint = "Master gain of the SoundFont synth. Standard: 1.20x.",
+        value = state.fluidSynthGain,
+        min = 0.5f,
+        max = 2.5f,
+        step = 0.05f,
+        defaultValue = SettingsDefaults.FLUID_GAIN,
+        format = { String.format(java.util.Locale.US, "%.2fx", it) },
+        onChange = actions::onFluidSynthGainChange
+    )
+    AnimatedVisibility(
+        visible = state.fluidSynthGain > 1.5f,
+        enter = fadeIn(tween(250)),
+        exit = fadeOut(tween(200))
+    ) {
+        Text(
+            "Values above 1.50x may distort on dense mixes.",
+            style = setText(11.5.sp, FontWeight.SemiBold, SetColors.Warn),
+            modifier = Modifier.padding(bottom = 10.dp)
+        )
+    }
 }
 
 @Composable
@@ -735,6 +784,76 @@ private fun InterfaceSection(state: SettingsState, actions: SettingsActions) {
     ) {
         SetSwitch(state.autoFit, actions::onAutoFitChange)
     }
+
+    val colorsChanged =
+        kotlin.math.abs(state.hue - SettingsDefaults.HUE) > 0.5f ||
+        kotlin.math.abs(state.accentSaturation - SettingsDefaults.ACCENT_SATURATION) > 0.001f ||
+        kotlin.math.abs(state.backgroundTone - SettingsDefaults.BACKGROUND_TONE) > 0.001f ||
+        kotlin.math.abs(state.backgroundLightness - SettingsDefaults.BACKGROUND_LIGHTNESS) > 0.001f
+
+    SectionLabel(
+        text = "Colors",
+        trailing = {
+            if (colorsChanged) {
+                Text(
+                    "Reset colors",
+                    style = setText(12.sp, FontWeight.Bold, Color(0xFF9AA5BA)),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { actions.onResetColors() }
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
+        }
+    )
+
+    SliderRow(
+        title = "Primary interface hue",
+        hint = null,
+        value = state.hue,
+        min = 0f,
+        max = SettingsRanges.HUE_MAX,
+        step = 1f,
+        defaultValue = SettingsDefaults.HUE,
+        format = { "${it.toInt()}°" },
+        onChange = actions::onHueChange
+    )
+    SetDivider()
+    SliderRow(
+        title = "Accent color saturation",
+        hint = null,
+        value = state.accentSaturation,
+        min = 0f,
+        max = SettingsRanges.SAT_MAX,
+        step = 0.05f,
+        defaultValue = SettingsDefaults.ACCENT_SATURATION,
+        format = { String.format(java.util.Locale.US, "%.2fx", it) },
+        onChange = actions::onAccentSaturationChange
+    )
+    SetDivider()
+    SliderRow(
+        title = "Background tone saturation",
+        hint = null,
+        value = state.backgroundTone,
+        min = 0f,
+        max = SettingsRanges.TONE_MAX,
+        step = 0.05f,
+        defaultValue = SettingsDefaults.BACKGROUND_TONE,
+        format = { String.format(java.util.Locale.US, "%.2fx", it) },
+        onChange = actions::onBackgroundToneChange
+    )
+    SetDivider()
+    SliderRow(
+        title = "Background lightness",
+        hint = null,
+        value = state.backgroundLightness,
+        min = SettingsRanges.LIGHT_MIN,
+        max = SettingsRanges.LIGHT_MAX,
+        step = 0.05f,
+        defaultValue = SettingsDefaults.BACKGROUND_LIGHTNESS,
+        format = { String.format(java.util.Locale.US, "%.2fx", it) },
+        onChange = actions::onBackgroundLightnessChange
+    )
 }
 
 @Composable
@@ -808,12 +927,7 @@ private fun mappedLabel(state: SettingsState, page: MappingPage): String {
 
 @Composable
 private fun SystemSection(state: SettingsState, actions: SettingsActions) {
-    SectionLabel("Language & display")
-    SettingRow(title = "Language", onClick = actions::onOpenLanguage) {
-        Text("English", style = setText(13.sp, FontWeight.SemiBold, SetColors.Mute))
-        SetIcon(SetIconKind.Chevron, SetColors.Mute, Modifier.size(16.dp))
-    }
-    SetDivider()
+    SectionLabel("Display & notation")
     SettingRow(
         title = "Musical notation",
         hint = if (state.notation == Notation.Sharps) "Sharps (♯ · C#, D#…)" else "Flats (♭ · Db, Eb…)"
@@ -831,6 +945,23 @@ private fun SystemSection(state: SettingsState, actions: SettingsActions) {
         hint = if (state.keepScreenOn) "Active (prevents screen sleep)." else "Off (the screen can sleep)."
     ) {
         SetSwitch(state.keepScreenOn, actions::onKeepScreenOnChange)
+    }
+
+    SectionLabel("Behavior")
+    SettingRow(
+        title = "Haptics",
+        hint = if (state.hapticsEnabled) "Vibration feedback on pads, cases and value changes."
+               else "Off — no vibration feedback."
+    ) {
+        SetSwitch(state.hapticsEnabled, actions::onHapticsChange)
+    }
+    SetDivider()
+    SettingRow(
+        title = "Reduced motion",
+        hint = if (state.reducedMotion) "Continuous animations are off (halos, breathing, spins). States stay."
+               else "Off — full motion."
+    ) {
+        SetSwitch(state.reducedMotion, actions::onReducedMotionChange)
     }
 }
 

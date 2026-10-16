@@ -53,6 +53,8 @@ import com.soundstage.mixer.ui.setlists.*
 import com.soundstage.mixer.ui.setlists.SetlistColor
 import com.soundstage.mixer.ui.theme.*
 import com.soundstage.mixer.ui.theme.AppColors
+import androidx.compose.runtime.CompositionLocalProvider
+import com.soundstage.mixer.ui.theme.LocalHapticsEnabled
 import com.soundstage.mixer.viewmodel.MixerViewModel
 import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.ScrollState
@@ -692,6 +694,7 @@ fun MixerScreen(
     val trackScrollState = rememberScrollState()
 
     // Fullscreen Stage Container (Unpadded for 100% full-bleed overlays like SplashScreen)
+    CompositionLocalProvider(LocalHapticsEnabled provides uiState.hapticsEnabled) {
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -859,9 +862,13 @@ fun MixerScreen(
                     headroom = uiState.headroom,
                     autoFit = uiState.isFaderAutoFit,
                     hue = uiState.themeHue,
-                    accentSaturation = uiState.themeSaturation,
-                    backgroundTone = uiState.themeBgLightness,
+                    accentSaturation = uiState.themeAccentSaturation,
+                    backgroundTone = uiState.themeBgSaturation,
                     backgroundLightness = uiState.themeBgLightness,
+                    audioEngine = uiState.audioEngine,
+                    fluidSynthGain = uiState.fluidSynthGain,
+                    hapticsEnabled = uiState.hapticsEnabled,
+                    reducedMotion = uiState.reducedMotion,
                     antiJitter = uiState.antiJitter,
                     jitterWindowMs = uiState.jitterWindowMs,
                     keepScreenOn = uiState.keepScreenOn,
@@ -883,7 +890,7 @@ fun MixerScreen(
                     override fun onAutoFitChange(enabled: Boolean) { viewModel.setFaderAutoFit(enabled) }
                     override fun onHueChange(value: Float) { viewModel.setThemeHue(value) }
                     override fun onAccentSaturationChange(value: Float) { viewModel.setThemeAccentSaturation(value) }
-                    override fun onBackgroundToneChange(value: Float) { viewModel.setThemeBgLightness(value) }
+                    override fun onBackgroundToneChange(value: Float) { viewModel.setThemeBgSaturation(value) }
                     override fun onBackgroundLightnessChange(value: Float) { viewModel.setThemeBgLightness(value) }
                     override fun onResetColors() { viewModel.resetThemeToDefault() }
                     override fun onAntiJitterChange(enabled: Boolean) { viewModel.setAntiJitter(enabled) }
@@ -893,8 +900,12 @@ fun MixerScreen(
                     override fun onClearAllMappings() { viewModel.clearAllMidiMappings() }
                     override fun onNotationChange(notation: Notation) { viewModel.toggleUseFlats() }
                     override fun onKeepScreenOnChange(enabled: Boolean) { viewModel.setKeepScreenOn(enabled) }
-                    override fun onOpenLanguage() {}
-                    override fun onOpenAppSettings() {}
+                    override fun onAudioEngineChange(engine: String) { viewModel.setAudioEngine(engine) }
+                    override fun onFluidSynthGainChange(value: Float) { viewModel.setFluidSynthGain(value) }
+                    override fun onHapticsChange(enabled: Boolean) { viewModel.setHapticsEnabled(enabled) }
+                    override fun onReducedMotionChange(enabled: Boolean) { viewModel.setReducedMotion(enabled) }
+                    override fun onOpenLanguage() { /* no-op */ }
+                    override fun onOpenAppSettings() { /* no-op */ }
                     override fun onCloseMapping() { viewModel.onCloseMappingMode() }
                     override fun onStartListening(controlId: String) { viewModel.startMappingListening(controlId) }
                     override fun onCancelListening() { viewModel.cancelMappingListening() }
@@ -1057,20 +1068,19 @@ fun MixerScreen(
                     loadedPresetId = activePresetId,
                     loadedBanks = availableBanks,
                     files = uiState.realSoundfonts.map { item ->
-                        val parsed = uiState.sfParsedPresets[item.path]
                         SfRow.File(
                             key = item.name,
                             name = item.name,
                             sizeBytes = item.size,
                             formattedSize = item.formattedSize,
                             isLoaded = item.name == activeSfName,
-                            presetCount = parsed?.size ?: 0,
+                            presetCount = 0,
                         )
                     },
-                    favorites = uiState.sfFavorites,
-                    overrides = uiState.sfCategoryOverrides,
-                    parsedPresets = uiState.sfParsedPresets.mapValues { (_, v) -> v.map { SoundfontPreset(it.preset, it.displayName, it.bank) } },
-                    parsingFiles = uiState.sfParsingFiles,
+                    favorites = emptySet(),
+                    overrides = emptyMap(),
+                    parsedPresets = emptyMap(),
+                    parsingFiles = emptySet(),
                     loadingFileId = null,
                     loadingProgress = null,
                     importingName = null,
@@ -1083,7 +1093,9 @@ fun MixerScreen(
                         override fun onClose() { viewModel.closePopup() }
 
                         override fun onSelectPreset(row: SfRow.Preset) {
-                            viewModel.selectSf2Preset(SoundfontPreset(row.presetId, row.name, row.bankNumber))
+                            viewModel.selectSf2Preset(
+                                SoundfontPreset(row.presetId, row.name, row.bankNumber)
+                            )
                         }
 
                         override fun onLoadFile(fileId: String) {
@@ -1093,13 +1105,9 @@ fun MixerScreen(
 
                         override fun onCancelLoad() {}
 
-                        override fun onToggleFavorite(key: String) {
-                            viewModel.toggleSfFavorite(key)
-                        }
+                        override fun onToggleFavorite(key: String) {}
 
-                        override fun onMoveToCategory(key: String, categoryId: String) {
-                            viewModel.moveSfToCategory(key, categoryId)
-                        }
+                        override fun onMoveToCategory(key: String, categoryId: String) {}
 
                         override fun onImportFile() {
                             sf2PickerLauncher.launch(arrayOf("*/*"))
@@ -1110,10 +1118,7 @@ fun MixerScreen(
                             viewModel.deleteSoundFontFile(item)
                         }
 
-                        override fun onRequestParse(fileId: String) {
-                            val item = uiState.realSoundfonts.firstOrNull { it.name == fileId } ?: return
-                            viewModel.parseSfInBackground(item.path)
-                        }
+                        override fun onRequestParse(fileId: String) {}
                     },
                     modifier = Modifier
                         .fillMaxSize()
@@ -1362,6 +1367,54 @@ fun MixerScreen(
             )
         }
 
+        if (uiState.showLanguageDialog) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { viewModel.closeLanguageDialog() },
+                title = {
+                    Text(
+                        text = "Language",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                },
+                text = {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        listOf("English", "Français", "Español").forEach { label ->
+                            val selected = uiState.selectedLanguage == label
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(
+                                        if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                        else Color.Transparent
+                                    )
+                                    .clickable {
+                                        viewModel.setSelectedLanguage(label)
+                                        viewModel.closeLanguageDialog()
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = if (selected) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.onSurface,
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { viewModel.closeLanguageDialog() }) {
+                        Text("Close")
+                    }
+                }
+            )
+        }
+
         // Close inner padded box
         }
 
@@ -1374,6 +1427,7 @@ fun MixerScreen(
                     .zIndex(999f)
             )
         }
+    }
     }
 }
 

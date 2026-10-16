@@ -294,6 +294,9 @@ data class MixerUiState(
     val sfLoadingProgress: Float? = null,
     val sfImportingName: String? = null,
     val sfImportingProgress: Float? = null,
+    val hapticsEnabled: Boolean = true,
+    val reducedMotion: Boolean = false,
+    val showLanguageDialog: Boolean = false,
     val activeTrackSettingsId: Int? = null
 ) {
     val soundfontFiles: List<StorageItem> get() = realSoundfonts
@@ -615,10 +618,27 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         ),
                         sfFavorites = saved.sfFavorites,
                         sfCategoryOverrides = saved.sfCategoryOverrides,
+                        audioBufferSize = saved.audioBufferSize ?: state.audioBufferSize,
+                        polyphony = saved.polyphony ?: state.polyphony,
+                        headroom = saved.headroom ?: state.headroom,
+                        audioEngine = saved.audioEngine ?: state.audioEngine,
+                        fluidSynthGain = saved.fluidSynthGain ?: state.fluidSynthGain,
+                        antiJitter = saved.antiJitter ?: state.antiJitter,
+                        jitterWindowMs = saved.jitterWindowMs ?: state.jitterWindowMs,
+                        useFlats = saved.useFlats ?: state.useFlats,
+                        hapticsEnabled = saved.hapticsEnabled ?: state.hapticsEnabled,
+                        reducedMotion = saved.reducedMotion ?: state.reducedMotion,
                     )
                 }
 
-
+                _uiState.value.let { s ->
+                    audioEngine.setBufferSize(s.audioBufferSize)
+                    audioEngine.setPolyphony(s.polyphony)
+                    audioEngine.fluidSynthGain = s.fluidSynthGain
+                    val driver = if (s.audioEngine.contains("OpenSL", ignoreCase = true))
+                        NativeAudioBridge.DRIVER_OPENSL_ES else NativeAudioBridge.DRIVER_OBOE
+                    NativeAudioBridge.safeSetAudioDriver(driver)
+                }
             } else {
                 // First run / no saved state: start clean on MIXER page
                 _uiState.update { it.copy(currentPage = AppScreenPage.MIXER, activeProjectName = "", activeSceneId = "") }
@@ -702,6 +722,16 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             midiMappings = state.midiMappings,
             midiDebounceEnabled = state.midiDebounceEnabled,
             midiDebounceMs = state.midiDebounceMs,
+            audioBufferSize = state.audioBufferSize,
+            polyphony = state.polyphony,
+            headroom = state.headroom,
+            audioEngine = state.audioEngine,
+            fluidSynthGain = state.fluidSynthGain,
+            antiJitter = state.antiJitter,
+            jitterWindowMs = state.jitterWindowMs,
+            useFlats = state.useFlats,
+            hapticsEnabled = state.hapticsEnabled,
+            reducedMotion = state.reducedMotion,
             sfFavorites = state.sfFavorites,
             sfCategoryOverrides = state.sfCategoryOverrides
         )
@@ -5282,16 +5312,19 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
         NativeAudioBridge.safeSetAudioDriver(driverType)
         _uiState.update { it.copy(audioEngine = engine) }
+        persistCurrentStateDebounced()
     }
 
     fun setAudioBufferSize(buffer: Int) {
         _uiState.update { it.copy(audioBufferSize = buffer) }
         audioEngine.setBufferSize(buffer)
+        persistCurrentStateDebounced()
     }
 
     fun setPolyphony(poly: Int) {
         _uiState.update { it.copy(polyphony = poly) }
         audioEngine.setPolyphony(poly)
+        persistCurrentStateDebounced()
     }
 
     fun setHeadroom(value: Float) {
@@ -5329,6 +5362,24 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
         _uiState.update { it.copy(selectedLanguage = lang, selectedAppLanguage = appLang) }
         persistCurrentStateDebounced()
+    }
+
+    fun setHapticsEnabled(enabled: Boolean) {
+        _uiState.update { it.copy(hapticsEnabled = enabled) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setReducedMotion(enabled: Boolean) {
+        _uiState.update { it.copy(reducedMotion = enabled) }
+        persistCurrentStateDebounced()
+    }
+
+    fun openLanguageDialog() {
+        _uiState.update { it.copy(showLanguageDialog = true) }
+    }
+
+    fun closeLanguageDialog() {
+        _uiState.update { it.copy(showLanguageDialog = false) }
     }
 
     fun setGlobalVelocityRange(min: Float, max: Float) {

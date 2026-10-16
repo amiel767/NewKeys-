@@ -64,6 +64,16 @@ class AppStatePersistence(context: Context) {
         private const val KEY_MIDI_MAPPINGS_JSON = "midi_mappings_json"
         private const val KEY_MIDI_DEBOUNCE_ENABLED = "midi_debounce_enabled"
         private const val KEY_MIDI_DEBOUNCE_MS = "midi_debounce_ms"
+        private const val KEY_AUDIO_BUFFER_SIZE = "audio_buffer_size"
+        private const val KEY_POLYPHONY = "polyphony"
+        private const val KEY_HEADROOM = "headroom"
+        private const val KEY_AUDIO_ENGINE = "audio_engine"
+        private const val KEY_FLUID_GAIN = "fluid_gain"
+        private const val KEY_ANTI_JITTER = "anti_jitter"
+        private const val KEY_JITTER_WINDOW_MS = "jitter_window_ms"
+        private const val KEY_USE_FLATS = "use_flats"
+        private const val KEY_HAPTICS_ENABLED = "haptics_enabled"
+        private const val KEY_REDUCED_MOTION = "reduced_motion"
         private const val KEY_SF_FAVORITES = "sf_favorites"
         private const val KEY_SF_CATEGORY_OVERRIDES = "sf_category_overrides"
     }
@@ -149,6 +159,16 @@ class AppStatePersistence(context: Context) {
         val midiMappings: List<MidiMappingItem> = emptyList(),
         val midiDebounceEnabled: Boolean? = null,
         val midiDebounceMs: Long? = null,
+        val audioBufferSize: Int? = null,
+        val polyphony: Int? = null,
+        val headroom: Float? = null,
+        val audioEngine: String? = null,
+        val fluidSynthGain: Float? = null,
+        val antiJitter: Boolean? = null,
+        val jitterWindowMs: Int? = null,
+        val useFlats: Boolean? = null,
+        val hapticsEnabled: Boolean? = null,
+        val reducedMotion: Boolean? = null,
         val sfFavorites: Set<String> = emptySet(),
         val sfCategoryOverrides: Map<String, String> = emptyMap()
     )
@@ -196,6 +216,16 @@ class AppStatePersistence(context: Context) {
         midiMappings: List<MidiMappingItem> = emptyList(),
         midiDebounceEnabled: Boolean = false,
         midiDebounceMs: Long = 30L,
+        audioBufferSize: Int = 256,
+        polyphony: Int = 128,
+        headroom: Float = 1.00f,
+        audioEngine: String = "oboe",
+        fluidSynthGain: Float = 1.20f,
+        antiJitter: Boolean = true,
+        jitterWindowMs: Int = 15,
+        useFlats: Boolean = false,
+        hapticsEnabled: Boolean = true,
+        reducedMotion: Boolean = false,
         sfFavorites: Set<String> = emptySet(),
         sfCategoryOverrides: Map<String, String> = emptyMap()
     ) {
@@ -471,6 +501,16 @@ class AppStatePersistence(context: Context) {
                 putString(KEY_MIDI_MAPPINGS_JSON, midiMappingsArray.toString())
                 putBoolean(KEY_MIDI_DEBOUNCE_ENABLED, midiDebounceEnabled)
                 putLong(KEY_MIDI_DEBOUNCE_MS, midiDebounceMs)
+                putInt(KEY_AUDIO_BUFFER_SIZE, audioBufferSize)
+                putInt(KEY_POLYPHONY, polyphony)
+                putFloat(KEY_HEADROOM, headroom)
+                putString(KEY_AUDIO_ENGINE, audioEngine)
+                putFloat(KEY_FLUID_GAIN, fluidSynthGain)
+                putBoolean(KEY_ANTI_JITTER, antiJitter)
+                putInt(KEY_JITTER_WINDOW_MS, jitterWindowMs)
+                putBoolean(KEY_USE_FLATS, useFlats)
+                putBoolean(KEY_HAPTICS_ENABLED, hapticsEnabled)
+                putBoolean(KEY_REDUCED_MOTION, reducedMotion)
 
                 val sfFavArray = JSONArray()
                 sfFavorites.forEach { sfFavArray.put(it) }
@@ -901,6 +941,16 @@ class AppStatePersistence(context: Context) {
 
             val midiDebounceEnabled = if (prefs.contains(KEY_MIDI_DEBOUNCE_ENABLED)) prefs.getBoolean(KEY_MIDI_DEBOUNCE_ENABLED, false) else null
             val midiDebounceMs = if (prefs.contains(KEY_MIDI_DEBOUNCE_MS)) prefs.getLong(KEY_MIDI_DEBOUNCE_MS, 30L) else null
+            val audioBufferSize = if (prefs.contains(KEY_AUDIO_BUFFER_SIZE)) prefs.getInt(KEY_AUDIO_BUFFER_SIZE, 256) else null
+            val polyphony = if (prefs.contains(KEY_POLYPHONY)) prefs.getInt(KEY_POLYPHONY, 128) else null
+            val headroom = if (prefs.contains(KEY_HEADROOM)) prefs.getFloat(KEY_HEADROOM, 1.00f) else null
+            val audioEngine = prefs.getString(KEY_AUDIO_ENGINE, null)
+            val fluidSynthGain = if (prefs.contains(KEY_FLUID_GAIN)) prefs.getFloat(KEY_FLUID_GAIN, 1.20f) else null
+            val antiJitter = if (prefs.contains(KEY_ANTI_JITTER)) prefs.getBoolean(KEY_ANTI_JITTER, true) else null
+            val jitterWindowMs = if (prefs.contains(KEY_JITTER_WINDOW_MS)) prefs.getInt(KEY_JITTER_WINDOW_MS, 15) else null
+            val useFlats = if (prefs.contains(KEY_USE_FLATS)) prefs.getBoolean(KEY_USE_FLATS, false) else null
+            val hapticsEnabled = if (prefs.contains(KEY_HAPTICS_ENABLED)) prefs.getBoolean(KEY_HAPTICS_ENABLED, true) else null
+            val reducedMotion = if (prefs.contains(KEY_REDUCED_MOTION)) prefs.getBoolean(KEY_REDUCED_MOTION, false) else null
 
             val sfFavoritesSet = mutableSetOf<String>()
             prefs.getString(KEY_SF_FAVORITES, null)?.let { raw ->
@@ -964,6 +1014,16 @@ class AppStatePersistence(context: Context) {
                 midiMappings = restoredMidiMappings,
                 midiDebounceEnabled = midiDebounceEnabled,
                 midiDebounceMs = midiDebounceMs,
+                audioBufferSize = audioBufferSize,
+                polyphony = polyphony,
+                headroom = headroom,
+                audioEngine = audioEngine,
+                fluidSynthGain = fluidSynthGain,
+                antiJitter = antiJitter,
+                jitterWindowMs = jitterWindowMs,
+                useFlats = useFlats,
+                hapticsEnabled = hapticsEnabled,
+                reducedMotion = reducedMotion,
                 sfFavorites = sfFavoritesSet,
                 sfCategoryOverrides = sfOverridesMap
             )
