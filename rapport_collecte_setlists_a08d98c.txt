@@ -1,0 +1,570 @@
+═══════════════════════════════════════════════════════════════════════════
+BRIEF DE COLLECTE — 4 extractions (fix cartes Setlists + couleur aléatoire)
+Repo : amiel767/NewKeys- · Branche : main · HEAD : a08d98c
+═══════════════════════════════════════════════════════════════════════════
+
+
+=== E1 ===
+
+$ grep -nE "private fun (SetlistCard|RecentSetlistCard|SetlistRow|AllSetlistRow|SetlistListRow|RowSetlist)" app/src/main/java/com/soundstage/mixer/ui/setlists/SetlistsScreen.kt
+```
+1023:private fun SetlistCard(
+1157:private fun SetlistRow(
+```
+
+$ sed -n '1022,1123p' app/src/main/java/com/soundstage/mixer/ui/setlists/SetlistsScreen.kt
+```
+@Composable
+private fun SetlistCard(
+    s: Setlist,
+    index: Int,
+    animateIn: Boolean,
+    isOpen: Boolean,
+    isLast: Boolean,
+    prefs: SetlistsPrefs,
+    animate: Boolean,
+    nowMs: Long,
+    onOpen: () -> Unit,
+    onHint: (String) -> Unit,
+    onMenu: (Rect) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(16.dp)
+    val c = s.color
+    val contour by animateFloatAsState(if (isOpen) 0.40f else if (isLast) 0.32f else 0.24f, tween(400), label = "contour")
+    val auraAlpha by animateFloatAsState(if (!prefs.cardAuras) 0f else if (isOpen) 0.28f else if (isLast) 0.22f else 0.16f, tween(400), label = "aura")
+    // The aura is a small tinted bubble drifting very slowly (60–80 s per leg).
+    val dur = (60 + (s.id.hashCode().absoluteValue % 5) * 5) * 1000
+    val inf = rememberInfiniteTransition(label = "auraDrift")
+    val dx: State<Float> = if (animate) inf.animateFloat(
+        0f, 90f, infiniteRepeatable(tween(dur, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "dx"
+    ) else remember { mutableStateOf(0f) }
+    val dy: State<Float> = if (animate) inf.animateFloat(
+        -18f, 34f, infiniteRepeatable(tween((dur * 0.8f).toInt(), easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "dy"
+    ) else remember { mutableStateOf(0f) }
+
+    Box(
+        modifier
+            .height(96.dp)
+            .slRise(index, animateIn)
+            .slOpenGesture(prefs.openWith, onOpen, onHint)
+            .slSurfaceTinted(shape, tint = c.base, open = isOpen, elevation = 3.dp)
+            .drawBehind {
+                if (auraAlpha > 0.001f) {
+                    val r = 110.dp.toPx()
+                    val center = Offset(45.dp.toPx() + dx.value.dp.toPx(), 35.dp.toPx() + dy.value.dp.toPx())
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            0f to c.base.copy(alpha = auraAlpha),
+                            0.66f to c.base.copy(alpha = 0f),
+                            center = center, radius = r
+                        ),
+                        radius = r, center = center
+                    )
+                }
+            }
+            .drawWithContent {
+                drawContent()
+                val sw = 1.dp.toPx()
+                val inset = sw / 2f
+                val r = 16.dp.toPx() - inset
+                drawRoundRect(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            c.base.copy(alpha = contour),
+                            c.base.copy(alpha = contour * 0.35f),
+                            white(0.05f)
+                        ),
+                        start = Offset.Zero,
+                        end = Offset(size.width, size.height)
+                    ),
+                    topLeft = Offset(inset, inset),
+                    size = Size(size.width - sw, size.height - sw),
+                    cornerRadius = CornerRadius(r),
+                    style = Stroke(width = sw)
+                )
+            }
+            .padding(start = 14.dp, top = 12.dp, end = 8.dp, bottom = 10.dp)
+    ) {
+        Column(Modifier.fillMaxSize()) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    s.name,
+                    style = slText(16.sp, FontWeight.Bold),
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                if (isOpen) OpenTag(c)
+                if (s.isPinned) SlIcon(SlIconKind.Pin, Color(0xFF8F99AD), Modifier.size(12.dp))
+                MenuDotsButton(26.dp, onMenu)
+            }
+            Spacer(Modifier.height(6.dp))
+            Row {
+                RollNumber(s.patchCount, slText(13.sp, FontWeight.SemiBold, Color(0xFFB4BED0)))
+                Text(
+                    " ${SetlistsLogic.patchLabel(s.patchCount)}",
+                    style = slText(13.sp, FontWeight.SemiBold, Color(0xFFB4BED0))
+                )
+            }
+            Spacer(Modifier.height(5.dp))
+            Text(
+                "Last used: ${SetlistsLogic.formatLastUsed(s.lastUsedAt, nowMs)}",
+                style = slText(10.sp, color = SlColors.Dim),
+                maxLines = 1, overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+```
+
+$ sed -n '1156,1291p' app/src/main/java/com/soundstage/mixer/ui/setlists/SetlistsScreen.kt
+```
+@Composable
+private fun SetlistRow(
+    s: Setlist,
+    index: Int,
+    animateIn: Boolean,
+    isOpen: Boolean,
+    isLast: Boolean,
+    prefs: SetlistsPrefs,
+    haptics: SlHaptics,
+    nowMs: Long,
+    onOpen: () -> Unit,
+    onHint: (String) -> Unit,
+    onMenu: (Rect) -> Unit,
+    onDelete: () -> Unit,
+    onLockedHint: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val rowH = if (prefs.compactRows) 38.dp else 44.dp
+    val shape = RoundedCornerShape(13.dp)
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+    val offset = remember { Animatable(0f) }
+    var armed by remember { mutableStateOf(false) }
+    var widthPx by remember { mutableIntStateOf(0) }
+    val locked = prefs.lockDeletion
+    val gapPx = with(density) { 8.dp.toPx() }
+    val pillW = max(0f, -offset.value - gapPx)
+
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(rowH)
+            .slRise(index, animateIn)
+            .onSizeChanged { widthPx = it.width }
+    ) {
+        // Delete pill, detached from the row by an 8 dp gap.
+        Box(
+            Modifier
+                .align(Alignment.CenterEnd)
+                .fillMaxHeight()
+                .width(with(density) { pillW.toDp() })
+                .alpha(min(1f, pillW / with(density) { 40.dp.toPx() }))
+                .clip(shape)
+                .background(if (armed) SlColors.DangerArmed else SlColors.Danger),
+            contentAlignment = Alignment.Center
+        ) {
+            if (pillW > with(density) { 36.dp.toPx() }) {
+                val rot by animateFloatAsState(if (armed) -14f else 0f, spring(0.5f, 500f), label = "rot")
+                val sc by animateFloatAsState(if (armed) 1.15f else 1f, spring(0.5f, 500f), label = "sc")
+                SlIcon(
+                    SlIconKind.Trash, Color.White,
+                    Modifier.size(19.dp).graphicsLayer { rotationZ = rot; scaleX = sc; scaleY = sc }
+                )
+            }
+        }
+
+        Row(
+            Modifier
+                .offset { IntOffset(offset.value.roundToInt(), 0) }
+                .fillMaxSize()
+                .pointerInput(locked) {
+                    var total = 0f
+                    var hinted = false
+                    val resist = 24.dp.toPx()
+                    detectHorizontalDragGestures(
+                        onDragStart = { total = 0f; hinted = false },
+                        onDragEnd = {
+                            scope.launch {
+                                if (!locked && armed) {
+                                    offset.animateTo(-widthPx.toFloat(), tween(180))
+                                    onDelete()
+                                } else {
+                                    offset.animateTo(0f, spring(dampingRatio = 0.7f, stiffness = 400f))
+                                }
+                                armed = false
+                            }
+                        },
+                        onDragCancel = {
+                            scope.launch { offset.animateTo(0f, spring(dampingRatio = 0.7f, stiffness = 400f)) }
+                            armed = false
+                        },
+                        onHorizontalDrag = { change, dx ->
+                            change.consume()
+                            if (locked) {
+                                if (!hinted && dx < 0f) { hinted = true; onLockedHint() }
+                                return@detectHorizontalDragGestures
+                            }
+                            total += dx
+                            val d = min(0f, total)
+                            val eff = if (d > -resist) d else -resist + (d + resist) * 0.75f
+                            scope.launch { offset.snapTo(eff) }
+                            val threshold = min(size.width * 0.4f, 200.dp.toPx())
+                            val a = eff <= -threshold
+                            if (a != armed) { armed = a; if (a) haptics.strong() }
+                        }
+                    )
+                }
+                .slOpenGesture(prefs.openWith, onOpen, onHint)
+                .slSurface(shape, open = isOpen, elevation = 2.dp)
+                .border(
+                    1.dp,
+                    white(if (isOpen) 0.17f else if (isLast) 0.12f else 0.07f),
+                    shape
+                )
+                .padding(start = 16.dp, end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    s.name, style = slText(15.sp, FontWeight.Bold),
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false)
+                )
+                if (isOpen) OpenTag(s.color)
+            }
+            Row(Modifier.width(84.dp)) {
+                RollNumber(s.patchCount, slText(12.5.sp, FontWeight.SemiBold, Color(0xFFA3AEC2)))
+                Text(
+                    " ${SetlistsLogic.patchLabel(s.patchCount)}",
+                    style = slText(12.5.sp, FontWeight.SemiBold, Color(0xFFA3AEC2))
+                )
+            }
+            if (prefs.patchDots) Box(Modifier.width(126.dp)) { PatchDots(s.patchCount, s.color.base) }
+            Text(
+                "Last used: ${SetlistsLogic.formatLastUsed(s.lastUsedAt, nowMs)}",
+                style = slText(11.5.sp, color = SlColors.Dim),
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(132.dp)
+            )
+            Box(Modifier.width(18.dp), contentAlignment = Alignment.Center) {
+                if (s.isPinned) SlIcon(SlIconKind.Pin, Color(0xFF8F99AD), Modifier.size(14.dp))
+            }
+            MenuDotsButton(32.dp, onMenu)
+        }
+    }
+}
+```
+
+$ sed -n '1125,1138p' app/src/main/java/com/soundstage/mixer/ui/setlists/SetlistsScreen.kt
+```
+@Composable
+private fun OpenTag(c: SetlistColor) {
+    val shape = RoundedCornerShape(6.dp)
+    Text(
+        "OPEN",
+        style = TextStyle(fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp, color = c.text),
+        modifier = Modifier
+            .clip(shape)
+            .background(c.base.copy(alpha = 0.16f))
+            .border(1.dp, c.base.copy(alpha = 0.28f), shape)
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    )
+}
+```
+
+$ sed -n '1139,1155p' app/src/main/java/com/soundstage/mixer/ui/setlists/SetlistsScreen.kt
+```
+@Composable
+private fun MenuDotsButton(size: Dp, onClick: (Rect) -> Unit) {
+    var bounds by remember { mutableStateOf(Rect.Zero) }
+    Box(
+        Modifier
+            .size(size)
+            .onGloballyPositioned { bounds = it.boundsInRoot() }
+            .clip(CircleShape)
+            .pointerInput(Unit) { detectTapGestures { onClick(bounds) } },
+        contentAlignment = Alignment.Center
+    ) { SlIcon(SlIconKind.Dots, Color(0xFF7B859A), Modifier.size(size * 0.6f)) }
+}
+```
+
+$ sed -n '1293,1304p' app/src/main/java/com/soundstage/mixer/ui/setlists/SetlistsScreen.kt
+```
+@Composable
+private fun PatchDots(n: Int, color: Color, max: Int = 12) {
+    val c = min(n, max)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        for (i in 0 until c) {
+            val a = 0.35f + 0.55f * (if (c > 1) i / (c - 1f) else 1f)
+            Box(Modifier.size(5.dp).clip(CircleShape).background(color.copy(alpha = a)))
+        }
+        if (n > max) Text("+${n - max}", style = slText(10.sp, color = SlColors.Mute))
+        if (n == 0) Text("empty", style = slText(10.sp, color = Color(0xFF566075)))
+    }
+}
+```
+
+$ sed -n '327,384p' app/src/main/java/com/soundstage/mixer/ui/setlists/SetlistsScreen.kt
+```
+private fun Modifier.slSurface(shape: Shape, open: Boolean = false, elevation: Dp = 3.dp): Modifier = this
+    .shadow(elevation, shape, ambientColor = Color.Black.copy(alpha = 0.30f), spotColor = Color.Black.copy(alpha = 0.30f))
+    .clip(shape)
+    .background(
+        Brush.verticalGradient(
+            if (open) listOf(white(0.11f), white(0.06f)) else listOf(white(0.07f), white(0.035f))
+        )
+    )
+
+private fun Modifier.slSurfaceTinted(
+    shape: Shape,
+    tint: Color,
+    open: Boolean = false,
+    elevation: Dp = 3.dp,
+): Modifier = this
+    .shadow(
+        elevation, shape,
+        ambientColor = Color.Black.copy(alpha = 0.30f),
+        spotColor = Color.Black.copy(alpha = 0.30f),
+    )
+    .clip(shape)
+    .background(
+        Brush.verticalGradient(
+            if (open) listOf(white(0.11f), white(0.06f))
+            else listOf(white(0.07f), white(0.035f))
+        )
+    )
+    .background(
+        Brush.linearGradient(
+            colors = listOf(
+                tint.copy(alpha = if (open) 0.30f else 0.22f),
+                tint.copy(alpha = if (open) 0.14f else 0.10f),
+                tint.copy(alpha = if (open) 0.06f else 0.04f),
+            ),
+            start = Offset.Zero,
+            end = Offset.Infinite,
+        )
+    )
+```
+
+$ grep -nE "\.background\(|Brush\.verticalGradient|Brush\.horizontalGradient|\.shadow\(|\.border\(|topHairline|hairline" app/src/main/java/com/soundstage/mixer/ui/setlists/SetlistsScreen.kt
+```
+328:    .shadow(elevation, shape, ambientColor = Color.Black.copy(alpha = 0.30f), spotColor = Color.Black.copy(alpha = 0.30f))
+330:    .background(
+331:        Brush.verticalGradient(
+342:    .shadow(
+348:    .background(
+349:        Brush.verticalGradient(
+354:    .background(
+367:    .shadow(14.dp, shape, ambientColor = Color.Black.copy(alpha = 0.30f), spotColor = Color.Black.copy(alpha = 0.30f)))
+369:    .background(Brush.verticalGradient(listOf(SlColors.PanelTop, SlColors.PanelBottom)))
+370:    .border(1.dp, white(0.10f), shape)
+374:    .background(SlColors.Well)
+377:            Brush.verticalGradient(
+383:    .border(1.dp, white(0.05f), shape)
+459:            Brush.horizontalGradient(
+533:            .background(Brush.verticalGradient(listOf(SlColors.BgTop, SlColors.BgBottom)))
+558:                    .background(white(0.07f))
+827:                    .background(if (settingsOpen) white(0.12f) else white(0.045f))
+828:                    .border(1.dp, white(if (settingsOpen) 0.28f else 0.12f), RoundedCornerShape(13.dp)),
+843:            .background(Color(0xB30F141D))
+844:            .border(1.dp, white(0.10f), shape)
+878:            .background(white(0.045f))
+879:            .border(1.dp, white(0.12f), shape)
+892:            .shadow(4.dp, shape, ambientColor = Color.Black, spotColor = Color.Black)
+894:            .background(Brush.verticalGradient(listOf(Color(0xFF9DBDEB), SlColors.AccentDeep)))
+895:            .border(1.dp, white(0.2f), shape)
+959:            .background(bg)
+960:            .border(1.dp, white(if (selected) 0.24f else 0.09f), shape)
+985:            .background(Color(0xCC0F141D))
+986:            .border(1.dp, white(0.08f), shape)
+998:                .shadow(2.dp, RoundedCornerShape(9.dp))
+1000:                .background(Brush.verticalGradient(listOf(Color(0xFF38445E), Color(0xFF2B3650))))
+1133:            .background(c.base.copy(alpha = 0.16f))
+1134:            .border(1.dp, c.base.copy(alpha = 0.28f), shape)
+1199:                .background(if (armed) SlColors.DangerArmed else SlColors.Danger),
+1255:                .border(
+1299:            Box(Modifier.size(5.dp).clip(CircleShape).background(color.copy(alpha = a)))
+1348:                .background(white(0.025f))
+1445:                Box(Modifier.padding(horizontal = 6.dp, vertical = 4.dp).fillMaxWidth().height(1.dp).background(white(0.07f)))
+1461:                                .background(c.base)
+1462:                                .border(2.dp, if (c == s.color) Color.White else Color.Transparent, CircleShape),
+1497:                            .background(SlColors.Accent),
+1548:                .background(Color(0x9E060910))
+1564:                        Modifier.size(30.dp).slTap(0.9f, onClose).clip(CircleShape).background(white(0.06f)),
+1588:                            .border(1.dp, SlColors.Accent.copy(alpha = 0.4f), shape)
+1618:                            .background(
+1619:                                if (valid) Brush.verticalGradient(listOf(Color(0xFF9DBDEB), SlColors.AccentDeep))
+1656:            .background(if (selected) white(0.08f) else white(0.04f))
+1657:            .border(1.dp, border, shape)
+1662:        Box(Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(iconBg), contentAlignment = Alignment.Center) {
+1673:                .background(if (selected) SlColors.Accent else Color.Transparent)
+1674:                .border(1.5.dp, if (selected) Color.Transparent else white(0.2f), CircleShape),
+1703:                Modifier.size(28.dp).slTap(0.9f, onClose).clip(CircleShape).background(white(0.06f)),
+1771:            .background(track)
+1774:        Box(Modifier.offset(x = x, y = 2.dp).size(18.dp).clip(CircleShape).background(knob))
+1793:                .shadow(12.dp, shape, ambientColor = Color.Black, spotColor = Color.Black)
+1795:                .background(Color(0xFF222C40))
+1796:                .border(1.dp, white(0.10f), shape)
+1818:                        .background(SlColors.Accent)
+```
+
+
+=== E2 ===
+
+$ grep -rn "enum class SetlistColor" app/src/main/java/
+```
+app/src/main/java/com/aetherkeys/setlists/SetlistsScreen.kt:139:enum class SetlistColor(val base: Color, val text: Color) {
+app/src/main/java/com/soundstage/mixer/ui/setlists/SetlistsScreen.kt:142:enum class SetlistColor(val base: Color, val text: Color) {
+```
+
+$ sed -n '142,147p' app/src/main/java/com/soundstage/mixer/ui/setlists/SetlistsScreen.kt
+```
+enum class SetlistColor(val base: Color, val text: Color) {
+    Blue(AppColors.SetlistBlue, Color(0xFFA9C6F0)),
+    Amber(AppColors.SetlistAmber, Color(0xFFE6BC73)),
+    Rose(AppColors.SetlistRose, Color(0xFFDB8AA3)),
+    Sage(AppColors.SetlistSage, Color(0xFFA5BFB1))
+}
+```
+
+$ sed -n '139,144p' app/src/main/java/com/aetherkeys/setlists/SetlistsScreen.kt
+```
+enum class SetlistColor(val base: Color, val text: Color) {
+    Blue(Color(0xFF8FB2E8), Color(0xFFA9C6F0)),
+    Amber(Color(0xFFD8A24A), Color(0xFFE6BC73)),
+    Rose(Color(0xFFC2587A), Color(0xFFDB8AA3)),
+    Sage(Color(0xFF86A394), Color(0xFFA5BFB1))
+}
+```
+
+
+=== E3 ===
+
+$ grep -rn "fun autoColor\|object SetlistsLogic" app/src/main/java/
+```
+app/src/main/java/com/aetherkeys/setlists/SetlistsScreen.kt:222:object SetlistsLogic {
+app/src/main/java/com/aetherkeys/setlists/SetlistsScreen.kt:241:    fun autoColor(existing: List<Setlist>, after: SetlistColor? = null): SetlistColor {
+app/src/main/java/com/soundstage/mixer/ui/setlists/SetlistsScreen.kt:225:object SetlistsLogic {
+app/src/main/java/com/soundstage/mixer/ui/setlists/SetlistsScreen.kt:244:    fun autoColor(existing: List<Setlist>, after: SetlistColor? = null): SetlistColor {
+```
+
+$ sed -n '239,249p' app/src/main/java/com/soundstage/mixer/ui/setlists/SetlistsScreen.kt
+```
+
+    /**
+     * Automatic color on creation: the least used color (ties: palette order).
+     * For a duplicate pass the source color: the copy takes the next one in the palette.
+     */
+    fun autoColor(existing: List<Setlist>, after: SetlistColor? = null): SetlistColor {
+        val all = SetlistColor.values()
+        if (after != null) return all[(after.ordinal + 1) % all.size]
+        val counts = all.map { c -> existing.count { it.color == c } }
+        return all[counts.indexOf(counts.minOrNull() ?: 0)]
+    }
+```
+
+
+=== E4 ===
+
+$ grep -n "fun createSetlistFromScreen" app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+```
+4269:    fun createSetlistFromScreen(name: String, mode: CreateMode) {
+```
+
+$ sed -n '4269,4348p' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+```
+    fun createSetlistFromScreen(name: String, mode: CreateMode) {
+        val cleanName = name.trim().ifEmpty { "Setlist ${_uiState.value.scenes.size + 1}" }
+        val now = System.currentTimeMillis()
+        appStatePersistence.saveLong("setlist_used_$cleanName", now)
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val defaultPatchId = "patch_${System.currentTimeMillis()}"
+            if (mode == CreateMode.Duplicate && _uiState.value.activeProjectName.isNotEmpty() && _uiState.value.activeProjectName != "None") {
+                val current = _uiState.value
+                val initialPatch = PatchItem(
+                    id = defaultPatchId,
+                    name = "Patch 1",
+                    tracks = current.tracks,
+                    audioSlots = current.audioSlots,
+                    visibleTracksCount = current.visibleTracksCount,
+                    transpose = current.transpose,
+                    octave = current.octave,
+                    masterVolume = current.masterTrack.volume,
+                    snapshots = current.snapshots,
+                    configuredSnapshotSlots = current.configuredSnapshotSlots,
+                    snapshotCustomNames = current.snapshotCustomNames,
+                    activeSnapshotSlot = current.activeSnapshotSlot
+                )
+                val jsonToSave = org.json.JSONObject().apply {
+                    put("name", cleanName)
+                    put("bpm", current.bpm)
+                    put("transpose", current.transpose)
+                    put("octave", current.octave)
+                    put("tonicBrightness", current.tonicBrightness)
+                    put("tonicShimmer", current.tonicShimmer)
+                    put("drumVolume", current.drumVolume)
+                    put("drumReverb", current.drumReverb)
+                    put("masterVolume", current.masterTrack.volume)
+                    put("patches", org.json.JSONArray().apply {
+                        current.patches.ifEmpty { listOf(initialPatch) }.forEach { p ->
+                            put(org.json.JSONObject().apply {
+                                put("id", p.id)
+                                put("name", p.name)
+                            })
+                        }
+                    })
+                }.toString()
+                fileManager.saveSceneFile(cleanName, jsonToSave)
+            } else {
+                val fresh = createInitialState()
+                val initialPatch = PatchItem(
+                    id = defaultPatchId,
+                    name = "Patch 1",
+                    tracks = fresh.tracks,
+                    audioSlots = fresh.audioSlots,
+                    visibleTracksCount = 1,
+                    transpose = 0,
+                    octave = 0,
+                    masterVolume = 0.85f,
+                    snapshots = emptyMap(),
+                    configuredSnapshotSlots = listOf("slot_default"),
+                    activeSnapshotSlot = "slot_default"
+                )
+                val jsonToSave = org.json.JSONObject().apply {
+                    put("name", cleanName)
+                    put("bpm", 120)
+                    put("transpose", 0)
+                    put("octave", 0)
+                    put("tonicBrightness", 0.7)
+                    put("tonicShimmer", 0.15)
+                    put("drumVolume", 0.75)
+                    put("drumReverb", 0.24)
+                    put("masterVolume", 0.85)
+                    put("patches", org.json.JSONArray().apply {
+                        put(org.json.JSONObject().apply {
+                            put("id", initialPatch.id)
+                            put("name", initialPatch.name)
+                        })
+                    })
+                }.toString()
+                fileManager.saveSceneFile(cleanName, jsonToSave)
+            }
+            refreshStorageFiles()
+        }
+    }
+```
+
+$ grep -n "setlist_col_" app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+```
+894:                    val savedColorName = appStatePersistence.getString("setlist_col_$cleanName", SetlistColor.Blue.name)
+3913:                    val savedColorName = appStatePersistence.getString("setlist_col_${f.name}", SetlistColor.Blue.name)
+3957:                    val savedColorName = appStatePersistence.getString("setlist_col_${f.name}", SetlistColor.Blue.name)
+4362:                val col = appStatePersistence.getString("setlist_col_$id", "")
+4363:                if (col.isNotEmpty()) appStatePersistence.saveString("setlist_col_$cleanNew", col)
+4382:        appStatePersistence.saveString("setlist_col_$id", color.name)
+4408:            val sourceColorName = appStatePersistence.getString("setlist_col_$id", SetlistColor.Blue.name)
+4411:            appStatePersistence.saveString("setlist_col_$copyName", nextCol.name)
+5523:                    val savedColorName = appStatePersistence.getString("setlist_col_${f.name}", SetlistColor.Blue.name)
+```
