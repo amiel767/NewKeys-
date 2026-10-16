@@ -1148,7 +1148,7 @@ private fun SliderRow(
     }
     val latestEmit by rememberUpdatedState<(Float) -> Unit> { x -> emit(x) }
 
-    Column(Modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.4f).padding(vertical = 10.dp)) {
+    Column(Modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.4f).padding(vertical = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Column(Modifier.weight(1f)) {
                 Text(title, style = setText(14.5.sp, FontWeight.Bold), maxLines = 1)
@@ -1165,7 +1165,7 @@ private fun SliderRow(
                 contentAlignment = Alignment.Center
             ) { SetIcon(SetIconKind.Reset, SetColors.Mute, Modifier.size(13.dp)) }
         }
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(6.dp))
         Box(
             Modifier
                 .fillMaxWidth()

@@ -355,9 +355,21 @@ fun SoundfontWindow(
         query, state.overrides, state.favorites, hiddenFileKeys.value
     ) {
         when (tab) {
-            SfTab.All -> state.files
-                .filter { it.key !in hiddenFileKeys.value }
-                .map { it as SfRow }
+            SfTab.All -> {
+                var list = state.files.filter { it.key !in hiddenFileKeys.value }
+                val cat = selectedCategory
+                list = if (searching) {
+                    list.filter { it.name.contains(query.trim(), ignoreCase = true) }
+                } else if (cat == SfCategory.Favorite) {
+                    list.filter { state.favorites.contains(it.key) }
+                } else if (cat != null) {
+                    list.filter { row ->
+                        val eff = state.overrides[row.key] ?: SfClassifier.classify(row.name).id
+                        eff == cat.id
+                    }
+                } else list
+                list.map { it as SfRow }
+            }
             SfTab.Presets -> {
                 var list = presetsAll
                 if (!searching && state.loadedBanks.size > 1) {
@@ -391,6 +403,9 @@ fun SoundfontWindow(
                 state.files.filter { it.key !in hiddenFileKeys.value }.forEach {
                     val c = SfCategory.fromId(state.overrides[it.key]) ?: SfClassifier.classify(it.name)
                     result[c] = (result[c] ?: 0) + 1
+                    if (state.favorites.contains(it.key)) {
+                        result[SfCategory.Favorite] = (result[SfCategory.Favorite] ?: 0) + 1
+                    }
                 }
             }
             SfTab.Presets -> {
@@ -1032,10 +1047,12 @@ private fun SfList(
                             row = row,
                             index = i,
                             query = query,
+                            isFavorite = favorites.contains(row.key),
                             isLoading = isLoadingThis,
                             loadingProgress = if (isLoadingThis) (loadingProgress ?: 0f) else 0f,
                             onTap = { if (!isLoadingThis) onLoadFile(row.key) },
                             onCancelLoad = onCancelLoad,
+                            onToggleFavorite = { onToggleFavorite(row.key) },
                             onOpenMenu = { onOpenMenu(ContextMenu(row, 0f, 0f)) },
                             onDeleteCommit = { onRequestDeleteFile(row) },
                         )
@@ -1102,12 +1119,7 @@ private fun SfPresetRow(
             .sfTap(0.985f, onTap)
             .shadow(3.dp, RowShape, ambientColor = Color.Black, spotColor = Color(0x99000000))
             .clip(RowShape)
-            .background(
-                Brush.verticalGradient(
-                    if (active) listOf(white(0.11f), white(0.06f))
-                    else listOf(white(0.07f), white(0.035f))
-                )
-            )
+            .background(if (active) white(0.08f) else white(0.035f))
             .border(1.dp, if (active) white(0.17f) else white(0.06f), RowShape)
             .topHairline(if (active) 0.14f else 0.07f)
             .padding(start = 12.dp, end = 6.dp),
@@ -1198,10 +1210,12 @@ private fun SfFileRow(
     row: SfRow.File,
     index: Int,
     query: String,
+    isFavorite: Boolean,
     isLoading: Boolean,
     loadingProgress: Float,
     onTap: () -> Unit,
     onCancelLoad: () -> Unit,
+    onToggleFavorite: () -> Unit,
     onOpenMenu: (Offset) -> Unit,
     onDeleteCommit: () -> Unit,
 ) {
@@ -1314,12 +1328,7 @@ private fun SfFileRow(
                 .sfTap(0.985f, onTap)
                 .shadow(3.dp, RowShape, ambientColor = Color.Black, spotColor = Color(0x99000000))
                 .clip(RowShape)
-                .background(
-                    Brush.verticalGradient(
-                        if (row.isLoaded) listOf(white(0.11f), white(0.06f))
-                        else listOf(white(0.07f), white(0.035f))
-                    )
-                )
+                .background(if (row.isLoaded) white(0.08f) else white(0.035f))
                 .border(1.dp, if (row.isLoaded) white(0.17f) else white(0.06f), RowShape)
                 .topHairline(if (row.isLoaded) 0.14f else 0.07f)
                 .padding(start = 12.dp, end = 6.dp),
@@ -1373,6 +1382,21 @@ private fun SfFileRow(
 
             Box(
                 Modifier
+                    .size(28.dp)
+                    .sfTap(0.90f, onToggleFavorite),
+                contentAlignment = Alignment.Center
+            ) {
+                SfIcon(
+                    SfIconKind.Star,
+                    if (isFavorite) SfColors.Star else SfColors.StarIdle,
+                    Modifier.size(15.dp),
+                    stroke = 1.8.dp,
+                    fill = isFavorite
+                )
+            }
+
+            Box(
+                Modifier
                     .size(26.dp)
                     .sfTap(0.90f) { onOpenMenu(Offset.Zero) },
                 contentAlignment = Alignment.Center
@@ -1397,7 +1421,7 @@ private fun SfImportRow(name: String, progress: Float) {
                 translationY = (1f - enter.value) * 6.dp.toPx()
             }
             .clip(RowShape)
-            .background(Brush.verticalGradient(listOf(white(0.09f), white(0.05f))))
+            .background(white(0.07f))
             .border(1.dp, SfColors.Accent.copy(alpha = 0.4f), RowShape)
             .padding(start = 12.dp, end = 12.dp),
         verticalAlignment = Alignment.CenterVertically,

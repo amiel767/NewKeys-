@@ -110,7 +110,7 @@ data class MixerUiState(
     val pitchBend: Float = 0.0f,
     
     // Fullscreen Pages Navigation
-    val currentPage: AppScreenPage = AppScreenPage.MIXER,
+    val currentPage: AppScreenPage = AppScreenPage.SETLISTS,
     val visibleTracksCount: Int = 1,
     val activeProjectName: String = "",
     
@@ -463,12 +463,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         try {
             val saved = appStatePersistence.loadAppState()
             if (saved != null) {
-                val drumPreloadList = mutableListOf<String>()
-                val rawProjectName = (saved.activeProjectName ?: saved.activeSceneId ?: "").trim()
-                val restoredProjectName = if (rawProjectName.startsWith("Project", ignoreCase = true)) {
-                    rawProjectName.replaceFirst(Regex("(?i)^Project"), "Setlist")
-                } else rawProjectName
-                val hasActive = restoredProjectName.isNotEmpty() && restoredProjectName != "None"
+                // Démarrage: ne jamais restaurer de Setlist active automatiquement.
+                // L'utilisateur doit en choisir une explicitement pour que l'audio démarre.
+                val hasActive = false
+                val restoredProjectName = ""
 
                 _uiState.update { state ->
                     val restoredTheme = saved.themeName?.let { name ->
@@ -516,9 +514,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                                     val f = File(getApplication<Application>().filesDir, "LiveKeys/DrumPad/${savedD.sampleFileName}")
                                     if (f.exists()) f.absolutePath else ""
                                 }
-                                if (filePath.isNotEmpty()) {
-                                    drumPreloadList.add(filePath)
-                                }
                                 currentPad.copy(
                                     label = savedD.label,
                                     soundType = soundType,
@@ -560,7 +555,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
                     state.copy(
                         currentTheme = restoredTheme,
-                        currentPage = AppScreenPage.MIXER,
+                        currentPage = AppScreenPage.SETLISTS,
                         bpm = saved.bpm ?: state.bpm,
                         transpose = saved.transpose ?: state.transpose,
                         octave = saved.octave ?: state.octave,
@@ -640,8 +635,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     NativeAudioBridge.safeSetAudioDriver(driver)
                 }
             } else {
-                // First run / no saved state: start clean on MIXER page
-                _uiState.update { it.copy(currentPage = AppScreenPage.MIXER, activeProjectName = "", activeSceneId = "") }
+                _uiState.update { it.copy(currentPage = AppScreenPage.SETLISTS, activeProjectName = "", activeSceneId = "") }
             }
         } catch (e: Exception) {
             Log.e("MixerViewModel", "Error restoring saved app state: ${e.message}", e)

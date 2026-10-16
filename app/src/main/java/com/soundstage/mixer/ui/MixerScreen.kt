@@ -1068,19 +1068,22 @@ fun MixerScreen(
                     loadedPresetId = activePresetId,
                     loadedBanks = availableBanks,
                     files = uiState.realSoundfonts.map { item ->
+                        val parsed = uiState.sfParsedPresets[item.path]
                         SfRow.File(
                             key = item.name,
                             name = item.name,
                             sizeBytes = item.size,
                             formattedSize = item.formattedSize,
                             isLoaded = item.name == activeSfName,
-                            presetCount = 0,
+                            presetCount = parsed?.size ?: 0,
                         )
                     },
-                    favorites = emptySet(),
-                    overrides = emptyMap(),
-                    parsedPresets = emptyMap(),
-                    parsingFiles = emptySet(),
+                    favorites = uiState.sfFavorites,
+                    overrides = uiState.sfCategoryOverrides,
+                    parsedPresets = uiState.sfParsedPresets.mapValues { (_, v) ->
+                        v.map { SoundfontPreset(it.preset, it.displayName, it.bank) }
+                    },
+                    parsingFiles = uiState.sfParsingFiles,
                     loadingFileId = null,
                     loadingProgress = null,
                     importingName = null,
@@ -1105,9 +1108,13 @@ fun MixerScreen(
 
                         override fun onCancelLoad() {}
 
-                        override fun onToggleFavorite(key: String) {}
+                        override fun onToggleFavorite(key: String) {
+                            viewModel.toggleSfFavorite(key)
+                        }
 
-                        override fun onMoveToCategory(key: String, categoryId: String) {}
+                        override fun onMoveToCategory(key: String, categoryId: String) {
+                            viewModel.moveSfToCategory(key, categoryId)
+                        }
 
                         override fun onImportFile() {
                             sf2PickerLauncher.launch(arrayOf("*/*"))
@@ -1118,7 +1125,10 @@ fun MixerScreen(
                             viewModel.deleteSoundFontFile(item)
                         }
 
-                        override fun onRequestParse(fileId: String) {}
+                        override fun onRequestParse(fileId: String) {
+                            val item = uiState.realSoundfonts.firstOrNull { it.name == fileId } ?: return
+                            viewModel.parseSfInBackground(item.path)
+                        }
                     },
                     modifier = Modifier
                         .fillMaxSize()
