@@ -1,0 +1,381 @@
+═══════════════════════════════════════════════════════════════════════════
+BRIEF DE COLLECTE — État réel des 4 zones touchées par les briefs 1/2/3
+Repo : amiel767/NewKeys- · Branche : main · HEAD : a08d98c
+═══════════════════════════════════════════════════════════════════════════
+
+
+=== E1 ===
+
+$ grep -n "val currentPage: AppScreenPage" app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+```
+113:    val currentPage: AppScreenPage = AppScreenPage.SETLISTS,
+```
+
+$ grep -n "val hasActive = " app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+```
+468:                val hasActive = false
+```
+
+$ grep -n "currentPage = AppScreenPage.MIXER\|currentPage = AppScreenPage.SETLISTS" app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+```
+558:                        currentPage = AppScreenPage.SETLISTS,
+638:                _uiState.update { it.copy(currentPage = AppScreenPage.SETLISTS, activeProjectName = "", activeSceneId = "") }
+2316:                currentPage = AppScreenPage.MIXER
+4166:            _uiState.update { it.copy(currentPage = AppScreenPage.MIXER) }
+4172:                    currentPage = AppScreenPage.MIXER
+4221:                    currentPage = AppScreenPage.MIXER
+4248:                    currentPage = AppScreenPage.MIXER
+4256:        _uiState.update { it.copy(currentPage = AppScreenPage.SETLISTS) }
+5051:        _uiState.update { it.copy(currentPage = AppScreenPage.MIXER) }
+5407:        _uiState.update { it.copy(currentPage = AppScreenPage.MIXER, isDrumPadMiniBrowserOpen = false) }
+```
+
+$ grep -n "Preload drums safely outside state update\|var hasLoadedAnySlot" app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+```
+VIDE
+```
+
+
+=== E2 ===
+
+$ grep -n "favorites = uiState.sfFavorites\|favorites = emptySet()" app/src/main/java/com/soundstage/mixer/ui/MixerScreen.kt
+```
+1081:                    favorites = uiState.sfFavorites,
+```
+
+$ grep -n "overrides = uiState.sfCategoryOverrides\|overrides = emptyMap()" app/src/main/java/com/soundstage/mixer/ui/MixerScreen.kt
+```
+1082:                    overrides = uiState.sfCategoryOverrides,
+```
+
+$ grep -n "override fun onToggleFavorite\|override fun onMoveToCategory\|override fun onRequestParse" app/src/main/java/com/soundstage/mixer/ui/MixerScreen.kt
+```
+1111:                        override fun onToggleFavorite(key: String) {
+1115:                        override fun onMoveToCategory(key: String, categoryId: String) {
+1128:                        override fun onRequestParse(fileId: String) {
+```
+
+$ sed -n '1095,1131p' app/src/main/java/com/soundstage/mixer/ui/MixerScreen.kt
+```
+                    actions = object : SfWindowActions {
+                        override fun onClose() { viewModel.closePopup() }
+
+                        override fun onSelectPreset(row: SfRow.Preset) {
+                            viewModel.selectSf2Preset(
+                                SoundfontPreset(row.presetId, row.name, row.bankNumber)
+                            )
+                        }
+
+                        override fun onLoadFile(fileId: String) {
+                            val item = uiState.realSoundfonts.firstOrNull { it.name == fileId } ?: return
+                            viewModel.loadSoundfontFromStorage(item)
+                        }
+
+                        override fun onCancelLoad() {}
+
+                        override fun onToggleFavorite(key: String) {
+                            viewModel.toggleSfFavorite(key)
+                        }
+
+                        override fun onMoveToCategory(key: String, categoryId: String) {
+                            viewModel.moveSfToCategory(key, categoryId)
+                        }
+
+                        override fun onImportFile() {
+                            sf2PickerLauncher.launch(arrayOf("*/*"))
+                        }
+
+                        override fun onDeleteFile(fileId: String) {
+                            val item = uiState.realSoundfonts.firstOrNull { it.name == fileId } ?: return
+                            viewModel.deleteSoundFontFile(item)
+                        }
+
+                        override fun onRequestParse(fileId: String) {
+                            val item = uiState.realSoundfonts.firstOrNull { it.name == fileId } ?: return
+                            viewModel.parseSfInBackground(item.path)
+                        }
+                    },
+```
+
+$ grep -n "is SfRow.File ->" app/src/main/java/com/soundstage/mixer/ui/components/SoundfontWindow.kt
+```
+1044:                    is SfRow.File -> {
+```
+
+$ grep -n "SfFileRow(" app/src/main/java/com/soundstage/mixer/ui/components/SoundfontWindow.kt
+```
+1046:                        SfFileRow(
+1209:private fun SfFileRow(
+```
+
+$ grep -n "isFavorite\|onToggleFavorite" app/src/main/java/com/soundstage/mixer/ui/components/SoundfontWindow.kt
+```
+192:    fun onToggleFavorite(key: String) {}
+579:                                onToggleFavorite = { key -> actions.onToggleFavorite(key) },
+596:                isFavorite = state.favorites.contains(ctx.row.key),
+598:                onToggleFavorite = {
+599:                    actions.onToggleFavorite(ctx.row.key)
+970:    onToggleFavorite: (String) -> Unit,
+1038:                            isFavorite = favorites.contains(row.key),
+1040:                            onToggleFavorite = { onToggleFavorite(row.key) },
+1050:                            isFavorite = favorites.contains(row.key),
+1055:                            onToggleFavorite = { onToggleFavorite(row.key) },
+1100:    isFavorite: Boolean,
+1102:    onToggleFavorite: () -> Unit,
+1181:                .sfTap(0.90f, onToggleFavorite),
+1186:                if (isFavorite) SfColors.Star else SfColors.StarIdle,
+1189:                fill = isFavorite
+1213:    isFavorite: Boolean,
+1218:    onToggleFavorite: () -> Unit,
+1386:                    .sfTap(0.90f, onToggleFavorite),
+1391:                    if (isFavorite) SfColors.Star else SfColors.StarIdle,
+1394:                    fill = isFavorite
+1490:    isFavorite: Boolean,
+1492:    onToggleFavorite: () -> Unit,
+1521:                label = if (isFavorite) "Remove favorite" else "Add to favorites",
+1522:                onClick = onToggleFavorite
+1909:            override fun onToggleFavorite(key: String) {
+```
+
+
+=== E3 ===
+
+$ grep -n "SfTab.All ->" app/src/main/java/com/soundstage/mixer/ui/components/SoundfontWindow.kt
+```
+358:            SfTab.All -> {
+402:            SfTab.All -> {
+1003:                    tab == SfTab.All -> "No soundfonts found."
+```
+
+$ sed -n '358,400p' app/src/main/java/com/soundstage/mixer/ui/components/SoundfontWindow.kt
+```
+            SfTab.All -> {
+                var list = state.files.filter { it.key !in hiddenFileKeys.value }
+                val cat = selectedCategory
+                list = if (searching) {
+                    list.filter { it.name.contains(query.trim(), ignoreCase = true) }
+                } else if (cat == SfCategory.Favorite) {
+                    list.filter { state.favorites.contains(it.key) }
+                } else if (cat != null) {
+                    list.filter { row ->
+                        val eff = state.overrides[row.key] ?: SfClassifier.classify(row.name).id
+                        eff == cat.id
+                    }
+                } else list
+                list.map { it as SfRow }
+            }
+            SfTab.Presets -> {
+                var list = presetsAll
+                if (!searching && state.loadedBanks.size > 1) {
+                    list = list.filter { it.bankNumber == selectedBank }
+                }
+                val cat = selectedCategory
+                list = list.filter { row ->
+                    if (searching) {
+                        row.name.contains(query.trim(), ignoreCase = true)
+                    } else if (cat == null) {
+                        true
+                    } else if (cat == SfCategory.Favorite) {
+                        state.favorites.contains(row.key)
+                    } else {
+                        val eff = state.overrides[row.key] ?: SfClassifier.classify(row.name).id
+                        eff == cat.id
+                    }
+                }
+                list as List<SfRow>
+            }
+        }
+    }
+```
+
+$ sed -n '402,445p' app/src/main/java/com/soundstage/mixer/ui/components/SoundfontWindow.kt
+```
+            SfTab.All -> {
+                state.files.filter { it.key !in hiddenFileKeys.value }.forEach {
+                    val c = SfCategory.fromId(state.overrides[it.key]) ?: SfClassifier.classify(it.name)
+                    result[c] = (result[c] ?: 0) + 1
+                    if (state.favorites.contains(it.key)) {
+                        result[SfCategory.Favorite] = (result[SfCategory.Favorite] ?: 0) + 1
+                    }
+                }
+            }
+            SfTab.Presets -> {
+                val list = if (state.loadedBanks.size > 1) presetsAll.filter { it.bankNumber == selectedBank } else presetsAll
+                list.forEach {
+                    val c = SfCategory.fromId(state.overrides[it.key]) ?: SfClassifier.classify(it.name)
+                    result[c] = (result[c] ?: 0) + 1
+                    if (state.favorites.contains(it.key)) {
+                        result[SfCategory.Favorite] = (result[SfCategory.Favorite] ?: 0) + 1
+                    }
+                }
+            }
+        }
+        result
+    }
+```
+
+$ sed -n '1000,1010p' app/src/main/java/com/soundstage/mixer/ui/components/SoundfontWindow.kt
+```
+            Text(
+                when {
+                    importingName != null -> "Importing $importingName…"
+                    tab == SfTab.All -> "No soundfonts found."
+                    query.isNotBlank() -> "Nothing matches \"$query\"."
+                    else -> "Nothing here yet."
+                },
+                style = sfText(13.5.sp, color = SfColors.Label)
+            )
+        }
+        return
+```
+
+
+=== E4 ===
+
+$ grep -n "Brush.verticalGradient(listOf(white(0.07f), white(0.035f)))\|Brush.verticalGradient(listOf(white(0.11f), white(0.06f)))\|Brush.verticalGradient(listOf(white(0.09f), white(0.05f)))" app/src/main/java/com/soundstage/mixer/ui/components/SoundfontWindow.kt
+```
+VIDE
+```
+
+$ grep -n "white(0.08f) else white(0.035f)\|if (active) white(0.08f)\|background(white(0.07f))" app/src/main/java/com/soundstage/mixer/ui/components/SoundfontWindow.kt
+```
+740:                .background(white(0.07f))
+1122:            .background(if (active) white(0.08f) else white(0.035f))
+1331:                .background(if (row.isLoaded) white(0.08f) else white(0.035f))
+1424:            .background(white(0.07f))
+1535:                        .background(white(0.07f))
+```
+
+
+=== E5 ===
+
+$ grep -n "private fun SliderRow\|private fun SettingRow" app/src/main/java/com/soundstage/mixer/ui/settings/SettingsScreen.kt
+```
+998:private fun SettingRow(
+1120:private fun SliderRow(
+```
+
+$ sed -n '1120,1207p' app/src/main/java/com/soundstage/mixer/ui/settings/SettingsScreen.kt
+```
+private fun SliderRow(
+    title: String,
+    hint: String?,
+    value: Float,
+    min: Float,
+    max: Float,
+    step: Float,
+    defaultValue: Float,
+    format: (Float) -> String,
+    onChange: (Float) -> Unit,
+    enabled: Boolean = true
+) {
+    val changed = abs(value - defaultValue) > 1e-4f
+    val haptic = LocalHapticFeedback.current
+    var trackWidth by remember { mutableStateOf(1f) }
+    val fraction = ((value - min) / (max - min)).coerceIn(0f, 1f)
+    val animFraction by animateFloatAsState(fraction, spring(dampingRatio = 0.85f, stiffness = 600f), label = "sliderFrac")
+
+    fun emit(x: Float) {
+        if (!enabled) return
+        val f = (x / trackWidth).coerceIn(0f, 1f)
+        val raw = min + f * (max - min)
+        val snapped = (raw / step).roundToInt() * step
+        val v = snapped.coerceIn(min, max)
+        if (v != value) {
+            onChange(v)
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
+    }
+    val latestEmit by rememberUpdatedState<(Float) -> Unit> { x -> emit(x) }
+
+    Column(Modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.4f).padding(vertical = 4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text(title, style = setText(14.5.sp, FontWeight.Bold), maxLines = 1)
+                if (hint != null) Text(hint, style = setText(11.5.sp, color = SetColors.Dim), modifier = Modifier.padding(top = 2.dp))
+            }
+            Text(format(value), style = setText(13.sp, FontWeight.ExtraBold, SetColors.Accent))
+            Box(
+                Modifier
+                    .size(24.dp)
+                    .alpha(if (changed) 1f else 0f)
+                    .tapScale(0.9f) { if (changed) onChange(defaultValue) }
+                    .clip(CircleShape)
+                    .background(white(0.06f)),
+                contentAlignment = Alignment.Center
+            ) { SetIcon(SetIconKind.Reset, SetColors.Mute, Modifier.size(13.dp)) }
+        }
+        Spacer(Modifier.height(6.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(28.dp)
+                .onGloballyPositioned { trackWidth = it.size.width.toFloat() }
+                .pointerInput(enabled, min, max, step) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { latestEmit(it.x) },
+                        onHorizontalDrag = { change, _ -> change.consume(); latestEmit(change.position.x) }
+                    )
+                }
+                .pointerInput(enabled) { detectTapGestures { latestEmit(it.x) } },
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(SetColors.Well)
+            )
+            Box(
+                Modifier
+                    .fillMaxWidth(animFraction)
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Brush.horizontalGradient(listOf(SetColors.Accent.copy(alpha = 0.45f), SetColors.Accent)))
+            )
+            Box(
+                Modifier
+                    .offset { IntOffset((animFraction * trackWidth - 10.dp.toPx()).roundToInt(), 0) }
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .background(Brush.verticalGradient(listOf(Color(0xFF4A5675), Color(0xFF2B3550))))
+                    .border(1.dp, white(0.22f), CircleShape)
+            )
+        }
+    }
+}
+```
+
+$ sed -n '998,1026p' app/src/main/java/com/soundstage/mixer/ui/settings/SettingsScreen.kt
+```
+private fun SettingRow(
+    title: String,
+    hint: String? = null,
+    onClick: (() -> Unit)? = null,
+    control: (@Composable () -> Unit)? = null
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .let { if (onClick != null) it.tapScale(0.99f, onClick) else it }
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = setText(14.5.sp, FontWeight.Bold, SetColors.Ink), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (hint != null) {
+                Text(hint, style = setText(11.5.sp, color = SetColors.Dim), modifier = Modifier.padding(top = 2.dp))
+            }
+        }
+        if (control != null) {
+            Row(
+                Modifier.weight(1.2f),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) { control() }
+        }
+    }
+}
+```
