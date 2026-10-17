@@ -1,0 +1,103 @@
+═══════════════════════════════════════════════════════════════════════════
+BRIEF-B5c-1 — MappingPage.DrumPad → DrumPadScreen + git rm 4 fichiers
+Repo: amiel767/NewKeys- · branche: main · base: 321e54c
+═══════════════════════════════════════════════════════════════════════════
+
+CONTEXTE
+  B5c est découpé en 2 sous-commits pour éviter un blob massif :
+    B5c-1 (ce brief) : redirection MappingPage.DrumPad + suppression des
+      4 fichiers dont les seules références externes sont DrumPadPage
+      (ou orphelins). Compilation OK à la fin — le VM reste dans son état
+      actuel avec externalLoopPlayer toujours instancié (supprimé en B5c-2).
+    B5c-2 (brief suivant) : suppression des 14 champs loopPlayer* +
+      ~20 méthodes VM + réécriture onDrumPadPressed + suppression
+      ExternalLoopPlayerEngine.kt (garder pour B5c-2 car référencé par VM).
+
+PRÉREQUIS
+  git log --oneline -3      # attendu: 321e54c, 5edf5c9, 37c928e
+  git status                # attendu: clean
+  # B5a (5edf5c9) et B5b (321e54c) doivent être poussés avant d'exécuter.
+
+ÉTAPE 0 — EXTRACTION (obligatoire)
+
+  # A. Localiser les 2 sites DrumPadPage
+  grep -n "DrumPadPage" app/src/main/java/com/soundstage/mixer/ui/MixerScreen.kt
+
+  # B. Recenser les dépendances réelles entre les 4 fichiers à supprimer
+  grep -rn "import.*DrumPadDialog"         app/src/main/java/com/soundstage/mixer/
+  grep -rn "import.*ExternalLoopPlayerDaw" app/src/main/java/com/soundstage/mixer/
+  grep -rn "import.*LoopPlayerScreen"      app/src/main/java/com/soundstage/mixer/
+  grep -rn "DrumPadDialog("                app/src/main/java/com/soundstage/mixer/
+  grep -rn "ExternalLoopPlayerDaw("        app/src/main/java/com/soundstage/mixer/
+  grep -rn "LoopPlayerScreen("             app/src/main/java/com/soundstage/mixer/
+
+  # C. Vérifier qu'aucun autre fichier n'importe DrumPadPage
+  grep -rn "import.*DrumPadPage" app/src/main/java/com/soundstage/mixer/
+
+  ─── INTERPRÉTATION ATTENDUE ───
+  - DrumPadPage : 0 import après redirection (MappingPage sera redirigé)
+  - ExternalLoopPlayerDaw : 0 import autre que DrumPadPage
+  - LoopPlayerScreen : 0 import autre que DrumPadPage
+  - DrumPadDialog : 0 import (orphelin)
+
+  ─── SI ÉCART ───
+  - Un fichier est référencé par un autre que DrumPadPage → GARDER pour
+    B5c-2, noter dans le rapport
+  - DrumPadDialog a des références → GARDER pour B5c-2, noter
+
+ÉTAPE 1 — EDIT MixerScreen.kt (redirection du 2e site)
+
+  Localiser `MappingPage.DrumPad -> { ... DrumPadPage(...) ... }` (l. 936
+  attendu). Remplacer TOUT le bloc par :
+
+  ┌────────────────────────────────────────────────────────────────┐
+  │ MappingPage.DrumPad -> {                                       │
+  │     DrumPadScreen(                                             │
+  │         viewModel = viewModel,                                 │
+  │         uiState = uiState,                                     │
+  │         modifier = Modifier.fillMaxSize()                      │
+  │     )                                                          │
+  │ }                                                              │
+  └────────────────────────────────────────────────────────────────┘
+
+  Puis :
+  - Retirer `import com.soundstage.mixer.ui.pages.DrumPadPage`
+    (elle n'est plus référencée).
+  - Si un symbole local (`val tonicSlot = ...` ou similaire) devient
+    unused après la redirection, le supprimer.
+
+ÉTAPE 2 — GIT RM
+  git rm app/src/main/java/com/soundstage/mixer/ui/pages/DrumPadPage.kt
+  git rm app/src/main/java/com/soundstage/mixer/ui/components/ExternalLoopPlayerDaw.kt
+  git rm app/src/main/java/com/soundstage/mixer/ui/components/LoopPlayerScreen.kt
+  git rm app/src/main/java/com/soundstage/mixer/ui/components/DrumPadDialog.kt
+
+  ⚠ Ne PAS supprimer ExternalLoopPlayerEngine.kt — réservé pour B5c-2
+    (référencé par le field `externalLoopPlayer` de MixerViewModel, à
+    supprimer avec les autres symboles).
+
+ÉTAPE 3 — COMPILER
+  ./gradlew :app:compileDebugKotlin
+  Erreurs attendues :
+    - "Unresolved reference: DrumPadPage" → un import résiduel existe,
+      retirer l'import (1 ligne), relancer.
+    - "Unresolved reference: ExternalLoopPlayerDaw" / "LoopPlayerScreen"
+      / "DrumPadDialog" → un autre fichier importait (grep ÉTAPE 0 raté),
+      remettre le fichier concerné via `git checkout HEAD -- <fichier>`,
+      noter dans le rapport, relancer. Le fichier sera supprimé en B5c-2.
+    - Unused import warning → OK, ce n'est pas une erreur.
+
+ÉTAPE 4 — BUILD COMPLET
+  ./gradlew :app:clean :app:assembleDebug
+
+ÉTAPE 5 — COMMIT
+  git commit -m "[chantier] MappingPage.DrumPad → DrumPadScreen + git rm legacy — MixerScreen.kt, 4 files — Compile: OK"
+
+ÉTAPE 6 — RAPPORT (obligatoire)
+    git log --oneline -3
+    git show --stat HEAD
+    ./gradlew :app:clean :app:assembleDebug
+    ls -la app/build/outputs/apk/debug/
+    + résultat du grep ÉTAPE 0-B (dépendances réelles entre les 4 fichiers)
+    + fichiers effectivement supprimés (4 attendus)
+    + tout écart constaté (fichier remis en place, import résiduel, etc.)
