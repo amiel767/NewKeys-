@@ -54,6 +54,13 @@ class LooperEngine(private val clock: TransportClock) {
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
 
+    // B5a: playback callbacks (invoked from runScheduler)
+    var onPlayPadEvent: ((padIndex: Int) -> Unit)? = null
+    var onPlayNoteEvent: ((noteIndex: Int) -> Unit)? = null
+
+    // B5a: dernier beat joue par case, hors UiState (le scheduler tourne a 15 ms).
+    private val playCursor = HashMap<Int, Double>()
+
     private var schedulerJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
@@ -208,7 +215,10 @@ class LooperEngine(private val clock: TransportClock) {
                         when (c.queuedAction) {
                             "rec" -> c.copy(state = CaseState.Recording, recStartNs = c.queuedAtNs, pendingRecEvents = emptyList(), queuedAction = null)
                             "overdub" -> c.copy(state = CaseState.Overdubbing, startAtNs = c.queuedAtNs, pendingOverdubEvents = emptyList(), queuedAction = null)
-                            "play" -> c.copy(state = CaseState.Playing, startAtNs = c.queuedAtNs, queuedAction = null, lastBeatIndex = -1.0)
+                            "play" -> {
+                                playCursor.remove(c.id)
+                                c.copy(state = CaseState.Playing, startAtNs = c.queuedAtNs, queuedAction = null, lastBeatIndex = -1.0)
+                            }
                             else -> c
                         }
                     } else c
@@ -222,6 +232,41 @@ class LooperEngine(private val clock: TransportClock) {
                     CaseState.Overdubbing -> {
                         val endNs = c.startAtNs + c.bars * clock.barDurationNs()
                         if (nowNs >= endNs) { changed = true; commitOverdub(c) } else c
+                    }
+                    CaseState.Playing -> {
+                        val loopBeats = (c.bars * clock.signature.beatsPerBar).toDouble()
+                        if (loopBeats <= 0.0) c else {
+                            // B5a: trigger playback callbacks on sub-boundary.
+                            // The continuous cursor lives in `playCursor` (outside UiState)
+                            // so the state flow is not re-emitted on every 15 ms tick.
+                            // lastBeatIndex only records the last position that fired.
+                            val __b5aNewBeat =
+                                (((nowNs - c.startAtNs).toDouble() / clock.beatDurationNs().toDouble())
+                                    % loopBeats)
+                            val __b5aOldBeat = playCursor[c.id] ?: -1.0
+                            val __b5aWrapped = __b5aOldBeat >= 0.0 && __b5aNewBeat < __b5aOldBeat
+                            var __b5aFired = false
+                            for (__b5aLayer in c.layers) {
+                                for (__b5aEvent in __b5aLayer) {
+                                    val __b5aDue = if (__b5aWrapped) {
+                                        __b5aEvent.beatOffset > __b5aOldBeat ||
+                                            __b5aEvent.beatOffset <= __b5aNewBeat
+                                    } else {
+                                        __b5aEvent.beatOffset > __b5aOldBeat &&
+                                            __b5aEvent.beatOffset <= __b5aNewBeat
+                                    }
+                                    if (__b5aDue) {
+                                        __b5aFired = true
+                                        when (__b5aEvent.kind) {
+                                            "pad" -> onPlayPadEvent?.invoke(__b5aEvent.idx)
+                                            "note" -> onPlayNoteEvent?.invoke(__b5aEvent.idx)
+                                        }
+                                    }
+                                }
+                            }
+                            playCursor[c.id] = __b5aNewBeat
+                            if (__b5aFired) { changed = true; c.copy(lastBeatIndex = __b5aNewBeat) } else c
+                        }
                     }
                     else -> c
                 }

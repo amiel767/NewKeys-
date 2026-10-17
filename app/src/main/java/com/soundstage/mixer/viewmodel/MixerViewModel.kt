@@ -3,6 +3,7 @@ package com.soundstage.mixer.viewmodel
 import android.app.Application
 import android.util.Log
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.soundstage.mixer.audio.NativeAudioBridge
@@ -13,6 +14,7 @@ import com.soundstage.mixer.ui.theme.*
 import com.soundstage.mixer.ui.setlists.*
 import com.soundstage.mixer.ui.setlists.SetlistColor
 import com.soundstage.mixer.ui.settings.*
+import com.soundstage.mixer.ui.components.drumpad.DpPalette
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -417,6 +419,18 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         metronomeEngine.currentSound = com.soundstage.mixer.audio.MetronomeEngine.Sound.parse(_uiState.value.metronomeSound)
 
         looperEngine.start()
+
+        // B5a: wire LooperEngine callbacks → audio playback
+        looperEngine.onPlayPadEvent = playPad@{ idx ->
+            val pad = _uiState.value.drumPads.getOrNull(idx)
+                ?: return@playPad
+            if (pad.sampleFileName.isNotEmpty()) {
+                audioEngine.playDrumPadSound(
+                    pad, pad.volume * _uiState.value.drumVolume
+                )
+            }
+        }
+        // onPlayNoteEvent reste null (V1: drone piloté par UI direct)
 
         // Detect and register USB MIDI Hardware devices
         val initialMidiDevs = audioEngine.getConnectedUsbMidiDevices()
@@ -2794,6 +2808,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
             // High precision low-latency live drum hit
             audioEngine.playDrumPadSound(pad, pad.volume * _uiState.value.drumVolume)
+
+            // B5a: enregistre le hit dans le looper (kind/idx/couleur)
+            looperEngine.record(
+                "pad",
+                padId - 1,
+                "#" + Integer.toHexString(DpPalette.at(padId - 1).toArgb())
+            )
 
             // Auto-trigger recording on 1st pad hit when loop is armed!
             if (_uiState.value.isDrumLoopArmed && !_uiState.value.isDrumLoopRecording) {
