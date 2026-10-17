@@ -137,23 +137,14 @@ data class MixerUiState(
     val drumVolume: Float = 0.75f,
     val drumReverb: Float = 0.24f,
     val drumActiveTab: String = "pad",
-    val drumSubView: String = "main",
-    val isDrumPadMixMode: Boolean = false,
     val drumFeelSwing: Int = 54,
     val activeDrumKitName: String = "DrumKit",
     val activeTonicPadName: String = "Analog Pad",
-    val isDrumPadMiniBrowserOpen: Boolean = false,
-    val isDrumPadLoopsOpen: Boolean = false,
-    val isDrumPadFileExplorerOpen: Boolean = false,
-    val drumPadAssignTargetPadId: Int? = null,
     val isDrumLoopArmed: Boolean = false,
     val isDrumLoopRecording: Boolean = false,
     val drumLoopBars: Int = 2,
     val drumTimeSignature: String = "4/4",
     val isDrumLoopRendering: Boolean = false,
-    val editingDrumPadId: Int? = null,
-    val selectedDrumSampleForAssign: StorageItem? = null,
-    val isAssignPadDialogOpen: Boolean = false,
     
     // Tonic Pad
     val isMultiPadEnabled: Boolean = false,
@@ -273,21 +264,6 @@ data class MixerUiState(
     val trackColorSaturation: Float = 1.0f,
 
     // Loop Player & AOSP Internal Storage Browser Module
-    val drumRightPanelMode: Int = 0, // 0 = 8 Drum Pads, 1 = Loop Player
-    val loopPlayerFilePath: String? = null,
-    val loopPlayerFileName: String = "",
-    val loopPlayerDurationMs: Long = 0L,
-    val loopPlayerPositionMs: Long = 0L,
-    val loopPlayerProgress: Float = 0.0f,
-    val loopPlayerIsPlaying: Boolean = false,
-    val loopPlayerIsLooping: Boolean = true,
-    val loopPlayerPitchSemitones: Int = 0,
-    val loopPlayerStepMode: String = "DEFAULT",
-    val loopPlayerWaveform: FloatArray = FloatArray(0),
-    val loopPlayerVolume: Float = 1.0f,
-    val loopPlayerExplorerPath: String = "/storage/emulated/0/SoundStage/Loops",
-    val loopPlayerExplorerItems: List<com.soundstage.mixer.model.AudioStorageItem> = emptyList(),
-    val loopPlayerIsExplorerOpen: Boolean = false,
     val sfFavorites: Set<String> = emptySet(),
     val sfCategoryOverrides: Map<String, String> = emptyMap(),
     val sfParsedPresets: Map<String, List<com.soundstage.mixer.model.SF2PresetInfo>> = emptyMap(),
@@ -350,27 +326,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(createInitialState())
     val uiState: StateFlow<MixerUiState> = _uiState.asStateFlow()
-
-    val externalLoopPlayer = com.soundstage.mixer.audio.ExternalLoopPlayerEngine(
-        application.applicationContext,
-        onPlaybackPositionUpdate = { posMs, durMs, prog ->
-            _uiState.update {
-                it.copy(
-                    loopPlayerPositionMs = posMs,
-                    loopPlayerDurationMs = durMs,
-                    loopPlayerProgress = prog
-                )
-            }
-        },
-        onWaveformLoaded = { wf, durMs ->
-            _uiState.update {
-                it.copy(
-                    loopPlayerWaveform = wf,
-                    loopPlayerDurationMs = durMs
-                )
-            }
-        }
-    )
 
     private val drumPadLooper = com.soundstage.mixer.audio.DrumPadLooperEngine { pad, _ ->
         com.soundstage.mixer.audio.DrumPadSampleProvider.getOrGeneratePadPcm(application.applicationContext, pad)
@@ -491,8 +446,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             android.util.Log.d("MIXER_BOOT", "boot -> currentPage=${_uiState.value.currentPage}")
             try {
                 fileManager.ensureDirectoriesExist()
-                _uiState.update { it.copy(loopPlayerExplorerPath = fileManager.loopsDir.absolutePath) }
-                refreshLoopPlayerExplorer(fileManager.loopsDir.absolutePath)
             } catch (e: Exception) {
                 Log.w("MixerViewModel", "ensureDirectoriesExist warning: ${e.message}")
             }
@@ -988,7 +941,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         super.onCleared()
         NativeAudioBridge.safeStopEngine()
         audioEngine.release()
-        externalLoopPlayer.release()
     }
 
     private fun createInitialState(): MixerUiState {
@@ -1956,7 +1908,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         if (_uiState.value.isLoopPlaying) {
             audioEngine.setLoopBpm(bpm)
         }
-        externalLoopPlayer.setBpm(bpm)
     }
 
     // ================= RECORDING =================
@@ -2482,10 +2433,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update {
             it.copy(
                 activePopup = ActivePopup.NONE,
-                editingDrumPadId = null,
-                drumSubView = "main",
-                tonicSubView = "main",
-                isAssignPadDialogOpen = false
+                tonicSubView = "main"
             )
         }
     }
@@ -2687,8 +2635,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 drumPadWasPinned = wasPinned,
                 isDrumPadPinned = false,
                 activePopup = if (it.activePopup == ActivePopup.DRUM_PAD) ActivePopup.NONE else it.activePopup,
-                editingDrumPadId = null,
-                drumSubView = "main"
             )
         }
     }
@@ -2744,10 +2690,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     // ================= DRUM PAD CONTROLS =================
     fun setDrumTab(tab: String) {
         _uiState.update { it.copy(drumActiveTab = tab) }
-    }
-
-    fun setDrumSubView(subView: String) {
-        _uiState.update { it.copy(drumSubView = subView) }
     }
 
     fun setDrumVolume(vol: Float) {
@@ -2816,33 +2758,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 "#" + Integer.toHexString(DpPalette.at(padId - 1).toArgb())
             )
 
-            // Auto-trigger recording on 1st pad hit when loop is armed!
-            if (_uiState.value.isDrumLoopArmed && !_uiState.value.isDrumLoopRecording) {
-                _uiState.update { it.copy(isDrumLoopArmed = false, isDrumLoopRecording = true) }
-                val bpm = _uiState.value.bpm
-                val bars = _uiState.value.drumLoopBars
-                drumPadLooper.startRecording(bpm, bars)
-                drumPadLooper.recordHit(pad, _uiState.value.drumVolume)
-
-                // Schedule auto-completion at exact loop boundary
-                viewModelScope.launch {
-                    val durationMs = ((bars * 4.0 / bpm.toDouble()) * 60.0 * 1000.0).toLong()
-                    kotlinx.coroutines.delay(durationMs)
-                    if (_uiState.value.isDrumLoopRecording) {
-                        stopAndRenderDrumLoop { loopFile ->
-                            // Auto-play the recorded loop smoothly
-                            audioEngine.playLoopFile(
-                                filePath = loopFile.absolutePath,
-                                volume = _uiState.value.drumVolume,
-                                beatCount = bars * 4,
-                                bpm = bpm
-                            )
-                        }
-                    }
-                }
-            } else if (_uiState.value.isDrumLoopRecording) {
-                drumPadLooper.recordHit(pad, _uiState.value.drumVolume)
-            }
         }
 
         _uiState.update { state ->
@@ -5771,31 +5686,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun navigateBackToMixer() {
-        _uiState.update { it.copy(currentPage = AppScreenPage.MIXER, isDrumPadMiniBrowserOpen = false) }
-    }
-
-    fun toggleDrumPadMixMode() {
-        _uiState.update { it.copy(isDrumPadMixMode = !it.isDrumPadMixMode) }
+        _uiState.update { it.copy(currentPage = AppScreenPage.MIXER) }
     }
 
     fun setDrumFeelSwing(swing: Int) {
         _uiState.update { it.copy(drumFeelSwing = swing.coerceIn(0, 100)) }
-    }
-
-    fun toggleDrumPadMiniBrowser() {
-        _uiState.update { it.copy(isDrumPadMiniBrowserOpen = !it.isDrumPadMiniBrowserOpen) }
-    }
-
-    fun closeDrumPadMiniBrowser() {
-        _uiState.update { it.copy(isDrumPadMiniBrowserOpen = false) }
-    }
-
-    fun openDrumPadLoopsView(open: Boolean = true) {
-        _uiState.update { it.copy(isDrumPadLoopsOpen = open) }
-    }
-
-    fun openDrumPadFileExplorer(open: Boolean = true) {
-        _uiState.update { it.copy(isDrumPadFileExplorerOpen = open) }
     }
 
     fun setDrumPadVolumeDirect(padId: Int, volume: Float) {
@@ -6747,152 +6642,4 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // =========================================================================
-    // EXTERNAL LOOP PLAYER & AOSP STORAGE BROWSER CONTROLS
-    // =========================================================================
-
-    fun setDrumRightPanelMode(mode: Int) {
-        _uiState.update { it.copy(drumRightPanelMode = mode) }
-    }
-
-    fun loadAndPlayExternalLoopFile(file: java.io.File) {
-        externalLoopPlayer.loadAndPlay(file, autoPlay = true)
-        _uiState.update {
-            it.copy(
-                loopPlayerFilePath = file.absolutePath,
-                loopPlayerFileName = file.name,
-                loopPlayerIsPlaying = true,
-                loopPlayerWaveform = externalLoopPlayer.getWaveform(),
-                loopPlayerDurationMs = externalLoopPlayer.getDurationMs(),
-                loopPlayerIsExplorerOpen = false
-            )
-        }
-    }
-
-    fun toggleExternalLoopPlayPause() {
-        val willPlay = !_uiState.value.loopPlayerIsPlaying
-        if (willPlay) {
-            externalLoopPlayer.play()
-        } else {
-            externalLoopPlayer.pause()
-        }
-        _uiState.update {
-            it.copy(
-                loopPlayerIsPlaying = willPlay,
-                loopPlayerWaveform = externalLoopPlayer.getWaveform()
-            )
-        }
-    }
-
-    fun stopExternalLoopPlayer() {
-        externalLoopPlayer.stop()
-        _uiState.update {
-            it.copy(
-                loopPlayerIsPlaying = false,
-                loopPlayerPositionMs = 0L,
-                loopPlayerProgress = 0f
-            )
-        }
-    }
-
-    fun retriggerExternalLoopPlayer() {
-        externalLoopPlayer.retrigger()
-        _uiState.update { it.copy(loopPlayerIsPlaying = true) }
-    }
-
-    fun seekExternalLoopPlayer(progress: Float) {
-        val dur = _uiState.value.loopPlayerDurationMs
-        val targetMs = (progress * dur).toLong()
-        externalLoopPlayer.seekTo(targetMs)
-        _uiState.update {
-            it.copy(
-                loopPlayerPositionMs = targetMs,
-                loopPlayerProgress = progress
-            )
-        }
-    }
-
-    fun toggleExternalLoopLooping() {
-        val next = !_uiState.value.loopPlayerIsLooping
-        externalLoopPlayer.setLooping(next)
-        _uiState.update { it.copy(loopPlayerIsLooping = next) }
-    }
-
-    fun setExternalLoopPitchSemitones(semitones: Int) {
-        externalLoopPlayer.setPitchSemitones(semitones)
-        _uiState.update { it.copy(loopPlayerPitchSemitones = semitones) }
-    }
-
-    fun resetExternalLoopPitch() {
-        setExternalLoopPitchSemitones(0)
-    }
-
-    fun setExternalLoopStepMode(mode: String) {
-        externalLoopPlayer.setStepMode(mode)
-        _uiState.update { it.copy(loopPlayerStepMode = mode) }
-    }
-
-    fun setExternalLoopVolume(volume: Float) {
-        externalLoopPlayer.setVolume(volume)
-        _uiState.update { it.copy(loopPlayerVolume = volume) }
-    }
-
-    fun toggleExternalLoopExplorer() {
-        val next = !_uiState.value.loopPlayerIsExplorerOpen
-        _uiState.update { it.copy(loopPlayerIsExplorerOpen = next) }
-        if (next) {
-            refreshLoopPlayerExplorer(_uiState.value.loopPlayerExplorerPath)
-        }
-    }
-
-    fun navigateLoopPlayerExplorer(folderPath: String) {
-        refreshLoopPlayerExplorer(folderPath)
-    }
-
-    fun refreshLoopPlayerExplorer(dirPath: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val targetDir = java.io.File(dirPath).let {
-                if (it.exists() && it.isDirectory) it
-                else if (fileManager.loopsDir.exists()) fileManager.loopsDir
-                else {
-                    fileManager.ensureDirectoriesExist()
-                    fileManager.loopsDir
-                }
-            }
-
-            val validExtensions = setOf("wav", "mp3", "ogg", "flac", "m4a", "aac")
-            val files = targetDir.listFiles()?.toList() ?: emptyList()
-
-            val directories = files
-                .filter { it.isDirectory && !it.name.startsWith(".") }
-                .sortedBy { it.name.lowercase() }
-                .map {
-                    com.soundstage.mixer.model.AudioStorageItem(
-                        name = it.name,
-                        path = it.absolutePath,
-                        isDirectory = true
-                    )
-                }
-
-            val audioFiles = files
-                .filter { !it.isDirectory && validExtensions.contains(it.extension.lowercase()) }
-                .sortedBy { it.name.lowercase() }
-                .map {
-                    com.soundstage.mixer.model.AudioStorageItem(
-                        name = it.name,
-                        path = it.absolutePath,
-                        isDirectory = false,
-                        sizeBytes = it.length()
-                    )
-                }
-
-            val combined = directories + audioFiles
-            _uiState.update {
-                it.copy(
-                    loopPlayerExplorerPath = targetDir.absolutePath,
-                    loopPlayerExplorerItems = combined
-                )
-            }
-        }
-    }
 }
