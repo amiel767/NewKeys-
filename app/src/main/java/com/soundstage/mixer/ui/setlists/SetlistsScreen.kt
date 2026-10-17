@@ -327,10 +327,7 @@ private class SlHaptics(private val h: HapticFeedback, private val on: Boolean) 
 private fun Modifier.slSurface(shape: Shape, open: Boolean = false, elevation: Dp = 3.dp): Modifier = this
     .shadow(elevation, shape, ambientColor = Color.Black.copy(alpha = 0.30f), spotColor = Color.Black.copy(alpha = 0.30f))
     .clip(shape)
-    .background(
-        if (open) SlColors.PanelTop.copy(alpha = 0.65f)
-        else SlColors.PanelBottom.copy(alpha = 0.55f)
-    )
+    .background(Brush.linearGradient(listOf(Color(0xFF232C3E), Color(0xFF1A2230))))
 
 private fun Modifier.slSurfaceTinted(
     shape: Shape,
@@ -347,11 +344,7 @@ private fun Modifier.slSurfaceTinted(
     .drawBehind {
         drawRect(
             brush = Brush.linearGradient(
-                colors = listOf(
-                    tint.copy(alpha = if (open) 0.32f else 0.22f),
-                    tint.copy(alpha = if (open) 0.16f else 0.10f),
-                    tint.copy(alpha = if (open) 0.06f else 0.03f),
-                ),
+                colors = listOf(Color(0xFF232C3E), Color(0xFF1A2230)),
                 start = Offset.Zero,
                 end = Offset(size.width, size.height),
             )

@@ -151,7 +151,7 @@ fun DpManager(
                             .size(42.dp)
                             .clip(CircleShape)
                             .background(Brush.verticalGradient(listOf(Color(0xFF9DBDEB), Color(0xFF7FA3DD))))
-                            .clickable { /* B7-1 : file picker */ },
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { /* B7-1 : file picker */ },
                         contentAlignment = Alignment.Center
                     ) {
                         Text("+", color = Color(0xFF0F1726), fontSize = 19.sp, fontWeight = FontWeight.ExtraBold)
@@ -163,7 +163,7 @@ fun DpManager(
                         .clip(CircleShape)
                         .background(Color.White.copy(alpha = 0.07f))
                         .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
-                        .clickable { onClose() },
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClose() },
                     contentAlignment = Alignment.Center
                 ) {
                     Text("✕", color = Color(0xFFE9EDF5), fontSize = 15.sp, fontWeight = FontWeight.Bold)
@@ -206,7 +206,7 @@ fun DpManager(
                                     else Color.White.copy(alpha = 0.08f),
                                     RoundedCornerShape(10.dp)
                                 )
-                                .clickable {
+                                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                                     onTabChange(key)
                                     selection = emptySet()
                                     showSaveKitField = false
@@ -329,7 +329,7 @@ private fun KitsContent(
                             if (active) Color.White.copy(alpha = 0.17f) else Color.White.copy(alpha = 0.06f),
                             RoundedCornerShape(14.dp)
                         )
-                        .clickable { onLoad(kit.name) }
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onLoad(kit.name) }
                         .padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -375,7 +375,7 @@ private fun KitsContent(
                             Modifier
                                 .size(24.dp)
                                 .clip(CircleShape)
-                                .clickable { onDelete(kit.name) },
+                                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onDelete(kit.name) },
                             contentAlignment = Alignment.Center
                         ) {
                             Text("✕", color = Color(0xFF6F7A90), fontSize = 12.sp)
@@ -421,7 +421,7 @@ private fun KitsContent(
                         .height(34.dp)
                         .clip(RoundedCornerShape(10.dp))
                         .background(DpColors.ACCENT.copy(alpha = 0.20f))
-                        .clickable { onConfirmSave() }
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onConfirmSave() }
                         .padding(horizontal = 12.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -432,7 +432,7 @@ private fun KitsContent(
                         .height(34.dp)
                         .clip(RoundedCornerShape(10.dp))
                         .background(Color.White.copy(alpha = 0.08f))
-                        .clickable { onCancelSave() }
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onCancelSave() }
                         .padding(horizontal = 12.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -447,7 +447,7 @@ private fun KitsContent(
                     .clip(RoundedCornerShape(12.dp))
                     .background(Color.White.copy(alpha = 0.04f))
                     .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
-                    .clickable { onStartSave() },
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onStartSave() },
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -499,7 +499,7 @@ private fun StorageListContent(
                         if (on) DpColors.ACCENT.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.06f),
                         RoundedCornerShape(12.dp)
                     )
-                    .clickable { onItemClick(s) }
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onItemClick(s) }
                     .padding(horizontal = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -593,7 +593,7 @@ private fun ScenesContent(
                         ))
                     )
                     .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(14.dp))
-                    .clickable { onLoad(scene) }
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onLoad(scene) }
                     .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)

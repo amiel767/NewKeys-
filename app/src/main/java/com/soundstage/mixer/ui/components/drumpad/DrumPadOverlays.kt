@@ -292,46 +292,16 @@ private fun DpSideSheet(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Box(Modifier.fillMaxSize()) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { onClose() }
-        )
-        Column(
-            Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 58.dp, end = 12.dp)
-                .fillMaxWidth(0.9f)
-                .widthIn(max = width)
-                .heightIn(max = 720.dp)
-                .clip(RoundedCornerShape(18.dp))
-                .background(Brush.verticalGradient(listOf(Color(0xFF232C3E), Color(0xFF1A2230))))
-                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(18.dp))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { /* consume */ }
-                .padding(14.dp)
-                .verticalScroll(rememberScrollState()),
-        ) {
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    title,
-                    color = Color(0xFFF1F4FA),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    modifier = Modifier.weight(1f)
-                )
-                DpCloseBtn(onClose = onClose)
+        Box(Modifier.fillMaxSize().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClose() })
+        Box(Modifier.align(Alignment.TopEnd).padding(top = 58.dp, end = 12.dp).width(width).clip(RoundedCornerShape(18.dp)).background(Brush.verticalGradient(listOf(Color(0xFF232C3E), Color(0xFF1A2230)))).border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(18.dp)).padding(14.dp)) {
+            Column(Modifier.fillMaxWidth()) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(title, color = Color(0xFFF1F4FA), fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+                    Box(Modifier.size(30.dp).clip(RoundedCornerShape(15.dp)).background(Color.White.copy(alpha = 0.07f)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClose() }, contentAlignment = Alignment.Center) { DpIcon("x", 14.dp, Color(0xFF9AA5BA)) }
+                }
+                Spacer(Modifier.height(10.dp))
+                content()
             }
-            Spacer(Modifier.height(10.dp))
-            content()
         }
     }
 }
@@ -345,50 +315,20 @@ private fun DpCenterSheet(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Box(Modifier.fillMaxSize()) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Color(0x8C06090E))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { onClose() }
-        )
-        Column(
-            Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = topPadding, start = 12.dp, end = 12.dp)
-                .fillMaxWidth(0.9f)
-                .widthIn(max = width)
-                .heightIn(max = 720.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(Brush.verticalGradient(listOf(Color(0xFF2A3447), Color(0xFF1E2736))))
-                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(20.dp))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { /* consume */ }
-                .padding(14.dp)
-                .verticalScroll(rememberScrollState()),
-        ) {
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    title,
-                    color = Color(0xFFF1F4FA),
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    modifier = Modifier.weight(1f)
-                )
-                DpCloseBtn(onClose = onClose)
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClose() })
+        Box(Modifier.align(Alignment.TopCenter).padding(top = topPadding).width(width).clip(RoundedCornerShape(20.dp)).background(Brush.verticalGradient(listOf(Color(0xFF2A3447), Color(0xFF1E2736)))).border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(20.dp)).padding(14.dp)) {
+            Column(Modifier.fillMaxWidth()) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(title, color = Color(0xFFF1F4FA), fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                    Box(Modifier.size(28.dp).clip(RoundedCornerShape(14.dp)).background(Color.White.copy(alpha = 0.07f)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClose() }, contentAlignment = Alignment.Center) { DpIcon("x", 13.dp, Color(0xFF9AA5BA)) }
+                }
+                Spacer(Modifier.height(10.dp))
+                content()
             }
-            Spacer(Modifier.height(10.dp))
-            content()
         }
     }
 }
+
 
 @Composable
 private fun DpCloseBtn(onClose: () -> Unit) {
@@ -397,7 +337,7 @@ private fun DpCloseBtn(onClose: () -> Unit) {
             .size(28.dp)
             .clip(CircleShape)
             .background(Color.White.copy(alpha = 0.07f))
-            .clickable { onClose() },
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClose() },
         contentAlignment = Alignment.Center,
     ) {
         Text("✕", color = Color(0xFF9AA5BA), fontSize = 13.sp, fontWeight = FontWeight.Bold)
@@ -563,7 +503,7 @@ fun DpMetronomeOverlay(
                     .clip(RoundedCornerShape(10.dp))
                     .background(DpColors.ACCENT.copy(alpha = 0.14f))
                     .border(1.dp, DpColors.ACCENT.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
-                    .clickable {
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                         val computed = tapRef.tap(System.currentTimeMillis())
                         if (computed != null) onChange(state.copy(tapBpm = computed))
                     },
@@ -746,7 +686,7 @@ private fun FxRow(
                 .size(width = 40.dp, height = 22.dp)
                 .clip(RoundedCornerShape(11.dp))
                 .background(if (on) DpColors.WARM else Color.White.copy(alpha = 0.14f))
-                .clickable { onToggle(!on) },
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onToggle(!on) },
         ) {
             Box(
                 Modifier
@@ -912,7 +852,7 @@ fun DpPadEditor(
                     .clip(RoundedCornerShape(13.dp))
                     .background(Color.White.copy(alpha = 0.06f))
                     .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(13.dp))
-                    .clickable { onAssignClick() }
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onAssignClick() }
                     .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
@@ -940,7 +880,7 @@ fun DpPadEditor(
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color.White.copy(alpha = 0.05f))
                         .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
-                        .clickable { onClear() },
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClear() },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text("Clear pad", color = Color(0xFFC7CFDD), fontSize = 13.sp, fontWeight = FontWeight.Bold)
@@ -951,7 +891,7 @@ fun DpPadEditor(
                         .weight(1f)
                         .clip(RoundedCornerShape(12.dp))
                         .background(Brush.verticalGradient(listOf(Color(0xFF9DBDEB), Color(0xFF7FA3DD))))
-                        .clickable { onClose() },
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClose() },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text("Done", color = Color(0xFF0F1726), fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
@@ -996,7 +936,7 @@ private fun DpChipCell(
                 if (selected) DpColors.ACCENT.copy(alpha = 0.53f) else Color.White.copy(alpha = 0.06f),
                 RoundedCornerShape(8.dp)
             )
-            .clickable { onClick() },
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClick() },
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -1016,7 +956,7 @@ private fun DpToggle(checked: Boolean, onChange: (Boolean) -> Unit) {
             .size(width = 34.dp, height = 20.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(if (checked) DpColors.ACCENT else Color.White.copy(alpha = 0.14f))
-            .clickable { onChange(!checked) },
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onChange(!checked) },
     ) {
         Box(
             Modifier

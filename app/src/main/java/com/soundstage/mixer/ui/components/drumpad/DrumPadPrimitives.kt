@@ -2,45 +2,18 @@ package com.soundstage.mixer.ui.components.drumpad
 
 import android.graphics.Bitmap
 import android.graphics.Color as AColor
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,122 +22,75 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.ImageShader
-import androidx.compose.ui.graphics.ShaderBrush
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.TileMode
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.model.SurfaceFxChain
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Random
-import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Palette canonique (8 couleurs, ordre stable — Brief B v5)
-// ═══════════════════════════════════════════════════════════════════════════
 object DpPalette {
     private val COLORS = listOf(
-        Color(0xFF7F9BC7), // steel
-        Color(0xFF9A86C2), // plum
-        Color(0xFFC27A8E), // dusty rose
-        Color(0xFFC9A15C), // sand
-        Color(0xFF86A394), // sage
-        Color(0xFF6FB3A8), // teal
-        Color(0xFFB58E6B), // copper
-        Color(0xFF8D97B8), // slate
+        Color(0xFF7F9BC7), Color(0xFF9A86C2), Color(0xFFC27A8E), Color(0xFFC9A15C),
+        Color(0xFF86A394), Color(0xFF6FB3A8), Color(0xFFB58E6B), Color(0xFF8D97B8)
     )
     fun at(idx: Int): Color = COLORS[((idx % 8) + 8) % 8]
-    val all: List<Color> get() = COLORS
 }
 
-// Constantes partagées pour cohérence visuelle JSX
 object DpColors {
     val PANEL_TOP = Color(0xFF232C3E)
     val PANEL_BOTTOM = Color(0xFF1A2230)
     val WELL = Color(0xFF0F141D)
     val INK = Color(0xFFE9EDF5)
-    val SOFT = Color(0xFFDCE2EE)
     val MUTE = Color(0xFF8690A4)
-    val DIM = Color(0xFF6F7A90)
+    val SOFT = Color(0xFFDCE2EE)
     val ACCENT = Color(0xFF8FB2E8)
-    val ACCENT_DEEP = Color(0xFF7FA3DD)
     val WARM = Color(0xFFD8A24A)
     val ROSE = Color(0xFFC2587A)
     val GREEN = Color(0xFF6EE7B7)
 }
-val dpWhite = Color.White
-val dpText = DpColors.INK
 
-// ═══════════════════════════════════════════════════════════════════════════
-// HSL → Color (matching `hsl(${(i * 30 + 205) % 360} 84% 61% / a)`)
-// ═══════════════════════════════════════════════════════════════════════════
 fun hslToColor(h: Float, s: Float, l: Float, a: Float = 1f): Color {
     val hh = (((h % 360f) + 360f) % 360f) / 60f
     val c = (1f - abs(2f * l - 1f)) * s
     val x = c * (1f - abs(hh % 2f - 1f))
     val m = l - c / 2f
     val (r1, g1, b1) = when {
-        hh < 1f -> Triple(c, x, 0f)
-        hh < 2f -> Triple(x, c, 0f)
-        hh < 3f -> Triple(0f, c, x)
-        hh < 4f -> Triple(0f, x, c)
-        hh < 5f -> Triple(x, 0f, c)
-        else    -> Triple(c, 0f, x)
+        hh < 1f -> Triple(c, x, 0f); hh < 2f -> Triple(x, c, 0f)
+        hh < 3f -> Triple(0f, c, x); hh < 4f -> Triple(0f, x, c)
+        hh < 5f -> Triple(x, 0f, c); else -> Triple(c, 0f, x)
     }
-    return Color(
-        red = (r1 + m).coerceIn(0f, 1f),
-        green = (g1 + m).coerceIn(0f, 1f),
-        blue = (b1 + m).coerceIn(0f, 1f),
-        alpha = a.coerceIn(0f, 1f)
-    )
+    return Color((r1+m).coerceIn(0f,1f), (g1+m).coerceIn(0f,1f), (b1+m).coerceIn(0f,1f), a.coerceIn(0f,1f))
 }
 
-// JSX `viv(i, a)` : teinte HSL par note
 fun vivColor(noteIndex: Int, alpha: Float = 1f): Color {
-    val hue = ((noteIndex * 30 + 205) % 360).toFloat()
-    return hslToColor(hue, 0.84f, 0.61f, alpha)
+    return hslToColor(((noteIndex * 30 + 205) % 360).toFloat(), 0.84f, 0.61f, alpha)
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Noise texture (JSX fractalNoise) — bitmap 120×120 pré-généré, tileable
-// ═══════════════════════════════════════════════════════════════════════════
 private object NoiseTexture {
     val bitmap: ImageBitmap by lazy {
         val size = 120
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val rnd = Random(42L)
-        for (y in 0 until size) {
-            for (x in 0 until size) {
-                val v = rnd.nextInt(256)
-                bmp.setPixel(x, y, AColor.argb(v, v, v, v))
-            }
+        for (y in 0 until size) for (x in 0 until size) {
+            val v = rnd.nextInt(256); bmp.setPixel(x, y, AColor.argb(v, v, v, v))
         }
         bmp.asImageBitmap()
     }
     val brush: Brush = object : ShaderBrush() {
-        override fun createShader(size: Size): android.graphics.Shader =
-            ImageShader(bitmap, TileMode.Repeated, TileMode.Repeated)
+        override fun createShader(size: Size): android.graphics.Shader = ImageShader(bitmap, TileMode.Repeated, TileMode.Repeated)
     }
 }
 
@@ -173,9 +99,53 @@ fun Modifier.noiseOverlay(alpha: Float = 0.06f): Modifier = this.drawWithContent
     drawRect(brush = NoiseTexture.brush, alpha = alpha, blendMode = BlendMode.Overlay)
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// DpRoll — animation rise (JSX `v5rise .22s ease-out`)
-// ═══════════════════════════════════════════════════════════════════════════
+@Composable
+fun DpIcon(name: String, size: Dp = 16.dp, color: Color = Color.White) {
+    Canvas(Modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val stroke = Stroke(width = w * 0.12f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        when (name) {
+            "back" -> {
+                drawLine(color, Offset(w*0.8f, h*0.5f), Offset(w*0.2f, h*0.5f), strokeWidth = w*0.12f, cap = StrokeCap.Round)
+                drawLine(color, Offset(w*0.2f, h*0.5f), Offset(w*0.4f, h*0.3f), strokeWidth = w*0.12f, cap = StrokeCap.Round)
+                drawLine(color, Offset(w*0.2f, h*0.5f), Offset(w*0.4f, h*0.7f), strokeWidth = w*0.12f, cap = StrokeCap.Round)
+            }
+            "gear" -> {
+                drawCircle(color, w*0.15f, center = Offset(w*0.5f, h*0.5f), style = stroke)
+                for (i in 0 until 8) {
+                    val angle = i * Math.PI / 4
+                    val sx = (w*0.35f * cos(angle)).toFloat() + w*0.5f
+                    val sy = (h*0.35f * sin(angle)).toFloat() + h*0.5f
+                    val ex = (w*0.45f * cos(angle)).toFloat() + w*0.5f
+                    val ey = (h*0.45f * sin(angle)).toFloat() + h*0.5f
+                    drawLine(color, Offset(sx, sy), Offset(ex, ey), strokeWidth = w*0.1f, cap = StrokeCap.Round)
+                }
+            }
+            "wave" -> {
+                val path = Path().apply {
+                    moveTo(w*0.1f, h*0.5f); lineTo(w*0.3f, h*0.5f)
+                    lineTo(w*0.4f, h*0.2f); lineTo(w*0.6f, h*0.8f)
+                    lineTo(w*0.7f, h*0.5f); lineTo(w*0.9f, h*0.5f)
+                }
+                drawPath(path, color, style = stroke)
+            }
+            "folder" -> {
+                val path = Path().apply {
+                    moveTo(w*0.1f, h*0.8f); lineTo(w*0.1f, h*0.2f)
+                    lineTo(w*0.4f, h*0.2f); lineTo(w*0.5f, h*0.35f)
+                    lineTo(w*0.9f, h*0.35f); lineTo(w*0.9f, h*0.8f); close()
+                }
+                drawPath(path, color, style = stroke)
+            }
+            "x" -> {
+                drawLine(color, Offset(w*0.2f, h*0.2f), Offset(w*0.8f, h*0.8f), strokeWidth = w*0.12f, cap = StrokeCap.Round)
+                drawLine(color, Offset(w*0.8f, h*0.2f), Offset(w*0.2f, h*0.8f), strokeWidth = w*0.12f, cap = StrokeCap.Round)
+            }
+        }
+    }
+}
+
 @Composable
 fun DpRoll(value: Any, style: TextStyle) {
     val key = value.toString()
@@ -190,85 +160,95 @@ fun DpRoll(value: Any, style: TextStyle) {
             prevKey = key
         }
     }
-    Text(
-        text = key,
-        style = style,
-        modifier = Modifier.graphicsLayer {
-            this.alpha = alphaAnim.value
-            translationY = transAnim.value
-        }
-    )
+    Text(key, style = style, modifier = Modifier.graphicsLayer { alpha = alphaAnim.value; translationY = transAnim.value })
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// DpSeg — segmented control avec slider animé (JSX `Seg`)
-// ═══════════════════════════════════════════════════════════════════════════
 @Composable
-fun <T> DpSeg(
-    options: List<Pair<T, String>>,
-    selected: T,
-    onChange: (T) -> Unit,
-    modifier: Modifier = Modifier,
-    height: Dp = 22.dp,
-    warn: Boolean = false,
-    warnColor: Color = DpColors.WARM,
-) {
+fun <T> DpSeg(options: List<Pair<T, String>>, selected: T, onChange: (T) -> Unit, modifier: Modifier = Modifier, height: Dp = 22.dp, warn: Boolean = false) {
     val idx = options.indexOfFirst { it.first == selected }.coerceAtLeast(0)
-    BoxWithConstraints(
-        modifier
-            .height(height + 6.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xCC0F141D))
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
-            .padding(3.dp)
-    ) {
+    BoxWithConstraints(modifier.height(height + 6.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xCC0F141D)).border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp)).padding(3.dp)) {
         val segW = maxWidth / options.size
-        val offsetX by animateDpAsState(
-            targetValue = segW * idx,
-            animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f),
-            label = "dpSegSlide"
-        )
-        // Slider animé
-        Box(
-            Modifier
-                .offset(x = offsetX)
-                .width(segW)
-                .fillMaxHeight()
-                .padding(horizontal = 1.dp)
-                .clip(RoundedCornerShape(9.dp))
-                .background(Brush.verticalGradient(listOf(Color(0xFF38445E), Color(0xFF2B3650))))
-                .drawBehind {
-                    drawRoundRect(
-                        color = Color.Black.copy(alpha = 0.4f),
-                        topLeft = Offset(0f, size.height * 0.15f),
-                        size = Size(size.width, size.height),
-                        cornerRadius = CornerRadius(9.dp.toPx())
-                    )
-                }
-        )
-        // Boutons texte
+        val offsetX by animateDpAsState(segW * idx, spring(dampingRatio = 0.6f, stiffness = 500f), label = "seg")
+        Box(Modifier.offset(x = offsetX).width(segW).fillMaxHeight().padding(horizontal = 1.dp).clip(RoundedCornerShape(9.dp)).background(Brush.verticalGradient(listOf(Color(0xFF38445E), Color(0xFF2B3650)))).drawBehind {
+            drawRoundRect(Color.Black.copy(alpha = 0.4f), topLeft = Offset(0f, size.height * 0.15f), size = Size(size.width, size.height), cornerRadius = CornerRadius(9.dp.toPx()))
+        })
         Row(Modifier.fillMaxSize()) {
             options.forEach { (k, l) ->
                 val isSel = selected == k
-                val color = when {
-                    !isSel -> Color(0xFF8690A4)
-                    warn && l == "Edit" -> warnColor
-                    else -> Color(0xFFF1F4FA)
+                val color = if (!isSel) Color(0xFF8690A4) else if (warn && l == "Edit") DpColors.WARM else Color(0xFFF1F4FA)
+                Box(Modifier.weight(1f).fillMaxHeight().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onChange(k) }, contentAlignment = Alignment.Center) {
+                    Text(l, color = color, fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold)
                 }
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clickable { onChange(k) },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        l,
-                        color = color,
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.ExtraBold
-                    )
-                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DpNoteKey(label: String, oct: Int, idx: Int, on: Boolean, ghost: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier) {
+    val hue = ((idx * 30 + 205) % 360).toFloat()
+    val tintBase = hslToColor(hue, 0.84f, 0.61f)
+    val tint98 = hslToColor(hue, 0.84f, 0.61f, 0.98f)
+    val tint66 = hslToColor(hue, 0.84f, 0.61f, 0.66f)
+    val tint26 = hslToColor(hue, 0.84f, 0.61f, 0.26f)
+    var pressed by remember { mutableStateOf(false) }
+    
+    val pressScale by animateFloatAsState(if (pressed) 0.965f else 1f, spring(dampingRatio = 0.6f, stiffness = 500f), label = "note")
+    val bg = if (on) Brush.verticalGradient(listOf(tint98, tint66)) else Brush.verticalGradient(listOf(tint26, Color(0xFF1B2336)))
+
+    Box(
+        modifier = modifier.graphicsLayer { scaleX = pressScale; scaleY = pressScale }.clip(RoundedCornerShape(13.dp)).background(bg)
+            .then(if (!on && ghost) Modifier.border(1.5.dp, hslToColor(hue, 0.84f, 0.61f, 0.9f), RoundedCornerShape(13.dp)) else Modifier)
+            .noiseOverlay(0.06f).pointerInput(idx) { detectTapGestures(onPress = { pressed = true; onToggle(); tryAwaitRelease(); pressed = false }) },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(label, color = if (on) Color.White else tintBase, fontSize = 13.5.sp, fontWeight = FontWeight.ExtraBold)
+        if (on) Box(Modifier.fillMaxSize()) { Text(oct.toString(), color = Color.White.copy(alpha = 0.85f), fontSize = 8.5.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace, modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp)) }
+    }
+}
+
+@Composable
+fun DpVolumeKnob(value: Float, onChange: (Float) -> Unit, modifier: Modifier = Modifier, size: Dp = 52.dp, onDoubleTap: Float = 50f, showLabel: Boolean = true) {
+    val v = value.coerceIn(0f, 100f)
+    var dragStartV by remember { mutableStateOf(0f) }
+    
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = modifier) {
+        Box(Modifier.size(size).pointerInput(Unit) { detectDragGestures(onDragStart = { dragStartV = v }) { change, dragAmount ->
+            change.consume()
+            val newV = (dragStartV - dragAmount.y * 0.6f).coerceIn(0f, 100f)
+            dragStartV = newV
+            onChange(newV)
+        } }.pointerInput(Unit) { detectTapGestures(onDoubleTap = { onChange(onDoubleTap) }) }) {
+            val angle = -135f + (v / 100f) * 270f
+            Canvas(Modifier.fillMaxSize()) {
+                val c = center; val r = size.toPx() * 0.43f
+                drawArc(Color.White.copy(alpha = 0.08f), 135f, 270f, false, style = Stroke(3.dp.toPx(), cap = StrokeCap.Round))
+                if (v > 0.5f) drawArc(Brush.linearGradient(listOf(DpColors.ACCENT.copy(alpha = 0.45f), DpColors.ACCENT), Offset(c.x - r, c.y - r), Offset(c.x + r, c.y + r)), 135f, 270f * (v / 100f), false, style = Stroke(3.dp.toPx(), cap = StrokeCap.Round))
+                drawCircle(Color.Black.copy(alpha = 0.5f), r * 0.76f, c + Offset(0f, 1.6.dp.toPx()))
+                drawCircle(Brush.radialGradient(listOf(Color(0xFF626C90), Color(0xFF2C3550), Color(0xFF141A29)), Offset(c.x - r*0.28f, c.y - r*0.44f), r*1.56f), r * 0.74f, c)
+                rotate(angle, c) { drawLine(DpColors.ACCENT, c + Offset(0f, -r * 0.95f), c + Offset(0f, -r * 0.55f), 2.4.dp.toPx(), StrokeCap.Round) }
+            }
+        }
+        if (showLabel) Column {
+            Text("VOLUME", color = Color(0xFF7B859A), fontSize = 9.5.sp, fontWeight = FontWeight.Bold)
+            Text("${v.toInt()}%", color = Color(0xFFF1F4FA), fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
+        }
+    }
+}
+
+@Composable
+fun DpFxCase(fx: SurfaceFxChain, includeShimmer: Boolean, label: String, onOpen: () -> Unit, modifier: Modifier = Modifier) {
+    val effects = buildList { add(fx.filterOn); add(fx.brightnessOn); add(fx.delayOn); add(fx.reverbOn); if (includeShimmer) add(fx.shimmerOn) }
+    val active = effects.count { it }; val anyOn = active > 0
+    val bg = if (anyOn) Brush.verticalGradient(listOf(Color(0xFF34304A), Color(0xFF262238))) else Brush.verticalGradient(listOf(Color(0xFF2A3347), Color(0xFF1F2739)))
+    Box(modifier.clip(RoundedCornerShape(14.dp)).background(bg).then(if (anyOn) Modifier.border(1.dp, DpColors.WARM.copy(alpha = 0.4f), RoundedCornerShape(14.dp)) else Modifier).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onOpen() }.padding(10.dp, 8.dp)) {
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(label, color = if (anyOn) Color(0xFFF1F4FA) else Color(0xFF9AA5BA), fontSize = 12.5.sp, fontWeight = FontWeight.ExtraBold)
+                Text("$active/${effects.size}", color = if (anyOn) DpColors.WARM else Color(0xFF566075), fontSize = 10.5.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
+                effects.forEach { on -> Box(Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(2.dp)).background(if (on) DpColors.WARM else Color.White.copy(alpha = 0.1f))) }
             }
         }
     }
@@ -365,315 +345,6 @@ fun DpVolumeOverlay(value: Int, color: Color, modifier: Modifier = Modifier) {
                             .height(h)
                             .clip(RoundedCornerShape(2.dp))
                             .background(if (on) barColor else Color.White.copy(alpha = 0.12f))
-                    )
-                }
-            }
-        }
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// DpNoteKey — TonicPad key (JSX `NoteKey`)
-// ═══════════════════════════════════════════════════════════════════════════
-@Composable
-fun DpNoteKey(
-    label: String,
-    oct: Int,
-    idx: Int,
-    on: Boolean,
-    ghost: Boolean,
-    onToggle: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val hue = ((idx * 30 + 205) % 360).toFloat()
-    val tintBase = hslToColor(hue, 0.84f, 0.61f)
-    val tint98 = hslToColor(hue, 0.84f, 0.61f, 0.98f)
-    val tint66 = hslToColor(hue, 0.84f, 0.61f, 0.66f)
-    val tint26 = hslToColor(hue, 0.84f, 0.61f, 0.26f)
-    val tint38 = hslToColor(hue, 0.84f, 0.61f, 0.38f)
-
-    var pressed by remember { mutableStateOf(false) }
-    var rings by remember { mutableStateOf(listOf<Offset>()) }
-
-    val pressScale by animateFloatAsState(
-        targetValue = if (pressed) 0.965f else 1f,
-        animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f),
-        label = "notePress"
-    )
-    // Pulse du glow quand ON (JSX v5drone)
-    val dronePulse by rememberInfiniteTransition(label = "drone").animateFloat(
-        initialValue = 0.55f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1700, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "droneP"
-    )
-    // Clear rings après expiration
-    LaunchedEffect(rings) {
-        if (rings.isNotEmpty()) {
-            delay(560L)
-            rings = emptyList()
-        }
-    }
-
-    val bg = if (on) {
-        Brush.verticalGradient(listOf(tint98.copy(alpha = 0.98f * dronePulse + 0.02f), tint66))
-    } else {
-        Brush.verticalGradient(listOf(tint26, Color(0xFF1B2336)))
-    }
-
-    Box(
-        modifier = modifier
-            .graphicsLayer { scaleX = pressScale; scaleY = pressScale }
-            .clip(RoundedCornerShape(13.dp))
-            .background(bg)
-            .then(
-                if (!on && ghost) Modifier.border(
-                    1.5.dp, hslToColor(hue, 0.84f, 0.61f, 0.9f), RoundedCornerShape(13.dp)
-                ) else if (!on) Modifier.border(
-                    1.dp, tint38, RoundedCornerShape(13.dp)
-                ) else Modifier
-            )
-            .noiseOverlay(0.06f)
-            .pointerInput(idx) {
-                detectTapGestures(
-                    onPress = { offset ->
-                        pressed = true
-                        rings = rings + offset
-                        onToggle()
-                        tryAwaitRelease()
-                        pressed = false
-                    }
-                )
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        // ring bursts
-        Canvas(Modifier.fillMaxSize()) {
-            rings.forEach { pos ->
-                drawCircle(
-                    color = if (on) Color.White else tintBase,
-                    radius = 22.dp.toPx() * 1.5f,
-                    center = pos,
-                    style = Stroke(width = 1.5.dp.toPx())
-                )
-            }
-        }
-        Text(
-            text = label,
-            color = if (on) Color.White else tintBase,
-            fontSize = 13.5.sp,
-            fontWeight = FontWeight.ExtraBold
-        )
-        if (on) {
-            Box(Modifier.fillMaxSize()) {
-                Text(
-                    text = oct.toString(),
-                    color = Color.White.copy(alpha = 0.85f),
-                    fontSize = 8.5.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = 6.dp, bottom = 3.dp)
-                )
-            }
-        }
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// DpVolumeKnob — SVG-like Canvas (JSX `VolumeKnob`)
-// ═══════════════════════════════════════════════════════════════════════════
-@Composable
-fun DpVolumeKnob(
-    value: Float,               // 0..100
-    onChange: (Float) -> Unit,  // 0..100
-    modifier: Modifier = Modifier,
-    size: Dp = 52.dp,
-    onDoubleTap: Float = 50f,
-    showLabel: Boolean = true,
-) {
-    val v = value.coerceIn(0f, 100f)
-    var dragStartY by remember { mutableStateOf<Float?>(null) }
-    var dragStartV by remember { mutableStateOf(0f) }
-
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = modifier) {
-        Box(
-            Modifier
-                .size(size)
-                .pointerInput(Unit) {
-                    detectVerticalDragGestures(
-                        onDragStart = { dragStartY = it.y; dragStartV = v },
-                        onDragEnd = { dragStartY = null },
-                    ) { change, dragAmount ->
-                        change.consume()
-                        val startY = dragStartY ?: return@detectVerticalDragGestures
-                        val dy = startY - (startY + dragAmount)
-                        val newV = (dragStartV + dy * 0.6f).coerceIn(0f, 100f)
-                        dragStartY = startY + 0f // keep origin
-                        onChange(newV)
-                    }
-                }
-                .pointerInput(Unit) {
-                    detectTapGestures(onDoubleTap = { onChange(onDoubleTap) })
-                }
-        ) {
-            val angle = -135f + (v / 100f) * 270f
-            Canvas(Modifier.fillMaxSize()) {
-                val c = center
-                val r = size.toPx() * 0.43f
-                // Background arc (135° → 405°)
-                drawArc(
-                    color = Color.White.copy(alpha = 0.08f),
-                    startAngle = 135f, sweepAngle = 270f, useCenter = false,
-                    style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
-                )
-                // Active arc
-                if (v > 0.5f) {
-                    drawArc(
-                        brush = Brush.linearGradient(
-                            colors = listOf(DpColors.ACCENT.copy(alpha = 0.45f), DpColors.ACCENT),
-                            start = Offset(c.x - r, c.y - r),
-                            end = Offset(c.x + r, c.y + r)
-                        ),
-                        startAngle = 135f, sweepAngle = 270f * (v / 100f), useCenter = false,
-                        style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
-                    )
-                }
-                // Inner circle shadow
-                drawCircle(
-                    color = Color.Black.copy(alpha = 0.5f),
-                    radius = r * 0.76f,
-                    center = c + Offset(0f, 1.6.dp.toPx())
-                )
-                // Inner radial gradient (approximated by 2 circles)
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            Color(0xFF626C90),
-                            Color(0xFF2C3550),
-                            Color(0xFF141A29)
-                        ),
-                        center = Offset(c.x - r * 0.28f, c.y - r * 0.44f),
-                        radius = r * 1.56f
-                    ),
-                    radius = r * 0.74f,
-                    center = c
-                )
-                drawCircle(
-                    color = Color.White.copy(alpha = 0.14f),
-                    radius = r * 0.74f,
-                    center = c,
-                    style = Stroke(width = 1.dp.toPx())
-                )
-                // Inner ring
-                drawCircle(
-                    color = Color.White.copy(alpha = 0.07f),
-                    radius = r * 0.54f,
-                    center = c,
-                    style = Stroke(width = 1.dp.toPx())
-                )
-                // Indicator
-                rotate(angle, c) {
-                    drawLine(
-                        color = DpColors.ACCENT,
-                        start = c + Offset(0f, -r * 0.95f),
-                        end = c + Offset(0f, -r * 0.55f),
-                        strokeWidth = 2.4.dp.toPx(),
-                        cap = StrokeCap.Round
-                    )
-                }
-            }
-        }
-        if (showLabel) {
-            Column {
-                Text(
-                    "VOLUME",
-                    color = Color(0xFF7B859A),
-                    fontSize = 9.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.2.sp
-                )
-                Row(verticalAlignment = Alignment.Bottom) {
-                    DpRoll(
-                        value = v.toInt(),
-                        style = TextStyle(
-                            color = Color(0xFFF1F4FA),
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    )
-                    Text(
-                        "%",
-                        color = Color(0xFF7B859A),
-                        fontSize = 10.5.sp,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-            }
-        }
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// DpFxCase — slot FX avec bars colorées (JSX `FxCase`)
-// ═══════════════════════════════════════════════════════════════════════════
-@Composable
-fun DpFxCase(
-    fx: SurfaceFxChain,
-    includeShimmer: Boolean,
-    label: String,
-    onOpen: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val effects = buildList {
-        add(fx.filterOn)
-        add(fx.brightnessOn)
-        add(fx.delayOn)
-        add(fx.reverbOn)
-        if (includeShimmer) add(fx.shimmerOn)
-    }
-    val active = effects.count { it }
-    val total = effects.size
-    val anyOn = active > 0
-    val bg = if (anyOn) {
-        Brush.verticalGradient(listOf(Color(0xFF34304A), Color(0xFF262238)))
-    } else {
-        Brush.verticalGradient(listOf(Color(0xFF2A3347), Color(0xFF1F2739)))
-    }
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(bg)
-            .then(
-                if (anyOn) Modifier.border(1.dp, DpColors.WARM.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
-                else Modifier
-            )
-            .clickable(onClick = onOpen)
-            .padding(horizontal = 10.dp, vertical = 8.dp)
-    ) {
-        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(
-                    label,
-                    color = if (anyOn) Color(0xFFF1F4FA) else Color(0xFF9AA5BA),
-                    fontSize = 12.5.sp,
-                    fontWeight = FontWeight.ExtraBold
-                )
-                Text(
-                    "$active/$total",
-                    color = if (anyOn) DpColors.WARM else Color(0xFF566075),
-                    fontSize = 10.5.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
-                effects.forEach { on ->
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(if (on) DpColors.WARM else Color.White.copy(alpha = 0.10f))
                     )
                 }
             }

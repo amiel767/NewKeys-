@@ -3,6 +3,7 @@ package com.soundstage.mixer.ui.pages
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,6 +38,7 @@ import com.soundstage.mixer.audio.LooperEngine
 import com.soundstage.mixer.ui.components.drumpad.DpColors
 import com.soundstage.mixer.ui.components.drumpad.DpDrumPadSettings
 import com.soundstage.mixer.ui.components.drumpad.DpFxCase
+import com.soundstage.mixer.ui.components.drumpad.DpIcon
 import com.soundstage.mixer.ui.components.drumpad.DpFxSheet
 import com.soundstage.mixer.ui.components.drumpad.DpLoopCase
 import com.soundstage.mixer.ui.components.drumpad.DpManager
@@ -154,7 +156,7 @@ fun DrumPadScreen(
                 val next = (uiState.transportBpm + delta).coerceIn(30, 300)
                 viewModel.setTransportBpm(next)
             },
-            onBackToMixer = { /* B7-1 : navigation parente */ },
+            onBackToMixer = { viewModel.navigateBackToMixer() },
             metroOn = metroOn,
             onOpenMetro = { metroOpen = true },
             onOpenSettings = { settingsOpen = true },
@@ -163,30 +165,16 @@ fun DrumPadScreen(
         // ═══════════ Main row ═══════════
         Row(Modifier.weight(1f).fillMaxWidth()) {
 
-            // ─── Colonne gauche (28%) ───
-            Column(
-                Modifier
-                    .weight(0.28f)
-                    .fillMaxHeight()
-                    .padding(start = 8.dp, end = 4.dp, top = 4.dp, bottom = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                // TonicPad 3×4
-                Column(
-                    Modifier.weight(1f).fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(5.dp)
-                ) {
+            // ─── Colonne gauche (196dp) ───
+            Column(Modifier.width(196.dp).fillMaxHeight().padding(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                // TonicPad grid 3×4
+                Column(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     TONIC_NOTES.chunked(3).forEachIndexed { rowIdx, rowNotes ->
-                        Row(
-                            Modifier.weight(1f).fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
-                        ) {
+                        Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             rowNotes.forEachIndexed { colIdx, note ->
                                 val idx = rowIdx * 3 + colIdx
                                 DpNoteKey(
-                                    label = note,
-                                    oct = parseOctave(uiState.tonicOctaveRange),
-                                    idx = idx,
+                                    label = note, oct = 0, idx = idx,
                                     on = uiState.activeTonicNotes.contains(note),
                                     ghost = false,
                                     onToggle = { viewModel.onTonicNoteClick(note) },
@@ -197,93 +185,57 @@ fun DrumPadScreen(
                     }
                 }
 
-                // Row [Oct-][X][Oct+][Multi][Clear]
-                Row(
-                    Modifier.fillMaxWidth().height(28.dp),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    SmallChip("−", Modifier.size(24.dp)) { viewModel.onTonicOctaveMinus() }
-                    Text(
-                        parseOctave(uiState.tonicOctaveRange).toString(),
-                        color = DpColors.INK,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    SmallChip("+", Modifier.size(24.dp)) { viewModel.onTonicOctavePlus() }
+                // Row [Oct-] [Oct 3] [Oct+] [Multi] [Clear]
+                Row(Modifier.fillMaxWidth().height(26.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // Bouton Oct -
+                    Box(Modifier.size(24.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF243047)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { viewModel.onTonicOctaveMinus() }, contentAlignment = Alignment.Center) {
+                        Text("−", color = Color(0xFFE3E8F2), fontSize = 13.sp)
+                    }
+                    // Texte Oct + chiffre
+                    Row(Modifier.width(48.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                        Text("Oct", color = Color(0xFF7B859A), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.width(4.dp))
+                        Text(parseOctave(uiState.tonicOctaveRange).toString(), color = Color(0xFFF1F4FA), fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
+                    }
+                    // Bouton Oct +
+                    Box(Modifier.size(24.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF243047)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { viewModel.onTonicOctavePlus() }, contentAlignment = Alignment.Center) {
+                        Text("+", color = Color(0xFFE3E8F2), fontSize = 13.sp)
+                    }
+        
                     Spacer(Modifier.weight(1f))
-                    SmallChip(
-                        "Multi",
-                        Modifier.height(24.dp),
-                        active = uiState.isMultiPadEnabled,
-                        accentColor = DpColors.ACCENT
-                    ) { viewModel.toggleMultiPad() }
-                    SmallChip("Clear", Modifier.height(24.dp)) {
-                        viewModel.onTonicNoteClick("")
+        
+                    // Multi
+                    Box(Modifier.height(24.dp).clip(RoundedCornerShape(8.dp)).background(if (uiState.isMultiPadEnabled) Color(0x248FB2E8) else Color.Transparent).border(1.dp, if (uiState.isMultiPadEnabled) Color(0x8C8FB2E8) else Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { viewModel.toggleMultiPad() }.padding(horizontal = 8.dp), contentAlignment = Alignment.Center) {
+                        Text("Multi", color = if (uiState.isMultiPadEnabled) DpColors.ACCENT else Color(0xFF8690A4), fontSize = 10.5.sp, fontWeight = FontWeight.ExtraBold)
+                    }
+                    // Clear
+                    Box(Modifier.height(24.dp).clip(RoundedCornerShape(8.dp)).border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { viewModel.onTonicNoteClick("") }.padding(horizontal = 8.dp), contentAlignment = Alignment.Center) {
+                        Text("Clear", color = Color(0xFFC7CFDD), fontSize = 10.5.sp, fontWeight = FontWeight.ExtraBold)
                     }
                 }
 
-                // Row 62dp : Knob + FxCase
-                Row(
-                    Modifier.fillMaxWidth().height(62.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Box(
-                        Modifier
-                            .weight(0.45f)
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(Brush.verticalGradient(listOf(Color(0xFF2A3347), Color(0xFF1F2739))))
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        DpVolumeKnob(
-                            value = (tonicVolume * 100f).coerceIn(0f, 100f),
-                            onChange = { viewModel.setTonicVolume(it / 100f) },
-                            size = 52.dp,
-                            onDoubleTap = 80f,
-                            showLabel = false,
-                        )
+                // Row 62dp: knob + tonic FX
+                Row(Modifier.fillMaxWidth().height(62.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box(Modifier.width(62.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                        DpVolumeKnob(value = (tonicVolume * 100f), onChange = { viewModel.setTonicVolume(it / 100f) }, modifier = Modifier.fillMaxSize(), showLabel = false)
                     }
-                    DpFxCase(
-                        fx = uiState.fxChains.tonic,
-                        includeShimmer = true,
-                        label = "Tonic FX",
-                        onOpen = { tonicFxOpen = true },
-                        modifier = Modifier.weight(0.55f).fillMaxHeight()
-                    )
+                    DpFxCase(fx = uiState.fxChains.tonic, includeShimmer = true, label = "Tonic FX", onOpen = { tonicFxOpen = true }, modifier = Modifier.weight(1f).fillMaxHeight())
                 }
 
-                // Row 30dp : Pad sound / Kit picker
-                Row(
-                    Modifier.fillMaxWidth().height(30.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    MiniCard(
-                        icon = "♫",
-                        label = "Pad",
-                        value = uiState.drumPads.firstOrNull { it.id == 9 }?.label
-                            ?: uiState.drumPads.firstOrNull()?.label
-                            ?: "—",
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                        onClick = {
-                            managerTab = "DrumPad"
-                            managerTarget = 9
-                            managerOpen = true
-                        }
-                    )
-                    MiniCard(
-                        icon = "📁",
-                        label = "Kit",
-                        value = activeKitName.ifEmpty { "—" },
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                        onClick = {
-                            managerTab = "Kits"
-                            managerTarget = null
-                            managerOpen = true
-                        }
-                    )
+                // Row 30dp: nav buttons
+                Row(Modifier.fillMaxWidth().height(30.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // Pad Sound -> Ouvre le vrai Soundfont Picker
+                    Row(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(10.dp)).background(Brush.verticalGradient(listOf(Color(0xFF2A3347), Color(0xFF1F2739)))).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { viewModel.openSoundfontForSlot(9) }.padding(horizontal = 9.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        DpIcon("wave", 12.dp, DpColors.ACCENT)
+                        Text("Pad", color = Color(0xFF7B859A), fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                        Text(uiState.audioSlots.firstOrNull { it.slotId == 9 }?.soundFontPath?.substringAfterLast("/") ?: "None", color = Color(0xFFE3E8F2), fontSize = 10.5.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    }
+                    // Kit Picker
+                    Row(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(10.dp)).background(Brush.verticalGradient(listOf(Color(0xFF2A3347), Color(0xFF1F2739)))).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { managerTab = "Kits"; managerOpen = true }.padding(horizontal = 9.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        DpIcon("folder", 12.dp, DpColors.ACCENT)
+                        Text("Kit", color = Color(0xFF7B859A), fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                        Text(activeKitName.ifEmpty { "None" }, color = Color(0xFFE3E8F2), fontSize = 10.5.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    }
                 }
             }
 
