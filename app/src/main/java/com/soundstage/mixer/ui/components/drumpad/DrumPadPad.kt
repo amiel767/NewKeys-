@@ -149,7 +149,6 @@ fun DpPad(
 
     Box(
         modifier = modifier
-            .aspectRatio(1f)
             .graphicsLayer {
                 scaleX = pressScale * (0.94f + 0.06f * entryAlpha)
                 scaleY = pressScale * (0.94f + 0.06f * entryAlpha)

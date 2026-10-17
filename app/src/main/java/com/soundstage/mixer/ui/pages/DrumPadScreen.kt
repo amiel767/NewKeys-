@@ -1,6 +1,7 @@
 package com.soundstage.mixer.ui.pages
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.audio.LooperEngine
+import com.soundstage.mixer.ui.components.drumpad.DpColors
 import com.soundstage.mixer.ui.components.drumpad.DpDrumPadSettings
 import com.soundstage.mixer.ui.components.drumpad.DpFxCase
 import com.soundstage.mixer.ui.components.drumpad.DpFxSheet
@@ -43,6 +45,7 @@ import com.soundstage.mixer.ui.components.drumpad.DpNoteKey
 import com.soundstage.mixer.ui.components.drumpad.DpPad
 import com.soundstage.mixer.ui.components.drumpad.DpPadEditor
 import com.soundstage.mixer.ui.components.drumpad.DpPalette
+import com.soundstage.mixer.ui.components.drumpad.DpSeg
 import com.soundstage.mixer.ui.components.drumpad.DpTopBar
 import com.soundstage.mixer.ui.components.drumpad.DpVolumeKnob
 import com.soundstage.mixer.ui.components.drumpad.MetroState
@@ -51,18 +54,6 @@ import com.soundstage.mixer.viewmodel.MixerViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
-private val BG_TOP = Color(0xFF141B27)
-private val BG_BOTTOM = Color(0xFF0F141D)
-private val PANEL_TOP = Color(0xFF232C3E)
-private val PANEL_BOTTOM = Color(0xFF1A2230)
-private val WELL = Color(0xFF0F141D)
-private val INK = Color(0xFFE9EDF5)
-private val MUTE = Color(0xFF8690A4)
-private val DIM = Color(0xFF6F7A90)
-private val ACCENT = Color(0xFF8FB2E8)
-private val ROSE = Color(0xFFC2587A)
-private val AMBER = Color(0xFFD8A24A)
-
 private val TONIC_NOTES = listOf(
     "C", "C#", "D",
     "D#", "E", "F",
@@ -70,9 +61,6 @@ private val TONIC_NOTES = listOf(
     "A", "A#", "B"
 )
 
-// ─────────────────────────────────────────────────────────────────────────
-// Root
-// ─────────────────────────────────────────────────────────────────────────
 @Composable
 fun DrumPadScreen(
     viewModel: MixerViewModel,
@@ -88,21 +76,24 @@ fun DrumPadScreen(
     var managerOpen by remember { mutableStateOf(false) }
     var managerTab by remember { mutableStateOf("Kits") }
     var managerTarget by remember { mutableStateOf<Int?>(1) }
-    var loopMenuIdx by remember { mutableStateOf<Int?>(null) }
 
     // ─── Grid modes ───
     var padMode by remember { mutableStateOf("pads") }       // "pads" | "loops"
     var playEditMode by remember { mutableStateOf("play") }  // "play" | "edit"
-    var loopQuantize by remember { mutableStateOf("1/16") }  // "1/16" | "free"
-    var loopLengthMode by remember { mutableStateOf("auto") } // "auto"|"1"|"2"|"4"|"8"
+    var loopQuantize by remember { mutableStateOf(if (uiState.looper.quantize) "1/16" else "Free") }
+    var loopLengthMode by remember { mutableStateOf(uiState.looper.lengthMode) }
     var padCount by remember { mutableStateOf(uiState.padCount) }
+    var localPreload by remember { mutableStateOf(true) }
+    var localHapticPads by remember { mutableStateOf(true) }
+    var localHapticLoops by remember { mutableStateOf(true) }
 
-    // ─── Metronome local state (V1: not persisted, sync from uiState) ───
+    // ─── Metronome local state ───
     var metroOn by remember { mutableStateOf(false) }
-    var metroState by remember(uiState.transportBpm, uiState.transportSignature,
-                               uiState.metronomeSound, uiState.metronomeAccent1,
-                               uiState.metronomeAccent13, uiState.metronomeVisualFlash,
-                               uiState.metronomeCountIn, uiState.metronomeTapBpm, metroOn) {
+    var metroState by remember(
+        uiState.transportSignature, uiState.transportSubdivision,
+        uiState.metronomeSound, uiState.metronomeAccent1, uiState.metronomeAccent13,
+        uiState.metronomeVisualFlash, uiState.metronomeCountIn, uiState.metronomeTapBpm
+    ) {
         mutableStateOf(
             MetroState(
                 on = metroOn,
@@ -119,7 +110,7 @@ fun DrumPadScreen(
         )
     }
 
-    // ─── Beat indicator (wall-clock approximation) ───
+    // ─── Beat indicator ───
     var beatIdx by remember { mutableStateOf(0) }
     LaunchedEffect(uiState.transportBpm, uiState.transportSignature) {
         val bpm = uiState.transportBpm.coerceAtLeast(30)
@@ -131,7 +122,7 @@ fun DrumPadScreen(
         }
     }
 
-    // ─── Frame clock for DpLoopCase head ───
+    // ─── Frame clock for DpLoopCase ───
     var nowNs by remember { mutableStateOf(System.nanoTime()) }
     LaunchedEffect(Unit) {
         while (isActive) {
@@ -143,54 +134,60 @@ fun DrumPadScreen(
     // ─── Derived ───
     val beatsPerBar = parseBeatsPerBar(uiState.transportSignature)
     val barDurationNs = (beatsPerBar.toLong() * (60_000_000_000L / uiState.transportBpm.coerceAtLeast(30)))
-    val anyRec = uiState.looper.cases.any {
-        it.state == LooperEngine.CaseState.Recording ||
-        it.state == LooperEngine.CaseState.Overdubbing
+    val anyRec = uiState.looper.cases.firstOrNull {
+        it.state == LooperEngine.CaseState.Recording || it.state == LooperEngine.CaseState.Overdubbing
     }
-    val activeTonicNotes: Set<String> = uiState.activeTonicNotes
-    val tonicVol = uiState.audioSlots.find { it.slotId == 9 }?.volume ?: 0.8f
+    val tonicVolume = uiState.audioSlots.firstOrNull { it.slotId == 9 }?.volume ?: 0.8f
+    val activeKitName = uiState.activeDrumKitName.ifEmpty {
+        uiState.kits.firstOrNull()?.name ?: ""
+    }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(BG_TOP, BG_BOTTOM)))
+            .background(Brush.verticalGradient(listOf(Color(0xFF141B27), Color(0xFF0F141D))))
     ) {
-        // ─── TopBar ───
+        // ═══════════ TopBar ═══════════
         DpTopBar(
             bpm = uiState.transportBpm,
             onBpmChange = { delta ->
                 val next = (uiState.transportBpm + delta).coerceIn(30, 300)
                 viewModel.setTransportBpm(next)
             },
-            onBackToMixer = { /* géré par l'écran parent */ },
+            onBackToMixer = { /* B7-1 : navigation parente */ },
             metroOn = metroOn,
             onOpenMetro = { metroOpen = true },
             onOpenSettings = { settingsOpen = true },
         )
 
+        // ═══════════ Main row ═══════════
         Row(Modifier.weight(1f).fillMaxWidth()) {
-            // ─── Colonne gauche (196dp) ───
+
+            // ─── Colonne gauche (28%) ───
             Column(
-                Modifier.width(196.dp).fillMaxHeight().padding(6.dp),
+                Modifier
+                    .weight(0.28f)
+                    .fillMaxHeight()
+                    .padding(start = 8.dp, end = 4.dp, top = 4.dp, bottom = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // TonicPad grid 3×4
+                // TonicPad 3×4
                 Column(
-                    Modifier.fillMaxWidth().weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                    Modifier.weight(1f).fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     TONIC_NOTES.chunked(3).forEachIndexed { rowIdx, rowNotes ->
                         Row(
-                            Modifier.fillMaxWidth().weight(1f),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            Modifier.weight(1f).fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
                             rowNotes.forEachIndexed { colIdx, note ->
                                 val idx = rowIdx * 3 + colIdx
                                 DpNoteKey(
                                     label = note,
-                                    oct = 0,
+                                    oct = parseOctave(uiState.tonicOctaveRange),
                                     idx = idx,
-                                    on = activeTonicNotes.contains(note),
+                                    on = uiState.activeTonicNotes.contains(note),
                                     ghost = false,
                                     onToggle = { viewModel.onTonicNoteClick(note) },
                                     modifier = Modifier.weight(1f).fillMaxHeight()
@@ -200,28 +197,53 @@ fun DrumPadScreen(
                     }
                 }
 
-                // Row [Oct-] [X] [Oct+] [Multi] [Clear]
+                // Row [Oct-][X][Oct+][Multi][Clear]
                 Row(
                     Modifier.fillMaxWidth().height(28.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    SmallBtn("−", Modifier.weight(1f)) { viewModel.onTonicOctaveMinus() }
-                    SmallBtn("Oct", Modifier.weight(1f)) { /* display only */ }
-                    SmallBtn("+", Modifier.weight(1f)) { viewModel.onTonicOctavePlus() }
-                    SmallBtn("Multi", Modifier.weight(1.4f)) { viewModel.toggleMultiPad() }
-                    SmallBtn("Clr", Modifier.weight(1f)) { viewModel.onTonicNoteClick("") }
+                    SmallChip("−", Modifier.size(24.dp)) { viewModel.onTonicOctaveMinus() }
+                    Text(
+                        parseOctave(uiState.tonicOctaveRange).toString(),
+                        color = DpColors.INK,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    SmallChip("+", Modifier.size(24.dp)) { viewModel.onTonicOctavePlus() }
+                    Spacer(Modifier.weight(1f))
+                    SmallChip(
+                        "Multi",
+                        Modifier.height(24.dp),
+                        active = uiState.isMultiPadEnabled,
+                        accentColor = DpColors.ACCENT
+                    ) { viewModel.toggleMultiPad() }
+                    SmallChip("Clear", Modifier.height(24.dp)) {
+                        viewModel.onTonicNoteClick("")
+                    }
                 }
 
-                // Row 62dp: knob + tonic FX
+                // Row 62dp : Knob + FxCase
                 Row(
                     Modifier.fillMaxWidth().height(62.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Box(Modifier.width(62.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                    Box(
+                        Modifier
+                            .weight(0.45f)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Brush.verticalGradient(listOf(Color(0xFF2A3347), Color(0xFF1F2739))))
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
                         DpVolumeKnob(
-                            value = (tonicVol * 100f).coerceIn(0f, 100f),
+                            value = (tonicVolume * 100f).coerceIn(0f, 100f),
                             onChange = { viewModel.setTonicVolume(it / 100f) },
-                            modifier = Modifier.fillMaxSize()
+                            size = 52.dp,
+                            onDoubleTap = 80f,
+                            showLabel = false,
                         )
                     }
                     DpFxCase(
@@ -229,95 +251,143 @@ fun DrumPadScreen(
                         includeShimmer = true,
                         label = "Tonic FX",
                         onOpen = { tonicFxOpen = true },
-                        modifier = Modifier.weight(1f).fillMaxHeight()
+                        modifier = Modifier.weight(0.55f).fillMaxHeight()
                     )
                 }
 
-                // Row 30dp: nav buttons
+                // Row 30dp : Pad sound / Kit picker
                 Row(
                     Modifier.fillMaxWidth().height(30.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    SmallBtn("Pad sound", Modifier.weight(1f)) {
-                        managerTab = "DrumPad"
-                        managerTarget = 1
-                        managerOpen = true
-                    }
-                    SmallBtn("Kit picker", Modifier.weight(1f)) {
-                        managerTab = "Kits"
-                        managerOpen = true
-                    }
+                    MiniCard(
+                        icon = "♫",
+                        label = "Pad",
+                        value = uiState.drumPads.firstOrNull { it.id == 9 }?.label
+                            ?: uiState.drumPads.firstOrNull()?.label
+                            ?: "—",
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        onClick = {
+                            managerTab = "DrumPad"
+                            managerTarget = 9
+                            managerOpen = true
+                        }
+                    )
+                    MiniCard(
+                        icon = "📁",
+                        label = "Kit",
+                        value = activeKitName.ifEmpty { "—" },
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        onClick = {
+                            managerTab = "Kits"
+                            managerTarget = null
+                            managerOpen = true
+                        }
+                    )
                 }
             }
 
-            // ─── Colonne droite ───
+            // ─── Colonne droite (72%) ───
             Column(
-                Modifier.weight(1f).fillMaxHeight().padding(6.dp),
+                Modifier
+                    .weight(0.72f)
+                    .fillMaxHeight()
+                    .padding(start = 4.dp, end = 8.dp, top = 4.dp, bottom = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 // Header row 30dp
                 Row(
                     Modifier.fillMaxWidth().height(30.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    HeaderSeg(listOf("Pads", "Loops"), padMode) { padMode = it }
+                    DpSeg(
+                        options = listOf("pads" to "Pads", "loops" to "Loops"),
+                        selected = padMode,
+                        onChange = { padMode = it },
+                        height = 24.dp,
+                        modifier = Modifier.width(120.dp)
+                    )
                     if (padMode == "pads") {
-                        HeaderSeg(listOf("Play", "Edit"), playEditMode) { playEditMode = it }
-                    } else {
-                        HeaderSeg(listOf("Auto", "1", "2", "4", "8"), loopLengthMode) { m ->
-                            loopLengthMode = m
-                            viewModel.setLooperLengthMode(m.lowercase())
+                        DpSeg(
+                            options = listOf("play" to "Play", "edit" to "Edit"),
+                            selected = playEditMode,
+                            onChange = { playEditMode = it },
+                            height = 24.dp,
+                            warn = true,
+                            modifier = Modifier.width(100.dp)
+                        )
+                        SmallChip("${padCount}p", Modifier.height(24.dp)) {
+                            val next = if (padCount == 8) 16 else 8
+                            padCount = next
+                            viewModel.setPadCount(next)
                         }
+                        SmallChip("Pads FX", Modifier.height(24.dp)) { padsFxOpen = true }
+                    } else {
+                        DpSeg(
+                            options = listOf(
+                                "auto" to "Auto",
+                                "1" to "1", "2" to "2",
+                                "4" to "4", "8" to "8"
+                            ),
+                            selected = loopLengthMode,
+                            onChange = { loopLengthMode = it; viewModel.setLooperLengthMode(it) },
+                            height = 24.dp,
+                            modifier = Modifier.width(170.dp)
+                        )
+                        DpSeg(
+                            options = listOf("1/16" to "1/16", "Free" to "Free"),
+                            selected = loopQuantize,
+                            onChange = {
+                                loopQuantize = it
+                                viewModel.setLooperQuantize(it == "1/16")
+                            },
+                            height = 24.dp,
+                            modifier = Modifier.width(90.dp)
+                        )
                     }
-                    HeaderSeg(listOf("1/16", "Free"), loopQuantize) {
-                        loopQuantize = it
-                        viewModel.setLooperQuantize(it == "1/16")
-                    }
-                    SmallBtn("${padCount}p", Modifier) {
-                        padCount = if (padCount == 8) 16 else 8
-                        viewModel.setPadCount(padCount)
-                    }
-                    SmallBtn("Pads FX", Modifier) { padsFxOpen = true }
                     Spacer(Modifier.weight(1f))
-                    BeatIndicator(beats = beatsPerBar, active = beatIdx)
-                    if (anyRec) RecBadge()
+                    BeatDots(beats = beatsPerBar, active = beatIdx)
+                    if (anyRec != null && padMode == "pads") {
+                        RecBadge()
+                    }
                 }
 
                 // Grid
-                if (padMode == "pads") {
-                    PadsGrid(
-                        uiState = uiState,
-                        padCount = padCount,
-                        editorPadId = editorPadId,
-                        playEditMode = playEditMode,
-                        onDown = { viewModel.onDrumPadPressed(it) },
-                        onUp = { viewModel.onDrumPadReleased(it) },
-                        onVolumeChange = { padId, vol -> viewModel.setDrumPadVolumeDirect(padId, vol / 100f) },
-                        onOpenEditor = { editorPadId = it },
-                        modifier = Modifier.fillMaxWidth().weight(1f)
-                    )
-                } else {
-                    LoopsGrid(
-                        cases = uiState.looper.cases,
-                        nowNs = nowNs,
-                        beatsPerBar = beatsPerBar,
-                        barDurationNs = barDurationNs,
-                        onTap = { viewModel.tapLooperCase(it) },
-                        onLongPress = { loopMenuIdx = it },
-                        modifier = Modifier.fillMaxWidth().weight(1f)
-                    )
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    if (padMode == "pads") {
+                        PadsGrid(
+                            uiState = uiState,
+                            padCount = padCount,
+                            playEditMode = playEditMode,
+                            onDown = { viewModel.onDrumPadPressed(it) },
+                            onUp = { viewModel.onDrumPadReleased(it) },
+                            onVolumeChange = { padId, vol -> viewModel.setDrumPadVolumeDirect(padId, vol / 100f) },
+                            onOpenEditor = { editorPadId = it },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        LoopsGrid(
+                            cases = uiState.looper.cases,
+                            nowNs = nowNs,
+                            beatsPerBar = beatsPerBar,
+                            barDurationNs = barDurationNs,
+                            onTap = { viewModel.tapLooperCase(it) },
+                            onLongPress = { viewModel.longPressLooperCaseAction(it, "menu") },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 }
             }
         }
     }
 
-    // ─── Overlays ───
+    // ═══════════ Overlays ═══════════
     if (metroOpen) {
         DpMetronomeOverlay(
             state = metroState,
             onChange = { next ->
-                val wasOn = metroOn
+                val wasOn = metroState.on
                 metroState = next
                 metroOn = next.on
                 viewModel.setMetronomeSignature(next.sig)
@@ -339,14 +409,17 @@ fun DrumPadScreen(
         DpDrumPadSettings(
             padCount = padCount,
             onPadCountChange = { padCount = it; viewModel.setPadCount(it) },
-            preload = false,
-            onPreloadChange = { /* V1: local only */ },
-            hapticPads = true,
-            onHapticPadsChange = { /* V1: local only */ },
-            hapticLoops = true,
-            onHapticLoopsChange = { /* V1: local only */ },
+            preload = localPreload,
+            onPreloadChange = { localPreload = it },
+            hapticPads = localHapticPads,
+            onHapticPadsChange = { localHapticPads = it },
+            hapticLoops = localHapticLoops,
+            onHapticLoopsChange = { localHapticLoops = it },
             quantize = loopQuantize,
-            onQuantizeChange = { loopQuantize = it; viewModel.setLooperQuantize(it == "1/16") },
+            onQuantizeChange = {
+                loopQuantize = it
+                viewModel.setLooperQuantize(it == "1/16")
+            },
             onClose = { settingsOpen = false }
         )
     }
@@ -355,7 +428,7 @@ fun DrumPadScreen(
         DpFxSheet(
             chain = uiState.fxChains.tonic,
             includeShimmer = true,
-            label = "Tonic FX",
+            label = "TonicPad",
             onChange = { viewModel.setTonicFxChain(it) },
             onClose = { tonicFxOpen = false }
         )
@@ -365,7 +438,7 @@ fun DrumPadScreen(
         DpFxSheet(
             chain = uiState.fxChains.pads,
             includeShimmer = false,
-            label = "Pads FX",
+            label = "Pad",
             onChange = { viewModel.setPadsFxChain(it) },
             onClose = { padsFxOpen = false }
         )
@@ -376,8 +449,10 @@ fun DrumPadScreen(
         if (pad != null) {
             DpPadEditor(
                 pad = pad,
-                color = DpPalette.at((editorPadId!! - 1).coerceAtLeast(0)),
-                onChange = { /* V1: local only, remote update via VM not exposed */ },
+                color = DpPalette.at((pad.id - 1).coerceAtLeast(0)),
+                onChange = { updated ->
+                    // V1 : ne persiste pas, B7-1 câblera un setter VM dédié
+                },
                 onClear = {
                     viewModel.assignDrumSampleOrLoop(pad.id, "", "", isLoop = false)
                     editorPadId = null
@@ -403,42 +478,27 @@ fun DrumPadScreen(
             drumSamples = uiState.realDrumPadFiles,
             loops = uiState.realLoopFiles,
             kits = uiState.kits,
-            activeKitName = uiState.activeDrumKitName,
+            activeKitName = activeKitName,
             scenes = emptyList(),
-            onLoadKit = { viewModel.loadKit(it) },
-            onDeleteKit = { viewModel.deleteKit(it) },
-            onSaveCurrentAsKit = { viewModel.saveCurrentPadsAsKit(it) },
+            onLoadKit = { name -> viewModel.loadKit(name) },
+            onDeleteKit = { name -> viewModel.deleteKit(name) },
+            onSaveCurrentAsKit = { name -> viewModel.saveCurrentPadsAsKit(name) },
             onAssign = { padIndex, sample ->
                 viewModel.assignDrumSampleOrLoop(padIndex, sample.name, sample.path, isLoop = false)
             },
-            onLoadScene = { },
+            onLoadScene = { /* V1 stub */ },
             onClose = { managerOpen = false }
-        )
-    }
-
-    if (loopMenuIdx != null) {
-        val idx = loopMenuIdx!!
-        val case = uiState.looper.cases.getOrNull(idx)
-        LoopCaseMenu(
-            index = idx,
-            state = case?.state ?: LooperEngine.CaseState.Empty,
-            onUndo = { viewModel.longPressLooperCaseAction(idx, "undo"); loopMenuIdx = null },
-            onDouble = { viewModel.longPressLooperCaseAction(idx, "double"); loopMenuIdx = null },
-            onPlayStop = { viewModel.tapLooperCase(idx); loopMenuIdx = null },
-            onClear = { viewModel.longPressLooperCaseAction(idx, "clear"); loopMenuIdx = null },
-            onClose = { loopMenuIdx = null }
         )
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Grid helpers
-// ─────────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// Grilles
+// ═══════════════════════════════════════════════════════════════════════════
 @Composable
 private fun PadsGrid(
     uiState: MixerUiState,
     padCount: Int,
-    editorPadId: Int?,
     playEditMode: String,
     onDown: (Int) -> Unit,
     onUp: (Int) -> Unit,
@@ -447,7 +507,7 @@ private fun PadsGrid(
     modifier: Modifier = Modifier,
 ) {
     val cols = 4
-    val rows = (padCount + cols - 1) / cols
+    val rows = if (padCount <= 8) 2 else 4
     val pads = uiState.drumPads.take(padCount)
     Column(
         modifier = modifier,
@@ -465,31 +525,34 @@ private fun PadsGrid(
                         Box(Modifier.weight(1f).fillMaxHeight())
                     } else if (playEditMode == "edit") {
                         Box(
-                            Modifier.weight(1f).fillMaxHeight()
+                            Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
                                 .clickable { onOpenEditor(pad.id) }
                         ) {
                             DpPad(
-                                index = idx + 1,
+                                index = idx,
                                 pad = pad,
                                 color = DpPalette.at(idx),
-                                mode = if (pad.isLoopMode) "Loop" else "One-shot",
+                                mode = "edit",
                                 runner = false,
                                 flash = false,
                                 ghost = false,
-                                onDown = { /* no-op in edit */ },
-                                onUp = { /* no-op in edit */ },
+                                onDown = {},
+                                onUp = {},
                                 onVolumeChange = { _, _ -> },
-                                appear = false
+                                appear = false,
+                                modifier = Modifier.fillMaxSize()
                             )
                         }
                     } else {
                         DpPad(
-                            index = idx + 1,
+                            index = idx,
                             pad = pad,
                             color = DpPalette.at(idx),
-                            mode = if (pad.isLoopMode) "Loop" else "One-shot",
-                            runner = false,
-                            flash = false,
+                            mode = "play",
+                            runner = pad.isLoopPlaying,
+                            flash = pad.isPressed,
                             ghost = false,
                             onDown = onDown,
                             onUp = onUp,
@@ -548,84 +611,56 @@ private fun LoopsGrid(
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
 // Small widgets
-// ─────────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
 @Composable
-private fun SmallBtn(
+private fun SmallChip(
     label: String,
     modifier: Modifier = Modifier,
+    active: Boolean = false,
+    accentColor: Color = DpColors.ACCENT,
     onClick: () -> Unit,
 ) {
     Box(
         modifier
-            .height(28.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .background(PANEL_TOP)
+            .clip(RoundedCornerShape(8.dp))
+            .background(
+                if (active) accentColor.copy(alpha = 0.14f)
+                else Color.White.copy(alpha = 0.05f)
+            )
+            .border(
+                1.dp,
+                if (active) accentColor.copy(alpha = 0.55f) else Color.White.copy(alpha = 0.10f),
+                RoundedCornerShape(8.dp)
+            )
             .clickable { onClick() }
-            .padding(horizontal = 6.dp),
+            .padding(horizontal = 8.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             label,
-            color = INK,
-            fontSize = 9.sp,
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.Medium
+            color = if (active) accentColor else DpColors.SOFT,
+            fontSize = 10.5.sp,
+            fontWeight = FontWeight.ExtraBold
         )
     }
 }
 
 @Composable
-private fun HeaderSeg(
-    options: List<String>,
-    selected: String,
-    onSelect: (String) -> Unit,
-) {
-    Row(
-        Modifier
-            .height(24.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .background(WELL)
-            .padding(2.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        options.forEach { opt ->
-            val sel = opt == selected
-            Box(
-                Modifier
-                    .height(20.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(if (sel) PANEL_TOP else Color.Transparent)
-                    .clickable { onSelect(opt) }
-                    .padding(horizontal = 6.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    opt,
-                    color = if (sel) INK else MUTE,
-                    fontSize = 9.sp,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun BeatIndicator(beats: Int, active: Int) {
+private fun BeatDots(beats: Int, active: Int) {
     Row(
         Modifier.height(24.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(3.dp)
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         for (i in 0 until beats) {
             val on = i == active
             Box(
                 Modifier
-                    .size(if (on) 7.dp else 5.dp)
+                    .size(7.dp)
                     .clip(CircleShape)
-                    .background(if (on) ACCENT else DIM.copy(alpha = 0.4f))
+                    .background(if (on) DpColors.ACCENT else Color.White.copy(alpha = 0.12f))
             )
         }
     }
@@ -635,87 +670,59 @@ private fun BeatIndicator(beats: Int, active: Int) {
 private fun RecBadge() {
     Box(
         Modifier
-            .height(22.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .background(ROSE.copy(alpha = 0.25f))
-            .padding(horizontal = 8.dp),
+            .height(24.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(DpColors.ROSE.copy(alpha = 0.14f))
+            .border(1.dp, DpColors.ROSE.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+            .padding(horizontal = 10.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            "● REC",
-            color = ROSE,
-            fontSize = 9.sp,
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.Medium
-        )
-    }
-}
-
-@Composable
-private fun LoopCaseMenu(
-    index: Int,
-    state: LooperEngine.CaseState,
-    onUndo: () -> Unit,
-    onDouble: () -> Unit,
-    onPlayStop: () -> Unit,
-    onClear: () -> Unit,
-    onClose: () -> Unit,
-) {
-    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).clickable { onClose() }) {
-        Column(
-            Modifier
-                .align(Alignment.Center)
-                .width(220.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Brush.verticalGradient(listOf(PANEL_TOP, PANEL_BOTTOM)))
-                .clickable(enabled = false, onClick = {})
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(
-                "Loop ${index + 1}",
-                color = INK,
-                fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.padding(bottom = 6.dp)
-            )
-            MenuItem("Undo last layer", onUndo)
-            MenuItem("Double length", onDouble)
-            MenuItem(
-                if (state == LooperEngine.CaseState.Playing ||
-                    state == LooperEngine.CaseState.Overdubbing) "Stop" else "Play",
-                onPlayStop
-            )
-            MenuItem("Clear", onClear)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box(Modifier.size(7.dp).clip(CircleShape).background(DpColors.ROSE))
+            Text("REC", color = DpColors.ROSE, fontSize = 10.5.sp, fontWeight = FontWeight.ExtraBold)
         }
     }
 }
 
 @Composable
-private fun MenuItem(label: String, onClick: () -> Unit) {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(32.dp)
-            .clip(RoundedCornerShape(6.dp))
+private fun MiniCard(
+    icon: String,
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(Brush.verticalGradient(listOf(Color(0xFF2A3347), Color(0xFF1F2739))))
             .clickable { onClick() }
-            .padding(horizontal = 10.dp),
-        contentAlignment = Alignment.CenterStart
+            .padding(horizontal = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
+        Text(icon, color = DpColors.ACCENT, fontSize = 12.sp)
+        Text(label, color = Color(0xFF7B859A), fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
         Text(
-            label,
-            color = INK,
-            fontSize = 11.sp,
-            fontFamily = FontFamily.Monospace
+            value,
+            color = DpColors.SOFT,
+            fontSize = 10.5.sp,
+            fontWeight = FontWeight.ExtraBold,
+            maxLines = 1,
+            modifier = Modifier.weight(1f)
         )
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
 // Utils
-// ─────────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
 private fun parseBeatsPerBar(sig: String): Int {
-    val beats = sig.substringBefore('/').toIntOrNull() ?: 4
-    return beats.coerceIn(1, 32)
+    return (sig.substringBefore('/').toIntOrNull() ?: 4).coerceIn(1, 32)
+}
+
+private fun parseOctave(range: String): Int {
+    // Format attendu : "C2-C5" ou "3" ou ""
+    val firstDigit = range.firstOrNull { it.isDigit() }
+    return firstDigit?.digitToInt() ?: 3
 }
