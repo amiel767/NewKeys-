@@ -161,8 +161,8 @@ fun DpPad(
         if (runner) {
             Box(Modifier.align(Alignment.TopEnd).padding(6.dp).size(10.dp)) {
                 DpLedRing(
-                    mode = if (flash) "solid" else "off",
                     color = color,
+                    mode = if (flash) "solid" else "off",
                 )
             }
         }
@@ -216,136 +216,10 @@ fun DpPad(
         dragVol?.let { v ->
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 DpVolumeOverlay(
-                    value = v,
-                    padColor = color,
+                    value = v.toInt(),
+                    color = color,
                     modifier = Modifier.align(Alignment.Center)
                 )
-            }
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────
-// DpNoteKey — touche TonicPad (ON/OFF + octave)
-// ─────────────────────────────────────────────────────────────────────────
-@Composable
-fun DpNoteKey(
-    label: String,
-    oct: Int,
-    idx: Int,
-    on: Boolean,
-    ghost: Boolean,
-    onToggle: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val tint = DpPalette.at(idx % 8)
-    val pressScale by animateFloatAsState(
-        targetValue = if (ghost) 0.94f else 1f,
-        animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f),
-        label = "dpNoteScale"
-    )
-    val bg = if (on) {
-        Brush.verticalGradient(
-            colors = listOf(tint.copy(alpha = 0.98f), tint.copy(alpha = 0.66f))
-        )
-    } else {
-        Brush.verticalGradient(
-            colors = listOf(tint.copy(alpha = 0.26f), Color(0xFF1B2336).copy(alpha = 0.92f))
-        )
-    }
-    val textColor = if (on) Color.White else tint
-    Box(
-        modifier = modifier
-            .graphicsLayer { scaleX = pressScale; scaleY = pressScale }
-            .clip(RoundedCornerShape(8.dp))
-            .background(bg)
-            .pointerInput(idx) {
-                detectTapGestures(onTap = { onToggle() })
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(label, color = textColor, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
-            if (oct != 0) {
-                Text(
-                    oct.toString(),
-                    color = textColor.copy(alpha = 0.7f),
-                    fontSize = 8.sp,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────
-// DpFxCase — slot FX (Tonic 5 effets / Pads 4 effets)
-// ─────────────────────────────────────────────────────────────────────────
-@Composable
-fun DpFxCase(
-    fx: SurfaceFxChain,
-    includeShimmer: Boolean,
-    label: String,
-    onOpen: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val total = if (includeShimmer) 5 else 4
-    val active = fx.enabledCount(includeShimmer)
-    val bars = buildList {
-        if (fx.filterOn) add(DpPalette.at(0))
-        if (fx.brightnessOn) add(DpPalette.at(3))
-        if (fx.delayOn) add(DpPalette.at(5))
-        if (fx.reverbOn) add(DpPalette.at(4))
-        if (includeShimmer && fx.shimmerOn) add(DpPalette.at(1))
-    }
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(Brush.verticalGradient(listOf(Color(0xFF232C3E), Color(0xFF1A2230))))
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
-                    onOpen()
-                }
-            }
-            .padding(8.dp)
-    ) {
-        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(
-                    label,
-                    color = Color.White.copy(alpha = 0.85f),
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace
-                )
-                Text(
-                    "$active/$total",
-                    color = Color.White.copy(alpha = 0.5f),
-                    fontSize = 9.sp,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                if (bars.isEmpty()) {
-                    Text(
-                        "—",
-                        color = Color.White.copy(alpha = 0.2f),
-                        fontSize = 9.sp,
-                        fontFamily = FontFamily.Monospace
-                    )
-                } else {
-                    bars.forEach { c ->
-                        Box(
-                            Modifier
-                                .size(width = 4.dp, height = 12.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(c)
-                        )
-                    }
-                }
             }
         }
     }
@@ -509,8 +383,8 @@ fun DpLoopCase(
         // LED ring top-right
         Box(Modifier.align(Alignment.TopEnd).padding(6.dp).size(10.dp)) {
             DpLedRing(
-                mode = ledMode,
                 color = borderColor,
+                mode = ledMode,
             )
         }
     }
