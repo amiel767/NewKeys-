@@ -1,0 +1,586 @@
+═══════════════════════════════════════════════════════════════════════════
+BRIEF-B — DrumPad v5 : Couche UI complète
+Repo : amiel767/NewKeys- · Branche : main · HEAD : e6e6cf0 (Brief-A fini)
+═══════════════════════════════════════════════════════════════════════════
+
+MODE D'EXÉCUTION
+────────────────
+5 commits, dans l'ordre B1 → B5. Chaque commit compile avant le suivant.
+Aucune question. Aucune alternative. Aucun TODO. Aucun commentaire ajouté
+sauf ceux explicitement fournis.
+Si une ligne ne correspond pas : applique la correspondance la plus proche,
+note l'écart, continue.
+Format imposé : [chantier] Titre — Fichier(s) — Compile: OK
+
+PRINCIPE
+────────
+- Toute l'UI utilise viewModel + uiState passés depuis MixerScreen.
+- Aucun état UI local n'est persisté en mémoire compodable ; tout passe
+  par le ViewModel (source de vérité unique).
+- Le JSX V5 est la référence visuelle et comportementale.
+- La signature DrumPadScreen(viewModel, uiState, modifier) est actée.
+
+APRÈS B5 :
+  - L'app affiche la nouvelle page DrumPad V5
+  - Les pads jouent (via onDrumPadPressed existant)
+  - Le TonicPad drone (via onTonicNoteClick existant, soundfont branché)
+  - Le métronome (Brief-A) est pilotable depuis le TopBar
+  - Le looper tourne visuellement + enregistre ses events
+  - Les FX chains sont éditables et persistées (DSP V1.5)
+  - Le Manager gère Kits/Samples/Loops ; Scenes = stub
+
+═══════════════════════════════════════════════════════════════════════════
+COMMIT B1 — Modèle DrumKit + state UI + persistance
+═══════════════════════════════════════════════════════════════════════════
+
+Fichiers :
+  - app/src/main/java/com/soundstage/mixer/model/DrumKit.kt (créé)
+  - app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt (modifié)
+  - app/src/main/java/com/soundstage/mixer/model/AppStatePersistence.kt (modifié)
+
+───── FICHIER CRÉÉ : DrumKit.kt ─────
+
+package com.soundstage.mixer.model
+
+/**
+ * Kit de batterie : suite de 8 à 16 noms de samples assignés aux pads.
+ * null dans la liste = pad vide.
+ */
+data class DrumKitData(
+    val id: String,
+    val name: String,
+    val padSamples: List<String?>,
+) {
+    companion object {
+        fun defaults(): List<DrumKitData> = listOf(
+            DrumKitData(
+                id = "gospel_01",
+                name = "Gospel NeoSoul 01",
+                padSamples = listOf("Tambourin N", "Chimes 2", null, null, "Kick Club", "Clap Tight", "Ambient Texture", "Hat Closed",
+                    null, null, null, null, null, null, null, null),
+            ),
+            DrumKitData(
+                id = "lofi_kit",
+                name = "Lo-Fi Kit",
+                padSamples = listOf("Kick Soft", "Snare Rim", "Hat Open", "Shaker Light", "Tom Low", "Clap Tight", null, "Conga High",
+                    null, null, null, null, null, null, null, null),
+            ),
+            DrumKitData(
+                id = "perc_set",
+                name = "Percussion Set",
+                padSamples = listOf("Conga High", "Shaker Light", null, "Tambourin N", "Chimes 2", "Tom Low", "Hat Closed", null,
+                    null, null, null, null, null, null, null, null),
+            ),
+        )
+    }
+}
+
+───── PATCH MixerViewModel.kt : ajout de champ à MixerUiState ─────
+
+Dans `data class MixerUiState`, insérer juste AVANT `val activeTrackSettingsId: Int? = null` :
+
+    // DrumPad v5
+    val padCount: Int = 8,
+    val kits: List<com.soundstage.mixer.model.DrumKitData> = com.soundstage.mixer.model.DrumKitData.defaults(),
+
+───── PATCH MixerViewModel.kt : nouvelles méthodes ─────
+
+Ajouter à la fin de la classe, juste avant `private fun buildFxChainsJson(...)` :
+
+    fun setPadCount(count: Int) {
+        val c = if (count >= 16) 16 else 8
+        _uiState.update { it.copy(padCount = c) }
+        persistCurrentStateDebounced()
+    }
+
+    fun saveCurrentPadsAsKit(name: String) {
+        val cleanName = name.trim().ifEmpty { "Kit ${_uiState.value.kits.size + 1}" }
+        val kitId = "kit_${System.currentTimeMillis()}"
+        val samples = _uiState.value.drumPads
+            .sortedBy { it.id }
+            .map { it.sampleFileName.ifEmpty { null } }
+        val newKit = com.soundstage.mixer.model.DrumKitData(id = kitId, name = cleanName, padSamples = samples)
+        _uiState.update { it.copy(kits = it.kits + newKit, activeDrumKitName = cleanName) }
+        persistCurrentStateDebounced()
+    }
+
+    fun loadKit(kitId: String) {
+        val kit = _uiState.value.kits.find { it.id == kitId || it.name == kitId } ?: return
+        _uiState.update { state ->
+            val updatedPads = state.drumPads.mapIndexed { idx, pad ->
+                if (idx < kit.padSamples.size) {
+                    val sampleName = kit.padSamples[idx]
+                    pad.copy(
+                        label = sampleName?.take(12) ?: "Empty",
+                        sampleFileName = sampleName ?: "",
+                        sampleFilePath = "",
+                    )
+                } else pad
+            }
+            state.copy(drumPads = updatedPads, activeDrumKitName = kit.name)
+        }
+        persistCurrentStateDebounced()
+    }
+
+    fun deleteKit(kitId: String) {
+        _uiState.update { state ->
+            val remaining = state.kits.filterNot { it.id == kitId }
+            val nextName = if (state.kits.find { it.id == kitId }?.name == state.activeDrumKitName) {
+                remaining.firstOrNull()?.name ?: ""
+            } else state.activeDrumKitName
+            state.copy(kits = remaining, activeDrumKitName = nextName)
+        }
+        persistCurrentStateDebounced()
+    }
+
+───── PATCH AppStatePersistence.kt ─────
+
+1. Dans `companion object`, ajouter avant `}` de fermeture :
+
+        private const val KEY_PAD_COUNT = "drum_pad_count"
+        private const val KEY_KITS_JSON = "drum_kits_json"
+
+2. Dans `data class RestoredAppState`, ajouter à la fin avant `)` :
+
+        val drumPadCount: Int? = null,
+        val drumKitsJson: String? = null,
+
+3. Dans la signature de `saveAppState`, ajouter avant `) {` :
+
+        drumPadCount: Int = 8,
+        drumKitsJson: String = "",
+
+4. Dans `prefs.edit().apply { ... }`, ajouter avant `.apply()` :
+
+                putInt(KEY_PAD_COUNT, drumPadCount)
+                putString(KEY_KITS_JSON, drumKitsJson)
+
+5. Dans `loadAppState()`, avant `return RestoredAppState(` :
+
+            val drumPadCount = if (prefs.contains(KEY_PAD_COUNT)) prefs.getInt(KEY_PAD_COUNT, 8) else null
+            val drumKitsJson = prefs.getString(KEY_KITS_JSON, null)
+
+6. Dans `return RestoredAppState(...)`, avant `)` de fermeture :
+
+                drumPadCount = drumPadCount,
+                drumKitsJson = drumKitsJson,
+
+───── PATCH MixerViewModel.kt : persistCurrentState ─────
+
+Dans `persistCurrentState()`, dans l'appel `appStatePersistence.saveAppState(...)`,
+avant `)` de fermeture, ajouter :
+
+            drumPadCount = state.padCount,
+            drumKitsJson = buildKitsJson(state.kits),
+
+───── PATCH MixerViewModel.kt : restoreSavedAppState ─────
+
+Dans `state.copy(...)`, avant `)` de fermeture, ajouter :
+
+                        padCount = saved.drumPadCount ?: state.padCount,
+                        kits = parseKitsJson(saved.drumKitsJson).ifEmpty { com.soundstage.mixer.model.DrumKitData.defaults() },
+
+───── PATCH MixerViewModel.kt : helpers buildKitsJson / parseKitsJson ─────
+
+Juste avant `private fun buildFxChainsJson(...)`, ajouter :
+
+    private fun buildKitsJson(kits: List<com.soundstage.mixer.model.DrumKitData>): String {
+        return try {
+            val arr = org.json.JSONArray()
+            kits.forEach { kit ->
+                val o = org.json.JSONObject().apply {
+                    put("id", kit.id)
+                    put("name", kit.name)
+                    val s = org.json.JSONArray()
+                    kit.padSamples.forEach { if (it == null) s.put(org.json.JSONObject.NULL) else s.put(it) }
+                    put("padSamples", s)
+                }
+                arr.put(o)
+            }
+            arr.toString()
+        } catch (_: Exception) { "" }
+    }
+
+    private fun parseKitsJson(json: String?): List<com.soundstage.mixer.model.DrumKitData> {
+        if (json.isNullOrEmpty()) return emptyList()
+        return try {
+            val arr = org.json.JSONArray(json)
+            val list = mutableListOf<com.soundstage.mixer.model.DrumKitData>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val sArr = o.optJSONArray("padSamples")
+                val samples = mutableListOf<String?>()
+                if (sArr != null) {
+                    for (j in 0 until sArr.length()) {
+                        if (sArr.isNull(j)) samples.add(null)
+                        else samples.add(sArr.getString(j))
+                    }
+                }
+                list.add(com.soundstage.mixer.model.DrumKitData(
+                    id = o.optString("id", "kit_$i"),
+                    name = o.optString("name", "Kit ${i + 1}"),
+                    padSamples = samples,
+                ))
+            }
+            list
+        } catch (_: Exception) { emptyList() }
+    }
+
+Puis :
+    ./gradlew :app:compileDebugKotlin
+Si OK :
+    git add app/src/main/java/com/soundstage/mixer/model/DrumKit.kt \
+            app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt \
+            app/src/main/java/com/soundstage/mixer/model/AppStatePersistence.kt
+    git commit -m "[chantier] DrumKit modèle + state + persistance — Compile: OK"
+
+═══════════════════════════════════════════════════════════════════════════
+COMMIT B2 — Primitives : palette, Seg, Roll, LedRing, VolumeOverlay, VolumeKnob
+═══════════════════════════════════════════════════════════════════════════
+
+Fichier créé : app/src/main/java/com/soundstage/mixer/ui/components/drumpad/DrumPadPrimitives.kt
+
+───── DÉBUT CONTENU À COLLER TEL QUEL ─────
+package com.soundstage.mixer.ui.components.drumpad
+
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.sin
+
+// ─── Palette v5 (8 couleurs stables) ───
+object DpPalette {
+    val colors: List<Color> = listOf(
+        Color(0xFF7F9BC7), // steel
+        Color(0xFF9A86C2), // plum
+        Color(0xFFC27A8E), // dusty rose
+        Color(0xFFC9A15C), // sand
+        Color(0xFF86A394), // sage
+        Color(0xFF6FB3A8), // teal
+        Color(0xFFB58E6B), // copper
+        Color(0xFF8D97B8), // slate
+    )
+    fun at(index: Int): Color = colors[index % 8]
+}
+
+object DpColors {
+    val Accent = Color(0xFF8FB2E8)
+    val AccentDeep = Color(0xFF7FA3DD)
+    val AccentText = Color(0xFF0F1726)
+    val Warm = Color(0xFFD8A24A)
+    val Rose = Color(0xFFC2587A)
+    val RoseDeep = Color(0xFF8A3B56)
+    val Ink = Color(0xFFE9EDF5)
+    val Mute = Color(0xFF8690A4)
+    val Dim = Color(0xFF7B859A)
+    val Well = Color(0xFF0F141D)
+    val PanelTop = Color(0xFF232C3E)
+    val PanelBottom = Color(0xFF1A2230)
+    val BgTop = Color(0xFF141B27)
+    val BgBottom = Color(0xFF0F141D)
+}
+
+fun dpWhite(alpha: Float): Color = Color.White.copy(alpha = alpha)
+
+fun dpText(size: Float, weight: FontWeight = FontWeight.Normal, color: Color = DpColors.Ink): TextStyle =
+    TextStyle(fontSize = size.sp, fontWeight = weight, color = color, letterSpacing = 0.sp)
+
+fun vivColor(noteIndex: Int, alpha: Float = 1f): Color {
+    val hue = ((noteIndex * 30 + 205) % 360).toFloat()
+    return Color.hsl(hue, 0.84f, 0.61f).copy(alpha = alpha)
+}
+
+// ─── Roll — animation de chiffre qui change ───
+@Composable
+fun DpRoll(value: Any, style: TextStyle) {
+    val prev = remember { mutableStateOf(value) }
+    var trigger by remember { mutableIntStateOf(0) }
+    LaunchedEffect(value) {
+        if (prev.value != value) {
+            prev.value = value
+            trigger++
+        }
+    }
+    Text(
+        text = value.toString(),
+        style = style,
+        modifier = Modifier.graphicsLayerAlphaOnChange(trigger)
+    )
+}
+
+private fun Modifier.graphicsLayerAlphaOnChange(trigger: Int): Modifier {
+    val alpha by animateFloatAsState(
+        targetValue = 1f,
+        animationSpec = tween(220),
+        label = "roll$trigger"
+    )
+    return this.then(Modifier.graphicsLayerCompat(alpha))
+}
+
+private fun Modifier.graphicsLayerCompat(alpha: Float): Modifier =
+    androidx.compose.ui.draw.alpha(alpha)
+
+// ─── Seg — segmenté générique ───
+@Composable
+fun <T> DpSeg(
+    options: List<Pair<T, String>>,
+    value: T,
+    onChange: (T) -> Unit,
+    modifier: Modifier = Modifier,
+    height: Dp = 22.dp,
+    warn: Boolean = false,
+) {
+    val idx = options.indexOfFirst { it.first == value }.coerceAtLeast(0)
+    val fraction by animateFloatAsState(
+        targetValue = if (options.isNotEmpty()) idx.toFloat() / options.size else 0f,
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = 500f),
+        label = "segFrac"
+    )
+    Box(
+        modifier
+            .height(height + 6.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xCC0F141D))
+            .border(1.dp, dpWhite(0.08f), RoundedCornerShape(12.dp))
+            .padding(3.dp)
+    ) {
+        if (options.isNotEmpty()) {
+            val segFraction = 1f / options.size
+            Box(
+                Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(segFraction)
+                    .offset(x = with(androidx.compose.ui.platform.LocalDensity.current) {
+                        (fraction * options.size * (0)).dp // placeholder, offset calculé par Layout
+                    })
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(Brush.verticalGradient(listOf(Color(0xFF38445E), Color(0xFF2B3650))))
+            )
+        }
+        Row(Modifier.fillMaxSize()) {
+            options.forEach { (key, label) ->
+                val on = key == value
+                val c by animateColorAsState(
+                    if (on) (if (warn && label == "Edit") DpColors.Warm else Color(0xFFF1F4FA)) else DpColors.Mute,
+                    tween(200),
+                    label = "segColor"
+                )
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .pointerInput(Unit) { detectTapGestures { onChange(key) } },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(label, style = dpText(11.5f, FontWeight.Bold, c), maxLines = 1)
+                }
+            }
+        }
+    }
+}
+
+// ─── LedRing — anneau LED (statique ou rotatif) ───
+@Composable
+fun DpLedRing(
+    color: Color,
+    mode: String,           // "off" | "run" | "queued" | "solid"
+    durSeconds: Float = 2f,
+    cornerDp: Dp = 18.dp,
+    strokeDp: Dp = 2.5.dp,
+) {
+    if (mode == "off") return
+    val infiniteTransition = rememberInfiniteTransition(label = "led")
+    val rotation by if (mode == "run") {
+        infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(tween((durSeconds * 1000).toInt(), easing = androidx.compose.animation.core.LinearEasing), androidx.compose.animation.core.RepeatMode.Restart),
+            label = "ledRot"
+        )
+    } else remember { mutableFloatStateOf(0f) }
+    val alpha by if (mode == "queued") {
+        infiniteTransition.animateFloat(
+            initialValue = 0.35f, targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(520), androidx.compose.animation.core.RepeatMode.Reverse),
+            label = "ledPulse"
+        )
+    } else remember { mutableFloatStateOf(1f) }
+    androidx.compose.foundation.Canvas(
+        Modifier
+            .fillMaxSize()
+            .clip(RoundedCornerShape(cornerDp))
+    ) {
+        val strokePx = strokeDp.toPx()
+        val inset = strokePx / 2f
+        val cornerPx = cornerDp.toPx()
+        if (mode == "run") {
+            androidx.compose.ui.graphics.drawscope.rotate(rotation) {
+                drawArc(
+                    brush = Brush.sweepGradient(listOf(Color.Transparent, color, Color.Transparent)),
+                    startAngle = 0f, sweepAngle = 360f, useCenter = false,
+                    topLeft = Offset(inset, inset),
+                    size = androidx.compose.ui.geometry.Size(size.width - strokePx, size.height - strokePx),
+                    style = Stroke(width = strokePx, cap = StrokeCap.Round),
+                    alpha = alpha
+                )
+            }
+        } else {
+            drawRoundRect(
+                color = color,
+                topLeft = Offset(inset, inset),
+                size = androidx.compose.ui.geometry.Size(size.width - strokePx, size.height - strokePx),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerPx),
+                style = Stroke(width = strokePx),
+                alpha = alpha
+            )
+        }
+    }
+}
+
+// ─── VolumeOverlay — 14 barres, pad → amber → rose ───
+@Composable
+fun DpVolumeOverlay(value: Float, padColor: Color, modifier: Modifier = Modifier) {
+    val N = 14
+    val active = Math.round((value / 100f) * N)
+    Box(
+        modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color(0xC7060914)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                "${value.toInt()}%",
+                style = dpText(22f, FontWeight.ExtraBold, Color(0xFFF1F4FA))
+            )
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.Bottom) {
+                for (i in 0 until N) {
+                    val on = i < active
+                    val h = (6 + (i.toFloat() / N) * 22).dp
+                    val segCol = when {
+                        (i.toFloat() / N) > 0.82f -> DpColors.Rose
+                        (i.toFloat() / N) > 0.6f -> DpColors.Warm
+                        else -> padColor
+                    }
+                    Box(
+                        Modifier
+                            .padding(horizontal = 1.dp)
+                            .width(4.dp)
+                            .height(h)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(if (on) segCol else dpWhite(0.12f))
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ─── VolumeKnob — 3D slider drag vertical ───
+@Composable
+fun DpVolumeKnob(
+    value: Float,               // 0..100
+    onChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    sizeDp: Dp = 52.dp,
+    onDoubleTap: Float = 80f,
+    label: Boolean = true,
+) {
+    var dragStart by remember { mutableStateOf<Pair<Float, Float>?>(null) }
+    val angle = -135f + (value / 100f) * 270f
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Box(
+            Modifier
+                .size(sizeDp)
+                .pointerInput(value) {
+                    detectDragGestures(
+                        onDragStart = { dragStart = it.y to value },
+                        onDragEnd = { dragStart = null },
+                        onDragCancel = { dragStart = null },
+                        onDrag = { change, dy ->
+                            change.consume()
+                            val start = dragStart ?: return@detectDragGestures
+                            val newValue = (start.second + (start.first - change.position.y) * 0.6f).coerceIn(0f, 100f)
+                            onChange(newValue)
+                        },
+                    )
+                }
+                .pointerInput(Unit) { detectTapGestures(onDoubleTap = { onChange(onDoubleTap) }) }
+        ) {
+            androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+                val cx = this.size.width / 2
+                val cy = this.size.height / 2
+                val outerR = this.size.minDimension / 2 * 0.95f
+                val innerR = outerR * 0.78f
+                // Outer ring
+                drawCircle(
+                    color = dpWhite(0.08f),
+                    radius = outerR,
+                    center = Offset(cx, cy),
+                    style = Stroke(width = 3f)
+                )
+                // Arc progress
+                drawArc(
+                    color = DpColors.Accent,
+                    startAngle = 135f,
+                    sweepAngle = (value / 100f) * 270f,
+                    useCenter = false,
+                    topLeft = Offset(cx - outerR, cy - outerR),
+                    size = androidx.compose.ui.geometry.Size(outerR * 2, outerR * 2),
+                    style = Stroke(width = 3f, cap = StrokeCap.Round),
+                )
+                // Body
+                drawCircle(color = Color(0xFF2C3550), radius = innerR, center = Offset(cx, cy))
+                drawCircle(color = dpWhite(0.14f), radius = innerR, center = Offset(cx, cy), style = Stroke(width = 1f))
+                // Indicator
+                val rad = Math.toRadians((angle + 90f).toDouble())
+                val endX = cx + (innerR * 0.85f * cos(rad)).toFloat()
+                val endY = cy + (innerR * 0.85f * sin(rad)).toFloat()
+                drawLine(DpColors.Accent, Offset(cx, cy), Offset(endX, endY), strokeWidth = 2.5f, cap = StrokeCap.Round)
+            }
+        }
+        if (label) {
+            Column {
+                Text("VOLUME", style = dpText(9.5f, FontWeight.Bold, DpColors.Dim).copy(letterSpacing = 1.2.sp))
+                Text("${value.toInt()}%", style = dpText(17f, FontWeight.ExtraBold, Color(0xFFF1F4FA)))
+            }
+        }
+    }
+}
+───── FIN CONTENU À COLLER TEL QUEL ─────
+
+Puis :
+    ./gradlew :app:compileDebugKotlin
+Si OK :
+    git add app/src/main/java/com/soundstage/mixer/ui/components/drumpad/DrumPadPrimitives.kt
+    git commit -m "[chantier] DrumPad primitives (palette, seg, roll, led, volume) — Compile: OK"
