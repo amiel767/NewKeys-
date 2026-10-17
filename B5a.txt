@@ -1,0 +1,185 @@
+═══════════════════════════════════════════════════════════════════════════
+BRIEF-B5a — LooperEngine callbacks + MixerViewModel wiring
+Repo: amiel767/NewKeys- · branche: main · base: f33ece7
+═══════════════════════════════════════════════════════════════════════════
+
+CONTEXTE
+  LooperEngine (créé Brief-A) stocke les events mais ne les joue pas.
+  MixerViewModel instancie transportClock/metronomeEngine/looperEngine
+  mais ne câble aucun callback. Ce commit ajoute les 2 callbacks à
+  LooperEngine, les câble dans MixerViewModel.init, et réécrit
+  onDrumPadPressed/onDrumPadReleased selon la logique V5.
+
+  onPlayNoteEvent reste null (V1 : drone piloté par multi-pad UI direct,
+  les events "note" sont enregistrés mais pas rejoués — décision section 7).
+
+PRÉREQUIS
+  git log --oneline -3      # attendu: f33ece7, d69bec1, f836b5f
+  git status                # attendu: clean
+
+ÉTAPE 0 — EXTRACTION (obligatoire)
+  # Localiser les 6 points d'ancrage
+  grep -n "lastBeatIndex"     app/src/main/java/com/soundstage/mixer/audio/LooperEngine.kt
+  grep -n "layers"            app/src/main/java/com/soundstage/mixer/audio/LooperEngine.kt
+  grep -n "looperEngine.start()" app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+  grep -n "fun onDrumPadPressed"  app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+  grep -n "fun onDrumPadReleased" app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+  grep -n "fun record("        app/src/main/java/com/soundstage/mixer/audio/LooperEngine.kt
+
+  Vérifier dans le retour :
+    - RecordedEvent : champs kind / idx / color / beatOffset (Double)
+    - Case : champ lastBeatIndex (Int), champ layers (List<List<RecordedEvent>>)
+    - runScheduler : une ligne `lastBeatIndex = <expr>` (ou équivalent
+      `case = case.copy(lastBeatIndex = <expr>)`)
+
+  Si l'un de ces symboles a un autre nom :
+    - adapter le snippet ci-dessous (1 ligne)
+    - NOTER dans le rapport, ne pas bloquer
+
+ÉTAPE 1 — EDIT LooperEngine.kt
+
+  (1a) Ajouter les 2 callbacks publics dans la classe, juste après les
+       propriétés publiques existantes (isActive / volume / etc.) :
+
+  ┌────────────────────────────────────────────────────────────────┐
+  │ // B5a: playback callbacks (invoked from runScheduler)         │
+  │ var onPlayPadEvent:  ((padIndex: Int)  -> Unit)? = null        │
+  │ var onPlayNoteEvent: ((noteIndex: Int) -> Unit)? = null        │
+  └────────────────────────────────────────────────────────────────┘
+
+  (1b) Dans runScheduler, à l'endroit où lastBeatIndex est mis à jour
+       pour une case (pattern `lastBeatIndex = <expr>`), INSÉRER le
+       bloc suivant AVANT la ligne d'assignation (pour capturer l'ancien
+       beat), puis REMPLACER l'assignation par `lastBeatIndex = __b5aNewBeat` :
+
+  ┌────────────────────────────────────────────────────────────────┐
+  │ // ── B5a: trigger playback callbacks on sub-boundary ──       │
+  │ val __b5aOldBeat = case.lastBeatIndex                          │
+  │ val __b5aNewBeat = <EXPRESSION_ORIGINELLE>                     │
+  │ if (__b5aNewBeat != __b5aOldBeat) {                            │
+  │     for (__b5aLayer in case.layers) {                          │
+  │         for (__b5aEvent in __b5aLayer) {                       │
+  │             if (kotlin.math.abs(                                  │
+  │                     __b5aEvent.beatOffset -                    │
+  │                     __b5aNewBeat.toDouble()                    │
+  │                 ) < 0.01) {                                    │
+  │                 when (__b5aEvent.kind) {                       │
+  │                     "pad"  -> onPlayPadEvent?.invoke(__b5aEvent.idx)  │
+  │                     "note" -> onPlayNoteEvent?.invoke(__b5aEvent.idx) │
+  │                 }                                              │
+  │             }                                                  │
+  │         }                                                      │
+  │     }                                                          │
+  │ }                                                              │
+  └────────────────────────────────────────────────────────────────┘
+
+  Puis :  remplacer la ligne `lastBeatIndex = <EXPRESSION_ORIGINELLE>`
+          par    `lastBeatIndex = __b5aNewBeat`
+
+  Vérification : la classe doit compiler. Ne PAS modifier les autres
+  transitions d'état (Queued → Recording, commitOverdub, etc.).
+
+ÉTAPE 2 — EDIT MixerViewModel.kt
+
+  (2a) Réécrire onDrumPadPressed / onDrumPadReleased. Remplacer INTÉGRALEMENT
+       les corps existants (section 4.9 : "à réécrire pour la nouvelle logique").
+
+  ┌────────────────────────────────────────────────────────────────┐
+  │ fun onDrumPadPressed(padId: Int) {                             │
+  │     val pad = _uiState.value.drumPads.getOrNull(padId - 1)     │
+  │         ?: return                                              │
+  │     if (pad.sampleFileName.isNotEmpty()) {                     │
+  │         audioEngine.playDrumPadSound(                          │
+  │             pad, pad.volume * _uiState.value.drumVolume        │
+  │         )                                                      │
+  │     }                                                          │
+  │     looperEngine.record(                                       │
+  │         "pad",                                                 │
+  │         padId - 1,                                             │
+  │         "#" + Integer.toHexString(                             │
+  │             DpPalette.at(padId - 1).value.toInt()              │
+  │         )                                                      │
+  │     )                                                          │
+  │     _uiState.update { st ->                                    │
+  │         st.copy(drumPads = st.drumPads.map {                   │
+  │             if (it.id == padId) it.copy(isPressed = true) else it │
+  │         })                                                     │
+  │     }                                                          │
+  │ }                                                              │
+  │                                                                │
+  │ fun onDrumPadReleased(padId: Int) {                            │
+  │     _uiState.update { st ->                                    │
+  │         st.copy(drumPads = st.drumPads.map {                   │
+  │             if (it.id == padId) it.copy(isPressed = false) else it│
+  │         })                                                     │
+  │     }                                                          │
+  │ }                                                              │
+  └────────────────────────────────────────────────────────────────┘
+
+  (2b) Ajouter l'import DpPalette en haut du fichier :
+       import com.soundstage.mixer.ui.components.drumpad.DpPalette
+
+  (2c) Dans init { }, juste APRÈS `looperEngine.start()`, ajouter :
+
+  ┌────────────────────────────────────────────────────────────────┐
+  │ // B5a: wire LooperEngine callbacks → audio playback           │
+  │ looperEngine.onPlayPadEvent = { idx ->                         │
+  │     val pad = _uiState.value.drumPads.getOrNull(idx)           │
+  │         ?: return@let                                           │
+  │     if (pad.sampleFileName.isNotEmpty()) {                     │
+  │         audioEngine.playDrumPadSound(                          │
+  │             pad, pad.volume * _uiState.value.drumVolume        │
+  │         )                                                      │
+  │     }                                                          │
+  │ }                                                              │
+  │ // onPlayNoteEvent reste null (V1: drone piloté par UI direct) │
+  └────────────────────────────────────────────────────────────────┘
+
+  ⚠ Si `return` (sans label) est refusé par le compilateur sur une
+    lambda affectée à un champ de type `((Int) -> Unit)?`, remplacer par :
+
+      looperEngine.onPlayPadEvent = playPad@{ idx ->
+          val pad = _uiState.value.drumPads.getOrNull(idx)
+              ?: return@playPad
+          if (pad.sampleFileName.isNotEmpty()) {
+              audioEngine.playDrumPadSound(
+                  pad, pad.volume * _uiState.value.drumVolume
+              )
+          }
+      }
+
+    NOTER dans le rapport laquelle des deux formes a été retenue.
+
+ÉTAPE 3 — COMPILER
+  ./gradlew :app:compileDebugKotlin
+  Erreurs attendues :
+    - import DpPalette introuvable → vérifier le package exact via
+      grep -rn "object DpPalette" app/src/main/
+      (B2a l'a créé dans ui/components/drumpad/DrumPadPrimitives.kt,
+      package com.soundstage.mixer.ui.components.drumpad)
+    - return@let refusé → utiliser la forme labellisée ci-dessus
+    - champ .value sur Color → Color.value est un ULong ; .toInt() peut
+      tronquer. Si la compilation échoue sur .value.toInt(), remplacer par
+      une conversion ARGB propre :
+        val argb = DpPalette.at(padId - 1).toArgb()
+        "#" + Integer.toHexString(argb)
+      (ajouter import androidx.compose.ui.graphics.toArgb)
+      NOTER l'écart.
+
+ÉTAPE 4 — BUILD COMPLET
+  ./gradlew :app:clean :app:assembleDebug
+  JAMAIS compileDebugKotlin seul avant test APK (règle section 1).
+
+ÉTAPE 5 — COMMIT
+  git add app/src/main/java/com/soundstage/mixer/audio/LooperEngine.kt \
+          app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+  git commit -m "[chantier] Looper playback callbacks + MixerViewModel wiring — LooperEngine.kt, MixerViewModel.kt — Compile: OK"
+
+ÉTAPE 6 — RAPPORT (obligatoire)
+    git log --oneline -3
+    git show --stat HEAD
+    ./gradlew :app:clean :app:assembleDebug
+    ls -la app/build/outputs/apk/debug/
+    + forme de lambda retenue (return vs return@label) pour onPlayPadEvent
+    + conversion couleur retenue (`.value.toInt()` vs `.toArgb()`)
+    + tout autre écart constaté
