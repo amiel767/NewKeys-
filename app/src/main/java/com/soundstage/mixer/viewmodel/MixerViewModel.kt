@@ -4270,7 +4270,21 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val cleanName = name.trim().ifEmpty { "Setlist ${_uiState.value.scenes.size + 1}" }
         val now = System.currentTimeMillis()
         appStatePersistence.saveLong("setlist_used_$cleanName", now)
-        
+
+        // Couleur aléatoire de la palette, en évitant la dernière utilisée.
+        val existingColors = _uiState.value.scenes.mapNotNull { scene ->
+            runCatching {
+                SetlistColor.valueOf(
+                    appStatePersistence.getString("setlist_col_${scene.name}", "")
+                )
+            }.getOrNull()
+        }
+        val lastColor = existingColors.lastOrNull()
+        val palette = SetlistColor.values()
+        val available = palette.filter { it != lastColor }
+        val chosen = (if (available.isEmpty()) palette else available.toTypedArray()).random()
+        appStatePersistence.saveString("setlist_col_$cleanName", chosen.name)
+
         viewModelScope.launch(Dispatchers.IO) {
             val defaultPatchId = "patch_${System.currentTimeMillis()}"
             if (mode == CreateMode.Duplicate && _uiState.value.activeProjectName.isNotEmpty() && _uiState.value.activeProjectName != "None") {

@@ -704,12 +704,7 @@ fun MixerScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(
-                    start = 6.dp,
-                    end = 6.dp,
-                    top = 6.dp,
-                    bottom = safeBottomPadding
-                )
+                .padding(bottom = safeBottomPadding)
         ) {
             AnimatedContent(
             targetState = uiState.currentPage,
