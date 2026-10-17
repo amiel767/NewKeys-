@@ -317,6 +317,10 @@ data class MixerUiState(
     // Looper (miroir de LooperEngine, expose pour l'UI et la persistance)
     val looper: com.soundstage.mixer.audio.LooperEngine.UiState = com.soundstage.mixer.audio.LooperEngine.UiState(),
 
+    // DrumPad v5
+    val padCount: Int = 8,
+    val kits: List<com.soundstage.mixer.model.DrumKitData> = com.soundstage.mixer.model.DrumKitData.defaults(),
+
     val activeTrackSettingsId: Int? = null
 ) {
     val soundfontFiles: List<StorageItem> get() = realSoundfonts
@@ -681,6 +685,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         metronomeVisualFlash = saved.metronomeVisualFlash ?: state.metronomeVisualFlash,
                         metronomeCountIn = saved.metronomeCountIn ?: state.metronomeCountIn,
                         fxChains = parseFxChainsJson(saved.fxChainsJson),
+                        padCount = saved.drumPadCount ?: state.padCount,
+                        kits = parseKitsJson(saved.drumKitsJson).ifEmpty { com.soundstage.mixer.model.DrumKitData.defaults() },
                     )
                 }
 
@@ -819,11 +825,101 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             metronomeVisualFlash = state.metronomeVisualFlash,
             metronomeCountIn = state.metronomeCountIn,
             fxChainsJson = buildFxChainsJson(state.fxChains),
+            drumPadCount = state.padCount,
+            drumKitsJson = buildKitsJson(state.kits),
         )
         // Full auto-save: automatically sync to the current project's .scene file if a project is actively open
         if (state.activeProjectName.isNotEmpty() && state.activeProjectName != "None") {
             saveCurrentScene(state.activeProjectName)
         }
+    }
+
+    fun setPadCount(count: Int) {
+        val c = if (count >= 16) 16 else 8
+        _uiState.update { it.copy(padCount = c) }
+        persistCurrentStateDebounced()
+    }
+
+    fun saveCurrentPadsAsKit(name: String) {
+        val cleanName = name.trim().ifEmpty { "Kit ${_uiState.value.kits.size + 1}" }
+        val kitId = "kit_${System.currentTimeMillis()}"
+        val samples = _uiState.value.drumPads
+            .sortedBy { it.id }
+            .map { it.sampleFileName.ifEmpty { null } }
+        val newKit = com.soundstage.mixer.model.DrumKitData(id = kitId, name = cleanName, padSamples = samples)
+        _uiState.update { it.copy(kits = it.kits + newKit, activeDrumKitName = cleanName) }
+        persistCurrentStateDebounced()
+    }
+
+    fun loadKit(kitId: String) {
+        val kit = _uiState.value.kits.find { it.id == kitId || it.name == kitId } ?: return
+        _uiState.update { state ->
+            val updatedPads = state.drumPads.mapIndexed { idx, pad ->
+                if (idx < kit.padSamples.size) {
+                    val sampleName = kit.padSamples[idx]
+                    pad.copy(
+                        label = sampleName?.take(12) ?: "Empty",
+                        sampleFileName = sampleName ?: "",
+                        sampleFilePath = "",
+                    )
+                } else pad
+            }
+            state.copy(drumPads = updatedPads, activeDrumKitName = kit.name)
+        }
+        persistCurrentStateDebounced()
+    }
+
+    fun deleteKit(kitId: String) {
+        _uiState.update { state ->
+            val remaining = state.kits.filterNot { it.id == kitId }
+            val nextName = if (state.kits.find { it.id == kitId }?.name == state.activeDrumKitName) {
+                remaining.firstOrNull()?.name ?: ""
+            } else state.activeDrumKitName
+            state.copy(kits = remaining, activeDrumKitName = nextName)
+        }
+        persistCurrentStateDebounced()
+    }
+
+    private fun buildKitsJson(kits: List<com.soundstage.mixer.model.DrumKitData>): String {
+        return try {
+            val arr = org.json.JSONArray()
+            kits.forEach { kit ->
+                val o = org.json.JSONObject().apply {
+                    put("id", kit.id)
+                    put("name", kit.name)
+                    val s = org.json.JSONArray()
+                    kit.padSamples.forEach { if (it == null) s.put(org.json.JSONObject.NULL) else s.put(it) }
+                    put("padSamples", s)
+                }
+                arr.put(o)
+            }
+            arr.toString()
+        } catch (_: Exception) { "" }
+    }
+
+    private fun parseKitsJson(json: String?): List<com.soundstage.mixer.model.DrumKitData> {
+        if (json.isNullOrEmpty()) return emptyList()
+        return try {
+            val arr = org.json.JSONArray(json)
+            val list = mutableListOf<com.soundstage.mixer.model.DrumKitData>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val sArr = o.optJSONArray("padSamples")
+                val samples = mutableListOf<String?>()
+                if (sArr != null) {
+                    for (j in 0 until sArr.length()) {
+                        if (sArr.isNull(j)) samples.add(null)
+                        else samples.add(sArr.getString(j))
+                    }
+                }
+                list.add(com.soundstage.mixer.model.DrumKitData(
+                    id = o.optString("id", "kit_$i"),
+                    name = o.optString("name", "Kit ${i + 1}"),
+                    padSamples = samples,
+                ))
+            }
+            list
+        } catch (_: Exception) { emptyList() }
     }
 
     private fun buildFxChainsJson(chains: com.soundstage.mixer.model.FxChainsState): String {

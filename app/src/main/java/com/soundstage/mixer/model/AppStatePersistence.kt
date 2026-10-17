@@ -85,6 +85,8 @@ class AppStatePersistence(context: Context) {
         private const val KEY_METRONOME_VISUAL_FLASH = "metronome_visual_flash"
         private const val KEY_METRONOME_COUNT_IN = "metronome_count_in"
         private const val KEY_FX_CHAINS_JSON = "fx_chains_json"
+        private const val KEY_PAD_COUNT = "drum_pad_count"
+        private const val KEY_KITS_JSON = "drum_kits_json"
     }
 
     data class SavedTrackData(
@@ -189,6 +191,8 @@ class AppStatePersistence(context: Context) {
         val metronomeVisualFlash: Boolean? = null,
         val metronomeCountIn: String? = null,
         val fxChainsJson: String? = null,
+        val drumPadCount: Int? = null,
+        val drumKitsJson: String? = null,
     )
 
     fun saveAppState(
@@ -255,6 +259,8 @@ class AppStatePersistence(context: Context) {
         metronomeVisualFlash: Boolean = true,
         metronomeCountIn: String = "off",
         fxChainsJson: String = "",
+        drumPadCount: Int = 8,
+        drumKitsJson: String = "",
     ) {
         try {
             val tracksArray = JSONArray()
@@ -555,6 +561,8 @@ class AppStatePersistence(context: Context) {
                 putBoolean(KEY_METRONOME_VISUAL_FLASH, metronomeVisualFlash)
                 putString(KEY_METRONOME_COUNT_IN, metronomeCountIn)
                 putString(KEY_FX_CHAINS_JSON, fxChainsJson)
+                putInt(KEY_PAD_COUNT, drumPadCount)
+                putString(KEY_KITS_JSON, drumKitsJson)
 
                 apply()
             }
@@ -1017,6 +1025,8 @@ class AppStatePersistence(context: Context) {
             val metronomeVisualFlash = if (prefs.contains(KEY_METRONOME_VISUAL_FLASH)) prefs.getBoolean(KEY_METRONOME_VISUAL_FLASH, true) else null
             val metronomeCountIn = prefs.getString(KEY_METRONOME_COUNT_IN, null)
             val fxChainsJson = prefs.getString(KEY_FX_CHAINS_JSON, null)
+            val drumPadCount = if (prefs.contains(KEY_PAD_COUNT)) prefs.getInt(KEY_PAD_COUNT, 8) else null
+            val drumKitsJson = prefs.getString(KEY_KITS_JSON, null)
 
             return RestoredAppState(
                 themeName = themeName,
@@ -1082,6 +1092,8 @@ class AppStatePersistence(context: Context) {
                 metronomeVisualFlash = metronomeVisualFlash,
                 metronomeCountIn = metronomeCountIn,
                 fxChainsJson = fxChainsJson,
+                drumPadCount = drumPadCount,
+                drumKitsJson = drumKitsJson,
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error loading app state: ${e.message}")
