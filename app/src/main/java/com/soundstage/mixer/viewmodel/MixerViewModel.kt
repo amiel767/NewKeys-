@@ -297,6 +297,26 @@ data class MixerUiState(
     val hapticsEnabled: Boolean = true,
     val reducedMotion: Boolean = false,
     val showLanguageDialog: Boolean = false,
+
+    // Transport global
+    val transportBpm: Int = 120,
+    val transportSignature: String = "4/4",
+    val transportSubdivision: String = "1/4",
+
+    // Metronome
+    val metronomeSound: String = "Woodblock",
+    val metronomeAccent1: Boolean = true,
+    val metronomeAccent13: Boolean = false,
+    val metronomeVisualFlash: Boolean = true,
+    val metronomeCountIn: String = "off",  // "off" | "1" | "2"
+    val metronomeTapBpm: Int = 0,
+
+    // FX chains
+    val fxChains: com.soundstage.mixer.model.FxChainsState = com.soundstage.mixer.model.FxChainsState.DEFAULT,
+
+    // Looper (miroir de LooperEngine, expose pour l'UI et la persistance)
+    val looper: com.soundstage.mixer.audio.LooperEngine.UiState = com.soundstage.mixer.audio.LooperEngine.UiState(),
+
     val activeTrackSettingsId: Int? = null
 ) {
     val soundfontFiles: List<StorageItem> get() = realSoundfonts
