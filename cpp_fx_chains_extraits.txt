@@ -1,0 +1,116 @@
+$ grep -n 'extern "C"\|#ifdef __cplusplus\|#endif' app/src/main/cpp/audio_engine.cpp | tail -20
+507:#endif
+509:extern "C" JNIEXPORT void JNICALL
+530:extern "C" JNIEXPORT void JNICALL
+
+$ tail -60 app/src/main/cpp/audio_engine.cpp
+    if (mBypassMasterFX.load(std::memory_order_relaxed)) return;
+
+    // 1. Smooth master bus compressor to glue tracks and elevate quiet details
+    mMasterCompressor.process(floatBuf, numFrames);
+
+    // 2. High-performance soft clipper to prevent saturation and boost perceived volume safely
+    mSoftClipper.process(floatBuf, numFrames);
+
+    // Safety peak clamp guard to prevent hardware out-of-range issues under extreme feedback/accidents
+    for (int32_t i = 0; i < numFrames; ++i) {
+        floatBuf[2 * i] = std::clamp(floatBuf[2 * i], -1.0f, 1.0f);
+        floatBuf[2 * i + 1] = std::clamp(floatBuf[2 * i + 1], -1.0f, 1.0f);
+    }
+}
+
+#else
+AudioEngine::AudioEngine() = default;
+AudioEngine::~AudioEngine() = default;
+bool AudioEngine::start(int driverType) { return true; }
+void AudioEngine::stop() {}
+#endif
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setTonicFxChain(
+    JNIEnv* env, jobject thiz,
+    jboolean filterOn, jfloat filterAmt,
+    jboolean brightnessOn, jfloat brightnessAmt,
+    jboolean delayOn, jfloat delayAmt,
+    jboolean reverbOn, jfloat reverbAmt,
+    jboolean shimmerOn, jfloat shimmerAmt) {
+    (void)env; (void)thiz;
+    g_tonicFx.filterOn.store(filterOn);
+    g_tonicFx.filterAmt.store(filterAmt);
+    g_tonicFx.brightnessOn.store(brightnessOn);
+    g_tonicFx.brightnessAmt.store(brightnessAmt);
+    g_tonicFx.delayOn.store(delayOn);
+    g_tonicFx.delayAmt.store(delayAmt);
+    g_tonicFx.reverbOn.store(reverbOn);
+    g_tonicFx.reverbAmt.store(reverbAmt);
+    g_tonicFx.shimmerOn.store(shimmerOn);
+    g_tonicFx.shimmerAmt.store(shimmerAmt);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setPadsFxChain(
+    JNIEnv* env, jobject thiz,
+    jboolean filterOn, jfloat filterAmt,
+    jboolean brightnessOn, jfloat brightnessAmt,
+    jboolean delayOn, jfloat delayAmt,
+    jboolean reverbOn, jfloat reverbAmt) {
+    (void)env; (void)thiz;
+    g_padsFx.filterOn.store(filterOn);
+    g_padsFx.filterAmt.store(filterAmt);
+    g_padsFx.brightnessOn.store(brightnessOn);
+    g_padsFx.brightnessAmt.store(brightnessAmt);
+    g_padsFx.delayOn.store(delayOn);
+    g_padsFx.delayAmt.store(delayAmt);
+    g_padsFx.reverbOn.store(reverbOn);
+    g_padsFx.reverbAmt.store(reverbAmt);
+}
+
+$ grep -n 'SurfaceFxChainState\|g_tonicFx\|g_padsFx\|#include <jni.h>\|extern "C"' app/src/main/cpp/audio_engine.h
+14:#include <jni.h>
+734:struct SurfaceFxChainState {
+748:inline SurfaceFxChainState g_tonicFx;
+749:inline SurfaceFxChainState g_padsFx;
+751:extern "C" JNIEXPORT void JNICALL
+760:extern "C" JNIEXPORT void JNICALL
+
+$ tail -40 app/src/main/cpp/audio_engine.h
+class AudioEngine {
+public:
+    AudioEngine();
+    ~AudioEngine();
+    bool start(int driverType = 0);
+    void stop();
+    void setDriver(int driverType) {}
+    void setMasterGain(float gain) {
+        mSynthEngine.setGain(gain);
+    }
+    void setPolyphony(int polyphony) {
+        mSynthEngine.setPolyphony(polyphony);
+    }
+    void setBufferSize(int bufferSizeInFrames) {}
+    void setMasterEq(float lowGainDb, float midGainDb, float highGainDb) {}
+    void setSoundGoodizer(bool enabled, int mode, float amount) {}
+    void setMasterReverb(bool enabled, float size, float decay, float damp, float mix) {}
+    void setMasterDelay(bool enabled, float timeSec, float feedback, float mix, bool pingPong) {}
+    void setMasterChorus(bool enabled, float rateHz, float depthMs, float mix) {}
+    void setMasterCompressor(bool enabled, float thresholdDb, float ratio, float attackMs, float releaseMs, float makeupGainDb) {}
+    void setSpatialWidener(float amount) {}
+    void setMasterPunch(float amount) {}
+    void setPadBrightness(float brightness) {}
+    void setBypassMasterFX(bool bypass) {
+        mBypassMasterFX.store(bypass, std::memory_order_relaxed);
+    }
+    bool isMasterFxBypassed() const {
+        return mBypassMasterFX.load(std::memory_order_relaxed);
+    }
+
+    SoundfontEngine &getEngine(int engineIndex = 0) {
+        return mSynthEngine;
+    }
+
+private:
+    SoundfontEngine mSynthEngine;
+};
+#endif
+
+#endif //DAWSTUDIO_AUDIO_ENGINE_H
