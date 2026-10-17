@@ -333,6 +333,15 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     private val appStatePersistence = AppStatePersistence(application.applicationContext)
     private val soundFontLoadMutex = Mutex()
 
+    // Transport clock partage par tous les composants rythmiques
+    private val transportClock = com.soundstage.mixer.audio.TransportClock()
+
+    // Moteur metronome (synthese 6 sons, scheduler precis)
+    private val metronomeEngine = com.soundstage.mixer.audio.MetronomeEngine(transportClock)
+
+    // Looper event-only, 8 cases, 4 couches
+    private val looperEngine = com.soundstage.mixer.audio.LooperEngine(transportClock)
+
     private val _uiState = MutableStateFlow(createInitialState())
     val uiState: StateFlow<MixerUiState> = _uiState.asStateFlow()
 
@@ -384,6 +393,26 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         startPeakMeterSimulation()
+
+        transportClock.bpm = _uiState.value.transportBpm
+        transportClock.signature = com.soundstage.mixer.audio.TransportClock.Signature.parse(_uiState.value.transportSignature)
+        transportClock.subdivision = com.soundstage.mixer.audio.TransportClock.Subdivision.parse(_uiState.value.transportSubdivision)
+
+        // Miroir LooperEngine -> UiState
+        viewModelScope.launch {
+            looperEngine.state.collect { st ->
+                _uiState.update { it.copy(looper = st) }
+            }
+        }
+
+        // Metronome : demarre arrete, sera active via toggleMetronome()
+        metronomeEngine.volume = _uiState.value.metronomeVolume
+        metronomeEngine.accent1 = _uiState.value.metronomeAccent1
+        metronomeEngine.accent13 = _uiState.value.metronomeAccent13
+        metronomeEngine.visualFlash = _uiState.value.metronomeVisualFlash
+        metronomeEngine.currentSound = com.soundstage.mixer.audio.MetronomeEngine.Sound.parse(_uiState.value.metronomeSound)
+
+        looperEngine.start()
 
         // Detect and register USB MIDI Hardware devices
         val initialMidiDevs = audioEngine.getConnectedUsbMidiDevices()
@@ -756,6 +785,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     override fun onCleared() {
+        metronomeEngine.release()
+        looperEngine.release()
         super.onCleared()
         NativeAudioBridge.safeStopEngine()
         audioEngine.release()
@@ -1761,9 +1792,14 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleMetronome() {
         val next = !_uiState.value.isMetronomeOn
         if (next) {
-            audioEngine.startMetronome(_uiState.value.bpm, _uiState.value.metronomeSignature, _uiState.value.metronomeVolume)
+            metronomeEngine.volume = _uiState.value.metronomeVolume
+            metronomeEngine.accent1 = _uiState.value.metronomeAccent1
+            metronomeEngine.accent13 = _uiState.value.metronomeAccent13
+            metronomeEngine.visualFlash = _uiState.value.metronomeVisualFlash
+            metronomeEngine.currentSound = com.soundstage.mixer.audio.MetronomeEngine.Sound.parse(_uiState.value.metronomeSound)
+            metronomeEngine.start()
         } else {
-            audioEngine.stopMetronome()
+            metronomeEngine.stop()
         }
         _uiState.update { it.copy(isMetronomeOn = next) }
     }
@@ -1777,10 +1813,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setMetronomeSignature(sig: String) {
-        _uiState.update { it.copy(metronomeSignature = sig) }
-        if (_uiState.value.isMetronomeOn) {
-            audioEngine.startMetronome(_uiState.value.bpm, sig, _uiState.value.metronomeVolume)
-        }
+        _uiState.update { it.copy(metronomeSignature = sig, transportSignature = sig) }
+        transportClock.signature = com.soundstage.mixer.audio.TransportClock.Signature.parse(sig)
     }
 
     fun setSelectedRootKey(key: String) {
@@ -1819,9 +1853,103 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     fun setMetronomeVolume(vol: Float) {
         val clamped = vol.coerceIn(0f, 1f)
         _uiState.update { it.copy(metronomeVolume = clamped) }
-        if (_uiState.value.isMetronomeOn) {
-            audioEngine.startMetronome(_uiState.value.bpm, _uiState.value.metronomeSignature, clamped)
-        }
+        metronomeEngine.volume = clamped
+    }
+
+    fun setTransportBpm(bpm: Int) {
+        val clamped = bpm.coerceIn(40, 240)
+        transportClock.bpm = clamped
+        _uiState.update { it.copy(transportBpm = clamped, bpm = clamped) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setTransportSubdivision(sub: String) {
+        transportClock.subdivision = com.soundstage.mixer.audio.TransportClock.Subdivision.parse(sub)
+        _uiState.update { it.copy(transportSubdivision = sub) }
+    }
+
+    fun setMetronomeSound(sound: String) {
+        metronomeEngine.currentSound = com.soundstage.mixer.audio.MetronomeEngine.Sound.parse(sound)
+        _uiState.update { it.copy(metronomeSound = sound) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setMetronomeAccent1(on: Boolean) {
+        metronomeEngine.accent1 = on
+        _uiState.update { it.copy(metronomeAccent1 = on) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setMetronomeAccent13(on: Boolean) {
+        metronomeEngine.accent13 = on
+        _uiState.update { it.copy(metronomeAccent13 = on) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setMetronomeVisualFlash(on: Boolean) {
+        metronomeEngine.visualFlash = on
+        _uiState.update { it.copy(metronomeVisualFlash = on) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setMetronomeCountIn(mode: String) {
+        _uiState.update { it.copy(metronomeCountIn = mode) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setMetronomeTapBpm(bpm: Int) {
+        _uiState.update { it.copy(metronomeTapBpm = bpm) }
+    }
+
+    fun tapLooperCase(caseIndex: Int) {
+        looperEngine.tapCase(caseIndex)
+    }
+
+    fun longPressLooperCaseAction(caseIndex: Int, action: String) {
+        looperEngine.longPressCaseAction(caseIndex, action)
+    }
+
+    fun setLooperQuantize(q: Boolean) {
+        looperEngine.setQuantize(q)
+    }
+
+    fun setLooperSwing(s: Int) {
+        looperEngine.setSwing(s)
+    }
+
+    fun setLooperLengthMode(m: String) {
+        looperEngine.setLengthMode(m)
+    }
+
+    fun stopAllLoops() { looperEngine.stopAll() }
+    fun playAllLoops() { looperEngine.playAll() }
+
+    fun recordLooperEvent(kind: String, idx: Int, color: String) {
+        looperEngine.record(kind, idx, color)
+    }
+
+    fun setTonicFxChain(chain: com.soundstage.mixer.model.SurfaceFxChain) {
+        _uiState.update { it.copy(fxChains = it.fxChains.copy(tonic = chain)) }
+        com.soundstage.mixer.audio.NativeAudioBridge.safeSetTonicFxChain(
+            chain.filterOn, chain.filterAmount,
+            chain.brightnessOn, chain.brightnessAmount,
+            chain.delayOn, chain.delayAmount,
+            chain.reverbOn, chain.reverbAmount,
+            chain.shimmerOn, chain.shimmerAmount,
+        )
+        persistCurrentStateDebounced()
+    }
+
+    fun setPadsFxChain(chain: com.soundstage.mixer.model.SurfaceFxChain) {
+        val sanitized = chain.withShimmerDisabled()
+        _uiState.update { it.copy(fxChains = it.fxChains.copy(pads = sanitized)) }
+        com.soundstage.mixer.audio.NativeAudioBridge.safeSetPadsFxChain(
+            sanitized.filterOn, sanitized.filterAmount,
+            sanitized.brightnessOn, sanitized.brightnessAmount,
+            sanitized.delayOn, sanitized.delayAmount,
+            sanitized.reverbOn, sanitized.reverbAmount,
+        )
+        persistCurrentStateDebounced()
     }
 
     // ================= SUSTAIN, PANIC & SPLITTER =================
