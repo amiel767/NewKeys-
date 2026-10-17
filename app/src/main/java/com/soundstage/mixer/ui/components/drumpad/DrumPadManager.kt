@@ -1,0 +1,750 @@
+package com.soundstage.mixer.ui.components.drumpad
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.soundstage.mixer.model.DrumKitData
+import com.soundstage.mixer.model.DrumPadItem
+import com.soundstage.mixer.model.StorageItem
+
+private val MGR_TOP = Color(0xFF232C3E)
+private val MGR_BOTTOM = Color(0xFF1A2230)
+private val MGR_WELL = Color(0xFF0F141D)
+private val MGR_INK = Color(0xFFE9EDF5)
+private val MGR_MUTE = Color(0xFF8690A4)
+private val MGR_DIM = Color(0xFF6F7A90)
+private val MGR_ACCENT = Color(0xFF8FB2E8)
+
+private val MGR_TABS = listOf("Kits", "DrumPad", "Loops", "Scenes")
+
+// ─────────────────────────────────────────────────────────────────────────
+// DpManager — modal 660×372, 4 onglets
+// ─────────────────────────────────────────────────────────────────────────
+@Composable
+fun DpManager(
+    open: Boolean,
+    tab: String,
+    onTabChange: (String) -> Unit,
+    openTarget: Int?,
+    pads: List<DrumPadItem>,
+    drumSamples: List<StorageItem>,
+    loops: List<StorageItem>,
+    kits: List<DrumKitData>,
+    activeKitName: String,
+    scenes: List<Any>,
+    onLoadKit: (String) -> Unit,
+    onDeleteKit: (String) -> Unit,
+    onSaveCurrentAsKit: (String) -> Unit,
+    onAssign: (padIndex: Int, sample: StorageItem) -> Unit,
+    onLoadScene: (Any) -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (!open) return
+
+    var search by remember { mutableStateOf("") }
+    var showSaveKitField by remember { mutableStateOf(false) }
+    var newKitName by remember { mutableStateOf("") }
+
+    Box(modifier.fillMaxSize()) {
+        // backdrop
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.6f))
+                .clickable { onClose() }
+        )
+
+        Box(
+            Modifier
+                .align(Alignment.Center)
+                .width(660.dp)
+                .height(372.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(Brush.verticalGradient(listOf(MGR_TOP, MGR_BOTTOM)))
+                .clickable(enabled = false, onClick = {})
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                // ─── Header ───
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
+                        .padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Search
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .height(28.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(MGR_WELL)
+                            .padding(horizontal = 10.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        BasicTextField(
+                            value = search,
+                            onValueChange = { search = it },
+                            singleLine = true,
+                            textStyle = TextStyle(
+                                color = MGR_INK,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace
+                            ),
+                            modifier = Modifier.fillMaxWidth(),
+                            decorationBox = { inner ->
+                                if (search.isEmpty()) {
+                                    Text(
+                                        "Search…",
+                                        color = MGR_DIM,
+                                        fontSize = 11.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                                inner()
+                            }
+                        )
+                    }
+                    // + import
+                    Box(
+                        Modifier
+                            .size(28.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(MGR_WELL)
+                            .clickable { /* V1: no-op, file picker wired in B5 */ },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("+", color = MGR_MUTE, fontSize = 16.sp)
+                    }
+                    // Close
+                    Box(
+                        Modifier
+                            .size(28.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { onClose() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("✕", color = MGR_MUTE, fontSize = 14.sp)
+                    }
+                }
+
+                // ─── Body ───
+                Row(Modifier.weight(1f)) {
+                    // Sidebar
+                    Column(
+                        Modifier
+                            .width(130.dp)
+                            .fillMaxHeight()
+                            .background(MGR_WELL.copy(alpha = 0.35f))
+                            .padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        MGR_TABS.forEach { t ->
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(30.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (tab == t) MGR_TOP else Color.Transparent)
+                                    .clickable { onTabChange(t) }
+                                    .padding(horizontal = 10.dp),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                                Text(
+                                    t,
+                                    color = if (tab == t) MGR_INK else MGR_MUTE,
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = if (tab == t) FontWeight.Medium else FontWeight.Normal
+                                )
+                            }
+                        }
+                    }
+
+                    // Content
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .padding(10.dp)
+                    ) {
+                        when (tab) {
+                            "Kits" -> KitsTab(
+                                kits = kits.filter {
+                                    search.isEmpty() || it.name.contains(search, ignoreCase = true)
+                                },
+                                activeKitName = activeKitName,
+                                showSaveField = showSaveKitField,
+                                newKitName = newKitName,
+                                onNewKitNameChange = { newKitName = it },
+                                onStartSave = {
+                                    showSaveKitField = true
+                                    newKitName = ""
+                                },
+                                onCancelSave = {
+                                    showSaveKitField = false
+                                    newKitName = ""
+                                },
+                                onConfirmSave = {
+                                    if (newKitName.isNotBlank()) {
+                                        onSaveCurrentAsKit(newKitName.trim())
+                                        showSaveKitField = false
+                                        newKitName = ""
+                                    }
+                                },
+                                onLoad = { onLoadKit(it) },
+                                onDelete = { onDeleteKit(it) },
+                            )
+                            "DrumPad" -> SamplesTab(
+                                items = drumSamples.filter {
+                                    search.isEmpty() || it.name.contains(search, ignoreCase = true)
+                                },
+                                usedBy = { sample ->
+                                    pads.firstOrNull { it.sampleFileName == sample.name }?.id
+                                },
+                                assignTarget = openTarget,
+                                onClick = { sample ->
+                                    if (openTarget != null) onAssign(openTarget, sample)
+                                },
+                            )
+                            "Loops" -> LoopsTab(
+                                items = loops.filter {
+                                    search.isEmpty() || it.name.contains(search, ignoreCase = true)
+                                },
+                                onClick = { /* V1: no-op, wiring in B5 */ },
+                            )
+                            "Scenes" -> ScenesTab(scenes = scenes, onLoad = onLoadScene)
+                        }
+                    }
+                }
+
+                // ─── Assign bar ───
+                if (tab == "DrumPad" && openTarget != null) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(46.dp)
+                            .background(MGR_WELL.copy(alpha = 0.55f))
+                            .padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            "Assign → P$openTarget",
+                            color = MGR_ACCENT,
+                            fontSize = 9.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        pads.take(8).forEachIndexed { i, p ->
+                            val c = DpPalette.at(i)
+                            Box(
+                                Modifier
+                                    .size(28.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(c.copy(alpha = if (p.id == openTarget) 0.85f else 0.30f))
+                                    .border(
+                                        width = if (p.id == openTarget) 2.dp else 0.dp,
+                                        color = if (p.id == openTarget) MGR_INK else Color.Transparent,
+                                        shape = RoundedCornerShape(6.dp)
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "${i + 1}",
+                                    color = if (p.id == openTarget) Color.White else MGR_INK,
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Onglets
+// ─────────────────────────────────────────────────────────────────────────
+@Composable
+private fun KitsTab(
+    kits: List<DrumKitData>,
+    activeKitName: String,
+    showSaveField: Boolean,
+    newKitName: String,
+    onNewKitNameChange: (String) -> Unit,
+    onStartSave: () -> Unit,
+    onCancelSave: () -> Unit,
+    onConfirmSave: () -> Unit,
+    onLoad: (String) -> Unit,
+    onDelete: (String) -> Unit,
+) {
+    Column(Modifier.fillMaxSize()) {
+        LazyColumn(
+            Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            items(kits, key = { it.name }) { kit ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(34.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(if (kit.name == activeKitName) MGR_TOP else MGR_WELL.copy(alpha = 0.4f))
+                        .clickable { onLoad(kit.name) }
+                        .padding(horizontal = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        kit.name,
+                        color = if (kit.name == activeKitName) MGR_INK else MGR_MUTE,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = if (kit.name == activeKitName) FontWeight.Medium else FontWeight.Normal,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (kit.name == activeKitName) {
+                        Text(
+                            "ACTIVE",
+                            color = MGR_ACCENT,
+                            fontSize = 8.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    } else {
+                        Box(
+                            Modifier
+                                .size(20.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .clickable { onDelete(kit.name) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("✕", color = MGR_DIM, fontSize = 10.sp)
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(6.dp))
+
+        if (showSaveField) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(30.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(MGR_WELL)
+                        .padding(horizontal = 8.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    BasicTextField(
+                        value = newKitName,
+                        onValueChange = onNewKitNameChange,
+                        singleLine = true,
+                        textStyle = TextStyle(
+                            color = MGR_INK,
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                        decorationBox = { inner ->
+                            if (newKitName.isEmpty()) Text(
+                                "Kit name…",
+                                color = MGR_DIM,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            inner()
+                        }
+                    )
+                }
+                MgmtChip("Save", accent = true, onClick = onConfirmSave)
+                MgmtChip("Cancel", onClick = onCancelSave)
+            }
+        } else {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(32.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(MGR_ACCENT.copy(alpha = 0.15f))
+                    .clickable { onStartSave() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "Save current pads as kit",
+                    color = MGR_ACCENT,
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SamplesTab(
+    items: List<StorageItem>,
+    usedBy: (StorageItem) -> Int?,
+    assignTarget: Int?,
+    onClick: (StorageItem) -> Unit,
+) {
+    if (items.isEmpty()) {
+        EmptyHint("No samples")
+        return
+    }
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        items(items, key = { it.name }) { s ->
+            val usedByPad = usedBy(s)
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(28.dp)
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(if (assignTarget != null) MGR_ACCENT.copy(alpha = 0.10f) else MGR_WELL.copy(alpha = 0.3f))
+                    .clickable { onClick(s) }
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    s.name,
+                    color = MGR_INK,
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                if (usedByPad != null) {
+                    Text(
+                        "P$usedByPad",
+                        color = MGR_ACCENT,
+                        fontSize = 8.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LoopsTab(items: List<StorageItem>, onClick: (StorageItem) -> Unit) {
+    if (items.isEmpty()) {
+        EmptyHint("No loops")
+        return
+    }
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        items(items, key = { it.name }) { s ->
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(28.dp)
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(MGR_WELL.copy(alpha = 0.3f))
+                    .clickable { onClick(s) }
+                    .padding(horizontal = 8.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Text(
+                    s.name,
+                    color = MGR_INK,
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScenesTab(scenes: List<Any>, onLoad: (Any) -> Unit) {
+    if (scenes.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                "Scenes available in next update",
+                color = MGR_DIM,
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+    } else {
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            itemsIndexed(scenes) { idx, scene ->
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(28.dp)
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(MGR_WELL.copy(alpha = 0.3f))
+                        .clickable { onLoad(scene) }
+                        .padding(horizontal = 8.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Text(
+                        "Scene $idx",
+                        color = MGR_INK,
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// DpPadEditor — sheet 430dp
+// ─────────────────────────────────────────────────────────────────────────
+@Composable
+fun DpPadEditor(
+    pad: DrumPadItem,
+    color: Color,
+    onChange: (DrumPadItem) -> Unit,
+    onClear: () -> Unit,
+    onAssignClick: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier.fillMaxSize()) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.6f))
+                .clickable { onClose() }
+        )
+        Box(
+            Modifier
+                .align(Alignment.Center)
+                .width(430.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(Brush.verticalGradient(listOf(MGR_TOP, MGR_BOTTOM)))
+                .clickable(enabled = false, onClick = {})
+                .padding(18.dp)
+        ) {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Header
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        Modifier
+                            .size(20.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(color)
+                    )
+                    Text(
+                        "P${pad.id} — ${pad.label.ifEmpty { pad.sampleFileName.substringBeforeLast('.') }}",
+                        color = MGR_INK,
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Box(
+                        Modifier
+                            .size(24.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { onClose() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("✕", color = MGR_MUTE, fontSize = 14.sp)
+                    }
+                }
+
+                // Volume
+                Text(
+                    "VOLUME  ${(pad.volume * 100).toInt()}%",
+                    color = MGR_MUTE,
+                    fontSize = 9.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Medium
+                )
+                Slider(
+                    value = pad.volume.coerceIn(0f, 1f),
+                    onValueChange = { onChange(pad.copy(volume = it)) },
+                    colors = SliderDefaults.colors(
+                        thumbColor = MGR_ACCENT,
+                        activeTrackColor = MGR_ACCENT,
+                        inactiveTrackColor = MGR_WELL
+                    )
+                )
+
+                // Mode
+                Text(
+                    "MODE",
+                    color = MGR_MUTE,
+                    fontSize = 9.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Medium
+                )
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MGR_WELL)
+                        .padding(2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    listOf(false to "One-shot", true to "Loop").forEach { (isLoop, label) ->
+                        val isSel = pad.isLoopMode == isLoop
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .height(28.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isSel) MGR_TOP else Color.Transparent)
+                                .clickable { onChange(pad.copy(isLoopMode = isLoop)) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                label,
+                                color = if (isSel) MGR_INK else MGR_MUTE,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(4.dp))
+
+                // Actions
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    MgmtChip(
+                        "Change / Assign sample",
+                        accent = true,
+                        modifier = Modifier.weight(1f),
+                        onClick = onAssignClick
+                    )
+                }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    MgmtChip(
+                        "Clear pad",
+                        modifier = Modifier.weight(1f),
+                        onClick = onClear
+                    )
+                    MgmtChip(
+                        "Done",
+                        accent = true,
+                        modifier = Modifier.weight(1f),
+                        onClick = onClose
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────
+@Composable
+private fun MgmtChip(
+    text: String,
+    accent: Boolean = false,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier
+            .height(30.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (accent) MGR_ACCENT.copy(alpha = 0.20f) else MGR_WELL)
+            .clickable { onClick() }
+            .padding(horizontal = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text,
+            color = if (accent) MGR_ACCENT else MGR_MUTE,
+            fontSize = 10.sp,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+private fun EmptyHint(text: String) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text(
+            text,
+            color = MGR_DIM,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace
+        )
+    }
+}
