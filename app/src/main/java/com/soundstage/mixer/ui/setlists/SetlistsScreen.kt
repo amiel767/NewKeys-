@@ -328,9 +328,8 @@ private fun Modifier.slSurface(shape: Shape, open: Boolean = false, elevation: D
     .shadow(elevation, shape, ambientColor = Color.Black.copy(alpha = 0.30f), spotColor = Color.Black.copy(alpha = 0.30f))
     .clip(shape)
     .background(
-        Brush.verticalGradient(
-            if (open) listOf(white(0.11f), white(0.06f)) else listOf(white(0.07f), white(0.035f))
-        )
+        if (open) SlColors.PanelTop.copy(alpha = 0.65f)
+        else SlColors.PanelBottom.copy(alpha = 0.55f)
     )
 
 private fun Modifier.slSurfaceTinted(
@@ -345,23 +344,19 @@ private fun Modifier.slSurfaceTinted(
         spotColor = Color.Black.copy(alpha = 0.30f),
     )
     .clip(shape)
-    .background(
-        Brush.verticalGradient(
-            if (open) listOf(white(0.11f), white(0.06f))
-            else listOf(white(0.07f), white(0.035f))
+    .drawBehind {
+        drawRect(
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    tint.copy(alpha = if (open) 0.32f else 0.22f),
+                    tint.copy(alpha = if (open) 0.16f else 0.10f),
+                    tint.copy(alpha = if (open) 0.06f else 0.03f),
+                ),
+                start = Offset.Zero,
+                end = Offset(size.width, size.height),
+            )
         )
-    )
-    .background(
-        Brush.linearGradient(
-            colors = listOf(
-                tint.copy(alpha = if (open) 0.30f else 0.22f),
-                tint.copy(alpha = if (open) 0.14f else 0.10f),
-                tint.copy(alpha = if (open) 0.06f else 0.04f),
-            ),
-            start = Offset.Zero,
-            end = Offset.Infinite,
-        )
-    )
+    }
 
 private fun Modifier.slPanel(shape: Shape = RoundedCornerShape(18.dp)): Modifier = this
     .shadow(14.dp, shape, ambientColor = Color.Black.copy(alpha = 0.30f), spotColor = Color.Black.copy(alpha = 0.30f))
