@@ -1,0 +1,1545 @@
+═══════════════════════════════════════════════════════════════════════════
+BRIEF DE COLLECTE — Extraction chirurgicale
+Préparation Brief-A (Logique) + Brief-B (UI)
+Repo : amiel767/NewKeys- · Branche : main
+═══════════════════════════════════════════════════════════════════════════
+
+──── Section 1 — AudioEngine.kt (métronome + tonic + sample playback) ────
+
+$ sed -n '1,40p' app/src/main/java/com/soundstage/mixer/model/AudioEngine.kt
+package com.soundstage.mixer.model
+
+import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioManager
+import android.media.AudioTrack
+import android.media.MediaPlayer
+import android.media.SoundPool
+import android.media.midi.MidiDevice
+import android.media.midi.MidiDeviceInfo
+import android.media.midi.MidiManager
+import android.media.midi.MidiReceiver
+import android.os.Build
+import android.os.Handler
+import android.os.HandlerThread
+import android.util.Log
+import com.soundstage.mixer.audio.NativeAudioBridge
+import com.soundstage.mixer.ui.components.VelocityProcessor
+import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
+import java.io.File
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.*
+
+/**
+ * Event representation for FIFO Asynchronous MIDI Buffer.
+ */
+sealed class MidiEngineEvent {
+    data class NoteOn(val channel: Int, val noteNumber: Int, val velocity: Int) : MidiEngineEvent()
+    data class NoteOff(val channel: Int, val noteNumber: Int) : MidiEngineEvent()
+    data class PitchBend(val channel: Int, val bendValue: Int) : MidiEngineEvent()
+    data class ControlChange(val channel: Int, val controller: Int, val value: Int) : MidiEngineEvent()
+}
+
+class SynthChannelParams {
+    var volume: Float = 1.0f
+    var pan: Float = 0.0f
+    var instrumentType: Int = 0
+    var program: Int = 0
+
+$ grep -nE '^(class|object) AudioEngine' app/src/main/java/com/soundstage/mixer/model/AudioEngine.kt
+60:class AudioEngine(private val context: Context) {
+
+$ grep -nE 'fun startMetronome|fun stopMetronome|fun setTonicDrone|fun playDrumPadSound|fun playDrumSample|var fluidSynthGain|val fluidSynthGain' app/src/main/java/com/soundstage/mixer/model/AudioEngine.kt
+213:    var fluidSynthGain: Float = 1.0f
+390:    fun setTonicDrone(notes: Set<String>, octaveRange: String, brightness: Float = 0.70f, shimmer: Float = 0.15f) {
+923:    fun startMetronome(bpm: Int, timeSignature: String, volume: Float) {
+1021:    fun stopMetronome() {
+1106:    fun playDrumPadSound(drumPad: DrumPadItem, volume: Float = 0.75f) {
+1197:    fun playDrumSample(sampleName: String, samplePath: String = "", volume: Float = 0.75f) {
+
+=== setTonicDrone (Section 1) ===
+$ sed -n '390,481p' app/src/main/java/com/soundstage/mixer/model/AudioEngine.kt
+    fun setTonicDrone(notes: Set<String>, octaveRange: String, brightness: Float = 0.70f, shimmer: Float = 0.15f) {
+        channelParams[9].brightness = brightness
+        channelParams[9].shimmer = shimmer
+        channelParams[9].isEnabled = true
+
+        NativeAudioBridge.safeSetPadBrightness(brightness)
+
+        val baseOctave = when (octaveRange) {
+            "C1 — C2" -> 1
+            "C2 — C3" -> 2
+            "C3 — C4" -> 3
+            "C4 — C5" -> 4
+            "C5 — C6" -> 5
+            else -> 1
+        }
+
+        val noteToSemitone = mapOf(
+            "C" to 0, "B#" to 0,
+            "C#" to 1, "DB" to 1, "Db" to 1,
+            "D" to 2,
+            "D#" to 3, "EB" to 3, "Eb" to 3,
+            "E" to 4, "FB" to 4, "Fb" to 4,
+            "F" to 5, "E#" to 5,
+            "F#" to 6, "GB" to 6, "Gb" to 6,
+            "G" to 7,
+            "G#" to 8, "AB" to 8, "Ab" to 8,
+            "A" to 9,
+            "A#" to 10, "BB" to 10, "Bb" to 10,
+            "B" to 11, "CB" to 11, "Cb" to 11
+        )
+        val newPitches = notes.mapNotNull { note ->
+            val clean = note.trim()
+            val semitone = noteToSemitone[clean] ?: noteToSemitone[clean.uppercase()]
+            if (semitone != null) (baseOctave + 1) * 12 + semitone else null
+        }.toSet()
+
+        // Shimmer: Harmonic upper octave (+12 semitones)
+        val newShimmerPitches = if (shimmer > 0.05f) {
+            newPitches.map { (it + 12).coerceIn(0, 127) }.toSet()
+        } else emptySet()
+
+        // 1. Turn on new fundamental notes first for seamless crossfade
+        val toTurnOn = newPitches - activeTonicPitches
+        for (pitch in toTurnOn) {
+            NativeAudioBridge.safeNoteOn(
+                channel = NativeAudioBridge.CHANNEL_TONIC_PAD,
+                midiNote = pitch,
+                velocity = 85,
+                engineIndex = NativeAudioBridge.ENGINE_FADER
+            )
+        }
+
+        // 2. Turn on new shimmer harmonic notes
+        val shimmerToTurnOn = newShimmerPitches - activeShimmerPitches
+        for (pitch in shimmerToTurnOn) {
+            val shimmerVelocity = (shimmer * 80f).toInt().coerceIn(20, 95)
+            NativeAudioBridge.safeNoteOn(
+                channel = NativeAudioBridge.CHANNEL_TONIC_PAD,
+                midiNote = pitch,
+                velocity = shimmerVelocity,
+                engineIndex = NativeAudioBridge.ENGINE_FADER
+            )
+        }
+
+        // 3. Musical crossfade: release outgoing notes after a brief overlap (65ms)
+        val toTurnOff = activeTonicPitches - newPitches
+        val shimmerToTurnOff = activeShimmerPitches - newShimmerPitches
+        if (toTurnOff.isNotEmpty() || shimmerToTurnOff.isNotEmpty()) {
+            coroutineScope.launch {
+                delay(65)
+                for (pitch in toTurnOff) {
+                    NativeAudioBridge.safeNoteOff(
+                        channel = NativeAudioBridge.CHANNEL_TONIC_PAD,
+                        midiNote = pitch,
+                        engineIndex = NativeAudioBridge.ENGINE_FADER
+                    )
+                }
+                for (pitch in shimmerToTurnOff) {
+                    NativeAudioBridge.safeNoteOff(
+                        channel = NativeAudioBridge.CHANNEL_TONIC_PAD,
+                        midiNote = pitch,
+                        engineIndex = NativeAudioBridge.ENGINE_FADER
+                    )
+                }
+            }
+        }
+
+        activeTonicPitches.clear()
+        activeTonicPitches.addAll(newPitches)
+        activeShimmerPitches.clear()
+        activeShimmerPitches.addAll(newShimmerPitches)
+    }
+
+=== startMetronome (Section 1) ===
+$ sed -n '923,1015p' app/src/main/java/com/soundstage/mixer/model/AudioEngine.kt
+    fun startMetronome(bpm: Int, timeSignature: String, volume: Float) {
+        val beatsPerBar = when (timeSignature) {
+            "2/4" -> 2
+            "3/4" -> 3
+            "6/8" -> 6
+            else -> 4
+        }
+        metronomeBpm = bpm.coerceIn(30, 240)
+        metronomeBeatsPerBar = beatsPerBar
+        metronomeVolumeGain = volume.coerceIn(0f, 1f)
+
+        // If metronome is already playing with an active AudioTrack, updating the volatile parameters is enough!
+        if (isMetronomeActive && metronomeAudioTrack != null && metronomeJob?.isActive == true) {
+            return
+        }
+
+        stopMetronome()
+
+        try {
+            val sampleRate = 44100
+            val minBuf = AudioTrack.getMinBufferSize(
+                sampleRate,
+                AudioFormat.CHANNEL_OUT_MONO,
+                AudioFormat.ENCODING_PCM_16BIT
+            )
+            val trackBuilder = AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setSampleRate(sampleRate)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                        .build()
+                )
+                .setBufferSizeInBytes(max(minBuf, 4096))
+                .setTransferMode(AudioTrack.MODE_STREAM)
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                trackBuilder.setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+            }
+
+            val builtTrack = trackBuilder.build()
+            if (builtTrack.state == AudioTrack.STATE_INITIALIZED) {
+                try {
+                    builtTrack.play()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Metronome play exception: ${e.message}")
+                }
+                metronomeAudioTrack = builtTrack
+                isMetronomeActive = true
+            } else {
+                Log.w(TAG, "Metronome AudioTrack failed to initialize")
+                return
+            }
+
+            metronomeJob = coroutineScope.launch(Dispatchers.Default) {
+                var currentBeat = 0
+                val silenceBuffer = ShortArray(2048)
+
+                while (isActive && isMetronomeActive) {
+                    val track = metronomeAudioTrack ?: break
+                    val currentBpm = metronomeBpm.coerceIn(30, 240)
+                    val totalBeatSamples = ((sampleRate.toLong() * 60L) / currentBpm).toInt()
+
+                    val pcmData = if (currentBeat == 0) hiClickPcm else loClickPcm
+                    val clickSamples = min(pcmData.size, totalBeatSamples)
+                    val scaledPcm = ShortArray(clickSamples)
+                    val gain = metronomeVolumeGain
+                    for (i in 0 until clickSamples) {
+                        scaledPcm[i] = (pcmData[i] * gain).toInt().toShort()
+                    }
+                    track.write(scaledPcm, 0, scaledPcm.size)
+
+                    var remainingSilence = totalBeatSamples - clickSamples
+                    while (isActive && isMetronomeActive && remainingSilence > 0) {
+                        val toWrite = min(remainingSilence, silenceBuffer.size)
+                        val written = track.write(silenceBuffer, 0, toWrite)
+                        if (written <= 0) break
+                        remainingSilence -= written
+                    }
+
+                    currentBeat = (currentBeat + 1) % metronomeBeatsPerBar
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error starting metronome: ${e.message}")
+        }
+    }
+
+=== stopMetronome (Section 1) ===
+$ sed -n '1021,1032p' app/src/main/java/com/soundstage/mixer/model/AudioEngine.kt
+    fun stopMetronome() {
+        isMetronomeActive = false
+        metronomeJob?.cancel()
+        metronomeJob = null
+        try {
+            metronomeAudioTrack?.pause()
+            metronomeAudioTrack?.flush()
+            metronomeAudioTrack?.stop()
+            metronomeAudioTrack?.release()
+        } catch (_: Exception) {}
+        metronomeAudioTrack = null
+    }
+
+=== playDrumPadSound (Section 1) ===
+$ sed -n '1106,1149p' app/src/main/java/com/soundstage/mixer/model/AudioEngine.kt
+    fun playDrumPadSound(drumPad: DrumPadItem, volume: Float = 0.75f) {
+        // Resolve sample file if custom
+        val sampleFile = when {
+            drumPad.sampleFilePath.isNotEmpty() && File(drumPad.sampleFilePath).exists() -> File(drumPad.sampleFilePath)
+            File(context.filesDir, "LiveKeys/DrumPad/${drumPad.sampleFileName}").exists() -> File(context.filesDir, "LiveKeys/DrumPad/${drumPad.sampleFileName}")
+            File(context.filesDir, drumPad.sampleFileName).exists() -> File(context.filesDir, drumPad.sampleFileName)
+            else -> null
+        }
+
+        if (sampleFile != null && sampleFile.exists()) {
+            val cachedId = nativeDrumSampleIds[sampleFile.absolutePath]
+            if (cachedId != null) {
+                NativeAudioBridge.safeTriggerDrumSample(cachedId, volume, 0.0f)
+            } else {
+                val newId = nextNativeSampleId.getAndIncrement()
+                nativeDrumSampleIds[sampleFile.absolutePath] = newId
+                coroutineScope.launch(Dispatchers.IO) {
+                    val decoded = com.soundstage.mixer.audio.AudioDecoder.decodeAudioFile(sampleFile)
+                    if (decoded != null) {
+                        NativeAudioBridge.safeLoadDrumSamplePcm(
+                            sampleId = newId,
+                            sampleName = sampleFile.name,
+                            pcmData = decoded.pcmData,
+                            totalFrames = decoded.totalFrames,
+                            sampleRate = decoded.sampleRate
+                        )
+                    } else if (sampleFile.extension.equals("wav", ignoreCase = true)) {
+                        NativeAudioBridge.safeLoadDrumWavFile(newId, sampleFile.absolutePath)
+                    }
+                    NativeAudioBridge.safeTriggerDrumSample(newId, volume, 0.0f)
+                }
+            }
+        } else {
+            // Built-in studio drum kit (1 = Kick, 2 = Snare, 3 = Hat, 4 = OpenHat, 5 = Clap, 6 = LowTom, 7 = MidTom, 8 = Crash...)
+            val defaultId = ((drumPad.id - 1) % 8) + 1
+            NativeAudioBridge.safeTriggerDrumSample(defaultId, volume, 0.0f)
+        }
+
+        // Native C++ Oboe engine directly renders low-latency drum synthesis into the main mix.
+        // Direct AudioTrack playback is strictly a fallback only if native Oboe stream is not active.
+        if (!NativeAudioBridge.isNativeReady() || !NativeAudioBridge.safeIsOboeActive()) {
+            playDirectDrumPcm(drumPad, volume)
+        }
+    }
+
+=== playDrumSample (Section 1) ===
+$ sed -n '1197,1233p' app/src/main/java/com/soundstage/mixer/model/AudioEngine.kt
+    fun playDrumSample(sampleName: String, samplePath: String = "", volume: Float = 0.75f) {
+        val sampleFile = when {
+            samplePath.isNotEmpty() && File(samplePath).exists() -> File(samplePath)
+            File(context.filesDir, "LiveKeys/DrumPad/$sampleName").exists() -> File(context.filesDir, "LiveKeys/DrumPad/$sampleName")
+            File(context.filesDir, sampleName).exists() -> File(context.filesDir, sampleName)
+            else -> null
+        }
+
+        if (sampleFile != null && sampleFile.exists()) {
+            val cachedId = nativeDrumSampleIds[sampleFile.absolutePath]
+            if (cachedId != null) {
+                NativeAudioBridge.safeTriggerDrumSample(cachedId, volume, 0.0f)
+            } else {
+                val newId = nextNativeSampleId.getAndIncrement()
+                nativeDrumSampleIds[sampleFile.absolutePath] = newId
+                coroutineScope.launch(Dispatchers.IO) {
+                    val decoded = com.soundstage.mixer.audio.AudioDecoder.decodeAudioFile(sampleFile)
+                    if (decoded != null) {
+                        NativeAudioBridge.safeLoadDrumSamplePcm(
+                            sampleId = newId,
+                            sampleName = sampleFile.name,
+                            pcmData = decoded.pcmData,
+                            totalFrames = decoded.totalFrames,
+                            sampleRate = decoded.sampleRate
+                        )
+                    } else if (sampleFile.extension.equals("wav", ignoreCase = true)) {
+                        NativeAudioBridge.safeLoadDrumWavFile(newId, sampleFile.absolutePath)
+                    }
+                    NativeAudioBridge.safeTriggerDrumSample(newId, volume, 0.0f)
+                }
+            }
+        } else {
+            // Map sample name cleanly to built-in drum synth voice if file isn't local
+            val mappedNote = mapSampleNameToDrumNote(sampleName, 1)
+            NativeAudioBridge.safeTriggerDrumSample(mappedNote, volume, 0.0f)
+        }
+    }
+
+$ grep -nE 'tonicDrone|TonicPad|CHANNEL_TONIC' app/src/main/java/com/soundstage/mixer/model/AudioEngine.kt
+435:                channel = NativeAudioBridge.CHANNEL_TONIC_PAD,
+447:                channel = NativeAudioBridge.CHANNEL_TONIC_PAD,
+462:                        channel = NativeAudioBridge.CHANNEL_TONIC_PAD,
+469:                        channel = NativeAudioBridge.CHANNEL_TONIC_PAD,
+560:        val ch = if (targetChannel == 9) NativeAudioBridge.CHANNEL_TONIC_PAD else targetChannel.coerceIn(0, 8)
+565:        val ch = if (targetChannel == 9) NativeAudioBridge.CHANNEL_TONIC_PAD else targetChannel.coerceIn(0, 8)
+570:        val ch = if (targetChannel == 9) NativeAudioBridge.CHANNEL_TONIC_PAD else targetChannel.coerceIn(0, 8)
+746:        if (isSustainPedalDown && targetChannel != NativeAudioBridge.CHANNEL_TONIC_PAD && targetChannel != 9) {
+
+──── Section 2 — NativeAudioBridge.kt (natifs disponibles) ────
+
+$ grep -nE 'external fun' app/src/main/java/com/soundstage/mixer/audio/NativeAudioBridge.kt
+54:    external fun startEngine(driverType: Int = 0): Boolean
+55:    external fun stopEngine()
+56:    external fun setAudioDriver(driverType: Int)
+57:    external fun loadSoundFont(engineIndex: Int, absolutePath: String): Int
+58:    external fun unloadSoundFont(engineIndex: Int, soundFontId: Int): Int
+59:    external fun unloadAllSoundFonts(engineIndex: Int = -1)
+60:    external fun trimMemory()
+61:    external fun listPresets(soundFontId: Int): Array<PresetInfo>
+62:    external fun selectProgram(engineIndex: Int, channel: Int, soundFontId: Int, bank: Int, preset: Int): Boolean
+63:    external fun programChange(engineIndex: Int, channel: Int, preset: Int): Boolean
+64:    external fun noteOn(engineIndex: Int, channel: Int, midiNote: Int, velocity: Int)
+65:    external fun noteOff(engineIndex: Int, channel: Int, midiNote: Int)
+66:    external fun allNotesOff(engineIndex: Int, channel: Int)
+67:    external fun setTrackVolume(engineIndex: Int, channel: Int, volume01: Float)
+68:    external fun setTrackPan(engineIndex: Int, channel: Int, pan: Float)
+69:    external fun setTrackTranspose(engineIndex: Int, channel: Int, semitones: Int)
+70:    external fun pitchBend(engineIndex: Int, channel: Int, bendValue: Int)
+71:    external fun setMasterVolume(volume01: Float)
+72:    external fun setFluidSynthGain(gain: Float)
+73:    external fun setPolyphony(engineIndex: Int, polyphony: Int)
+74:    external fun setBufferSize(bufferSize: Int)
+75:    external fun setMasterEq(lowGainDb: Float, midGainDb: Float, highGainDb: Float)
+76:    external fun setSoundGoodizer(enabled: Boolean, mode: Int, amount: Float)
+77:    external fun setMasterReverb(enabled: Boolean, size: Float, decay: Float, damp: Float, mix: Float)
+78:    external fun setMasterDelay(enabled: Boolean, timeSec: Float, feedback: Float, mix: Float, pingPong: Boolean)
+79:    external fun setMasterChorus(enabled: Boolean, rateHz: Float, depthMs: Float, mix: Float)
+80:    external fun setMasterCompressor(enabled: Boolean, thresholdDb: Float, ratio: Float, attackMs: Float, releaseMs: Float, makeupGainDb: Float)
+81:    external fun setSpatialWidener(amount: Float)
+82:    external fun setMasterPunch(amount: Float)
+83:    external fun setPadBrightness(brightness: Float)
+84:    external fun setChannelReverb(engineIndex: Int, channel: Int, reverb: Float)
+85:    external fun setChannelChorus(engineIndex: Int, channel: Int, chorus: Float)
+86:    external fun renderNativeAudio(audioBuffer: ShortArray, numFrames: Int): Int
+87:    external fun hasActiveSoundFonts(): Boolean
+88:    external fun isOboeActive(): Boolean
+89:    external fun setBypassMasterFX(bypass: Boolean)
+90:    external fun isMasterFxBypassed(): Boolean
+91:    external fun controlChange(engineIndex: Int, channel: Int, cc: Int, value: Int)
+93:    // Dedicated SamplePlaybackEngine external functions
+94:    external fun triggerDrumSample(sampleId: Int, velocity: Float, pan: Float)
+95:    external fun stopDrumSample(sampleId: Int)
+96:    external fun stopAllDrumSamples()
+97:    external fun setDrumMasterVolume(volume: Float)
+98:    external fun setDrumMasterPan(pan: Float)
+99:    external fun loadDrumWavFile(sampleId: Int, filePath: String): Int
+100:    external fun loadDrumSamplePcm(sampleId: Int, sampleName: String, pcmData: FloatArray, totalFrames: Int, sampleRate: Int): Int
+101:    external fun unloadDrumSample(sampleId: Int)
+102:    external fun setDrumChokeGroup(sampleId: Int, chokeGroup: Int)
+103:    external fun getDrumActiveVoices(): Int
+
+$ grep -nE 'const val (DRIVER_|ENGINE_|CHANNEL_)' app/src/main/java/com/soundstage/mixer/audio/NativeAudioBridge.kt
+18:    const val ENGINE_FADER = 0
+19:    const val ENGINE_PAD = 1
+20:    const val ENGINE_DRUM = 2
+24:    const val CHANNEL_TRACK_1 = 0
+25:    const val CHANNEL_TRACK_2 = 1
+26:    const val CHANNEL_TRACK_3 = 2
+27:    const val CHANNEL_TRACK_4 = 3
+28:    const val CHANNEL_TRACK_5 = 4
+29:    const val CHANNEL_TRACK_6 = 5
+30:    const val CHANNEL_TRACK_7 = 6
+31:    const val CHANNEL_TRACK_8 = 7
+35:    const val CHANNEL_DRUMPAD = 8
+36:    const val CHANNEL_TONIC_PAD = 9
+38:    const val DRIVER_OBOE = 0
+39:    const val DRIVER_OPENSL_ES = 1
+
+$ grep -nE 'fun safe' app/src/main/java/com/soundstage/mixer/audio/NativeAudioBridge.kt
+106:    fun safeIsOboeActive(): Boolean {
+116:    fun safeStartEngine(driverType: Int = 0): Boolean {
+127:    fun safeStopEngine() {
+137:    fun safeSetAudioDriver(driverType: Int) {
+147:    fun safeLoadSoundFont(engineIndex: Int = ENGINE_FADER, absolutePath: String): Int {
+162:    fun safeUnloadSoundFont(engineIndex: Int = ENGINE_FADER, soundFontId: Int): Int {
+175:    fun safeTrimMemory() {
+185:    fun safeUnloadAllSoundFonts(engineIndex: Int = -1) {
+195:    fun safeSelectProgram(
+212:    fun safeListPresets(soundFontId: Int): List<PresetInfo> {
+222:    fun safeProgramChange(
+237:    fun safeNoteOn(
+252:    fun safeNoteOff(
+266:    fun safeNoteOnEngine(
+281:    fun safeNoteOffEngine(
+295:    fun safeAllNotesOff(
+308:    fun safeSetTrackVolume(
+322:    fun safeSetTrackPan(
+336:    fun safeSetTrackTranspose(
+350:    fun safePitchBend(
+364:    fun safeSetMasterVolume(volume01: Float) {
+374:    fun safeSetFluidSynthGain(gain: Float) {
+384:    fun safeSetPolyphony(polyphony: Int) {
+396:    fun safeSetBufferSize(bufferSize: Int) {
+406:    fun safeSetMasterEq(lowGainDb: Float, midGainDb: Float, highGainDb: Float) {
+416:    fun safeSetSoundGoodizer(enabled: Boolean, mode: Int, amount: Float) {
+426:    fun safeSetMasterReverb(enabled: Boolean, size: Float, decay: Float, damp: Float, mix: Float) {
+436:    fun safeSetMasterDelay(enabled: Boolean, timeSec: Float, feedback: Float, mix: Float, pingPong: Boolean = false) {
+446:    fun safeSetMasterChorus(enabled: Boolean, rateHz: Float, depthMs: Float, mix: Float) {
+456:    fun safeSetMasterCompressor(enabled: Boolean, thresholdDb: Float, ratio: Float, attackMs: Float, releaseMs: Float, makeupGainDb: Float) {
+466:    fun safeSetSpatialWidener(amount: Float) {
+476:    fun safeSetMasterPunch(amount: Float) {
+486:    fun safeSetPadBrightness(brightness: Float) {
+496:    fun safeSetChannelReverb(channel: Int, reverb: Float, engineIndex: Int = ENGINE_FADER) {
+506:    fun safeSetChannelChorus(channel: Int, chorus: Float, engineIndex: Int = ENGINE_FADER) {
+516:     fun safeControlChange(channel: Int, cc: Int, value: Int, engineIndex: Int = ENGINE_FADER) {
+526:    fun safeRenderNativeAudio(audioBuffer: ShortArray, numFrames: Int): Int {
+537:    fun safeHasActiveSoundFonts(): Boolean {
+547:    fun safeSetBypassMasterFX(bypass: Boolean) {
+557:    fun safeIsMasterFxBypassed(): Boolean {
+567:    fun safeTriggerDrumSample(sampleId: Int, velocity: Float = 0.9f, pan: Float = 0.0f) {
+577:    fun safeStopDrumSample(sampleId: Int) {
+587:    fun safeStopAllDrumSamples() {
+597:    fun safeSetDrumMasterVolume(volume: Float) {
+607:    fun safeSetDrumMasterPan(pan: Float) {
+617:    fun safeLoadDrumWavFile(sampleId: Int, filePath: String): Int {
+628:    fun safeLoadDrumSamplePcm(sampleId: Int, sampleName: String, pcmData: FloatArray, totalFrames: Int, sampleRate: Int = 48000): Int {
+639:    fun safeUnloadDrumSample(sampleId: Int) {
+649:    fun safeSetDrumChokeGroup(sampleId: Int, chokeGroup: Int) {
+659:    fun safeGetDrumActiveVoices(): Int {
+
+──── Section 3 — MixerViewModel : méthodes métronome + tonic ────
+
+$ grep -nE 'fun toggleMetronome|fun setMetronomeSignature|fun setMetronomeVolume' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+1741:    fun toggleMetronome() {
+1759:    fun setMetronomeSignature(sig: String) {
+1799:    fun setMetronomeVolume(vol: Float) {
+
+$ grep -nE 'fun onTonicNoteClick|fun setTonicVolume|fun setTonicReverb|fun setTonicBrightness|fun setTonicShimmer|fun toggleMultiPad|fun onTonicOctaveMinus|fun onTonicOctavePlus' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+2749:    fun toggleMultiPad() {
+2766:    fun setTonicVolume(vol: Float) {
+2778:    fun setTonicReverb(rev: Float) {
+2784:    fun onTonicNoteClick(note: String) {
+2801:    fun onTonicOctaveMinus() {
+2812:    fun onTonicOctavePlus() {
+2823:    fun setTonicBrightness(brightness: Float) {
+2829:    fun setTonicShimmer(shimmer: Float) {
+
+=== toggleMetronome (Section 3) ===
+$ sed -n '1741,1749p' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    fun toggleMetronome() {
+        val next = !_uiState.value.isMetronomeOn
+        if (next) {
+            audioEngine.startMetronome(_uiState.value.bpm, _uiState.value.metronomeSignature, _uiState.value.metronomeVolume)
+        } else {
+            audioEngine.stopMetronome()
+        }
+        _uiState.update { it.copy(isMetronomeOn = next) }
+    }
+
+=== setMetronomeSignature (Section 3) ===
+$ sed -n '1759,1764p' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    fun setMetronomeSignature(sig: String) {
+        _uiState.update { it.copy(metronomeSignature = sig) }
+        if (_uiState.value.isMetronomeOn) {
+            audioEngine.startMetronome(_uiState.value.bpm, sig, _uiState.value.metronomeVolume)
+        }
+    }
+
+=== setMetronomeVolume (Section 3) ===
+$ sed -n '1799,1805p' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    fun setMetronomeVolume(vol: Float) {
+        val clamped = vol.coerceIn(0f, 1f)
+        _uiState.update { it.copy(metronomeVolume = clamped) }
+        if (_uiState.value.isMetronomeOn) {
+            audioEngine.startMetronome(_uiState.value.bpm, _uiState.value.metronomeSignature, clamped)
+        }
+    }
+
+=== toggleMultiPad (Section 3) ===
+$ sed -n '2749,2760p' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    fun toggleMultiPad() {
+        _uiState.update { state ->
+            val nextMulti = !state.isMultiPadEnabled
+            val newNotes = if (!nextMulti && state.activeTonicNotes.size > 1) {
+                setOf(state.activeTonicNotes.first())
+            } else {
+                state.activeTonicNotes
+            }
+            audioEngine.setTonicDrone(newNotes, state.tonicOctaveRange, state.tonicBrightness, state.tonicShimmer)
+            state.copy(isMultiPadEnabled = nextMulti, activeTonicNotes = newNotes)
+        }
+    }
+
+=== setTonicVolume (Section 3) ===
+$ sed -n '2766,2776p' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    fun setTonicVolume(vol: Float) {
+        val clamped = vol.coerceIn(0f, 1f)
+        audioEngine.setChannelVolume(NativeAudioBridge.CHANNEL_TONIC_PAD, clamped)
+        _uiState.update { state ->
+            val updatedSlots = state.audioSlots.map { slot ->
+                if (slot.slotId == 9) slot.copy(volume = clamped) else slot
+            }
+            state.copy(audioSlots = updatedSlots)
+        }
+        persistCurrentStateDebounced()
+    }
+
+=== setTonicReverb (Section 3) ===
+$ sed -n '2778,2782p' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    fun setTonicReverb(rev: Float) {
+        val clamped = rev.coerceIn(0f, 1f)
+        audioEngine.channelParams[9].reverb = clamped
+        persistCurrentStateDebounced()
+    }
+
+=== onTonicNoteClick (Section 3) ===
+$ sed -n '2784,2799p' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    fun onTonicNoteClick(note: String) {
+        if (note.isEmpty()) {
+            audioEngine.setTonicDrone(emptySet(), _uiState.value.tonicOctaveRange, _uiState.value.tonicBrightness, _uiState.value.tonicShimmer)
+            _uiState.update { it.copy(activeTonicNotes = emptySet()) }
+            return
+        }
+        _uiState.update { state ->
+            val newSet = if (state.isMultiPadEnabled) {
+                if (state.activeTonicNotes.contains(note)) state.activeTonicNotes - note else state.activeTonicNotes + note
+            } else {
+                if (state.activeTonicNotes.contains(note)) emptySet() else setOf(note)
+            }
+            audioEngine.setTonicDrone(newSet, state.tonicOctaveRange, state.tonicBrightness, state.tonicShimmer)
+            state.copy(activeTonicNotes = newSet)
+        }
+    }
+
+=== onTonicOctaveMinus (Section 3) ===
+$ sed -n '2801,2810p' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    fun onTonicOctaveMinus() {
+        val octaves = listOf("C1 — C2", "C2 — C3", "C3 — C4", "C4 — C5", "C5 — C6")
+        _uiState.update { state ->
+            val idx = octaves.indexOf(state.tonicOctaveRange)
+            val nextIdx = if (idx > 0) idx - 1 else 0
+            val newOctave = octaves[nextIdx]
+            audioEngine.setTonicDrone(state.activeTonicNotes, newOctave, state.tonicBrightness, state.tonicShimmer)
+            state.copy(tonicOctaveRange = newOctave)
+        }
+    }
+
+=== onTonicOctavePlus (Section 3) ===
+$ sed -n '2812,2821p' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    fun onTonicOctavePlus() {
+        val octaves = listOf("C1 — C2", "C2 — C3", "C3 — C4", "C4 — C5", "C5 — C6")
+        _uiState.update { state ->
+            val idx = octaves.indexOf(state.tonicOctaveRange)
+            val nextIdx = if (idx in 0 until octaves.lastIndex) idx + 1 else octaves.lastIndex
+            val newOctave = octaves[nextIdx]
+            audioEngine.setTonicDrone(state.activeTonicNotes, newOctave, state.tonicBrightness, state.tonicShimmer)
+            state.copy(tonicOctaveRange = newOctave)
+        }
+    }
+
+=== setTonicBrightness (Section 3) ===
+$ sed -n '2823,2827p' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    fun setTonicBrightness(brightness: Float) {
+        val clamped = brightness.coerceIn(0f, 1f)
+        audioEngine.setTonicDrone(_uiState.value.activeTonicNotes, _uiState.value.tonicOctaveRange, clamped, _uiState.value.tonicShimmer)
+        _uiState.update { it.copy(tonicBrightness = clamped) }
+    }
+
+=== setTonicShimmer (Section 3) ===
+$ sed -n '2829,2833p' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    fun setTonicShimmer(shimmer: Float) {
+        val clamped = shimmer.coerceIn(0f, 1f)
+        audioEngine.setTonicDrone(_uiState.value.activeTonicNotes, _uiState.value.tonicOctaveRange, _uiState.value.tonicBrightness, clamped)
+        _uiState.update { it.copy(tonicShimmer = clamped) }
+    }
+
+──── Section 4 — MixerViewModel : champs + méthodes loopPlayer ────
+
+$ sed -n '1,320p' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt | grep -nE 'loopPlayer|externalLoopPlayer|LoopPlayer|drumPadLooper'
+275:    val loopPlayerFilePath: String? = null,
+276:    val loopPlayerFileName: String = "",
+277:    val loopPlayerDurationMs: Long = 0L,
+278:    val loopPlayerPositionMs: Long = 0L,
+279:    val loopPlayerProgress: Float = 0.0f,
+280:    val loopPlayerIsPlaying: Boolean = false,
+281:    val loopPlayerIsLooping: Boolean = true,
+282:    val loopPlayerPitchSemitones: Int = 0,
+283:    val loopPlayerStepMode: String = "DEFAULT",
+284:    val loopPlayerWaveform: FloatArray = FloatArray(0),
+285:    val loopPlayerVolume: Float = 1.0f,
+286:    val loopPlayerExplorerPath: String = "/storage/emulated/0/SoundStage/Loops",
+287:    val loopPlayerExplorerItems: List<com.soundstage.mixer.model.AudioStorageItem> = emptyList(),
+288:    val loopPlayerIsExplorerOpen: Boolean = false,
+319:    val externalLoopPlayer = com.soundstage.mixer.audio.ExternalLoopPlayerEngine(
+
+$ grep -nE 'fun .*[Ll]oopPlayer|externalLoopPlayer\.' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+742:        externalLoopPlayer.release()
+1710:        externalLoopPlayer.setBpm(bpm)
+6406:        externalLoopPlayer.loadAndPlay(file, autoPlay = true)
+6412:                loopPlayerWaveform = externalLoopPlayer.getWaveform(),
+6413:                loopPlayerDurationMs = externalLoopPlayer.getDurationMs(),
+6422:            externalLoopPlayer.play()
+6424:            externalLoopPlayer.pause()
+6429:                loopPlayerWaveform = externalLoopPlayer.getWaveform()
+6434:    fun stopExternalLoopPlayer() {
+6435:        externalLoopPlayer.stop()
+6445:    fun retriggerExternalLoopPlayer() {
+6446:        externalLoopPlayer.retrigger()
+6450:    fun seekExternalLoopPlayer(progress: Float) {
+6453:        externalLoopPlayer.seekTo(targetMs)
+6464:        externalLoopPlayer.setLooping(next)
+6469:        externalLoopPlayer.setPitchSemitones(semitones)
+6478:        externalLoopPlayer.setStepMode(mode)
+6483:        externalLoopPlayer.setVolume(volume)
+6495:    fun navigateLoopPlayerExplorer(folderPath: String) {
+6499:    fun refreshLoopPlayerExplorer(dirPath: String) {
+
+=== loadAndPlayExternalLoopFile (Section 4) ===
+$ sed -n '6405,6417p' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    fun loadAndPlayExternalLoopFile(file: java.io.File) {
+        externalLoopPlayer.loadAndPlay(file, autoPlay = true)
+        _uiState.update {
+            it.copy(
+                loopPlayerFilePath = file.absolutePath,
+                loopPlayerFileName = file.name,
+                loopPlayerIsPlaying = true,
+                loopPlayerWaveform = externalLoopPlayer.getWaveform(),
+                loopPlayerDurationMs = externalLoopPlayer.getDurationMs(),
+                loopPlayerIsExplorerOpen = false
+            )
+        }
+    }
+
+=== toggleExternalLoopPlayPause (Section 4) ===
+$ sed -n '6419,6432p' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    fun toggleExternalLoopPlayPause() {
+        val willPlay = !_uiState.value.loopPlayerIsPlaying
+        if (willPlay) {
+            externalLoopPlayer.play()
+        } else {
+            externalLoopPlayer.pause()
+        }
+        _uiState.update {
+            it.copy(
+                loopPlayerIsPlaying = willPlay,
+                loopPlayerWaveform = externalLoopPlayer.getWaveform()
+            )
+        }
+    }
+
+=== stopExternalLoopPlayer (Section 4) ===
+$ sed -n '6434,6443p' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    fun stopExternalLoopPlayer() {
+        externalLoopPlayer.stop()
+        _uiState.update {
+            it.copy(
+                loopPlayerIsPlaying = false,
+                loopPlayerPositionMs = 0L,
+                loopPlayerProgress = 0f
+            )
+        }
+    }
+
+=== retriggerExternalLoopPlayer (Section 4) ===
+$ sed -n '6445,6448p' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    fun retriggerExternalLoopPlayer() {
+        externalLoopPlayer.retrigger()
+        _uiState.update { it.copy(loopPlayerIsPlaying = true) }
+    }
+
+=== seekExternalLoopPlayer (Section 4) ===
+$ sed -n '6450,6460p' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    fun seekExternalLoopPlayer(progress: Float) {
+        val dur = _uiState.value.loopPlayerDurationMs
+        val targetMs = (progress * dur).toLong()
+        externalLoopPlayer.seekTo(targetMs)
+        _uiState.update {
+            it.copy(
+                loopPlayerPositionMs = targetMs,
+                loopPlayerProgress = progress
+            )
+        }
+    }
+
+=== toggleExternalLoopLooping (Section 4) ===
+$ sed -n '6462,6466p' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    fun toggleExternalLoopLooping() {
+        val next = !_uiState.value.loopPlayerIsLooping
+        externalLoopPlayer.setLooping(next)
+        _uiState.update { it.copy(loopPlayerIsLooping = next) }
+    }
+
+=== setExternalLoopPitchSemitones (Section 4) ===
+$ sed -n '6468,6471p' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    fun setExternalLoopPitchSemitones(semitones: Int) {
+        externalLoopPlayer.setPitchSemitones(semitones)
+        _uiState.update { it.copy(loopPlayerPitchSemitones = semitones) }
+    }
+
+=== resetExternalLoopPitch (Section 4) ===
+$ sed -n '6473,6475p' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    fun resetExternalLoopPitch() {
+        setExternalLoopPitchSemitones(0)
+    }
+
+=== setExternalLoopStepMode (Section 4) ===
+$ sed -n '6477,6480p' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    fun setExternalLoopStepMode(mode: String) {
+        externalLoopPlayer.setStepMode(mode)
+        _uiState.update { it.copy(loopPlayerStepMode = mode) }
+    }
+
+=== setExternalLoopVolume (Section 4) ===
+$ sed -n '6482,6485p' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    fun setExternalLoopVolume(volume: Float) {
+        externalLoopPlayer.setVolume(volume)
+        _uiState.update { it.copy(loopPlayerVolume = volume) }
+    }
+
+=== toggleExternalLoopExplorer (Section 4) ===
+$ sed -n '6487,6493p' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    fun toggleExternalLoopExplorer() {
+        val next = !_uiState.value.loopPlayerIsExplorerOpen
+        _uiState.update { it.copy(loopPlayerIsExplorerOpen = next) }
+        if (next) {
+            refreshLoopPlayerExplorer(_uiState.value.loopPlayerExplorerPath)
+        }
+    }
+
+=== navigateLoopPlayerExplorer (Section 4) ===
+$ sed -n '6495,6497p' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    fun navigateLoopPlayerExplorer(folderPath: String) {
+        refreshLoopPlayerExplorer(folderPath)
+    }
+
+=== refreshLoopPlayerExplorer (Section 4) ===
+$ sed -n '6499,6544p' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    fun refreshLoopPlayerExplorer(dirPath: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val targetDir = java.io.File(dirPath).let {
+                if (it.exists() && it.isDirectory) it
+                else if (fileManager.loopsDir.exists()) fileManager.loopsDir
+                else {
+                    fileManager.ensureDirectoriesExist()
+                    fileManager.loopsDir
+                }
+            }
+
+            val validExtensions = setOf("wav", "mp3", "ogg", "flac", "m4a", "aac")
+            val files = targetDir.listFiles()?.toList() ?: emptyList()
+
+            val directories = files
+                .filter { it.isDirectory && !it.name.startsWith(".") }
+                .sortedBy { it.name.lowercase() }
+                .map {
+                    com.soundstage.mixer.model.AudioStorageItem(
+                        name = it.name,
+                        path = it.absolutePath,
+                        isDirectory = true
+                    )
+                }
+
+            val audioFiles = files
+                .filter { !it.isDirectory && validExtensions.contains(it.extension.lowercase()) }
+                .sortedBy { it.name.lowercase() }
+                .map {
+                    com.soundstage.mixer.model.AudioStorageItem(
+                        name = it.name,
+                        path = it.absolutePath,
+                        isDirectory = false,
+                        sizeBytes = it.length()
+                    )
+                }
+
+            val combined = directories + audioFiles
+            _uiState.update {
+                it.copy(
+                    loopPlayerExplorerPath = targetDir.absolutePath,
+                    loopPlayerExplorerItems = combined
+                )
+            }
+        }
+    }
+
+$ grep -nE 'drumPadLooper|DrumPadLooperEngine|DrumPadSampleProvider' app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+340:    private val drumPadLooper = com.soundstage.mixer.audio.DrumPadLooperEngine { pad, _ ->
+341:        com.soundstage.mixer.audio.DrumPadSampleProvider.getOrGeneratePadPcm(application.applicationContext, pad)
+2471:                drumPadLooper.startRecording(bpm, bars)
+2472:                drumPadLooper.recordHit(pad, _uiState.value.drumVolume)
+2491:                drumPadLooper.recordHit(pad, _uiState.value.drumVolume)
+2710:        drumPadLooper.startRecording(bpm, bars)
+2728:                val success = drumPadLooper.stopAndRenderLoop(targetFile)
+2744:        drumPadLooper.cancelRecording()
+
+──── Section 5 — AppStatePersistence : état actuel ────
+
+$ grep -n 'KEY_' app/src/main/java/com/soundstage/mixer/model/AppStatePersistence.kt | tail -30
+563:            val themeBgSaturation = if (prefs.contains(KEY_THEME_BG_SATURATION)) prefs.getFloat(KEY_THEME_BG_SATURATION, 1.60f) else null
+564:            val themeBgLightness = if (prefs.contains(KEY_THEME_BG_LIGHTNESS)) prefs.getFloat(KEY_THEME_BG_LIGHTNESS, 1.0f) else null
+565:            val themeModulesLightness = if (prefs.contains(KEY_THEME_MODULES_LIGHTNESS)) prefs.getFloat(KEY_THEME_MODULES_LIGHTNESS, 1.0f) else null
+566:            val trackColorSaturation = if (prefs.contains(KEY_TRACK_COLOR_SATURATION)) prefs.getFloat(KEY_TRACK_COLOR_SATURATION, 1.0f) else null
+569:            val tracksJson = prefs.getString(KEY_TRACKS_JSON, null)
+623:            val fxJsonStr = prefs.getString(KEY_FX_PARAMETERS_JSON, null)
+668:            val snapshotsJsonStr = prefs.getString(KEY_SNAPSHOTS_JSON, null)
+669:            val activeSnapshotSlot = prefs.getString(KEY_ACTIVE_SNAPSHOT_SLOT, null)
+724:            val configuredSlotsJsonStr = prefs.getString(KEY_CONFIGURED_SNAPSHOT_SLOTS, null)
+735:            val customNamesJsonStr = prefs.getString(KEY_SNAPSHOT_CUSTOM_NAMES, null)
+748:            val slotsJson = prefs.getString(KEY_AUDIO_SLOTS_JSON, null)
+768:            val drumJson = prefs.getString(KEY_DRUM_PADS_JSON, null)
+787:            val isFaderAutoFit = if (prefs.contains(KEY_FADER_AUTO_FIT)) prefs.getBoolean(KEY_FADER_AUTO_FIT, false) else null
+789:            val activePatchId = prefs.getString(KEY_ACTIVE_PATCH_ID, null)
+791:            val patchesJson = prefs.getString(KEY_PATCHES_JSON, null)
+914:            val midiJson = prefs.getString(KEY_MIDI_MAPPINGS_JSON, null)
+942:            val midiDebounceEnabled = if (prefs.contains(KEY_MIDI_DEBOUNCE_ENABLED)) prefs.getBoolean(KEY_MIDI_DEBOUNCE_ENABLED, false) else null
+943:            val midiDebounceMs = if (prefs.contains(KEY_MIDI_DEBOUNCE_MS)) prefs.getLong(KEY_MIDI_DEBOUNCE_MS, 30L) else null
+944:            val audioBufferSize = if (prefs.contains(KEY_AUDIO_BUFFER_SIZE)) prefs.getInt(KEY_AUDIO_BUFFER_SIZE, 256) else null
+945:            val polyphony = if (prefs.contains(KEY_POLYPHONY)) prefs.getInt(KEY_POLYPHONY, 128) else null
+946:            val headroom = if (prefs.contains(KEY_HEADROOM)) prefs.getFloat(KEY_HEADROOM, 1.00f) else null
+947:            val audioEngine = prefs.getString(KEY_AUDIO_ENGINE, null)
+948:            val fluidSynthGain = if (prefs.contains(KEY_FLUID_GAIN)) prefs.getFloat(KEY_FLUID_GAIN, 1.20f) else null
+949:            val antiJitter = if (prefs.contains(KEY_ANTI_JITTER)) prefs.getBoolean(KEY_ANTI_JITTER, true) else null
+950:            val jitterWindowMs = if (prefs.contains(KEY_JITTER_WINDOW_MS)) prefs.getInt(KEY_JITTER_WINDOW_MS, 15) else null
+951:            val useFlats = if (prefs.contains(KEY_USE_FLATS)) prefs.getBoolean(KEY_USE_FLATS, false) else null
+952:            val hapticsEnabled = if (prefs.contains(KEY_HAPTICS_ENABLED)) prefs.getBoolean(KEY_HAPTICS_ENABLED, true) else null
+953:            val reducedMotion = if (prefs.contains(KEY_REDUCED_MOTION)) prefs.getBoolean(KEY_REDUCED_MOTION, false) else null
+956:            prefs.getString(KEY_SF_FAVORITES, null)?.let { raw ->
+963:            prefs.getString(KEY_SF_CATEGORY_OVERRIDES, null)?.let { raw ->
+
+$ grep -n 'data class RestoredAppState' app/src/main/java/com/soundstage/mixer/model/AppStatePersistence.kt
+119:    data class RestoredAppState(
+
+=== RestoredAppState (Section 5) ===
+$ sed -n '119,174p' app/src/main/java/com/soundstage/mixer/model/AppStatePersistence.kt
+    data class RestoredAppState(
+        val themeName: String?,
+        val bpm: Int?,
+        val transpose: Int?,
+        val octave: Int?,
+        val activeSceneId: String?,
+        val activeProjectName: String? = null,
+        val visibleTracksCount: Int? = null,
+        val soundGoodizerAmount: Float?,
+        val soundGoodizerMode: String?,
+        val masterPunch: Float?,
+        val spatialWidener: Float?,
+        val masterVolume: Float?,
+        val tracks: List<SavedTrackData>,
+        val audioSlots: List<SavedAudioSlotData>,
+        val drumPads: List<SavedDrumData>,
+        val fxParameters: Map<Int, FxParameters> = emptyMap(),
+        val activeSf2TrackId: Int?,
+        val lastActivity: String?,
+        val tonicBrightness: Float? = null,
+        val tonicShimmer: Float? = null,
+        val drumReverb: Float? = null,
+        val keepScreenOn: Boolean? = null,
+        val selectedScaleMode: String? = null,
+        val snapshots: Map<String, SubSceneSnapshot> = emptyMap(),
+        val activeSnapshotSlot: String? = null,
+        val configuredSnapshotSlots: List<String> = emptyList(),
+        val snapshotCustomNames: Map<String, String> = emptyMap(),
+        val themeHue: Float? = null,
+        val themeSaturation: Float? = null,
+        val themeNuance: Float? = null,
+        val themePalette: String? = null,
+        val themeAccentSaturation: Float? = null,
+        val themeBgSaturation: Float? = null,
+        val themeBgLightness: Float? = null,
+        val themeModulesLightness: Float? = null,
+        val trackColorSaturation: Float? = null,
+        val isFaderAutoFit: Boolean? = null,
+        val patches: List<PatchItem> = emptyList(),
+        val activePatchId: String? = null,
+        val midiMappings: List<MidiMappingItem> = emptyList(),
+        val midiDebounceEnabled: Boolean? = null,
+        val midiDebounceMs: Long? = null,
+        val audioBufferSize: Int? = null,
+        val polyphony: Int? = null,
+        val headroom: Float? = null,
+        val audioEngine: String? = null,
+        val fluidSynthGain: Float? = null,
+        val antiJitter: Boolean? = null,
+        val jitterWindowMs: Int? = null,
+        val useFlats: Boolean? = null,
+        val hapticsEnabled: Boolean? = null,
+        val reducedMotion: Boolean? = null,
+        val sfFavorites: Set<String> = emptySet(),
+        val sfCategoryOverrides: Map<String, String> = emptyMap()
+    )
+
+$ grep -n 'fun saveAppState' app/src/main/java/com/soundstage/mixer/model/AppStatePersistence.kt
+176:    fun saveAppState(
+
+=== saveAppState signature (Section 5) ===
+$ sed -n '176,231p' app/src/main/java/com/soundstage/mixer/model/AppStatePersistence.kt
+    fun saveAppState(
+        currentTheme: AppTheme,
+        bpm: Int,
+        transpose: Int,
+        octave: Int,
+        activeSceneId: String,
+        soundGoodizerAmount: Float,
+        soundGoodizerMode: SoundGoodizerMode,
+        masterPunch: Float,
+        spatialWidener: Float,
+        masterVolume: Float,
+        tracks: List<TrackChannel>,
+        audioSlots: List<AudioSlot>,
+        drumPads: List<DrumPadItem>,
+        fxParameters: Map<Int, FxParameters> = emptyMap(),
+        activeSf2TrackId: Int,
+        lastActivity: String = "mixer",
+        tonicBrightness: Float = 0.70f,
+        tonicShimmer: Float = 0.15f,
+        drumReverb: Float = 0.24f,
+        keepScreenOn: Boolean = true,
+        selectedScaleMode: String = "Majeur",
+        snapshots: Map<String, SubSceneSnapshot> = emptyMap(),
+        activeSnapshotSlot: String? = null,
+        configuredSnapshotSlots: List<String> = listOf("slot_default"),
+        snapshotCustomNames: Map<String, String> = emptyMap(),
+        visibleTracksCount: Int = 1,
+        activeProjectName: String = "",
+        themeHue: Float = 185f,
+        themeSaturation: Float = 0.85f,
+        themeNuance: Float = 0.50f,
+        themePalette: String = "Cyber Neon",
+        themeAccentSaturation: Float = 1.0f,
+        themeBgSaturation: Float = 1.60f,
+        themeBgLightness: Float = 1.0f,
+        themeModulesLightness: Float = 1.0f,
+        trackColorSaturation: Float = 1.0f,
+        isFaderAutoFit: Boolean = false,
+        patches: List<PatchItem> = emptyList(),
+        activePatchId: String? = null,
+        midiMappings: List<MidiMappingItem> = emptyList(),
+        midiDebounceEnabled: Boolean = false,
+        midiDebounceMs: Long = 30L,
+        audioBufferSize: Int = 256,
+        polyphony: Int = 128,
+        headroom: Float = 1.00f,
+        audioEngine: String = "oboe",
+        fluidSynthGain: Float = 1.20f,
+        antiJitter: Boolean = true,
+        jitterWindowMs: Int = 15,
+        useFlats: Boolean = false,
+        hapticsEnabled: Boolean = true,
+        reducedMotion: Boolean = false,
+        sfFavorites: Set<String> = emptySet(),
+        sfCategoryOverrides: Map<String, String> = emptyMap()
+    ) {
+
+$ grep -n 'prefs.edit().apply\|\.apply()' app/src/main/java/com/soundstage/mixer/model/AppStatePersistence.kt
+461:            prefs.edit().apply {
+1038:            prefs.edit().putString(key, path).apply()
+1054:            prefs.edit().putString(key, value).apply()
+1070:            prefs.edit().putBoolean(key, value).apply()
+1086:            prefs.edit().putInt(key, value).apply()
+1102:            prefs.edit().putFloat(key, value).apply()
+1118:            prefs.edit().putLong(key, value).apply()
+
+=== prefs.edit().apply (Section 5) ===
+$ sed -n '451,527p' app/src/main/java/com/soundstage/mixer/model/AppStatePersistence.kt
+                    put("action", m.actionType.name)
+                    put("type", m.midiType.name)
+                    put("channel", m.channel)
+                    put("ctrl", m.controlNumber)
+                    put("enabled", m.isEnabled)
+                    put("mode", m.mode.name)
+                }
+                midiMappingsArray.put(mObj)
+            }
+
+            prefs.edit().apply {
+                putString(KEY_THEME, currentTheme.name)
+                putInt(KEY_BPM, bpm)
+                putInt(KEY_TRANSPOSE, transpose)
+                putInt(KEY_OCTAVE, octave)
+                putString(KEY_ACTIVE_SCENE_ID, activeSceneId)
+                putString(KEY_ACTIVE_PROJECT_NAME, activeProjectName)
+                putInt(KEY_VISIBLE_TRACKS_COUNT, visibleTracksCount)
+                putFloat(KEY_SOUNDGOODIZER_AMOUNT, soundGoodizerAmount)
+                putString(KEY_SOUNDGOODIZER_MODE, soundGoodizerMode.name)
+                putFloat(KEY_MASTER_PUNCH, masterPunch)
+                putFloat(KEY_SPATIAL_WIDENER, spatialWidener)
+                putFloat(KEY_MASTER_VOLUME, masterVolume)
+                putString(KEY_TRACKS_JSON, tracksArray.toString())
+                putString(KEY_FX_PARAMETERS_JSON, fxObject.toString())
+                putString(KEY_SNAPSHOTS_JSON, snapshotsObject.toString())
+                putString(KEY_ACTIVE_SNAPSHOT_SLOT, activeSnapshotSlot)
+                putString(KEY_CONFIGURED_SNAPSHOT_SLOTS, configuredSlotsArray.toString())
+                putString(KEY_SNAPSHOT_CUSTOM_NAMES, snapshotNamesObj.toString())
+                putString(KEY_AUDIO_SLOTS_JSON, slotsArray.toString())
+                putString(KEY_DRUM_PADS_JSON, drumArray.toString())
+                putInt(KEY_ACTIVE_SF2_TRACK_ID, activeSf2TrackId)
+                putString(KEY_LAST_ACTIVITY, lastActivity)
+                putFloat(KEY_TONIC_BRIGHTNESS, tonicBrightness)
+                putFloat(KEY_TONIC_SHIMMER, tonicShimmer)
+                putFloat(KEY_DRUM_REVERB, drumReverb)
+                putBoolean(KEY_KEEP_SCREEN_ON, keepScreenOn)
+                putString(KEY_SELECTED_SCALE_MODE, selectedScaleMode)
+                putFloat(KEY_THEME_HUE, themeHue)
+                putFloat(KEY_THEME_SATURATION, themeSaturation)
+                putFloat(KEY_THEME_NUANCE, themeNuance)
+                putString(KEY_THEME_PALETTE, themePalette)
+                putFloat(KEY_THEME_ACCENT_SATURATION, themeAccentSaturation)
+                putFloat(KEY_THEME_BG_SATURATION, themeBgSaturation)
+                putFloat(KEY_THEME_BG_LIGHTNESS, themeBgLightness)
+                putFloat(KEY_THEME_MODULES_LIGHTNESS, themeModulesLightness)
+                putFloat(KEY_TRACK_COLOR_SATURATION, trackColorSaturation)
+                putBoolean(KEY_FADER_AUTO_FIT, isFaderAutoFit)
+                putString(KEY_PATCHES_JSON, patchesArray.toString())
+                putString(KEY_ACTIVE_PATCH_ID, activePatchId)
+                putString(KEY_MIDI_MAPPINGS_JSON, midiMappingsArray.toString())
+                putBoolean(KEY_MIDI_DEBOUNCE_ENABLED, midiDebounceEnabled)
+                putLong(KEY_MIDI_DEBOUNCE_MS, midiDebounceMs)
+                putInt(KEY_AUDIO_BUFFER_SIZE, audioBufferSize)
+                putInt(KEY_POLYPHONY, polyphony)
+                putFloat(KEY_HEADROOM, headroom)
+                putString(KEY_AUDIO_ENGINE, audioEngine)
+                putFloat(KEY_FLUID_GAIN, fluidSynthGain)
+                putBoolean(KEY_ANTI_JITTER, antiJitter)
+                putInt(KEY_JITTER_WINDOW_MS, jitterWindowMs)
+                putBoolean(KEY_USE_FLATS, useFlats)
+                putBoolean(KEY_HAPTICS_ENABLED, hapticsEnabled)
+                putBoolean(KEY_REDUCED_MOTION, reducedMotion)
+
+                val sfFavArray = JSONArray()
+                sfFavorites.forEach { sfFavArray.put(it) }
+                val sfOverridesObj = JSONObject()
+                sfCategoryOverrides.forEach { (k, v) -> sfOverridesObj.put(k, v) }
+                putString(KEY_SF_FAVORITES, sfFavArray.toString())
+                putString(KEY_SF_CATEGORY_OVERRIDES, sfOverridesObj.toString())
+
+                apply()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving app state: ${e.message}")
+        }
+    }
+
+$ grep -n 'return RestoredAppState' app/src/main/java/com/soundstage/mixer/model/AppStatePersistence.kt
+974:            return RestoredAppState(
+
+=== return RestoredAppState (Section 5) ===
+$ sed -n '959,1030p' app/src/main/java/com/soundstage/mixer/model/AppStatePersistence.kt
+                    for (i in 0 until arr.length()) sfFavoritesSet.add(arr.getString(i))
+                } catch (_: Exception) {}
+            }
+            val sfOverridesMap = mutableMapOf<String, String>()
+            prefs.getString(KEY_SF_CATEGORY_OVERRIDES, null)?.let { raw ->
+                try {
+                    val obj = JSONObject(raw)
+                    val keys = obj.keys()
+                    while (keys.hasNext()) {
+                        val k = keys.next()
+                        sfOverridesMap[k] = obj.getString(k)
+                    }
+                } catch (_: Exception) {}
+            }
+
+            return RestoredAppState(
+                themeName = themeName,
+                bpm = bpm,
+                transpose = transpose,
+                octave = octave,
+                activeSceneId = activeSceneId,
+                activeProjectName = activeProjectName,
+                visibleTracksCount = visibleTracksCount,
+                soundGoodizerAmount = soundGoodizerAmount,
+                soundGoodizerMode = soundGoodizerMode,
+                masterPunch = masterPunch,
+                spatialWidener = spatialWidener,
+                masterVolume = masterVolume,
+                tracks = tracksList,
+                audioSlots = slotsList,
+                drumPads = drumList,
+                fxParameters = fxMap,
+                activeSf2TrackId = activeSf2TrackId,
+                lastActivity = lastActivity,
+                tonicBrightness = tonicBrightness,
+                tonicShimmer = tonicShimmer,
+                drumReverb = drumReverb,
+                keepScreenOn = keepScreenOn,
+                selectedScaleMode = selectedScaleMode,
+                themeHue = themeHue,
+                themeSaturation = themeSaturation,
+                themeNuance = themeNuance,
+                themePalette = themePalette,
+                themeAccentSaturation = themeAccentSaturation,
+                themeBgSaturation = themeBgSaturation,
+                themeBgLightness = themeBgLightness,
+                themeModulesLightness = themeModulesLightness,
+                trackColorSaturation = trackColorSaturation,
+                isFaderAutoFit = isFaderAutoFit,
+                snapshots = snapshotsMap,
+                activeSnapshotSlot = activeSnapshotSlot,
+                configuredSnapshotSlots = configuredSlotsList,
+                snapshotCustomNames = customNamesMap,
+                patches = restoredPatches,
+                activePatchId = activePatchId,
+                midiMappings = restoredMidiMappings,
+                midiDebounceEnabled = midiDebounceEnabled,
+                midiDebounceMs = midiDebounceMs,
+                audioBufferSize = audioBufferSize,
+                polyphony = polyphony,
+                headroom = headroom,
+                audioEngine = audioEngine,
+                fluidSynthGain = fluidSynthGain,
+                antiJitter = antiJitter,
+                jitterWindowMs = jitterWindowMs,
+                useFlats = useFlats,
+                hapticsEnabled = hapticsEnabled,
+                reducedMotion = reducedMotion,
+                sfFavorites = sfFavoritesSet,
+                sfCategoryOverrides = sfOverridesMap
+            )
+        } catch (e: Exception) {
+
+──── Section 6 — Assets + providers + SF2Parser ────
+
+$ ls app/src/main/assets/
+soundfonts
+$ ls app/src/main/res/raw/
+ls: cannot access 'app/src/main/res/raw/': No such file or directory
+$ find app/src/main -name '*.wav' -o -name '*.mp3' -o -name '*.ogg'
+
+$ grep -nE '^(class|object) DrumPadSampleProvider|fun getOrGeneratePadPcm|fun generate' app/src/main/java/com/soundstage/mixer/audio/DrumPadSampleProvider.kt
+12:object DrumPadSampleProvider {
+16:    fun getOrGeneratePadPcm(context: Context, pad: DrumPadItem): ShortArray {
+46:    private fun generateSynthDrumPcm(kitId: Int): ShortArray {
+
+=== DrumPadSampleProvider head (Section 6) ===
+$ sed -n '1,50p' app/src/main/java/com/soundstage/mixer/audio/DrumPadSampleProvider.kt
+package com.soundstage.mixer.audio
+
+import android.content.Context
+import com.soundstage.mixer.model.DrumPadItem
+import java.io.File
+import kotlin.math.exp
+import kotlin.math.sin
+
+/**
+ * Provides synthesized or decoded PCM samples for DrumPad looper mixdowns.
+ */
+object DrumPadSampleProvider {
+
+    private val sampleCache = java.util.concurrent.ConcurrentHashMap<String, ShortArray>()
+
+    fun getOrGeneratePadPcm(context: Context, pad: DrumPadItem): ShortArray {
+        val sampleFile = when {
+            pad.sampleFilePath.isNotEmpty() && File(pad.sampleFilePath).exists() -> File(pad.sampleFilePath)
+            File(context.filesDir, "LiveKeys/DrumPad/${pad.sampleFileName}").exists() -> File(context.filesDir, "LiveKeys/DrumPad/${pad.sampleFileName}")
+            File(context.filesDir, pad.sampleFileName).exists() -> File(context.filesDir, pad.sampleFileName)
+            else -> null
+        }
+
+        if (sampleFile != null && sampleFile.exists()) {
+            val cached = sampleCache[sampleFile.absolutePath]
+            if (cached != null) return cached
+            try {
+                val decoded = kotlinx.coroutines.runBlocking { AudioDecoder.decodeAudioFile(sampleFile) }
+                if (decoded != null) {
+                    // Convert float stereo to short stereo
+                    val shorts = ShortArray(decoded.pcmData.size)
+                    for (i in decoded.pcmData.indices) {
+                        shorts[i] = (decoded.pcmData[i].coerceIn(-1.0f, 1.0f) * 32767f).toInt().toShort()
+                    }
+                    sampleCache[sampleFile.absolutePath] = shorts
+                    return shorts
+                }
+            } catch (_: Exception) {}
+        }
+
+        // Fallback: Generate high quality synth drum hit (44.1kHz stereo)
+        val defaultId = ((pad.id - 1) % 8) + 1
+        return generateSynthDrumPcm(defaultId)
+    }
+
+    private fun generateSynthDrumPcm(kitId: Int): ShortArray {
+        val sampleRate = 44100
+        val durationMs = when (kitId) {
+            1 -> 350 // Kick
+            2 -> 250 // Snare
+
+$ grep -nE '^(class|object) SF2Parser|fun parsePresets|data class SF2PresetInfo' app/src/main/java/com/soundstage/mixer/model/SF2Parser.kt
+14:data class SF2PresetInfo(
+28:object SF2Parser {
+42:    suspend fun parsePresets(sf2File: File): List<SF2PresetInfo> = withContext(Dispatchers.IO) {
+
+──── Section 7 — DrumPadPage.kt (signature + imports SEULEMENT) ────
+
+$ sed -n '1,50p' app/src/main/java/com/soundstage/mixer/ui/pages/DrumPadPage.kt
+package com.soundstage.mixer.ui.pages
+
+import com.soundstage.mixer.ui.settings.mappable
+
+
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.withTimeoutOrNull
+import com.soundstage.mixer.model.DrumPadItem
+import com.soundstage.mixer.model.ScenePreset
+import com.soundstage.mixer.model.StorageItem
+import com.soundstage.mixer.model.AudioStorageItem
+
+$ grep -n 'fun DrumPadPage' app/src/main/java/com/soundstage/mixer/ui/pages/DrumPadPage.kt
+94:fun DrumPadPage(
+
+=== DrumPadPage signature (Section 7) ===
+$ sed -n '94,164p' app/src/main/java/com/soundstage/mixer/ui/pages/DrumPadPage.kt
+fun DrumPadPage(
+    drumPads: List<DrumPadItem>,
+    isMixMode: Boolean,
+    onToggleMixMode: () -> Unit,
+    feelSwing: Int,
+    onFeelSwingChange: (Int) -> Unit,
+    bpm: Int,
+    onBpmChange: (Int) -> Unit,
+    activeTonicNotes: Set<String>,
+    onTonicNoteClick: (String) -> Unit,
+    useFlats: Boolean,
+    onToggleUseFlats: () -> Unit,
+    activeTonicPadName: String,
+    onOpenTonicSoundPicker: () -> Unit,
+    activeDrumKitName: String,
+    onOpenDrumKitPicker: () -> Unit,
+    onStopTonicDrone: () -> Unit,
+    tonicOctaveRange: String = "C3 — C4",
+    onTonicOctaveMinus: () -> Unit = {},
+    onTonicOctavePlus: () -> Unit = {},
+    isMultiPadEnabled: Boolean = false,
+    onToggleMultiPad: () -> Unit = {},
+    tonicVolume: Float = 0.85f,
+    onTonicVolumeChange: (Float) -> Unit = {},
+    tonicShimmer: Float = 0.30f,
+    onTonicShimmerChange: (Float) -> Unit = {},
+    isMiniBrowserOpen: Boolean = false,
+    onToggleMiniBrowser: () -> Unit = {},
+    onCloseMiniBrowser: () -> Unit = {},
+    audioFiles: List<StorageItem> = emptyList(),
+    onPreviewAudioFile: (StorageItem) -> Unit = {},
+    onAssignSampleToPad: (Int, StorageItem) -> Unit = { _, _ -> },
+    onPadPressed: (Int) -> Unit,
+    onPadReleased: (Int) -> Unit,
+    onPadVolumeChange: (Int, Float) -> Unit = { _, _ -> },
+    onPadVolumeDelta: (Int, Float) -> Unit = { _, _ -> },
+    onLoopBeatsChange: (Int, String) -> Unit = { _, _ -> },
+    onBackToMixer: () -> Unit,
+    rightPanelMode: Int = 0,
+    onRightPanelModeChange: (Int) -> Unit = {},
+    loopFileName: String = "",
+    loopFilePath: String? = null,
+    loopDurationMs: Long = 0L,
+    loopPositionMs: Long = 0L,
+    loopProgress: Float = 0.0f,
+    loopIsPlaying: Boolean = false,
+    loopIsLooping: Boolean = true,
+    loopPitchSemitones: Int = 0,
+    loopStepMode: String = "DEFAULT",
+    loopWaveform: FloatArray = FloatArray(0),
+    loopVolume: Float = 1.0f,
+    loopExplorerPath: String = "/storage/emulated/0/SoundStage/Loops",
+    loopExplorerItems: List<AudioStorageItem> = emptyList(),
+    loopIsExplorerOpen: Boolean = false,
+    onToggleLoopPlayPause: () -> Unit = {},
+    onStopLoop: () -> Unit = {},
+    onRetriggerLoop: () -> Unit = {},
+    onSeekLoopProgress: (Float) -> Unit = {},
+    onToggleLoopLooping: () -> Unit = {},
+    onChangeLoopPitch: (Int) -> Unit = {},
+    onResetLoopPitch: () -> Unit = {},
+    onSelectLoopStepMode: (String) -> Unit = {},
+    onLoopVolumeChange: (Float) -> Unit = {},
+    onToggleLoopExplorer: () -> Unit = {},
+    onNavigateLoopExplorer: (String) -> Unit = {},
+    onSelectLoopAudioFile: (java.io.File) -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    val chromaticSharps = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+    val chromaticFlats = listOf("C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B")
+    val currentChromaticNotes = if (useFlats) chromaticFlats else chromaticSharps
+
+──── Section 8 — TonicPadDialog.kt (signature TonicPadContent SEULEMENT) ────
+
+$ sed -n '1,30p' app/src/main/java/com/soundstage/mixer/ui/components/TonicPadDialog.kt
+package com.soundstage.mixer.ui.components
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+
+$ grep -nE 'fun TonicPadContent' app/src/main/java/com/soundstage/mixer/ui/components/TonicPadDialog.kt
+183:internal fun TonicPadContent(
+
+=== TonicPadContent signature (Section 8) ===
+$ sed -n '183,214p' app/src/main/java/com/soundstage/mixer/ui/components/TonicPadDialog.kt
+internal fun TonicPadContent(
+    activeNotes: Set<String>,
+    onNoteClick: (String) -> Unit,
+    isMultiPadEnabled: Boolean,
+    onToggleMultiPad: () -> Unit,
+    singleOctaveText: String,
+    onOctaveMinus: () -> Unit,
+    onOctavePlus: () -> Unit,
+    useFlats: Boolean = false,
+    volume: Float = 0.80f,
+    onVolumeChange: (Float) -> Unit = {},
+    reverb: Float = 0.35f,
+    onReverbChange: (Float) -> Unit = {},
+    brightness: Float,
+    onBrightnessChange: (Float) -> Unit,
+    shimmer: Float,
+    onShimmerChange: (Float) -> Unit,
+    isPinned: Boolean,
+    onTogglePin: () -> Unit,
+    onClose: () -> Unit,
+    isSoundPickerOpen: Boolean,
+    onToggleSoundPicker: (Boolean) -> Unit,
+    soundfonts: List<StorageItem>,
+    currentLoadedSf2Name: String,
+    loadedSf2Presets: List<SoundfontPreset>,
+    onSelectPreset: (SoundfontPreset) -> Unit,
+    onSelectSf2File: (StorageItem) -> Unit,
+    onOpenSoundfontPicker: () -> Unit = {},
+    onDragHeader: ((Float, Float) -> Unit)?
+) {
+    val chromaticNotes = if (useFlats) {
+        listOf("C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B")
+
+──── Section 9 — MixerScreen + confirmation de suppression ────
+
+$ grep -n 'AppScreenPage.DRUMPAD' app/src/main/java/com/soundstage/mixer/ui/MixerScreen.kt
+131:                        viewModel.navigateToPage(AppScreenPage.DRUMPAD)
+758:                AppScreenPage.DRUMPAD -> {
+
+=== AppScreenPage.DRUMPAD branch (Section 9) ===
+$ sed -n '758,836p' app/src/main/java/com/soundstage/mixer/ui/MixerScreen.kt
+                AppScreenPage.DRUMPAD -> {
+                    val tonicSlot = uiState.audioSlots.find { it.slotId == 9 }
+                    val tonicVol = tonicSlot?.volume ?: 0.85f
+                    DrumPadPage(
+                        drumPads = uiState.drumPads,
+                        isMixMode = uiState.isDrumPadMixMode,
+                        onToggleMixMode = { viewModel.toggleDrumPadMixMode() },
+                        feelSwing = uiState.drumFeelSwing,
+                        onFeelSwingChange = { viewModel.setDrumFeelSwing(it) },
+                        bpm = uiState.bpm,
+                        onBpmChange = { viewModel.setGlobalBpm(it) },
+                        activeTonicNotes = uiState.activeTonicNotes,
+                        onTonicNoteClick = { viewModel.onTonicNoteClick(it) },
+                        useFlats = uiState.useFlats,
+                        onToggleUseFlats = { viewModel.toggleUseFlats() },
+                        activeTonicPadName = uiState.activeTonicPadName,
+                        onOpenTonicSoundPicker = {
+                            viewModel.openSoundfontForSlot(9)
+                        },
+                        activeDrumKitName = uiState.activeDrumKitName,
+                        onOpenDrumKitPicker = { viewModel.toggleDrumPadMiniBrowser() },
+                        onStopTonicDrone = { viewModel.onTonicNoteClick("") },
+                        tonicOctaveRange = uiState.tonicOctaveRange,
+                        onTonicOctaveMinus = { viewModel.onTonicOctaveMinus() },
+                        onTonicOctavePlus = { viewModel.onTonicOctavePlus() },
+                        isMultiPadEnabled = uiState.isMultiPadEnabled,
+                        onToggleMultiPad = { viewModel.toggleMultiPad() },
+                        tonicVolume = tonicVol,
+                        onTonicVolumeChange = { viewModel.setTonicVolume(it) },
+                        tonicShimmer = uiState.tonicShimmer,
+                        onTonicShimmerChange = { viewModel.setTonicShimmer(it) },
+                        isMiniBrowserOpen = uiState.isDrumPadMiniBrowserOpen,
+                        onToggleMiniBrowser = { viewModel.toggleDrumPadMiniBrowser() },
+                        onCloseMiniBrowser = { viewModel.closeDrumPadMiniBrowser() },
+                        audioFiles = uiState.drumPadAudioFiles,
+                        onPreviewAudioFile = { viewModel.playDrumSample(it) },
+                        onAssignSampleToPad = { padId, sample ->
+                            viewModel.assignDrumSampleOrLoop(padId, sample.name, sample.path, isLoop = false)
+                        },
+                        onPadPressed = { viewModel.onDrumPadPressed(it) },
+                        onPadReleased = { viewModel.onDrumPadReleased(it) },
+                        onPadVolumeChange = { padId, vol -> viewModel.setDrumPadVolumeDirect(padId, vol) },
+                        onPadVolumeDelta = { padId, delta -> viewModel.adjustDrumPadVolume(padId, delta) },
+                        onLoopBeatsChange = { padId, beats -> viewModel.setDrumPadLoopBeats(padId, beats) },
+                        onBackToMixer = { viewModel.navigateBackToMixer() },
+                        rightPanelMode = uiState.drumRightPanelMode,
+                        onRightPanelModeChange = { viewModel.setDrumRightPanelMode(it) },
+                        loopFileName = uiState.loopPlayerFileName,
+                        loopFilePath = uiState.loopPlayerFilePath,
+                        loopDurationMs = uiState.loopPlayerDurationMs,
+                        loopPositionMs = uiState.loopPlayerPositionMs,
+                        loopProgress = uiState.loopPlayerProgress,
+                        loopIsPlaying = uiState.loopPlayerIsPlaying,
+                        loopIsLooping = uiState.loopPlayerIsLooping,
+                        loopPitchSemitones = uiState.loopPlayerPitchSemitones,
+                        loopStepMode = uiState.loopPlayerStepMode,
+                        loopWaveform = uiState.loopPlayerWaveform,
+                        loopVolume = uiState.loopPlayerVolume,
+                        loopExplorerPath = uiState.loopPlayerExplorerPath,
+                        loopExplorerItems = uiState.loopPlayerExplorerItems,
+                        loopIsExplorerOpen = uiState.loopPlayerIsExplorerOpen,
+                        onToggleLoopPlayPause = { viewModel.toggleExternalLoopPlayPause() },
+                        onStopLoop = { viewModel.stopExternalLoopPlayer() },
+                        onRetriggerLoop = { viewModel.retriggerExternalLoopPlayer() },
+                        onSeekLoopProgress = { viewModel.seekExternalLoopPlayer(it) },
+                        onToggleLoopLooping = { viewModel.toggleExternalLoopLooping() },
+                        onChangeLoopPitch = { viewModel.setExternalLoopPitchSemitones(it) },
+                        onResetLoopPitch = { viewModel.resetExternalLoopPitch() },
+                        onSelectLoopStepMode = { viewModel.setExternalLoopStepMode(it) },
+                        onLoopVolumeChange = { viewModel.setExternalLoopVolume(it) },
+                        onToggleLoopExplorer = { viewModel.toggleExternalLoopExplorer() },
+                        onNavigateLoopExplorer = { viewModel.navigateLoopPlayerExplorer(it) },
+                        onSelectLoopAudioFile = { viewModel.loadAndPlayExternalLoopFile(it) }
+                    )
+                }
+                AppScreenPage.SHEETS -> {
+                    SheetsRoot(
+                        repo = SheetsRepository(viewModel.fileManager.sheetsDir),
+                        bottomInset = safeBottomPadding,
+
+$ grep -rn 'DrumPadDialog' app/src/main/java/ | grep -v 'components/DrumPadDialog.kt'
+$ grep -rn 'ExternalLoopPlayerDaw' app/src/main/java/ | grep -v 'ExternalLoopPlayerDaw.kt'
+app/src/main/java/com/soundstage/mixer/ui/pages/DrumPadPage.kt:52:import com.soundstage.mixer.ui.components.ExternalLoopPlayerDaw
+$ grep -rn 'LoopPlayerScreen' app/src/main/java/ | grep -v 'LoopPlayerScreen.kt'
+app/src/main/java/com/soundstage/mixer/ui/pages/DrumPadPage.kt:53:import com.soundstage.mixer.ui.components.LoopPlayerScreen
+app/src/main/java/com/soundstage/mixer/ui/pages/DrumPadPage.kt:1550:    LoopPlayerScreen(
+$ grep -rn 'ExternalLoopPlayerEngine' app/src/main/java/ | grep -v 'ExternalLoopPlayerEngine.kt'
+app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt:319:    val externalLoopPlayer = com.soundstage.mixer.audio.ExternalLoopPlayerEngine(
