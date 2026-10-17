@@ -83,6 +83,8 @@ object NativeAudioBridge {
     external fun setPadBrightness(brightness: Float)
     external fun setChannelReverb(engineIndex: Int, channel: Int, reverb: Float)
     external fun setChannelChorus(engineIndex: Int, channel: Int, chorus: Float)
+    external fun setTonicFxChain(filterOn: Boolean, filterAmt: Float, brightnessOn: Boolean, brightnessAmt: Float, delayOn: Boolean, delayAmt: Float, reverbOn: Boolean, reverbAmt: Float, shimmerOn: Boolean, shimmerAmt: Float)
+    external fun setPadsFxChain(filterOn: Boolean, filterAmt: Float, brightnessOn: Boolean, brightnessAmt: Float, delayOn: Boolean, delayAmt: Float, reverbOn: Boolean, reverbAmt: Float)
     external fun renderNativeAudio(audioBuffer: ShortArray, numFrames: Int): Int
     external fun hasActiveSoundFonts(): Boolean
     external fun isOboeActive(): Boolean
@@ -512,6 +514,29 @@ object NativeAudioBridge {
             }
         }
      }
+
+    fun safeSetTonicFxChain(
+        filterOn: Boolean, filterAmt: Float,
+        brightnessOn: Boolean, brightnessAmt: Float,
+        delayOn: Boolean, delayAmt: Float,
+        reverbOn: Boolean, reverbAmt: Float,
+        shimmerOn: Boolean, shimmerAmt: Float,
+    ) {
+        try {
+            if (isNativeReady()) setTonicFxChain(filterOn, filterAmt.coerceIn(0f,1f), brightnessOn, brightnessAmt.coerceIn(0f,1f), delayOn, delayAmt.coerceIn(0f,1f), reverbOn, reverbAmt.coerceIn(0f,1f), shimmerOn, shimmerAmt.coerceIn(0f,1f))
+        } catch (_: Throwable) {}
+    }
+
+    fun safeSetPadsFxChain(
+        filterOn: Boolean, filterAmt: Float,
+        brightnessOn: Boolean, brightnessAmt: Float,
+        delayOn: Boolean, delayAmt: Float,
+        reverbOn: Boolean, reverbAmt: Float,
+    ) {
+        try {
+            if (isNativeReady()) setPadsFxChain(filterOn, filterAmt.coerceIn(0f,1f), brightnessOn, brightnessAmt.coerceIn(0f,1f), delayOn, delayAmt.coerceIn(0f,1f), reverbOn, reverbAmt.coerceIn(0f,1f))
+        } catch (_: Throwable) {}
+    }
 
      fun safeControlChange(channel: Int, cc: Int, value: Int, engineIndex: Int = ENGINE_FADER) {
         if (isLibraryLoaded) {

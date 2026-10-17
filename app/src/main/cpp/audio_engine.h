@@ -11,6 +11,7 @@
 #include "soundfont_engine.h"
 #include "sample_playback_engine.h"
 #include "seamless_loop.h"
+#include <jni.h>
 #include <memory>
 #include <array>
 #include <vector>
@@ -728,6 +729,41 @@ public:
         }
     }
 };
+
+// ================= FX CHAINS (Tonic / Pads) =================
+struct SurfaceFxChainState {
+    std::atomic<bool> filterOn{false};
+    std::atomic<float> filterAmt{0.5f};
+    std::atomic<bool> brightnessOn{false};
+    std::atomic<float> brightnessAmt{0.5f};
+    std::atomic<bool> delayOn{false};
+    std::atomic<float> delayAmt{0.3f};
+    std::atomic<bool> reverbOn{true};
+    std::atomic<float> reverbAmt{0.4f};
+    std::atomic<bool> shimmerOn{false};
+    std::atomic<float> shimmerAmt{0.3f};
+};
+
+// Instances globales (une par surface)
+inline SurfaceFxChainState g_tonicFx;
+inline SurfaceFxChainState g_padsFx;
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setTonicFxChain(
+    JNIEnv* env, jobject thiz,
+    jboolean filterOn, jfloat filterAmt,
+    jboolean brightnessOn, jfloat brightnessAmt,
+    jboolean delayOn, jfloat delayAmt,
+    jboolean reverbOn, jfloat reverbAmt,
+    jboolean shimmerOn, jfloat shimmerAmt);
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setPadsFxChain(
+    JNIEnv* env, jobject thiz,
+    jboolean filterOn, jfloat filterAmt,
+    jboolean brightnessOn, jfloat brightnessAmt,
+    jboolean delayOn, jfloat delayAmt,
+    jboolean reverbOn, jfloat reverbAmt);
 
 /**
  * Multi-Instance Audio Engine with Oboe / OpenSL ES driver support and Complete Realtime DSP Effects Pipeline.

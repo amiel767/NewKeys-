@@ -505,3 +505,42 @@ AudioEngine::~AudioEngine() = default;
 bool AudioEngine::start(int driverType) { return true; }
 void AudioEngine::stop() {}
 #endif
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setTonicFxChain(
+    JNIEnv* env, jobject thiz,
+    jboolean filterOn, jfloat filterAmt,
+    jboolean brightnessOn, jfloat brightnessAmt,
+    jboolean delayOn, jfloat delayAmt,
+    jboolean reverbOn, jfloat reverbAmt,
+    jboolean shimmerOn, jfloat shimmerAmt) {
+    (void)env; (void)thiz;
+    g_tonicFx.filterOn.store(filterOn);
+    g_tonicFx.filterAmt.store(filterAmt);
+    g_tonicFx.brightnessOn.store(brightnessOn);
+    g_tonicFx.brightnessAmt.store(brightnessAmt);
+    g_tonicFx.delayOn.store(delayOn);
+    g_tonicFx.delayAmt.store(delayAmt);
+    g_tonicFx.reverbOn.store(reverbOn);
+    g_tonicFx.reverbAmt.store(reverbAmt);
+    g_tonicFx.shimmerOn.store(shimmerOn);
+    g_tonicFx.shimmerAmt.store(shimmerAmt);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setPadsFxChain(
+    JNIEnv* env, jobject thiz,
+    jboolean filterOn, jfloat filterAmt,
+    jboolean brightnessOn, jfloat brightnessAmt,
+    jboolean delayOn, jfloat delayAmt,
+    jboolean reverbOn, jfloat reverbAmt) {
+    (void)env; (void)thiz;
+    g_padsFx.filterOn.store(filterOn);
+    g_padsFx.filterAmt.store(filterAmt);
+    g_padsFx.brightnessOn.store(brightnessOn);
+    g_padsFx.brightnessAmt.store(brightnessAmt);
+    g_padsFx.delayOn.store(delayOn);
+    g_padsFx.delayAmt.store(delayAmt);
+    g_padsFx.reverbOn.store(reverbOn);
+    g_padsFx.reverbAmt.store(reverbAmt);
+}
