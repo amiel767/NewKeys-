@@ -1,0 +1,853 @@
+═══════════════════════════════════════════════════════════════════════════
+BRIEF-B5b — DrumPadScreen.kt (nouveau, racine) + wiring MixerScreen.kt
+Repo: amiel767/NewKeys- · branche: main · base: ee70c52
+═══════════════════════════════════════════════════════════════════════════
+
+CONTEXTE
+  Remplace DrumPadPage (ancien, 1652 l., 40+ params) par DrumPadScreen
+  (nouveau, viewModel + uiState + modifier). Assemble :
+    DpTopBar / TonicPad via DpNoteKey / DpVolumeKnob + DpFxCase / grille
+    pads (DpPad) ou loops (DpLoopCase) / overlays (Metro, Settings, FX,
+    PadEditor, Manager) / menu long-press LoopCase.
+
+  Ce commit N'ACTIVE PAS les nouvelles fonctions DSP (V1.5), mais TOUT
+  le câblage UI → viewModel est en place et fonctionnel (pads jouent,
+  métronome, looper, kits, assign, fx éditables).
+
+  DrumPadPage reste importé dans MixerScreen.kt AVANT ce commit ; APRÈS
+  ce commit il n'est plus référencé → sera `git rm` en B5c.
+
+PRÉREQUIS
+  git log --oneline -3      # attendu: ee70c52, 150fa8b, f33ece7
+  git status                # attendu: clean
+
+ÉTAPE 0 — EXTRACTION API (obligatoire — grosse surface d'appel)
+
+  ─── A. État MixerUiState : champs réellement présents ───
+  grep -nE "val (drumPads|drumVolume|padCount|kits|activeKitName|looper|fxChains|transportBpm|transportSignature|transportSubdivision|metronomeSound|metronomeAccent1|metronomeAccent13|metronomeVisualFlash|metronomeCountIn|metronomeTapBpm|isMultiPad|tonicVolume|tonicOctave|activeTonicNotes|tonicNotes)" \
+    app/src/main/java/com/soundstage/mixer/viewmodel/MixerUiState.kt
+
+  ─── B. Méthodes MixerViewModel réellement présentes ───
+  grep -nE "fun (onDrumPadPressed|onDrumPadReleased|onTonicNoteClick|setTonicVolume|onTonicOctaveMinus|onTonicOctavePlus|toggleMultiPad|toggleMetronome|setMetronomeSignature|setTransportSubdivision|setMetronomeSound|setMetronomeVolume|setMetronomeAccent1|setMetronomeAccent13|setMetronomeVisualFlash|setMetronomeCountIn|setMetronomeTapBpm|setTransportBpm|setTonicFxChain|setPadsFxChain|tapLooperCase|longPressLooperCaseAction|setLooperQuantize|setLooperLengthMode|assignDrumSampleOrLoop|setDrumPadVolume|setPadCount|loadKit|saveKit|deleteKit|clearTonicNotes|playAllLoops|stopAllLoops|toggleMetronome)" \
+    app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+
+  ─── C. DpVolumeKnob signature (B2a) ───
+  sed -n '262,300p' app/src/main/java/com/soundstage/mixer/ui/components/drumpad/DrumPadPrimitives.kt
+
+  ─── D. Actions acceptées par longPressLooperCaseAction (Brief-A) ───
+  grep -nA 20 "fun longPressCaseAction" app/src/main/java/com/soundstage/mixer/audio/LooperEngine.kt
+
+  ─── E. Structure d'appel DrumPadPage dans MixerScreen.kt ───
+  grep -n "DrumPadPage\|AppScreenPage.DRUMPAD\|tonicSlot" \
+    app/src/main/java/com/soundstage/mixer/ui/pages/MixerScreen.kt
+
+  ─── HYPOTHÈSES À VÉRIFIER ───
+  - uiState.activeTonicNotes: Set<String>       (fallback : tonicNotes → Set<String> vide si absent)
+  - uiState.isMultiPad: Boolean                 (fallback : false constant)
+  - uiState.tonicVolume: Float                  (fallback : 0.8f)
+  - uiState.tonicOctaveMin: Int / tonicOctaveMax: Int (fallback : 3 / 5)
+  - uiState.activeKitName: String               (fallback : kits.firstOrNull()?.name ?: "")
+  - viewModel.setDrumPadVolume(padId, vol0to100: Int)  (si absent → ajouter en B5b, voir ÉTAPE 2)
+  - viewModel.setPadCount(n: Int)               (si absent → ajouter en B5b, voir ÉTAPE 2)
+  - viewModel.clearTonicNotes()                 (si absent → no-op local, noter écart)
+  - viewModel.loadKit/saveKit/deleteKit(name: String)  (vérifier noms réels)
+  - longPressCaseAction actions ∈ {"undo","double","clear"} (vérifier noms exacts)
+
+  ─── SI ÉCART ───
+  - Adapter 1 ligne par écart, NOTER dans le rapport
+  - Ne PAS bloquer
+  - Ne PAS modifier MixerUiState ou MixerViewModel au-delà des 2 helpers
+    listés ÉTAPE 2 (setDrumPadVolume / setPadCount) si absents
+
+ÉTAPE 1 — CRÉER LE FICHIER
+  Chemin: app/src/main/java/com/soundstage/mixer/ui/pages/DrumPadScreen.kt
+  Contenu: bloc SOURCE ci-dessous.
+
+ÉTAPE 2 — EDIT MixerViewModel.kt (helpers manquants uniquement)
+  Ajouter à la fin de la classe, SI absents après ÉTAPE 0 :
+
+  ┌────────────────────────────────────────────────────────────────┐
+  │ fun setDrumPadVolume(padId: Int, volume0to100: Int) {          │
+  │     val v = (volume0to100 / 100f).coerceIn(0f, 1f)             │
+  │     _uiState.update { st -> st.copy(drumPads = st.drumPads.map {│
+  │         if (it.id == padId) it.copy(volume = v) else it         │
+  │     }) }                                                       │
+  │ }                                                              │
+  │                                                                │
+  │ fun setPadCount(n: Int) {                                      │
+  │     val allowed = if (n == 16) 16 else 8                       │
+  │     _uiState.update { it.copy(padCount = allowed) }            │
+  │ }                                                              │
+  └────────────────────────────────────────────────────────────────┘
+
+  Note tout écart dans le rapport (méthodes existaient déjà / signature différente).
+
+ÉTAPE 3 — EDIT MixerScreen.kt
+  Localiser le bloc `AppScreenPage.DRUMPAD -> { ... DrumPadPage(...) ... }`.
+  Remplacer TOUT le bloc par :
+
+  ┌────────────────────────────────────────────────────────────────┐
+  │ AppScreenPage.DRUMPAD -> {                                     │
+  │     DrumPadScreen(                                             │
+  │         viewModel = viewModel,                                 │
+  │         uiState = uiState,                                     │
+  │         modifier = Modifier.fillMaxSize()                      │
+  │     )                                                          │
+  │ }                                                              │
+  └────────────────────────────────────────────────────────────────┘
+
+  - Ajouter l'import :
+      import com.soundstage.mixer.ui.pages.DrumPadScreen
+  - Retirer l'import :
+      import com.soundstage.mixer.ui.pages.DrumPadPage
+    (ou laisser si DrumPadPage.kt existe encore — pas d'erreur, juste warning)
+  - Si `val tonicSlot = ...` devient unused, la supprimer (warning sinon).
+
+ÉTAPE 4 — COMPILER
+  ./gradlew :app:compileDebugKotlin
+  Erreurs possibles :
+    - champ uiState manquant → fallback selon Step 0, noter
+    - méthode viewModel manquante → adapter, noter
+    - DpVolumeKnob signature ≠ → adapter l'appel (2 lignes), noter
+    - import StorageItem incorrect → com.soundstage.mixer.model.StorageItem
+
+ÉTAPE 5 — BUILD COMPLET
+  ./gradlew :app:clean :app:assembleDebug
+
+ÉTAPE 6 — COMMIT
+  git add app/src/main/java/com/soundstage/mixer/ui/pages/DrumPadScreen.kt \
+          app/src/main/java/com/soundstage/mixer/ui/pages/MixerScreen.kt \
+          app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+  git commit -m "[chantier] DrumPadScreen racine + wiring MixerScreen — DrumPadScreen.kt, MixerScreen.kt, MixerViewModel.kt — Compile: OK"
+
+ÉTAPE 7 — RAPPORT (obligatoire)
+    git log --oneline -3
+    git show --stat HEAD
+    ./gradlew :app:clean :app:assembleDebug
+    ls -la app/build/outputs/apk/debug/
+    + écarts exhaustifs (champs uiState + méthodes viewModel + signature DpVolumeKnob)
+    + si setDrumPadVolume/setPadCount ajoutés en B5b (oui/non)
+
+═══════════════════════════════════════════════════════════════════════════
+SOURCE — DrumPadScreen.kt
+═══════════════════════════════════════════════════════════════════════════
+
+package com.soundstage.mixer.ui.pages
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.soundstage.mixer.audio.LooperEngine
+import com.soundstage.mixer.ui.components.drumpad.DpDrumPadSettings
+import com.soundstage.mixer.ui.components.drumpad.DpFxCase
+import com.soundstage.mixer.ui.components.drumpad.DpFxSheet
+import com.soundstage.mixer.ui.components.drumpad.DpLoopCase
+import com.soundstage.mixer.ui.components.drumpad.DpManager
+import com.soundstage.mixer.ui.components.drumpad.DpMetronomeOverlay
+import com.soundstage.mixer.ui.components.drumpad.DpNoteKey
+import com.soundstage.mixer.ui.components.drumpad.DpPad
+import com.soundstage.mixer.ui.components.drumpad.DpPadEditor
+import com.soundstage.mixer.ui.components.drumpad.DpPalette
+import com.soundstage.mixer.ui.components.drumpad.DpTopBar
+import com.soundstage.mixer.ui.components.drumpad.DpVolumeKnob
+import com.soundstage.mixer.ui.components.drumpad.MetroState
+import com.soundstage.mixer.viewmodel.MixerUiState
+import com.soundstage.mixer.viewmodel.MixerViewModel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+
+private val BG_TOP = Color(0xFF141B27)
+private val BG_BOTTOM = Color(0xFF0F141D)
+private val PANEL_TOP = Color(0xFF232C3E)
+private val PANEL_BOTTOM = Color(0xFF1A2230)
+private val WELL = Color(0xFF0F141D)
+private val INK = Color(0xFFE9EDF5)
+private val MUTE = Color(0xFF8690A4)
+private val DIM = Color(0xFF6F7A90)
+private val ACCENT = Color(0xFF8FB2E8)
+private val ROSE = Color(0xFFC2587A)
+private val AMBER = Color(0xFFD8A24A)
+
+private val TONIC_NOTES = listOf(
+    "C", "C#", "D",
+    "D#", "E", "F",
+    "F#", "G", "G#",
+    "A", "A#", "B"
+)
+
+// ─────────────────────────────────────────────────────────────────────────
+// Root
+// ─────────────────────────────────────────────────────────────────────────
+@Composable
+fun DrumPadScreen(
+    viewModel: MixerViewModel,
+    uiState: MixerUiState,
+    modifier: Modifier = Modifier,
+) {
+    // ─── Overlay visibility ───
+    var metroOpen by remember { mutableStateOf(false) }
+    var settingsOpen by remember { mutableStateOf(false) }
+    var tonicFxOpen by remember { mutableStateOf(false) }
+    var padsFxOpen by remember { mutableStateOf(false) }
+    var editorPadId by remember { mutableStateOf<Int?>(null) }
+    var managerOpen by remember { mutableStateOf(false) }
+    var managerTab by remember { mutableStateOf("Kits") }
+    var managerTarget by remember { mutableStateOf<Int?>(1) }
+    var loopMenuIdx by remember { mutableStateOf<Int?>(null) }
+
+    // ─── Grid modes ───
+    var padMode by remember { mutableStateOf("pads") }       // "pads" | "loops"
+    var playEditMode by remember { mutableStateOf("play") }  // "play" | "edit"
+    var loopQuantize by remember { mutableStateOf("1/16") }  // "1/16" | "free"
+    var loopLengthMode by remember { mutableStateOf("auto") } // "auto"|"1"|"2"|"4"|"8"
+    var padCount by remember { mutableStateOf(uiState.padCount) }
+
+    // ─── Metronome local state (V1: not persisted, sync from uiState) ───
+    var metroOn by remember { mutableStateOf(false) }
+    var metroState by remember(uiState.transportBpm, uiState.transportSignature,
+                               uiState.metronomeSound, uiState.metronomeAccent1,
+                               uiState.metronomeAccent13, uiState.metronomeVisualFlash,
+                               uiState.metronomeCountIn, uiState.metronomeTapBpm, metroOn) {
+        mutableStateOf(
+            MetroState(
+                on = metroOn,
+                sig = uiState.transportSignature,
+                sub = uiState.transportSubdivision,
+                sound = uiState.metronomeSound,
+                volume = 65,
+                accent1 = uiState.metronomeAccent1,
+                accent13 = uiState.metronomeAccent13,
+                visualFlash = uiState.metronomeVisualFlash,
+                countIn = uiState.metronomeCountIn,
+                tapBpm = uiState.metronomeTapBpm,
+            )
+        )
+    }
+
+    // ─── Beat indicator (wall-clock approximation) ───
+    var beatIdx by remember { mutableStateOf(0) }
+    LaunchedEffect(uiState.transportBpm, uiState.transportSignature) {
+        val bpm = uiState.transportBpm.coerceAtLeast(30)
+        val beats = parseBeatsPerBar(uiState.transportSignature).coerceAtLeast(1)
+        val beatMs = (60_000L / bpm).coerceAtLeast(1L)
+        while (isActive) {
+            beatIdx = ((System.currentTimeMillis() / beatMs) % beats).toInt()
+            delay((beatMs / 4).coerceAtLeast(16L))
+        }
+    }
+
+    // ─── Frame clock for DpLoopCase head ───
+    var nowNs by remember { mutableStateOf(System.nanoTime()) }
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            nowNs = System.nanoTime()
+            delay(16L)
+        }
+    }
+
+    // ─── Derived ───
+    val beatsPerBar = parseBeatsPerBar(uiState.transportSignature)
+    val barDurationNs = (beatsPerBar.toLong() * (60_000_000_000L / uiState.transportBpm.coerceAtLeast(30)))
+    val anyRec = uiState.looper.cases.any {
+        it.state == LooperEngine.CaseState.Recording ||
+        it.state == LooperEngine.CaseState.Overdubbing
+    }
+    val activeTonicNotes: Set<String> = emptySet() // V1 fallback (Step 0 écart)
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(BG_TOP, BG_BOTTOM)))
+    ) {
+        // ─── TopBar ───
+        DpTopBar(
+            bpm = uiState.transportBpm,
+            onBpmChange = { delta ->
+                val next = (uiState.transportBpm + delta).coerceIn(30, 300)
+                viewModel.setTransportBpm(next)
+            },
+            onBackToMixer = { /* géré par l'écran parent */ },
+            metroOn = metroOn,
+            onOpenMetro = { metroOpen = true },
+            onOpenSettings = { settingsOpen = true },
+        )
+
+        Row(Modifier.weight(1f).fillMaxWidth()) {
+            // ─── Colonne gauche (196dp) ───
+            Column(
+                Modifier.width(196.dp).fillMaxHeight().padding(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                // TonicPad grid 3×4
+                Column(
+                    Modifier.fillMaxWidth().weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    TONIC_NOTES.chunked(3).forEachIndexed { rowIdx, rowNotes ->
+                        Row(
+                            Modifier.fillMaxWidth().weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            rowNotes.forEachIndexed { colIdx, note ->
+                                val idx = rowIdx * 3 + colIdx
+                                DpNoteKey(
+                                    label = note,
+                                    oct = 0,
+                                    idx = idx,
+                                    on = activeTonicNotes.contains(note),
+                                    ghost = false,
+                                    onToggle = { viewModel.onTonicNoteClick(note) },
+                                    modifier = Modifier.weight(1f).fillMaxHeight()
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Row [Oct-] [X] [Oct+] [Multi] [Clear]
+                Row(
+                    Modifier.fillMaxWidth().height(28.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    SmallBtn("−", Modifier.weight(1f)) { viewModel.onTonicOctaveMinus() }
+                    SmallBtn("Oct", Modifier.weight(1f)) { /* display only */ }
+                    SmallBtn("+", Modifier.weight(1f)) { viewModel.onTonicOctavePlus() }
+                    SmallBtn("Multi", Modifier.weight(1.4f)) { viewModel.toggleMultiPad() }
+                    SmallBtn("Clr", Modifier.weight(1f)) { /* V1: no-op, viewModel.clearTonicNotes() if present */ }
+                }
+
+                // Row 62dp: knob + tonic FX
+                Row(
+                    Modifier.fillMaxWidth().height(62.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(Modifier.width(62.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                        DpVolumeKnob(
+                            value = uiState.tonicVolume.coerceIn(0f, 1f),
+                            onValueChange = { viewModel.setTonicVolume(it) },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    DpFxCase(
+                        fx = uiState.fxChains.tonic,
+                        includeShimmer = true,
+                        label = "Tonic FX",
+                        onOpen = { tonicFxOpen = true },
+                        modifier = Modifier.weight(1f).fillMaxHeight()
+                    )
+                }
+
+                // Row 30dp: nav buttons
+                Row(
+                    Modifier.fillMaxWidth().height(30.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    SmallBtn("Pad sound", Modifier.weight(1f)) {
+                        managerTab = "DrumPad"
+                        managerTarget = 1
+                        managerOpen = true
+                    }
+                    SmallBtn("Kit picker", Modifier.weight(1f)) {
+                        managerTab = "Kits"
+                        managerOpen = true
+                    }
+                }
+            }
+
+            // ─── Colonne droite ───
+            Column(
+                Modifier.weight(1f).fillMaxHeight().padding(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                // Header row 30dp
+                Row(
+                    Modifier.fillMaxWidth().height(30.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    HeaderSeg(listOf("Pads", "Loops"), padMode) { padMode = it }
+                    if (padMode == "pads") {
+                        HeaderSeg(listOf("Play", "Edit"), playEditMode) { playEditMode = it }
+                    } else {
+                        HeaderSeg(listOf("Auto", "1", "2", "4", "8"), loopLengthMode) { m ->
+                            loopLengthMode = m
+                            viewModel.setLooperLengthMode(m.lowercase())
+                        }
+                    }
+                    HeaderSeg(listOf("1/16", "Free"), loopQuantize) {
+                        loopQuantize = it
+                        viewModel.setLooperQuantize(it == "1/16")
+                    }
+                    SmallBtn("${padCount}p", Modifier) {
+                        padCount = if (padCount == 8) 16 else 8
+                        viewModel.setPadCount(padCount)
+                    }
+                    SmallBtn("Pads FX", Modifier) { padsFxOpen = true }
+                    Spacer(Modifier.weight(1f))
+                    BeatIndicator(beats = beatsPerBar, active = beatIdx)
+                    if (anyRec) RecBadge()
+                }
+
+                // Grid
+                if (padMode == "pads") {
+                    PadsGrid(
+                        uiState = uiState,
+                        padCount = padCount,
+                        editorPadId = editorPadId,
+                        playEditMode = playEditMode,
+                        onDown = { viewModel.onDrumPadPressed(it) },
+                        onUp = { viewModel.onDrumPadReleased(it) },
+                        onVolumeChange = { padId, vol -> viewModel.setDrumPadVolume(padId, vol) },
+                        onOpenEditor = { editorPadId = it },
+                        modifier = Modifier.fillMaxWidth().weight(1f)
+                    )
+                } else {
+                    LoopsGrid(
+                        cases = uiState.looper.cases,
+                        nowNs = nowNs,
+                        beatsPerBar = beatsPerBar,
+                        barDurationNs = barDurationNs,
+                        onTap = { viewModel.tapLooperCase(it) },
+                        onLongPress = { loopMenuIdx = it },
+                        modifier = Modifier.fillMaxWidth().weight(1f)
+                    )
+                }
+            }
+        }
+    }
+
+    // ─── Overlays ───
+    if (metroOpen) {
+        DpMetronomeOverlay(
+            state = metroState,
+            onChange = { next ->
+                metroState = next
+                metroOn = next.on
+                viewModel.setMetronomeSignature(next.sig)
+                viewModel.setTransportSubdivision(next.sub)
+                viewModel.setMetronomeSound(next.sound)
+                viewModel.setMetronomeVolume(next.volume / 100f)
+                viewModel.setMetronomeAccent1(next.accent1)
+                viewModel.setMetronomeAccent13(next.accent13)
+                viewModel.setMetronomeVisualFlash(next.visualFlash)
+                viewModel.setMetronomeCountIn(next.countIn)
+                if (next.tapBpm > 0) viewModel.setMetronomeTapBpm(next.tapBpm)
+                if (next.on != metroOn) viewModel.toggleMetronome()
+            },
+            onClose = { metroOpen = false }
+        )
+    }
+
+    if (settingsOpen) {
+        DpDrumPadSettings(
+            padCount = padCount,
+            onPadCountChange = { padCount = it; viewModel.setPadCount(it) },
+            preload = false,
+            onPreloadChange = { /* V1: local only */ },
+            hapticPads = true,
+            onHapticPadsChange = { /* V1: local only */ },
+            hapticLoops = true,
+            onHapticLoopsChange = { /* V1: local only */ },
+            quantize = loopQuantize,
+            onQuantizeChange = { loopQuantize = it; viewModel.setLooperQuantize(it == "1/16") },
+            onClose = { settingsOpen = false }
+        )
+    }
+
+    if (tonicFxOpen) {
+        DpFxSheet(
+            chain = uiState.fxChains.tonic,
+            includeShimmer = true,
+            label = "Tonic FX",
+            onChange = { viewModel.setTonicFxChain(it) },
+            onClose = { tonicFxOpen = false }
+        )
+    }
+
+    if (padsFxOpen) {
+        DpFxSheet(
+            chain = uiState.fxChains.pads,
+            includeShimmer = false,
+            label = "Pads FX",
+            onChange = { viewModel.setPadsFxChain(it) },
+            onClose = { padsFxOpen = false }
+        )
+    }
+
+    if (editorPadId != null) {
+        val pad = uiState.drumPads.firstOrNull { it.id == editorPadId }
+        if (pad != null) {
+            DpPadEditor(
+                pad = pad,
+                color = DpPalette.at((editorPadId!! - 1).coerceAtLeast(0)),
+                onChange = { /* V1: local only, remote update via VM not exposed */ },
+                onClear = {
+                    viewModel.assignDrumSampleOrLoop(pad.id, "", "", isLoop = false)
+                    editorPadId = null
+                },
+                onAssignClick = {
+                    managerTab = "DrumPad"
+                    managerTarget = pad.id
+                    managerOpen = true
+                    editorPadId = null
+                },
+                onClose = { editorPadId = null }
+            )
+        }
+    }
+
+    if (managerOpen) {
+        DpManager(
+            open = true,
+            tab = managerTab,
+            onTabChange = { managerTab = it },
+            openTarget = managerTarget,
+            pads = uiState.drumPads,
+            drumSamples = emptyList(), // V1: pass realDrumPadFiles if field exists; fallback empty
+            loops = emptyList(),       // V1: pass realLoopFiles if field exists; fallback empty
+            kits = uiState.kits,
+            activeKitName = uiState.kits.firstOrNull()?.name ?: "",
+            scenes = emptyList(),
+            onLoadKit = { /* V1: viewModel.loadKit(it) if present */ },
+            onDeleteKit = { /* V1: viewModel.deleteKit(it) if present */ },
+            onSaveCurrentAsKit = { /* V1: viewModel.saveKit(it) if present */ },
+            onAssign = { padIndex, sample ->
+                viewModel.assignDrumSampleOrLoop(padIndex, sample.name, sample.path, isLoop = false)
+            },
+            onLoadScene = { },
+            onClose = { managerOpen = false }
+        )
+    }
+
+    if (loopMenuIdx != null) {
+        val idx = loopMenuIdx!!
+        val case = uiState.looper.cases.getOrNull(idx)
+        LoopCaseMenu(
+            index = idx,
+            state = case?.state ?: LooperEngine.CaseState.Empty,
+            onUndo = { viewModel.longPressLooperCaseAction(idx, "undo"); loopMenuIdx = null },
+            onDouble = { viewModel.longPressLooperCaseAction(idx, "double"); loopMenuIdx = null },
+            onPlayStop = { viewModel.tapLooperCase(idx); loopMenuIdx = null },
+            onClear = { viewModel.longPressLooperCaseAction(idx, "clear"); loopMenuIdx = null },
+            onClose = { loopMenuIdx = null }
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Grid helpers
+// ─────────────────────────────────────────────────────────────────────────
+@Composable
+private fun PadsGrid(
+    uiState: MixerUiState,
+    padCount: Int,
+    editorPadId: Int?,
+    playEditMode: String,
+    onDown: (Int) -> Unit,
+    onUp: (Int) -> Unit,
+    onVolumeChange: (Int, Int) -> Unit,
+    onOpenEditor: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val cols = 4
+    val rows = (padCount + cols - 1) / cols
+    val pads = uiState.drumPads.take(padCount)
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        for (r in 0 until rows) {
+            Row(
+                Modifier.fillMaxWidth().weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                for (c in 0 until cols) {
+                    val idx = r * cols + c
+                    val pad = pads.getOrNull(idx)
+                    if (pad == null) {
+                        Box(Modifier.weight(1f).fillMaxHeight())
+                    } else if (playEditMode == "edit") {
+                        Box(
+                            Modifier.weight(1f).fillMaxHeight()
+                                .clickable { onOpenEditor(pad.id) }
+                        ) {
+                            DpPad(
+                                index = idx + 1,
+                                pad = pad,
+                                color = DpPalette.at(idx),
+                                mode = if (pad.isLoopMode) "Loop" else "One-shot",
+                                runner = false,
+                                flash = false,
+                                ghost = false,
+                                onDown = { /* no-op in edit */ },
+                                onUp = { /* no-op in edit */ },
+                                onVolumeChange = { _, _ -> },
+                                appear = false
+                            )
+                        }
+                    } else {
+                        DpPad(
+                            index = idx + 1,
+                            pad = pad,
+                            color = DpPalette.at(idx),
+                            mode = if (pad.isLoopMode) "Loop" else "One-shot",
+                            runner = false,
+                            flash = false,
+                            ghost = false,
+                            onDown = onDown,
+                            onUp = onUp,
+                            onVolumeChange = onVolumeChange,
+                            appear = false,
+                            modifier = Modifier.weight(1f).fillMaxHeight()
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LoopsGrid(
+    cases: List<LooperEngine.Case>,
+    nowNs: Long,
+    beatsPerBar: Int,
+    barDurationNs: Long,
+    onTap: (Int) -> Unit,
+    onLongPress: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val cols = 4
+    val rows = (cases.size + cols - 1) / cols
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        for (r in 0 until rows) {
+            Row(
+                Modifier.fillMaxWidth().weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                for (c in 0 until cols) {
+                    val idx = r * cols + c
+                    val case = cases.getOrNull(idx)
+                    if (case == null) {
+                        Box(Modifier.weight(1f).fillMaxHeight())
+                    } else {
+                        DpLoopCase(
+                            index = idx,
+                            case = case,
+                            nowNs = nowNs,
+                            beatsPerBar = beatsPerBar,
+                            barDurationNs = barDurationNs,
+                            onTap = { onTap(idx) },
+                            onLongPress = { onLongPress(idx) },
+                            modifier = Modifier.weight(1f).fillMaxHeight()
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Small widgets
+// ─────────────────────────────────────────────────────────────────────────
+@Composable
+private fun SmallBtn(
+    label: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier
+            .height(28.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(PANEL_TOP)
+            .clickable { onClick() }
+            .padding(horizontal = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            label,
+            color = INK,
+            fontSize = 9.sp,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+private fun HeaderSeg(
+    options: List<String>,
+    selected: String,
+    onSelect: (String) -> Unit,
+) {
+    Row(
+        Modifier
+            .height(24.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(WELL)
+            .padding(2.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        options.forEach { opt ->
+            val sel = opt == selected
+            Box(
+                Modifier
+                    .height(20.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(if (sel) PANEL_TOP else Color.Transparent)
+                    .clickable { onSelect(opt) }
+                    .padding(horizontal = 6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    opt,
+                    color = if (sel) INK else MUTE,
+                    fontSize = 9.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BeatIndicator(beats: Int, active: Int) {
+    Row(
+        Modifier.height(24.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        for (i in 0 until beats) {
+            val on = i == active
+            Box(
+                Modifier
+                    .size(if (on) 7.dp else 5.dp)
+                    .clip(CircleShape)
+                    .background(if (on) ACCENT else DIM.copy(alpha = 0.4f))
+            )
+        }
+    }
+}
+
+@Composable
+private fun RecBadge() {
+    Box(
+        Modifier
+            .height(22.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(ROSE.copy(alpha = 0.25f))
+            .padding(horizontal = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            "● REC",
+            color = ROSE,
+            fontSize = 9.sp,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+private fun LoopCaseMenu(
+    index: Int,
+    state: LooperEngine.CaseState,
+    onUndo: () -> Unit,
+    onDouble: () -> Unit,
+    onPlayStop: () -> Unit,
+    onClear: () -> Unit,
+    onClose: () -> Unit,
+) {
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).clickable { onClose() }) {
+        Column(
+            Modifier
+                .align(Alignment.Center)
+                .width(220.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Brush.verticalGradient(listOf(PANEL_TOP, PANEL_BOTTOM)))
+                .clickable(enabled = false, onClick = {})
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                "Loop ${index + 1}",
+                color = INK,
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(bottom = 6.dp)
+            )
+            MenuItem("Undo last layer", onUndo)
+            MenuItem("Double length", onDouble)
+            MenuItem(
+                if (state == LooperEngine.CaseState.Playing ||
+                    state == LooperEngine.CaseState.Overdubbing) "Stop" else "Play",
+                onPlayStop
+            )
+            MenuItem("Clear", onClear)
+        }
+    }
+}
+
+@Composable
+private fun MenuItem(label: String, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(32.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 10.dp),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Text(
+            label,
+            color = INK,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Utils
+// ─────────────────────────────────────────────────────────────────────────
+private fun parseBeatsPerBar(sig: String): Int {
+    val beats = sig.substringBefore('/').toIntOrNull() ?: 4
+    return beats.coerceIn(1, 32)
+}
