@@ -1,0 +1,1444 @@
+═══════════════════════════════════════════════════════════════════════════
+BRIEF-A — DrumPad v5 : Couche Logique + C++
+Repo : amiel767/NewKeys- · Branche : main · HEAD de départ : a08d98c
+═══════════════════════════════════════════════════════════════════════════
+
+MODE D'EXÉCUTION
+────────────────
+9 commits, dans l'ordre A1 → A9. Chaque commit compile avant le suivant.
+Aucune question. Aucune alternative. Aucun TODO. Aucun commentaire ajouté
+dans le code sauf ceux explicitement fournis.
+Si une ligne ne correspond pas exactement : applique la correspondance la
+plus proche, note l'écart, continue.
+Format imposé : [chantier] Titre — Fichier(s) — Compile: OK
+
+PÉRIMÈTRE
+─────────
+Brief-A est PUREMENT ADDITIF sur l'UI existante. Il crée :
+  - la couche logique (TransportClock, MetronomeEngine, LooperEngine, FxChains)
+  - les 2 externes C++ FX par surface
+  - le state et la persistance
+
+Il NE SUPPRIME PAS les fichiers UI morts (DrumPadPage, ExternalLoopPlayer*,
+LoopPlayerScreen, DrumPadDialog). Brief-B s'en chargera.
+
+Il NE CÂBLE PAS les nouvelles logiques dans DrumPadPage.kt. Les nouvelles
+méthodes du ViewModel sont disponibles mais aucun composable ne les appelle
+encore. Après Brief-A, l'app reste visuellement identique, mais :
+  - les nouveaux engines tournent
+  - la persistance enregistre leur état
+  - le métronome amélioré peut être testé par invocation manuelle en test
+
+À la fin de Brief-A, `./gradlew :app:assembleDebug` doit produire une APK qui
+démarre normalement, se comporte comme avant visuellement, mais dont le
+ViewModel expose les nouvelles méthodes.
+
+═══════════════════════════════════════════════════════════════════════════
+COMMIT A1 — TransportClock.kt
+═══════════════════════════════════════════════════════════════════════════
+
+Fichier créé : app/src/main/java/com/soundstage/mixer/audio/TransportClock.kt
+
+───── DÉBUT CONTENU À COLLER TEL QUEL ─────
+package com.soundstage.mixer.audio
+
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+
+/**
+ * Horloge maître partagée par tous les composants rythmiques (métronome,
+ * looper, indicateur de beats). Une seule source de vérité pour le BPM,
+ * la signature, la subdivision et l'ancrage.
+ *
+ * Thread-safe. Aucune dépendance Android. Utilisable en test unitaire.
+ *
+ * Le temps est exprimé en nanosecondes depuis System.nanoTime().
+ * L'ancrage `barAnchorNs` représente le début de la mesure 0 de référence.
+ * Toutes les positions sont dérivées de (nowNs - barAnchorNs).
+ */
+class TransportClock {
+
+    data class Signature(val beatsPerBar: Int, val beatUnit: Int) {
+        companion object {
+            val SUPPORTED: List<Signature> = listOf(
+                Signature(4, 4), Signature(3, 4), Signature(2, 4),
+                Signature(6, 8), Signature(9, 8), Signature(12, 8),
+                Signature(5, 4), Signature(7, 8), Signature(5, 8), Signature(3, 8),
+            )
+            fun parse(s: String): Signature {
+                val parts = s.split("/")
+                if (parts.size != 2) return Signature(4, 4)
+                val b = parts[0].toIntOrNull() ?: 4
+                val u = parts[1].toIntOrNull() ?: 4
+                return Signature(b, u)
+            }
+            fun default() = Signature(4, 4)
+        }
+        fun label(): String = "$beatsPerBar/$beatUnit"
+    }
+
+    enum class Subdivision(val subdivPerBeat: Int, val label: String) {
+        Quarter(1, "1/4"),
+        Eighth(2, "1/8"),
+        Sixteenth(4, "1/16"),
+        Triplet(3, "Triplet");
+        companion object {
+            fun parse(s: String): Subdivision = when (s) {
+                "1/8" -> Eighth
+                "1/16" -> Sixteenth
+                "triplet", "Triplet" -> Triplet
+                else -> Quarter
+            }
+        }
+    }
+
+    data class BeatPosition(
+        val barIndex: Long,
+        val beatInBar: Int,
+        val subInBeat: Int,
+        val fractionalInSub: Float,
+    )
+
+    @Volatile var bpm: Int = 120
+        set(value) {
+            val clamped = value.coerceIn(40, 240)
+            if (clamped != field) {
+                field = clamped
+                reanchorFromNow()
+            }
+        }
+
+    @Volatile var signature: Signature = Signature.default()
+        set(value) {
+            if (value != field) {
+                field = value
+                reanchorFromNow()
+            }
+        }
+
+    @Volatile var subdivision: Subdivision = Subdivision.Quarter
+
+    @Volatile private var barAnchorNs: Long = System.nanoTime()
+
+    private val _tickFlow = MutableSharedFlow<TickEvent>(replay = 0, extraBufferCapacity = 64)
+    val ticks: SharedFlow<TickEvent> = _tickFlow.asSharedFlow()
+
+    data class TickEvent(
+        val barIndex: Long,
+        val beatInBar: Int,
+        val subInBeat: Int,
+        val isAccentStrong: Boolean,
+        val isAccentMedium: Boolean,
+        val timestampNs: Long,
+    )
+
+    fun beatDurationNs(): Long {
+        val b = bpm.coerceIn(40, 240)
+        return (60_000_000_000L / b.toLong())
+    }
+
+    fun barDurationNs(): Long = beatDurationNs() * signature.beatsPerBar.toLong()
+
+    fun subDurationNs(): Long = beatDurationNs() / subdivision.subdivPerBeat.toLong()
+
+    fun barAnchor(): Long = barAnchorNs
+
+    fun currentPosition(): BeatPosition = positionAt(System.nanoTime())
+
+    fun positionAt(nowNs: Long): BeatPosition {
+        val barDur = barDurationNs().coerceAtLeast(1L)
+        val subDur = subDurationNs().coerceAtLeast(1L)
+        val elapsed = (nowNs - barAnchorNs).coerceAtLeast(0L)
+        val barIndex = elapsed / barDur
+        val inBar = elapsed % barDur
+        val beatInBar = (inBar / beatDurationNs()).toInt().coerceIn(0, signature.beatsPerBar - 1)
+        val inBeat = inBar % beatDurationNs()
+        val subInBeat = (inBeat / subDur).toInt().coerceIn(0, subdivision.subdivPerBeat - 1)
+        val frac = ((inBeat % subDur).toFloat() / subDur.toFloat()).coerceIn(0f, 1f)
+        return BeatPosition(barIndex, beatInBar, subInBeat, frac)
+    }
+
+    fun timeToNextSubdivision(nowNs: Long = System.nanoTime()): Long {
+        val subDur = subDurationNs()
+        val elapsed = (nowNs - barAnchorNs).coerceAtLeast(0L)
+        val next = ((elapsed / subDur) + 1) * subDur
+        return (barAnchorNs + next) - nowNs
+    }
+
+    fun timeToNextBar(nowNs: Long = System.nanoTime()): Long {
+        val barDur = barDurationNs()
+        val elapsed = (nowNs - barAnchorNs).coerceAtLeast(0L)
+        val next = ((elapsed / barDur) + 1) * barDur
+        return (barAnchorNs + next) - nowNs
+    }
+
+    fun reanchorTo(nowNs: Long) {
+        barAnchorNs = nowNs
+    }
+
+    private fun reanchorFromNow() {
+        // Ré-ancrage précis : on aligne le prochain battement sur l'instant courant
+        // pour éviter la dérive cumulative après un changement de BPM.
+        val now = System.nanoTime()
+        barAnchorNs = now
+    }
+
+    fun emitTickFromScheduler(bar: Long, beat: Int, sub: Int, strong: Boolean, medium: Boolean, ts: Long) {
+        _tickFlow.tryEmit(TickEvent(bar, beat, sub, strong, medium, ts))
+    }
+
+    fun isStrongBeat(beatInBar: Int): Boolean = beatInBar == 0
+
+    fun isMediumBeat(beatInBar: Int): Boolean {
+        return when (signature.beatsPerBar) {
+            2 -> beatInBar == 0
+            3 -> beatInBar == 0
+            4 -> beatInBar == 0 || beatInBar == 2
+            5 -> beatInBar == 0 || beatInBar == 3
+            6 -> beatInBar == 0 || beatInBar == 3
+            7 -> beatInBar == 0 || beatInBar == 2 || beatInBar == 4
+            9 -> beatInBar == 0 || beatInBar == 3 || beatInBar == 6
+            12 -> beatInBar == 0 || beatInBar == 3 || beatInBar == 6 || beatInBar == 9
+            else -> beatInBar == 0
+        }
+    }
+}
+───── FIN CONTENU À COLLER TEL QUEL ─────
+
+Puis :
+    ./gradlew :app:compileDebugKotlin
+Si OK :
+    git add app/src/main/java/com/soundstage/mixer/audio/TransportClock.kt
+    git commit -m "[chantier] TransportClock — Compile: OK"
+
+═══════════════════════════════════════════════════════════════════════════
+COMMIT A2 — MetronomeEngine.kt
+═══════════════════════════════════════════════════════════════════════════
+
+Fichier créé : app/src/main/java/com/soundstage/mixer/audio/MetronomeEngine.kt
+
+───── DÉBUT CONTENU À COLLER TEL QUEL ─────
+package com.soundstage.mixer.audio
+
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioManager
+import android.media.AudioTrack
+import android.os.Build
+import android.util.Log
+import kotlinx.coroutines.*
+import kotlin.math.PI
+import kotlin.math.exp
+import kotlin.math.sin
+import kotlin.math.pow
+
+/**
+ * Métronome autonome, synchronisé sur TransportClock.
+ * Synthèse algorithmique des 6 sons (aucun asset).
+ * Thread d'écriture dédié, AudioTrack statique en MODE_STATIC pour latence
+ * minimale, réutilisation des buffers pré-calculés.
+ *
+ * Supporte : 10 signatures, 4 subdivisions, accent fort/moyen par signature,
+ * volume global, click-in (count-in) au prochain début de mesure.
+ */
+class MetronomeEngine(private val clock: TransportClock) {
+
+    private val TAG = "MetronomeEngine"
+    private val sampleRate = 44100
+
+    enum class Sound(val label: String) {
+        Woodblock("Woodblock"),
+        Beep("Beep"),
+        Digital("Digital"),
+        Click("Click"),
+        Kick("Kick"),
+        Conga("Conga");
+        companion object {
+            fun parse(s: String): Sound = values().firstOrNull { it.label.equals(s, true) } ?: Woodblock
+        }
+    }
+
+    @Volatile var isActive: Boolean = false
+        private set
+    @Volatile var volume: Float = 0.65f
+    @Volatile var accent1: Boolean = true
+    @Volatile var accent13: Boolean = false
+    @Volatile var visualFlash: Boolean = true
+    @Volatile var currentSound: Sound = Sound.Woodblock
+
+    private var audioTrack: AudioTrack? = null
+    private var schedulerJob: Job? = null
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+
+    // Buffer PCM par son et par accent (fort / moyen / normal)
+    private val bufferStrong: ShortArray by lazy { synthStrong(currentSound) }
+    private val bufferMedium: ShortArray by lazy { synthMedium(currentSound) }
+    private val bufferNormal: ShortArray by lazy { synthNormal(currentSound) }
+
+    private var bufferedSound: Sound = Sound.Woodblock
+
+    fun start() {
+        if (isActive) return
+        isActive = true
+        bufferedSound = currentSound
+        openTrack()
+        schedulerJob = scope.launch { runScheduler() }
+    }
+
+    fun stop() {
+        isActive = false
+        schedulerJob?.cancel()
+        schedulerJob = null
+        try {
+            audioTrack?.pause(); audioTrack?.flush(); audioTrack?.stop(); audioTrack?.release()
+        } catch (_: Exception) {}
+        audioTrack = null
+    }
+
+    fun release() {
+        stop()
+        scope.cancel()
+    }
+
+    fun changeSound(s: Sound) {
+        if (bufferedSound == s) return
+        currentSound = s
+        // La reconstruction lazy se fait au prochain start()
+        if (isActive) {
+            stop(); start()
+        }
+    }
+
+    private fun openTrack() {
+        try {
+            val minBuf = AudioTrack.getMinBufferSize(
+                sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT
+            )
+            val builder = AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setSampleRate(sampleRate)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                        .build()
+                )
+                .setBufferSizeInBytes(max(minBuf, 4096))
+                .setTransferMode(AudioTrack.MODE_STREAM)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                builder.setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+            }
+            val track = builder.build()
+            if (track.state == AudioTrack.STATE_INITIALIZED) {
+                track.play()
+                audioTrack = track
+            } else {
+                Log.w(TAG, "AudioTrack failed to init")
+                track.release()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "openTrack: ${e.message}")
+        }
+    }
+
+    private suspend fun runScheduler() {
+        while (isActive) {
+            val nowNs = System.nanoTime()
+            val pos = clock.positionAt(nowNs)
+            val subNs = clock.subDurationNs()
+            val nextSubInNs = clock.timeToNextSubdivision(nowNs)
+            val targetNs = nowNs + nextSubInNs
+
+            val nextSub = (pos.subInBeat + 1) % clock.subdivision.subdivPerBeat
+            val nextBeatInBar = if (nextSub == 0) (pos.beatInBar + 1) % clock.signature.beatsPerBar else pos.beatInBar
+            val nextBar = if (nextSub == 0 && nextBeatInBar == 0) pos.barIndex + 1 else pos.barIndex
+
+            val strong = nextSub == 0 && nextBeatInBar == 0 && accent1
+            val medium = nextSub == 0 && clock.isMediumBeat(nextBeatInBar) && (accent13 || clock.isMediumBeat(nextBeatInBar))
+            val playAtBeat = nextSub == 0
+
+            // Dormir jusqu'à ~2 ms avant la cible
+            val sleepMs = ((nextSubInNs - 2_000_000L) / 1_000_000L).coerceAtLeast(1L)
+            delay(sleepMs)
+            while (System.nanoTime() < targetNs) { /* spin court */ }
+
+            if (playAtBeat) {
+                val pcm = when {
+                    strong && accent1 -> bufferStrong
+                    medium && (accent13 || clock.signature.beatsPerBar >= 4) -> bufferMedium
+                    else -> bufferNormal
+                }
+                writeWithGain(pcm, volume)
+            } else if (clock.subdivision != TransportClock.Subdivision.Quarter) {
+                writeWithGain(bufferNormal, volume * 0.4f)
+            }
+
+            clock.emitTickFromScheduler(nextBar, nextBeatInBar, nextSub, strong, medium, targetNs)
+            // Petite pause pour ne pas saturer le scheduler si bpm élevé
+            delay(1L)
+        }
+    }
+
+    private fun writeWithGain(pcm: ShortArray, gain: Float) {
+        val track = audioTrack ?: return
+        val scaled = ShortArray(pcm.size)
+        val g = gain.coerceIn(0f, 1f)
+        for (i in pcm.indices) scaled[i] = (pcm[i] * g).toInt().coerceIn(-32768, 32767).toShort()
+        try { track.write(scaled, 0, scaled.size) } catch (_: Exception) {}
+    }
+
+    // ─── Synthèse sons (44.1 kHz mono) ───
+
+    private fun synthStrong(s: Sound): ShortArray = synth(s, 1.0f, strong = true)
+    private fun synthMedium(s: Sound): ShortArray = synth(s, 0.8f, strong = false)
+    private fun synthNormal(s: Sound): ShortArray = synth(s, 0.55f, strong = false)
+
+    private fun synth(sound: Sound, gain: Float, strong: Boolean): ShortArray = when (sound) {
+        Sound.Woodblock -> synthWoodblock(gain, strong)
+        Sound.Beep -> synthBeep(gain, strong)
+        Sound.Digital -> synthDigital(gain, strong)
+        Sound.Click -> synthClick(gain)
+        Sound.Kick -> synthKick(gain)
+        Sound.Conga -> synthConga(gain, strong)
+    }
+
+    private fun synthWoodblock(gain: Float, strong: Boolean): ShortArray {
+        val dur = 0.035f
+        val n = (sampleRate * dur).toInt()
+        val out = ShortArray(n)
+        val f0 = if (strong) 1050f else 900f
+        val decay = 55f
+        for (i in 0 until n) {
+            val t = i.toFloat() / sampleRate
+            val env = exp(-decay * t)
+            val v = sin(2.0 * PI * f0 * t) * env + 0.3 * sin(2.0 * PI * f0 * 2.1 * t) * env
+            out[i] = (v * gain * 0.85f * 32767f).toInt().toShort()
+        }
+        return out
+    }
+
+    private fun synthBeep(gain: Float, strong: Boolean): ShortArray {
+        val dur = 0.028f
+        val n = (sampleRate * dur).toInt()
+        val out = ShortArray(n)
+        val f0 = if (strong) 1200f else 1000f
+        for (i in 0 until n) {
+            val t = i.toFloat() / sampleRate
+            val env = if (t < 0.002f) t / 0.002f else exp(-70f * (t - 0.002f))
+            val v = sin(2.0 * PI * f0 * t) * env
+            out[i] = (v * gain * 0.7f * 32767f).toInt().toShort()
+        }
+        return out
+    }
+
+    private fun synthDigital(gain: Float, strong: Boolean): ShortArray {
+        val dur = 0.018f
+        val n = (sampleRate * dur).toInt()
+        val out = ShortArray(n)
+        val f0 = if (strong) 1800f else 1400f
+        for (i in 0 until n) {
+            val t = i.toFloat() / sampleRate
+            val env = exp(-110f * t)
+            val v = if (sin(2.0 * PI * f0 * t) > 0) 1.0 else -1.0
+            out[i] = (v * env * gain * 0.5f * 32767f).toInt().toShort()
+        }
+        return out
+    }
+
+    private fun synthClick(gain: Float): ShortArray {
+        val dur = 0.008f
+        val n = (sampleRate * dur).toInt()
+        val out = ShortArray(n)
+        for (i in 0 until n) {
+            val t = i.toFloat() / sampleRate
+            val env = exp(-240f * t)
+            val noise = (Math.random() * 2 - 1).toFloat()
+            out[i] = (noise * env * gain * 0.6f * 32767f).toInt().toShort()
+        }
+        return out
+    }
+
+    private fun synthKick(gain: Float): ShortArray {
+        val dur = 0.18f
+        val n = (sampleRate * dur).toInt()
+        val out = ShortArray(n)
+        var phase = 0.0
+        for (i in 0 until n) {
+            val t = i.toFloat() / sampleRate
+            val env = exp(-25f * t)
+            val f = 60f * (1f + exp(-30f * t) * 3f)
+            phase += 2.0 * PI * f / sampleRate
+            val v = sin(phase) * env
+            out[i] = (v * gain * 0.9f * 32767f).toInt().coerceIn(-32768, 32767).toShort()
+        }
+        return out
+    }
+
+    private fun synthConga(gain: Float, strong: Boolean): ShortArray {
+        val dur = 0.11f
+        val n = (sampleRate * dur).toInt()
+        val out = ShortArray(n)
+        val f0 = if (strong) 420f else 380f
+        for (i in 0 until n) {
+            val t = i.toFloat() / sampleRate
+            val env = exp(-25f * t)
+            val v = sin(2.0 * PI * f0 * t) * env + 0.35 * sin(2.0 * PI * f0 * 2.0 * t) * env
+            out[i] = (v * gain * 0.85f * 32767f).toInt().toShort()
+        }
+        return out
+    }
+}
+───── FIN CONTENU À COLLER TEL QUEL ─────
+
+Puis :
+    ./gradlew :app:compileDebugKotlin
+Si OK :
+    git add app/src/main/java/com/soundstage/mixer/audio/MetronomeEngine.kt
+    git commit -m "[chantier] MetronomeEngine synthèse 6 sons — Compile: OK"
+
+═══════════════════════════════════════════════════════════════════════════
+COMMIT A3 — LooperEngine.kt
+═══════════════════════════════════════════════════════════════════════════
+
+Fichier créé : app/src/main/java/com/soundstage/mixer/audio/LooperEngine.kt
+
+───── DÉBUT CONTENU À COLLER TEL QUEL ─────
+package com.soundstage.mixer.audio
+
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+
+/**
+ * Looper event-only, 8 cases, 4 couches par case. Synchronisé sur TransportClock.
+ * Aucun son joué ici — les events sont exposés via StateFlow ; c'est le consumer
+ * (DrumPadScreen via ViewModel) qui les rejoue en audio.
+ *
+ * Supporte : length Auto / 1 / 2 / 4 / 8 bars, quantize 1/16 ou Free,
+ * swing 0-100 % appliqué aux pas impairs du cycle, count-in au prochain début
+ * de mesure.
+ */
+class LooperEngine(private val clock: TransportClock) {
+
+    enum class CaseState { Empty, Queued, Recording, Playing, Overdubbing, Stopped }
+
+    data class RecordedEvent(
+        val kind: String,       // "pad" ou "note"
+        val idx: Int,           // padId ou index de note 0-11
+        val color: String,      // couleur UI au moment de l'enregistrement
+        val beatOffset: Double, // position dans le cycle en beats (0..bars*beatsPerBar)
+    )
+
+    data class Case(
+        val id: Int,
+        val state: CaseState = CaseState.Empty,
+        val bars: Int = 1,
+        val lengthMode: String = "auto",  // "auto" | "1" | "2" | "4" | "8"
+        val layers: List<List<RecordedEvent>> = emptyList(),
+        val pendingRecEvents: List<RecordedEvent> = emptyList(),
+        val pendingOverdubEvents: List<RecordedEvent> = emptyList(),
+        val queuedAction: String? = null, // "rec" | "overdub" | "play"
+        val queuedAtNs: Long = 0L,
+        val recStartNs: Long = 0L,
+        val startAtNs: Long = 0L,
+        val lastBeatIndex: Double = -1.0,
+        val offset: Int = 0,
+        val chokeGroup: Int = 0,
+    )
+
+    data class UiState(
+        val cases: List<Case> = List(8) { Case(id = it) },
+        val quantize: Boolean = true,
+        val swing: Int = 54,
+        val lengthMode: String = "auto",
+        val isPlayingAny: Boolean = false,
+    )
+
+    private val _state = MutableStateFlow(UiState())
+    val state: StateFlow<UiState> = _state.asStateFlow()
+
+    private var schedulerJob: Job? = null
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+
+    fun start() {
+        if (schedulerJob?.isActive == true) return
+        schedulerJob = scope.launch { runScheduler() }
+    }
+
+    fun stop() {
+        schedulerJob?.cancel()
+        schedulerJob = null
+    }
+
+    fun release() {
+        stop()
+        scope.cancel()
+    }
+
+    fun setQuantize(q: Boolean) = _state.update { it.copy(quantize = q) }
+    fun setSwing(s: Int) = _state.update { it.copy(swing = s.coerceIn(0, 100)) }
+    fun setLengthMode(m: String) = _state.update { it.copy(lengthMode = m) }
+
+    /** Tap sur une case (empty → queued rec ; rec → finish ; play → queued overdub ; etc.). */
+    fun tapCase(caseIndex: Int) {
+        val nowNs = System.nanoTime()
+        val s = _state.value
+        val busy = s.cases.any { it.id != caseIndex && (it.state == CaseState.Recording || (it.state == CaseState.Queued && it.queuedAction == "rec")) }
+        val c = s.cases[caseIndex]
+        val next = when (c.state) {
+            CaseState.Empty -> {
+                if (busy) return
+                val nextBarNs = nowNs + clock.timeToNextBar(nowNs)
+                c.copy(state = CaseState.Queued, queuedAction = "rec", queuedAtNs = nextBarNs, lengthMode = s.lengthMode)
+            }
+            CaseState.Queued -> c.copy(state = CaseState.Empty, queuedAction = null)
+            CaseState.Recording -> finishRecording(c, nowNs)
+            CaseState.Playing -> {
+                val loopDur = clock.barDurationNs() * c.bars
+                val sinceStart = (nowNs - c.startAtNs).coerceAtLeast(0L)
+                val nextBoundary = c.startAtNs + ((sinceStart / loopDur) + 1) * loopDur
+                c.copy(state = CaseState.Queued, queuedAction = "overdub", queuedAtNs = nextBoundary)
+            }
+            CaseState.Overdubbing -> commitOverdub(c)
+            CaseState.Stopped -> c.copy(state = CaseState.Queued, queuedAction = "play", queuedAtNs = nowNs + clock.timeToNextBar(nowNs))
+        }
+        _state.update { st -> st.copy(cases = st.cases.toMutableList().also { it[caseIndex] = next }) }
+    }
+
+    fun longPressCaseAction(caseIndex: Int, action: String) {
+        val c = _state.value.cases[caseIndex]
+        val next = when (action) {
+            "stop" -> c.copy(state = CaseState.Stopped)
+            "play" -> c.copy(state = CaseState.Queued, queuedAction = "play", queuedAtNs = System.nanoTime() + clock.timeToNextBar())
+            "clear" -> Case(id = caseIndex)
+            "undo" -> if (c.layers.isNotEmpty()) c.copy(layers = c.layers.dropLast(1).let { if (it.isEmpty()) c.copy(state = CaseState.Empty, layers = emptyList()) else c.copy(layers = it) }) else c
+            "double" -> if (c.bars < 8 && c.layers.isNotEmpty()) c.copy(bars = c.bars * 2, layers = c.layers.map { l -> l + l.map { e -> e.copy(beatOffset = e.beatOffset + c.bars * clock.signature.beatsPerBar) } }) else c
+            else -> c
+        }
+        _state.update { st -> st.copy(cases = st.cases.toMutableList().also { it[caseIndex] = next }) }
+    }
+
+    fun stopAll() {
+        _state.update { st -> st.copy(cases = st.cases.map { if (it.state == CaseState.Playing || it.state == CaseState.Overdubbing) it.copy(state = CaseState.Stopped) else it }) }
+    }
+
+    fun playAll() {
+        val now = System.nanoTime()
+        val nextBar = now + clock.timeToNextBar(now)
+        _state.update { st -> st.copy(cases = st.cases.map { if (it.state == CaseState.Stopped) it.copy(state = CaseState.Queued, queuedAction = "play", queuedAtNs = nextBar) else it }) }
+    }
+
+    /** Appelé par le consumer quand un pad ou une note est joué pendant un REC ou OVERDUB. */
+    fun record(kind: String, idx: Int, color: String) {
+        val nowNs = System.nanoTime()
+        _state.update { s ->
+            val updated = s.cases.map { c ->
+                when (c.state) {
+                    CaseState.Recording -> {
+                        val beatsPerBar = clock.signature.beatsPerBar
+                        val elapsedNs = (nowNs - c.recStartNs).coerceAtLeast(0L)
+                        val beatOffset = elapsedNs.toDouble() / clock.beatDurationNs().toDouble()
+                        val quantized = if (s.quantize) {
+                            val subdiv = clock.subdivision.subdivPerBeat.toDouble()
+                            (Math.round(beatOffset * subdiv) / subdiv)
+                        } else beatOffset
+                        c.copy(pendingRecEvents = c.pendingRecEvents + RecordedEvent(kind, idx, color, quantized))
+                    }
+                    CaseState.Overdubbing -> {
+                        val beatsPerBar = clock.signature.beatsPerBar
+                        val loopBeats = c.bars * beatsPerBar
+                        val elapsedNs = (nowNs - c.startAtNs).coerceAtLeast(0L)
+                        val cycleNs = clock.barDurationNs() * c.bars
+                        val offsetInCycleNs = elapsedNs % cycleNs
+                        var beatOffset = offsetInCycleNs.toDouble() / clock.beatDurationNs().toDouble()
+                        beatOffset %= loopBeats
+                        val quantized = if (s.quantize) {
+                            val subdiv = clock.subdivision.subdivPerBeat.toDouble()
+                            (Math.round(beatOffset * subdiv) / subdiv)
+                        } else beatOffset
+                        c.copy(pendingOverdubEvents = c.pendingOverdubEvents + RecordedEvent(kind, idx, color, quantized))
+                    }
+                    else -> c
+                }
+            }
+            s.copy(cases = updated)
+        }
+    }
+
+    private fun finishRecording(c: Case, nowNs: Long): Case {
+        val elapsedNs = nowNs - c.recStartNs
+        val bars = if (c.lengthMode == "auto") {
+            (Math.round(elapsedNs.toDouble() / clock.barDurationNs().toDouble())).toInt().coerceAtLeast(1)
+        } else c.lengthMode.toIntOrNull() ?: 1
+        val layer = c.pendingRecEvents.map { e ->
+            val loopBeats = bars * clock.signature.beatsPerBar
+            e.copy(beatOffset = e.beatOffset % loopBeats)
+        }
+        val nextStartNs = c.recStartNs + bars * clock.barDurationNs()
+        return c.copy(
+            state = CaseState.Playing,
+            bars = bars,
+            layers = listOf(layer),
+            pendingRecEvents = emptyList(),
+            startAtNs = nextStartNs,
+            queuedAction = null,
+        )
+    }
+
+    private fun commitOverdub(c: Case): Case {
+        if (c.layers.size >= 4) return c.copy(state = CaseState.Playing, pendingOverdubEvents = emptyList(), queuedAction = null)
+        val loopBeats = c.bars * clock.signature.beatsPerBar
+        val layer = c.pendingOverdubEvents.map { e -> e.copy(beatOffset = e.beatOffset % loopBeats) }
+        return c.copy(
+            state = CaseState.Playing,
+            layers = c.layers + layer,
+            pendingOverdubEvents = emptyList(),
+            queuedAction = null,
+        )
+    }
+
+    private suspend fun runScheduler() {
+        while (schedulerJob?.isActive == true) {
+            val nowNs = System.nanoTime()
+            var changed = false
+            val updated = _state.value.cases.map { c ->
+                when (c.state) {
+                    CaseState.Queued -> if (nowNs >= c.queuedAtNs) {
+                        changed = true
+                        when (c.queuedAction) {
+                            "rec" -> c.copy(state = CaseState.Recording, recStartNs = c.queuedAtNs, pendingRecEvents = emptyList(), queuedAction = null)
+                            "overdub" -> c.copy(state = CaseState.Overdubbing, startAtNs = c.queuedAtNs, pendingOverdubEvents = emptyList(), queuedAction = null)
+                            "play" -> c.copy(state = CaseState.Playing, startAtNs = c.queuedAtNs, queuedAction = null, lastBeatIndex = -1.0)
+                            else -> c
+                        }
+                    } else c
+                    CaseState.Recording -> {
+                        if (c.lengthMode != "auto") {
+                            val targetBars = c.lengthMode.toIntOrNull() ?: 1
+                            val endNs = c.recStartNs + targetBars * clock.barDurationNs()
+                            if (nowNs >= endNs) { changed = true; finishRecording(c, endNs) } else c
+                        } else c
+                    }
+                    CaseState.Overdubbing -> {
+                        val endNs = c.startAtNs + c.bars * clock.barDurationNs()
+                        if (nowNs >= endNs) { changed = true; commitOverdub(c) } else c
+                    }
+                    else -> c
+                }
+            }
+            if (changed) _state.update { it.copy(cases = updated) }
+            delay(15L)
+        }
+    }
+}
+───── FIN CONTENU À COLLER TEL QUEL ─────
+
+Puis :
+    ./gradlew :app:compileDebugKotlin
+Si OK :
+    git add app/src/main/java/com/soundstage/mixer/audio/LooperEngine.kt
+    git commit -m "[chantier] LooperEngine event-only 8 cases — Compile: OK"
+
+═══════════════════════════════════════════════════════════════════════════
+COMMIT A4 — FxChains.kt
+═══════════════════════════════════════════════════════════════════════════
+
+Fichier créé : app/src/main/java/com/soundstage/mixer/model/FxChains.kt
+
+───── DÉBUT CONTENU À COLLER TEL QUEL ─────
+package com.soundstage.mixer.model
+
+/**
+ * Modèle des 2 chaînes FX (Tonic et Pads), indépendantes.
+ * Chaque paramètre est un Float 0..1 (UI 0..100 %).
+ * L'ordre des effets est fixe et appliqué côté natif :
+ *   Filter -> Brightness -> Delay -> Reverb -> Shimmer (Shimmer : Tonic only)
+ */
+data class SurfaceFxChain(
+    val filterOn: Boolean = false,
+    val filterAmount: Float = 0.5f,
+    val brightnessOn: Boolean = false,
+    val brightnessAmount: Float = 0.5f,
+    val delayOn: Boolean = false,
+    val delayAmount: Float = 0.3f,
+    val reverbOn: Boolean = true,
+    val reverbAmount: Float = 0.4f,
+    val shimmerOn: Boolean = false,
+    val shimmerAmount: Float = 0.3f,
+) {
+    fun enabledCount(includeShimmer: Boolean): Int {
+        var n = 0
+        if (filterOn) n++
+        if (brightnessOn) n++
+        if (delayOn) n++
+        if (reverbOn) n++
+        if (includeShimmer && shimmerOn) n++
+        return n
+    }
+    fun withShimmerDisabled(): SurfaceFxChain = copy(shimmerOn = false, shimmerAmount = 0f)
+}
+
+data class FxChainsState(
+    val tonic: SurfaceFxChain = SurfaceFxChain(reverbOn = true, reverbAmount = 0.4f, shimmerOn = true, shimmerAmount = 0.4f, brightnessOn = true, brightnessAmount = 0.6f),
+    val pads: SurfaceFxChain = SurfaceFxChain(reverbOn = true, reverbAmount = 0.3f, brightnessOn = true, brightnessAmount = 0.5f),
+) {
+    companion object {
+        val DEFAULT = FxChainsState()
+    }
+}
+───── FIN CONTENU À COLLER TEL QUEL ─────
+
+Puis :
+    ./gradlew :app:compileDebugKotlin
+Si OK :
+    git add app/src/main/java/com/soundstage/mixer/model/FxChains.kt
+    git commit -m "[chantier] FxChains modèle — Compile: OK"
+
+═══════════════════════════════════════════════════════════════════════════
+COMMIT A5 — NativeAudioBridge : ajout externes FX chains
+═══════════════════════════════════════════════════════════════════════════
+
+Fichier : app/src/main/java/com/soundstage/mixer/audio/NativeAudioBridge.kt
+
+────────────────────────────────────────────────────────────────────────
+5.1 — Dans le bloc `external fun` (après la ligne `external fun setChannelChorus(...)` ligne ~85),
+ajouter ces 2 nouvelles lignes :
+
+    external fun setTonicFxChain(filterOn: Boolean, filterAmt: Float, brightnessOn: Boolean, brightnessAmt: Float, delayOn: Boolean, delayAmt: Float, reverbOn: Boolean, reverbAmt: Float, shimmerOn: Boolean, shimmerAmt: Float)
+    external fun setPadsFxChain(filterOn: Boolean, filterAmt: Float, brightnessOn: Boolean, brightnessAmt: Float, delayOn: Boolean, delayAmt: Float, reverbOn: Boolean, reverbAmt: Float)
+
+────────────────────────────────────────────────────────────────────────
+5.2 — Dans le bloc des `fun safe*`, ajouter ces 2 wrappers (à la suite de `fun safeSetChannelChorus(...)`) :
+
+    fun safeSetTonicFxChain(
+        filterOn: Boolean, filterAmt: Float,
+        brightnessOn: Boolean, brightnessAmt: Float,
+        delayOn: Boolean, delayAmt: Float,
+        reverbOn: Boolean, reverbAmt: Float,
+        shimmerOn: Boolean, shimmerAmt: Float,
+    ) {
+        try {
+            if (isNativeReady()) setTonicFxChain(filterOn, filterAmt.coerceIn(0f,1f), brightnessOn, brightnessAmt.coerceIn(0f,1f), delayOn, delayAmt.coerceIn(0f,1f), reverbOn, reverbAmt.coerceIn(0f,1f), shimmerOn, shimmerAmt.coerceIn(0f,1f))
+        } catch (_: Throwable) {}
+    }
+
+    fun safeSetPadsFxChain(
+        filterOn: Boolean, filterAmt: Float,
+        brightnessOn: Boolean, brightnessAmt: Float,
+        delayOn: Boolean, delayAmt: Float,
+        reverbOn: Boolean, reverbAmt: Float,
+    ) {
+        try {
+            if (isNativeReady()) setPadsFxChain(filterOn, filterAmt.coerceIn(0f,1f), brightnessOn, brightnessAmt.coerceIn(0f,1f), delayOn, delayAmt.coerceIn(0f,1f), reverbOn, reverbAmt.coerceIn(0f,1f))
+        } catch (_: Throwable) {}
+    }
+
+────────────────────────────────────────────────────────────────────────
+5.3 — Vérifier que `isNativeReady()` est accessible dans le scope du
+companion (elle existe déjà, utilisée partout).
+
+Puis :
+    ./gradlew :app:compileDebugKotlin
+Le build échouera à l'étape `external fun` car les natifs n'existent pas encore.
+C'est attendu. Le commit A5 ne peut être validé qu'après A6.
+NE PAS COMMITTER A5 SEUL. Passer directement à A6, puis commit A5+A6 ensemble.
+
+═══════════════════════════════════════════════════════════════════════════
+COMMIT A6 — Implémentation C++ des 2 chaînes FX
+═══════════════════════════════════════════════════════════════════════════
+
+Fichiers :
+  - app/src/main/cpp/audio_engine.h
+  - app/src/main/cpp/audio_engine.cpp
+
+────────────────────────────────────────────────────────────────────────
+6.1 — audio_engine.h : ajouter la déclaration des 2 setters (chercher la
+section des setters, à la fin de la classe Java_com_soundstage_mixer_audio_NativeAudioBridge_*,
+juste après setChannelChorus).
+
+Ajouter :
+
+    extern "C" JNIEXPORT void JNICALL
+    Java_com_soundstage_mixer_audio_NativeAudioBridge_setTonicFxChain(
+        JNIEnv* env, jobject thiz,
+        jboolean filterOn, jfloat filterAmt,
+        jboolean brightnessOn, jfloat brightnessAmt,
+        jboolean delayOn, jfloat delayAmt,
+        jboolean reverbOn, jfloat reverbAmt,
+        jboolean shimmerOn, jfloat shimmerAmt);
+
+    extern "C" JNIEXPORT void JNICALL
+    Java_com_soundstage_mixer_audio_NativeAudioBridge_setPadsFxChain(
+        JNIEnv* env, jobject thiz,
+        jboolean filterOn, jfloat filterAmt,
+        jboolean brightnessOn, jfloat brightnessAmt,
+        jboolean delayOn, jfloat delayAmt,
+        jboolean reverbOn, jfloat reverbAmt);
+
+────────────────────────────────────────────────────────────────────────
+6.2 — audio_engine.h : ajouter la structure d'état FX chain.
+Chercher un endroit libre près des autres structures (par ex. après la
+structure ChannelParams si elle existe). Ajouter :
+
+    struct SurfaceFxChainState {
+        std::atomic<bool> filterOn{false};
+        std::atomic<float> filterAmt{0.5f};
+        std::atomic<bool> brightnessOn{false};
+        std::atomic<float> brightnessAmt{0.5f};
+        std::atomic<bool> delayOn{false};
+        std::atomic<float> delayAmt{0.3f};
+        std::atomic<bool> reverbOn{true};
+        std::atomic<float> reverbAmt{0.4f};
+        std::atomic<bool> shimmerOn{false};
+        std::atomic<float> shimmerAmt{0.3f};
+    };
+
+    // Instances globales (une par surface)
+    static SurfaceFxChainState g_tonicFx;
+    static SurfaceFxChainState g_padsFx;
+
+────────────────────────────────────────────────────────────────────────
+6.3 — audio_engine.cpp : implémenter les 2 setters (à la fin du fichier).
+
+Ajouter :
+
+    extern "C" JNIEXPORT void JNICALL
+    Java_com_soundstage_mixer_audio_NativeAudioBridge_setTonicFxChain(
+        JNIEnv* env, jobject thiz,
+        jboolean filterOn, jfloat filterAmt,
+        jboolean brightnessOn, jfloat brightnessAmt,
+        jboolean delayOn, jfloat delayAmt,
+        jboolean reverbOn, jfloat reverbAmt,
+        jboolean shimmerOn, jfloat shimmerAmt) {
+        (void)env; (void)thiz;
+        g_tonicFx.filterOn.store(filterOn);
+        g_tonicFx.filterAmt.store(filterAmt);
+        g_tonicFx.brightnessOn.store(brightnessOn);
+        g_tonicFx.brightnessAmt.store(brightnessAmt);
+        g_tonicFx.delayOn.store(delayOn);
+        g_tonicFx.delayAmt.store(delayAmt);
+        g_tonicFx.reverbOn.store(reverbOn);
+        g_tonicFx.reverbAmt.store(reverbAmt);
+        g_tonicFx.shimmerOn.store(shimmerOn);
+        g_tonicFx.shimmerAmt.store(shimmerAmt);
+    }
+
+    extern "C" JNIEXPORT void JNICALL
+    Java_com_soundstage_mixer_audio_NativeAudioBridge_setPadsFxChain(
+        JNIEnv* env, jobject thiz,
+        jboolean filterOn, jfloat filterAmt,
+        jboolean brightnessOn, jfloat brightnessAmt,
+        jboolean delayOn, jfloat delayAmt,
+        jboolean reverbOn, jfloat reverbAmt) {
+        (void)env; (void)thiz;
+        g_padsFx.filterOn.store(filterOn);
+        g_padsFx.filterAmt.store(filterAmt);
+        g_padsFx.brightnessOn.store(brightnessOn);
+        g_padsFx.brightnessAmt.store(brightnessAmt);
+        g_padsFx.delayOn.store(delayOn);
+        g_padsFx.delayAmt.store(delayAmt);
+        g_padsFx.reverbOn.store(reverbOn);
+        g_padsFx.reverbAmt.store(reverbAmt);
+    }
+
+────────────────────────────────────────────────────────────────────────
+6.4 — audio_engine.cpp : NE PAS implémenter le DSP des FX chains maintenant.
+Le mixage actuel continue de fonctionner. Les chaînes sont stockées mais pas
+encore appliquées au mix. L'effet DSP réel sera branché à l'étape V1.5 dans
+une prochaine itération (ce sera un buffer de mix dédié par surface).
+Pour l'instant, Brief-A stocke l'état, l'expose via Native, le persiste et
+le rend éditable. C'est le socle.
+
+────────────────────────────────────────────────────────────────────────
+6.5 — Compiler :
+
+    ./gradlew :app:externalNativeBuildDebug
+    ./gradlew :app:compileDebugKotlin
+
+Les 2 doivent réussir. C'est à ce moment que A5+A6 peuvent être commités
+ensemble (le message de commit couvre les deux).
+
+Si compile OK, commiter les deux ensembles :
+    git add app/src/main/java/com/soundstage/mixer/audio/NativeAudioBridge.kt
+    git add app/src/main/cpp/audio_engine.h
+    git add app/src/main/cpp/audio_engine.cpp
+    git commit -m "[chantier] NativeAudioBridge + C++ FX chains setters — Compile: OK"
+
+═══════════════════════════════════════════════════════════════════════════
+COMMIT A7 — MixerUiState : ajout champs nouveaux
+═══════════════════════════════════════════════════════════════════════════
+
+Fichier : app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+
+────────────────────────────────────────────────────────────────────────
+7.1 — Dans `data class MixerUiState`, juste AVANT la propriété finale
+`val activeTrackSettingsId: Int? = null`, ajouter ces blocs :
+
+    // Transport global
+    val transportBpm: Int = 120,
+    val transportSignature: String = "4/4",
+    val transportSubdivision: String = "1/4",
+
+    // Métronome
+    val metronomeSound: String = "Woodblock",
+    val metronomeAccent1: Boolean = true,
+    val metronomeAccent13: Boolean = false,
+    val metronomeVisualFlash: Boolean = true,
+    val metronomeCountIn: String = "off",  // "off" | "1" | "2"
+    val metronomeTapBpm: Int = 0,
+
+    // FX chains
+    val fxChains: com.soundstage.mixer.model.FxChainsState = com.soundstage.mixer.model.FxChainsState.DEFAULT,
+
+    // Looper (miroir de LooperEngine, exposé pour l'UI et la persistance)
+    val looper: com.soundstage.mixer.audio.LooperEngine.UiState = com.soundstage.mixer.audio.LooperEngine.UiState(),
+
+────────────────────────────────────────────────────────────────────────
+7.2 — Vérifier que les imports suivants n'existent pas déjà dans le fichier
+et ajouter si nécessaire, dans le bloc d'imports :
+
+    import com.soundstage.mixer.audio.LooperEngine
+    import com.soundstage.mixer.model.FxChainsState
+
+Note : `LooperEngine` est référencé en champ via son type `LooperEngine.UiState`
+avec fully-qualified name, donc l'import n'est pas strictement nécessaire.
+Mais si l'agent préfère l'ajouter pour la lisibilité, il peut.
+
+Puis :
+    ./gradlew :app:compileDebugKotlin
+Si OK :
+    git add app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    git commit -m "[chantier] MixerUiState champs transport/métronome/FX/looper — Compile: OK"
+
+═══════════════════════════════════════════════════════════════════════════
+COMMIT A8 — MixerViewModel : instanciation engines + nouvelles méthodes
+═══════════════════════════════════════════════════════════════════════════
+
+Fichier : app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+
+────────────────────────────────────────────────────────────────────────
+8.1 — Dans la classe `MixerViewModel`, juste APRÈS la ligne
+`private val soundFontLoadMutex = Mutex()`, ajouter :
+
+    // Transport clock partagé par tous les composants rythmiques
+    private val transportClock = com.soundstage.mixer.audio.TransportClock()
+
+    // Moteur métronome (synthèse 6 sons, scheduler précis)
+    private val metronomeEngine = com.soundstage.mixer.audio.MetronomeEngine(transportClock)
+
+    // Looper event-only, 8 cases, 4 couches
+    private val looperEngine = com.soundstage.mixer.audio.LooperEngine(transportClock)
+
+────────────────────────────────────────────────────────────────────────
+8.2 — Dans le bloc `init { ... }` du ViewModel, APRÈS le
+`startPeakMeterSimulation()` initial, ajouter :
+
+        transportClock.bpm = _uiState.value.transportBpm
+        transportClock.signature = com.soundstage.mixer.audio.TransportClock.Signature.parse(_uiState.value.transportSignature)
+        transportClock.subdivision = com.soundstage.mixer.audio.TransportClock.Subdivision.parse(_uiState.value.transportSubdivision)
+
+        // Miroir LooperEngine -> UiState
+        viewModelScope.launch {
+            looperEngine.state.collect { st ->
+                _uiState.update { it.copy(looper = st) }
+            }
+        }
+
+        // Métronome : démarre arrêté, sera activé via toggleMetronome()
+        metronomeEngine.volume = _uiState.value.metronomeVolume
+        metronomeEngine.accent1 = _uiState.value.metronomeAccent1
+        metronomeEngine.accent13 = _uiState.value.metronomeAccent13
+        metronomeEngine.visualFlash = _uiState.value.metronomeVisualFlash
+        metronomeEngine.currentSound = com.soundstage.mixer.audio.MetronomeEngine.Sound.parse(_uiState.value.metronomeSound)
+
+        looperEngine.start()
+
+────────────────────────────────────────────────────────────────────────
+8.3 — Remplacer INTÉGRALEMENT la méthode `toggleMetronome()` (ligne 1741)
+par :
+
+    fun toggleMetronome() {
+        val next = !_uiState.value.isMetronomeOn
+        if (next) {
+            metronomeEngine.volume = _uiState.value.metronomeVolume
+            metronomeEngine.accent1 = _uiState.value.metronomeAccent1
+            metronomeEngine.accent13 = _uiState.value.metronomeAccent13
+            metronomeEngine.visualFlash = _uiState.value.metronomeVisualFlash
+            metronomeEngine.currentSound = com.soundstage.mixer.audio.MetronomeEngine.Sound.parse(_uiState.value.metronomeSound)
+            metronomeEngine.start()
+        } else {
+            metronomeEngine.stop()
+        }
+        _uiState.update { it.copy(isMetronomeOn = next) }
+    }
+
+────────────────────────────────────────────────────────────────────────
+8.4 — Remplacer INTÉGRALEMENT la méthode `setMetronomeSignature(sig: String)`
+par :
+
+    fun setMetronomeSignature(sig: String) {
+        _uiState.update { it.copy(metronomeSignature = sig, transportSignature = sig) }
+        transportClock.signature = com.soundstage.mixer.audio.TransportClock.Signature.parse(sig)
+    }
+
+────────────────────────────────────────────────────────────────────────
+8.5 — Remplacer INTÉGRALEMENT la méthode `setMetronomeVolume(vol: Float)`
+par :
+
+    fun setMetronomeVolume(vol: Float) {
+        val clamped = vol.coerceIn(0f, 1f)
+        _uiState.update { it.copy(metronomeVolume = clamped) }
+        metronomeEngine.volume = clamped
+    }
+
+────────────────────────────────────────────────────────────────────────
+8.6 — Juste APRÈS ces 3 méthodes remplacées, ajouter les nouvelles méthodes :
+
+    fun setTransportBpm(bpm: Int) {
+        val clamped = bpm.coerceIn(40, 240)
+        transportClock.bpm = clamped
+        _uiState.update { it.copy(transportBpm = clamped, bpm = clamped) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setTransportSubdivision(sub: String) {
+        transportClock.subdivision = com.soundstage.mixer.audio.TransportClock.Subdivision.parse(sub)
+        _uiState.update { it.copy(transportSubdivision = sub) }
+    }
+
+    fun setMetronomeSound(sound: String) {
+        metronomeEngine.currentSound = com.soundstage.mixer.audio.MetronomeEngine.Sound.parse(sound)
+        _uiState.update { it.copy(metronomeSound = sound) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setMetronomeAccent1(on: Boolean) {
+        metronomeEngine.accent1 = on
+        _uiState.update { it.copy(metronomeAccent1 = on) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setMetronomeAccent13(on: Boolean) {
+        metronomeEngine.accent13 = on
+        _uiState.update { it.copy(metronomeAccent13 = on) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setMetronomeVisualFlash(on: Boolean) {
+        metronomeEngine.visualFlash = on
+        _uiState.update { it.copy(metronomeVisualFlash = on) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setMetronomeCountIn(mode: String) {
+        _uiState.update { it.copy(metronomeCountIn = mode) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setMetronomeTapBpm(bpm: Int) {
+        _uiState.update { it.copy(metronomeTapBpm = bpm) }
+    }
+
+    fun tapLooperCase(caseIndex: Int) {
+        looperEngine.tapCase(caseIndex)
+    }
+
+    fun longPressLooperCaseAction(caseIndex: Int, action: String) {
+        looperEngine.longPressCaseAction(caseIndex, action)
+    }
+
+    fun setLooperQuantize(q: Boolean) {
+        looperEngine.setQuantize(q)
+    }
+
+    fun setLooperSwing(s: Int) {
+        looperEngine.setSwing(s)
+    }
+
+    fun setLooperLengthMode(m: String) {
+        looperEngine.setLengthMode(m)
+    }
+
+    fun stopAllLoops() { looperEngine.stopAll() }
+    fun playAllLoops() { looperEngine.playAll() }
+
+    fun recordLooperEvent(kind: String, idx: Int, color: String) {
+        looperEngine.record(kind, idx, color)
+    }
+
+    fun setTonicFxChain(chain: com.soundstage.mixer.model.SurfaceFxChain) {
+        _uiState.update { it.copy(fxChains = it.fxChains.copy(tonic = chain)) }
+        com.soundstage.mixer.audio.NativeAudioBridge.safeSetTonicFxChain(
+            chain.filterOn, chain.filterAmount,
+            chain.brightnessOn, chain.brightnessAmount,
+            chain.delayOn, chain.delayAmount,
+            chain.reverbOn, chain.reverbAmount,
+            chain.shimmerOn, chain.shimmerAmount,
+        )
+        persistCurrentStateDebounced()
+    }
+
+    fun setPadsFxChain(chain: com.soundstage.mixer.model.SurfaceFxChain) {
+        val sanitized = chain.withShimmerDisabled()
+        _uiState.update { it.copy(fxChains = it.fxChains.copy(pads = sanitized)) }
+        com.soundstage.mixer.audio.NativeAudioBridge.safeSetPadsFxChain(
+            sanitized.filterOn, sanitized.filterAmount,
+            sanitized.brightnessOn, sanitized.brightnessAmount,
+            sanitized.delayOn, sanitized.delayAmount,
+            sanitized.reverbOn, sanitized.reverbAmount,
+        )
+        persistCurrentStateDebounced()
+    }
+
+────────────────────────────────────────────────────────────────────────
+8.7 — Dans `onCleared()`, ajouter AVANT `super.onCleared()` :
+
+    metronomeEngine.release()
+    looperEngine.release()
+
+────────────────────────────────────────────────────────────────────────
+8.8 — Important : dans la méthode `persistCurrentState()` (ligne ~661
+d'après extraction), il n'y a encore AUCUN appel des nouveaux champs. Ce
+sera fait au COMMIT A9. Ne pas y toucher dans A8.
+
+Puis :
+    ./gradlew :app:compileDebugKotlin
+Si OK :
+    git add app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    git commit -m "[chantier] MixerViewModel engines + méthodes — Compile: OK"
+
+═══════════════════════════════════════════════════════════════════════════
+COMMIT A9 — AppStatePersistence : persistance transport + métronome + FX + looper
+═══════════════════════════════════════════════════════════════════════════
+
+Fichiers :
+  - app/src/main/java/com/soundstage/mixer/model/AppStatePersistence.kt
+  - app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+
+────────────────────────────────────────────────────────────────────────
+9.1 — AppStatePersistence.kt : dans `companion object`, insérer AVANT la
+ligne `}` de fermeture du companion, ces 9 clés :
+
+        private const val KEY_TRANSPORT_BPM = "transport_bpm"
+        private const val KEY_TRANSPORT_SIGNATURE = "transport_signature"
+        private const val KEY_TRANSPORT_SUBDIV = "transport_subdiv"
+        private const val KEY_METRONOME_SOUND = "metronome_sound"
+        private const val KEY_METRONOME_ACCENT1 = "metronome_accent1"
+        private const val KEY_METRONOME_ACCENT13 = "metronome_accent13"
+        private const val KEY_METRONOME_VISUAL_FLASH = "metronome_visual_flash"
+        private const val KEY_METRONOME_COUNT_IN = "metronome_count_in"
+        private const val KEY_FX_CHAINS_JSON = "fx_chains_json"
+
+────────────────────────────────────────────────────────────────────────
+9.2 — AppStatePersistence.kt : dans `data class RestoredAppState`,
+ajouter à la fin (avant la `)` de fermeture), après
+`val sfCategoryOverrides: Map<String, String> = emptyMap()` :
+
+        val transportBpm: Int? = null,
+        val transportSignature: String? = null,
+        val transportSubdivision: String? = null,
+        val metronomeSound: String? = null,
+        val metronomeAccent1: Boolean? = null,
+        val metronomeAccent13: Boolean? = null,
+        val metronomeVisualFlash: Boolean? = null,
+        val metronomeCountIn: String? = null,
+        val fxChainsJson: String? = null,
+
+────────────────────────────────────────────────────────────────────────
+9.3 — AppStatePersistence.kt : dans la signature de `fun saveAppState(...)`,
+insérer ces 9 paramètres juste AVANT `) {` de la signature, après
+`sfCategoryOverrides: Map<String, String> = emptyMap()` :
+
+        transportBpm: Int = 120,
+        transportSignature: String = "4/4",
+        transportSubdivision: String = "1/4",
+        metronomeSound: String = "Woodblock",
+        metronomeAccent1: Boolean = true,
+        metronomeAccent13: Boolean = false,
+        metronomeVisualFlash: Boolean = true,
+        metronomeCountIn: String = "off",
+        fxChainsJson: String = "",
+
+────────────────────────────────────────────────────────────────────────
+9.4 — AppStatePersistence.kt : dans le bloc `prefs.edit().apply { ... }`,
+insérer ces 9 lignes juste AVANT la ligne `apply()` finale :
+
+                putInt(KEY_TRANSPORT_BPM, transportBpm)
+                putString(KEY_TRANSPORT_SIGNATURE, transportSignature)
+                putString(KEY_TRANSPORT_SUBDIV, transportSubdivision)
+                putString(KEY_METRONOME_SOUND, metronomeSound)
+                putBoolean(KEY_METRONOME_ACCENT1, metronomeAccent1)
+                putBoolean(KEY_METRONOME_ACCENT13, metronomeAccent13)
+                putBoolean(KEY_METRONOME_VISUAL_FLASH, metronomeVisualFlash)
+                putString(KEY_METRONOME_COUNT_IN, metronomeCountIn)
+                putString(KEY_FX_CHAINS_JSON, fxChainsJson)
+
+────────────────────────────────────────────────────────────────────────
+9.5 — AppStatePersistence.kt : dans `fun loadAppState()`, insérer AVANT
+la ligne `return RestoredAppState(`, ces 9 lignes :
+
+            val transportBpm = if (prefs.contains(KEY_TRANSPORT_BPM)) prefs.getInt(KEY_TRANSPORT_BPM, 120) else null
+            val transportSignature = prefs.getString(KEY_TRANSPORT_SIGNATURE, null)
+            val transportSubdivision = prefs.getString(KEY_TRANSPORT_SUBDIV, null)
+            val metronomeSound = prefs.getString(KEY_METRONOME_SOUND, null)
+            val metronomeAccent1 = if (prefs.contains(KEY_METRONOME_ACCENT1)) prefs.getBoolean(KEY_METRONOME_ACCENT1, true) else null
+            val metronomeAccent13 = if (prefs.contains(KEY_METRONOME_ACCENT13)) prefs.getBoolean(KEY_METRONOME_ACCENT13, false) else null
+            val metronomeVisualFlash = if (prefs.contains(KEY_METRONOME_VISUAL_FLASH)) prefs.getBoolean(KEY_METRONOME_VISUAL_FLASH, true) else null
+            val metronomeCountIn = prefs.getString(KEY_METRONOME_COUNT_IN, null)
+            val fxChainsJson = prefs.getString(KEY_FX_CHAINS_JSON, null)
+
+────────────────────────────────────────────────────────────────────────
+9.6 — AppStatePersistence.kt : dans `return RestoredAppState(...)`,
+insérer ces 9 lignes juste AVANT la `)` de fermeture du return :
+
+                transportBpm = transportBpm,
+                transportSignature = transportSignature,
+                transportSubdivision = transportSubdivision,
+                metronomeSound = metronomeSound,
+                metronomeAccent1 = metronomeAccent1,
+                metronomeAccent13 = metronomeAccent13,
+                metronomeVisualFlash = metronomeVisualFlash,
+                metronomeCountIn = metronomeCountIn,
+                fxChainsJson = fxChainsJson,
+
+────────────────────────────────────────────────────────────────────────
+9.7 — MixerViewModel.kt : dans la méthode `persistCurrentState()` (ligne
+~661), dans l'appel `appStatePersistence.saveAppState(...)`, ajouter ces
+9 paramètres juste AVANT la `)` de fermeture, après
+`sfCategoryOverrides = state.sfCategoryOverrides` :
+
+            transportBpm = state.transportBpm,
+            transportSignature = state.transportSignature,
+            transportSubdivision = state.transportSubdivision,
+            metronomeSound = state.metronomeSound,
+            metronomeAccent1 = state.metronomeAccent1,
+            metronomeAccent13 = state.metronomeAccent13,
+            metronomeVisualFlash = state.metronomeVisualFlash,
+            metronomeCountIn = state.metronomeCountIn,
+            fxChainsJson = buildFxChainsJson(state.fxChains),
+
+────────────────────────────────────────────────────────────────────────
+9.8 — MixerViewModel.kt : ajouter une méthode privée `buildFxChainsJson`
+et `parseFxChainsJson` près des autres helpers (avant `onCleared()` par exemple) :
+
+    private fun buildFxChainsJson(chains: com.soundstage.mixer.model.FxChainsState): String {
+        return try {
+            val tonic = chains.tonic
+            val pads = chains.pads
+            org.json.JSONObject().apply {
+                put("tonic", org.json.JSONObject().apply {
+                    put("filterOn", tonic.filterOn); put("filterAmt", tonic.filterAmount.toDouble())
+                    put("brightnessOn", tonic.brightnessOn); put("brightnessAmt", tonic.brightnessAmount.toDouble())
+                    put("delayOn", tonic.delayOn); put("delayAmt", tonic.delayAmount.toDouble())
+                    put("reverbOn", tonic.reverbOn); put("reverbAmt", tonic.reverbAmount.toDouble())
+                    put("shimmerOn", tonic.shimmerOn); put("shimmerAmt", tonic.shimmerAmount.toDouble())
+                })
+                put("pads", org.json.JSONObject().apply {
+                    put("filterOn", pads.filterOn); put("filterAmt", pads.filterAmount.toDouble())
+                    put("brightnessOn", pads.brightnessOn); put("brightnessAmt", pads.brightnessAmount.toDouble())
+                    put("delayOn", pads.delayOn); put("delayAmt", pads.delayAmount.toDouble())
+                    put("reverbOn", pads.reverbOn); put("reverbAmt", pads.reverbAmount.toDouble())
+                })
+            }.toString()
+        } catch (_: Exception) { "" }
+    }
+
+    private fun parseFxChainsJson(json: String?): com.soundstage.mixer.model.FxChainsState {
+        if (json.isNullOrEmpty()) return com.soundstage.mixer.model.FxChainsState.DEFAULT
+        return try {
+            val o = org.json.JSONObject(json)
+            val t = o.optJSONObject("tonic") ?: org.json.JSONObject()
+            val p = o.optJSONObject("pads") ?: org.json.JSONObject()
+            com.soundstage.mixer.model.FxChainsState(
+                tonic = com.soundstage.mixer.model.SurfaceFxChain(
+                    filterOn = t.optBoolean("filterOn", false), filterAmount = t.optDouble("filterAmt", 0.5).toFloat(),
+                    brightnessOn = t.optBoolean("brightnessOn", false), brightnessAmount = t.optDouble("brightnessAmt", 0.5).toFloat(),
+                    delayOn = t.optBoolean("delayOn", false), delayAmount = t.optDouble("delayAmt", 0.3).toFloat(),
+                    reverbOn = t.optBoolean("reverbOn", true), reverbAmount = t.optDouble("reverbAmt", 0.4).toFloat(),
+                    shimmerOn = t.optBoolean("shimmerOn", false), shimmerAmount = t.optDouble("shimmerAmt", 0.3).toFloat(),
+                ),
+                pads = com.soundstage.mixer.model.SurfaceFxChain(
+                    filterOn = p.optBoolean("filterOn", false), filterAmount = p.optDouble("filterAmt", 0.5).toFloat(),
+                    brightnessOn = p.optBoolean("brightnessOn", false), brightnessAmount = p.optDouble("brightnessAmt", 0.5).toFloat(),
+                    delayOn = p.optBoolean("delayOn", false), delayAmount = p.optDouble("delayAmt", 0.3).toFloat(),
+                    reverbOn = p.optBoolean("reverbOn", true), reverbAmount = p.optDouble("reverbAmt", 0.4).toFloat(),
+                )
+            )
+        } catch (_: Exception) { com.soundstage.mixer.model.FxChainsState.DEFAULT }
+    }
+
+────────────────────────────────────────────────────────────────────────
+9.9 — MixerViewModel.kt : dans `restoreSavedAppState()`, dans le bloc
+`state.copy(...)`, ajouter ces 9 lignes juste AVANT `state.copy(...)` de
+fermeture (après `reducedMotion = saved.reducedMotion ?: state.reducedMotion`) :
+
+                        transportBpm = saved.transportBpm ?: state.transportBpm,
+                        transportSignature = saved.transportSignature ?: state.transportSignature,
+                        transportSubdivision = saved.transportSubdivision ?: state.transportSubdivision,
+                        metronomeSound = saved.metronomeSound ?: state.metronomeSound,
+                        metronomeAccent1 = saved.metronomeAccent1 ?: state.metronomeAccent1,
+                        metronomeAccent13 = saved.metronomeAccent13 ?: state.metronomeAccent13,
+                        metronomeVisualFlash = saved.metronomeVisualFlash ?: state.metronomeVisualFlash,
+                        metronomeCountIn = saved.metronomeCountIn ?: state.metronomeCountIn,
+                        fxChains = parseFxChainsJson(saved.fxChainsJson),
+
+────────────────────────────────────────────────────────────────────────
+9.10 — MixerViewModel.kt : dans `restoreSavedAppState()`, JUSTE APRÈS le
+bloc `_uiState.value.let { s -> audioEngine.setBufferSize(...) ... }`,
+ajouter :
+
+                // Reprogrammer le transport et pousser l'état FX restauré vers les natifs
+                transportClock.bpm = _uiState.value.transportBpm
+                transportClock.signature = com.soundstage.mixer.audio.TransportClock.Signature.parse(_uiState.value.transportSignature)
+                transportClock.subdivision = com.soundstage.mixer.audio.TransportClock.Subdivision.parse(_uiState.value.transportSubdivision)
+                metronomeEngine.volume = _uiState.value.metronomeVolume
+                metronomeEngine.accent1 = _uiState.value.metronomeAccent1
+                metronomeEngine.accent13 = _uiState.value.metronomeAccent13
+                metronomeEngine.visualFlash = _uiState.value.metronomeVisualFlash
+                metronomeEngine.currentSound = com.soundstage.mixer.audio.MetronomeEngine.Sound.parse(_uiState.value.metronomeSound)
+                val restoredFx = _uiState.value.fxChains
+                com.soundstage.mixer.audio.NativeAudioBridge.safeSetTonicFxChain(
+                    restoredFx.tonic.filterOn, restoredFx.tonic.filterAmount,
+                    restoredFx.tonic.brightnessOn, restoredFx.tonic.brightnessAmount,
+                    restoredFx.tonic.delayOn, restoredFx.tonic.delayAmount,
+                    restoredFx.tonic.reverbOn, restoredFx.tonic.reverbAmount,
+                    restoredFx.tonic.shimmerOn, restoredFx.tonic.shimmerAmount,
+                )
+                com.soundstage.mixer.audio.NativeAudioBridge.safeSetPadsFxChain(
+                    restoredFx.pads.filterOn, restoredFx.pads.filterAmount,
+                    restoredFx.pads.brightnessOn, restoredFx.pads.brightnessAmount,
+                    restoredFx.pads.delayOn, restoredFx.pads.delayAmount,
+                    restoredFx.pads.reverbOn, restoredFx.pads.reverbAmount,
+                )
+
+Puis :
+    ./gradlew :app:compileDebugKotlin
+    ./gradlew :app:assembleDebug
+Si OK :
+    git add app/src/main/java/com/soundstage/mixer/model/AppStatePersistence.kt
+    git add app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+    git commit -m "[chantier] Persistance transport+métronome+FX — Compile: OK"
+
+═══════════════════════════════════════════════════════════════════════════
+RAPPORT FINAL
+═══════════════════════════════════════════════════════════════════════════
+
+1. Nombre de commits créés (attendu : 8, puisque A5 et A6 sont commités ensemble).
+2. Liste exacte des fichiers créés / modifiés.
+3. Sortie complète de `./gradlew :app:compileDebugKotlin` pour le dernier commit
+   ET de `./gradlew :app:assembleDebug`.
+4. Écarts constatés (ligne:ligne, correspondances approximatives, symboles manquants).
+5. Toute ligne du brief n'ayant pas trouvé sa correspondance exacte.
+
+Aucun autre contenu.
+═══════════════════════════════════════════════════════════════════════════
+FIN DU BRIEF-A
+═══════════════════════════════════════════════════════════════════════════
