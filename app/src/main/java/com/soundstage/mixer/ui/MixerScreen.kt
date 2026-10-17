@@ -39,7 +39,6 @@ import com.soundstage.mixer.model.ActivePopup
 import com.soundstage.mixer.model.AppScreenPage
 import com.soundstage.mixer.model.FxParameters
 import com.soundstage.mixer.ui.components.*
-import com.soundstage.mixer.ui.pages.DrumPadPage
 import com.soundstage.mixer.ui.pages.DrumPadScreen
 import com.soundstage.mixer.ui.pages.ProjectsPage
 import com.soundstage.mixer.ui.pages.SheetsPage
@@ -866,78 +865,10 @@ fun MixerScreen(
                                     )
                                 }
                                 MappingPage.DrumPad -> {
-                                    val tonicSlot = uiState.audioSlots.find { it.slotId == 9 }
-                                    val tonicVol = tonicSlot?.volume ?: 0.85f
-                                    DrumPadPage(
-                                        drumPads = uiState.drumPads,
-                                        isMixMode = uiState.isDrumPadMixMode,
-                                        onToggleMixMode = { viewModel.toggleDrumPadMixMode() },
-                                        feelSwing = uiState.drumFeelSwing,
-                                        onFeelSwingChange = { viewModel.setDrumFeelSwing(it) },
-                                        bpm = uiState.bpm,
-                                        onBpmChange = { viewModel.setGlobalBpm(it) },
-                                        activeTonicNotes = uiState.activeTonicNotes,
-                                        onTonicNoteClick = { viewModel.onTonicNoteClick(it) },
-                                        useFlats = uiState.useFlats,
-                                        onToggleUseFlats = { viewModel.toggleUseFlats() },
-                                        activeTonicPadName = uiState.activeTonicPadName,
-                                        onOpenTonicSoundPicker = {
-                                            viewModel.openSoundfontForSlot(9)
-                                        },
-                                        activeDrumKitName = uiState.activeDrumKitName,
-                                        onOpenDrumKitPicker = { viewModel.toggleDrumPadMiniBrowser() },
-                                        onStopTonicDrone = { viewModel.onTonicNoteClick("") },
-                                        tonicOctaveRange = uiState.tonicOctaveRange,
-                                        onTonicOctaveMinus = { viewModel.onTonicOctaveMinus() },
-                                        onTonicOctavePlus = { viewModel.onTonicOctavePlus() },
-                                        isMultiPadEnabled = uiState.isMultiPadEnabled,
-                                        onToggleMultiPad = { viewModel.toggleMultiPad() },
-                                        tonicVolume = tonicVol,
-                                        onTonicVolumeChange = { viewModel.setTonicVolume(it) },
-                                        tonicShimmer = uiState.tonicShimmer,
-                                        onTonicShimmerChange = { viewModel.setTonicShimmer(it) },
-                                        isMiniBrowserOpen = uiState.isDrumPadMiniBrowserOpen,
-                                        onToggleMiniBrowser = { viewModel.toggleDrumPadMiniBrowser() },
-                                        onCloseMiniBrowser = { viewModel.closeDrumPadMiniBrowser() },
-                                        audioFiles = uiState.drumPadAudioFiles,
-                                        onPreviewAudioFile = { viewModel.playDrumSample(it) },
-                                        onAssignSampleToPad = { padId, sample ->
-                                            viewModel.assignDrumSampleOrLoop(padId, sample.name, sample.path, isLoop = false)
-                                        },
-                                        onPadPressed = { viewModel.onDrumPadPressed(it) },
-                                        onPadReleased = { viewModel.onDrumPadReleased(it) },
-                                        onPadVolumeChange = { padId, vol -> viewModel.setDrumPadVolumeDirect(padId, vol) },
-                                        onPadVolumeDelta = { padId, delta -> viewModel.adjustDrumPadVolume(padId, delta) },
-                                        onLoopBeatsChange = { padId, beats -> viewModel.setDrumPadLoopBeats(padId, beats) },
-                                        onBackToMixer = { viewModel.navigateBackToMixer() },
-                                        rightPanelMode = uiState.drumRightPanelMode,
-                                        onRightPanelModeChange = { viewModel.setDrumRightPanelMode(it) },
-                                        loopFileName = uiState.loopPlayerFileName,
-                                        loopFilePath = uiState.loopPlayerFilePath,
-                                        loopDurationMs = uiState.loopPlayerDurationMs,
-                                        loopPositionMs = uiState.loopPlayerPositionMs,
-                                        loopProgress = uiState.loopPlayerProgress,
-                                        loopIsPlaying = uiState.loopPlayerIsPlaying,
-                                        loopIsLooping = uiState.loopPlayerIsLooping,
-                                        loopPitchSemitones = uiState.loopPlayerPitchSemitones,
-                                        loopStepMode = uiState.loopPlayerStepMode,
-                                        loopWaveform = uiState.loopPlayerWaveform,
-                                        loopVolume = uiState.loopPlayerVolume,
-                                        loopExplorerPath = uiState.loopPlayerExplorerPath,
-                                        loopExplorerItems = uiState.loopPlayerExplorerItems,
-                                        loopIsExplorerOpen = uiState.loopPlayerIsExplorerOpen,
-                                        onToggleLoopPlayPause = { viewModel.toggleExternalLoopPlayPause() },
-                                        onStopLoop = { viewModel.stopExternalLoopPlayer() },
-                                        onRetriggerLoop = { viewModel.retriggerExternalLoopPlayer() },
-                                        onSeekLoopProgress = { viewModel.seekExternalLoopPlayer(it) },
-                                        onToggleLoopLooping = { viewModel.toggleExternalLoopLooping() },
-                                        onChangeLoopPitch = { viewModel.setExternalLoopPitchSemitones(it) },
-                                        onResetLoopPitch = { viewModel.resetExternalLoopPitch() },
-                                        onSelectLoopStepMode = { viewModel.setExternalLoopStepMode(it) },
-                                        onLoopVolumeChange = { viewModel.setExternalLoopVolume(it) },
-                                        onToggleLoopExplorer = { viewModel.toggleExternalLoopExplorer() },
-                                        onNavigateLoopExplorer = { viewModel.navigateLoopPlayerExplorer(it) },
-                                        onSelectLoopAudioFile = { viewModel.loadAndPlayExternalLoopFile(it) }
+                                    DrumPadScreen(
+                                        viewModel = viewModel,
+                                        uiState = uiState,
+                                        modifier = Modifier.fillMaxSize()
                                     )
                                 }
                                 else -> {}
