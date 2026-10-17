@@ -76,6 +76,15 @@ class AppStatePersistence(context: Context) {
         private const val KEY_REDUCED_MOTION = "reduced_motion"
         private const val KEY_SF_FAVORITES = "sf_favorites"
         private const val KEY_SF_CATEGORY_OVERRIDES = "sf_category_overrides"
+        private const val KEY_TRANSPORT_BPM = "transport_bpm"
+        private const val KEY_TRANSPORT_SIGNATURE = "transport_signature"
+        private const val KEY_TRANSPORT_SUBDIV = "transport_subdiv"
+        private const val KEY_METRONOME_SOUND = "metronome_sound"
+        private const val KEY_METRONOME_ACCENT1 = "metronome_accent1"
+        private const val KEY_METRONOME_ACCENT13 = "metronome_accent13"
+        private const val KEY_METRONOME_VISUAL_FLASH = "metronome_visual_flash"
+        private const val KEY_METRONOME_COUNT_IN = "metronome_count_in"
+        private const val KEY_FX_CHAINS_JSON = "fx_chains_json"
     }
 
     data class SavedTrackData(
@@ -170,7 +179,16 @@ class AppStatePersistence(context: Context) {
         val hapticsEnabled: Boolean? = null,
         val reducedMotion: Boolean? = null,
         val sfFavorites: Set<String> = emptySet(),
-        val sfCategoryOverrides: Map<String, String> = emptyMap()
+        val sfCategoryOverrides: Map<String, String> = emptyMap(),
+        val transportBpm: Int? = null,
+        val transportSignature: String? = null,
+        val transportSubdivision: String? = null,
+        val metronomeSound: String? = null,
+        val metronomeAccent1: Boolean? = null,
+        val metronomeAccent13: Boolean? = null,
+        val metronomeVisualFlash: Boolean? = null,
+        val metronomeCountIn: String? = null,
+        val fxChainsJson: String? = null,
     )
 
     fun saveAppState(
@@ -227,7 +245,16 @@ class AppStatePersistence(context: Context) {
         hapticsEnabled: Boolean = true,
         reducedMotion: Boolean = false,
         sfFavorites: Set<String> = emptySet(),
-        sfCategoryOverrides: Map<String, String> = emptyMap()
+        sfCategoryOverrides: Map<String, String> = emptyMap(),
+        transportBpm: Int = 120,
+        transportSignature: String = "4/4",
+        transportSubdivision: String = "1/4",
+        metronomeSound: String = "Woodblock",
+        metronomeAccent1: Boolean = true,
+        metronomeAccent13: Boolean = false,
+        metronomeVisualFlash: Boolean = true,
+        metronomeCountIn: String = "off",
+        fxChainsJson: String = "",
     ) {
         try {
             val tracksArray = JSONArray()
@@ -518,6 +545,16 @@ class AppStatePersistence(context: Context) {
                 sfCategoryOverrides.forEach { (k, v) -> sfOverridesObj.put(k, v) }
                 putString(KEY_SF_FAVORITES, sfFavArray.toString())
                 putString(KEY_SF_CATEGORY_OVERRIDES, sfOverridesObj.toString())
+
+                putInt(KEY_TRANSPORT_BPM, transportBpm)
+                putString(KEY_TRANSPORT_SIGNATURE, transportSignature)
+                putString(KEY_TRANSPORT_SUBDIV, transportSubdivision)
+                putString(KEY_METRONOME_SOUND, metronomeSound)
+                putBoolean(KEY_METRONOME_ACCENT1, metronomeAccent1)
+                putBoolean(KEY_METRONOME_ACCENT13, metronomeAccent13)
+                putBoolean(KEY_METRONOME_VISUAL_FLASH, metronomeVisualFlash)
+                putString(KEY_METRONOME_COUNT_IN, metronomeCountIn)
+                putString(KEY_FX_CHAINS_JSON, fxChainsJson)
 
                 apply()
             }
@@ -971,6 +1008,16 @@ class AppStatePersistence(context: Context) {
                 } catch (_: Exception) {}
             }
 
+            val transportBpm = if (prefs.contains(KEY_TRANSPORT_BPM)) prefs.getInt(KEY_TRANSPORT_BPM, 120) else null
+            val transportSignature = prefs.getString(KEY_TRANSPORT_SIGNATURE, null)
+            val transportSubdivision = prefs.getString(KEY_TRANSPORT_SUBDIV, null)
+            val metronomeSound = prefs.getString(KEY_METRONOME_SOUND, null)
+            val metronomeAccent1 = if (prefs.contains(KEY_METRONOME_ACCENT1)) prefs.getBoolean(KEY_METRONOME_ACCENT1, true) else null
+            val metronomeAccent13 = if (prefs.contains(KEY_METRONOME_ACCENT13)) prefs.getBoolean(KEY_METRONOME_ACCENT13, false) else null
+            val metronomeVisualFlash = if (prefs.contains(KEY_METRONOME_VISUAL_FLASH)) prefs.getBoolean(KEY_METRONOME_VISUAL_FLASH, true) else null
+            val metronomeCountIn = prefs.getString(KEY_METRONOME_COUNT_IN, null)
+            val fxChainsJson = prefs.getString(KEY_FX_CHAINS_JSON, null)
+
             return RestoredAppState(
                 themeName = themeName,
                 bpm = bpm,
@@ -1025,7 +1072,16 @@ class AppStatePersistence(context: Context) {
                 hapticsEnabled = hapticsEnabled,
                 reducedMotion = reducedMotion,
                 sfFavorites = sfFavoritesSet,
-                sfCategoryOverrides = sfOverridesMap
+                sfCategoryOverrides = sfOverridesMap,
+                transportBpm = transportBpm,
+                transportSignature = transportSignature,
+                transportSubdivision = transportSubdivision,
+                metronomeSound = metronomeSound,
+                metronomeAccent1 = metronomeAccent1,
+                metronomeAccent13 = metronomeAccent13,
+                metronomeVisualFlash = metronomeVisualFlash,
+                metronomeCountIn = metronomeCountIn,
+                fxChainsJson = fxChainsJson,
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error loading app state: ${e.message}")

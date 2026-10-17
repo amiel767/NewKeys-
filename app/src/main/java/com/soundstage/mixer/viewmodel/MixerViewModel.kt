@@ -672,6 +672,15 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         useFlats = saved.useFlats ?: state.useFlats,
                         hapticsEnabled = saved.hapticsEnabled ?: state.hapticsEnabled,
                         reducedMotion = saved.reducedMotion ?: state.reducedMotion,
+                        transportBpm = saved.transportBpm ?: state.transportBpm,
+                        transportSignature = saved.transportSignature ?: state.transportSignature,
+                        transportSubdivision = saved.transportSubdivision ?: state.transportSubdivision,
+                        metronomeSound = saved.metronomeSound ?: state.metronomeSound,
+                        metronomeAccent1 = saved.metronomeAccent1 ?: state.metronomeAccent1,
+                        metronomeAccent13 = saved.metronomeAccent13 ?: state.metronomeAccent13,
+                        metronomeVisualFlash = saved.metronomeVisualFlash ?: state.metronomeVisualFlash,
+                        metronomeCountIn = saved.metronomeCountIn ?: state.metronomeCountIn,
+                        fxChains = parseFxChainsJson(saved.fxChainsJson),
                     )
                 }
 
@@ -683,6 +692,30 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         NativeAudioBridge.DRIVER_OPENSL_ES else NativeAudioBridge.DRIVER_OBOE
                     NativeAudioBridge.safeSetAudioDriver(driver)
                 }
+
+                // Reprogrammer le transport et pousser l'etat FX restaure vers les natifs
+                transportClock.bpm = _uiState.value.transportBpm
+                transportClock.signature = com.soundstage.mixer.audio.TransportClock.Signature.parse(_uiState.value.transportSignature)
+                transportClock.subdivision = com.soundstage.mixer.audio.TransportClock.Subdivision.parse(_uiState.value.transportSubdivision)
+                metronomeEngine.volume = _uiState.value.metronomeVolume
+                metronomeEngine.accent1 = _uiState.value.metronomeAccent1
+                metronomeEngine.accent13 = _uiState.value.metronomeAccent13
+                metronomeEngine.visualFlash = _uiState.value.metronomeVisualFlash
+                metronomeEngine.currentSound = com.soundstage.mixer.audio.MetronomeEngine.Sound.parse(_uiState.value.metronomeSound)
+                val restoredFx = _uiState.value.fxChains
+                com.soundstage.mixer.audio.NativeAudioBridge.safeSetTonicFxChain(
+                    restoredFx.tonic.filterOn, restoredFx.tonic.filterAmount,
+                    restoredFx.tonic.brightnessOn, restoredFx.tonic.brightnessAmount,
+                    restoredFx.tonic.delayOn, restoredFx.tonic.delayAmount,
+                    restoredFx.tonic.reverbOn, restoredFx.tonic.reverbAmount,
+                    restoredFx.tonic.shimmerOn, restoredFx.tonic.shimmerAmount,
+                )
+                com.soundstage.mixer.audio.NativeAudioBridge.safeSetPadsFxChain(
+                    restoredFx.pads.filterOn, restoredFx.pads.filterAmount,
+                    restoredFx.pads.brightnessOn, restoredFx.pads.brightnessAmount,
+                    restoredFx.pads.delayOn, restoredFx.pads.delayAmount,
+                    restoredFx.pads.reverbOn, restoredFx.pads.reverbAmount,
+                )
             } else {
                 _uiState.update { it.copy(currentPage = AppScreenPage.SETLISTS, activeProjectName = "", activeSceneId = "") }
             }
@@ -776,12 +809,67 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             hapticsEnabled = state.hapticsEnabled,
             reducedMotion = state.reducedMotion,
             sfFavorites = state.sfFavorites,
-            sfCategoryOverrides = state.sfCategoryOverrides
+            sfCategoryOverrides = state.sfCategoryOverrides,
+            transportBpm = state.transportBpm,
+            transportSignature = state.transportSignature,
+            transportSubdivision = state.transportSubdivision,
+            metronomeSound = state.metronomeSound,
+            metronomeAccent1 = state.metronomeAccent1,
+            metronomeAccent13 = state.metronomeAccent13,
+            metronomeVisualFlash = state.metronomeVisualFlash,
+            metronomeCountIn = state.metronomeCountIn,
+            fxChainsJson = buildFxChainsJson(state.fxChains),
         )
         // Full auto-save: automatically sync to the current project's .scene file if a project is actively open
         if (state.activeProjectName.isNotEmpty() && state.activeProjectName != "None") {
             saveCurrentScene(state.activeProjectName)
         }
+    }
+
+    private fun buildFxChainsJson(chains: com.soundstage.mixer.model.FxChainsState): String {
+        return try {
+            val tonic = chains.tonic
+            val pads = chains.pads
+            org.json.JSONObject().apply {
+                put("tonic", org.json.JSONObject().apply {
+                    put("filterOn", tonic.filterOn); put("filterAmt", tonic.filterAmount.toDouble())
+                    put("brightnessOn", tonic.brightnessOn); put("brightnessAmt", tonic.brightnessAmount.toDouble())
+                    put("delayOn", tonic.delayOn); put("delayAmt", tonic.delayAmount.toDouble())
+                    put("reverbOn", tonic.reverbOn); put("reverbAmt", tonic.reverbAmount.toDouble())
+                    put("shimmerOn", tonic.shimmerOn); put("shimmerAmt", tonic.shimmerAmount.toDouble())
+                })
+                put("pads", org.json.JSONObject().apply {
+                    put("filterOn", pads.filterOn); put("filterAmt", pads.filterAmount.toDouble())
+                    put("brightnessOn", pads.brightnessOn); put("brightnessAmt", pads.brightnessAmount.toDouble())
+                    put("delayOn", pads.delayOn); put("delayAmt", pads.delayAmount.toDouble())
+                    put("reverbOn", pads.reverbOn); put("reverbAmt", pads.reverbAmount.toDouble())
+                })
+            }.toString()
+        } catch (_: Exception) { "" }
+    }
+
+    private fun parseFxChainsJson(json: String?): com.soundstage.mixer.model.FxChainsState {
+        if (json.isNullOrEmpty()) return com.soundstage.mixer.model.FxChainsState.DEFAULT
+        return try {
+            val o = org.json.JSONObject(json)
+            val t = o.optJSONObject("tonic") ?: org.json.JSONObject()
+            val p = o.optJSONObject("pads") ?: org.json.JSONObject()
+            com.soundstage.mixer.model.FxChainsState(
+                tonic = com.soundstage.mixer.model.SurfaceFxChain(
+                    filterOn = t.optBoolean("filterOn", false), filterAmount = t.optDouble("filterAmt", 0.5).toFloat(),
+                    brightnessOn = t.optBoolean("brightnessOn", false), brightnessAmount = t.optDouble("brightnessAmt", 0.5).toFloat(),
+                    delayOn = t.optBoolean("delayOn", false), delayAmount = t.optDouble("delayAmt", 0.3).toFloat(),
+                    reverbOn = t.optBoolean("reverbOn", true), reverbAmount = t.optDouble("reverbAmt", 0.4).toFloat(),
+                    shimmerOn = t.optBoolean("shimmerOn", false), shimmerAmount = t.optDouble("shimmerAmt", 0.3).toFloat(),
+                ),
+                pads = com.soundstage.mixer.model.SurfaceFxChain(
+                    filterOn = p.optBoolean("filterOn", false), filterAmount = p.optDouble("filterAmt", 0.5).toFloat(),
+                    brightnessOn = p.optBoolean("brightnessOn", false), brightnessAmount = p.optDouble("brightnessAmt", 0.5).toFloat(),
+                    delayOn = p.optBoolean("delayOn", false), delayAmount = p.optDouble("delayAmt", 0.3).toFloat(),
+                    reverbOn = p.optBoolean("reverbOn", true), reverbAmount = p.optDouble("reverbAmt", 0.4).toFloat(),
+                )
+            )
+        } catch (_: Exception) { com.soundstage.mixer.model.FxChainsState.DEFAULT }
     }
 
     override fun onCleared() {
