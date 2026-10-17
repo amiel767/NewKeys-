@@ -1,0 +1,203 @@
+═══════════════════════════════════════════════════════════════════════════
+BRIEF-B5c-2 — Suppressions VM/UiState + réécriture onDrumPadPressed
+Repo: amiel767/NewKeys- · branche: main · base: da305b4
+═══════════════════════════════════════════════════════════════════════════
+
+CONTEXTE
+  Dernier commit de Brief-B. Supprime ~50 symboles (14 champs loopPlayer*,
+  6 champs drumLoop*, 11 champs DrumPad obsolete, ~20 méthodes VM, 2 fields
+  VM, 1 fichier). Réécrit onDrumPadPressed/Released pour la logique V5.
+
+  DÉCOUPÉ EN 3 GROUPES avec compilation intermédiaire :
+    Groupe A — ExternalLoop (fichier + field + méthodes + 14 champs)
+    Groupe B — DrumLoop legacy (2 fields + 6 champs + 4 méthodes)
+    Groupe C — DrumPad obsolete (11 champs + ~15 méthodes) + rewrite
+               onDrumPadPressed/Released
+
+  Si un groupe casse la compilation → REVERT le groupe
+  (`git checkout HEAD -- <fichiers-du-groupe>`), NOTER dans le rapport,
+  continuer avec le suivant. Le commit final ne contient que les groupes
+  qui ont pu passer.
+
+  DrumPadDialog.kt est CONSERVÉ (MainDrumPadSquareContent utilisé par
+  ActivePopup.DRUM_PAD — décision B5c-1).
+
+PRÉREQUIS
+  git log --oneline -3      # attendu: da305b4, 40045c8, ad61bab
+  git status                # attendu: clean
+  # da305b4 doit être poussé sur origin/main avant exécution.
+
+ÉTAPE 0 — EXTRACTION EXHAUSTIVE (obligatoire, ne pas sauter)
+
+  # A. Champs UiState concernés
+  grep -nE "val (loopPlayer|isDrumLoopArmed|isDrumLoopRecording|isDrumLoopRendering|drumLoopBars|drumTimeSignature|isDrumPadMixMode|editingDrumPadId|selectedDrumSampleForAssign|isAssignPadDialogOpen|isDrumPadMiniBrowserOpen|isDrumPadLoopsOpen|isDrumPadFileExplorerOpen|drumPadAssignTargetPadId|drumSubView|drumActiveTab|drumRightPanelMode)" \
+    app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+
+  # B. Fields VM concernés
+  grep -nE "(val|var) (externalLoopPlayer|drumPadLooper)" \
+    app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+
+  # C. Méthodes VM à supprimer (recenser la liste réelle)
+  grep -nE "fun (.*ExternalLoop.*|refreshLoopPlayerExplorer|navigateLoopPlayerExplorer|toggleExternalLoopExplorer|loadAndPlayExternalLoopFile|playAllLoops|stopAllLoops|toggleArmDrumLoop|startDrumLoopRecording|stopAndRenderDrumLoop|cancelDrumLoopRecording|setDrumTab|setDrumSubView|setDrumRightPanelMode|toggleDrumPadMiniBrowser|closeDrumPadMiniBrowser|openDrumPadLoopsView|openDrumPadFileExplorer|setDrumPadLoopBeats)" \
+    app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+
+  # D. onDrumPadPressed/Released actuels (post-B5a) — OBLIGATOIRE
+  grep -nA 40 "fun onDrumPadPressed" \
+    app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+  grep -nA 20 "fun onDrumPadReleased" \
+    app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+
+  # E. Recenser les références CROISÉES de chaque symbole
+  for sym in loopPlayer isDrumLoopArmed isDrumLoopRecording isDrumLoopRendering drumLoopBars drumTimeSignature isDrumPadMixMode editingDrumPadId selectedDrumSampleForAssign isAssignPadDialogOpen isDrumPadMiniBrowserOpen isDrumPadLoopsOpen isDrumPadFileExplorerOpen drumPadAssignTargetPadId drumSubView drumActiveTab drumRightPanelMode externalLoopPlayer drumPadLooper; do
+    echo "=== $sym ==="
+    grep -rn "\b$sym\b" app/src/main/java/com/soundstage/mixer/ | grep -v "MixerViewModel.kt"
+  done
+
+  # F. Recenser les références des méthodes
+  for m in playAllLoops stopAllLoops; do
+    echo "=== $m ==="
+    grep -rn "\.$m(" app/src/main/java/com/soundstage/mixer/
+  done
+
+  ─── INTERPRÉTATION ───
+  - Un symbole référencé par un fichier HORS MixerViewModel.kt/looper/ExternalLoopPlayerEngine
+    est un RISQUE. Lister ce fichier dans le rapport AVANT de supprimer.
+  - Si un symbole hors scope est référencé par un fichier qui n'est PAS
+    dans la liste des suppressions (par ex. MixerScreen.kt), LE GARDER
+    et noter.
+
+  ─── COLLER dans le rapport : sortie complète ÉTAPE 0-A à F ───
+
+ÉTAPE 1 — GROUPE A : ExternalLoop (fichier + field + méthodes + 14 champs)
+
+  ⚠ Ce groupe est le plus isolé. En cas d'échec, tout revertir et ne
+    pas faire B5c-2 (rapport « groupe A KO », on adaptera).
+
+  (1a) Supprimer le fichier :
+       git rm app/src/main/java/com/soundstage/mixer/audio/ExternalLoopPlayerEngine.kt
+
+  (1b) Dans MixerViewModel.kt :
+       - Supprimer le field `externalLoopPlayer` (ligne issue de 0-B)
+       - Supprimer toutes les méthodes `*ExternalLoop*` + `refreshLoopPlayerExplorer`
+         + `navigateLoopPlayerExplorer` + `toggleExternalLoopExplorer`
+         + `loadAndPlayExternalLoopFile` (issues de 0-C)
+       - ⚠ playAllLoops / stopAllLoops : vérifier 0-F. Si appelées ailleurs
+         que dans les fichiers déjà supprimés (DrumPadPage/B5c-1), GARDER
+         et noter. Sinon supprimer.
+       - Supprimer les 14 champs `loopPlayer*` dans MixerUiState
+         (issues de 0-A filtrées par préfixe loopPlayer)
+
+  (1c) Dans AppStatePersistence.kt :
+       - Chercher `grep -n "loopPlayer" app/src/main/java/com/soundstage/mixer/model/AppStatePersistence.kt`
+       - Si des clés `loop_player_*` existent : les SUPPRIMER (champ
+         RestoredAppState + saveAppState paramètre + put/get + return)
+
+  (1d) Compiler :
+       ./gradlew :app:compileDebugKotlin
+       - KO : `git checkout HEAD -- .` (revert tout), rapport "groupe A KO
+         + message d'erreur", passer en ÉTAPE 2 (pas de commit intermédiaire).
+       - OK : continuer.
+
+ÉTAPE 2 — GROUPE B : DrumLoop legacy (2 fields + 6 champs + 4 méthodes)
+
+  (2a) Dans MixerViewModel.kt :
+       - Supprimer field `drumPadLooper` (0-B)
+       - Supprimer les 4 méthodes `toggleArmDrumLoop` / `startDrumLoopRecording`
+         / `stopAndRenderDrumLoop` / `cancelDrumLoopRecording` (0-C)
+       - Supprimer 6 champs UiState : `isDrumLoopArmed`, `isDrumLoopRecording`,
+         `isDrumLoopRendering`, `drumLoopBars`, `drumTimeSignature`,
+         `isDrumPadMixMode` (0-A)
+
+  (2b) Réécrire `onDrumPadPressed` (retirer toute référence à drumPadLooper /
+       isDrumLoopArmed / isDrumLoopRecording / drumLoopBars / drumTimeSignature
+       / startDrumLoopRecording / toggleArmDrumLoop). Nouveau corps :
+
+  ┌────────────────────────────────────────────────────────────────┐
+  │ fun onDrumPadPressed(padId: Int) {                             │
+  │     val pad = _uiState.value.drumPads.firstOrNull { it.id == padId } │
+  │         ?: return                                              │
+  │     if (pad.sampleFileName.isNotEmpty()) {                     │
+  │         audioEngine.playDrumPadSound(                          │
+  │             pad, pad.volume * _uiState.value.drumVolume        │
+  │         )                                                      │
+  │     }                                                          │
+  │     looperEngine.record(                                       │
+  │         "pad",                                                 │
+  │         padId - 1,                                             │
+  │         "#" + Integer.toHexString(                             │
+  │             DpPalette.at(padId - 1).toArgb()                   │
+  │         )                                                      │
+  │     )                                                          │
+  │     _uiState.update { st ->                                    │
+  │         st.copy(drumPads = st.drumPads.map {                   │
+  │             if (it.id == padId) it.copy(isPressed = true) else it │
+  │         })                                                     │
+  │     }                                                          │
+  │ }                                                              │
+  │                                                                │
+  │ fun onDrumPadReleased(padId: Int) {                            │
+  │     _uiState.update { st ->                                    │
+  │         st.copy(drumPads = st.drumPads.map {                   │
+  │             if (it.id == padId) it.copy(isPressed = false) else it│
+  │         })                                                     │
+  │     }                                                          │
+  │ }                                                              │
+  └────────────────────────────────────────────────────────────────┘
+
+  ⚠ Si le corps post-B5a contenait d'autres appels (choke, mode loop
+    isLoopMode/playLoopFile/stopLoopPlayer), les CONSERVER dans le
+    nouveau corps, à leur position logique :
+      - choke AVANT playDrumPadSound
+      - mode loop : si isLoopMode, garder l'appel playLoopFile/stopLoopPlayer
+        (ces méthodes ne sont PAS dans la liste des suppressions, elles
+        doivent rester). NE PAS retirer le mode loop.
+    Seuls drumPadLooper / auto-arm / startDrumLoopRecording / render
+    différé doivent disparaître (ce sont les symboles supprimés).
+    NOTER dans le rapport les blocs conservés vs retirés.
+
+  (2c) Compiler :
+       ./gradlew :app:compileDebugKotlin
+       - KO : `git checkout HEAD -- .` (revert A + B), rapport "groupe A OK
+         mais B KO + erreur", passer en ÉTAPE 3 (garder A non commité).
+       - OK : continuer.
+
+ÉTAPE 3 — GROUPE C : DrumPad obsolete (11 champs + ~15 méthodes)
+
+  (3a) Dans MixerViewModel.kt :
+       - Supprimer les champs UiState : `editingDrumPadId`,
+         `selectedDrumSampleForAssign`, `isAssignPadDialogOpen`,
+         `isDrumPadMiniBrowserOpen`, `isDrumPadLoopsOpen`,
+         `isDrumPadFileExplorerOpen`, `drumPadAssignTargetPadId`,
+         `drumSubView`, `drumActiveTab`, `drumRightPanelMode` (0-A)
+       - Supprimer les méthodes : `setDrumTab`, `setDrumSubView`,
+         `setDrumRightPanelMode`, `toggleDrumPadMiniBrowser`,
+         `closeDrumPadMiniBrowser`, `openDrumPadLoopsView`,
+         `openDrumPadFileExplorer`, `setDrumPadLoopBeats` (0-C, filtrées
+         par ces noms exacts)
+
+  (3b) Compiler :
+       ./gradlew :app:compileDebugKotlin
+       - KO : `git checkout HEAD -- .` (revert C, garder A+B), rapport.
+       - OK : continuer.
+
+ÉTAPE 4 — BUILD COMPLET
+  ./gradlew :app:clean :app:assembleDebug
+
+ÉTAPE 5 — COMMIT (groupes qui ont passé)
+  git add -A
+  git commit -m "[chantier] Suppressions finales legacy + onDrumPadPressed V5 — MixerViewModel.kt, MixerUiState, ExternalLoopPlayerEngine.kt — Compile: OK"
+
+ÉTAPE 6 — RAPPORT (obligatoire)
+    git log --oneline -3
+    git show --stat HEAD
+    ./gradlew :app:clean :app:assembleDebug
+    ls -la app/build/outputs/apk/debug/
+    + sortie ÉTAPE 0-A à F (extraction)
+    + résultat par groupe : OK / KO (avec message d'erreur)
+    + liste exacte des symboles supprimés
+    + corps final de onDrumPadPressed (montrer le diff vs B5a)
+    + écarts constatés
+
+═══════════════════════════════════════════════════════════════════════════
+FIN DE BRIEF-B
+═══════════════════════════════════════════════════════════════════════════
