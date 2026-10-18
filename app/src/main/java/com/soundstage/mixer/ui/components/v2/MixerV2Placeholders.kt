@@ -1,6 +1,5 @@
 package com.soundstage.mixer.ui.components.v2
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,15 +20,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -37,102 +31,22 @@ import androidx.compose.ui.window.Dialog
 /*
  * FICHIER TEMPORAIRE - A SUPPRIMER
  *
- * Stubs des composants V2 livres dans les briefs suivants. Ils permettent aux
- * briefs 3 (MixerTopBarV2) et 4 (MixerBottomBarV2) de compiler des maintenant.
+ * Stubs des composants V2 non encore livres. Ils permettent aux fichiers
+ * 3/7 (MixerTopBarV2) et 4/7 (MixerBottomBarV2) de compiler.
  *
- *   - IconDinV2             -> fichier 5/7 MixerIconsV2.kt            (brief 7)
- *   - IconSaveV2            -> fichier 5/7 MixerIconsV2.kt            (brief 7)
- *   - IconPianoV2           -> fichier 5/7 MixerIconsV2.kt            (brief 7)
- *   - SustainPedalButton    -> fichier 6/7 SustainPedalButton.kt      (brief 8)
- *   - ManageSnapshotDialogV2-> fichier 7/7 ManageSnapshotDialogV2.kt  (brief 9)
+ *   - SustainPedalButton     -> fichier 6/7 SustainPedalButton.kt     (brief 6)
+ *   - ManageSnapshotDialogV2 -> fichier 7/7 ManageSnapshotDialogV2.kt (brief 7)
  *
- * DES QUE CES FICHIERS ARRIVENT, SUPPRIMER CE FICHIER : les vraies
+ * IconDinV2 / IconSaveV2 / IconPianoV2 ont ete RETIRES de ce fichier :
+ * le fichier 5/7 MixerIconsV2.kt les fournit desormais (brief 5).
+ *
+ * DES QUE LES FICHIERS 6/7 ET 7/7 ARRIVENT, SUPPRIMER CE FICHIER : les vraies
  * implementations declarent les memes symboles dans le meme package
  * (conflit de declaration sinon).
  *
- * Signatures deduites des sites d'appel reels (MixerTopBarV2.kt l.104-108,
- * MixerBottomBarV2.kt : IconSaveV2(size, color), IconPianoV2(size, color),
- * ManageSnapshotDialogV2(slotKey, currentName, onDismiss, onSave)).
+ * Signatures deduites des sites d'appel reels de MixerTopBarV2.kt (l.107)
+ * et MixerBottomBarV2.kt.
  */
-
-@Composable
-fun IconDinV2(size: Dp, color: Color, withBar: Boolean = false) {
-    Canvas(Modifier.size(size)) {
-        val cx = this.size.width / 2f
-        val cy = this.size.height / 2f
-        val r = this.size.minDimension * 0.36f
-        drawCircle(color.copy(alpha = 0.20f), radius = r, center = Offset(cx, cy))
-        drawCircle(color, radius = r, center = Offset(cx, cy), style = Stroke(width = 1.4.dp.toPx()))
-        val pr = r * 0.20f
-        val d = r * 0.52f
-        listOf(
-            Offset(cx, cy - d),
-            Offset(cx - d * 0.95f, cy + d * 0.7f),
-            Offset(cx + d * 0.95f, cy + d * 0.7f),
-            Offset(cx - d * 0.5f, cy - d * 0.4f),
-            Offset(cx + d * 0.5f, cy - d * 0.4f)
-        ).forEach { drawCircle(color, radius = pr, center = it) }
-        if (withBar) {
-            drawRect(
-                color,
-                topLeft = Offset(cx - r * 0.45f, cy + r * 0.92f),
-                size = Size(r * 0.9f, 1.6.dp.toPx())
-            )
-        }
-    }
-}
-
-@Composable
-fun IconSaveV2(size: Dp, color: Color) {
-    Canvas(Modifier.size(size)) {
-        val w = this.size.width
-        val h = this.size.height
-        val sw = 1.5.dp.toPx()
-        drawRoundRect(
-            color = color,
-            topLeft = Offset(w * 0.12f, h * 0.12f),
-            size = Size(w * 0.76f, h * 0.76f),
-            cornerRadius = CornerRadius(w * 0.12f),
-            style = Stroke(width = sw)
-        )
-        drawRect(color, topLeft = Offset(w * 0.30f, h * 0.12f), size = Size(w * 0.34f, h * 0.26f))
-        drawRoundRect(
-            color = color,
-            topLeft = Offset(w * 0.26f, h * 0.56f),
-            size = Size(w * 0.48f, h * 0.32f),
-            cornerRadius = CornerRadius(w * 0.06f),
-            style = Stroke(width = sw)
-        )
-    }
-}
-
-@Composable
-fun IconPianoV2(size: Dp, color: Color) {
-    Canvas(Modifier.size(size)) {
-        val w = this.size.width
-        val h = this.size.height
-        drawRoundRect(
-            color = color.copy(alpha = 0.22f),
-            topLeft = Offset(w * 0.08f, h * 0.24f),
-            size = Size(w * 0.84f, h * 0.52f),
-            cornerRadius = CornerRadius(w * 0.08f)
-        )
-        drawRoundRect(
-            color = color,
-            topLeft = Offset(w * 0.08f, h * 0.24f),
-            size = Size(w * 0.84f, h * 0.52f),
-            cornerRadius = CornerRadius(w * 0.08f),
-            style = Stroke(width = 1.3.dp.toPx())
-        )
-        listOf(0.28f, 0.5f, 0.72f).forEach { fx ->
-            drawRect(
-                color,
-                topLeft = Offset(w * fx - w * 0.045f, h * 0.24f),
-                size = Size(w * 0.09f, h * 0.30f)
-            )
-        }
-    }
-}
 
 @Composable
 fun SustainPedalButton(
