@@ -17,20 +17,14 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-/**
- * Disquette stylisée (viewBox 750×810, stroke 68).
- * Trois chemins en outline :
- *   • corps extérieur avec coin coupé en haut-droite
- *   • volet supérieur (shutter) ouvert vers le haut
- *   • étiquette inférieure (label) remontant du bas
- */
+/** Disquette plus épaisse et claire */
 @Composable
-fun IconSaveV2(size: Dp = 20.dp, color: Color = Color(0xFFC9D1E0)) {
+fun IconSaveV2(size: Dp = 20.dp, color: Color = Color(0xFFE9EDF5)) {
     Canvas(Modifier.size(size)) {
         val s = this.size.minDimension / 810f
         val offX = (this.size.width - 750f * s) / 2f
         val offY = (this.size.height - 810f * s) / 2f
-        val sw = 68f * s
+        val sw = 80f * s
         withTransform({ translate(offX, offY); scale(s, s, pivot = Offset.Zero) }) {
             val body = Path().apply {
                 moveTo(152f, 42f); lineTo(475f, 42f); lineTo(688f, 255f); lineTo(688f, 668f)
@@ -62,10 +56,7 @@ fun IconSaveV2(size: Dp = 20.dp, color: Color = Color(0xFFC9D1E0)) {
     }
 }
 
-/**
- * Clavier piano stylisé vu de dessus (viewBox 520×500, fill plein).
- * Cadre en U inversé + 3 touches noires + 3 séparateurs blancs.
- */
+/** Icône Piano (inchangée) */
 @Composable
 fun IconPianoV2(size: Dp = 22.dp, color: Color = Color(0xFFC9D1E0)) {
     Canvas(Modifier.size(size)) {
@@ -83,56 +74,72 @@ fun IconPianoV2(size: Dp = 22.dp, color: Color = Color(0xFFC9D1E0)) {
                 close()
             }
             drawPath(frame, color)
-            listOf(
-                Triple(100f, 93f, 24f),
-                Triple(217f, 93f, 24f),
-                Triple(333f, 94f, 24f)
-            ).forEach { (x, w, r) ->
-                drawRoundRect(
-                    color = color,
-                    topLeft = Offset(x, 40f),
-                    size = Size(w, 280f),
-                    cornerRadius = CornerRadius(r)
-                )
-            }
-            listOf(135f, 252f, 369f).forEach { x ->
-                drawRect(color, topLeft = Offset(x, 343f), size = Size(22f, 125f))
-            }
+            listOf(Triple(100f, 93f, 24f), Triple(217f, 93f, 24f), Triple(333f, 94f, 24f))
+                .forEach { (x, w, r) -> drawRoundRect(color, topLeft = Offset(x, 40f), size = Size(w, 280f), cornerRadius = CornerRadius(r)) }
+            listOf(135f, 252f, 369f).forEach { x -> drawRect(color, topLeft = Offset(x, 343f), size = Size(22f, 125f)) }
         }
     }
 }
 
-/**
- * Prise MIDI DIN 5 broches avec barre diagonale "Panic".
- * viewBox 288×288. Le paramètre withBar permet de l'utiliser sans
- * la barre si besoin (ex: icône "MIDI connecté" sans état panic).
- */
+/** Icône DIN / Panic (barre raccourcie) */
 @Composable
-fun IconDinV2(
-    size: Dp = 30.dp,
-    color: Color = Color.White,
-    withBar: Boolean = true
-) {
+fun IconDinV2(size: Dp = 30.dp, color: Color = Color.White, withBar: Boolean = true) {
     Canvas(Modifier.size(size)) {
         val s = this.size.minDimension / 288f
         withTransform({ scale(s, s, pivot = Offset.Zero) }) {
             drawCircle(color, 90f, Offset(144f, 144f), style = Stroke(18f))
             listOf(
-                Offset(91f, 141f),
-                Offset(107f, 106f),
-                Offset(144f, 92f),
-                Offset(181f, 106f),
-                Offset(197f, 141f)
+                Offset(91f, 141f), Offset(107f, 106f), Offset(144f, 92f), Offset(181f, 106f), Offset(197f, 141f)
             ).forEach { drawCircle(color, 14.5f, it) }
             if (withBar) {
-                drawLine(
-                    color,
-                    Offset(30f, 30f),
-                    Offset(258f, 258f),
-                    strokeWidth = 22f,
-                    cap = StrokeCap.Round
-                )
+                // Barre réduite pour ne pas déborder du cercle (au lieu de 30 à 258)
+                drawLine(color, Offset(60f, 60f), Offset(228f, 228f), strokeWidth = 22f, cap = StrokeCap.Round)
             }
+        }
+    }
+}
+
+/** NOUVEAU: Icône Patches (Dossier) */
+@Composable
+fun IconFolderV2(size: Dp = 20.dp, color: Color = Color(0xFFC9D1E0)) {
+    Canvas(Modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val stroke = 2.dp.toPx()
+        val path = Path().apply {
+            moveTo(w * 0.1f, h * 0.25f)
+            lineTo(w * 0.4f, h * 0.25f)
+            lineTo(w * 0.5f, h * 0.35f)
+            lineTo(w * 0.9f, h * 0.35f)
+            lineTo(w * 0.9f, h * 0.85f)
+            lineTo(w * 0.1f, h * 0.85f)
+            close()
+        }
+        drawPath(path, color, style = Stroke(stroke, join = StrokeJoin.Round))
+    }
+}
+
+/** NOUVEAU: Icône Settings (Engrenage) */
+@Composable
+fun IconGearV2(size: Dp = 20.dp, color: Color = Color(0xFFC9D1E0)) {
+    Canvas(Modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val stroke = 2.dp.toPx()
+        val center = Offset(w / 2f, h / 2f)
+        val outer = w * 0.4f
+        val inner = w * 0.25f
+        
+        drawCircle(color, inner, center, style = Stroke(stroke))
+        
+        val teeth = 8
+        for (i in 0 until teeth) {
+            val angle = (i * 360.0 / teeth) * (Math.PI / 180.0)
+            val startX = center.x + ((inner + stroke) * Math.cos(angle)).toFloat()
+            val startY = center.y + ((inner + stroke) * Math.sin(angle)).toFloat()
+            val endX = center.x + (outer * Math.cos(angle)).toFloat()
+            val endY = center.y + (outer * Math.sin(angle)).toFloat()
+            drawLine(color, Offset(startX, startY), Offset(endX, endY), strokeWidth = stroke, cap = StrokeCap.Round)
         }
     }
 }
