@@ -1,0 +1,155 @@
+==============================================================================
+BRIEF D'INTÉGRATION — MIXER V2 (7 FICHIERS KOTLIN)
+Version 1.0 — Design System V2 (portage fidèle du preview React)
+Cible : application SoundStage / NewKeys (Jetpack Compose, Material 3)
+Base : origin/main 35f570b (cf. INTEGRATION-UI.txt)
+==============================================================================
+
+TABLE DES MATIÈRES
+  §0 — Résumé exécutif
+  §1 — Arborescence cible
+  §2 — Règles strictes (ce qu'on NE touche PAS)
+  §3 — Fichier 1/7 — MixerBackgroundV2.kt
+  §4 — Fichier 2/7 — ChannelStripV2.kt
+  §5 — Fichier 3/7 — MixerTopBarV2.kt
+  §6 — Fichier 4/7 — MixerBottomBarV2.kt
+  §7 — Fichier 5/7 — MixerIconsV2.kt
+  §8 — Fichier 6/7 — SustainPedalButton.kt
+  §9 — Fichier 7/7 — ManageSnapshotDialogV2.kt
+  §10 — Diff d'intégration dans MixerScreen.kt
+  §11 — 7 écarts à résoudre (hérités de INTEGRATION-UI.txt §7)
+  §12 — Checklist de validation
+
+==============================================================================
+§0 — RÉSUMÉ EXÉCUTIF
+==============================================================================
+
+Objectif : remplacer l'apparence de l'écran Mixer par la V2 (background étoffé,
+channel strips avec aura réactive, top bar plus fine avec Chord 30/70, bottom
+bar avec master compact + snapshots fluides et swipe-to-delete, icônes
+redessinées Save/Piano/DIN-MIDI, pédale sustain mécanique animée).
+
+Principe fondateur : on REMPLACE uniquement les conteneurs et les composants
+visuels périphériques. On NE REMPLACE PAS les briques fonctionnelles existantes
+(rails, thumb, FX, Settings, Power, Pan knob) : on les injecte TELS QUELS dans
+les nouveaux conteneurs via leurs signatures publiques déjà validées.
+
+7 fichiers Kotlin à ajouter (5 nouveaux composants + 2 wrappers)
++ 1 diff d'intégration dans MixerScreen.kt (3 points de substitution).
+
+==============================================================================
+§1 — ARBORESCENCE CIBLE
+==============================================================================
+
+app/src/main/java/com/soundstage/mixer/ui/components/v2/
+  ├── MixerBackgroundV2.kt          [NOUVEAU]
+  ├── ChannelStripV2.kt             [NOUVEAU]
+  ├── MixerTopBarV2.kt              [NOUVEAU]
+  ├── MixerBottomBarV2.kt           [NOUVEAU]
+  ├── MixerIconsV2.kt               [NOUVEAU]
+  ├── SustainPedalButton.kt         [NOUVEAU]
+  └── ManageSnapshotDialogV2.kt     [NOUVEAU]
+
+Aucune modification des fichiers existants listés au §2.
+
+==============================================================================
+§2 — RÈGLES STRICTES (ce qu'on NE touche PAS)
+==============================================================================
+
+FICHIERS À NE PAS MODIFIER (aucune ligne ne change) :
+  app/src/main/java/com/soundstage/mixer/ui/components/FaderRail.kt
+  app/src/main/java/com/soundstage/mixer/ui/components/FaderThumb.kt
+  app/src/main/java/com/soundstage/mixer/ui/components/CustomVerticalFader.kt
+  app/src/main/java/com/soundstage/mixer/ui/components/TrackBottomRow.kt
+  app/src/main/java/com/soundstage/mixer/ui/components/VerticalFader.kt
+    (dont MicroPanKnob et FaderSliderWithVuMeter restent INTACTS)
+  app/src/main/java/com/soundstage/mixer/ui/components/VerticalTrackChannel
+    (fonction publique dans VerticalFader.kt — NON UTILISÉE par la V2)
+
+COMPOSANTS À RÉUTILISER TELS QUELS (appels inchangés) :
+  • FaderSliderWithVuMeter(...)   → contient le rail + thumb + VU, non modifié
+  • TrackBottomRow(...)           → contient FX + Settings + PowerKey, non modifié
+  • MicroPanKnob(...)             → knob de pan, non modifié
+  • ChordCalculator.detect(...)   → détecteur d'accords, non modifié
+
+CONSÉQUENCE :
+  Le channel strip V2 est un NOUVEAU conteneur (ChannelStripV2) qui injecte les
+  3 composants publics ci-dessus. Il remplace VerticalTrackChannel sur l'écran
+  Mixer, mais n'affecte NI les rails NI les thumbs NI les boutons FX/Settings/
+  Power NI le pan knob.
+
+==============================================================================
+§3 — FICHIER 1/7 — MixerBackgroundV2.kt
+==============================================================================
+
+CHEMIN : app/src/main/java/com/soundstage/mixer/ui/components/v2/MixerBackgroundV2.kt
+
+```kotlin
+package com.soundstage.mixer.ui.components.v2
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+
+/**
+ * Fond du Mixer V2 :
+ *  - Dégradé vertical (haut bleu-slate → bas noir-charbon)
+ *  - Vignette lumineuse en haut (blanc 4.5%) et sombre en bas (noir 28%)
+ *
+ * NOTE : pour un grain fin (noise) fidèle au preview React, fournir
+ *        R.drawable.noise_tile (120x120 PNG) et décommenter la ligne
+ *        "// Image(...)" ci-dessous.
+ */
+@Composable
+fun MixerBackgroundV2(
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit
+) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFF151B27),
+                        Color(0xFF111620)
+                    )
+                )
+            )
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            // Lumière diffuse en haut (halo blanc)
+            drawRect(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color.White.copy(alpha = 0.045f), Color.Transparent),
+                    center = Offset(size.width / 2f, 0f),
+                    radius = size.width * 0.8f
+                )
+            )
+            // Vignette sombre en bas
+            drawRect(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color.Black.copy(alpha = 0.28f), Color.Transparent),
+                    center = Offset(size.width / 2f, size.height),
+                    radius = size.height
+                )
+            )
+        }
+        // Optionnel — grain fin (remplacer par ta ressource) :
+        // Image(
+        //     painter = painterResource(R.drawable.noise_tile),
+        //     contentDescription = null,
+        //     contentScale = ContentScale.Crop,
+        //     modifier = Modifier.fillMaxSize(),
+        //     alpha = 0.045f
+        // )
+        content()
+    }
+}
