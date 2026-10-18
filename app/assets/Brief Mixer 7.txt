@@ -1,0 +1,591 @@
+═══════════════════════════════════════════════════════════════
+BRIEF MIXER 7 — §10 + §11 + §12
+Intégration finale : câblage v2/ dans MixerScreen.kt + fix gaps + checklist
+═══════════════════════════════════════════════════════════════
+
+⚠️ Un SEUL fichier .txt, plusieurs sections à l'intérieur.
+   Aucun fence ```markdown interne — délimiteurs === BEGIN/END ===
+   pour chaque bloc de code.
+
+⚠️ Ce brief MODIFIE 3 fichiers existants (première fois du chantier) :
+   • MixerScreen.kt           (câblage des 3 composants V2 + background)
+   • MixerState.kt            (ajout champ recallMode à SubSceneSnapshot)
+   • MixerViewModel.kt        (ajout overload renameSnapshotSlot avec mode)
+   Les 5 autres fichiers v2/ ne bougent pas.
+
+SÉQUENCE D'INTÉGRATION (faire dans l'ordre) :
+  1. §11-A (MixerState.kt) → compile check
+  2. §11-B (MixerViewModel.kt) → compile check
+  3. §10-A (MixerScreen.kt : imports + background) → compile check
+  4. §10-B (MixerScreen.kt : TopBar → MixerTopBarV2) → compile check
+  5. §10-C (MixerScreen.kt : VerticalTrackChannel → ChannelStripV2) → compile check
+  6. §10-D (MixerScreen.kt : BottomBar → MixerBottomBarV2) → compile check
+  7. §10-E (MixerScreen.kt : spacer 4→6 dp) → compile check
+  8. §12 (checklist runtime) → validation manuelle sur device
+
+═══════════════════════════════════════════════════════════════
+§10 — DIFF D'INTÉGRATION DANS MixerScreen.kt
+═══════════════════════════════════════════════════════════════
+
+FICHIER CIBLE : app/src/main/java/com/soundstage/mixer/ui/MixerScreen.kt
+FONCTION     : MixerMainPageContent(...) — ~ligne 78
+
+───────────────────────────────────────────────────────────────
+§10-A — IMPORTS + WRAP DANS MixerBackgroundV2
+───────────────────────────────────────────────────────────────
+
+A1. Ajouter les imports (après les imports v2 existants ou à la fin du
+    bloc d'imports, avant la première @Composable) :
+
+=== BEGIN IMPORTS ===
+import com.soundstage.mixer.ui.components.v2.MixerBackgroundV2
+import com.soundstage.mixer.ui.components.v2.ChannelStripV2
+import com.soundstage.mixer.ui.components.v2.MixerTopBarV2
+import com.soundstage.mixer.ui.components.v2.MixerBottomBarV2
+=== END IMPORTS ===
+
+A2. Repérer dans MixerMainPageContent le bloc de tête :
+
+=== BEGIN AVANT A2 ===
+Box(
+    modifier = Modifier
+        .fillMaxSize()
+        .background(MaterialTheme.colorScheme.background)
+        .padding(
+            start = 4.dp,
+            end = 4.dp,
+            top = 2.dp,
+            bottom = safeBottomPadding
+        )
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+    ) {
+        // ... tout le contenu (TopBar, strips, BottomBar, ...)
+    }
+}
+=== END AVANT A2 ===
+
+A3. Remplacer par :
+
+=== BEGIN APRES A3 ===
+MixerBackgroundV2 {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(
+                start = 4.dp,
+                end = 4.dp,
+                top = 2.dp,
+                bottom = safeBottomPadding
+            )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+        ) {
+            // ... tout le contenu inchangé (TopBar, strips, BottomBar, ...)
+        }
+    }
+}
+=== END APRES A3 ===
+
+ATTENTION : le .background(MaterialTheme.colorScheme.background) est
+            SUPPRIMÉ (MixerBackgroundV2 fournit son propre fond).
+            Ne PAS oublier l'accolade fermante supplémentaire à la fin
+            de MixerMainPageContent (fermeture de MixerBackgroundV2).
+
+───────────────────────────────────────────────────────────────
+§10-B — REMPLACER TopBar PAR MixerTopBarV2
+───────────────────────────────────────────────────────────────
+
+Repérer l'appel TopBar(...) — il prend ~20 paramètres (transpose, octave,
+pressedKeys, isLoopsOpen, loopVolume, onPanic, onOpenScenes, etc.).
+
+=== BEGIN AVANT B ===
+TopBar(
+    transpose = uiState.transpose,
+    octave = uiState.octave,
+    onTransposeChange = { viewModel.updateTranspose(it) },
+    onOctaveChange = { viewModel.updateOctave(it) },
+    pressedKeys = uiState.pressedKeys,
+    useFlats = uiState.useFlats,
+    /* ... 15 autres paramètres ... */
+    onOpenSettings = { viewModel.openSettingsDrawer() },
+    onBackToProjects = { viewModel.navigateToProjectsHome() },
+    onSaveProjectDirect = { viewModel.saveCurrentProjectDirect() }
+)
+=== END AVANT B ===
+
+Remplacer par l'appel V2 (12 paramètres au lieu de 20) :
+
+=== BEGIN APRES B ===
+MixerTopBarV2(
+    transpose = uiState.transpose,
+    octave = uiState.octave,
+    onTransposeChange = { viewModel.updateTranspose(it) },
+    onOctaveChange = { viewModel.updateOctave(it) },
+    detectedChord = detectedChord,
+    isSustainActive = uiState.isSustainActive,
+    onToggleSustain = { viewModel.toggleSustain() },
+    onOpenNotes = { viewModel.navigateToPage(AppScreenPage.SHEETS) },
+    onOpenDrumPad = { viewModel.navigateToPage(AppScreenPage.DRUMPAD) },
+    onPanic = { viewModel.triggerPanic() },
+    onOpenScenes = { viewModel.openPopup(ActivePopup.SCENE) },
+    onOpenSettings = { viewModel.openSettingsDrawer() },
+    modifier = Modifier.fillMaxWidth()
+)
+=== END APRES B ===
+
+NOTE : l'ancien TopBar acceptait aussi les paramètres Loops (isLoopsOpen,
+loopVolume, onToggleLoops, isLoopPlaying, onToggleLoopPlayPause,
+loopFolders, activeLoopFile, onToggleLoopFolder, onSelectLoopFile,
+onSelectBeats, selectedBeats) et pressedKeys/useFlats. Le MixerTopBarV2
+NE les prend PAS — c'est intentionnel. La Loops panel reste accessible
+via l'item existant du BottomBar V1 / du menu Settings. Si tu veux
+conserver le bouton Loops dans la top bar, c'est un ajout au brief §12
+(polish V2.1) — pas dans ce chantier V2.
+
+───────────────────────────────────────────────────────────────
+§10-C — REMPLACER VerticalTrackChannel PAR ChannelStripV2
+───────────────────────────────────────────────────────────────
+
+Localiser la boucle qui rend chaque piste (dans BoxWithConstraints,
+Row des channel strips).
+
+=== BEGIN AVANT C ===
+visibleTracks.forEach { track ->
+    val itemModifier = if (isOverflowingInLock) {
+        Modifier.weight(1f).fillMaxHeight()
+    } else {
+        Modifier.width(finalTrackWidth).fillMaxHeight()
+    }
+
+    VerticalTrackChannel(
+        track = track,
+        onVolumeChange = { vol -> viewModel.setTrackVolume(track.id, vol) },
+        onPowerToggle = { viewModel.toggleTrackPower(track.id) },
+        onDeleteTrack = { viewModel.removeTrack(track.id) },
+        onPanChange = { pan -> viewModel.setTrackPan(track.id, pan) },
+        onMuteClick = { viewModel.onTrackMuteClick(track.id) },
+        onSoloClick = { viewModel.onTrackSoloClick(track.id) },
+        onTrackNameClick = { viewModel.openSoundfontForSlot(track.id - 1) },
+        onFxClick = { viewModel.openEffectsForTrack(track.id) },
+        onTrackSettingsClick = { viewModel.openTrackSettings(track.id) },
+        showTicks = showTicks,
+        modifier = itemModifier
+    )
+}
+=== END AVANT C ===
+
+Remplacer par :
+
+=== BEGIN APRES C ===
+val isAnySolo = uiState.tracks.any { it.isSolo }
+
+visibleTracks.forEach { track ->
+    val itemModifier = if (isOverflowingInLock) {
+        Modifier.weight(1f).fillMaxHeight()
+    } else {
+        Modifier.width(finalTrackWidth).fillMaxHeight()
+    }
+
+    val isDimmed = !track.isEnabled || track.isMuted || (isAnySolo && !track.isSolo)
+    val accentColor = getTrackThemeColor(track.id, isMaster = false)
+
+    ChannelStripV2(
+        track = track,
+        isDimmed = isDimmed,
+        accentColor = accentColor,
+        onVolumeChange = { vol -> viewModel.setTrackVolume(track.id, vol) },
+        onPanChange = { pan -> viewModel.setTrackPan(track.id, pan) },
+        onSoloToggle = { viewModel.onTrackSoloClick(track.id) },
+        onMuteToggle = { viewModel.onTrackMuteClick(track.id) },
+        onTrackNameClick = { viewModel.openSoundfontForSlot(track.id - 1) },
+        onFxClick = { viewModel.openEffectsForTrack(track.id) },
+        onTrackSettingsClick = { viewModel.openTrackSettings(track.id) },
+        onPowerToggle = { viewModel.toggleTrackPower(track.id) },
+        onDeleteTrack = { viewModel.removeTrack(track.id) },
+        modifier = itemModifier
+    )
+}
+=== END APRES C ===
+
+NOTES :
+  • L'ancien VerticalTrackChannel affichait un badge "Delete channel"
+    en popup sur long-press Power. Ce comportement est CONSERVÉ côté
+    ChannelStripV2 — c'est TrackBottomRow (injecté tel quel) qui gère
+    le long-press → bubble trash. Rien à faire.
+  • getTrackThemeColor(track.id, isMaster = false) est déjà utilisé
+    dans VerticalTrackChannel. L'import existe déjà (helper dans
+    VerticalFader.kt, package ui.components).
+
+───────────────────────────────────────────────────────────────
+§10-D — REMPLACER BottomBar PAR MixerBottomBarV2
+───────────────────────────────────────────────────────────────
+
+Repérer l'appel BottomBar(...) — il prend ~25 paramètres (isRecording,
+bpm, masterTrack, snapshots, configuredSnapshotSlots, isSnapshotArmMode,
+onToggleSnapshotArm, activeSnapshotSlot, onSnapshotSlotClick,
+onAddSnapshot, onDeleteSnapshot, snapshotCustomNames,
+onRenameSnapshotSlot, isKeyboardActive, onToggleKeyboard,
+onKeyboardHandleClick, onKeyboardDrag, onToggleRecording,
+onMasterVolumeChange, onMasterFxClick, recordingDuration,
+lastRecordedFile, onBpmChange, detectedChord, etc.).
+
+=== BEGIN AVANT D ===
+BottomBar(
+    masterTrack = uiState.masterTrack,
+    onMasterVolumeChange = { vol -> viewModel.setTrackVolume(0, vol) },
+    onMasterFxClick = { viewModel.openEffectsForTrack(0) },
+    isRecording = uiState.isRecording,
+    recordingDuration = uiState.recordingDuration,
+    lastRecordedFile = uiState.lastRecordedFile,
+    onToggleRecording = { viewModel.toggleRecording() },
+    bpm = uiState.bpm,
+    onBpmChange = { viewModel.updateBpm(it) },
+    detectedChord = detectedChord,
+    isSnapshotArmMode = uiState.isSnapshotArmMode,
+    onToggleSnapshotArm = { viewModel.toggleSnapshotArm() },
+    activeSnapshotSlot = uiState.activeSnapshotSlot,
+    snapshots = uiState.snapshots,
+    configuredSnapshotSlots = uiState.configuredSnapshotSlots,
+    onSnapshotSlotClick = { key -> viewModel.onSnapshotSlotClick(key) },
+    onAddSnapshot = { name -> viewModel.addSnapshotSlot(name) },
+    onDeleteSnapshot = { key -> viewModel.removeSnapshotSlot(key) },
+    snapshotCustomNames = uiState.snapshotCustomNames,
+    onRenameSnapshotSlot = { key, name, mode ->
+        viewModel.renameSnapshotSlotWithMode(key, name, mode)
+    },
+    snapshotTransitionProgress = uiState.snapshotTransitionProgress,
+    isKeyboardActive = isKeyboardVisible,
+    onToggleKeyboard = { viewModel.cycleKeyboardExpansion() },
+    isLayerActive = uiState.isKeyboardLayerExpanded,
+    onToggleLayer = { viewModel.toggleKeyboardLayer() },
+    onKeyboardHandleClick = { viewModel.cycleKeyboardExpansion() },
+    onKeyboardDrag = { deltaY ->
+        viewModel.setKeyboardHeightFraction(uiState.keyboardHeightFraction - deltaY / 200f)
+    }
+)
+=== END AVANT D ===
+
+Remplacer par (16 paramètres) :
+
+=== BEGIN APRES D ===
+MixerBottomBarV2(
+    masterTrack = uiState.masterTrack,
+    onMasterVolumeChange = { vol -> viewModel.setTrackVolume(0, vol) },
+    bpm = uiState.bpm,
+    onBpmChange = { viewModel.setGlobalBpm(it) },
+    isSnapshotArmMode = uiState.isSnapshotArmMode,
+    onToggleSnapshotArm = { viewModel.toggleSnapshotArm() },
+    activeSnapshotSlot = uiState.activeSnapshotSlot,
+    snapshots = uiState.snapshots,
+    configuredSnapshotSlots = uiState.configuredSnapshotSlots,
+    onSnapshotSlotClick = { key -> viewModel.onSnapshotSlotClick(key) },
+    onAddSnapshot = { name -> viewModel.addSnapshotSlot(name) },
+    onDeleteSnapshot = { key -> viewModel.removeSnapshotSlot(key) },
+    snapshotCustomNames = uiState.snapshotCustomNames,
+    onRenameSnapshotSlot = { key, name ->
+        viewModel.renameSnapshotSlotWithMode(key, name, "crossfade")
+    },
+    isKeyboardActive = isKeyboardVisible,
+    onToggleKeyboard = { viewModel.cycleKeyboardExpansion() },
+    modifier = Modifier.fillMaxWidth()
+)
+=== END APRES D ===
+
+⚠️ IMPORTANT — le MixerBottomBarV2 N'accepte PAS les callbacks
+onKeyboardHandleClick / onKeyboardDrag / isLayerActive / onToggleLayer /
+onMasterFxClick / isRecording / recordingDuration / lastRecordedFile /
+onToggleRecording / detectedChord / snapshotTransitionProgress.
+
+Ces fonctionnalités restent assurées :
+  • REC / durée / fichier enregistré → géré par l'écran d'enregistrement
+    (Settings drawer ou écran dédié). Si tu veux le garder dans la
+    bottom bar, c'est un polish V2.1 (ajout au brief §12).
+  • Piano handle / drag → géré par VirtualPianoKeyboard (composant
+    existant, non modifié). La bottom bar V2 n'en a plus besoin.
+  • FX master → toujours accessible via le module Master compact
+    (bouton FX absent, mais onMasterFxClick ne fait qu'ouvrir un dialog
+    qui reste accessible via le menu Settings > FX).
+
+Pour CONSERVER le bouton REC dans la bottom bar V2, c'est un ajout
+hors-chantier. À valider avec toi avant de le faire.
+
+───────────────────────────────────────────────────────────────
+§10-E — AJUSTER LE SPACER (micro-espace 6 dp)
+───────────────────────────────────────────────────────────────
+
+Repérer les deux Spacer autour du BottomBar.
+
+=== BEGIN AVANT E ===
+Spacer(modifier = Modifier.height(4.dp))
+// ... BottomBar(...) ...
+Spacer(modifier = Modifier.height(4.dp))
+=== END AVANT E ===
+
+Remplacer par :
+
+=== BEGIN APRES E ===
+Spacer(modifier = Modifier.height(6.dp))
+// ... MixerBottomBarV2(...) ...
+Spacer(modifier = Modifier.height(4.dp))
+=== END APRES E ===
+
+(Petit espacement 4 → 6 dp au-dessus, 4 dp inchangé en dessous.)
+
+───────────────────────────────────────────────────────────────
+§10-F — CHECK COMPILE INTERMÉDIAIRE
+───────────────────────────────────────────────────────────────
+
+Après §10-A à §10-E : ./gradlew :app:compileDebugKotlin
+
+Si erreur, les causes les plus probables :
+  • Oubli de l'accolade fermante (MixerBackgroundV2 {...} non refermé)
+    → "Expecting '}' at line X"
+  • Oubli d'un import → "Unresolved reference"
+  • detectedChord non passé à MixerBottomBarV2 (il n'en a pas besoin
+    mais si tu l'as quand même mis → "no parameter with name detectedChord")
+
+═══════════════════════════════════════════════════════════════
+§11 — LES 7 ÉCARTS (résolution)
+═══════════════════════════════════════════════════════════════
+
+Écart 1 — masterVolume
+  Déjà résolu par le brief §10-D : masterTrack.volume +
+  setTrackVolume(0, v). Rien à faire.
+
+───────────────────────────────────────────────────────────────
+Écart 2 — recallMode sur Snapshot (le SEUL à coder)
+───────────────────────────────────────────────────────────────
+
+ÉTAPE 2.1 — Ajouter le champ à SubSceneSnapshot
+FICHIER  : app/src/main/java/com/soundstage/mixer/model/MixerState.kt
+
+=== BEGIN AVANT 2.1 ===
+data class SubSceneSnapshot(
+    val slotName: String,
+    val tracks: List<TrackSnapshot>,
+    val globalTranspose: Int = 0,
+    val globalOctaveShift: Int = 0,
+    val masterVolume: Float = 0.85f,
+    val visibleTracksCount: Int = 1,
+    val fxParameters: FxParameters? = null,
+    val timestamp: Long = System.currentTimeMillis()
+)
+=== END AVANT 2.1 ===
+
+Ajouter une seule ligne (champ recallMode) :
+
+=== BEGIN APRES 2.1 ===
+data class SubSceneSnapshot(
+    val slotName: String,
+    val tracks: List<TrackSnapshot>,
+    val globalTranspose: Int = 0,
+    val globalOctaveShift: Int = 0,
+    val masterVolume: Float = 0.85f,
+    val visibleTracksCount: Int = 1,
+    val fxParameters: FxParameters? = null,
+    val timestamp: Long = System.currentTimeMillis(),
+    val recallMode: String = "crossfade"
+)
+=== END APRES 2.1 ===
+
+ÉTAPE 2.2 — Ajouter l'overload au ViewModel
+FICHIER  : app/src/main/java/com/soundstage/mixer/viewmodel/MixerViewModel.kt
+LOCALISER : fun renameSnapshotSlot(slotName: String, newName: String)
+            (~ligne 5033)
+
+Ajouter JUSTE APRÈS cette fonction (même scope, pas à l'intérieur) :
+
+=== BEGIN 2.2 ===
+/**
+ * Overload de renameSnapshotSlot qui persiste aussi le recallMode choisi
+ * dans ManageSnapshotDialogV2. Appelé depuis MixerBottomBarV2 -> onSave.
+ * Si mode == "crossfade", le comportement métier reste identique au V1
+ * (rappel immédiat) tant que §11-Extension n'est pas implémenté.
+ */
+fun renameSnapshotSlotWithMode(
+    slotName: String,
+    newName: String,
+    recallMode: String
+) {
+    renameSnapshotSlot(slotName, newName)
+    _uiState.update { current ->
+        val existing = current.snapshots[slotName] ?: return@update current
+        val updatedSnapshots = current.snapshots.toMutableMap()
+        updatedSnapshots[slotName] = existing.copy(recallMode = recallMode)
+        val updatedPatches = current.patches.map { p ->
+            if (p.id == current.activePatchId) {
+                p.copy(snapshots = updatedSnapshots)
+            } else p
+        }
+        current.copy(snapshots = updatedSnapshots, patches = updatedPatches)
+    }
+    persistCurrentStateDebounced()
+}
+=== END 2.2 ===
+
+ÉTAPE 2.3 — Persistance JSON (si tu utilise kotlinx.serialization)
+FICHIER : AppStatePersistence.kt (si présent dans ton arbre)
+
+Le champ `recallMode` avec valeur par défaut "crossfade" sera sérialisé
+automatiquement si tu utilises @Serializable sans @Required explicite
+sur chaque champ. Aucune action si ton code utilise des valeurs par
+défaut. Sinon, ajouter `@EncodeDefault` ou équivalent — NON NÉCESSAIRE
+dans 95 % des cas.
+
+───────────────────────────────────────────────────────────────
+Écart 3 — setSustain (Float → Boolean)
+───────────────────────────────────────────────────────────────
+
+Résolu par design : SustainPedalButton anime 0 → 1 → 0 par toggle
+binaire. Si tu veux le half-pedal plus tard :
+  • Ajouter sustainValue: Float à l'UiState
+  • Exposer setSustainValue(Float)
+  • Modifier SustainPedalButton pour accepter un `value: Float` au lieu
+    d'un `isActive: Boolean` + animer l'angle proportionnellement.
+Polish V2.1, hors scope.
+
+───────────────────────────────────────────────────────────────
+Écart 4 — Chord detector
+───────────────────────────────────────────────────────────────
+
+Résolu par §10-B : detectedChord est déjà calculé en amont (ligne ~660
+de MixerScreen.kt) et passé à MixerTopBarV2. Aucune action.
+
+───────────────────────────────────────────────────────────────
+Écart 5 — Peak meters
+───────────────────────────────────────────────────────────────
+
+Résolu par design : ChannelStripV2 lit track.peakMeterL/R (fields
+existants de TrackChannel). MasterSliderCompact lit
+masterTrack.peakMeterL/R. Aucune action.
+
+NOTE : MasterSliderCompact ne décroît pas le peak (témoin bloque au
+max session). Fidèle au code fourni. Pour un vrai peak-hold qui
+retombe : ajouter un 3e LaunchedEffect qui décrémente localPeak
+après 1500ms. Polish V2.1.
+
+───────────────────────────────────────────────────────────────
+Écart 6 — Navigation
+───────────────────────────────────────────────────────────────
+
+Aucun impact. MixerMainPageContent() reste le point d'entrée.
+AppScreenPage / ActivePopup inchangés.
+
+───────────────────────────────────────────────────────────────
+Écart 7 — MaterialYouNativeMixer.kt / MaterialYouSvgMixerStage.kt
+───────────────────────────────────────────────────────────────
+
+Fichiers NON MODIFIÉS, gardés en référence alternative. Ils ne sont
+pas utilisés par le chemin V2 (seuls TopBar/BottomBar/ChannelStrip/
+Icons/Sustain/ManageDialog V2 sont branchés).
+
+Si tu veux les retirer complètement du projet : polish V2.1 (audit
+des usages). Aucun impact sur le chantier actuel.
+
+═══════════════════════════════════════════════════════════════
+§12 — CHECKLIST DE VALIDATION
+═══════════════════════════════════════════════════════════════
+
+VALIDATION VISUELLE (à faire sur device après §10 complet)
+──────────────────────────────────────────────────────────
+[ ] Fond Mixer : dégradé vertical visible, plus de gris uniforme
+[ ] Vignettes haut/bas discrètes (halo blanc 4.5%, ombre noire 28%)
+[ ] Top bar 40 dp (2 dp plus fine qu'avant, hauteur réduite)
+[ ] Chord 30/70 : root à gauche ~30%, notes unifiées à droite ~70%
+[ ] Notes unifiées séparées par " - " (ex: "A - C - E - G")
+[ ] Alternatives en chips grises sous les notes (si applicable)
+[ ] Icône Panic : cercle 5 broches + barre diagonale visible, 30 dp
+[ ] Pédale sustain : bascule mécanique visible (angle −8° → +10°)
+[ ] Pédale sustain LED avant s'allume quand active
+[ ] Channel strips : aura réactive au son (halo coloré en bas)
+[ ] Rails + thumbs VISUELLEMENT INCHANGÉS (FaderRail/FaderThumb non
+    modifiés — le rendu doit être strictement identique)
+[ ] FX + Settings + Power bas de strip INCHANGÉS (TrackBottomRow)
+[ ] Solo actif = couleur de la piste (pas ambre comme V1)
+[ ] Glow S/M 20 % plus discret (blur 10 dp au lieu de 12)
+[ ] Pan knob INCHANGÉ (MicroPanKnob du projet)
+[ ] BottomBar : CPU/RAM stub, BPM stepper, snapshots, master compact,
+    bouton clavier
+[ ] Snapshots ≤3 : largeur fixe 100 dp chacun
+[ ] Snapshots >3 : flexible weight(), répartition égale
+[ ] Snapshot nommé "Snapshot N" : 2 lignes ("SNAPSHOT" / "N")
+[ ] Snapshot nommé custom : 1 ligne (nom seul)
+[ ] Master slider : thumb + fill + peak hold (petit trait clair)
+[ ] Master slider : "MASTER" à gauche, "%" à droite
+[ ] Espace strips ↔ BottomBar ≈ 6 dp
+[ ] Icône piano : clavier stylisé (pas grille)
+
+VALIDATION INTERACTION (à tester manuellement)
+──────────────────────────────────────────────────────────
+[ ] Drag vertical sur fader → volume change (via
+    FaderSliderWithVuMeter inchangé)
+[ ] Tap pan knob → reset à C (double-tap comme V1)
+[ ] Tap FX → ouvre dialog Effects (via TrackBottomRow inchangé)
+[ ] Tap Settings → ouvre TrackSettings (via TrackBottomRow inchangé)
+[ ] Tap Power → toggle on/off (via TrackBottomRow inchangé)
+[ ] Long-press Power → bubble trash visible (via TrackBottomRow)
+[ ] Tap Solo → isSolo toggle + accentColor appliqué au bouton
+[ ] Tap Mute → isMuted toggle + rouge S/M
+[ ] Tap snapshot (slot_default) → onSnapshotSlotClick
+[ ] Tap snapshot (autre) → onSnapshotSlotClick
+[ ] Tap snapshot (actif 2e fois) → retour custom libre (V1 behavior)
+[ ] Long-press snapshot → ManageSnapshotDialogV2 s'ouvre
+[ ] Dialog ManageSnapshot : édition nom fonctionne
+[ ] Dialog ManageSnapshot : Save → rename + persist mode (via
+    renameSnapshotSlotWithMode, écart 2 codé en §11)
+[ ] Dialog ManageSnapshot : Cancel → fermeture sans changement
+[ ] Swipe BAS sur snapshot supprimable → onDeleteSnapshot
+[ ] Swipe BAS sur slot_default → no-op (protection)
+[ ] Tap "+" → dialog création (via onAddSnapshot)
+[ ] Tap BPM +/- → bpm change
+[ ] Tap Panic → triggerPanic (All notes off)
+[ ] Tap Sustain → toggle + animation pédale
+[ ] Tap Notes/Patches/Settings → navigation respective
+[ ] Tap DrumPad icon → navigation DRUMPAD
+[ ] Tap Master slider → drag horizontal change volume
+[ ] Tap bouton clavier → toggle keyboard
+
+VALIDATION NON-RÉGRESSION
+──────────────────────────────────────────────────────────
+[ ] Aucun crash au lancement
+[ ] Aucun crash après 5 minutes d'utilisation
+[ ] Audio continue de fonctionner (aucun impact sur AudioEngine)
+[ ] Snapshots chargent correctement (onSnapshotSlotClick inchangé)
+[ ] Soundfonts chargent (openSoundfontForSlot inchangé)
+[ ] Settings drawer s'ouvre (openSettingsDrawer inchangé)
+[ ] Thème dynamique Material You continue (hue, saturation)
+[ ] Scroll horizontal des strips (mode unlock) fonctionne
+[ ] Auto-fit (mode lock) : strips se partagent l'espace
+[ ] Keyboard retractable toujours fonctionnel (VirtualPianoKeyboard
+    inchangé, seul le bouton toggle a changé de style)
+
+VALIDATION BUILD
+──────────────────────────────────────────────────────────
+[ ] ./gradlew :app:compileDebugKotlin — BUILD SUCCESSFUL
+[ ] ./gradlew :app:assembleDebug — BUILD SUCCESSFUL
+[ ] APK généré (taille ≈ 41-42 Mo)
+[ ] Aucun warning bloquant (warnings deprecation acceptable)
+
+═══════════════════════════════════════════════════════════════
+FIN BRIEF MIXER 7 — chantier V2 terminé
+═══════════════════════════════════════════════════════════════
+
+RÉCAP CHANTIER V2 COMPLET :
+  7 fichiers v2/ livrés + compilés
+  §10 câblage effectué (3 composants branchés)
+  §11 recallMode résolu (SubSceneSnapshot + ViewModel)
+  §12 checklist à valider sur device
+
+POLISH V2.1 (backlog, non bloquant) :
+  • REC button dans MixerBottomBarV2
+  • Master FX button dans MasterSliderCompact
+  • Peak hold decay (1500ms fallback)
+  • Half-pedal sustain (Float au lieu de Boolean)
+  • Play/Pause Loops dans MixerTopBarV2
+  • Migration quadraticBezierTo → quadraticTo (dépréciation)
+  • Drawables dédiés pour Patches / Settings (au lieu d'ic_quill × 3)
