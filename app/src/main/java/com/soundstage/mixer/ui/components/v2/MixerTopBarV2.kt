@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -13,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -143,18 +145,27 @@ private fun StepperV2(
             .background(Brush.verticalGradient(listOf(pT, pB)))
             .border(1.dp, Color(0x0DFFFFFF), RoundedCornerShape(8.dp)),
         verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.width(20.dp).fillMaxHeight().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onMinus() },
+        // JSX RoundStep: cercle 30x30, relief = liseré clair en haut + ombre portée basse
+        Box(Modifier.size(30.dp).shadow(2.dp, CircleShape)
+                .clip(CircleShape)
+                .background(Brush.verticalGradient(listOf(Color(0x1AFFFFFF), Color(0x0AFFFFFF))))
+                .border(1.dp, Color(0x1FFFFFFF), CircleShape)
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onMinus() },
             contentAlignment = Alignment.Center) {
-            Text("−", color = Color(0xFFE2E8F0), fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+            Text("−", color = Color(0xFFE3E8F2), fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
         }
         Column(Modifier.padding(horizontal = 2.dp).defaultMinSize(minWidth = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             Text(label, color = tG, fontSize = 7.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 8.sp)
             Text(value, color = tM, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace, lineHeight = 12.sp)
         }
-        Box(Modifier.width(20.dp).fillMaxHeight().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onPlus() },
+        Box(Modifier.size(30.dp).shadow(2.dp, CircleShape)
+                .clip(CircleShape)
+                .background(Brush.verticalGradient(listOf(Color(0x1AFFFFFF), Color(0x0AFFFFFF))))
+                .border(1.dp, Color(0x1FFFFFFF), CircleShape)
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onPlus() },
             contentAlignment = Alignment.Center) {
-            Text("+", color = Color(0xFFE2E8F0), fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+            Text("+", color = Color(0xFFE3E8F2), fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
         }
     }
 }

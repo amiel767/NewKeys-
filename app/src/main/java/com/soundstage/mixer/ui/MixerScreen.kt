@@ -873,8 +873,14 @@ fun MixerScreen(
                 val slot = uiState.audioSlots.getOrNull(uiState.activeSoundfontSlotId)
                 val activePresets = slot?.presets ?: emptyList()
                 val activePresetId = slot?.preset ?: 0
-                val activeTrack = uiState.tracks.getOrNull(uiState.activeSoundfontSlotId)
-                val activeSfName = activeTrack?.soundfontName.orEmpty()
+                // tracks a 8 elements (0..7) : les slots 8 (Drum) et 9 (Pad) n'y ont pas
+                // d'entree, getOrNull renvoie null. Le nom fiable est soundFontPath (ecrit
+                // pour tous les slots), comme le fait deja DrumPadScreen.
+                val activeSfName = if (uiState.activeSoundfontSlotId in 0..7) {
+                    uiState.tracks.getOrNull(uiState.activeSoundfontSlotId)?.soundfontName.orEmpty()
+                } else {
+                    slot?.soundFontPath?.substringAfterLast("/").orEmpty()
+                }
                 val activeBank = slot?.bank ?: 0
 
                 val variant = when (uiState.activeSoundfontSlotId) {

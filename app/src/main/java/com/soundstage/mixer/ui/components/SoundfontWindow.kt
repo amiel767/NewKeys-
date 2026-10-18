@@ -300,7 +300,7 @@ fun SoundfontWindow(
     actions: SfWindowActions = NoOpSfWindowActions,
     modifier: Modifier = Modifier,
 ) {
-    var tab by remember { mutableStateOf(SfTab.All) }
+    var tab by remember { mutableStateOf(if (state.loadedFileId != null) SfTab.Presets else SfTab.All) }
     var query by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf<SfCategory?>(null) }
     var selectedBank by remember { mutableIntStateOf(state.loadedBank) }
@@ -312,9 +312,10 @@ fun SoundfontWindow(
 
     val hiddenFileKeys = remember { mutableStateOf(setOf<String>()) }
 
-    LaunchedEffect(state.isOpen, state.variant) {
+    LaunchedEffect(state.isOpen, state.variant, state.loadedFileId) {
         if (state.isOpen) {
-            tab = SfTab.All
+            // JSX: on atterrit sur Presets uniquement si un soundfont est deja charge, sinon All
+            tab = if (state.loadedFileId != null) SfTab.Presets else SfTab.All
             query = ""
             selectedCategory = when (state.variant) {
                 SoundfontVariant.Pad -> SfCategory.Pads
@@ -1117,9 +1118,8 @@ private fun SfPresetRow(
                 translationY = (1f - enter.value) * 6.dp.toPx()
             }
             .sfTap(0.985f, onTap)
-            .shadow(3.dp, RowShape, ambientColor = Color.Black, spotColor = Color(0x99000000))
             .clip(RowShape)
-            .background(Brush.linearGradient(listOf(Color(0xFF232C3E), Color(0xFF1A2230))))
+            .background(if (active) Brush.linearGradient(listOf(Color.White.copy(alpha = 0.12f), Color.White.copy(alpha = 0.07f))) else Brush.linearGradient(listOf(Color.White.copy(alpha = 0.065f), Color.White.copy(alpha = 0.03f))))
             .border(1.dp, if (active) white(0.17f) else white(0.06f), RowShape)
             .topHairline(if (active) 0.14f else 0.07f)
             .padding(start = 12.dp, end = 6.dp),
@@ -1326,9 +1326,8 @@ private fun SfFileRow(
                     )
                 }
                 .sfTap(0.985f, onTap)
-                .shadow(3.dp, RowShape, ambientColor = Color.Black, spotColor = Color(0x99000000))
                 .clip(RowShape)
-                .background(Brush.linearGradient(listOf(Color(0xFF232C3E), Color(0xFF1A2230))))
+                .background(if (row.isLoaded) Brush.linearGradient(listOf(Color.White.copy(alpha = 0.12f), Color.White.copy(alpha = 0.07f))) else Brush.linearGradient(listOf(Color.White.copy(alpha = 0.065f), Color.White.copy(alpha = 0.03f))))
                 .border(1.dp, if (row.isLoaded) white(0.17f) else white(0.06f), RowShape)
                 .topHairline(if (row.isLoaded) 0.14f else 0.07f)
                 .padding(start = 12.dp, end = 6.dp),

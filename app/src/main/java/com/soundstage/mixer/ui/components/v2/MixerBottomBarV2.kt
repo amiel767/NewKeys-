@@ -203,18 +203,25 @@ private fun MasterSliderCompact(
                     color = if (value > 0.75f) Color(0xFFD8A24A) else Color(0xFFF1F4FA),
                     fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
             }
-            Box(Modifier.fillMaxWidth().height(18.dp).pointerInput(Unit) {
-                detectHorizontalDragGestures { change, delta ->
-                    change.consume()
-                    onValueChange((currentValue + delta / size.width.toFloat()).coerceIn(0f, 1f)) // Fix: currentValue
-                }
-            }) {
+            // JSX MasterSlider: la valeur suit la position du doigt dans la piste (tap ET drag).
+            // BoxWithConstraints pour exprimer pouce/peak en fraction de largeur reelle (px),
+            // au lieu d'un melange dp/pixels.
+            BoxWithConstraints(Modifier.fillMaxWidth().height(18.dp)) {
+                val w = maxWidth
+                Box(Modifier.fillMaxWidth().height(18.dp).pointerInput(Unit) {
+                    detectTapGestures { o -> onValueChange((o.x / size.width.toFloat()).coerceIn(0f, 1f)) }
+                }.pointerInput(Unit) {
+                    detectHorizontalDragGestures { change, delta ->
+                        change.consume()
+                        onValueChange((currentValue + delta / size.width.toFloat()).coerceIn(0f, 1f))
+                    }
+                })
                 Box(Modifier.fillMaxWidth().height(4.dp).align(Alignment.Center).clip(RoundedCornerShape(2.dp)).background(Color(0xFF0E131C)))
                 Box(Modifier.fillMaxWidth(value).height(4.dp).align(Alignment.CenterStart).clip(RoundedCornerShape(2.dp)).background(Brush.horizontalGradient(listOf(Color(0x8C8FB2E8), Color(0xFF8FB2E8)))))
                 if (localPeak > 0.01f) {
-                    Box(Modifier.fillMaxHeight().width(2.dp).offset(x = (localPeak * 100).dp).background(Color(0xFFA9C6F0), RoundedCornerShape(1.dp)))
+                    Box(Modifier.fillMaxHeight().width(2.dp).offset(x = w * localPeak).background(Color(0xFFA9C6F0), RoundedCornerShape(1.dp)))
                 }
-                Box(Modifier.offset { IntOffset((value * 100).roundToInt(), 0) }
+                Box(Modifier.offset(x = w * value - 7.dp)
                     .size(14.dp, 16.dp).align(Alignment.CenterStart)
                     .clip(RoundedCornerShape(4.dp))
                     .background(Brush.verticalGradient(listOf(Color(0xFF6E7799), Color(0xFF4B5373), Color(0xFF3F4766))))

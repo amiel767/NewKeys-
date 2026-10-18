@@ -170,7 +170,7 @@ fun <T> DpSeg(options: List<Pair<T, String>>, selected: T, onChange: (T) -> Unit
     BoxWithConstraints(modifier.height(height + 6.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xCC0F141D)).border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp)).padding(3.dp)) {
         val segW = maxWidth / options.size
         val offsetX by animateDpAsState(segW * idx, spring(dampingRatio = 0.6f, stiffness = 500f), label = "seg")
-        Box(Modifier.offset(x = offsetX).width(segW).fillMaxHeight().padding(horizontal = 1.dp).clip(RoundedCornerShape(9.dp)).background(Brush.verticalGradient(listOf(Color(0xFF38445E), Color(0xFF2B3650)))).shadow(elevation = 3.dp, shape = RoundedCornerShape(9.dp), clip = false))
+        Box(Modifier.offset(x = offsetX).width(segW).fillMaxHeight().shadow(2.dp, RoundedCornerShape(9.dp)).clip(RoundedCornerShape(9.dp)).background(Brush.verticalGradient(listOf(Color(0xFF38445E), Color(0xFF2B3650)))))
         Row(Modifier.fillMaxSize()) {
             options.forEach { (k, l) ->
                 val isSel = selected == k

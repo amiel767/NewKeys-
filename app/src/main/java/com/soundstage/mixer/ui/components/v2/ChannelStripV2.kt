@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -56,16 +57,26 @@ fun ChannelStripV2(
             // Name Plate : 22dp hauteur, font 9.5sp
             Box(
                 modifier = Modifier.fillMaxWidth().height(22.dp)
+                    // JSX name plate: ombre portée basse + relief (inset haut simule par la bordure claire)
+                    .shadow(2.dp, RoundedCornerShape(8.dp))
                     .clip(RoundedCornerShape(8.dp))
                     .background(Brush.verticalGradient(listOf(Color(0xFF232C3D), Color(0xFF191F2B))))
-                    .border(1.dp, Color(0x12FFFFFF), RoundedCornerShape(8.dp))
+                    .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(8.dp))
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onTrackNameClick() },
                 contentAlignment = Alignment.Center
             ) {
                 val name = track.patchName.ifBlank { track.soundfontName.ifBlank { "—" } }
-                Text(name, color = if (isDimmed) Color(0xFF8F9AB0) else Color(0xFFE9EDF5),
-                    fontSize = if (name.length > 15) 8.5.sp else 9.5.sp,
-                    fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // JSX: textShadow "0 1px 0 rgba(0,0,0,.45)" - rendu par un Text fantome decale d'1dp
+                Box(contentAlignment = Alignment.Center) {
+                    Text(name, color = Color(0x73000000),
+                        fontSize = if (name.length > 15) 8.5.sp else 9.5.sp,
+                        fontWeight = FontWeight.ExtraBold, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.offset(y = 1.dp))
+                    Text(name, color = if (isDimmed) Color(0xFF8F9AB0) else Color(0xFFE9EDF5),
+                        fontSize = if (name.length > 15) 8.5.sp else 9.5.sp,
+                        fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
             Spacer(Modifier.height(6.dp))
             
