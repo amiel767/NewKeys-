@@ -5048,6 +5048,30 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         persistCurrentStateDebounced()
     }
 
+    /**
+     * Overload de renameSnapshotSlot qui persiste aussi le recallMode choisi
+     * dans ManageSnapshotDialogV2. Appelé depuis MixerBottomBarV2 -> onSave.
+     */
+    fun renameSnapshotSlotWithMode(
+        slotName: String,
+        newName: String,
+        recallMode: String
+    ) {
+        renameSnapshotSlot(slotName, newName)
+        _uiState.update { current ->
+            val existing = current.snapshots[slotName] ?: return@update current
+            val updatedSnapshots = current.snapshots.toMutableMap()
+            updatedSnapshots[slotName] = existing.copy(recallMode = recallMode)
+            val updatedPatches = current.patches.map { p ->
+                if (p.id == current.activePatchId) {
+                    p.copy(snapshots = updatedSnapshots)
+                } else p
+            }
+            current.copy(snapshots = updatedSnapshots, patches = updatedPatches)
+        }
+        persistCurrentStateDebounced()
+    }
+
     fun onSnapshotSlotClick(slotName: String) {
         val currentState = _uiState.value
         if (currentState.isSnapshotArmMode) {

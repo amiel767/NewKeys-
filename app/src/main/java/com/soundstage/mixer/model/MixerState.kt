@@ -212,7 +212,8 @@ data class SubSceneSnapshot(
     val masterVolume: Float = 0.85f,
     val visibleTracksCount: Int = 1,
     val fxParameters: FxParameters? = null,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val recallMode: String = "crossfade"
 )
 
 data class PatchItem(

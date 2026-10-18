@@ -39,6 +39,10 @@ import com.soundstage.mixer.model.ActivePopup
 import com.soundstage.mixer.model.AppScreenPage
 import com.soundstage.mixer.model.FxParameters
 import com.soundstage.mixer.ui.components.*
+import com.soundstage.mixer.ui.components.v2.MixerBackgroundV2
+import com.soundstage.mixer.ui.components.v2.ChannelStripV2
+import com.soundstage.mixer.ui.components.v2.MixerTopBarV2
+import com.soundstage.mixer.ui.components.v2.MixerBottomBarV2
 import com.soundstage.mixer.ui.pages.DrumPadScreen
 import com.soundstage.mixer.ui.pages.ProjectsPage
 import com.soundstage.mixer.ui.pages.SheetsPage
@@ -86,10 +90,11 @@ private fun MixerMainPageContent(
     onImportDrumPadAudio: () -> Unit = {}
 ) {
 // Full-screen Studio Layout (No enclosing bento box, edge-to-edge layout)
+// Fond V2 (degrade + vignettes) : remplace MaterialTheme.colorScheme.background.
+                MixerBackgroundV2 {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.background)
                             .padding(
                                 start = 4.dp,
                                 end = 4.dp,
@@ -101,45 +106,21 @@ private fun MixerMainPageContent(
                 modifier = Modifier
                     .fillMaxSize()
             ) {
-                // 1. TOP BAR
-                TopBar(
+                // 1. TOP BAR (V2)
+                MixerTopBarV2(
                     transpose = uiState.transpose,
                     octave = uiState.octave,
                     onTransposeChange = { viewModel.updateTranspose(it) },
                     onOctaveChange = { viewModel.updateOctave(it) },
-                    pressedKeys = uiState.pressedKeys,
-                    useFlats = uiState.useFlats,
-                    isLoopsOpen = uiState.activePopup == ActivePopup.LOOPS,
-                    onToggleLoops = { viewModel.toggleLoopsPanel() },
-                    isLoopPlaying = uiState.isLoopPlaying,
-                    onToggleLoopPlayPause = { viewModel.toggleLoopPlayPause() },
-                    loopVolume = uiState.loopVolume,
-                    onLoopVolumeChange = { viewModel.setLoopVolume(it) },
-                    selectedBeats = uiState.selectedBeatCount,
-                    onSelectBeats = { viewModel.selectBeatCount(it) },
-                    loopFolders = uiState.loopFolders,
-                    activeLoopFile = uiState.activeLoopFile,
-                    onToggleLoopFolder = { viewModel.toggleLoopFolder(it) },
-                    onSelectLoopFile = { viewModel.selectAndToggleLoopFile(it) },
+                    detectedChord = detectedChord,
                     isSustainActive = uiState.isSustainActive,
-                    isMidiPedalPressed = uiState.isMidiPedalPressed,
                     onToggleSustain = { viewModel.toggleSustain() },
-                    onOpenNotes = {
-                        viewModel.navigateToPage(AppScreenPage.SHEETS)
-                    },
-                    onOpenDrumPad = {
-                        viewModel.navigateToPage(AppScreenPage.DRUMPAD)
-                    },
-                    onOpenTonicPad = {
-                        if (uiState.activePopup == ActivePopup.TONIC_PAD) viewModel.closePopup() else viewModel.openPopup(ActivePopup.TONIC_PAD)
-                    },
+                    onOpenNotes = { viewModel.navigateToPage(AppScreenPage.SHEETS) },
+                    onOpenDrumPad = { viewModel.navigateToPage(AppScreenPage.DRUMPAD) },
                     onPanic = { viewModel.triggerPanic() },
-                    onOpenScenes = {
-                        viewModel.openPopup(ActivePopup.SCENE)
-                    },
+                    onOpenScenes = { viewModel.openPopup(ActivePopup.SCENE) },
                     onOpenSettings = { viewModel.openSettingsDrawer() },
-                    onBackToProjects = { viewModel.navigateToProjectsHome() },
-                    onSaveProjectDirect = { viewModel.saveCurrentProjectDirect() }
+                    modifier = Modifier.fillMaxWidth()
                 )
 
                 Spacer(modifier = Modifier.height(4.dp))
@@ -196,6 +177,7 @@ private fun MixerMainPageContent(
                                 modifier = rowModifier,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
+                                val isAnySolo = uiState.tracks.any { it.isSolo }
                                 visibleTracks.forEach { track ->
                                     val itemModifier = if (isOverflowingInLock) {
                                         Modifier
@@ -207,18 +189,22 @@ private fun MixerMainPageContent(
                                             .fillMaxHeight()
                                     }
 
-                                    VerticalTrackChannel(
+                                    val isDimmed = !track.isEnabled || track.isMuted || (isAnySolo && !track.isSolo)
+                                    val accentColor = getTrackThemeColor(track.id, isMaster = false)
+
+                                    ChannelStripV2(
                                         track = track,
+                                        isDimmed = isDimmed,
+                                        accentColor = accentColor,
                                         onVolumeChange = { vol -> viewModel.setTrackVolume(track.id, vol) },
-                                        onPowerToggle = { viewModel.toggleTrackPower(track.id) },
-                                        onDeleteTrack = { viewModel.removeTrack(track.id) },
                                         onPanChange = { pan -> viewModel.setTrackPan(track.id, pan) },
-                                        onMuteClick = { viewModel.onTrackMuteClick(track.id) },
-                                        onSoloClick = { viewModel.onTrackSoloClick(track.id) },
+                                        onSoloToggle = { viewModel.onTrackSoloClick(track.id) },
+                                        onMuteToggle = { viewModel.onTrackMuteClick(track.id) },
                                         onTrackNameClick = { viewModel.openSoundfontForSlot(track.id - 1) },
                                         onFxClick = { viewModel.openEffectsForTrack(track.id) },
                                         onTrackSettingsClick = { viewModel.openTrackSettings(track.id) },
-                                        showTicks = showTicks,
+                                        onPowerToggle = { viewModel.toggleTrackPower(track.id) },
+                                        onDeleteTrack = { viewModel.removeTrack(track.id) },
                                         modifier = itemModifier
                                     )
                                 }
@@ -458,43 +444,27 @@ private fun MixerMainPageContent(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // 3. BOTTOM BAR (With MIDI Player, Real Chord Detector & Piano Toggle)
-                BottomBar(
+                // 3. BOTTOM BAR (V2)
+                MixerBottomBarV2(
                     masterTrack = uiState.masterTrack,
                     onMasterVolumeChange = { vol -> viewModel.setTrackVolume(0, vol) },
-                    onMasterFxClick = { viewModel.openEffectsForTrack(0) },
-                    isRecording = uiState.isRecording,
-                    recordingDuration = uiState.recordingDuration,
-                    lastRecordedFile = uiState.lastRecordedFile,
-                    onToggleRecording = { viewModel.toggleRecording() },
                     bpm = uiState.bpm,
-                    onBpmChange = { viewModel.updateBpm(it) },
-                    
-                    // Real-time Detected Chord
-                    detectedChord = detectedChord,
-
-                    // Snapshots / Sub-Scenes (Section 2)
+                    onBpmChange = { viewModel.setGlobalBpm(it) },
                     isSnapshotArmMode = uiState.isSnapshotArmMode,
                     onToggleSnapshotArm = { viewModel.toggleSnapshotArm() },
                     activeSnapshotSlot = uiState.activeSnapshotSlot,
                     snapshots = uiState.snapshots,
                     configuredSnapshotSlots = uiState.configuredSnapshotSlots,
-                    onSnapshotSlotClick = { slotKey -> viewModel.onSnapshotSlotClick(slotKey) },
+                    onSnapshotSlotClick = { key -> viewModel.onSnapshotSlotClick(key) },
                     onAddSnapshot = { name -> viewModel.addSnapshotSlot(name) },
-                    onDeleteSnapshot = { slotKey -> viewModel.removeSnapshotSlot(slotKey) },
+                    onDeleteSnapshot = { key -> viewModel.removeSnapshotSlot(key) },
                     snapshotCustomNames = uiState.snapshotCustomNames,
-                    onRenameSnapshotSlot = { slotKey, newName -> viewModel.renameSnapshotSlot(slotKey, newName) },
-                    snapshotTransitionProgress = uiState.snapshotTransitionProgress,
-                    
+                    onRenameSnapshotSlot = { key, name ->
+                        viewModel.renameSnapshotSlotWithMode(key, name, "crossfade")
+                    },
                     isKeyboardActive = isKeyboardVisible,
                     onToggleKeyboard = { viewModel.cycleKeyboardExpansion() },
-                    isLayerActive = uiState.isKeyboardLayerExpanded,
-                    onToggleLayer = { viewModel.toggleKeyboardLayer() },
-                    onKeyboardHandleClick = { viewModel.cycleKeyboardExpansion() },
-                    onKeyboardDrag = { deltaY ->
-                        val fractionDelta = -deltaY / 200f
-                        viewModel.setKeyboardHeightFraction(uiState.keyboardHeightFraction + fractionDelta)
-                    }
+                    modifier = Modifier.fillMaxWidth()
                 )
 
                 // 4. FIXED LAYOUT SLOT FOR RETRACTABLE PIANO (Exact fit with 5dp margin without overlapping)
@@ -618,6 +588,7 @@ private fun MixerMainPageContent(
                 )
             }
                     }
+                }
                 }
 
 
