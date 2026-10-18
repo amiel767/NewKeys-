@@ -1,0 +1,927 @@
+═══════════════════════════════════════════════════════════════
+BRIEF MIXER 8 — POLISH V2 (Corrections UI et Dimensions)
+═══════════════════════════════════════════════════════════════
+
+⚠️ Un SEUL fichier .txt, délimiteurs === BEGIN FICHIER / END FICHIER ===.
+   Aucun fence markdown interne.
+
+⚠️ Modifications :
+   • Dimensions réduites (tailles de polices, paddings) pour coller
+     au rendu natif mobile (le JSX était sur un canvas virtuel plus grand).
+   • Ajout du bouton FX dans le Master (MixerBottomBarV2).
+   • Fix du drag Master (rememberUpdatedState).
+   • Suppression des ripples (halos de clic Material) sur les composants V2.
+   • Nouvelles icônes Patches (Dossier) et Settings (Engrenage).
+   • Fix de la disquette (plus épaisse et lumineuse).
+   • Fix de la barre DIN (moins longue).
+   • Fix de l'animation Sustain (halo contenu, ressort plus sec).
+   • PAS DE MODIFICATION SUR LES FADERS (rails, thumb, VU, FX, Settings, Power).
+
+SÉQUENCE D'INTÉGRATION :
+  1. Remplacer MixerIconsV2.kt (nouvelles icônes).
+  2. Remplacer SustainPedalButton.kt (animation fix).
+  3. Remplacer MixerTopBarV2.kt (tailles réduites + nouvelles icônes).
+  4. Remplacer ChannelStripV2.kt (tailles réduites + suppression ripple).
+  5. Remplacer MixerBottomBarV2.kt (tailles réduites + bouton FX + drag fix).
+  6. Mettre à jour l'appel dans MixerScreen.kt (ajout onMasterFxClick).
+  7. Compile check.
+
+═══════════════════════════════════════════════════════════════
+FICHIER 1/6 — MixerIconsV2.kt
+═══════════════════════════════════════════════════════════════
+
+CHEMIN : app/src/main/java/com/soundstage/mixer/ui/components/v2/MixerIconsV2.kt
+
+=== BEGIN FICHIER MixerIconsV2.kt ===
+package com.soundstage.mixer.ui.components.v2
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+
+/** Disquette plus épaisse et claire */
+@Composable
+fun IconSaveV2(size: Dp = 20.dp, color: Color = Color(0xFFE9EDF5)) {
+    Canvas(Modifier.size(size)) {
+        val s = this.size.minDimension / 810f
+        val offX = (this.size.width - 750f * s) / 2f
+        val offY = (this.size.height - 810f * s) / 2f
+        val sw = 80f * s
+        withTransform({ translate(offX, offY); scale(s, s, pivot = Offset.Zero) }) {
+            val body = Path().apply {
+                moveTo(152f, 42f); lineTo(475f, 42f); lineTo(688f, 255f); lineTo(688f, 668f)
+                arcTo(Rect(506f, 577f, 688f, 759f), 0f, 90f, false)
+                lineTo(152f, 759f)
+                arcTo(Rect(61f, 577f, 243f, 759f), 90f, 90f, false)
+                lineTo(61f, 133f)
+                arcTo(Rect(61f, 42f, 243f, 224f), 180f, 90f, false)
+                close()
+            }
+            drawPath(body, color, style = Stroke(sw, cap = StrokeCap.Butt, join = StrokeJoin.Round))
+            val shutter = Path().apply {
+                moveTo(195f, 42f); lineTo(195f, 199f)
+                arcTo(Rect(195f, 178f, 237f, 220f), 180f, -90f, false)
+                lineTo(399f, 220f)
+                arcTo(Rect(378f, 178f, 420f, 220f), 90f, -90f, false)
+                lineTo(420f, 42f)
+            }
+            drawPath(shutter, color, style = Stroke(sw, cap = StrokeCap.Butt, join = StrokeJoin.Round))
+            val label = Path().apply {
+                moveTo(195f, 759f); lineTo(195f, 466f)
+                arcTo(Rect(195f, 445f, 237f, 487f), 180f, 90f, false)
+                lineTo(534f, 445f)
+                arcTo(Rect(513f, 445f, 555f, 487f), 270f, 90f, false)
+                lineTo(555f, 759f)
+            }
+            drawPath(label, color, style = Stroke(sw, cap = StrokeCap.Butt, join = StrokeJoin.Round))
+        }
+    }
+}
+
+/** Icône Piano (inchangée) */
+@Composable
+fun IconPianoV2(size: Dp = 22.dp, color: Color = Color(0xFFC9D1E0)) {
+    Canvas(Modifier.size(size)) {
+        val s = this.size.minDimension / 520f
+        val offX = (this.size.width - 520f * s) / 2f
+        val offY = (this.size.height - 500f * s) / 2f
+        withTransform({ translate(offX, offY); scale(s, s, pivot = Offset.Zero) }) {
+            val frame = Path().apply {
+                moveTo(22f, 62f); quadraticBezierTo(22f, 40f, 44f, 40f)
+                lineTo(80f, 40f); lineTo(72f, 64f); lineTo(46f, 64f); lineTo(46f, 466f)
+                lineTo(474f, 466f); lineTo(474f, 64f); lineTo(448f, 64f); lineTo(440f, 40f)
+                lineTo(476f, 40f); quadraticBezierTo(498f, 40f, 498f, 62f)
+                lineTo(498f, 468f); quadraticBezierTo(498f, 490f, 476f, 490f)
+                lineTo(44f, 490f); quadraticBezierTo(22f, 490f, 22f, 468f)
+                close()
+            }
+            drawPath(frame, color)
+            listOf(Triple(100f, 93f, 24f), Triple(217f, 93f, 24f), Triple(333f, 94f, 24f))
+                .forEach { (x, w, r) -> drawRoundRect(color, topLeft = Offset(x, 40f), size = Size(w, 280f), cornerRadius = CornerRadius(r)) }
+            listOf(135f, 252f, 369f).forEach { x -> drawRect(color, topLeft = Offset(x, 343f), size = Size(22f, 125f)) }
+        }
+    }
+}
+
+/** Icône DIN / Panic (barre raccourcie) */
+@Composable
+fun IconDinV2(size: Dp = 30.dp, color: Color = Color.White, withBar: Boolean = true) {
+    Canvas(Modifier.size(size)) {
+        val s = this.size.minDimension / 288f
+        withTransform({ scale(s, s, pivot = Offset.Zero) }) {
+            drawCircle(color, 90f, Offset(144f, 144f), style = Stroke(18f))
+            listOf(
+                Offset(91f, 141f), Offset(107f, 106f), Offset(144f, 92f), Offset(181f, 106f), Offset(197f, 141f)
+            ).forEach { drawCircle(color, 14.5f, it) }
+            if (withBar) {
+                // Barre réduite pour ne pas déborder du cercle (au lieu de 30 à 258)
+                drawLine(color, Offset(60f, 60f), Offset(228f, 228f), strokeWidth = 22f, cap = StrokeCap.Round)
+            }
+        }
+    }
+}
+
+/** NOUVEAU: Icône Patches (Dossier) */
+@Composable
+fun IconFolderV2(size: Dp = 20.dp, color: Color = Color(0xFFC9D1E0)) {
+    Canvas(Modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val stroke = 2.dp.toPx()
+        val path = Path().apply {
+            moveTo(w * 0.1f, h * 0.25f)
+            lineTo(w * 0.4f, h * 0.25f)
+            lineTo(w * 0.5f, h * 0.35f)
+            lineTo(w * 0.9f, h * 0.35f)
+            lineTo(w * 0.9f, h * 0.85f)
+            lineTo(w * 0.1f, h * 0.85f)
+            close()
+        }
+        drawPath(path, color, style = Stroke(stroke, join = StrokeJoin.Round))
+    }
+}
+
+/** NOUVEAU: Icône Settings (Engrenage) */
+@Composable
+fun IconGearV2(size: Dp = 20.dp, color: Color = Color(0xFFC9D1E0)) {
+    Canvas(Modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val stroke = 2.dp.toPx()
+        val center = Offset(w / 2f, h / 2f)
+        val outer = w * 0.4f
+        val inner = w * 0.25f
+        
+        drawCircle(color, inner, center, style = Stroke(stroke))
+        
+        val teeth = 8
+        for (i in 0 until teeth) {
+            val angle = (i * 360f / teeth) * (Math.PI / 180f).toFloat()
+            val startX = center.x + (inner + stroke) * Math.cos(angle)
+            val startY = center.y + (inner + stroke) * Math.sin(angle)
+            val endX = center.x + outer * Math.cos(angle)
+            val endY = center.y + outer * Math.sin(angle)
+            drawLine(color, Offset(startX, startY), Offset(endX, endY), strokeWidth = stroke, cap = StrokeCap.Round)
+        }
+    }
+}
+=== END FICHIER MixerIconsV2.kt ===
+
+═══════════════════════════════════════════════════════════════
+FICHIER 2/6 — SustainPedalButton.kt
+═══════════════════════════════════════════════════════════════
+
+CHEMIN : app/src/main/java/com/soundstage/mixer/ui/components/v2/SustainPedalButton.kt
+
+=== BEGIN FICHIER SustainPedalButton.kt ===
+package com.soundstage.mixer.ui.components.v2
+
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.unit.dp
+
+@Composable
+fun SustainPedalButton(
+    isActive: Boolean,
+    onToggle: () -> Unit,
+    panelTop: Color = Color(0xFF2B3348),
+    panelBottom: Color = Color(0xFF1D2433),
+    modifier: Modifier = Modifier
+) {
+    val accent = Color(0xFF8FB2E8)
+    val angle by animateFloatAsState(
+        targetValue = if (isActive) 10f else -8f,
+        animationSpec = spring(dampingRatio = 0.85f, stiffness = 800f), // Fix: ressort plus sec
+        label = "pedal"
+    )
+    val glowAlpha by animateFloatAsState(
+        targetValue = if (isActive) 0.55f else 0f,
+        animationSpec = tween(280),
+        label = "pedalGlow"
+    )
+
+    Box(
+        modifier = modifier
+            .width(56.dp)
+            .height(36.dp) // Fix: hauteur réduite
+            .clip(RoundedCornerShape(10.dp))
+            .background(
+                if (isActive)
+                    Brush.verticalGradient(listOf(Color(0x478FB2E8), Color(0x248FB2E8)))
+                else
+                    Brush.verticalGradient(listOf(panelTop, panelBottom))
+            )
+            .border(1.dp, Color(0x0DFFFFFF), RoundedCornerShape(10.dp))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onToggle() },
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            val cx = size.width / 2f
+            val baseY = size.height * 0.78f
+
+            if (glowAlpha > 0.01f) {
+                // Fix: Halo contenu
+                drawCircle(
+                    color = accent.copy(alpha = glowAlpha * 0.45f),
+                    radius = size.width * 0.40f,
+                    center = Offset(cx, baseY + 4.dp.toPx())
+                )
+            }
+            drawOval(
+                color = Color.Black.copy(alpha = 0.55f),
+                topLeft = Offset(cx - 16.dp.toPx(), baseY + 5.dp.toPx()),
+                size = Size(32.dp.toPx() + if (isActive) 4.dp.toPx() else 0f, 4.dp.toPx())
+            )
+            val cable = Path().apply {
+                moveTo(cx - 18.dp.toPx(), baseY - 4.dp.toPx())
+                quadraticBezierTo(cx - 26.dp.toPx(), baseY - 6.dp.toPx(), cx - 30.dp.toPx(), baseY - 14.dp.toPx())
+            }
+            drawPath(cable, Color(0xFF2E3549), style = Stroke(1.6.dp.toPx(), cap = StrokeCap.Round))
+
+            val spring = Path().apply {
+                moveTo(cx - 14.dp.toPx(), baseY - 2.dp.toPx())
+                quadraticBezierTo(cx - 11.dp.toPx(), baseY, cx - 11.dp.toPx(), baseY + 2.dp.toPx())
+                quadraticBezierTo(cx - 11.dp.toPx(), baseY + 4.dp.toPx(), cx - 14.dp.toPx(), baseY + 2.dp.toPx())
+            }
+            drawPath(spring, Color(0xFF5A6379), style = Stroke(1.1.dp.toPx(), cap = StrokeCap.Round))
+
+            drawRoundRect(
+                color = Color(0xFF2E3549),
+                topLeft = Offset(cx - 19.dp.toPx(), baseY),
+                size = Size(10.dp.toPx(), 5.dp.toPx()),
+                cornerRadius = CornerRadius(1.4.dp.toPx())
+            )
+            drawCircle(Color(0xFF1A2030), 1.dp.toPx(), Offset(cx - 14.dp.toPx(), baseY + 2.5.dp.toPx()))
+
+            rotate(degrees = angle, pivot = Offset(cx - 14.dp.toPx(), baseY - 6.dp.toPx())) {
+                drawRoundRect(
+                    brush = Brush.verticalGradient(listOf(Color(0xFF6E7799), Color(0xFF4B5373), Color(0xFF3F4766))),
+                    topLeft = Offset(cx - 14.dp.toPx(), baseY - 16.dp.toPx()),
+                    size = Size(36.dp.toPx(), 10.dp.toPx()),
+                    cornerRadius = CornerRadius(2.dp.toPx())
+                )
+                drawLine(
+                    Color(0x0FFFFFFF),
+                    Offset(cx - 12.dp.toPx(), baseY - 13.dp.toPx()),
+                    Offset(cx + 20.dp.toPx(), baseY - 13.dp.toPx()),
+                    0.6.dp.toPx()
+                )
+                // Fix: LED plus discrète
+                drawRoundRect(
+                    color = if (isActive) accent else Color(0xFF5A6379),
+                    topLeft = Offset(cx + 18.dp.toPx(), baseY - 14.dp.toPx()),
+                    size = Size(1.5.dp.toPx(), 4.dp.toPx()),
+                    cornerRadius = CornerRadius(0.8.dp.toPx())
+                )
+            }
+        }
+    }
+}
+=== END FICHIER SustainPedalButton.kt ===
+
+═══════════════════════════════════════════════════════════════
+FICHIER 3/6 — MixerTopBarV2.kt
+═══════════════════════════════════════════════════════════════
+
+CHEMIN : app/src/main/java/com/soundstage/mixer/ui/components/v2/MixerTopBarV2.kt
+
+=== BEGIN FICHIER MixerTopBarV2.kt ===
+package com.soundstage.mixer.ui.components.v2
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.soundstage.mixer.R
+import com.soundstage.mixer.ui.components.DetectedChord
+
+@Composable
+fun MixerTopBarV2(
+    transpose: Int, octave: Int,
+    onTransposeChange: (Int) -> Unit, onOctaveChange: (Int) -> Unit,
+    detectedChord: DetectedChord?,
+    isSustainActive: Boolean, onToggleSustain: () -> Unit,
+    onOpenNotes: () -> Unit, onOpenDrumPad: () -> Unit,
+    onPanic: () -> Unit, onOpenScenes: () -> Unit, onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val pT = Color(0xFF2B3348); val pB = Color(0xFF1D2433)
+    val tM = Color(0xFFE9EDF5); val tG = Color(0xFF7B859A); val ac = Color(0xFF8FB2E8)
+
+    Row(modifier.height(36.dp), // Fix: réduit de 40 à 36
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        
+        // Fix: Stepper réduit
+        StepperV2("TRANS", if (transpose > 0) "+$transpose" else "$transpose",
+            { onTransposeChange(-1) }, { onTransposeChange(1) }, pT, pB, tM, tG)
+        StepperV2("OCT", if (octave > 0) "+$octave" else "$octave",
+            { onOctaveChange(-1) }, { onOctaveChange(1) }, pT, pB, tM, tG)
+
+        Row(Modifier.weight(1f).fillMaxHeight()
+                .clip(RoundedCornerShape(8.dp))
+                .background(Brush.verticalGradient(listOf(pT, pB)))
+                .border(1.dp, Color(0x0DFFFFFF), RoundedCornerShape(8.dp))
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            
+            Box(Modifier.weight(0.3f), contentAlignment = Alignment.CenterStart) {
+                if (detectedChord != null) {
+                    val name = detectedChord.primaryName
+                    // Fix: Max 14sp au lieu de 23sp
+                    val size = when { name.length > 9 -> 11.sp; name.length > 6 -> 12.sp; else -> 14.sp }
+                    Text(name, color = Color.White, fontSize = size,
+                        fontWeight = FontWeight.ExtraBold, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis)
+                } else {
+                    Text("– – –", color = Color(0xFF4F596E), fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
+                }
+            }
+            Box(Modifier.width(1.dp).fillMaxHeight(0.55f).background(Color(0x14FFFFFF)))
+            
+            Column(Modifier.weight(0.7f).padding(start = 8.dp),
+                verticalArrangement = Arrangement.Center) {
+                if (detectedChord != null) {
+                    Box(Modifier.clip(RoundedCornerShape(4.dp))
+                            .background(ac.copy(alpha = 0.16f))
+                            .padding(horizontal = 4.dp, vertical = 1.dp)) {
+                        Text(detectedChord.notesList.joinToString(" - "),
+                            color = Color(0xFFB9CDF2), fontSize = 9.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    val alts = listOfNotNull(
+                        detectedChord.equivalentName.takeIf { it.isNotBlank() && it != detectedChord.primaryName },
+                        detectedChord.alternateNames.takeIf { it.isNotBlank() })
+                    if (alts.isNotEmpty()) {
+                        Spacer(Modifier.height(1.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            alts.take(2).forEach { alt ->
+                                Box(Modifier.clip(RoundedCornerShape(4.dp))
+                                        .background(Color(0x14FFFFFF))
+                                        .padding(horizontal = 4.dp, vertical = 1.dp)) {
+                                    Text(alt, color = tM, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Text("Waiting for notes…", color = Color(0xFF566075),
+                        fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+
+        Box(Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)) // Fix: taille 36 au lieu de 40
+                .background(Brush.verticalGradient(listOf(Color(0xFFD2587C), Color(0xFFB03F63))))
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onPanic() },
+            contentAlignment = Alignment.Center) {
+            IconDinV2(size = 26.dp, color = Color.White, withBar = true)
+        }
+
+        SustainPedalButton(isActive = isSustainActive, onToggle = onToggleSustain, panelTop = pT, panelBottom = pB)
+
+        TopIconButton(onOpenNotes, pT, pB) { Icon(painterResource(R.drawable.ic_quill), "Notes", tint = Color.White, modifier = Modifier.size(16.dp)) }
+        
+        TopIconButton(onOpenDrumPad, pT, pB) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                listOf(
+                    listOf(Color(0xFFE0588C), Color(0xFFE0588C), Color(0xFFA55BE0)),
+                    listOf(Color(0xFFE0588C), Color(0xFFA55BE0), Color(0xFFA55BE0)),
+                    listOf(Color(0xFFA55BE0), Color(0xFF4F7FE6), Color(0xFF4F7FE6))
+                ).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        row.forEach { c -> Box(Modifier.size(5.dp).clip(RoundedCornerShape(1.dp)).background(c)) }
+                    }
+                }
+            }
+        }
+        
+        // Fix: Utilisation de IconFolderV2 et IconGearV2
+        TopIconButton(onOpenScenes, pT, pB) { IconFolderV2(size = 18.dp, color = ac) }
+        TopIconButton(onOpenSettings, pT, pB) { IconGearV2(size = 18.dp, color = Color(0xFFC9D1E0)) }
+    }
+}
+
+@Composable
+private fun StepperV2(
+    label: String, value: String, onMinus: () -> Unit, onPlus: () -> Unit,
+    pT: Color, pB: Color, tM: Color, tG: Color
+) {
+    Row(Modifier.height(36.dp).clip(RoundedCornerShape(8.dp)) // Fix: 36dp hauteur
+            .background(Brush.verticalGradient(listOf(pT, pB)))
+            .border(1.dp, Color(0x0DFFFFFF), RoundedCornerShape(8.dp)),
+        verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.width(20.dp).fillMaxHeight().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onMinus() },
+            contentAlignment = Alignment.Center) {
+            Text("−", color = Color(0xFFE2E8F0), fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+        }
+        Column(Modifier.padding(horizontal = 2.dp).defaultMinSize(minWidth = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Text(label, color = tG, fontSize = 7.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 8.sp)
+            Text(value, color = tM, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace, lineHeight = 12.sp)
+        }
+        Box(Modifier.width(20.dp).fillMaxHeight().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onPlus() },
+            contentAlignment = Alignment.Center) {
+            Text("+", color = Color(0xFFE2E8F0), fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+        }
+    }
+}
+
+@Composable
+private fun TopIconButton(
+    onClick: () -> Unit, pT: Color, pB: Color, content: @Composable () -> Unit
+) {
+    Box(Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)) // Fix: 36dp
+            .background(Brush.verticalGradient(listOf(pT, pB)))
+            .border(1.dp, Color(0x0DFFFFFF), RoundedCornerShape(8.dp))
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClick() },
+        contentAlignment = Alignment.Center) { content() }
+}
+=== END FICHIER MixerTopBarV2.kt ===
+
+═══════════════════════════════════════════════════════════════
+FICHIER 4/6 — ChannelStripV2.kt
+═══════════════════════════════════════════════════════════════
+
+CHEMIN : app/src/main/java/com/soundstage/mixer/ui/components/v2/ChannelStripV2.kt
+
+=== BEGIN FICHIER ChannelStripV2.kt ===
+package com.soundstage.mixer.ui.components.v2
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.soundstage.mixer.model.TrackChannel
+import com.soundstage.mixer.ui.components.FaderSliderWithVuMeter
+import com.soundstage.mixer.ui.components.MicroPanKnob
+import com.soundstage.mixer.ui.components.TrackBottomRow
+
+@Composable
+fun ChannelStripV2(
+    track: TrackChannel, isDimmed: Boolean, accentColor: Color,
+    onVolumeChange: (Float) -> Unit, onPanChange: (Float) -> Unit,
+    onSoloToggle: () -> Unit, onMuteToggle: () -> Unit,
+    onTrackNameClick: () -> Unit, onFxClick: () -> Unit,
+    onTrackSettingsClick: () -> Unit, onPowerToggle: () -> Unit,
+    onDeleteTrack: () -> Unit, modifier: Modifier = Modifier
+) {
+    val level = if (isDimmed) 0f else maxOf(track.peakMeterL, track.peakMeterR).coerceIn(0f, 1f)
+    val auraAlpha = (0.17f + level * 0.42f) * (if (isDimmed) 0.3f else 1f)
+
+    Box(
+        modifier = modifier.clip(RoundedCornerShape(14.dp)) // Fix: 14dp au lieu de 18
+            .background(Brush.verticalGradient(listOf(Color(0xFF232C3D), Color(0xFF191F2B))))
+            .border(1.dp, Color(0x0DFFFFFF), RoundedCornerShape(14.dp))
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            drawRect(Brush.radialGradient(
+                colors = listOf(accentColor.copy(alpha = auraAlpha), Color.Transparent),
+                center = Offset(size.width / 2f, size.height * 1.15f),
+                radius = size.height * 0.75f))
+            drawRect(Brush.verticalGradient(colors = listOf(
+                Color.Transparent, Color.Transparent, accentColor.copy(alpha = auraAlpha * 0.55f))))
+        }
+
+        Column(Modifier.fillMaxSize().padding(horizontal = 4.dp, vertical = 6.dp)) {
+            // Name Plate : 22dp hauteur, font 9.5sp
+            Box(
+                modifier = Modifier.fillMaxWidth().height(22.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Brush.verticalGradient(listOf(Color(0xFF232C3D), Color(0xFF191F2B))))
+                    .border(1.dp, Color(0x12FFFFFF), RoundedCornerShape(8.dp))
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onTrackNameClick() },
+                contentAlignment = Alignment.Center
+            ) {
+                val name = track.patchName.ifBlank { track.soundfontName.ifBlank { "—" } }
+                Text(name, color = if (isDimmed) Color(0xFF8F9AB0) else Color(0xFFE9EDF5),
+                    fontSize = if (name.length > 15) 8.5.sp else 9.5.sp,
+                    fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Spacer(Modifier.height(6.dp))
+            
+            // Pan + S/M : hauteur 24dp
+            Row(Modifier.fillMaxWidth().height(24.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                MicroPanKnob(track.pan, onPanChange, !isDimmed, accentColor, Modifier.size(24.dp))
+                KeyBtnV2("S", track.isSolo, false, accentColor, onSoloToggle, Modifier.weight(1f).fillMaxHeight())
+                KeyBtnV2("M", track.isMuted, true, accentColor, onMuteToggle, Modifier.weight(1f).fillMaxHeight())
+            }
+            Spacer(Modifier.height(4.dp))
+            
+            // Fader INCHANGÉ
+            FaderSliderWithVuMeter(
+                value = track.volume, peakMeterL = track.peakMeterL, peakMeterR = track.peakMeterR,
+                onValueChange = onVolumeChange, isMaster = false, isEnabled = !isDimmed,
+                ledColor = accentColor, showTicks = true,
+                modifier = Modifier.weight(1f).fillMaxWidth()
+            )
+            Spacer(Modifier.height(4.dp))
+            
+            // Bottom Row INCHANGÉ
+            TrackBottomRow(
+                trackColor = accentColor, active = track.isEnabled,
+                onFx = onFxClick, onSettings = onTrackSettingsClick,
+                onToggle = onPowerToggle, onUnload = onDeleteTrack,
+                height = 22.dp, modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+@Composable
+private fun KeyBtnV2(
+    label: String, isActive: Boolean, isMute: Boolean,
+    accentColor: Color, onClick: () -> Unit, modifier: Modifier = Modifier
+) {
+    val bg = when {
+        !isActive -> Brush.verticalGradient(listOf(Color(0xFF3B4560), Color(0xFF2D364D)))
+        isMute    -> Brush.verticalGradient(listOf(Color(0xFF6A2E41), Color(0xFF4C2231)))
+        else      -> Brush.verticalGradient(listOf(accentColor.copy(alpha = 0.85f), accentColor.copy(alpha = 0.60f)))
+    }
+    val fg = when {
+        !isActive -> Color(0xFFB8C2D6)
+        isMute    -> Color(0xFFF2B0C0)
+        else      -> Color.White
+    }
+    val glowColor = when {
+        !isActive -> Color.Transparent
+        isMute    -> Color(0x70C2587A)
+        else      -> accentColor.copy(alpha = 0.44f)
+    }
+    val glowBlur = if (isActive) 10.dp else 0.dp
+
+    Box(
+        modifier = modifier.clip(RoundedCornerShape(7.dp))
+            .background(bg)
+            .border(1.dp, if (isActive) Color.White.copy(alpha = 0.18f) else Color.Transparent, RoundedCornerShape(7.dp))
+            .shadow(glowBlur, RoundedCornerShape(7.dp), spotColor = glowColor, ambientColor = glowColor)
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClick() },
+        contentAlignment = Alignment.Center
+    ) { Text(label, color = fg, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold) } // Fix: 11sp
+}
+=== END FICHIER ChannelStripV2.kt ===
+
+═══════════════════════════════════════════════════════════════
+FICHIER 5/6 — MixerBottomBarV2.kt
+═══════════════════════════════════════════════════════════════
+
+CHEMIN : app/src/main/java/com/soundstage/mixer/ui/components/v2/MixerBottomBarV2.kt
+
+=== BEGIN FICHIER MixerBottomBarV2.kt ===
+package com.soundstage.mixer.ui.components.v2
+
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.soundstage.mixer.model.SubSceneSnapshot
+import com.soundstage.mixer.model.TrackChannel
+import kotlin.math.roundToInt
+
+@Composable
+fun MixerBottomBarV2(
+    masterTrack: TrackChannel,
+    onMasterVolumeChange: (Float) -> Unit,
+    onMasterFxClick: () -> Unit, // Fix: ajouté
+    bpm: Int, onBpmChange: (Int) -> Unit,
+    isSnapshotArmMode: Boolean, onToggleSnapshotArm: () -> Unit,
+    activeSnapshotSlot: String?,
+    snapshots: Map<String, SubSceneSnapshot>,
+    configuredSnapshotSlots: List<String>,
+    onSnapshotSlotClick: (String) -> Unit,
+    onAddSnapshot: (String) -> Unit,
+    onDeleteSnapshot: (String) -> Unit,
+    snapshotCustomNames: Map<String, String>,
+    onRenameSnapshotSlot: (String, String) -> Unit,
+    isKeyboardActive: Boolean, onToggleKeyboard: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var manageSlotKey by remember { mutableStateOf<String?>(null) }
+    val pT = Color(0xFF283144); val pB = Color(0xFF1D2433)
+    val tM = Color(0xFFE9EDF5); val ac = Color(0xFF8FB2E8)
+
+    Row(modifier.height(42.dp), // Fix: 42dp au lieu de 48
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        
+        ModuleBox(80.dp) { // Fix: 80dp au lieu de 94
+            Column(Modifier.fillMaxSize().padding(horizontal = 6.dp), verticalArrangement = Arrangement.Center) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Box(Modifier.size(5.dp).clip(CircleShape).background(Color(0xFF3CC48A)))
+                    Text("CPU 15%", color = tM, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold) // Fix: 9sp
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Box(Modifier.size(5.dp).clip(CircleShape).background(Color(0xFF4BA8F0)))
+                    Text("RAM 325", color = tM, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
+                }
+            }
+        }
+        
+        ModuleBox(80.dp) { // Fix: 80dp au lieu de 92
+            Row(Modifier.fillMaxSize().padding(horizontal = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically) {
+                Text("−", color = tM, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onBpmChange(bpm - 1) }.padding(4.dp))
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("$bpm", color = tM, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace, lineHeight = 13.sp)
+                    Text("BPM", color = Color(0xFF7B859A), fontSize = 7.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 7.sp)
+                }
+                Text("+", color = tM, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onBpmChange(bpm + 1) }.padding(4.dp))
+            }
+        }
+
+        val isFlex = configuredSnapshotSlots.size > 3
+        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            configuredSnapshotSlots.forEachIndexed { idx, key ->
+                val displayName = snapshotCustomNames[key] ?: if (key == "slot_default") "Default" else "Snapshot $idx"
+                val isActive = activeSnapshotSlot == key || (activeSnapshotSlot == null && key == "slot_default")
+                val isDeletable = key != "slot_default"
+                SnapshotCaseV2(key, displayName, isActive, isDeletable, isFlex,
+                    onClick = { onSnapshotSlotClick(key) },
+                    onLongPress = { manageSlotKey = key },
+                    onDelete = { onDeleteSnapshot(key) })
+            }
+            if (configuredSnapshotSlots.size < 5) {
+                Box(Modifier.width(32.dp).fillMaxHeight()
+                        .clip(RoundedCornerShape(10.dp))
+                        .border(1.dp, Color(0x2EFFFFFF), RoundedCornerShape(10.dp))
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onAddSnapshot("Snapshot ${configuredSnapshotSlots.size}") },
+                    contentAlignment = Alignment.Center) {
+                    Text("+", color = Color(0xFF8E99AD), fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+                }
+            }
+        }
+
+        Box(Modifier.size(38.dp, 42.dp).clip(RoundedCornerShape(10.dp))
+                .background(if (isSnapshotArmMode) Brush.verticalGradient(listOf(Color(0x47FF2A55), Color(0x24FF2A55))) else Brush.verticalGradient(listOf(pT, pB)))
+                .border(1.dp, Color(0x0DFFFFFF), RoundedCornerShape(10.dp))
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onToggleSnapshotArm() },
+            contentAlignment = Alignment.Center) {
+            IconSaveV2(size = 18.dp, color = if (isSnapshotArmMode) Color(0xFFFF2A55) else Color(0xFFE9EDF5))
+        }
+
+        // Fix: Master Box modifié avec bouton FX
+        ModuleBox(140.dp) {
+            MasterSliderCompact(masterTrack.volume, onMasterVolumeChange, masterTrack.peakMeterL, masterTrack.peakMeterR, onMasterFxClick)
+        }
+
+        Box(Modifier.size(42.dp, 42.dp).clip(RoundedCornerShape(10.dp))
+                .background(if (isKeyboardActive) Brush.verticalGradient(listOf(Color(0x479BC0F8), Color(0x249BC0F8))) else Brush.verticalGradient(listOf(pT, pB)))
+                .border(1.dp, Color(0x0DFFFFFF), RoundedCornerShape(10.dp))
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onToggleKeyboard() },
+            contentAlignment = Alignment.Center) {
+            IconPianoV2(size = 20.dp, color = if (isKeyboardActive) ac else Color(0xFFC9D1E0))
+        }
+    }
+
+    manageSlotKey?.let { key ->
+        ManageSnapshotDialogV2(
+            slotKey = key,
+            currentName = snapshotCustomNames[key] ?: if (key == "slot_default") "Default" else "Snapshot",
+            onDismiss = { manageSlotKey = null },
+            onSave = { newName, _ -> onRenameSnapshotSlot(key, newName); manageSlotKey = null })
+    }
+}
+
+@Composable
+private fun SnapshotCaseV2(
+    key: String, displayName: String, isActive: Boolean,
+    isDeletable: Boolean, isFlex: Boolean,
+    onClick: () -> Unit, onLongPress: () -> Unit, onDelete: () -> Unit
+) {
+    var dragY by remember { mutableFloatStateOf(0f) }
+    val animatedY by animateFloatAsState(dragY, animationSpec = if (dragY > 0f) tween(0) else spring(0.6f, 500f), label = "snapY")
+    val isSwiping = dragY > 30f
+    val splitParts = remember(displayName) {
+        val m = Regex("^Snapshot\\s+(.+)$", RegexOption.IGNORE_CASE).find(displayName)
+        if (m != null) Pair("SNAPSHOT", m.groupValues[1]) else null
+    }
+    Box(modifier = Modifier
+        .then(if (isFlex) Modifier.weight(1f) else Modifier.width(90.dp)) // Fix: 90dp
+        .fillMaxHeight()
+        .offset { IntOffset(0, animatedY.roundToInt()) }
+        .clip(RoundedCornerShape(10.dp)) // Fix: 10dp
+        .background(if (isActive) Brush.verticalGradient(listOf(Color(0xFF8FB2E8), Color(0xFF7FA3DD))) else Brush.verticalGradient(listOf(Color(0xFF283144), Color(0xFF1D2433))))
+        .border(1.dp, if (isActive) Color(0x998FB2E8) else Color(0x0DFFFFFF), RoundedCornerShape(10.dp))
+        .pointerInput(key) {
+            detectVerticalDragGestures(
+                onVerticalDrag = { change, delta ->
+                    change.consume()
+                    if (delta > 0 && isDeletable) dragY = (dragY + delta).coerceAtMost(60f)
+                },
+                onDragEnd = { if (dragY > 30f && isDeletable) onDelete(); dragY = 0f },
+                onDragCancel = { dragY = 0f })
+        }
+        .pointerInput(key) {
+            detectTapGestures(onTap = { if (!isSwiping) onClick() }, onLongPress = { onLongPress() })
+        },
+        contentAlignment = Alignment.Center) {
+        if (splitParts != null) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("SNAPSHOT", color = Color(0x99FFFFFF), fontSize = 7.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp, lineHeight = 8.sp)
+                Text(splitParts.second, color = if (isActive) Color(0xFF0F1726) else Color(0xFFDDE3EE), fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        } else {
+            Text(displayName, color = if (isActive) Color(0xFF0F1726) else Color(0xFFDDE3EE), fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+@Composable
+private fun MasterSliderCompact(
+    value: Float, onValueChange: (Float) -> Unit, peakL: Float, peakR: Float, onFxClick: () -> Unit
+) {
+    var localPeak by remember { mutableFloatStateOf(0f) }
+    // Fix: rememberUpdatedState pour que le drag lise la bonne valeur
+    val currentValue by rememberUpdatedState(value)
+
+    LaunchedEffect(peakL, peakR) {
+        val target = value * maxOf(peakL, peakR)
+        if (target > localPeak) localPeak = target
+    }
+    
+    Row(Modifier.fillMaxSize().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                Text("MASTER", color = Color(0xFF7B859A), fontSize = 7.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+                Text("${(value * 100).roundToInt()}%",
+                    color = if (value > 0.75f) Color(0xFFD8A24A) else Color(0xFFF1F4FA),
+                    fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
+            }
+            Box(Modifier.fillMaxWidth().height(18.dp).pointerInput(Unit) {
+                detectHorizontalDragGestures { change, delta ->
+                    change.consume()
+                    onValueChange((currentValue + delta / size.width.toFloat()).coerceIn(0f, 1f)) // Fix: currentValue
+                }
+            }) {
+                Box(Modifier.fillMaxWidth().height(4.dp).align(Alignment.Center).clip(RoundedCornerShape(2.dp)).background(Color(0xFF0E131C)))
+                Box(Modifier.fillMaxWidth(value).height(4.dp).align(Alignment.CenterStart).clip(RoundedCornerShape(2.dp)).background(Brush.horizontalGradient(listOf(Color(0x8C8FB2E8), Color(0xFF8FB2E8)))))
+                if (localPeak > 0.01f) {
+                    Box(Modifier.fillMaxHeight().width(2.dp).offset(x = (localPeak * 100).dp).background(Color(0xFFA9C6F0), RoundedCornerShape(1.dp)))
+                }
+                Box(Modifier.offset { IntOffset((value * 100).roundToInt(), 0) }
+                    .size(14.dp, 16.dp).align(Alignment.CenterStart)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Brush.verticalGradient(listOf(Color(0xFF6E7799), Color(0xFF4B5373), Color(0xFF3F4766))))
+                    .border(1.dp, Color(0x29FFFFFF), RoundedCornerShape(4.dp)),
+                    contentAlignment = Alignment.Center) {
+                    Box(Modifier.fillMaxWidth(0.6f).height(1.5.dp).background(Color(0xFF8FB2E8), RoundedCornerShape(1.dp)))
+                }
+            }
+        }
+        Spacer(Modifier.width(6.dp))
+        // Fix: Ajout du bouton FX
+        Box(Modifier.size(24.dp).clip(RoundedCornerShape(6.dp)).background(Color(0xFF283144))
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onFxClick() },
+            contentAlignment = Alignment.Center) {
+            Text("FX", color = Color(0xFF8FB2E8), fontSize = 8.sp, fontWeight = FontWeight.ExtraBold)
+        }
+    }
+}
+
+@Composable
+private fun ModuleBox(width: androidx.compose.ui.unit.Dp, content: @Composable () -> Unit) {
+    Box(Modifier.width(width).fillMaxHeight().clip(RoundedCornerShape(10.dp))
+        .background(Brush.verticalGradient(listOf(Color(0xFF283144), Color(0xFF1D2433))))
+        .border(1.dp, Color(0x0DFFFFFF), RoundedCornerShape(10.dp))) { content() }
+}
+=== END FICHIER MixerBottomBarV2.kt ===
+
+═══════════════════════════════════════════════════════════════
+FICHIER 6/6 — MISE À JOUR MixerScreen.kt (appel BottomBarV2)
+═══════════════════════════════════════════════════════════════
+
+Dans MixerScreen.kt, remplacer l'appel MixerBottomBarV2 par :
+
+=== BEGIN APRES MixerScreen ===
+MixerBottomBarV2(
+    masterTrack = uiState.masterTrack,
+    onMasterVolumeChange = { vol -> viewModel.setTrackVolume(0, vol) },
+    onMasterFxClick = { viewModel.openEffectsForTrack(0) }, // Ligne ajoutée
+    bpm = uiState.bpm,
+    onBpmChange = { viewModel.setGlobalBpm(it) },
+    isSnapshotArmMode = uiState.isSnapshotArmMode,
+    onToggleSnapshotArm = { viewModel.toggleSnapshotArm() },
+    activeSnapshotSlot = uiState.activeSnapshotSlot,
+    snapshots = uiState.snapshots,
+    configuredSnapshotSlots = uiState.configuredSnapshotSlots,
+    onSnapshotSlotClick = { key -> viewModel.onSnapshotSlotClick(key) },
+    onAddSnapshot = { name -> viewModel.addSnapshotSlot(name) },
+    onDeleteSnapshot = { key -> viewModel.removeSnapshotSlot(key) },
+    snapshotCustomNames = uiState.snapshotCustomNames,
+    onRenameSnapshotSlot = { key, name -> viewModel.renameSnapshotSlotWithMode(key, name, "crossfade") },
+    isKeyboardActive = isKeyboardVisible,
+    onToggleKeyboard = { viewModel.cycleKeyboardExpansion() },
+    modifier = Modifier.fillMaxWidth()
+)
+=== END APRES MixerScreen ===
+
+═══════════════════════════════════════════════════════════════
+FIN BRIEF MIXER 8 — Polish V2 terminé
+═══════════════════════════════════════════════════════════════
