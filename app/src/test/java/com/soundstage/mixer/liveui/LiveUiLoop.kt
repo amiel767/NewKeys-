@@ -100,6 +100,13 @@ class LiveUiLoop {
                                 }
                             }
                         }
+                        o.optJSONArray("keys")?.let { arr ->
+                            runCatching {
+                                val keys = (0 until arr.length()).map { arr.getString(it) }
+                                viewModel.uiState.value.pressedKeys.toList().forEach { viewModel.onKeyUp(it) }
+                                keys.forEach { viewModel.onKeyDown(it) }
+                            }
+                        }
                         o.optBoolean("sustain", false).let { on ->
                             runCatching { if (viewModel.uiState.value.isSustainActive != on) viewModel.toggleSustain() }
                         }

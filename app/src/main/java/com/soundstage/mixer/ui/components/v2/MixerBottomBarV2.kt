@@ -77,7 +77,7 @@ fun MixerBottomBarV2(
     // Name prompt shown when a snapshot is created (JSX-like flow).
     var namingSlotKey by remember { mutableStateOf<String?>(null) }
 
-    Row(modifier.height(58.dp), // JSX bottom bar is 48; stretched deeper as asked
+    Row(modifier.height(44.dp), // reduced ~25% from 58 as asked (JSX draws 48)
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)) {
 
@@ -340,7 +340,7 @@ private fun MasterSliderV2(
                 }
             }
             Spacer(Modifier.height(3.dp))
-            BoxWithConstraints(Modifier.fillMaxWidth().height(24.dp)) {
+            BoxWithConstraints(Modifier.fillMaxWidth().height(20.dp)) {
                 val w = maxWidth
                 Box(Modifier.fillMaxSize()
                     .pointerInput(Unit) {
@@ -364,7 +364,7 @@ private fun MasterSliderV2(
                     })
                 // Rail: 6 dp groove with an inset shadow, plus a light bottom lip so
                 // the groove reads as carved into the panel (relief).
-                Canvas(Modifier.fillMaxWidth().height(24.dp)) {
+                Canvas(Modifier.fillMaxWidth().height(20.dp)) {
                     val railH = 6.dp.toPx()
                     val top = (size.height - railH) / 2f
                     drawRoundRect(
@@ -581,7 +581,7 @@ private fun ResourceMonitorV2(width: androidx.compose.ui.unit.Dp) {
 
     MixerModuleV2(modifier = Modifier.width(width).fillMaxHeight()) {
         Column(Modifier.fillMaxSize().padding(horizontal = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterVertically)) {
+            verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)) {
             ResourceGaugeV2("CPU", "$cpuPercent%", cpuPercent / 100f, Color(0xFF3CC48A))
             ResourceGaugeV2("RAM", "$ramMb", (ramMb / 512f).coerceIn(0f, 1f), Color(0xFF4BA8F0))
         }

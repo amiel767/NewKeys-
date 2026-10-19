@@ -1,5 +1,6 @@
 package com.soundstage.mixer.ui.components.v2
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -12,8 +13,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -38,7 +41,7 @@ fun MixerTopBarV2(
     onPanic: () -> Unit, onOpenScenes: () -> Unit, onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(modifier.height(44.dp), // JSX top bar height: 44 (MixerPreview.jsx:407)
+    Row(modifier.height(55.dp), // thickened from 44 as asked (JSX draws 44)
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp)) {
 
@@ -180,9 +183,10 @@ private fun StepperV2(
     ) {
         Row(Modifier.fillMaxSize().padding(horizontal = 7.dp),
             verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.weight(1f).fillMaxHeight()
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onMinus() })
-            Column(Modifier.padding(horizontal = 2.dp).widthIn(min = 40.dp),
+            RoundStepV2(size = 24.dp, onClick = onMinus) {
+                StepSignV2(vertical = false)
+            }
+            Column(Modifier.padding(horizontal = 2.dp).weight(1f),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center) {
                 Text(label, color = TextDim, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold,
@@ -190,8 +194,31 @@ private fun StepperV2(
                 Text(value, color = Color(0xFFF1F4FA), fontSize = 17.sp,
                     fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace, lineHeight = 18.sp)
             }
-            Box(Modifier.weight(1f).fillMaxHeight()
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onPlus() })
+            RoundStepV2(size = 24.dp, onClick = onPlus) {
+                StepSignV2(vertical = true)
+            }
+        }
+    }
+}
+
+/** Thin +/− glyph for the stepper caps: rounded strokes, soft shadow, no outline. */
+@Composable
+private fun StepSignV2(vertical: Boolean) {
+    Canvas(Modifier.size(11.dp)) {
+        val c = center
+        val r = size.minDimension / 2f
+        val stroke = 2.2.dp.toPx()
+        drawLine(Color.Black.copy(alpha = 0.35f), Offset(c.x - r, c.y + 1f), Offset(c.x + r, c.y + 1f),
+            strokeWidth = stroke, cap = StrokeCap.Round)
+        if (vertical) {
+            drawLine(Color.Black.copy(alpha = 0.35f), Offset(c.x + 1f, c.y - r), Offset(c.x + 1f, c.y + r),
+                strokeWidth = stroke, cap = StrokeCap.Round)
+        }
+        drawLine(Color(0xFFE3E8F2), Offset(c.x - r, c.y), Offset(c.x + r, c.y),
+            strokeWidth = stroke, cap = StrokeCap.Round)
+        if (vertical) {
+            drawLine(Color(0xFFE3E8F2), Offset(c.x, c.y - r), Offset(c.x, c.y + r),
+                strokeWidth = stroke, cap = StrokeCap.Round)
         }
     }
 }
