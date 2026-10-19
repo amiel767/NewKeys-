@@ -1,5 +1,6 @@
 package com.soundstage.mixer.ui.components.v2
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -26,6 +27,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -40,15 +43,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Sustain pedal case, translated from the JSX (MixerPreview.jsx:425).
+ * Sustain case, matching the JSX (MixerPreview.jsx:425) exactly.
  *
- * The JSX has no lit indicator: only a small dot whose colour changes
- * (#5A6379 idle -> #8FB2E8 active). No halo, no lamp, and no glow behind the pedal
- * when it is down — the JSX only tints the case background. The pedal itself tilts
- * with the state, which is what makes the external MIDI pedal visible.
- *
- * The press motion is deliberately large (the cap drops 3 dp and swings ~18°), so a
- * real pedal press reads at a glance instead of being a barely visible 8° twitch.
+ * The JSX draws no pedal: just a small 8 px dot whose colour changes
+ * (#5A6379 idle -> #8FB2E8 active, with an 8 px glow when active), the word
+ * SUSTAIN, a case tint that fades in, and the shared relief
+ * (inset top highlight + drop shadow). The animated dot is the only moving part,
+ * and it follows the real sustain state, including an external MIDI pedal.
  */
 @Composable
 fun SustainPedalButton(
@@ -61,21 +62,22 @@ fun SustainPedalButton(
     val accent = Color(0xFF8FB2E8)
     val idleDot = Color(0xFF5A6379)
 
-    // The pedal swings down while pressed; the spring keeps it from snapping.
-    val angle by animateFloatAsState(
-        targetValue = if (isActive) 18f else -9f,
-        animationSpec = spring(dampingRatio = 0.62f, stiffness = 520f),
-        label = "pedalAngle"
-    )
-    val pressDepth by animateFloatAsState(
-        targetValue = if (isActive) 3f else 0f,
-        animationSpec = spring(dampingRatio = 0.62f, stiffness = 520f),
-        label = "pedalDepth"
-    )
-    val dotColor by androidx.compose.animation.animateColorAsState(
+    val dotColor by animateColorAsState(
         targetValue = if (isActive) accent else idleDot,
         animationSpec = tween(250),
         label = "pedalDot"
+    )
+    // JSX: boxShadow 0 0 8px on the dot only while active.
+    val glowRadius by animateFloatAsState(
+        targetValue = if (isActive) 8f else 0f,
+        animationSpec = tween(250),
+        label = "pedalGlow"
+    )
+    // Dot breathes slightly while the pedal is down, so the state reads at a glance.
+    val dotScale by animateFloatAsState(
+        targetValue = if (isActive) 1.18f else 1f,
+        animationSpec = spring(dampingRatio = 0.55f, stiffness = 480f),
+        label = "pedalDotScale"
     )
     val caseTint by animateFloatAsState(
         targetValue = if (isActive) 1f else 0f,
@@ -87,6 +89,8 @@ fun SustainPedalButton(
         modifier = modifier
             .width(84.dp)
             .height(44.dp) // JSX: width 84, height 44
+            .shadow(5.dp, RoundedCornerShape(14.dp),
+                spotColor = Color(0x59000000), ambientColor = Color.Black)
             .clip(RoundedCornerShape(14.dp))
             .background(
                 Brush.verticalGradient(
@@ -96,70 +100,48 @@ fun SustainPedalButton(
                     )
                 )
             )
+            .drawWithContent {
+                drawContent()
+                // JSX inset 0 1px 0 rgba(255,255,255,.09): the top relief edge.
+                drawLine(
+                    color = Color.White.copy(alpha = 0.09f),
+                    start = Offset(size.width * 0.08f, 0.5f),
+                    end = Offset(size.width * 0.92f, 0.5f),
+                    strokeWidth = 1.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+            }
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onToggle() },
         contentAlignment = Alignment.Center
     ) {
         Row(
-            Modifier.fillMaxSize().padding(horizontal = 5.dp),
-            verticalAlignment = Alignment.CenterVertically
+            Modifier.fillMaxSize(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
         ) {
-            // Compact pedal illustration; the cap swings down while pressed.
-            Canvas(Modifier.width(22.dp).fillMaxHeight()) {
-                val cx = size.width * 0.60f
-                val baseY = size.height * 0.72f
-                val depth = pressDepth.dp.toPx()
-
-                drawOval(
-                    color = Color.Black.copy(alpha = 0.5f),
-                    topLeft = Offset(cx - 9.dp.toPx(), baseY + 4.dp.toPx()),
-                    size = Size(18.dp.toPx() + if (isActive) 2.dp.toPx() else 0f, 3.dp.toPx())
-                )
-                val cable = Path().apply {
-                    moveTo(cx - 10.dp.toPx(), baseY - 3.dp.toPx())
-                    quadraticBezierTo(cx - 14.dp.toPx(), baseY - 4.dp.toPx(), cx - 17.dp.toPx(), baseY - 10.dp.toPx())
-                }
-                drawPath(cable, Color(0xFF2E3549), style = Stroke(1.4.dp.toPx(), cap = StrokeCap.Round))
-                drawRoundRect(
-                    color = Color(0xFF2E3549),
-                    topLeft = Offset(cx - 11.dp.toPx(), baseY),
-                    size = Size(7.dp.toPx(), 4.dp.toPx()),
-                    cornerRadius = CornerRadius(1.2.dp.toPx())
-                )
-
-                rotate(degrees = angle, pivot = Offset(cx - 8.dp.toPx(), baseY - 4.dp.toPx() + depth)) {
-                    drawRoundRect(
-                        brush = Brush.verticalGradient(
-                            listOf(Color(0xFF6E7799), Color(0xFF4B5373), Color(0xFF3F4766))
-                        ),
-                        topLeft = Offset(cx - 8.dp.toPx(), baseY - 12.dp.toPx() + depth),
-                        size = Size(20.dp.toPx(), 8.dp.toPx()),
-                        cornerRadius = CornerRadius(2.dp.toPx())
-                    )
-                    drawLine(
-                        Color(0x0FFFFFFF),
-                        Offset(cx - 6.dp.toPx(), baseY - 9.dp.toPx() + depth),
-                        Offset(cx + 10.dp.toPx(), baseY - 9.dp.toPx() + depth),
-                        0.6.dp.toPx()
+            // The JSX dot pair: an 8 x 8 span, 8 px apart from the label.
+            Box(Modifier.size(12.dp), contentAlignment = Alignment.Center) {
+                if (glowRadius > 0f) {
+                    Box(
+                        Modifier.size(12.dp * dotScale).clip(CircleShape)
+                            .background(accent.copy(alpha = 0.32f * (glowRadius / 8f)))
                     )
                 }
+                Box(Modifier.size(8.dp * dotScale).clip(CircleShape).background(dotColor))
             }
-
-            // Status dot (8 x 8) then the label, exactly like the JSX span pair.
-            Box(Modifier.size(7.dp).clip(CircleShape).background(dotColor))
-            Spacer(Modifier.width(5.dp))
+            Spacer(Modifier.width(8.dp))
             Text(
                 "SUSTAIN",
                 color = if (isActive) Color(0xFFF1F4FA) else Color(0xFF9AA5BA),
-                fontSize = 9.5.sp,
+                fontSize = 11.5.sp,
                 fontWeight = FontWeight.ExtraBold,
-                letterSpacing = 0.3.sp,
+                letterSpacing = 1.2.sp,
                 softWrap = false,
                 maxLines = 1
             )
         }
     }
 }
-
 /** Linear colour mix, used for the animated active tint of the sustain case. */
 private fun lerp(a: Color, b: Color, t: Float): Color {
     val f = t.coerceIn(0f, 1f)
