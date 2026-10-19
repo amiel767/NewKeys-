@@ -138,3 +138,19 @@ dans `/tmp` est perdu. Règles :
   ajoute des assets via l'UI GitHub, ce qui crée une divergence sans conflit).
 - Le remote peut recevoir des commits « Add files via upload » qui ne touchent
   que `app/assets/` — vérifier avec `git diff --name-only` avant de rebaser.
+
+## Session 2026-10-19 (post-crash) — acquisitions
+
+- **Assignation Loops → DrumPad** : `DpManager` expose maintenant `onAssignLoop`.
+  `assigning` vaut vrai pour les onglets `DrumPad` **et** `Loops`. Un seul
+  ViewModel call : `assignDrumSampleOrLoop(padId, name, path, isLoop = true)`.
+- **AssignBar** suit `pads.size` (8 ou 16), plus de boucle figée sur 8.
+- **Icônes** : `IconPatchesV2` (cartes empilées, remplace `IconFolderV2` dans le
+  top bar) et `IconUsbV2` (trident USB, remplace `Icons.Default.Usb`) vivent dans
+  `v2/MixerIconsV2.kt`. `AospSettingItem` accepte `icon: ImageVector?` + `leading`.
+- **Piège typo Compose** : un `Text` dans une Box courte hérite du `lineHeight`
+  Material3 (24 sp) et paraît décalé. Poser `lineHeight = fontSize` explicitement.
+- **TonicPad** (`DpNoteKey`) : teinte bleu ciel fixe `203 + (idx % 4) * 6`, plus de
+  rainbow `idx * 30 + 205`. Glow animé via `tween` + `shadow(spotColor = tint)`.
+- **Looper** : action `"clearAll"` dans `LooperEngine.longPressCaseAction`
+  (bypass le remplacement par case).
