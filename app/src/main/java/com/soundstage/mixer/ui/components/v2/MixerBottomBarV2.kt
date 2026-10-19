@@ -273,7 +273,15 @@ private fun SnapshotCaseV2(
         panelBottom = if (isActive) Color(0xFF86AAE3) else PanelBottom,
         highlightAlpha = if (isActive) 0.45f else 0.09f
     ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxSize()) {
+            // JSX SnapCase relief: inset top highlight only; the drop shadow comes
+            // from MixerModuleV2. The old hand-rolled relief doubled the border and
+            // read as a flat outline instead of a raised case.
+            Box(
+                Modifier.fillMaxWidth().height(1.dp).align(Alignment.TopCenter)
+                    .background(Color.White.copy(alpha = if (isActive) 0.45f else 0.09f))
+            )
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             if (custom) {
                 Text(displayName, color = if (isActive) Color(0xFF0F1726) else Color(0xFFDDE3EE),
                     fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1,
@@ -288,6 +296,7 @@ private fun SnapshotCaseV2(
                         color = if (isActive) Color(0xFF0F1726) else Color(0xFFDDE3EE),
                         fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 19.sp)
                 }
+            }
             }
         }
     }

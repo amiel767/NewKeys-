@@ -83,7 +83,8 @@ fun MixerTopBarV2(
             }
         }
 
-        TopIconButton(onOpenScenes) { IconFolderV2(size = 20.dp, color = Accent) }
+        // Patches/Scenes: the original stacked patch-card icon, not a folder.
+        TopIconButton(onOpenScenes) { IconPatchesV2(size = 20.dp, color = Accent) }
         TopIconButton(onOpenSettings) {
             Icon(Icons.Default.Settings, "Settings", tint = Color(0xFFC9D1E0),
                 modifier = Modifier.size(20.dp))
@@ -151,14 +152,18 @@ private fun RowScope.ChordZoneV2(chord: ChordDisplay?) {
                     Row(verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         chord.notes.forEach { n ->
-                            Box(Modifier.widthIn(min = 18.dp).height(17.dp)
+                            // JSX: minWidth 20, height 18. lineHeight is pinned so the
+                            // inherited Material3 24 sp line height cannot push the glyph
+                            // off centre inside the 18 dp chip.
+                            Box(Modifier.widthIn(min = 20.dp).height(18.dp)
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(Color(0x298FB2E8))
                                     .padding(horizontal = 4.dp),
                                 contentAlignment = Alignment.Center) {
-                                Text(n, color = Color(0xFFB9CDF2), fontSize = 10.sp,
+                                Text(n, color = Color(0xFFB9CDF2), fontSize = 11.sp,
                                     fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.ExtraBold, maxLines = 1)
+                                    fontWeight = FontWeight.ExtraBold, maxLines = 1,
+                                    lineHeight = 11.sp)
                             }
                         }
                         Text(chord.inversion, color = Color(0xFF6F7A90), fontSize = 9.5.sp,

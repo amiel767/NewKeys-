@@ -23,7 +23,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -53,6 +52,7 @@ import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.model.AppTheme
 import com.soundstage.mixer.model.TrackChannel
 import com.soundstage.mixer.model.MidiDeviceItem
+import com.soundstage.mixer.ui.components.v2.IconUsbV2
 import com.soundstage.mixer.model.MidiMappingItem
 import com.soundstage.mixer.model.MidiActionType
 import com.soundstage.mixer.model.MidiControlType
@@ -380,7 +380,8 @@ private fun AospMainSettingsPage(
                 AospCard(title = "Devices & Audio") {
                     Column {
                         AospSettingItem(
-                            icon = Icons.Default.Usb,
+                            icon = null,
+                            leading = { IconUsbV2(size = 18.dp, color = Color(0xFF10B981)) },
                             iconTint = Color(0xFF10B981),
                             iconBg = Color(0x1810B981),
                             title = "USB MIDI",
@@ -619,11 +620,12 @@ private fun AospCard(
 
 @Composable
 private fun AospSettingItem(
-    icon: ImageVector,
+    icon: ImageVector? = null,
     iconTint: Color,
     iconBg: Color = Color(0x18FFFFFF),
     title: String,
     subtitle: String,
+    leading: (@Composable () -> Unit)? = null,
     onClick: () -> Unit
 ) {
     Row(
@@ -642,12 +644,16 @@ private fun AospSettingItem(
                 .background(iconBg),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = title,
-                tint = iconTint,
-                modifier = Modifier.size(18.dp)
-            )
+            if (leading != null) {
+                leading()
+            } else {
+                Icon(
+                    imageVector = icon!!,
+                    contentDescription = title,
+                    tint = iconTint,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         }
 
         Column(modifier = Modifier.weight(1f)) {
@@ -724,12 +730,7 @@ private fun MidiDevicesSubPage(
                             .background(Color(0x14FFFFFF)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Usb,
-                            contentDescription = null,
-                            tint = Color(0x66FFFFFF),
-                            modifier = Modifier.size(28.dp)
-                        )
+                        IconUsbV2(size = 28.dp, color = Color(0x66FFFFFF))
                     }
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
@@ -1503,11 +1504,9 @@ private fun MidiRoutingSubPage(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Usb,
-                                        contentDescription = null,
-                                        tint = if (isSelected) Color(0xFF3B82F6) else Color(0xFF94A3B8),
-                                        modifier = Modifier.size(16.dp)
+                                    IconUsbV2(
+                                        size = 16.dp,
+                                        color = if (isSelected) Color(0xFF3B82F6) else Color(0xFF94A3B8)
                                     )
                                     Text(
                                         text = devName,

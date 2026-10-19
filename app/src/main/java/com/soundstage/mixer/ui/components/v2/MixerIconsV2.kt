@@ -173,3 +173,81 @@ fun IconLayerV2(size: Dp = 20.dp, color: Color = Color(0xFFC9D1E0)) {
         slab(h * 0.28f, 1f)
     }
 }
+
+/**
+ * Patches / Scenes icon: two stacked patch cards with slot lines, matching the
+ * original mixer top bar drawing. A folder glyph never matched the JSX, which
+ * describes a card with a foot, so this restores the pre-V2 look.
+ */
+@Composable
+fun IconPatchesV2(size: Dp = 20.dp, color: Color = Color(0xFF9BC0F8)) {
+    Canvas(Modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        // Back card, faded: the stack reads as depth.
+        drawRoundRect(
+            color = color.copy(alpha = 0.45f),
+            topLeft = Offset(w * 0.18f, h * 0.02f),
+            size = Size(w * 0.72f, h * 0.50f),
+            cornerRadius = CornerRadius(2.5.dp.toPx())
+        )
+        // Front card.
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(w * 0.02f, h * 0.32f),
+            size = Size(w * 0.84f, h * 0.66f),
+            cornerRadius = CornerRadius(2.5.dp.toPx())
+        )
+        // Slot lines cut into the front card.
+        val slot = Color(0xFF141926)
+        drawLine(slot, Offset(w * 0.16f, h * 0.52f), Offset(w * 0.72f, h * 0.52f), 1.3.dp.toPx(), StrokeCap.Round)
+        drawLine(slot, Offset(w * 0.16f, h * 0.70f), Offset(w * 0.72f, h * 0.70f), 1.3.dp.toPx(), StrokeCap.Round)
+        drawLine(slot, Offset(w * 0.16f, h * 0.86f), Offset(w * 0.55f, h * 0.86f), 1.3.dp.toPx(), StrokeCap.Round)
+    }
+}
+
+/**
+ * USB MIDI icon: the USB trident (shaft, arrow head, branch, circle foot and the
+ * square plug). Replaces the Material `Icons.Default.Usb` so it matches the
+ * stroke weight of the other mixer icons.
+ */
+@Composable
+fun IconUsbV2(size: Dp = 20.dp, color: Color = Color(0xFFC9D1E0)) {
+    Canvas(Modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val sw = 1.7.dp.toPx()
+        fun px(fx: Float) = w * fx
+        fun py(fy: Float) = h * fy
+        // Shaft.
+        drawLine(color, Offset(px(0.5f), py(0.90f)), Offset(px(0.5f), py(0.22f)), sw, StrokeCap.Round)
+        // Arrow head.
+        val arrow = Path().apply {
+            moveTo(px(0.5f), py(0.08f))
+            lineTo(px(0.36f), py(0.28f))
+            lineTo(px(0.64f), py(0.28f))
+            close()
+        }
+        drawPath(arrow, color)
+        // Foot.
+        drawCircle(color, w * 0.09f, Offset(px(0.5f), py(0.90f)))
+        // Left branch with its circle.
+        drawPath(
+            Path().apply {
+                moveTo(px(0.5f), py(0.58f))
+                lineTo(px(0.24f), py(0.44f))
+            },
+            color, style = Stroke(sw, cap = StrokeCap.Round)
+        )
+        drawCircle(color, w * 0.07f, Offset(px(0.22f), py(0.42f)))
+        // Right branch with its square plug.
+        drawPath(
+            Path().apply {
+                moveTo(px(0.5f), py(0.50f))
+                lineTo(px(0.76f), py(0.36f))
+            },
+            color, style = Stroke(sw, cap = StrokeCap.Round)
+        )
+        drawRect(color, Offset(px(0.70f), py(0.24f)), Size(w * 0.14f, h * 0.14f))
+    }
+}
