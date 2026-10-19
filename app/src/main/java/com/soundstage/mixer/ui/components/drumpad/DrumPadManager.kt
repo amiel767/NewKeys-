@@ -64,6 +64,7 @@ fun DpManager(
     onSaveCurrentAsKit: (String) -> Unit,
     onAssign: (padIndex: Int, sample: StorageItem) -> Unit,
     onAssignLoop: (padIndex: Int, sample: StorageItem) -> Unit,
+    onImportFiles: (tab: String) -> Unit = {},
     onLoadScene: (Any) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
@@ -74,10 +75,13 @@ fun DpManager(
     var showSaveKitField by remember { mutableStateOf(false) }
     var newKitName by remember { mutableStateOf("") }
     var selection by remember { mutableStateOf(setOf<String>()) }
+    // Target pad for the assignment grid. Seeded from the pad the window was
+    // opened from, then adjustable from the bar itself.
+    var assignTarget by remember(openTarget) { mutableStateOf(openTarget) }
 
     // Both sample and loop tabs can assign onto a DrumPad; the target pad comes
-    // from the DrumPad grid, so the tab only decides which file list is shown.
-    val assigning = (tab == "DrumPad" || tab == "Loops") && openTarget != null
+    // from the assignment bar, so the tab only decides which file list is shown.
+    val assigning = (tab == "DrumPad" || tab == "Loops") && assignTarget != null
     val filteredSamples = drumSamples.filter { search.isEmpty() || it.name.contains(search, true) }
     val filteredLoops = loops.filter { search.isEmpty() || it.name.contains(search, true) }
     val filteredKits = kits.filter { search.isEmpty() || it.name.contains(search, true) }
@@ -154,7 +158,7 @@ fun DpManager(
                             .size(42.dp)
                             .clip(CircleShape)
                             .background(Brush.verticalGradient(listOf(Color(0xFF9DBDEB), Color(0xFF7FA3DD))))
-                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { /* B7-1 : file picker */ },
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onImportFiles(tab) },
                         contentAlignment = Alignment.Center
                     ) {
                         Text("+", color = Color(0xFF0F1726), fontSize = 19.sp, fontWeight = FontWeight.ExtraBold)
@@ -256,8 +260,8 @@ fun DpManager(
                                     selection = selection,
                                     pads = pads,
                                     onItemClick = { sample ->
-                                        if (assigning && openTarget != null) {
-                                            onAssign(openTarget, sample)
+                                        if (assigning && assignTarget != null) {
+                                            onAssign(assignTarget!!, sample)
                                         } else {
                                             selection = if (selection.contains(sample.name))
                                                 selection - sample.name
@@ -272,8 +276,8 @@ fun DpManager(
                                     selection = selection,
                                     pads = pads,
                                     onItemClick = { loop ->
-                                        if (assigning && openTarget != null) {
-                                            onAssignLoop(openTarget, loop)
+                                        if (assigning && assignTarget != null) {
+                                            onAssignLoop(assignTarget!!, loop)
                                         } else {
                                             selection = if (selection.contains(loop.name))
                                                 selection - loop.name
@@ -285,11 +289,12 @@ fun DpManager(
                                 "Scenes" -> ScenesContent(scenes = scenes, onLoad = onLoadScene)
                             }
                         }
-                        if (assigning && openTarget != null) {
+                        if (assigning && assignTarget != null) {
                             Spacer(Modifier.height(8.dp))
                             AssignBar(
                                 pads = pads,
-                                target = openTarget,
+                                target = assignTarget!!,
+                                onSelectTarget = { assignTarget = it },
                                 modifier = Modifier.fillMaxWidth().height(54.dp)
                             )
                         }
@@ -642,6 +647,7 @@ private fun ScenesContent(
 private fun AssignBar(
     pads: List<DrumPadItem>,
     target: Int,
+    onSelectTarget: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Follow the real pad list so a 16-pad grid shows 16 assignable cells.
@@ -677,6 +683,7 @@ private fun AssignBar(
                         RoundedCornerShape(if (count > 8) 8.dp else 11.dp)
                     )
                     .padding(horizontal = if (count > 8) 3.dp else 5.dp, vertical = 4.dp)
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onSelectTarget(padId) }
             ) {
                 Column {
                     Text(

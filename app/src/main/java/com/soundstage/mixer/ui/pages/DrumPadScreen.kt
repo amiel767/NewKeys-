@@ -68,6 +68,7 @@ private val TONIC_NOTES = listOf(
 fun DrumPadScreen(
     viewModel: MixerViewModel,
     uiState: MixerUiState,
+    onImportFiles: (tab: String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // ─── Overlay visibility ───
@@ -476,6 +477,7 @@ fun DrumPadScreen(
             onAssignLoop = { padIndex, loop ->
                 viewModel.assignDrumSampleOrLoop(padIndex, loop.name, loop.path, isLoop = true)
             },
+            onImportFiles = onImportFiles,
             onLoadScene = { /* V1 stub */ },
             onClose = { managerOpen = false }
         )

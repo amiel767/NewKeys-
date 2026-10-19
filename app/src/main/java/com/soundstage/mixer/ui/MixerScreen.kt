@@ -746,6 +746,10 @@ fun MixerScreen(
                     DrumPadScreen(
                         viewModel = viewModel,
                         uiState = uiState,
+                        onImportFiles = { tab ->
+                            if (tab == "Loops") loopPickerLauncher.launch(arrayOf("audio/*", "*/*"))
+                            else drumPadPickerLauncher.launch(arrayOf("audio/*", "*/*"))
+                        },
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -856,6 +860,10 @@ fun MixerScreen(
                                     DrumPadScreen(
                                         viewModel = viewModel,
                                         uiState = uiState,
+                                        onImportFiles = { tab ->
+                                            if (tab == "Loops") loopPickerLauncher.launch(arrayOf("audio/*", "*/*"))
+                                            else drumPadPickerLauncher.launch(arrayOf("audio/*", "*/*"))
+                                        },
                                         modifier = Modifier.fillMaxSize()
                                     )
                                 }
