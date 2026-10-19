@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.model.SubSceneSnapshot
 import com.soundstage.mixer.model.TrackChannel
+import com.soundstage.mixer.ui.components.FloppyDiskIcon
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
@@ -77,7 +78,7 @@ fun MixerBottomBarV2(
     // Name prompt shown when a snapshot is created (JSX-like flow).
     var namingSlotKey by remember { mutableStateOf<String?>(null) }
 
-    Row(modifier.height(44.dp), // reduced ~25% from 58 as asked (JSX draws 48)
+    Row(modifier.height(53.dp), // +20% as asked (44 -> 53)
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)) {
 
@@ -91,9 +92,9 @@ fun MixerBottomBarV2(
                     Text("−", color = TextMain, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("$bpm", color = TextMain, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold,
-                        fontFamily = FontFamily.Monospace, lineHeight = 18.sp)
-                    Text("BPM", color = TextDim, fontSize = 8.5.sp, fontWeight = FontWeight.ExtraBold,
+                    Text("$bpm", color = TextMain, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold,
+                        fontFamily = FontFamily.Monospace, lineHeight = 16.sp)
+                    Text("BPM", color = TextDim, fontSize = 8.sp, fontWeight = FontWeight.ExtraBold,
                         letterSpacing = 1.3.sp, lineHeight = 9.sp)
                 }
                 RoundStepV2(size = 26.dp, onClick = { onBpmChange((bpm + 1).coerceIn(40, 240)) }) {
@@ -169,8 +170,7 @@ fun MixerBottomBarV2(
             Box(Modifier.fillMaxSize()
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onToggleSnapshotArm() },
                 contentAlignment = Alignment.Center) {
-                IconSaveV2(size = 19.dp,
-                    color = if (isSnapshotArmMode) Color(0xFFFF2A55) else Color.White)
+                FloppyDiskIcon(isArmed = isSnapshotArmMode, modifier = Modifier.size(18.dp))
             }
         }
 
@@ -581,7 +581,7 @@ private fun ResourceMonitorV2(width: androidx.compose.ui.unit.Dp) {
 
     MixerModuleV2(modifier = Modifier.width(width).fillMaxHeight()) {
         Column(Modifier.fillMaxSize().padding(horizontal = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)) {
+            verticalArrangement = Arrangement.SpaceEvenly) {
             ResourceGaugeV2("CPU", "$cpuPercent%", cpuPercent / 100f, Color(0xFF3CC48A))
             ResourceGaugeV2("RAM", "$ramMb", (ramMb / 512f).coerceIn(0f, 1f), Color(0xFF4BA8F0))
         }

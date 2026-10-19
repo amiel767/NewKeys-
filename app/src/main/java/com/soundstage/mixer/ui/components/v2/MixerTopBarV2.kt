@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,7 +43,7 @@ fun MixerTopBarV2(
     onPanic: () -> Unit, onOpenScenes: () -> Unit, onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(modifier.height(55.dp), // thickened from 44 as asked (JSX draws 44)
+    Row(modifier.height(44.dp), // -20% as asked (55 -> 44)
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp)) {
 
@@ -82,7 +84,10 @@ fun MixerTopBarV2(
         }
 
         TopIconButton(onOpenScenes) { IconFolderV2(size = 20.dp, color = Accent) }
-        TopIconButton(onOpenSettings) { IconGearV2(size = 19.dp, color = Color(0xFFC9D1E0)) }
+        TopIconButton(onOpenSettings) {
+            Icon(Icons.Default.Settings, "Settings", tint = Color(0xFFC9D1E0),
+                modifier = Modifier.size(20.dp))
+        }
     }
 }
 
@@ -102,7 +107,7 @@ private fun RowScope.ChordZoneV2(chord: ChordDisplay?) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
 
-            Box(Modifier.widthIn(min = 92.dp), contentAlignment = Alignment.BottomStart) {
+            Box(Modifier.widthIn(min = 70.dp, max = 170.dp), contentAlignment = Alignment.BottomStart) {
                 if (chord == null) {
                     Text("– – –", color = Color(0xFF4F596E), fontSize = 20.sp,
                         fontWeight = FontWeight.ExtraBold, letterSpacing = 4.sp)
@@ -133,8 +138,6 @@ private fun RowScope.ChordZoneV2(chord: ChordDisplay?) {
                     if (chord.also.isNotEmpty()) {
                         Row(verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Text("ALSO", color = Color(0xFF6F7A90), fontSize = 8.5.sp,
-                                fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp)
                             chord.also.forEach { alt ->
                                 Box(Modifier.clip(RoundedCornerShape(7.dp))
                                         .background(Color(0x14FFFFFF))
@@ -148,17 +151,17 @@ private fun RowScope.ChordZoneV2(chord: ChordDisplay?) {
                     Row(verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         chord.notes.forEach { n ->
-                            Box(Modifier.widthIn(min = 20.dp).height(18.dp)
+                            Box(Modifier.widthIn(min = 18.dp).height(17.dp)
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(Color(0x298FB2E8))
                                     .padding(horizontal = 4.dp),
                                 contentAlignment = Alignment.Center) {
-                                Text(n, color = Color(0xFFB9CDF2), fontSize = 11.sp,
+                                Text(n, color = Color(0xFFB9CDF2), fontSize = 10.sp,
                                     fontFamily = FontFamily.Monospace,
                                     fontWeight = FontWeight.ExtraBold, maxLines = 1)
                             }
                         }
-                        Text(chord.inversion, color = Color(0xFF6F7A90), fontSize = 10.sp,
+                        Text(chord.inversion, color = Color(0xFF6F7A90), fontSize = 9.5.sp,
                             fontWeight = FontWeight.Bold, maxLines = 1,
                             modifier = Modifier.padding(start = 4.dp))
                     }

@@ -40,7 +40,10 @@ fun ChannelStripV2(
     val auraAlpha = (0.17f + level * 0.42f) * (if (isDimmed) 0.3f else 1f)
 
     Box(
-        modifier = modifier.clip(RoundedCornerShape(14.dp)) // Fix: 14dp au lieu de 18
+        modifier = modifier
+            // Soft drop shadow under every strip case, to lift it off the panel.
+            .shadow(3.dp, RoundedCornerShape(14.dp), spotColor = Color(0x59000000), ambientColor = Color(0x40000000))
+            .clip(RoundedCornerShape(14.dp)) // Fix: 14dp au lieu de 18
             .background(Brush.verticalGradient(listOf(Color(0xFF232C3D), Color(0xFF191F2B))))
             .border(1.dp, Color(0x0DFFFFFF), RoundedCornerShape(14.dp))
     ) {
@@ -133,10 +136,13 @@ private fun KeyBtnV2(
     val glowBlur = if (isActive) 10.dp else 0.dp
 
     Box(
-        modifier = modifier.clip(RoundedCornerShape(7.dp))
+        modifier = modifier
+            // Shadow first: placed after the background it was drawn on top of the
+            // fill, and a solo cycle (elevation 10 -> 0) left the case blank.
+            .shadow(glowBlur, RoundedCornerShape(7.dp), spotColor = glowColor, ambientColor = glowColor)
+            .clip(RoundedCornerShape(7.dp))
             .background(bg)
             .border(1.dp, if (isActive) Color.White.copy(alpha = 0.18f) else Color.Transparent, RoundedCornerShape(7.dp))
-            .shadow(glowBlur, RoundedCornerShape(7.dp), spotColor = glowColor, ambientColor = glowColor)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClick() },
         contentAlignment = Alignment.Center
     ) { Text(label, color = fg, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold) } // Fix: 11sp

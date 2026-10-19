@@ -19,7 +19,17 @@ data class ChordDisplay(
     /** Length of the full chord symbol, used by the JSX to pick the root size. */
     val symbolLength: Int get() = (root + quality + (bass?.let { "/$it" } ?: "")).length
 
-    val rootFontSp: Float get() = if (symbolLength > 6) 24f else 28f
+    /**
+     * Root size, stepped down as the symbol grows. The fixed 28/24 split of the
+     * JSX let long symbols (e.g. F♯m7/G♯) run past their box and collide with
+     * the note chips, so the size now follows the real length.
+     */
+    val rootFontSp: Float get() = when {
+        symbolLength > 9 -> 17f
+        symbolLength > 7 -> 20f
+        symbolLength > 5 -> 24f
+        else -> 28f
+    }
 
     companion object {
         private val ROOT_RE = Regex("^([A-G][#b♯♭]?)(.*)$")
@@ -27,7 +37,8 @@ data class ChordDisplay(
         /** JSX `note()`: sharp sign rendered as the musical ♯ glyph. */
         private fun pretty(note: String): String = note.replace("#", "♯")
 
-        private val INVERSION_LABELS = listOf("Root position", "1st inversion", "2nd inversion", "3rd inversion")
+        /** Short labels: nothing at root position, then 1st / 2nd / 3rd. */
+        private val INVERSION_LABELS = listOf("", "1st", "2nd", "3rd")
 
         fun from(chord: DetectedChord?): ChordDisplay? {
             if (chord == null) return null
