@@ -93,6 +93,22 @@ Un seul nom de brief s'est révélé faux :
 Le nom fiable d'un soundfont pour **tous** les slots est
 `audioSlots[slot].soundFontPath` — c'est ce qu'utilise `DrumPadScreen`.
 
+## Récupération après crash de sandbox (procédure vérifiée)
+
+Un « sandbox error » perd tout le travail **non commité**. Les événements d'une
+conversation restent lisibles via l'API Cloud :
+
+```bash
+curl -s "https://app.all-hands.dev/api/v1/conversation/<CONV_ID>/events/search?limit=100&page_id=<N>" \
+  -H "Authorization: Bearer $OPENHANDS_API_KEY"
+```
+
+Les `ActionEvent` `file_editor` portent `action.command`/`path`/`old_str`/`new_str`/
+`file_text` : on peut **rejouer** les éditions (`create` puis `str_replace`) de façon
+déterministe, à condition de repartir du même commit de base. Le `page_id` est un
+entier croissant (pas le nombre d'items). Méthode utilisée : commit `053cdc6`,
+branche de sauvegarde `backup/sandbox-recovery-20261019`.
+
 ## Conventions
 
 - Commits : `[Mixer V2] <résumé> — Compile: OK`, avec
