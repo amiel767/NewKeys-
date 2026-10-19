@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Mixer V2 — captures de session</title>
+<style>
+  body { background:#0B0F16; color:#E9EDF5; font:14px/1.55 system-ui,sans-serif; margin:0; padding:24px 28px; }
+  h1 { font-size:21px; margin:0 0 4px; }
+  h2 { font-size:15px; color:#8FB2E8; margin:30px 0 6px; }
+  p.cap { color:#7B859A; font-size:12.5px; margin:4px 0 10px; }
+  img { max-width:100%; border:1px solid #2A3446; border-radius:8px; display:block; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  .card { background:#121826; border:1px solid #222C40; border-radius:10px; padding:12px; }
+  .card h3 { font-size:13px; margin:0 0 8px; color:#C9D1E0; font-weight:600; }
+  code { background:#1B2233; padding:1px 5px; border-radius:4px; color:#9FC1F0; font-size:12px; }
+  ul { margin:6px 0; padding-left:20px; } li { margin:3px 0; }
+</style>
+</head>
+<body>
+<h1>Mixer V2 — captures de la session</h1>
+<p class="cap">Tout est rendu par Robolectric (LiveUI) au format natif 2673×1233, puis affiché à l'échelle 1:1 (891×411 dp). Les bandes zoomées comparent le rendu Compose (bas) à la référence JSX (haut).</p>
+
+<h2>1. Vue complète — Mixer, accord C–E–G joué dans l'affichage d'accords</h2>
+<p class="cap">Comme demandé, les captures intègrent maintenant un accord joué : le bloc central du Topbar montre le symbole détecté.</p>
+<img src="mixer_chord.png" alt="mixer avec accord">
+
+<h2>2. Vue complète — Mixer au repos</h2>
+<img src="mixer.png" alt="mixer">
+
+<h2>3. Détails modifiés (Compose en bas, JSX en haut, zoom ×2)</h2>
+<div class="grid">
+  <div class="card">
+    <h3>Topbar épaissi + boutons +/− TRANS / OCT</h3>
+    <p class="cap">Hauteur 44 → <b>55 dp</b>. Les deux pastilles rondes sont réintégrées dans chaque stepper.</p>
+    <img src="strip_top_chord.png" alt="topbar strip">
+  </div>
+  <div class="card">
+    <h3>Bottombar réduite −25 % + CPU/RAM resserrés</h3>
+    <p class="cap">Hauteur 58 → <b>44 dp</b>. Écart CPU↔RAM 5 → <b>2 dp</b>. Le rail Master et son thumb partagent désormais le même axe vertical.</p>
+    <img src="strip_bottombar.png" alt="bottombar strip">
+  </div>
+</div>
+
+<h2>4. DrumPad</h2>
+<img src="drumpad.png" alt="drumpad">
+
+<h2>5. Ce qui a changé dans cette session</h2>
+<ul>
+  <li><b>Bottombar</b> : hauteur 58 → 44 dp (−24 %).</li>
+  <li><b>Topbar</b> : hauteur 44 → 55 dp (+25 %).</li>
+  <li><b>CPU / RAM</b> : espacement réduit de 5 à 2 dp (le style actuel est conservé, ce n'est pas une reprise du JSX).</li>
+  <li><b>TRANS / OCT</b> : boutons +/− ronds réintégrés (caps 24 dp, glyphe net, ombre douce, sans contour dur).</li>
+  <li><b>Master slider</b> : rail et thumb alignés sur le même axe vertical (l'ancien rendu laissait le thumb 2 dp au-dessus du rail).</li>
+  <li><b>Accord</b> : le bridge LiveUI accepte une commande <code>keys</code>, donc les captures peuvent montrer un accord joué.</li>
+</ul>
+</body>
+</html>

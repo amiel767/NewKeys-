@@ -26,7 +26,8 @@ def strip(name, compose, jsx, y0, y1, zoom=2):
     d = ImageDraw.Draw(canvas)
     d.text((6, 2), "JSX", fill=(255, 220, 120))
     d.text((6, h * zoom + 12), "COMPOSE", fill=(120, 220, 255))
-    out = f"/tmp/shots/strip_{name}.png"
+    import os
+    out = os.path.join(os.path.dirname(os.path.abspath(compose)), f"strip_{name}.png")
     canvas.save(out)
     print("saved", out)
 

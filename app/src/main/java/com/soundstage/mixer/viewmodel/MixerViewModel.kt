@@ -2403,6 +2403,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val channels = getActivePerformanceChannels(midiNote)
         val state = _uiState.value
 
+        // Update the UI state first: the key press and the chord readout must not
+        // depend on the audio engine being available.
+        _uiState.update { it.copy(pressedKeys = it.pressedKeys + key) }
+
         val baseVel = state.globalVelocityMin + velocity.coerceIn(0f, 1f) * (state.globalVelocityMax - state.globalVelocityMin)
 
         channels.forEach { channel ->
@@ -2410,14 +2414,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             val finalVel = if (track != null) {
                 applyVelocityCurve(baseVel, track.velocityCurve)
             } else baseVel
-            audioEngine.noteOn(key, finalVel, channel)
+            runCatching { audioEngine.noteOn(key, finalVel, channel) }
         }
         // Capture the onset for the looper. Playback goes straight to audioEngine,
         // so this never re-records what it replays.
         looperEngine.record("note", midiNote, "#8FB2E8")
-        _uiState.update { state ->
-            state.copy(pressedKeys = state.pressedKeys + key)
-        }
     }
 
     fun onKeyUp(key: String) {

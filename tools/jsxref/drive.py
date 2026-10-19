@@ -24,14 +24,17 @@ def status():
 
 
 def drive(cmd, out, timeout=40.0):
-    prev = status()
-    base = int(prev.split()[1]) if prev.startswith("ok ") else 0
+    """Push a command and return the frame that reflects it.
+
+    status.txt advances on every render loop iteration, not only when a new
+    command is applied, so waiting for one advance can capture a stale frame.
+    Sleep past a few iterations after writing, then take the newest image.
+    """
     CMD.write_text(json.dumps(cmd))
+    time.sleep(1.6)
     t0 = time.time()
     while time.time() - t0 < timeout:
-        s = status()
-        if s.startswith("ok ") and int(s.split()[1]) > base:
-            time.sleep(0.35)
+        if IMG.exists() and status().startswith("ok "):
             shutil.copy(IMG, out)
             return True
         time.sleep(0.1)
