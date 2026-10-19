@@ -109,6 +109,26 @@ déterministe, à condition de repartir du même commit de base. Le `page_id` es
 entier croissant (pas le nombre d'items). Méthode utilisée : commit `053cdc6`,
 branche de sauvegarde `backup/sandbox-recovery-20261019`.
 
+## Sécurité anti-crash (leçons)
+
+Le sandbox peut redémarrer et **effacer `/tmp`** : toute capture ou artefact laissé
+dans `/tmp` est perdu. Règles :
+
+- Commiter **et pousser** après chaque étape qui compile (`git branch -f
+  backup/sandbox-recovery-...` puis `git push`). Ne jamais garder de travail
+  non commité en fin d'étape.
+- Écrire les artefacts sous `tools/jsxref/shots/` (suivi par git), pas `/tmp`.
+- `git push` : si le remote contient un ancien token (`ghu_...`) il peut expirer.
+  Le rafraîchir avec
+  `git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/amiel767/NewKeys-.git"`.
+- LiveUI : `tools/liveui/start.sh` (démarre) et `tools/liveui/refresh.sh`
+  (recompile + relance le render loop, le bridge reste up).
+- `tools/jsxref/drive.py` doit **dormir ~1,6 s** après l'écriture de `cmd.json` :
+  `status.txt` avance à chaque itération, donc attendre une seule avance capture
+  une frame périmée.
+- Bridge LiveUI : la commande `keys` (tableau, ex. `["C4","E4","G4"]`) joue un
+  accord → l'affichage d'accords est visible dans les captures.
+
 ## Conventions
 
 - Commits : `[Mixer V2] <résumé> — Compile: OK`, avec
