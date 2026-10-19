@@ -580,8 +580,9 @@ private fun ResourceMonitorV2(width: androidx.compose.ui.unit.Dp) {
     }
 
     MixerModuleV2(modifier = Modifier.width(width).fillMaxHeight()) {
+        // JSX ResourceMonitor: column, justifyContent center, gap 4 (MixerPreview.jsx:454).
         Column(Modifier.fillMaxSize().padding(horizontal = 10.dp),
-            verticalArrangement = Arrangement.SpaceEvenly) {
+            verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically)) {
             ResourceGaugeV2("CPU", "$cpuPercent%", cpuPercent / 100f, Color(0xFF3CC48A))
             ResourceGaugeV2("RAM", "$ramMb", (ramMb / 512f).coerceIn(0f, 1f), Color(0xFF4BA8F0))
         }
@@ -599,7 +600,7 @@ private fun ResourceGaugeV2(label: String, value: String, fraction: Float, tint:
         animationSpec = tween(600, easing = FastOutSlowInEasing), label = "gauge_$label")
     Row(verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-        Canvas(Modifier.size(11.dp)) {
+        Canvas(Modifier.size(10.dp)) {
             val stroke = 1.6.dp.toPx()
             val inset = stroke / 2f
             val arcSize = Size(size.width - stroke, size.height - stroke)
