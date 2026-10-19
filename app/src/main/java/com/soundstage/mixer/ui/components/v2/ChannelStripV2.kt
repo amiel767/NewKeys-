@@ -14,10 +14,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -41,8 +43,8 @@ fun ChannelStripV2(
 
     Box(
         modifier = modifier
-            // Soft drop shadow under every strip case, to lift it off the panel.
-            .shadow(3.dp, RoundedCornerShape(14.dp), spotColor = Color(0x59000000), ambientColor = Color(0x40000000))
+            // Drop shadow under every strip case, to lift it off the panel.
+            .shadow(7.dp, RoundedCornerShape(14.dp), spotColor = Color(0x8C000000), ambientColor = Color(0x59000000))
             .clip(RoundedCornerShape(14.dp)) // Fix: 14dp au lieu de 18
             .background(Brush.verticalGradient(listOf(Color(0xFF232C3D), Color(0xFF191F2B))))
             .border(1.dp, Color(0x0DFFFFFF), RoundedCornerShape(14.dp))
@@ -60,23 +62,41 @@ fun ChannelStripV2(
             // Name Plate : 22dp hauteur, font 9.5sp
             Box(
                 modifier = Modifier.fillMaxWidth().height(22.dp)
-                    // JSX name plate: ombre portée basse + relief (inset haut simule par la bordure claire)
-                    .shadow(2.dp, RoundedCornerShape(8.dp))
+                    // JSX name plate: drop shadow below + inset top highlight for relief.
+                    // The 1 dp outline is gone: the JSX only draws "inset 0 1px 0".
+                    .shadow(4.dp, RoundedCornerShape(8.dp),
+                        spotColor = Color(0x8C000000), ambientColor = Color(0x40000000))
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Brush.verticalGradient(listOf(Color(0xFF232C3D), Color(0xFF191F2B))))
-                    .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(8.dp))
+                    .background(Brush.verticalGradient(listOf(Color(0xFF2A3448), Color(0xFF1B2230))))
+                    .drawWithContent {
+                        drawContent()
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.12f),
+                            start = Offset(size.width * 0.07f, 0.5f),
+                            end = Offset(size.width * 0.93f, 0.5f),
+                            strokeWidth = 1.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                        drawLine(
+                            color = Color.Black.copy(alpha = 0.30f),
+                            start = Offset(size.width * 0.07f, size.height - 0.5f),
+                            end = Offset(size.width * 0.93f, size.height - 0.5f),
+                            strokeWidth = 1.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    }
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onTrackNameClick() },
                 contentAlignment = Alignment.Center
             ) {
                 val name = track.patchName.ifBlank { track.soundfontName.ifBlank { "—" } }
-                // JSX: textShadow "0 1px 0 rgba(0,0,0,.45)" - rendu par un Text fantome decale d'1dp
+                // JSX: textShadow "0 1px 0 rgba(0,0,0,.45)" - rendered by an offset ghost Text.
                 Box(contentAlignment = Alignment.Center) {
-                    Text(name, color = Color(0x73000000),
+                    Text(name, color = Color(0x8C000000),
                         fontSize = if (name.length > 15) 8.5.sp else 9.5.sp,
                         fontWeight = FontWeight.ExtraBold, maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.offset(y = 1.dp))
-                    Text(name, color = if (isDimmed) Color(0xFF8F9AB0) else Color(0xFFE9EDF5),
+                        modifier = Modifier.offset(y = 1.5.dp))
+                    Text(name, color = if (isDimmed) Color(0xFF8F9AB0) else Color(0xFFF1F4FA),
                         fontSize = if (name.length > 15) 8.5.sp else 9.5.sp,
                         fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }

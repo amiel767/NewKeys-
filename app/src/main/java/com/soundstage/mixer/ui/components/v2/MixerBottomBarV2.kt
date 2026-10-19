@@ -256,11 +256,6 @@ private fun SnapshotCaseV2(
             .width(width)
             .fillMaxHeight()
             .offset { IntOffset(0, animatedY.roundToInt()) }
-            .insetRelief(
-                cornerRadius = 14.dp,
-                light = Color.White.copy(alpha = if (isActive) 0.45f else 0.09f),
-                dark = Color.Black.copy(alpha = 0.35f)
-            )
             .pointerInput(key) {
                 detectVerticalDragGestures(
                     onVerticalDrag = { change, delta ->

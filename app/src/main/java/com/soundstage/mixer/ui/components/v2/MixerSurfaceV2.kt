@@ -39,7 +39,7 @@ fun MixerModuleV2(
     shape: Shape = RoundedCornerShape(14.dp),
     panelTop: Color = Color(0xFF2B3348),
     panelBottom: Color = Color(0xFF1D2433),
-    elevation: Dp = 5.dp,
+    elevation: Dp = 7.dp,
     highlightAlpha: Float = 0.09f,
     content: @Composable BoxScope.() -> Unit
 ) {

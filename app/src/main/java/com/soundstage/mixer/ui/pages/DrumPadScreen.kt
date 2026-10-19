@@ -472,6 +472,9 @@ fun DrumPadScreen(
             onAssign = { padIndex, sample ->
                 viewModel.assignDrumSampleOrLoop(padIndex, sample.name, sample.path, isLoop = false)
             },
+            onAssignLoop = { padIndex, loop ->
+                viewModel.assignDrumSampleOrLoop(padIndex, loop.name, loop.path, isLoop = true)
+            },
             onLoadScene = { /* V1 stub */ },
             onClose = { managerOpen = false }
         )

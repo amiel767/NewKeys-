@@ -63,6 +63,7 @@ fun DpManager(
     onDeleteKit: (String) -> Unit,
     onSaveCurrentAsKit: (String) -> Unit,
     onAssign: (padIndex: Int, sample: StorageItem) -> Unit,
+    onAssignLoop: (padIndex: Int, sample: StorageItem) -> Unit,
     onLoadScene: (Any) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
@@ -74,7 +75,9 @@ fun DpManager(
     var newKitName by remember { mutableStateOf("") }
     var selection by remember { mutableStateOf(setOf<String>()) }
 
-    val assigning = tab == "DrumPad" && openTarget != null
+    // Both sample and loop tabs can assign onto a DrumPad; the target pad comes
+    // from the DrumPad grid, so the tab only decides which file list is shown.
+    val assigning = (tab == "DrumPad" || tab == "Loops") && openTarget != null
     val filteredSamples = drumSamples.filter { search.isEmpty() || it.name.contains(search, true) }
     val filteredLoops = loops.filter { search.isEmpty() || it.name.contains(search, true) }
     val filteredKits = kits.filter { search.isEmpty() || it.name.contains(search, true) }
@@ -265,13 +268,17 @@ fun DpManager(
                                 )
                                 "Loops" -> StorageListContent(
                                     items = filteredLoops,
-                                    assigning = false,
+                                    assigning = assigning,
                                     selection = selection,
                                     pads = pads,
-                                    onItemClick = { sample ->
-                                        selection = if (selection.contains(sample.name))
-                                            selection - sample.name
-                                        else selection + sample.name
+                                    onItemClick = { loop ->
+                                        if (assigning && openTarget != null) {
+                                            onAssignLoop(openTarget, loop)
+                                        } else {
+                                            selection = if (selection.contains(loop.name))
+                                                selection - loop.name
+                                            else selection + loop.name
+                                        }
                                     },
                                     emptyText = "No loops"
                                 )
@@ -629,7 +636,7 @@ private fun ScenesContent(
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Assign bar (8 pads target)
+// Assign bar (one cell per DrumPad; 8 or 16 depending on the active grid)
 // ─────────────────────────────────────────────────────────────────────────
 @Composable
 private fun AssignBar(
@@ -637,23 +644,27 @@ private fun AssignBar(
     target: Int,
     modifier: Modifier = Modifier,
 ) {
+    // Follow the real pad list so a 16-pad grid shows 16 assignable cells.
+    val count = pads.size.coerceAtLeast(8)
     Row(
         modifier
             .clip(RoundedCornerShape(16.dp))
             .background(Brush.verticalGradient(listOf(Color(0xFF2A3447), Color(0xFF1E2736))))
             .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
             .padding(6.dp),
-        horizontalArrangement = Arrangement.spacedBy(5.dp)
+        horizontalArrangement = Arrangement.spacedBy(if (count > 8) 3.dp else 5.dp)
     ) {
-        for (i in 0 until 8) {
+        for (i in 0 until count) {
             val pad = pads.getOrNull(i)
-            val isTarget = (pad?.id ?: (i + 1)) == target
+            // Identity comes from the pad itself; the index is only a fallback.
+            val padId = pad?.id ?: (i + 1)
+            val isTarget = padId == target
             val color = DpPalette.at(i)
             Box(
                 Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .clip(RoundedCornerShape(11.dp))
+                    .clip(RoundedCornerShape(if (count > 8) 8.dp else 11.dp))
                     .background(
                         Brush.linearGradient(listOf(
                             color.copy(alpha = if (isTarget) 0.53f else 0.19f),
@@ -663,22 +674,23 @@ private fun AssignBar(
                     .border(
                         if (isTarget) 1.5.dp else 0.dp,
                         if (isTarget) color else Color.Transparent,
-                        RoundedCornerShape(11.dp)
+                        RoundedCornerShape(if (count > 8) 8.dp else 11.dp)
                     )
-                    .padding(horizontal = 5.dp, vertical = 4.dp)
+                    .padding(horizontal = if (count > 8) 3.dp else 5.dp, vertical = 4.dp)
             ) {
                 Column {
                     Text(
-                        "D${i + 1}",
+                        "D$padId",
                         color = if (isTarget) Color.White else Color(0xFF8E99AE),
-                        fontSize = 9.5.sp,
+                        fontSize = if (count > 8) 8.5.sp else 9.5.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        fontFamily = FontFamily.Monospace
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1
                     )
                     Text(
                         pad?.label ?: "+",
                         color = if (pad != null) Color(0xFFE9EDF5) else Color(0xFF566075),
-                        fontSize = 10.sp,
+                        fontSize = if (count > 8) 8.5.sp else 10.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
