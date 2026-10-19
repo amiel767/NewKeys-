@@ -385,7 +385,23 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
         }
-        // onPlayNoteEvent reste null (V1: drone piloté par UI direct)
+        // Replays a recorded note on every channel the track performs on, so a
+        // layered/split setup sounds the same live and on playback.
+        looperEngine.onPlayNoteEvent = playNote@{ midi ->
+            val key = com.soundstage.mixer.ui.components.KeyPositionMapper.midiToNoteName(midi)
+            val channels = getActivePerformanceChannels(midi)
+            if (channels.isEmpty()) return@playNote
+            channels.forEach { channel ->
+                val track = _uiState.value.tracks.getOrNull(channel)
+                val vel = track?.let { applyVelocityCurve(0.85f, it.velocityCurve) } ?: 0.85f
+                audioEngine.noteOn(key, vel, channel)
+            }
+            // Release shortly after: the looper stores onsets, not durations.
+            viewModelScope.launch(Dispatchers.Default) {
+                kotlinx.coroutines.delay(220)
+                channels.forEach { channel -> audioEngine.noteOff(key, channel) }
+            }
+        }
 
         // Detect and register USB MIDI Hardware devices
         val initialMidiDevs = audioEngine.getConnectedUsbMidiDevices()
@@ -2396,6 +2412,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             } else baseVel
             audioEngine.noteOn(key, finalVel, channel)
         }
+        // Capture the onset for the looper. Playback goes straight to audioEngine,
+        // so this never re-records what it replays.
+        looperEngine.record("note", midiNote, "#8FB2E8")
         _uiState.update { state ->
             state.copy(pressedKeys = state.pressedKeys + key)
         }

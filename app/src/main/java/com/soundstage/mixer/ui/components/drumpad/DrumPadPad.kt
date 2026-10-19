@@ -627,7 +627,8 @@ fun DpLoopCase(
                         letterSpacing = 0.4.sp,
                         maxLines = 1,
                         softWrap = false,
-                        overflow = TextOverflow.Clip
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
 

@@ -62,6 +62,33 @@ fun MixerModuleV2(
     )
 }
 
+/**
+ * Two-sided bevel used by the JSX cases that carry the full relief:
+ * `inset 1.5px 1.5px 0 rgba(255,255,255,.1), inset -1.5px -1.5px 0 rgba(0,0,0,.45)`
+ * (see `LoopCase` / `SnapCase` in the previews). Those inset shadows have a zero
+ * blur, so each is one crisp line: light on the top and left inner edges, dark on
+ * the bottom and right inner edges. Compose cannot express them, so the four edges
+ * are stroked directly, inset by half the stroke width so they stay inside the
+ * shape and the corners stay rounded.
+ */
+fun Modifier.insetRelief(
+    cornerRadius: Dp = 14.dp,
+    light: Color = Color.White.copy(alpha = 0.10f),
+    dark: Color = Color.Black.copy(alpha = 0.45f),
+    strokeWidth: Dp = 1.5.dp
+): Modifier = this.drawWithContent {
+    drawContent()
+    val sw = strokeWidth.toPx()
+    val half = sw / 2f
+    val r = cornerRadius.toPx().coerceAtMost(size.minDimension / 2f)
+    val w = size.width
+    val h = size.height
+    drawLine(light, Offset(r, half), Offset(w - r, half), sw, StrokeCap.Round)
+    drawLine(light, Offset(half, r), Offset(half, h - r), sw, StrokeCap.Round)
+    drawLine(dark, Offset(r, h - half), Offset(w - r, h - half), sw, StrokeCap.Round)
+    drawLine(dark, Offset(w - half, r), Offset(w - half, h - r), sw, StrokeCap.Round)
+}
+
 /** Rounded +/- step button, translated from the JSX `RoundStep` (MixerPreview.jsx:91). */
 @Composable
 fun RoundStepV2(

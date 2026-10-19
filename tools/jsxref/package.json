@@ -1,0 +1,11 @@
+{
+  "name": "jsxref",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "esbuild": "^0.24.0",
+    "puppeteer-core": "^23.0.0"
+  }
+}
