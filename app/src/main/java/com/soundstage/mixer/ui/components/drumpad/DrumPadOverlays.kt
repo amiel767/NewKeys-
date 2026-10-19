@@ -354,6 +354,7 @@ fun DpLoopMenu(
     canDouble: Boolean,
     canToggle: Boolean,
     canClear: Boolean,
+    canClearAll: Boolean,
     isStopped: Boolean,
     onAction: (String) -> Unit,
     onDismiss: () -> Unit,
@@ -385,6 +386,7 @@ fun DpLoopMenu(
             LoopMenuItem("Double length", canDouble) { onAction("double") }
             LoopMenuItem(if (isStopped) "Play" else "Stop", canToggle) { onAction(if (isStopped) "play" else "stop") }
             LoopMenuItem("Clear", canClear) { onAction("clear") }
+            LoopMenuItem("Clear all", canClearAll) { onAction("clearAll") }
         }
     }
 }

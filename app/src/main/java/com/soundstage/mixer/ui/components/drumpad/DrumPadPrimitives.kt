@@ -185,19 +185,32 @@ fun <T> DpSeg(options: List<Pair<T, String>>, selected: T, onChange: (T) -> Unit
 
 @Composable
 fun DpNoteKey(label: String, oct: Int, idx: Int, on: Boolean, ghost: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier) {
-    val hue = ((idx * 30 + 205) % 360).toFloat()
-    val tintBase = hslToColor(hue, 0.84f, 0.61f)
-    val tint98 = hslToColor(hue, 0.84f, 0.61f, 0.98f)
-    val tint66 = hslToColor(hue, 0.84f, 0.61f, 0.66f)
-    val tint26 = hslToColor(hue, 0.84f, 0.61f, 0.26f)
+    // The TonicPad grid reads as one vivid sky-blue family, not a rainbow: the hue
+    // stays in the sky-blue band and only drifts slightly so notes stay tellable
+    // apart without breaking the palette.
+    val hue = 203f + (idx % 4) * 6f
+    val tintBase = hslToColor(hue, 0.86f, 0.62f)
+    val tint98 = hslToColor(hue, 0.86f, 0.62f, 0.98f)
+    val tint66 = hslToColor(hue, 0.86f, 0.62f, 0.66f)
+    val tint26 = hslToColor(hue, 0.86f, 0.62f, 0.26f)
     var pressed by remember { mutableStateOf(false) }
-    
-    val pressScale by animateFloatAsState(if (pressed) 0.965f else 1f, spring(dampingRatio = 0.6f, stiffness = 500f), label = "note")
+
+    val pressScale by animateFloatAsState(if (pressed) 0.955f else 1f, spring(dampingRatio = 0.6f, stiffness = 500f), label = "notePress")
+    // A soft glow that rises with the note: the pad lights up instead of only
+    // switching colour, which is what makes the grid feel responsive.
+    val glow by animateFloatAsState(if (on) 1f else 0f, tween(190), label = "noteGlow")
     val bg = if (on) Brush.verticalGradient(listOf(tint98, tint66)) else Brush.verticalGradient(listOf(tint26, Color(0xFF1B2336)))
 
     Box(
-        modifier = modifier.graphicsLayer { scaleX = pressScale; scaleY = pressScale }.clip(RoundedCornerShape(13.dp)).background(bg)
-            .then(if (!on && ghost) Modifier.border(1.5.dp, hslToColor(hue, 0.84f, 0.61f, 0.9f), RoundedCornerShape(13.dp)) else Modifier)
+        modifier = modifier.graphicsLayer { scaleX = pressScale; scaleY = pressScale }
+            .shadow(
+                elevation = (2f + 6f * glow).dp,
+                shape = RoundedCornerShape(13.dp),
+                spotColor = tintBase.copy(alpha = 0.75f * glow),
+                ambientColor = tintBase.copy(alpha = 0.45f * glow)
+            )
+            .clip(RoundedCornerShape(13.dp)).background(bg)
+            .then(if (!on && ghost) Modifier.border(1.5.dp, hslToColor(hue, 0.86f, 0.62f, 0.9f), RoundedCornerShape(13.dp)) else Modifier)
             .noiseOverlay(0.06f).pointerInput(idx) { detectTapGestures(onPress = { pressed = true; onToggle(); tryAwaitRelease(); pressed = false }) },
         contentAlignment = Alignment.Center
     ) {

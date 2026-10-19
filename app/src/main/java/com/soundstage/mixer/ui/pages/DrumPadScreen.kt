@@ -421,6 +421,7 @@ fun DrumPadScreen(
             canDouble = can && case!!.bars < 8 && case.layers.isNotEmpty(),
             canToggle = can,
             canClear = can,
+            canClearAll = uiState.looper.cases.any { it.state != LooperEngine.CaseState.Empty },
             isStopped = case?.state == LooperEngine.CaseState.Stopped,
             onAction = { action ->
                 viewModel.longPressLooperCaseAction(mi, action)

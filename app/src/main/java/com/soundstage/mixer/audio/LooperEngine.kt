@@ -110,6 +110,11 @@ class LooperEngine(private val clock: TransportClock) {
     }
 
     fun longPressCaseAction(caseIndex: Int, action: String) {
+        // Clear all wipes every case, so it bypasses the per-case replace below.
+        if (action == "clearAll") {
+            _state.update { st -> st.copy(cases = st.cases.map { Case(id = it.id) }) }
+            return
+        }
         val c = _state.value.cases[caseIndex]
         val next = when (action) {
             "stop" -> c.copy(state = CaseState.Stopped)
