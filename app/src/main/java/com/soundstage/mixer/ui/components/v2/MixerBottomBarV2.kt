@@ -613,8 +613,8 @@ private fun ResourceGaugeV2(label: String, value: String, fraction: Float, tint:
             drawCircle(tint, radius = 1.6.dp.toPx(), center = center)
         }
         Text(label, color = tint, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold,
-            letterSpacing = 0.8.sp)
+            letterSpacing = 0.8.sp, lineHeight = 12.sp)
         Text(value, color = TextMain, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold,
-            fontFamily = FontFamily.Monospace)
+            fontFamily = FontFamily.Monospace, lineHeight = 13.sp)
     }
 }
