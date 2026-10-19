@@ -26,9 +26,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -64,6 +68,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.ScrollState
 import com.soundstage.mixer.viewmodel.MixerUiState
 import com.soundstage.mixer.ui.components.DetectedChord
+import com.soundstage.mixer.ui.components.ChordDisplay
 import com.aetherkeys.sheets.ui.SheetsRoot
 import com.soundstage.mixer.ui.patches.PatchesOverlay
 import com.soundstage.mixer.ui.patches.PatchesUiState
@@ -96,9 +101,9 @@ private fun MixerMainPageContent(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(
-                                start = 4.dp,
-                                end = 4.dp,
-                                top = 2.dp,
+                                start = 11.dp,
+                                end = 11.dp,
+                                top = 8.dp,
                                 bottom = safeBottomPadding
                             )
                     ) {
@@ -112,8 +117,8 @@ private fun MixerMainPageContent(
                     octave = uiState.octave,
                     onTransposeChange = { viewModel.updateTranspose(it) },
                     onOctaveChange = { viewModel.updateOctave(it) },
-                    detectedChord = detectedChord,
-                    isSustainActive = uiState.isSustainActive,
+                    chord = ChordDisplay.from(detectedChord),
+                    isSustainActive = uiState.isSustainActive || uiState.isMidiPedalPressed,
                     onToggleSustain = { viewModel.toggleSustain() },
                     onOpenNotes = { viewModel.navigateToPage(AppScreenPage.SHEETS) },
                     onOpenDrumPad = { viewModel.navigateToPage(AppScreenPage.DRUMPAD) },
@@ -123,7 +128,7 @@ private fun MixerMainPageContent(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(8.dp)) // JSX: topbar top 8 + height 44 -> strips top 60 (gap 8)
 
                 // 2. MIXER TRACKS SECTION (8 Tracks + 1 Master)
                 val defaultSfName = uiState.tracks.firstOrNull { it.soundfontName.isNotEmpty() }?.soundfontName ?: "FluidR3_GM.sf2"
@@ -153,11 +158,10 @@ private fun MixerMainPageContent(
                             val showAddButton = uiState.visibleTracksCount < 8 && !isPadOpen
                             val activeItemCount = visibleTracks.size + (if (showAddButton) 1 else 0)
 
-                            // Fader Width & Layout Logic:
-                            // Reference default width = 120.dp (+30% increase for generous, comfortable touch targets).
-                            // In Unlock mode: Always maintains default width (120.dp) with horizontal scroll.
-                            // In Lock mode: Keeps default width (120.dp) until tracks exceed screen space, then adapts down proportionally to fit all tracks.
-                            val defaultTrackWidth = 120.dp
+                            // Fader width: JSX Strip is 126 dp (MixerPreview.jsx:220), gap 6.
+                            // In Unlock mode it keeps that width and scrolls horizontally.
+                            // In Lock mode it keeps 126 until tracks overflow, then shrinks to fit.
+                            val defaultTrackWidth = 126.dp
                             val totalSpacing = 6.dp * (activeItemCount - 1).coerceAtLeast(0)
                             val availableSpace = (this@BoxWithConstraints.maxWidth - totalSpacing).coerceAtLeast(0.dp)
                             val totalNeededWidth = defaultTrackWidth * activeItemCount
@@ -221,45 +225,53 @@ private fun MixerMainPageContent(
                                             .fillMaxHeight()
                                     }
 
+                                    // JSX Add Sound case (MixerPreview.jsx:445): a dashed
+                                    // outline on a near-transparent fill, with a rounded
+                                    // icon chip inside. No nested bordered box.
                                     Box(
                                         modifier = addBtnModifier
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(Color(0xFF131722))
-                                            .border(
-                                                width = 2.dp,
-                                                color = Color(0xFF2C394E),
-                                                shape = RoundedCornerShape(10.dp)
-                                            )
+                                            .clip(RoundedCornerShape(18.dp))
+                                            .background(Color(0x08FFFFFF))
+                                            .drawBehind {
+                                                drawRoundRect(
+                                                    color = Color(0x24FFFFFF),
+                                                    cornerRadius = CornerRadius(18.dp.toPx()),
+                                                    style = Stroke(
+                                                        width = 1.5.dp.toPx(),
+                                                        pathEffect = PathEffect.dashPathEffect(
+                                                            floatArrayOf(6.dp.toPx(), 5.dp.toPx())
+                                                        )
+                                                    )
+                                                )
+                                            }
                                             .clickable { viewModel.addSoundTrack() }
-                                            .padding(6.dp)
                                             .testTag("btn_add_sound_track"),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Column(
                                             horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.Center
+                                            verticalArrangement = Arrangement.spacedBy(12.dp)
                                         ) {
                                             Box(
                                                 modifier = Modifier
-                                                    .size(38.dp)
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .background(Color(0xFF1A2232))
-                                                    .border(2.dp, Color(0xFF3B4864), RoundedCornerShape(8.dp)),
+                                                    .size(44.dp)
+                                                    .clip(RoundedCornerShape(14.dp))
+                                                    .background(Color(0x148FB2E8))
+                                                    .border(1.5.dp, Color(0x738FB2E8), RoundedCornerShape(14.dp)),
                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 Icon(
                                                     imageVector = Icons.Default.Add,
                                                     contentDescription = "Add Sound",
-                                                    tint = Color(0xFF93C5FD),
+                                                    tint = Color(0xFF8FB2E8),
                                                     modifier = Modifier.size(22.dp)
                                                 )
                                             }
-                                            Spacer(modifier = Modifier.height(6.dp))
                                             Text(
                                                 text = "Add Sound",
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = Color(0xFF94A3B8)
+                                                fontSize = 12.5.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFF8E99AD)
                                             )
                                         }
                                     }
@@ -465,6 +477,8 @@ private fun MixerMainPageContent(
                     },
                     isKeyboardActive = isKeyboardVisible,
                     onToggleKeyboard = { viewModel.cycleKeyboardExpansion() },
+                    isLayerExpanded = uiState.isKeyboardLayerExpanded,
+                    onToggleLayer = { viewModel.toggleKeyboardLayer() },
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -598,10 +612,11 @@ private fun MixerMainPageContent(
 fun MixerScreen(
     viewModel: MixerViewModel,
     modifier: Modifier = Modifier,
-    onRequestManageStoragePermission: () -> Unit = {}
+    onRequestManageStoragePermission: () -> Unit = {},
+    skipSplash: Boolean = false
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    var isSplashFinished by remember { mutableStateOf(false) }
+    var isSplashFinished by remember { mutableStateOf(skipSplash) }
 
     val sf2PickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
@@ -777,7 +792,8 @@ fun MixerScreen(
                     conflict = uiState.mappingConflict,
                     otherActionsOpen = uiState.mappingOtherActionsOpen,
                     mappings = viewModel.getActiveSettingsStateMappings(),
-                    catalog = MappingCatalog.controls
+                    catalog = MappingCatalog.controls,
+                    midiDevices = uiState.midiDevices
                 )
                 val settingsActions = object : SettingsActions {
                     override fun onBack() { viewModel.navigateBackToMixer() }

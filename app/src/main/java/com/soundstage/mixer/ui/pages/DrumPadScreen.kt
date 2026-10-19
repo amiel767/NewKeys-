@@ -41,6 +41,7 @@ import com.soundstage.mixer.ui.components.drumpad.DpFxCase
 import com.soundstage.mixer.ui.components.drumpad.DpIcon
 import com.soundstage.mixer.ui.components.drumpad.DpFxSheet
 import com.soundstage.mixer.ui.components.drumpad.DpLoopCase
+import com.soundstage.mixer.ui.components.drumpad.DpLoopMenu
 import com.soundstage.mixer.ui.components.drumpad.DpManager
 import com.soundstage.mixer.ui.components.drumpad.DpMetronomeOverlay
 import com.soundstage.mixer.ui.components.drumpad.DpNoteKey
@@ -132,6 +133,9 @@ fun DrumPadScreen(
             delay(16L)
         }
     }
+
+    // Long-press on a loop case opens the action menu (Undo / Double / Play / Clear).
+    var loopMenuIndex by remember { mutableStateOf<Int?>(null) }
 
     // ─── Derived ───
     val beatsPerBar = parseBeatsPerBar(uiState.transportSignature)
@@ -303,6 +307,17 @@ fun DrumPadScreen(
                     if (anyRec != null && padMode == "pads") {
                         RecBadge()
                     }
+                    if (padMode == "loops") {
+                        val used = uiState.looper.cases.count { it.state != LooperEngine.CaseState.Empty }
+                        val anyStopped = uiState.looper.cases.any { it.state == LooperEngine.CaseState.Stopped }
+                        Text("$used/8 used", color = Color(0xFF7B859A), fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        SmallChip(
+                            label = if (anyStopped) "▶ Play all" else "■ Stop all",
+                            modifier = Modifier.height(24.dp)
+                        ) {
+                            if (anyStopped) viewModel.playAllLoops() else viewModel.stopAllLoops()
+                        }
+                    }
                 }
 
                 // Grid
@@ -325,7 +340,7 @@ fun DrumPadScreen(
                             beatsPerBar = beatsPerBar,
                             barDurationNs = barDurationNs,
                             onTap = { viewModel.tapLooperCase(it) },
-                            onLongPress = { viewModel.longPressLooperCaseAction(it, "menu") },
+                            onLongPress = { loopMenuIndex = it },
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -393,6 +408,25 @@ fun DrumPadScreen(
             label = "Pad",
             onChange = { viewModel.setPadsFxChain(it) },
             onClose = { padsFxOpen = false }
+        )
+    }
+
+    // Loop action menu (JSX: menu on long press). Undo last layer / Double length / Play-Stop / Clear.
+    loopMenuIndex?.let { mi ->
+        val case = uiState.looper.cases.getOrNull(mi)
+        val can = case != null && case.state != LooperEngine.CaseState.Empty
+        DpLoopMenu(
+            index = mi,
+            canUndo = can && case!!.layers.isNotEmpty(),
+            canDouble = can && case!!.bars < 8 && case.layers.isNotEmpty(),
+            canToggle = can,
+            canClear = can,
+            isStopped = case?.state == LooperEngine.CaseState.Stopped,
+            onAction = { action ->
+                viewModel.longPressLooperCaseAction(mi, action)
+                loopMenuIndex = null
+            },
+            onDismiss = { loopMenuIndex = null }
         )
     }
 

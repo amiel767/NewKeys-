@@ -17,41 +17,33 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-/** Disquette plus épaisse et claire */
+/**
+ * Floppy / save icon, traced from the JSX `Ico n="save"` path on a 24×24 viewBox:
+ * body `M5 4h11l3 3v13H5z`, shutter `M8 4v5h7V4`, label `M8 20v-6h8v6`.
+ *
+ * The default stroke is a touch heavier than the JSX's 2 (2.2/24) because the
+ * button sits on the darkest part of the bottom bar and the 2.0 weight read as
+ * almost invisible at 19 dp.
+ */
 @Composable
-fun IconSaveV2(size: Dp = 20.dp, color: Color = Color(0xFFE9EDF5)) {
+fun IconSaveV2(size: Dp = 20.dp, color: Color = Color.White) {
     Canvas(Modifier.size(size)) {
-        val s = this.size.minDimension / 810f
-        val offX = (this.size.width - 750f * s) / 2f
-        val offY = (this.size.height - 810f * s) / 2f
-        val sw = 80f * s
-        withTransform({ translate(offX, offY); scale(s, s, pivot = Offset.Zero) }) {
+        val s = this.size.minDimension / 24f
+        val sw = 2.2f * s
+        withTransform({ scale(s, s, pivot = Offset.Zero) }) {
             val body = Path().apply {
-                moveTo(152f, 42f); lineTo(475f, 42f); lineTo(688f, 255f); lineTo(688f, 668f)
-                arcTo(Rect(506f, 577f, 688f, 759f), 0f, 90f, false)
-                lineTo(152f, 759f)
-                arcTo(Rect(61f, 577f, 243f, 759f), 90f, 90f, false)
-                lineTo(61f, 133f)
-                arcTo(Rect(61f, 42f, 243f, 224f), 180f, 90f, false)
+                moveTo(5f, 4f); lineTo(16f, 4f); lineTo(19f, 7f); lineTo(19f, 20f); lineTo(5f, 20f)
                 close()
             }
-            drawPath(body, color, style = Stroke(sw, cap = StrokeCap.Butt, join = StrokeJoin.Round))
+            drawPath(body, color, style = Stroke(sw, cap = StrokeCap.Round, join = StrokeJoin.Round))
             val shutter = Path().apply {
-                moveTo(195f, 42f); lineTo(195f, 199f)
-                arcTo(Rect(195f, 178f, 237f, 220f), 180f, -90f, false)
-                lineTo(399f, 220f)
-                arcTo(Rect(378f, 178f, 420f, 220f), 90f, -90f, false)
-                lineTo(420f, 42f)
+                moveTo(8f, 4f); lineTo(8f, 9f); lineTo(15f, 9f); lineTo(15f, 4f)
             }
-            drawPath(shutter, color, style = Stroke(sw, cap = StrokeCap.Butt, join = StrokeJoin.Round))
+            drawPath(shutter, color, style = Stroke(sw, cap = StrokeCap.Round, join = StrokeJoin.Round))
             val label = Path().apply {
-                moveTo(195f, 759f); lineTo(195f, 466f)
-                arcTo(Rect(195f, 445f, 237f, 487f), 180f, 90f, false)
-                lineTo(534f, 445f)
-                arcTo(Rect(513f, 445f, 555f, 487f), 270f, 90f, false)
-                lineTo(555f, 759f)
+                moveTo(8f, 20f); lineTo(8f, 14f); lineTo(16f, 14f); lineTo(16f, 20f)
             }
-            drawPath(label, color, style = Stroke(sw, cap = StrokeCap.Butt, join = StrokeJoin.Round))
+            drawPath(label, color, style = Stroke(sw, cap = StrokeCap.Round, join = StrokeJoin.Round))
         }
     }
 }
@@ -141,5 +133,43 @@ fun IconGearV2(size: Dp = 20.dp, color: Color = Color(0xFFC9D1E0)) {
             val endY = center.y + (outer * Math.sin(angle)).toFloat()
             drawLine(color, Offset(startX, startY), Offset(endX, endY), strokeWidth = stroke, cap = StrokeCap.Round)
         }
+    }
+}
+
+/**
+ * Layer icon: three stacked, offset plates seen in perspective, the top one lit.
+ * Drawn as filled slabs with a darker seam between them so the stack reads as
+ * depth rather than as three unrelated bars.
+ */
+@Composable
+fun IconLayerV2(size: Dp = 20.dp, color: Color = Color(0xFFC9D1E0)) {
+    Canvas(Modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        // Parallelogram slab: top edge shorter than the bottom one, giving the tilt.
+        fun slab(cy: Float, alpha: Float) {
+            val halfTop = w * 0.30f
+            val halfBot = w * 0.40f
+            val th = h * 0.20f
+            val cx = w / 2f
+            val p = Path().apply {
+                moveTo(cx - halfTop, cy - th / 2f)
+                lineTo(cx + halfTop, cy - th / 2f)
+                lineTo(cx + halfBot, cy + th / 2f)
+                lineTo(cx - halfBot, cy + th / 2f)
+                close()
+            }
+            drawPath(p, color.copy(alpha = alpha))
+            // Seam highlight along the top edge of the slab.
+            drawLine(
+                color = Color.White.copy(alpha = 0.22f * alpha),
+                start = Offset(cx - halfTop + w * 0.04f, cy - th / 2f + h * 0.015f),
+                end = Offset(cx + halfTop - w * 0.04f, cy - th / 2f + h * 0.015f),
+                strokeWidth = h * 0.045f, cap = StrokeCap.Round
+            )
+        }
+        slab(h * 0.72f, 0.42f)
+        slab(h * 0.50f, 0.68f)
+        slab(h * 0.28f, 1f)
     }
 }

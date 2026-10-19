@@ -17,6 +17,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -28,6 +29,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
@@ -489,7 +492,13 @@ fun DpLoopCase(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // ─── Cadran (Canvas) ───
-            Box(Modifier.fillMaxHeight().aspectRatio(1f)) {
+            // Sized from the case box instead of fillMaxHeight+aspectRatio: that
+            // combination let the dial eat the whole width and squeezed the label
+            // column, which is where "EMPTY" got clipped. The dial now takes at most
+            // 44 % of the width so the state label always has room to render whole.
+            BoxWithConstraints(Modifier.fillMaxHeight()) {
+                val dial = minOf(maxHeight, maxWidth * 0.44f)
+                Box(Modifier.size(dial)) {
                 Canvas(Modifier.fillMaxSize()) {
                     val center = Offset(size.width / 2f, size.height / 2f)
                     val maxR = size.minDimension / 2f
@@ -593,6 +602,7 @@ fun DpLoopCase(
                         textAlign = TextAlign.Center
                     )
                 }
+                }
             }
 
             // ─── Right panel ───
@@ -614,70 +624,63 @@ fun DpLoopCase(
                         color = if (state == LooperEngine.CaseState.Empty) Color(0xFF6F7A90) else stateColor.copy(alpha = pulseAlpha),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = 0.4.sp
+                        letterSpacing = 0.4.sp,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Clip
                     )
                 }
 
-                // Bottom : layer bars + beat dots + chips
+                // Bottom : layer bars + beat dots, as in the JSX LoopCase
                 Column {
-                    // 4 layers indicator
+                    // 4 layer bars; filled layers glow like the reference.
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
                         for (i in 0 until maxLayers) {
+                            val filled = i < layerCount
                             Box(
                                 Modifier
                                     .weight(1f)
-                                    .height(3.5.dp)
+                                    .height(4.dp)
                                     .clip(RoundedCornerShape(2.dp))
                                     .background(
-                                        if (i < layerCount) stateColor
+                                        if (filled) stateColor
                                         else Color.White.copy(alpha = 0.09f)
                                     )
+                                    .drawBehind {
+                                        if (filled) {
+                                            drawRoundRect(
+                                                color = stateColor.copy(alpha = 0.45f),
+                                                cornerRadius = CornerRadius(2.dp.toPx()),
+                                                topLeft = Offset(-1.dp.toPx(), -1.dp.toPx()),
+                                                size = Size(size.width + 2.dp.toPx(), size.height + 2.dp.toPx()),
+                                                style = Stroke(1.5.dp.toPx())
+                                            )
+                                        }
+                                    }
                             )
                         }
                     }
                     Spacer(Modifier.height(5.dp))
+                    // Bar-relative beat dots (the transport beat, not per-case), like JSX.
                     Row(
                         Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
-                        // beat dots
                         for (i in 0 until 4) {
                             Box(
                                 Modifier
-                                    .size(5.dp)
-                                    .clip(RoundedCornerShape(3.dp))
+                                    .size(6.dp)
+                                    .clip(CircleShape)
                                     .background(
                                         if (state != LooperEngine.CaseState.Empty && beatIndex == i) stateColor
                                         else Color.White.copy(alpha = 0.12f)
                                     )
                             )
                         }
-                        Spacer(Modifier.weight(1f))
-                        // chips OF / CH
-                        Text(
-                            "OF 0",
-                            color = Color(0xFF8E99AE),
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontFamily = FontFamily.Monospace,
-                            modifier = Modifier
-                                .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(3.dp))
-                                .padding(horizontal = 4.dp, vertical = 1.dp)
-                        )
-                        Text(
-                            "CH 0",
-                            color = Color(0xFF8E99AE),
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontFamily = FontFamily.Monospace,
-                            modifier = Modifier
-                                .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(3.dp))
-                                .padding(horizontal = 4.dp, vertical = 1.dp)
-                        )
                     }
                 }
             }

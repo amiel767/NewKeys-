@@ -4343,11 +4343,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         persistCurrentStateDebounced()
     }
 
-    fun addSnapshotSlot(name: String) {
+    fun addSnapshotSlot(name: String): String? {
         val cleanName = name.trim().ifEmpty { "Snapshot ${_uiState.value.configuredSnapshotSlots.size}" }
+        var createdKey: String? = null
         _uiState.update { current ->
             if (current.configuredSnapshotSlots.size < 5) {
                 val newSlotKey = "slot_${System.currentTimeMillis()}"
+                createdKey = newSlotKey
                 val updatedSlots = current.configuredSnapshotSlots + newSlotKey
                 val updatedNames = current.snapshotCustomNames + (newSlotKey to cleanName)
                 val currentSnapshot = SubSceneSnapshot(
@@ -4396,6 +4398,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             } else current
         }
         persistCurrentStateDebounced()
+        return createdKey
     }
 
     fun removeSnapshotSlot(slotKey: String) {

@@ -98,7 +98,9 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.StrokeCap
@@ -225,7 +227,9 @@ data class SettingsState(
     // System (persisted)
     val hapticsEnabled: Boolean = true,
     val reducedMotion: Boolean = false,
-    val otherActionsOpen: Boolean = false
+    val otherActionsOpen: Boolean = false,
+    /** Live list of USB MIDI devices currently attached, provided by the app. */
+    val midiDevices: List<com.soundstage.mixer.model.MidiDeviceItem> = emptyList()
 )
 
 object SettingsDefaults {
@@ -420,6 +424,7 @@ internal object SetColors {
     val AccentDeep = Color(0xFF7FA3DD)
     val AccentText = Color(0xFF0F1726)
     val Warn = Color(0xFFD8A24A)
+    val Ok = Color(0xFF3CC48A)
     val Danger = Color(0xFFB8465F)
     val Well = Color(0xFF0F141D)
     val PanelTop = Color(0xFF232C3E)
@@ -858,6 +863,12 @@ private fun InterfaceSection(state: SettingsState, actions: SettingsActions) {
 
 @Composable
 private fun MidiSection(state: SettingsState, actions: SettingsActions) {
+    SectionLabel("Connected devices") {
+        val n = state.midiDevices.count { it.isConnected }
+        Text("$n connected", style = setText(10.5.sp, FontWeight.Bold, if (n > 0) SetColors.Ok else SetColors.Mute))
+    }
+    MidiDevicesCard(state.midiDevices)
+
     SectionLabel("Input")
     SettingRow(
         title = "Anti-jitter filter",
@@ -923,6 +934,116 @@ private fun mappedLabel(state: SettingsState, page: MappingPage): String {
     val total = state.catalog.count { it.page == page && !it.standalone }
     val done = SettingsLogic.mappedCount(page, state.catalog, state.mappings)
     return "$done / $total"
+}
+
+/**
+ * USB MIDI devices currently attached to the app. Each device is a raised row: a
+ * status LED, the name, its type, and an ON/OFF pill. An empty list shows a single
+ * dashed placeholder so the section never collapses.
+ *
+ * The device icon is drawn here rather than pulled from resources so it keeps the
+ * settings stroke weight and picks up the status colour.
+ */
+@Composable
+private fun MidiDevicesCard(devices: List<com.soundstage.mixer.model.MidiDeviceItem>) {
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .shadow(10.dp, shape)
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(SetColors.PanelTop, SetColors.PanelBottom)))
+            .border(1.dp, white(0.08f), shape)
+            .padding(vertical = 4.dp)
+    ) {
+        if (devices.isEmpty()) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                MidiPlugIcon(SetColors.Dim, Modifier.size(30.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("No USB MIDI device", style = setText(13.5.sp, FontWeight.Bold, SetColors.Mute))
+                    Text("Plug a controller to route notes, faders and pads.",
+                        style = setText(11.sp, color = SetColors.Dim), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            return@Column
+        }
+        devices.forEachIndexed { i, dev ->
+            if (i > 0) SetDivider()
+            val tint = if (dev.isConnected) SetColors.Ok else SetColors.Dim
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(contentAlignment = Alignment.TopEnd) {
+                    Box(
+                        Modifier.size(38.dp).clip(RoundedCornerShape(11.dp))
+                            .background(white(0.05f))
+                            .border(1.dp, tint.copy(alpha = 0.35f), RoundedCornerShape(11.dp)),
+                        contentAlignment = Alignment.Center
+                    ) { MidiPlugIcon(tint, Modifier.size(22.dp)) }
+                    Box(
+                        Modifier.size(11.dp).clip(CircleShape).background(SetColors.PanelTop)
+                            .padding(2.dp),
+                        contentAlignment = Alignment.Center
+                    ) { Box(Modifier.fillMaxSize().clip(CircleShape).background(tint)) }
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(dev.name, style = setText(13.5.sp, FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        if (dev.isConnected) "${dev.type} · connected" else "${dev.type} · offline",
+                        style = setText(11.sp, color = if (dev.isConnected) SetColors.Ok else SetColors.Mute),
+                        maxLines = 1
+                    )
+                }
+                Box(
+                    Modifier.clip(RoundedCornerShape(9.dp))
+                        .background(if (dev.isEnabled) SetColors.Accent.copy(alpha = 0.16f) else white(0.05f))
+                        .padding(horizontal = 9.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        if (dev.isEnabled) "ACTIVE" else "MUTED",
+                        style = setText(9.5.sp, FontWeight.Bold,
+                            if (dev.isEnabled) SetColors.Accent else SetColors.Mute)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Small DIN-plug MIDI icon: a rounded plug body with a short cable, settings weight. */
+@Composable
+private fun MidiPlugIcon(color: Color, modifier: Modifier) {
+    Canvas(modifier) {
+        val w = size.width
+        val h = size.height
+        val sw = 1.8.dp.toPx()
+        val st = Stroke(sw, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        // Plug body (a half-round shell) on the left, cable curling to the right.
+        val body = Path().apply {
+            moveTo(w * 0.30f, h * 0.28f)
+            lineTo(w * 0.62f, h * 0.28f)
+            lineTo(w * 0.62f, h * 0.72f)
+            lineTo(w * 0.30f, h * 0.72f)
+            close()
+        }
+        drawPath(body, color, style = st)
+        drawLine(color, Offset(w * 0.30f, h * 0.5f), Offset(w * 0.10f, h * 0.5f), sw, StrokeCap.Round)
+        val cable = Path().apply {
+            moveTo(w * 0.62f, h * 0.5f)
+            cubicTo(w * 0.86f, h * 0.5f, w * 0.80f, h * 0.18f, w * 0.94f, h * 0.18f)
+        }
+        drawPath(cable, color, style = st)
+        // Three contact pins inside the shell.
+        listOf(0.38f, 0.50f, 0.62f).forEach { fy ->
+            drawCircle(color, sw * 0.6f, Offset(w * 0.46f, h * fy))
+        }
+    }
 }
 
 @Composable
