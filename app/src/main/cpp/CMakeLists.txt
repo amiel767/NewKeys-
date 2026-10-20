@@ -47,6 +47,7 @@ find_library(log-lib log)
 
 target_include_directories(
     native-lib PRIVATE
+    aetherfx
     fluidsynth/include
     ${CMAKE_BINARY_DIR}/fluidsynth/include
 )
