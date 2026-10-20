@@ -607,6 +607,14 @@ private fun MixerMainPageContent(
 
 
 
+/**
+ * Switches the Effects popup to the ported Aether FX window. The legacy
+ * EffectsDialog stays reachable until the new window is validated on device
+ * (doc: remove the old FX once everything is implemented).
+ */
+private const val FX_WINDOW_V2 = true
+
+
 @Composable
 fun MixerScreen(
     viewModel: MixerViewModel,
@@ -878,19 +886,27 @@ fun MixerScreen(
 
         when (uiState.activePopup) {
             ActivePopup.EFFECTS -> {
-                val fxParams = uiState.fxParameters[uiState.activeEffectTrackId] ?: FxParameters()
-                val currentTrack = if (uiState.activeEffectTrackId == 0) uiState.masterTrack else uiState.tracks.find { it.id == uiState.activeEffectTrackId }
-                EffectsDialog(
-                    trackId = uiState.activeEffectTrackId,
-                    track = currentTrack,
-                    fxParameters = fxParams,
-                    onUpdateFx = { transform -> viewModel.updateFxParameter(uiState.activeEffectTrackId, transform) },
-                    onSetReverbPreset = { viewModel.setTrackReverbPreset(uiState.activeEffectTrackId, it) },
-                    onSetVelocityCurve = { viewModel.setTrackVelocityCurve(uiState.activeEffectTrackId, it) },
-                    activeTab = uiState.activeFxTab,
-                    onTabChange = { viewModel.setFxTab(it) },
-                    onClose = { viewModel.closePopup() }
-                )
+                if (FX_WINDOW_V2) {
+                    com.soundstage.mixer.ui.fx.FxOverlay(
+                        trackId = uiState.activeEffectTrackId,
+                        onClose = { viewModel.closePopup() },
+                        modifier = Modifier.fillMaxSize().zIndex(130f),
+                    )
+                } else {
+                    val fxParams = uiState.fxParameters[uiState.activeEffectTrackId] ?: FxParameters()
+                    val currentTrack = if (uiState.activeEffectTrackId == 0) uiState.masterTrack else uiState.tracks.find { it.id == uiState.activeEffectTrackId }
+                    EffectsDialog(
+                        trackId = uiState.activeEffectTrackId,
+                        track = currentTrack,
+                        fxParameters = fxParams,
+                        onUpdateFx = { transform -> viewModel.updateFxParameter(uiState.activeEffectTrackId, transform) },
+                        onSetReverbPreset = { viewModel.setTrackReverbPreset(uiState.activeEffectTrackId, it) },
+                        onSetVelocityCurve = { viewModel.setTrackVelocityCurve(uiState.activeEffectTrackId, it) },
+                        activeTab = uiState.activeFxTab,
+                        onTabChange = { viewModel.setFxTab(it) },
+                        onClose = { viewModel.closePopup() }
+                    )
+                }
             }
             ActivePopup.SOUNDFONT -> {
                 val slot = uiState.audioSlots.getOrNull(uiState.activeSoundfontSlotId)
