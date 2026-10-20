@@ -83,6 +83,31 @@ class LooperEngine(private val clock: TransportClock) {
     fun setSwing(s: Int) = _state.update { it.copy(swing = s.coerceIn(0, 100)) }
     fun setLengthMode(m: String) = _state.update { it.copy(lengthMode = m) }
 
+    /**
+     * Quantizes to the clock subdivision, then delays odd subdivisions by the swing
+     * amount (50 = straight, 66.7 = triplet feel). Recording through this keeps the
+     * stored pattern swung, so playback and record agree.
+     */
+    private fun quantizeAndSwing(beatOffset: Double, quantize: Boolean, subdiv: Int, swing: Int): Double {
+        if (!quantize) return beatOffset
+        val step = 1.0 / subdiv
+        val index = Math.round(beatOffset / step)
+        var q = index * step
+        if (index % 2L != 0L) q += (swing / 100.0 - 0.5) * 2.0 * step
+        return q
+    }
+
+    /** Single entry point for case mutations, so isPlayingAny cannot drift out of sync. */
+    private fun updateCases(block: (List<Case>) -> List<Case>) = _state.update { s ->
+        val cases = block(s.cases)
+        s.copy(
+            cases = cases,
+            isPlayingAny = cases.any {
+                it.state == CaseState.Playing || it.state == CaseState.Overdubbing
+            },
+        )
+    }
+
     /** Tap sur une case (empty → queued rec ; rec → finish ; play → queued overdub ; etc.). */
     fun tapCase(caseIndex: Int) {
         val nowNs = System.nanoTime()
@@ -106,13 +131,13 @@ class LooperEngine(private val clock: TransportClock) {
             CaseState.Overdubbing -> commitOverdub(c)
             CaseState.Stopped -> c.copy(state = CaseState.Queued, queuedAction = "play", queuedAtNs = nowNs + clock.timeToNextBar(nowNs))
         }
-        _state.update { st -> st.copy(cases = st.cases.toMutableList().also { it[caseIndex] = next }) }
+        updateCases { st -> st.toMutableList().also { it[caseIndex] = next } }
     }
 
     fun longPressCaseAction(caseIndex: Int, action: String) {
         // Clear all wipes every case, so it bypasses the per-case replace below.
         if (action == "clearAll") {
-            _state.update { st -> st.copy(cases = st.cases.map { Case(id = it.id) }) }
+            updateCases { st -> st.map { Case(id = it.id) } }
             return
         }
         val c = _state.value.cases[caseIndex]
@@ -127,17 +152,17 @@ class LooperEngine(private val clock: TransportClock) {
             "double" -> if (c.bars < 8 && c.layers.isNotEmpty()) c.copy(bars = c.bars * 2, layers = c.layers.map { l -> l + l.map { e -> e.copy(beatOffset = e.beatOffset + c.bars * clock.signature.beatsPerBar) } }) else c
             else -> c
         }
-        _state.update { st -> st.copy(cases = st.cases.toMutableList().also { it[caseIndex] = next }) }
+        updateCases { st -> st.toMutableList().also { it[caseIndex] = next } }
     }
 
     fun stopAll() {
-        _state.update { st -> st.copy(cases = st.cases.map { if (it.state == CaseState.Playing || it.state == CaseState.Overdubbing) it.copy(state = CaseState.Stopped) else it }) }
+        updateCases { st -> st.map { if (it.state == CaseState.Playing || it.state == CaseState.Overdubbing) it.copy(state = CaseState.Stopped) else it } }
     }
 
     fun playAll() {
         val now = System.nanoTime()
         val nextBar = now + clock.timeToNextBar(now)
-        _state.update { st -> st.copy(cases = st.cases.map { if (it.state == CaseState.Stopped) it.copy(state = CaseState.Queued, queuedAction = "play", queuedAtNs = nextBar) else it }) }
+        updateCases { st -> st.map { if (it.state == CaseState.Stopped) it.copy(state = CaseState.Queued, queuedAction = "play", queuedAtNs = nextBar) else it } }
     }
 
     /** Appelé par le consumer quand un pad ou une note est joué pendant un REC ou OVERDUB. */
@@ -150,10 +175,9 @@ class LooperEngine(private val clock: TransportClock) {
                         val beatsPerBar = clock.signature.beatsPerBar
                         val elapsedNs = (nowNs - c.recStartNs).coerceAtLeast(0L)
                         val beatOffset = elapsedNs.toDouble() / clock.beatDurationNs().toDouble()
-                        val quantized = if (s.quantize) {
-                            val subdiv = clock.subdivision.subdivPerBeat.toDouble()
-                            (Math.round(beatOffset * subdiv) / subdiv)
-                        } else beatOffset
+                        val quantized = quantizeAndSwing(
+                            beatOffset, s.quantize, clock.subdivision.subdivPerBeat, s.swing
+                        )
                         c.copy(pendingRecEvents = c.pendingRecEvents + RecordedEvent(kind, idx, color, quantized))
                     }
                     CaseState.Overdubbing -> {
@@ -164,16 +188,20 @@ class LooperEngine(private val clock: TransportClock) {
                         val offsetInCycleNs = elapsedNs % cycleNs
                         var beatOffset = offsetInCycleNs.toDouble() / clock.beatDurationNs().toDouble()
                         beatOffset %= loopBeats
-                        val quantized = if (s.quantize) {
-                            val subdiv = clock.subdivision.subdivPerBeat.toDouble()
-                            (Math.round(beatOffset * subdiv) / subdiv)
-                        } else beatOffset
+                        val quantized = quantizeAndSwing(
+                            beatOffset, s.quantize, clock.subdivision.subdivPerBeat, s.swing
+                        )
                         c.copy(pendingOverdubEvents = c.pendingOverdubEvents + RecordedEvent(kind, idx, color, quantized))
                     }
                     else -> c
                 }
             }
-            s.copy(cases = updated)
+            s.copy(
+                cases = updated,
+                isPlayingAny = updated.any {
+                    it.state == CaseState.Playing || it.state == CaseState.Overdubbing
+                },
+            )
         }
     }
 
@@ -276,7 +304,7 @@ class LooperEngine(private val clock: TransportClock) {
                     else -> c
                 }
             }
-            if (changed) _state.update { it.copy(cases = updated) }
+            if (changed) updateCases { updated }
             delay(15L)
         }
     }

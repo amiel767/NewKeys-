@@ -401,8 +401,12 @@ fun DpLoopCase(
         else -> stateColor.copy(alpha = 0.4f)
     }
 
-    // Phase / barNow
-    val bars = case.bars.coerceAtLeast(1)
+    // Phase / barNow. While recording, `bars` is still the default 1: the real
+    // length only lands in the case once the loop closes, so derive it from the
+    // chosen length mode (or from elapsed time in auto mode).
+    val bars = if (state == LooperEngine.CaseState.Recording) {
+        case.lengthMode.toIntOrNull()?.coerceAtLeast(1) ?: case.bars.coerceAtLeast(1)
+    } else case.bars.coerceAtLeast(1)
     val loopMs = (bars.toLong() * barDurationNs).coerceAtLeast(1L)
     var headPhase: Float? = null
     var barNow = 0
@@ -416,9 +420,11 @@ fun DpLoopCase(
             }
         }
         LooperEngine.CaseState.Recording -> {
-            // V1: recStartNs absent → approximer via startAtNs
-            if (case.startAtNs > 0L && nowNs >= case.startAtNs) {
-                val el = (nowNs - case.startAtNs).toFloat() / barDurationNs.toFloat()
+            // Recording is anchored on recStartNs; startAtNs is only set once the
+            // loop starts playing, so using it here left the head frozen.
+            val anchorNs = if (case.recStartNs > 0L) case.recStartNs else case.startAtNs
+            if (anchorNs > 0L && nowNs >= anchorNs) {
+                val el = (nowNs - anchorNs).toFloat() / barDurationNs.toFloat()
                 val denom = bars.toFloat().coerceAtLeast(1f)
                 headPhase = (el % denom) / denom
                 barNow = el.toInt() + 1
