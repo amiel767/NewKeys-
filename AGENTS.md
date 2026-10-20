@@ -297,6 +297,28 @@ zero. `drawFxScene(id, values, t, tm, st)` est le point d'entree unique.
 - Reste : **etape 7 (persistance)**, puis la validation appareil, puis la
   suppression des anciens FX.
 
+### Etape 6g + Etape 7 faites (commits `dd869f7`, `95c4bf9`)
+
+**6g — interactions de la fenetre** (`ui/fx/FxWindow.kt`) : table `STEP` du JSX
+pour la quantification de « Surprise me », verrous par appui sur le libelle d'un
+potard, comparaison **A/B** (interpolation cubique sur 25 images ≈ 420 ms),
+tiroir `Edit` (façonneurs 5/7/8/9/12, maquette v1), suppression par **appui long**
+sur une carte avec bandeau **Undo 5,2 s** (`FxRack.kt` + `FxOverlay.kt`).
+
+**7 — persistance** (`fx/FxPersistence.kt`) : un blob JSON par strip sous
+`SharedPreferences("aether_fx")`, cles `fx_strip_<n>`. Forme imposee par le doc 01 :
+`{track, instrument{id,preset,params}, effects[6|8], ab{a,b,cur}}`, parametres
+**normalises 0..1**. `FxController(strip, context)` expose `save()` / `restore()`.
+L'overlay restaure au montage et auto-sauvegarde (structures tout de suite,
+potards apres **500 ms** d'inactivite).
+
+**Avertissement soundfont** (`ui/fx/FxSfWarning.kt`) : tables `FAMOK`/`KW`/`SHN`
+du JSX, bandeau rouge avec `CHOOSE A SOUNDFONT` (ouvre la fenetre soundfonts du
+slot) et `USE ANYWAY`.
+
+**Reste** : etape 8 (validation appareil, doc 05), puis la suppression des
+anciens FX (`FX_WINDOW_V2` dans `MixerScreen.kt`) sur demande explicite.
+
 ### Divergence remote a connaitre (verifie 2026-10-20)
 
 `origin/main` a **2 commits « Add files via upload »** (`0e9ef19`, `ad93dcb`)
