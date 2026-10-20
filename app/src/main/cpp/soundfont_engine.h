@@ -37,6 +37,7 @@ inline int fluid_preset_get_num(fluid_preset_t*) { return 0; }
 inline void fluid_synth_set_gain(fluid_synth_t*, float) {}
 inline int fluid_synth_set_polyphony(fluid_synth_t*, int) { return 0; }
 inline int fluid_synth_get_polyphony(fluid_synth_t*) { return 0; }
+inline int fluid_synth_process(fluid_synth_t*, int, int, float **, int, float **) { return 0; }
 #endif
 
 #include <atomic>
@@ -157,6 +158,10 @@ struct NoteOffAuditRecord {
 class SoundfontEngine {
 public:
     static constexpr int kMaxChannels = 16;
+    // Per-channel scratch capacity in frames. 4096 covers every Oboe burst the
+    // engine requests with a wide margin and keeps the multi-channel buffers out
+    // of the audio callback's allocation path.
+    static constexpr int kChannelFrameCapacity = 4096;
 
     bool init(int sampleRate, int polyphony = kFaderPolyphony, const char* instanceName = "FaderEngine");
     void destroy();
@@ -187,6 +192,17 @@ public:
 
     void renderStereo(float *outputBuffer, int32_t numFrames, bool accumulate = false);
 
+    // Per-channel output for the FX mixer. `out` is channel-interleaved
+    // (L0,R0,L1,R1,...) and must hold 2 * channelCount floats per frame.
+    // Returns false when multi-channel output is not enabled, so the caller can
+    // fall back to renderStereo. Never allocates: buffers are sized in init().
+    bool renderChannels(float *out, int32_t numFrames, int channelCount);
+
+    // Multi-channel mode is opt-in: the per-channel path has to be validated on
+    // a device (sum of channels must equal the mono mix) before it is trusted.
+    void setMultiChannelEnabled(bool enabled) { mMultiChannelEnabled = enabled; }
+    bool isMultiChannelEnabled() const { return mMultiChannelEnabled; }
+
     // FaderEngine Voice Audit
     VoiceAuditSnapshot getLatestAuditSnapshot() const;
     void resetAuditCounters();
@@ -201,6 +217,11 @@ private:
     std::array<std::atomic<int>, kMaxChannels> mTransposeSemitones{};
     std::array<std::atomic<int>, kMaxChannels> mChannelVolumes{};
     std::vector<float> mTempRenderBuffer;
+    // Multi-channel scratch, sized once in init(); the audio callback must never
+    // resize. mChannelPtrs aliases into mChannelBuffer for fluid_synth_process.
+    std::vector<float> mChannelBuffer;
+    std::array<float *, 2 * kMaxChannels> mChannelPtrs{};
+    bool mMultiChannelEnabled = false;
     LockFreeRingBuffer<EngineMidiEvent, 2048> mEventQueue;
     bool mWasHighLoad = false;
 

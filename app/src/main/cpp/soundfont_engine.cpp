@@ -32,7 +32,16 @@ bool SoundfontEngine::init(int sampleRate, int polyphony, const char* instanceNa
     fluid_settings_setint(mSettings, "synth.polyphony", mConfiguredPolyphony);
     fluid_settings_setint(mSettings, "synth.midi-channels", kMaxChannels);
     fluid_settings_setint(mSettings, "synth.reverb.active", 0);
-    fluid_settings_setint(mSettings, "synth.chorus.active", 1);
+    // Multi-channel mode needs one stereo output per MIDI channel, so channel i
+    // renders into group i. When the flag is off we keep the historical mono mix
+    // (and its chorus) untouched, so the audible result cannot change.
+    if (mMultiChannelEnabled) {
+        fluid_settings_setint(mSettings, "synth.audio-channels", kMaxChannels);
+        fluid_settings_setint(mSettings, "synth.audio-groups", kMaxChannels);
+        fluid_settings_setint(mSettings, "synth.chorus.active", 0);
+    } else {
+        fluid_settings_setint(mSettings, "synth.chorus.active", 1);
+    }
     fluid_settings_setint(mSettings, "synth.dynamic-sample-loading", 1);
 
     mSynth = new_fluid_synth(mSettings);
@@ -46,7 +55,16 @@ bool SoundfontEngine::init(int sampleRate, int polyphony, const char* instanceNa
     fluid_synth_set_gain(mSynth, 2.2f);
     fluid_synth_set_interp_method(mSynth, -1, FLUID_INTERP_4THORDER);
     fluid_synth_reverb_on(mSynth, -1, 0);
-    fluid_synth_chorus_on(mSynth, -1, 1);
+    fluid_synth_chorus_on(mSynth, -1, mMultiChannelEnabled ? 0 : 1);
+
+    // Pre-size the per-channel scratch. The audio callback must never resize, so
+    // the allocation happens here and renderChannels() only fails if asked for
+    // more channels than were reserved.
+    mChannelBuffer.assign(static_cast<size_t>(2 * kMaxChannels) * kChannelFrameCapacity, 0.0f);
+    for (int ch = 0; ch < kMaxChannels; ++ch) {
+        mChannelPtrs[2 * ch] = mChannelBuffer.data() + static_cast<size_t>(2 * ch) * kChannelFrameCapacity;
+        mChannelPtrs[2 * ch + 1] = mChannelPtrs[2 * ch] + kChannelFrameCapacity;
+    }
 
     for (int ch = 0; ch < kMaxChannels; ++ch) {
         fluid_synth_set_channel_type(mSynth, ch, CHANNEL_TYPE_MELODIC);
@@ -60,6 +78,89 @@ bool SoundfontEngine::init(int sampleRate, int polyphony, const char* instanceNa
     int effectivePoly = fluid_synth_get_polyphony(mSynth);
     LOGI("[%s] Startup Verification: Requested Polyphony=%d, Effective Polyphony=%d, Interpolation=LINEAR(1), SampleRate=%d",
          mInstanceName.c_str(), mConfiguredPolyphony, effectivePoly, sampleRate);
+    return true;
+}
+
+bool SoundfontEngine::renderChannels(float *out, int32_t numFrames, int channelCount) {
+    if (!mMultiChannelEnabled || !out) return false;
+    if (channelCount <= 0) channelCount = kMaxChannels;
+    if (channelCount > kMaxChannels) channelCount = kMaxChannels;
+    if (numFrames <= 0) return true;
+    if (numFrames > kChannelFrameCapacity) return false;
+
+    std::unique_lock<std::recursive_mutex> lock(mMutex, std::try_to_lock);
+    if (!lock.owns_lock() || !mSynth) {
+        std::fill(out, out + static_cast<size_t>(numFrames) * 2 * channelCount, 0.0f);
+        return true;
+    }
+
+    // Same lock-free MIDI drain as renderStereo: events must be applied before the
+    // synth renders, otherwise notes are one block late.
+    EngineMidiEvent ev;
+    int noteOnsProcessed = 0;
+    const int kMaxNoteOnPerFrame = 48;
+    while (mEventQueue.peek(ev)) {
+        if (ev.type == EngineMidiEvent::NOTE_ON) {
+            if (noteOnsProcessed >= kMaxNoteOnPerFrame) break;
+            noteOnsProcessed++;
+        }
+        mEventQueue.pop(ev);
+        switch (ev.type) {
+            case EngineMidiEvent::NOTE_ON:
+                fluid_synth_noteon(mSynth, ev.channel, ev.note, ev.velocity);
+                break;
+            case EngineMidiEvent::NOTE_OFF:
+                fluid_synth_noteoff(mSynth, ev.channel, ev.note);
+                break;
+            case EngineMidiEvent::ALL_NOTES_OFF:
+                if (ev.channel >= 0 && ev.channel < kMaxChannels) {
+                    fluid_synth_all_notes_off(mSynth, ev.channel);
+                    fluid_synth_cc(mSynth, ev.channel, 123, 0);
+                    fluid_synth_cc(mSynth, ev.channel, 120, 0);
+                } else {
+                    for (int ch = 0; ch < kMaxChannels; ++ch) {
+                        fluid_synth_all_notes_off(mSynth, ch);
+                        fluid_synth_cc(mSynth, ch, 123, 0);
+                        fluid_synth_cc(mSynth, ch, 120, 0);
+                    }
+                }
+                break;
+            case EngineMidiEvent::PITCH_BEND:
+                fluid_synth_pitch_bend(mSynth, ev.channel, ev.param1);
+                break;
+            case EngineMidiEvent::CC:
+                fluid_synth_cc(mSynth, ev.channel, ev.param1, ev.param2);
+                break;
+            case EngineMidiEvent::PROGRAM_CHANGE:
+                fluid_synth_program_change(mSynth, ev.channel, ev.param1);
+                break;
+            case EngineMidiEvent::PROGRAM_SELECT:
+                executeProgramSelect(ev.channel, ev.param1, ev.param2, ev.note);
+                break;
+            default:
+                break;
+        }
+    }
+
+    // `out` is interleaved (L0,R0,L1,R1,...) but fluid_synth_process wants one
+    // planar pointer per channel, so each channel is rendered into the planar
+    // scratch and then interleaved. The planar buffers alias mChannelBuffer,
+    // which init() sized once.
+    fluid_synth_process(mSynth, numFrames, 0, nullptr, 2 * channelCount, mChannelPtrs.data());
+    for (int ch = 0; ch < channelCount; ++ch) {
+        const float *srcL = mChannelPtrs[2 * ch];
+        const float *srcR = mChannelPtrs[2 * ch + 1];
+        float *dst = out + static_cast<size_t>(2 * ch);
+        for (int i = 0; i < numFrames; ++i) {
+            dst[0] = srcL[i];
+            dst[1] = srcR[i];
+            dst += 2 * channelCount;
+        }
+    }
+
+    int activeCount = fluid_synth_get_active_voice_count(mSynth);
+    mAuditTotalVoices.store(activeCount, std::memory_order_relaxed);
+    mAuditAudibleVoices.store(activeCount, std::memory_order_relaxed);
     return true;
 }
 
