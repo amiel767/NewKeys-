@@ -73,6 +73,41 @@ concept sous deux noms. Ne pas « corriger ».
 Setters : `toggleSfFavorite` (l.3413), `moveSfToCategory` (l.3421),
 `parseSfInBackground` (l.3428).
 
+## Banc de rendu LiveUI (outil de capture, vérifié)
+
+`tools/liveui/loop.sh` lance `:app:testDebugUnitTest --tests "*LiveUiLoop*"` avec
+`-Proborazzi.test.record=true`. Le test lit `/tmp/liveui/cmd.json`, applique la
+commande, écrit `/tmp/liveui/screen.png` et bat `status.txt` (`ok <seq> <ts>`).
+Rendu **Compose réel**, hors écran : ni émulateur ni audio.
+
+Champs de commande utiles : `seq`, `page`, `popup`, `tracks`, `keys`, `sustain`,
+`midiPedal`, `layer`, `keyboard`, `drumpadMode`, `clicks`, `clickText`, `assertText`,
+`dumpTree`, `pause`, et `fxPreview` (voir plus bas).
+
+**Pièges vérifiés** (chacun a coûté une passe) :
+
+- **L'écran par défaut est `SETLISTS`**, pas `MIXER`. La restauration le réaffirme
+  (`MixerViewModel.kt` ~l.593/708). Une commande sans `page` capture donc Setlists.
+- `cmd.json` est relu **en boucle** : renvoyer `page`/`popup` à chaque étape est
+  nécessaire, mais rouvre l'overlay et **réinitialise son état local**
+  (`addOpen`, `selectedSlot`).
+- **`performClick()` ne déclenche rien** dans le rack FX : les cartes et le
+  panneau vivent sous un `pointerInput`/`horizontalScroll` qui absorbe le tap.
+  Utiliser `clickText`, qui invoque l'action sémantique `OnClick` directement.
+- **`setEffect()` exige le pont natif.** Sans lui (cas de Robolectric)
+  `FxController.setEffect()` renvoie `false` : aucun effet ne peut être installé
+  par l'UI. Le rack reste vide quoi qu'on clique.
+- **`onRoot()` ne capture que la première racine.** Les popups/dialogues en ont
+  une autre ; `screen.png` peut donc être vide alors que l'arbre est correct.
+  Le test écrit `screen_r<N>.png` pour chaque racine.
+
+### `fxPreview` — rendu direct des composables FX
+
+`fxPreview` remplace l'écran par un composable FX réel :
+`rack`, `add`, `window:<id>`. Le contrôleur est amorcé par `seededController()`
+(écriture directe dans `effectIds`/`params`), ce qui contourne le pont natif.
+C'est ce mode qui a produit les captures `01..15` — **pas** la navigation de l'app.
+
 ## Symboles inexistants (ne pas les chercher)
 
 Un seul nom de brief s'est révélé faux :
