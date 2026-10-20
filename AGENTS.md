@@ -258,21 +258,30 @@ checks, 0 failed** (verifie).
   Ensuite : etape 7 (persistance) et la **suppression des anciens FX** (demande
   explicite de l'utilisateur, quand tout est implemente).
 
-### Polices (verifie 2026-10-19)
+### Polices (maj 2026-10-19 apres pull)
 
-**Aucune fonte nouvelle n'a ete ajoutee.** Le depot ne contient que 9 `.ttf`
-dans `app/src/main/res/font/` : `plus_jakarta_sans`, `jetbrains_mono`,
-`fira_code`, `inter`, `lexend`, `architects_daughter`, `caveat`, `kalam`,
-`patrick_hand`. Les seules chargees par du code le sont via **`SheetsFonts`**
-(`aetherkeys/sheets/ui/theme/Theme.kt`, lignes ~95-120) ; `inter.ttf` et
-`lexend.ttf` etaient presents mais **inutilises**. Il n'y a **pas** de
-`aetherkeys/setlists/theme` ni d'autre objet de polices.
+Les fontes du doc FX **ont ete ajoutees par l'utilisateur** dans le remote
+(`app/assets/JetBrains_Mono,Orbitron,Share_Tech_Mono,Sora,Space_Grotesk.zip`,
+commit `c2d3243`). Le remote a ete **fusionne** (purement additif, sans conflit).
+Les 4 variables utilisees sont copiees dans `res/font/` :
+`orbitron.ttf`, `sora.ttf`, `space_grotesk.ttf`, `share_tech_mono.ttf`.
+Les OFL sont dans `app/src/main/assets/fonts/`.
+`FxFonts.title(id)` suit maintenant la table du doc 03 **sans substitut** :
+0/8/9/12/13 Space Grotesk, 1 JetBrains Mono, 2/10/14 Orbitron, 3 Share Tech
+Mono, reste Sora. `FxFonts.mono` = Share Tech Mono (libelles techniques).
 
-Le doc FX demande Share Tech Mono, Orbitron, Space Grotesk et Sora : **absents**.
-`ui/fx/FxFonts.kt` (nouveau) reutilise l'existant et mappe chaque titre :
-Space Grotesk -> Inter, Orbitron/Sora -> Lexend, Share Tech Mono -> JetBrains
-Mono ; libelles techniques -> `mono` (JetBrains Mono). `FxFonts.mono` est
-utilise par `FxWindow` et par `label()` dans `FxScenes`.
+Le zip de polices reste dans `app/assets/` (comme les autres zip du depot) ; il
+n'est pas embarque dans l'APK (`app/assets/` du module est `src/main/assets`).
+
+### Etape 6e faite (commit `4e767b0`)
+
+Les **15 scenes** sont portees : effets 0-4 dans `FxScenes.kt`, instruments 5-14
+dans `FxInstrumentScenes.kt`. `FxSceneState` porte l'etat d'animation persistant
+(touches du piano, tirettes de l'orgue, particules des cordes, plume du sax,
+cordes de la guitare, sourdine du cuivre) : une recomposition ne le remet pas a
+zero. `drawFxScene(id, values, t, tm, st)` est le point d'entree unique.
+Reste pour boucler l'etape 6 : le **rack** (cartes reduites + tiroir) et
+l'integration dans le mixer.
 
 ### Divergence remote a connaitre (verifie 2026-10-20)
 
