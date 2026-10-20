@@ -220,8 +220,26 @@ checks, 0 failed** (verifie).
   `setFxEnabled(true)` **avant** `start()` (le mode multi-canaux se decide a
   l'ouverture du flux). Reste a faire : exposer cet interrupteur via JNI/Kotlin
   (etape 5) et la fenetre (etape 6).
-- Prochaine etape = 4 (notes vers les sources + offsets de generateurs via la
-  file d'evenements existante, `fluid_synth_set_gen` sur le thread audio).
+- **Etape 4 faite** (commit `4999b56`) : `drainEvents()` extrait et **partage** par
+  `renderStereo`/`renderChannels` (plus de boucle MIDI dupliquee). Routeur de
+  notes : quand `FxMixer::soundfontPaused(strip)` est vrai (instrument = source),
+  NoteOn/NoteOff/pitch bend vont a la source au lieu de FluidSynth. Pitch bend
+  converti 0..16383 -> -1..1. Offsets de generateurs : `refreshTrackGens()` diffe
+  contre un cache et pousse `SET_GEN`/`PITCH_SENS` **sur le thread audio** via la
+  meme file (le synth n'est pas thread-safe). `setTrackInstrument`,
+  `setTrackInstrumentParam` sont l'API de controle.
+- **Etape 5 faite** (commits `68f6e56`, `6f52d7c`) : pont JNI complet cote natif
+  (`native-lib.cpp`) et Kotlin (`NativeAudioBridge.kt`) — `setFxEnabled`,
+  `setTrackInstrument(param)`, `setFxEffect(param/bypass)`, `applyFxPreset`,
+  `setFxStripGain/Pan/Mute`, `fxStripPeak`, `fxEffectId`, `fxGetInstrumentId`,
+  `fxSoundfontPaused`, `fxSetInstrumentBypass`, `fxApplyInstrumentPreset`,
+  `fxGetMeter`, `fxCollectGarbage`, `fxMatchShaper` + constantes
+  `FX_STRIP_*`/`FX_SLOTS_*`. **Piege** : `FxMixer` est atteint via `mFx` qui est
+  **prive** ; toute nouvelle methode publique d'`AudioEngine` doit etre mise
+  **au-dessus** du `private:` (ligne ~888), sinon erreur « private member ».
+- Reste : **etape 6 = fenetre Compose** (doc 03, `fx-window-preview.html` +
+  `ic_fx_*.xml` comme reference), puis persistance, puis validation appareil.
+  C'est la partie la plus volumineuse ; le moteur et le pont sont prets.
 
 ### Divergence remote a connaitre (verifie 2026-10-20)
 
