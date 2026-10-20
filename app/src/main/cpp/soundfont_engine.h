@@ -38,6 +38,9 @@ inline void fluid_synth_set_gain(fluid_synth_t*, float) {}
 inline int fluid_synth_set_polyphony(fluid_synth_t*, int) { return 0; }
 inline int fluid_synth_get_polyphony(fluid_synth_t*) { return 0; }
 inline int fluid_synth_process(fluid_synth_t*, int, int, float **, int, float **) { return 0; }
+inline int fluid_synth_set_gen(fluid_synth_t*, int, int, float) { return 0; }
+inline float fluid_synth_get_gen(fluid_synth_t*, int, int) { return 0.0f; }
+inline int fluid_synth_pitch_wheel_sens(fluid_synth_t*, int, int) { return 0; }
 #endif
 
 #include <atomic>
@@ -64,7 +67,11 @@ struct EngineMidiEvent {
         PITCH_BEND,
         CC,
         PROGRAM_CHANGE,
-        PROGRAM_SELECT
+        PROGRAM_SELECT,
+        // Shaper generator offsets. These must run on the audio thread because the
+        // synth is not thread-safe, so they travel through this same queue.
+        SET_GEN,
+        PITCH_SENS
     } type;
     int channel;
     int note;
@@ -179,6 +186,27 @@ public:
     void noteOff(int channel, int midiNote);
     void allNotesOff(int channel);
     void sendCC(int channel, int cc, int value);
+
+    // Shaper generator offsets and pitch-bend sensitivity. The synth is not
+    // thread-safe, so these are queued and applied by drainEvents() on the audio
+    // thread. Values are native SoundFont units (cents, seconds, etc.).
+    void setGen(int channel, int gen, float value) {
+        if (channel < 0 || channel >= kMaxChannels) return;
+        EngineMidiEvent ev;
+        ev.type = EngineMidiEvent::SET_GEN;
+        ev.channel = channel;
+        ev.param1 = gen;
+        ev.param2 = static_cast<int>(std::lround(value));
+        mEventQueue.push(ev);
+    }
+    void setPitchBendSensitivity(int channel, int semitones) {
+        if (channel < 0 || channel >= kMaxChannels) return;
+        EngineMidiEvent ev;
+        ev.type = EngineMidiEvent::PITCH_SENS;
+        ev.channel = channel;
+        ev.param1 = semitones;
+        mEventQueue.push(ev);
+    }
     void pitchBend(int channel, int bendValue);
 
     void setChannelVolume(int channel, float volume01);
@@ -203,11 +231,24 @@ public:
     void setMultiChannelEnabled(bool enabled) { mMultiChannelEnabled = enabled; }
     bool isMultiChannelEnabled() const { return mMultiChannelEnabled; }
 
+    // Note routing for a strip whose instrument is a Source: return true when the
+    // event was consumed by the source (so FluidSynth must not see it). Called on
+    // the audio thread from drainEvents(). Type/fields match EngineMidiEvent.
+    using SourceRouterFn = bool (*)(void *ctx, int channel, int type, int note,
+                                    int velocity, int param1, int param2);
+    void setSourceRouter(SourceRouterFn fn, void *ctx) { mSourceRouter = fn; mSourceRouterCtx = ctx; }
+    // Called for every ALL_NOTES_OFF so a source can drop its held notes too.
+    using AllNotesOffFn = void (*)(void *ctx, int channel);
+    void setAllNotesOffHook(AllNotesOffFn fn, void *ctx) { mAllNotesOffHook = fn; mAllNotesOffHookCtx = ctx; }
+
     // FaderEngine Voice Audit
     VoiceAuditSnapshot getLatestAuditSnapshot() const;
     void resetAuditCounters();
 
 private:
+    // Applies every queued MIDI event to the synth, routing notes to a Source
+    // when one is selected on that strip. Audio thread only.
+    void drainEvents();
     void executeProgramSelect(int channel, int soundFontId, int bank, int preset);
     std::string mInstanceName = "FaderEngine";
     int mConfiguredPolyphony = kFaderPolyphony;
@@ -222,6 +263,11 @@ private:
     std::vector<float> mChannelBuffer;
     std::array<float *, 2 * kMaxChannels> mChannelPtrs{};
     bool mMultiChannelEnabled = false;
+    // Note routing hooks (set from the control thread before the stream opens).
+    SourceRouterFn mSourceRouter = nullptr;
+    void *mSourceRouterCtx = nullptr;
+    AllNotesOffFn mAllNotesOffHook = nullptr;
+    void *mAllNotesOffHookCtx = nullptr;
     LockFreeRingBuffer<EngineMidiEvent, 2048> mEventQueue;
     bool mWasHighLoad = false;
 

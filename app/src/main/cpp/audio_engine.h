@@ -852,11 +852,31 @@ private:
     // thread *before* the stream opens, so the default build is bit-identical to
     // the legacy mix. When enabled it renders per-channel, runs each strip through
     // FxMixer and skips the legacy master chain (which the FxMixer Master replaces).
+    // ---- Æther FX control (control thread; call before start() for the flag) ----
+    // Enabling the FX path arms the multi-channel render and the note router. It
+    // must happen before the stream opens: the soundfont engine decides its
+    // channel layout at that point.
     void setFxEnabled(bool enabled) { mFxEnabled.store(enabled, std::memory_order_relaxed); }
     bool isFxEnabled() const { return mFxEnabled.load(std::memory_order_relaxed); }
+
+    // Selects the instrument (shaper or source) for a mixer track 0..7. For a
+    // shaper this also pushes its generator offsets to the soundfont channel.
+    void setTrackInstrument(int track, int fxId);
+    void setTrackInstrumentParam(int track, int param, float norm);
+    // Recomputes and pushes the generator offsets for a track's shaper. Cheap and
+    // idempotent: unchanged values are not queued.
+    void refreshTrackGens(int track);
     bool renderFxPath(float *outputBuffer, int32_t numFrames);
 
     bool openAndStartStream();
+
+    // Audio-thread hooks installed on the soundfont engine. They are static
+    // trampolines: the engine stores a plain function pointer, this instance
+    // arrives through ctx.
+    static bool sourceRouterTrampoline(void *ctx, int channel, int type, int note,
+                                       int velocity, int param1, int param2);
+    static void allNotesOffTrampoline(void *ctx, int channel);
+    bool routeEventToSource(int channel, int type, int note, int velocity, int param1, int param2);
 
     std::shared_ptr<oboe::AudioStream> mStream;
     std::mutex mStreamMutex;
@@ -911,6 +931,17 @@ private:
     std::vector<float> mFxChannelBuffer;
     std::vector<float> mFxStripBuffer;
     std::vector<float> mFxMixBuffer;
+
+    // Last generator offsets pushed to each track's soundfont channel. Kept on the
+    // control thread so refreshTrackGens() only queues what actually changed.
+    struct GenCache {
+        int n = 0;
+        int gen[16] = {};
+        float val[16] = {};
+        int pitchSens = -1;
+    };
+    GenCache mGenCache[8];
+    std::mutex mGenMutex;
 
     // Preserved parameters across stream reconnections (Jack plug/unplug, routing events)
     std::atomic<bool> mIsReconnecting{false};

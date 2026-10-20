@@ -94,55 +94,8 @@ bool SoundfontEngine::renderChannels(float *out, int32_t numFrames, int channelC
         return true;
     }
 
-    // Same lock-free MIDI drain as renderStereo: events must be applied before the
-    // synth renders, otherwise notes are one block late.
-    EngineMidiEvent ev;
-    int noteOnsProcessed = 0;
-    const int kMaxNoteOnPerFrame = 48;
-    while (mEventQueue.peek(ev)) {
-        if (ev.type == EngineMidiEvent::NOTE_ON) {
-            if (noteOnsProcessed >= kMaxNoteOnPerFrame) break;
-            noteOnsProcessed++;
-        }
-        mEventQueue.pop(ev);
-        switch (ev.type) {
-            case EngineMidiEvent::NOTE_ON:
-                fluid_synth_noteon(mSynth, ev.channel, ev.note, ev.velocity);
-                break;
-            case EngineMidiEvent::NOTE_OFF:
-                fluid_synth_noteoff(mSynth, ev.channel, ev.note);
-                break;
-            case EngineMidiEvent::ALL_NOTES_OFF:
-                if (ev.channel >= 0 && ev.channel < kMaxChannels) {
-                    fluid_synth_all_notes_off(mSynth, ev.channel);
-                    fluid_synth_cc(mSynth, ev.channel, 123, 0);
-                    fluid_synth_cc(mSynth, ev.channel, 120, 0);
-                } else {
-                    for (int ch = 0; ch < kMaxChannels; ++ch) {
-                        fluid_synth_all_notes_off(mSynth, ch);
-                        fluid_synth_cc(mSynth, ch, 123, 0);
-                        fluid_synth_cc(mSynth, ch, 120, 0);
-                    }
-                }
-                break;
-            case EngineMidiEvent::PITCH_BEND:
-                fluid_synth_pitch_bend(mSynth, ev.channel, ev.param1);
-                break;
-            case EngineMidiEvent::CC:
-                fluid_synth_cc(mSynth, ev.channel, ev.param1, ev.param2);
-                break;
-            case EngineMidiEvent::PROGRAM_CHANGE:
-                fluid_synth_program_change(mSynth, ev.channel, ev.param1);
-                break;
-            case EngineMidiEvent::PROGRAM_SELECT:
-                executeProgramSelect(ev.channel, ev.param1, ev.param2, ev.note);
-                break;
-            default:
-                break;
-        }
-    }
-
-    // `out` is interleaved (L0,R0,L1,R1,...) but fluid_synth_process wants one
+    drainEvents();
+// `out` is interleaved (L0,R0,L1,R1,...) but fluid_synth_process wants one
     // planar pointer per channel, so each channel is rendered into the planar
     // scratch and then interleaved. The planar buffers alias mChannelBuffer,
     // which init() sized once.
@@ -595,6 +548,74 @@ void SoundfontEngine::resetAuditCounters() {
     mAuditLastRenderDurationUs.store(0, std::memory_order_relaxed);
 }
 
+void SoundfontEngine::drainEvents() {
+    // Lock-free drain of pending MIDI events on the audio thread. NoteOns,
+    // NoteOffs, PitchBends, CCs and AllNotesOffs are applied with high
+    // throughput; up to 48 NoteOns per block so 8-track chords trigger with zero
+    // latency, any excess waits for the next block. When a strip has a Source
+    // selected the note goes to that source instead of FluidSynth, and the
+    // soundfont channel keeps its sustain/CC state but receives no notes.
+    int noteOnsProcessed = 0;
+    const int kMaxNoteOnPerFrame = 48;
+    EngineMidiEvent ev;
+    while (mEventQueue.peek(ev)) {
+        if (ev.type == EngineMidiEvent::NOTE_ON) {
+            if (noteOnsProcessed >= kMaxNoteOnPerFrame) break;
+            noteOnsProcessed++;
+        }
+        mEventQueue.pop(ev);
+        const bool routedToSource = mSourceRouter && ev.channel >= 0 && ev.channel < kMaxChannels &&
+                                    mSourceRouter(mSourceRouterCtx, ev.channel, ev.type, ev.note,
+                                                  ev.velocity, ev.param1, ev.param2);
+        switch (ev.type) {
+            case EngineMidiEvent::NOTE_ON:
+                if (routedToSource) break;
+                fluid_synth_noteon(mSynth, ev.channel, ev.note, ev.velocity);
+                break;
+            case EngineMidiEvent::NOTE_OFF:
+                if (routedToSource) break;
+                fluid_synth_noteoff(mSynth, ev.channel, ev.note);
+                break;
+            case EngineMidiEvent::ALL_NOTES_OFF:
+                // A source has no sustain pedal in v1, so it is always cleared.
+                if (mAllNotesOffHook) mAllNotesOffHook(mAllNotesOffHookCtx, ev.channel);
+                if (ev.channel >= 0 && ev.channel < kMaxChannels) {
+                    fluid_synth_all_notes_off(mSynth, ev.channel);
+                    fluid_synth_cc(mSynth, ev.channel, 123, 0);
+                    fluid_synth_cc(mSynth, ev.channel, 120, 0);
+                } else {
+                    for (int ch = 0; ch < kMaxChannels; ++ch) {
+                        fluid_synth_all_notes_off(mSynth, ch);
+                        fluid_synth_cc(mSynth, ch, 123, 0);
+                        fluid_synth_cc(mSynth, ch, 120, 0);
+                    }
+                }
+                break;
+            case EngineMidiEvent::PITCH_BEND:
+                if (routedToSource) break;
+                fluid_synth_pitch_bend(mSynth, ev.channel, ev.param1);
+                break;
+            case EngineMidiEvent::CC:
+                fluid_synth_cc(mSynth, ev.channel, ev.param1, ev.param2);
+                break;
+            case EngineMidiEvent::PROGRAM_CHANGE:
+                fluid_synth_program_change(mSynth, ev.channel, ev.param1);
+                break;
+            case EngineMidiEvent::PROGRAM_SELECT:
+                executeProgramSelect(ev.channel, ev.param1, ev.param2, ev.note);
+                break;
+            case EngineMidiEvent::SET_GEN:
+                // param1 = generator id, param2 = value (already scaled to native
+                // units by the shaper on the control thread).
+                fluid_synth_set_gen(mSynth, ev.channel, ev.param1, static_cast<float>(ev.param2));
+                break;
+            case EngineMidiEvent::PITCH_SENS:
+                fluid_synth_pitch_wheel_sens(mSynth, ev.channel, ev.param1);
+                break;
+        }
+    }
+}
+
 void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool accumulate) {
     std::unique_lock<std::recursive_mutex> lock(mMutex, std::try_to_lock);
     if (!lock.owns_lock() || !mSynth) {
@@ -614,63 +635,8 @@ void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool 
 
     auto tStart = std::chrono::steady_clock::now();
 
-    // Lock-free drain of pending MIDI events directly on the audio thread
-    // NoteOns, NoteOffs, PitchBends, CCs and AllNotesOffs are processed with high throughput.
-    // Allow up to 48 NoteOns per buffer so multi-layer 8-track chords trigger simultaneously with zero latency.
-    int noteOnsProcessed = 0;
-    const int kMaxNoteOnPerFrame = 48;
-    EngineMidiEvent ev;
-
-    while (mEventQueue.peek(ev)) {
-        if (ev.type == EngineMidiEvent::NOTE_ON) {
-            if (noteOnsProcessed >= kMaxNoteOnPerFrame) {
-                // Leave excess NoteOns in the lock-free ring buffer for the next audio frame
-                break;
-            }
-            noteOnsProcessed++;
-        }
-
-        // Pop the event from the ring buffer
-        mEventQueue.pop(ev);
-
-        switch (ev.type) {
-            case EngineMidiEvent::NOTE_ON: {
-                fluid_synth_noteon(mSynth, ev.channel, ev.note, ev.velocity);
-                break;
-            }
-            case EngineMidiEvent::NOTE_OFF: {
-                fluid_synth_noteoff(mSynth, ev.channel, ev.note);
-                break;
-            }
-            case EngineMidiEvent::ALL_NOTES_OFF:
-                if (ev.channel >= 0 && ev.channel < kMaxChannels) {
-                    fluid_synth_all_notes_off(mSynth, ev.channel);
-                    fluid_synth_cc(mSynth, ev.channel, 123, 0);
-                    fluid_synth_cc(mSynth, ev.channel, 120, 0);
-                } else {
-                    for (int ch = 0; ch < kMaxChannels; ++ch) {
-                        fluid_synth_all_notes_off(mSynth, ch);
-                        fluid_synth_cc(mSynth, ch, 123, 0);
-                        fluid_synth_cc(mSynth, ch, 120, 0);
-                    }
-                }
-                break;
-            case EngineMidiEvent::PITCH_BEND:
-                fluid_synth_pitch_bend(mSynth, ev.channel, ev.param1);
-                break;
-            case EngineMidiEvent::CC:
-                fluid_synth_cc(mSynth, ev.channel, ev.param1, ev.param2);
-                break;
-            case EngineMidiEvent::PROGRAM_CHANGE:
-                fluid_synth_program_change(mSynth, ev.channel, ev.param1);
-                break;
-            case EngineMidiEvent::PROGRAM_SELECT:
-                executeProgramSelect(ev.channel, ev.param1, ev.param2, ev.note);
-                break;
-        }
-    }
-
-    if (!accumulate) {
+    drainEvents();
+if (!accumulate) {
         fluid_synth_write_float(mSynth, numFrames, outputBuffer, 0, 2, outputBuffer, 1, 2);
     } else {
         size_t totalSamples = static_cast<size_t>(numFrames * 2);

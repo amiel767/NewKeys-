@@ -116,6 +116,11 @@ bool AudioEngine::openAndStartStream() {
         mFx.prepare(sampleRate, capacity);
     }
 
+    // Note routing must be installed before the stream runs: it is a plain
+    // function pointer read on the audio thread, never mutated while running.
+    mSynthEngine.setSourceRouter(&AudioEngine::sourceRouterTrampoline, this);
+    mSynthEngine.setAllNotesOffHook(&AudioEngine::allNotesOffTrampoline, this);
+
     LOGI("Audio stream opened: %d Hz, %d frames/burst, buffer set to %d frames (requested: %d).", 
         sampleRate, burst, targetBuffer, reqBuffer);
 
@@ -484,6 +489,88 @@ int AudioEngine::renderDirect(int16_t *outputBuffer16, int32_t numFrames) {
     }
 
     return numFrames;
+}
+
+bool AudioEngine::sourceRouterTrampoline(void *ctx, int channel, int type, int note,
+                                         int velocity, int param1, int param2) {
+    return static_cast<AudioEngine *>(ctx)->routeEventToSource(channel, type, note, velocity, param1, param2);
+}
+
+void AudioEngine::allNotesOffTrampoline(void *ctx, int channel) {
+    AudioEngine *e = static_cast<AudioEngine *>(ctx);
+    if (channel >= 0 && channel < 10) {
+        e->mFx.allNotesOff(channel);
+    } else {
+        for (int s = 0; s < 10; ++s) e->mFx.allNotesOff(s);
+    }
+}
+
+// Pushes the generator offsets of a track's shaper to its soundfont channel. The
+// values are diffed against the last applied set so a slider drag does not flood
+// the MIDI queue. Control thread only.
+void AudioEngine::refreshTrackGens(int track) {
+    if (track < 0 || track >= 8) return;
+    aetherfx::GenUpdate u = mFx.instrumentGens(track);
+    std::lock_guard<std::mutex> lk(mGenMutex);
+    GenCache &c = mGenCache[track];
+    if (!u.valid) {
+        if (c.n > 0) {
+            // Instrument removed: release the offsets back to the soundfont defaults.
+            for (int i = 0; i < c.n; ++i) mSynthEngine.setGen(track, c.gen[i], 0.0f);
+            c.n = 0;
+        }
+        if (c.pitchSens != -1) { mSynthEngine.setPitchBendSensitivity(track, 2); c.pitchSens = -1; }
+        return;
+    }
+    for (int i = 0; i < u.gens.n; ++i) {
+        bool known = false;
+        for (int k = 0; k < c.n; ++k) {
+            if (c.gen[k] == u.gens.gen[i]) {
+                known = true;
+                if (c.val[k] != u.gens.val[i]) { c.val[k] = u.gens.val[i]; mSynthEngine.setGen(track, c.gen[k], c.val[k]); }
+                break;
+            }
+        }
+        if (!known && c.n < 16) { c.gen[c.n] = u.gens.gen[i]; c.val[c.n] = u.gens.val[i]; ++c.n; mSynthEngine.setGen(track, u.gens.gen[i], u.gens.val[i]); }
+    }
+    if (c.pitchSens != u.perf.bendSemis) { c.pitchSens = u.perf.bendSemis; mSynthEngine.setPitchBendSensitivity(track, c.pitchSens); }
+}
+
+void AudioEngine::setTrackInstrument(int track, int fxId) {
+    if (!mFx.setInstrument(track, fxId)) return;
+    if (fxId < 0) {
+        std::lock_guard<std::mutex> lk(mGenMutex);
+        GenCache &c = mGenCache[track];
+        for (int i = 0; i < c.n; ++i) mSynthEngine.setGen(track, c.gen[i], 0.0f);
+        c.n = 0;
+        if (c.pitchSens != -1) { mSynthEngine.setPitchBendSensitivity(track, 2); c.pitchSens = -1; }
+        return;
+    }
+    refreshTrackGens(track);
+}
+
+void AudioEngine::setTrackInstrumentParam(int track, int param, float norm) {
+    mFx.setInstrumentParam(track, param, norm);
+    refreshTrackGens(track);
+}
+
+bool AudioEngine::routeEventToSource(int channel, int type, int note, int velocity, int param1, int param2) {
+    if (!mFx.soundfontPaused(channel)) return false;
+    switch (type) {
+        case EngineMidiEvent::NOTE_ON:
+            mFx.noteOn(channel, note, velocity);
+            return true;
+        case EngineMidiEvent::NOTE_OFF:
+            mFx.noteOff(channel, note);
+            return true;
+        case EngineMidiEvent::PITCH_BEND:
+            // FluidSynth uses 14-bit 0..16383 with 8192 as centre; the source API
+            // expects -1..1.
+            mFx.pitchBend(channel, (static_cast<float>(param1) - 8192.0f) / 8192.0f);
+            return true;
+        default:
+            return false;
+    }
 }
 
 // Æther FX render path. Returns false when the FX path is off or its buffers are
