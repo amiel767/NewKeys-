@@ -167,6 +167,45 @@ dans `/tmp` est perdu. Règles :
   etat Compose local) et `assertText` (le status passe a `err` si le libelle est
   absent, donc le driver ne peut pas valider une frame perimee).
 
+## Session 2026-10-19 (4e passage) — integration FX (package Æther Keys)
+
+Package source : `app/assets/aether-fx-package.zip` (extrait dans `/tmp/fx_pkg`).
+Docs `00`..`05`, `fx-window-preview.html` = reference visuelle, 15 `ic_fx_*.xml`
++ SVG, `ref-*.png`, `FxRegistry.kt`. Tests hote : `make test` -> **26 puis 90
+checks, 0 failed** (verifie).
+
+- **Etape 1 faite** (commit `20960c9`) : les 17 `fx_*.h` sont copies **octet pour
+  octet** dans `app/src/main/cpp/aetherfx/` (verifie par `cmp`), et
+  `target_include_directories(native-lib PRIVATE aetherfx ...)` ajoute dans
+  `cpp/CMakeLists.txt`. `assembleDebug` OK, APK 41 Mo, `.so` produit pour les
+  4 ABI. Le son n'est pas modifie (aucun appel ajoute).
+- **`FxRegistry.kt` installe** dans `com/soundstage/mixer/fx/` (seul le
+  `package` change : `com.aetherkeys.fx` -> `com.soundstage.mixer.fx`, le reste
+  est identique). Compile. Aucune collision : `MixerState.kt` a bien un
+  `FxParameters` mais pas de `FxRegistry`/`FxCurve`/`FxKind`.
+- **`debug.keystore` est gitignore** : apres un crash/reset sandbox il faut le
+  regenerer sinon `assembleDebug` echoue sur `validateSigningDebug` (le build
+  natif, lui, a deja reussi). Commande :
+  `keytool -genkeypair -keystore debug.keystore -storepass android -alias
+  androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000
+  -dname "CN=Android Debug,O=Android,C=US"`.
+- **CORRECTION au doc 04** : dans le FluidSynth 2.6.0 vendu,
+  `fluid_synth_nwrite_float` est marque `FLUID_DEPRECATED` (synth.h:382) et
+  `fluid_synth_write_float` est mono-mix. Pour l'etape 2 (sortie par canal)
+  utiliser **`fluid_synth_process(synth, len, nfx, fx[], nout, out[])`** avec
+  `out = {L0,R0,L1,R1,...}` (nout = 2 x canaux). Le doc cite `nwrite_float`.
+- Etat actuel a remplacer : `SoundfontEngine::init` met
+  `reverb.active=0` / `chorus.active=1` ; le rendu est
+  `fluid_synth_write_float` (mono-mix, `renderStereo` l.497) et
+  `renderStereo` prend `mMutex` en `try_lock`. `synth.audio-channels` /
+  `audio-groups` valent 1 par defaut.
+- Rappel modele strips : `FxMixer::kStrips = 11` (0..7 pistes, 8 Drum,
+  9 TonicPad, 10 sampler), `kMaster = 15`. `instrumentAllowed` = **0..7
+  seulement** ; `soundfontPaused` = 0..7 + source active.
+- Etapes restantes : 2 (multi-canaux, risque eleve) -> 3 (`FxMixer` dans le
+  rappel, retirer mutex/LOGI/resize) -> 4 (notes vers sources, gen offsets)
+  -> 5 (JNI) -> 6 (fenetre Compose) -> 7 (persistance) -> 8 (appareil).
+
 ## Conventions
 
 - Commits : `[Mixer V2] <résumé> — Compile: OK`, avec
