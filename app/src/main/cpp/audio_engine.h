@@ -12,6 +12,7 @@
 #include "sample_playback_engine.h"
 #include "seamless_loop.h"
 #include "fx_mixer.h"
+#include "fx_match.h"
 #include <jni.h>
 #include <memory>
 #include <array>
@@ -878,6 +879,12 @@ private:
     void setFxStripMute(int strip, bool m) { mFx.setMute(strip, m); }
     float fxStripPeak(int strip, int channel) { return channel ? mFx.peakR(strip) : mFx.peakL(strip); }
     int fxEffectId(int strip, int slot) { return mFx.effectId(strip, slot); }
+    int fxInstrumentId(int strip) { return mFx.instrumentId(strip); }
+    bool fxSoundfontPaused(int strip) { return mFx.soundfontPaused(strip); }
+    void fxSetInstrumentBypass(int strip, bool b) { mFx.setInstrumentBypass(strip, b); }
+    bool fxApplyInstrumentPreset(int strip, int preset) { return mFx.applyInstrumentPreset(strip, preset); }
+    float fxMeter(int strip, int slot, int i) { return mFx.meter(strip, slot, i); }
+    void fxCollectGarbage() { mFx.collectGarbage(); }
 
  private:
     bool openAndStartStream();

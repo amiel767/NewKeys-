@@ -129,6 +129,13 @@ object NativeAudioBridge {
     external fun setFxStripMute(strip: Int, mute: Boolean)
     external fun fxStripPeak(strip: Int, channel: Int): Float
     external fun fxEffectId(strip: Int, slot: Int): Int
+    external fun fxGetInstrumentId(strip: Int): Int
+    external fun fxSoundfontPaused(strip: Int): Boolean
+    external fun fxSetInstrumentBypass(strip: Int, bypass: Boolean)
+    external fun fxApplyInstrumentPreset(strip: Int, preset: Int): Boolean
+    external fun fxGetMeter(strip: Int, slot: Int, index: Int): Float
+    external fun fxCollectGarbage()
+    external fun fxMatchShaper(fxId: Int, presetName: String, gmProgram: Int, bank: Int, keyLow: Int, keyHigh: Int): Int
 
     // Safe wrappers to avoid crashes if native library isn't compiled or loaded
     fun safeIsOboeActive(): Boolean {

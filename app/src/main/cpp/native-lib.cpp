@@ -654,4 +654,78 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_fxEffectId(
     return gAudioEngine.fxEffectId(strip, slot);
 }
 
+JNIEXPORT jint JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_fxGetInstrumentId(
+        JNIEnv *env,
+        jobject /* this */,
+        jint strip) {
+    return gAudioEngine.fxInstrumentId(strip);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_fxSoundfontPaused(
+        JNIEnv *env,
+        jobject /* this */,
+        jint strip) {
+    return static_cast<jboolean>(gAudioEngine.fxSoundfontPaused(strip));
+}
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_fxSetInstrumentBypass(
+        JNIEnv *env,
+        jobject /* this */,
+        jint strip,
+        jboolean bypass) {
+    gAudioEngine.fxSetInstrumentBypass(strip, bypass == JNI_TRUE);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_fxApplyInstrumentPreset(
+        JNIEnv *env,
+        jobject /* this */,
+        jint strip,
+        jint preset) {
+    return static_cast<jboolean>(gAudioEngine.fxApplyInstrumentPreset(strip, preset));
+}
+
+JNIEXPORT jfloat JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_fxGetMeter(
+        JNIEnv *env,
+        jobject /* this */,
+        jint strip,
+        jint slot,
+        jint index) {
+    return gAudioEngine.fxMeter(strip, slot, index);
+}
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_fxCollectGarbage(
+        JNIEnv *env,
+        jobject /* this */) {
+    gAudioEngine.fxCollectGarbage();
+}
+
+// Compatibility check between a shaper and the soundfont preset loaded on the
+// track. 0 = Ok, 1 = Weak, 2 = Mismatch (see aetherfx::Match in fx_match.h).
+JNIEXPORT jint JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_fxMatchShaper(
+        JNIEnv *env,
+        jobject /* this */,
+        jint fxId,
+        jstring presetName,
+        jint gmProgram,
+        jint bank,
+        jint keyLow,
+        jint keyHigh) {
+    std::string name;
+    if (presetName) {
+        const char *chars = env->GetStringUTFChars(presetName, nullptr);
+        if (chars) {
+            name = chars;
+            env->ReleaseStringUTFChars(presetName, chars);
+        }
+    }
+    return static_cast<jint>(aetherfx::matchShaper(fxId, name, gmProgram, bank, keyLow, keyHigh));
+}
+
 } // extern "C"
