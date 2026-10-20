@@ -108,11 +108,39 @@ Champs de commande utiles : `seq`, `page`, `popup`, `tracks`, `keys`, `sustain`,
 (écriture directe dans `effectIds`/`params`), ce qui contourne le pont natif.
 C'est ce mode qui a produit les captures `01..15` — **pas** la navigation de l'app.
 
+## Track Settings V2 (vérifié, commit 393efab)
+
+La fenêtre Track Settings est désormais `ui/tracksettings/TrackSettingsScreen.kt`
+(`TrackSettingsWindow`, pages `TsPage.{Track,Velocity,Midi,Range}`).
+**`ui/components/TrackSettingsDialog.kt` n'existe plus** — ne pas le chercher.
+
+| Élément | Emplacement réel |
+|---|---|
+| Fenêtre | `ui/tracksettings/TrackSettingsScreen.kt` → `TrackSettingsWindow` |
+| Adaptateur vélocité | `ui/tracksettings/TsVelocity.kt` (`VelocitySettings` ↔ `VelocityConfig`) |
+| Bornes de notes | `RangeKeys` (dans TrackSettingsScreen.kt) = adaptateur sur `KeyboardLogic` (`VirtualKeyboard.kt`), 24..108 = C1..C8 |
+| Providers moteur | `AudioEngine.trackSustainProvider` / `trackProgramChangeProvider` / `trackVelocityCurveProvider` |
+
+Pièges confirmés :
+- **Omni n'existe plus** (décision utilisateur). `midiChannel` = 1..16, défaut **1**.
+  Le matching moteur est `incomingChannel == track.midiChannel - 1`
+  (`MixerViewModel.kt` ~l.2349). Ne pas réintroduire de cas `== 0`.
+- `updateTrackMidiChannel` ne doit **pas** réécrire `audioSlots[i].midiChannel` :
+  ce champ est le canal moteur fixe (`midiChannelForSlot`), pas le canal d'écoute.
+- La vélocité est appliquée **une seule fois**, par l'engine (`VelocityProcessor`).
+  Ne pas la réappliquer côté ViewModel.
+- La transposition native intègre déjà l'octave : `transpose + octave*12` en semitones.
+- `MidiDevice` (ancienne dialog) a été remplacé par `TsDeviceItem` pour éviter le
+  clash avec `android.media.midi.MidiDevice` (import wildcard `ui.components.*`).
+
 ## Symboles inexistants (ne pas les chercher)
 
 Un seul nom de brief s'est révélé faux :
 `loadSoundfontToSlot` — le vrai est `loadSoundFontForSlot(slotId, path, ...)`
 (`viewmodel/MixerViewModel.kt:3112`).
+
+« TrackPalette » (palette de couleurs de piste) n'existe **nulle part** : ni dans
+les JSX, ni dans le code. Ne pas l'implémenter sans brief explicite.
 
 ## Clavier virtuel — remplacé (vérifié)
 
