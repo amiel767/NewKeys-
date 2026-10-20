@@ -280,8 +280,22 @@ dans `FxInstrumentScenes.kt`. `FxSceneState` porte l'etat d'animation persistant
 (touches du piano, tirettes de l'orgue, particules des cordes, plume du sax,
 cordes de la guitare, sourdine du cuivre) : une recomposition ne le remet pas a
 zero. `drawFxScene(id, values, t, tm, st)` est le point d'entree unique.
-Reste pour boucler l'etape 6 : le **rack** (cartes reduites + tiroir) et
-l'integration dans le mixer.
+### Etape 6f faite (commit `4733212`) — etape 6 terminee
+
+- `ui/fx/FxRack.kt` : en-tete (compteur `n / 6 effects`, `+ Instrument`,
+  `+ Effect`, fermeture) + cartes 158x164 a **~15 img/s** (`delay(66)`), le
+  dessin reduit reutilise `drawFxScene`.
+- `ui/fx/FxOverlay.kt` : orchestre rack + **fenetre pleine cadence** (une seule)
+  + panneau d'ajout. Sonde `peak()` a 30 Hz pour le bandeau.
+- `ui/MixerScreen.kt` : le popup `ActivePopup.EFFECTS` ouvre l'overlay.
+  L'ancien `EffectsDialog` reste accessible derriere
+  `private const val FX_WINDOW_V2` (ligne ~juste avant `fun MixerScreen`) :
+  **a supprimer quand l'appareil aura valide** (c'est la demande explicite de
+  l'utilisateur de retirer les anciens FX).
+- Mapping piste -> strip : `stripForTrack(trackId)` = `trackId - 1` (0..7),
+  `trackId == 0` -> master (strip 15). Les ids de piste du mixer sont 1..8.
+- Reste : **etape 7 (persistance)**, puis la validation appareil, puis la
+  suppression des anciens FX.
 
 ### Divergence remote a connaitre (verifie 2026-10-20)
 
