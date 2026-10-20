@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Refresh
@@ -41,6 +42,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -95,6 +97,7 @@ fun SettingsDrawer(
     selectedMidiOutputDevice: String = "All Connected Devices",
     onSelectMidiOutputDevice: (String) -> Unit = {},
     onUpdateTrackMidiChannel: (Int, Int) -> Unit = { _, _ -> },
+    onUpdateTrackColor: (Int, Int?) -> Unit = { _, _ -> },
     
     // Audio Engine / Buffer & Polyphony
     audioEngine: String = "Oboe (C++)",
@@ -261,6 +264,13 @@ fun SettingsDrawer(
                             onBack = { onNavigateSubPage("main") }
                         )
                     }
+                    "track_colors" -> {
+                        TrackColorsSubPage(
+                            tracks = tracks,
+                            onUpdateTrackColor = onUpdateTrackColor,
+                            onBack = { onNavigateSubPage("main") }
+                        )
+                    }
                     "theme" -> {
                         ThemeSettingsSubPage(
                             themeHue = themeHue,
@@ -424,6 +434,17 @@ private fun AospMainSettingsPage(
                         title = "UI Settings",
                         subtitle = "Colors, theme presets, and faders layout mode",
                         onClick = { onNavigateSubPage("theme") }
+                    )
+
+                    AospDivider()
+
+                    AospSettingItem(
+                        icon = Icons.Default.ColorLens,
+                        iconTint = Color(0xFF22D3EE),
+                        iconBg = Color(0x1822D3EE),
+                        title = "Track Colors",
+                        subtitle = "Pick a colour for each track, or create your own",
+                        onClick = { onNavigateSubPage("track_colors") }
                     )
                 }
             }
@@ -1135,6 +1156,249 @@ fun PadlockIcon(
     }
 }
 
+/* ══════════════════ TRACK COLORS SUB-PAGE ══════════════════ */
+
+/** Extended palette offered alongside the 8 built-in track colours. */
+private val TrackColorExtended: List<Color> = listOf(
+    Color(0xFFEF4444), Color(0xFFF97316), Color(0xFFF59E0B), Color(0xFFEAB308),
+    Color(0xFF84CC16), Color(0xFF22C55E), Color(0xFF10B981), Color(0xFF14B8A6),
+    Color(0xFF06B6D4), Color(0xFF0EA5E9), Color(0xFF3B82F6), Color(0xFF6366F1),
+    Color(0xFF8B5CF6), Color(0xFFA855F7), Color(0xFFD946EF), Color(0xFFEC4899),
+    Color(0xFFF43F5E), Color(0xFF64748B), Color(0xFF94A3B8), Color(0xFF22D3EE)
+)
+
+@Composable
+private fun ColorSwatch(
+    color: Color,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(34.dp)
+            .clip(CircleShape)
+            .background(color)
+            .border(
+                width = if (selected) 2.5.dp else 1.dp,
+                color = if (selected) Color.White else Color(0x33FFFFFF),
+                shape = CircleShape
+            )
+            .clickable { onClick() }
+    )
+}
+
+@Composable
+private fun ColorSwatchRow(
+    colors: List<Color>,
+    currentArgb: Int?,
+    onPick: (Color) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        colors.chunked(7).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                row.forEach { c ->
+                    ColorSwatch(
+                        color = c,
+                        selected = currentArgb != null && currentArgb == c.toArgb(),
+                        onClick = { onPick(c) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrackColorsSubPage(
+    tracks: List<TrackChannel>,
+    onUpdateTrackColor: (Int, Int?) -> Unit,
+    onBack: () -> Unit
+) {
+    var builderTrackId by remember { mutableStateOf(tracks.firstOrNull()?.id ?: 1) }
+    var customHue by remember { mutableStateOf(210f) }
+    var customSat by remember { mutableStateOf(0.75f) }
+    val customColor = hsvToColor(customHue, customSat, 0.95f)
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x1AFFFFFF))
+                    .clickable { onBack() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Text(
+                text = "Track Colors",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+        }
+
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().weight(1f),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            item {
+                Text(
+                    text = "Pick a colour for each track from the built-in palette, the extended palette, or create your own below.",
+                    fontSize = 11.sp,
+                    color = TextDim
+                )
+            }
+
+            items(tracks) { track ->
+                AospCard(title = "Track ${track.id} · ${track.name}") {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(26.dp)
+                                    .clip(CircleShape)
+                                    .background(track.resolvedColor())
+                                    .border(1.dp, Color(0x44FFFFFF), CircleShape)
+                            )
+                            Text(
+                                text = if (track.customColorArgb != null) "Custom colour" else "Default colour",
+                                fontSize = 11.5.sp,
+                                color = TextDim,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                text = "Default",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (track.customColorArgb != null) Color(0xFF60A5FA) else TextDim,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { onUpdateTrackColor(track.id, null) }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+
+                        Text("Track palette", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF94A3B8))
+                        ColorSwatchRow(
+                            colors = TrackColorPresets,
+                            currentArgb = track.customColorArgb,
+                            onPick = { onUpdateTrackColor(track.id, it.toArgb()) }
+                        )
+
+                        Text("Extended palette", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF94A3B8))
+                        ColorSwatchRow(
+                            colors = TrackColorExtended,
+                            currentArgb = track.customColorArgb,
+                            onPick = { onUpdateTrackColor(track.id, it.toArgb()) }
+                        )
+                    }
+                }
+            }
+
+            item {
+                AospCard(title = "Create your own") {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("Apply to", fontSize = 11.sp, color = TextDim)
+                            tracks.forEach { t ->
+                                val sel = t.id == builderTrackId
+                                Text(
+                                    text = "T${t.id}",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (sel) Color(0xFF0F1726) else Color(0xFFC9D2E2),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (sel) Color(0xFF60A5FA) else Color(0x1AFFFFFF))
+                                        .clickable { builderTrackId = t.id }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(customColor)
+                                    .border(1.dp, Color(0x44FFFFFF), RoundedCornerShape(10.dp))
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Preview", fontSize = 9.5.sp, color = Color(0xFF6F7A90))
+                                Text(
+                                    text = "Hue ${customHue.toInt()}° · Sat ${(customSat * 100).toInt()}%",
+                                    fontSize = 11.5.sp,
+                                    color = Color(0xFFC9D2E2)
+                                )
+                            }
+                            Text(
+                                text = "Apply",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF0F1726),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(customColor)
+                                    .clickable { onUpdateTrackColor(builderTrackId, customColor.toArgb()) }
+                                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                            )
+                        }
+
+                        ThemeSliderCard(
+                            title = "Hue",
+                            valueText = "${customHue.toInt()}°",
+                            progress = (customHue / 360f).coerceIn(0f, 1f),
+                            onProgressChange = { customHue = it * 360f },
+                            onReset = { customHue = 210f }
+                        )
+                        ThemeSliderCard(
+                            title = "Saturation",
+                            valueText = String.format(java.util.Locale.US, "%.2f", customSat),
+                            progress = customSat.coerceIn(0f, 1f),
+                            onProgressChange = { customSat = it },
+                            onReset = { customSat = 0.75f }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun ThemeSettingsSubPage(
     themeHue: Float,
@@ -1572,7 +1836,7 @@ private fun MidiRoutingSubPage(
                                                 modifier = Modifier
                                                     .size(8.dp)
                                                     .clip(CircleShape)
-                                                    .background(getTrackThemeColor(track.id, track.isMaster))
+                                                    .background(track.resolvedColor())
                                             )
                                             Text(
                                                 text = "Track ${track.id}: ${track.name}",
@@ -1597,7 +1861,7 @@ private fun MidiRoutingSubPage(
                                             .horizontalScroll(rememberScrollState()),
                                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
-                                        val channelOptions = (1..16).map { it to "Ch.$it" }
+                                        val channelOptions = listOf(-1 to "OMNI") + (0..15).map { it to "Ch.${it + 1}" }
                                         channelOptions.forEach { (chVal, chLabel) ->
                                             val isChSelected = track.midiChannel == chVal
                                             Box(

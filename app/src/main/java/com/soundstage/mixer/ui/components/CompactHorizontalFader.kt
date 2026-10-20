@@ -46,7 +46,7 @@ fun CompactHorizontalFaderStrip(
 ) {
     val isMaster = track.isMaster
     val isEnabled = track.isEnabled
-    val vibrantLedColor = getTrackThemeColor(track.id, isMaster)
+    val vibrantLedColor = track.resolvedColor()
 
     val audioActivity = if (isEnabled) maxOf(track.peakMeterL, track.peakMeterR).coerceIn(0f, 1f) else 0f
     val auraAlpha = (0.25f + audioActivity * 0.60f).coerceIn(0.25f, 0.85f)

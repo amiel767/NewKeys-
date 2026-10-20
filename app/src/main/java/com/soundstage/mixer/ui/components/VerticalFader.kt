@@ -97,6 +97,13 @@ fun getTrackThemeColor(trackId: Int, isMaster: Boolean = false): Color {
     }
 }
 
+/** Resolves a track's colour, honouring a user override when set. */
+fun TrackChannel.resolvedColor(): Color =
+    customColorArgb?.let { Color(it) } ?: getTrackThemeColor(id, isMaster)
+
+/** The 8 built-in track colours, offered as presets in the colour picker. */
+val TrackColorPresets: List<Color> = (1..8).map { getTrackThemeColor(it) }
+
 /**
  * VerticalTrackChannel faithfully built to user specifications:
  *
@@ -125,8 +132,8 @@ fun VerticalTrackChannel(
     val isEnabled = track.isEnabled
     var showDeleteBubble by remember { mutableStateOf(false) }
 
-    val vibrantLedColor = remember(track.id, isMaster) {
-        getTrackThemeColor(track.id, isMaster)
+    val vibrantLedColor = remember(track.id, isMaster, track.customColorArgb) {
+        track.resolvedColor()
     }
 
     // Base body color: dynamic surface adapting to active theme palette

@@ -112,7 +112,8 @@ class AppStatePersistence(context: Context) {
         val defaultPan: Int = 0,
         val sustain: Boolean = true,
         val aftertouch: Boolean = false,
-        val programChange: Boolean = true
+        val programChange: Boolean = true,
+        val customColorArgb: Int? = null
     )
 
     data class SavedAudioSlotData(
@@ -313,6 +314,7 @@ class AppStatePersistence(context: Context) {
                     put("sustain", t.sustain)
                     put("aftertouch", t.aftertouch)
                     put("programChange", t.programChange)
+                    t.customColorArgb?.let { put("customColorArgb", it) }
                 }
                 tracksArray.put(obj)
             }
@@ -682,7 +684,8 @@ class AppStatePersistence(context: Context) {
                             defaultPan = obj.optInt("defaultPan", 0),
                             sustain = obj.optBoolean("sustain", true),
                             aftertouch = obj.optBoolean("aftertouch", false),
-                            programChange = obj.optBoolean("programChange", true)
+                            programChange = obj.optBoolean("programChange", true),
+                            customColorArgb = if (obj.has("customColorArgb")) obj.optInt("customColorArgb") else null
                         )
                     )
                 }

@@ -200,7 +200,7 @@ private fun MixerMainPageContent(
                                     }
 
                                     val isDimmed = !track.isEnabled || track.isMuted || (isAnySolo && !track.isSolo)
-                                    val accentColor = getTrackThemeColor(track.id, isMaster = false)
+                                    val accentColor = track.resolvedColor()
 
                                     ChannelStripV2(
                                         track = track,
@@ -551,7 +551,7 @@ private fun MixerMainPageContent(
                         KeyboardLine(
                             id = t.id.toString(),
                             name = t.name,
-                            color = getTrackThemeColor(t.id),
+                            color = t.resolvedColor(),
                             low = t.splitNoteMin,
                             high = t.splitNoteMax
                         )
@@ -1073,7 +1073,7 @@ fun MixerScreen(
                         state = TrackSettingsState(
                             trackName = "Track ${targetTrack.id}",
                             soundName = if (targetTrack.patchName.isNotBlank()) targetTrack.patchName else if (targetTrack.soundfontName.isNotBlank()) targetTrack.soundfontName else "Default GM",
-                            color = getTrackThemeColor(targetTrack.id, targetTrack.isMaster),
+                            color = targetTrack.resolvedColor(),
                             velocity = TsVelocity.toUi(targetTrack.velocityConfig),
                             devices = uiState.midiDevices.map { TsDeviceItem(id = it.id, name = it.name, subtitle = if (it.isConnected) "Connected" else "Offline") },
                             midiDeviceId = targetTrack.selectedMidiDeviceId ?: "all",
@@ -1104,7 +1104,7 @@ fun MixerScreen(
                     VelocitySettingsDialog(
                         trackNumber = targetTrack.id,
                         soundName = if (targetTrack.patchName.isNotBlank()) targetTrack.patchName else if (targetTrack.soundfontName.isNotBlank()) targetTrack.soundfontName else "Default GM",
-                        trackColor = getTrackThemeColor(targetTrack.id, targetTrack.isMaster),
+                        trackColor = targetTrack.resolvedColor(),
                         config = targetTrack.velocityConfig,
                         onConfigChange = { newConfig ->
                             viewModel.updateTrackVelocityConfig(targetTrack.id, newConfig)
@@ -1147,6 +1147,7 @@ fun MixerScreen(
             selectedMidiOutputDevice = uiState.selectedMidiOutputDevice,
             onSelectMidiOutputDevice = { viewModel.selectMidiOutputDevice(it) },
             onUpdateTrackMidiChannel = { trackId, channel -> viewModel.updateTrackMidiChannel(trackId, channel) },
+            onUpdateTrackColor = { trackId, argb -> viewModel.setTrackColor(trackId, argb) },
             audioEngine = uiState.audioEngine,
             onSelectAudioEngine = { viewModel.setAudioEngine(it) },
             audioBufferSize = uiState.audioBufferSize,

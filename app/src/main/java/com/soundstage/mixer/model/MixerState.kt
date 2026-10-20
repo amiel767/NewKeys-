@@ -147,8 +147,10 @@ data class TrackChannel(
     val sustain: Boolean = true,
     val aftertouch: Boolean = false,
     val programChange: Boolean = true,
-    val midiChannel: Int = 1, // 1..16 = Ch 1-16 (Omni removed)
+    val midiChannel: Int = 1, // 0 = Omni, 1..16 = Ch 1-16
     val selectedMidiDeviceId: String? = null, // null = All devices
+    // Per-track colour override (ARGB). null = use the default palette colour for this track index.
+    val customColorArgb: Int? = null,
     // Peak meters (0f..1f)
     val peakMeterL: Float = 0.0f,
     val peakMeterR: Float = 0.0f

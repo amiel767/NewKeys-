@@ -547,7 +547,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                                     defaultPan = savedT.defaultPan,
                                     sustain = savedT.sustain,
                                     aftertouch = savedT.aftertouch,
-                                    programChange = savedT.programChange
+                                    programChange = savedT.programChange,
+                                    customColorArgb = savedT.customColorArgb
                                 )
                             } else currentTrack
                         }
@@ -2341,12 +2342,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
         // Dynamic Keyboard Layer Mapper: route notes strictly within each active track's assigned key range (splitNoteMin..splitNoteMax)
         // AND strictly match the track's configured MIDI channel:
+        // track.midiChannel == 0 -> OMNI (accepts all channels)
         // track.midiChannel in 1..16 -> accepts only messages where incomingChannel == (track.midiChannel - 1)
-        // Omni (0) was removed: the UI only offers Channel 1..16, default Channel 1.
         val activeChannels = state.tracks.mapIndexedNotNull { idx, track ->
             val isAllowed = track.isEnabled && !track.isMuted && (!anySolo || track.isSolo)
             if (isAllowed) {
-                val isChannelMatch = (incomingChannel == null) || (incomingChannel == track.midiChannel - 1)
+                val isChannelMatch = (incomingChannel == null) || (track.midiChannel == 0) || (incomingChannel == track.midiChannel - 1)
                 if (isChannelMatch) {
                     val isWithinRange = (midiNote == null) || (midiNote in track.splitNoteMin..track.splitNoteMax)
                     if (isWithinRange) {
@@ -6212,6 +6213,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         persistCurrentStateDebounced()
     }
 
+    /** Sets a per-track colour override; pass null to fall back to the default palette colour. */
+    fun setTrackColor(trackId: Int, argb: Int?) {
+        updateTrack(trackId) { it.copy(customColorArgb = argb) }
+        persistCurrentStateDebounced()
+    }
+
     private inline fun updateTrack(trackId: Int, transform: (TrackChannel) -> TrackChannel) {
         _uiState.update { state ->
             state.copy(tracks = state.tracks.map { if (it.id == trackId) transform(it) else it })
@@ -6679,11 +6686,14 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateTrackMidiChannel(trackId: Int, channel: Int) {
-        // 1..16 = Ch 1..16. Omni removed. audioSlots keep their engine channel (midiChannelForSlot),
-        // so they must NOT be overwritten here.
-        val v = channel.coerceIn(1, 16)
         _uiState.update { state ->
-            state.copy(tracks = state.tracks.map { tr -> if (tr.id == trackId) tr.copy(midiChannel = v) else tr })
+            val updatedTracks = state.tracks.map { tr ->
+                if (tr.id == trackId) tr.copy(midiChannel = channel) else tr
+            }
+            val updatedAudioSlots = state.audioSlots.map { slot ->
+                if (slot.slotId == trackId - 1) slot.copy(midiChannel = channel) else slot
+            }
+            state.copy(tracks = updatedTracks, audioSlots = updatedAudioSlots)
         }
         persistCurrentStateDebounced()
     }

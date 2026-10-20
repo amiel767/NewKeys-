@@ -379,7 +379,7 @@ private fun TrackPage(state: TrackSettingsState, a: TrackSettingsActions) {
                 }
             }
             NavRow("MIDI", "Input device and channel", { a.onNavigate(TsPage.Midi) }) {
-                ValueChip("${(device?.name ?: "—").substringBefore(' ')} · Ch ${state.midiChannel}", color)
+                ValueChip("${(device?.name ?: "—").substringBefore(' ')} · ${if (state.midiChannel == 0) "Omni" else "Ch ${state.midiChannel}"}", color)
             }
             NavRow("Note range", "Lowest and highest key", { a.onNavigate(TsPage.Range) }) {
                 MiniKeys(state.noteLow, state.noteHigh, color)
@@ -704,7 +704,7 @@ private fun MidiPage(state: TrackSettingsState, a: TrackSettingsActions) {
         }
         Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             SectionLabel("CHANNEL")
-            // Omni was removed by decision: every track listens on Channel 1.
+            ChannelButton("Omni · all channels", state.midiChannel == 0, color, Modifier.fillMaxWidth().height(34.dp), 12.5.sp, false) { a.onMidiChannel(0) }
             (1..16).chunked(4).forEach { row ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     row.forEach { c -> ChannelButton("$c", state.midiChannel == c, color, Modifier.weight(1f).height(32.dp), 12.5.sp, true) { a.onMidiChannel(c) } }

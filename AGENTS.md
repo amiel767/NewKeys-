@@ -122,25 +122,35 @@ La fenêtre Track Settings est désormais `ui/tracksettings/TrackSettingsScreen.
 | Providers moteur | `AudioEngine.trackSustainProvider` / `trackProgramChangeProvider` / `trackVelocityCurveProvider` |
 
 Pièges confirmés :
-- **Omni n'existe plus** (décision utilisateur). `midiChannel` = 1..16, défaut **1**.
-  Le matching moteur est `incomingChannel == track.midiChannel - 1`
-  (`MixerViewModel.kt` ~l.2349). Ne pas réintroduire de cas `== 0`.
-- `updateTrackMidiChannel` ne doit **pas** réécrire `audioSlots[i].midiChannel` :
-  ce champ est le canal moteur fixe (`midiChannelForSlot`), pas le canal d'écoute.
+- **Omni existe toujours.** `midiChannel == 0` = Omni (accepte tous les canaux) ;
+  `1..16` = Ch 1..16. Le matching moteur gère les deux cas
+  (`MixerViewModel.kt` ~l.2349). Ne pas le supprimer : une version antérieure l'a
+  fait à tort et a dû être restaurée.
+- `SettingsDrawer.kt` (canaux MIDI) utilise `-1` comme sentinelle OMNI et émet
+  `0..15` pour les libellés « Ch.1..Ch.16 ». C'est **volontaire** dans ce widget :
+  ne pas « corriger » sans brief explicite.
 - La vélocité est appliquée **une seule fois**, par l'engine (`VelocityProcessor`).
   Ne pas la réappliquer côté ViewModel.
 - La transposition native intègre déjà l'octave : `transpose + octave*12` en semitones.
 - `MidiDevice` (ancienne dialog) a été remplacé par `TsDeviceItem` pour éviter le
   clash avec `android.media.midi.MidiDevice` (import wildcard `ui.components.*`).
 
+## Couleur de piste (créé, vérifié)
+
+`TrackChannel.customColorArgb: Int?` (null = couleur par défaut de l'index).
+Résolution unique : `TrackChannel.resolvedColor()` (`VerticalFader.kt`), qui
+retombe sur `getTrackThemeColor(id, isMaster)`. **Tous** les sites d'affichage
+doivent passer par `resolvedColor()`, jamais par `getTrackThemeColor` directement.
+Palettes : `TrackColorPresets` (8 couleurs par défaut, `VerticalFader.kt`) et
+`TrackColorExtended` (`SettingsDrawer.kt`). Sélecteur : sous-page
+`settingsSubPage == "track_colors"` → `TrackColorsSubPage`.
+`MaterialYouPalette.kt` (`MaterialYouStyle`) est du **code mort**, jamais consommé.
+
 ## Symboles inexistants (ne pas les chercher)
 
 Un seul nom de brief s'est révélé faux :
 `loadSoundfontToSlot` — le vrai est `loadSoundFontForSlot(slotId, path, ...)`
 (`viewmodel/MixerViewModel.kt:3112`).
-
-« TrackPalette » (palette de couleurs de piste) n'existe **nulle part** : ni dans
-les JSX, ni dans le code. Ne pas l'implémenter sans brief explicite.
 
 ## Clavier virtuel — remplacé (vérifié)
 
