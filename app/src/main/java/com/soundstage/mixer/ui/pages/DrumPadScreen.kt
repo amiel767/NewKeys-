@@ -305,6 +305,15 @@ fun DrumPadScreen(
                         )
                     }
                     Spacer(Modifier.weight(1f))
+                    if (padMode == "loops") {
+                        // JSX TopBar shows a "Swing 54%" pill; tap cycles the presets.
+                        val presets = listOf(50, 54, 58, 62, 66)
+                        SmallChip("Swing ${uiState.looper.swing}%", Modifier.height(24.dp)) {
+                            viewModel.setLooperSwing(
+                                presets.firstOrNull { it > uiState.looper.swing } ?: presets.first()
+                            )
+                        }
+                    }
                     BeatDots(beats = beatsPerBar, active = beatIdx)
                     if (anyRec != null && padMode == "pads") {
                         RecBadge()
