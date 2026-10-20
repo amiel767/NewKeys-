@@ -258,6 +258,22 @@ checks, 0 failed** (verifie).
   Ensuite : etape 7 (persistance) et la **suppression des anciens FX** (demande
   explicite de l'utilisateur, quand tout est implemente).
 
+### Polices (verifie 2026-10-19)
+
+**Aucune fonte nouvelle n'a ete ajoutee.** Le depot ne contient que 9 `.ttf`
+dans `app/src/main/res/font/` : `plus_jakarta_sans`, `jetbrains_mono`,
+`fira_code`, `inter`, `lexend`, `architects_daughter`, `caveat`, `kalam`,
+`patrick_hand`. Les seules chargees par du code le sont via **`SheetsFonts`**
+(`aetherkeys/sheets/ui/theme/Theme.kt`, lignes ~95-120) ; `inter.ttf` et
+`lexend.ttf` etaient presents mais **inutilises**. Il n'y a **pas** de
+`aetherkeys/setlists/theme` ni d'autre objet de polices.
+
+Le doc FX demande Share Tech Mono, Orbitron, Space Grotesk et Sora : **absents**.
+`ui/fx/FxFonts.kt` (nouveau) reutilise l'existant et mappe chaque titre :
+Space Grotesk -> Inter, Orbitron/Sora -> Lexend, Share Tech Mono -> JetBrains
+Mono ; libelles techniques -> `mono` (JetBrains Mono). `FxFonts.mono` est
+utilise par `FxWindow` et par `label()` dans `FxScenes`.
+
 ### Divergence remote a connaitre (verifie 2026-10-20)
 
 `origin/main` a **2 commits « Add files via upload »** (`0e9ef19`, `ad93dcb`)
