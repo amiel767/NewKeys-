@@ -240,6 +240,23 @@ checks, 0 failed** (verifie).
 - Reste : **etape 6 = fenetre Compose** (doc 03, `fx-window-preview.html` +
   `ic_fx_*.xml` comme reference), puis persistance, puis validation appareil.
   C'est la partie la plus volumineuse ; le moteur et le pont sont prets.
+- **Etape 6 faite en partie** (commits `34ed14f`, `b3aa0df`) : les 15
+  `ic_fx_*.xml` sont copies dans `res/drawable/` (octet pour octet, verifie par
+  `cmp`). `fx/FxController.kt` = etat par piste (instrument, 6/8 slots, bypass,
+  params) et pousse chaque changement au JNI ; `ui/fx/FxScenes.kt` porte la
+  geometrie 825x343 / contenu 779x263 a (20,58) / bandeau des y=214 et les scenes
+  des **effets 0-4** (Space, Echo, Tone, Grip, Ceiling) + le potard `FxKnob` ;
+  `ui/fx/FxWindow.kt` porte la coquille (en-tete, bypass, presets, fermeture).
+  Regle anti-disparition respectee : **une seule** boucle d'animation, changer de
+  preset ne recree pas la surface.
+  **Piege** : `DrawScope` n'a pas `createLinearGradient` ; utiliser
+  `Brush.linearGradient(...)` passe a `drawRect(brush=...)`. Les `canvas px` du
+  JSX valent des **dp** (facteur 1:1).
+- Reste a faire pour finir l'etape 6 : les **10 scenes d'instruments** (ids 5-14)
+  du JSX (piano, organ, sax, strings, guitar, amp, bass, brass, voices, synth),
+  puis le rack (cartes + tiroir), puis l'integration dans le mixer.
+  Ensuite : etape 7 (persistance) et la **suppression des anciens FX** (demande
+  explicite de l'utilisateur, quand tout est implemente).
 
 ### Divergence remote a connaitre (verifie 2026-10-20)
 
