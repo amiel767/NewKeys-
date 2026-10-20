@@ -103,6 +103,8 @@ fun FxOverlay(
                 controller = controller,
                 selectedSlot = if (selectedSlot >= 0) selectedSlot else null,
                 onSelect = { selectedSlot = it },
+                onDragUpdate = { _, _ -> },
+                onDragStop = { _ -> },
                 onRemove = { slot ->
                     val id = controller.effectIds.getOrNull(slot) ?: -1
                     if (id >= 0) {

@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -26,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -37,10 +40,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.soundstage.mixer.fx.FxController
 import com.soundstage.mixer.fx.FxKind
 import com.soundstage.mixer.fx.FxRegistry
@@ -62,8 +69,12 @@ private val HeaderBg = Brush.linearGradient(listOf(Color(0x14FFFFFF), Color(0x08
 fun FxCard(
     id: Int,
     selected: Boolean,
+    lifted: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
+    onDragStart: () -> Unit,
+    onDrag: (Float) -> Unit,
+    onDragStop: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val info = remember(id) { FxRegistry.info(id) }
@@ -72,6 +83,7 @@ fun FxCard(
     val scene = remember(id) { FxSceneState() }
     val values = remember(id) { FloatArray(FxRegistry.MAX_PARAMS) { i -> info.params.getOrNull(i)?.default ?: 0f } }
     var t by remember { mutableFloatStateOf(0f) }
+    var dragY by remember(id) { mutableFloatStateOf(0f) }
     // Rack cards run at ~15 images/s (doc 03), never at full cadence.
     LaunchedEffect(Unit) {
         while (true) {
@@ -83,12 +95,26 @@ fun FxCard(
     Column(
         modifier = modifier
             .width(158.dp)
+            .zIndex(if (lifted) 20f else 0f)
+            .offset(y = dragY.dp)
+            .graphicsLayer { alpha = if (lifted) 0.92f else 1f }
             .clip(RoundedCornerShape(16.dp))
             .background(CardBg)
             .border(if (id >= 5 && selected) 1.dp else 1.dp,
                 if (id >= 5) Color(0x66E8C98A) else Color(0x12FFFFFF),
                 RoundedCornerShape(16.dp))
             .combinedClickable(onClick = { onClick() }, onLongClick = { onLongClick() })
+            .pointerInput(id) {
+                detectVerticalDragGestures(
+                    onDragStart = { onDragStart() },
+                    onDragEnd = { onDragStop() },
+                    onDragCancel = { onDragStop() },
+                ) { change, amount ->
+                    change.consume()
+                    dragY += amount
+                    onDrag(dragY)
+                }
+            }
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
@@ -148,6 +174,8 @@ fun FxRackStrip(
     selectedSlot: Int?,
     onSelect: (Int) -> Unit,
     onRemove: (Int) -> Unit,
+    onDragUpdate: (Int, Float) -> Unit,
+    onDragStop: (Int) -> Unit,
     onAddInstrument: () -> Unit,
     onAddEffect: () -> Unit,
     onClose: () -> Unit,
@@ -155,12 +183,31 @@ fun FxRackStrip(
 ) {
     val ids = controller.effectIds
     val count = ids.count { it >= 0 }
+    var draggingSlot by remember { mutableIntStateOf(-1) }
+    var dragDist by remember { mutableFloatStateOf(0f) }
+    val threshold = 110f
+    val overTrash = draggingSlot >= 0 && dragDist > threshold
     Column(
         modifier = modifier
             .fillMaxSize()
             .clip(RoundedCornerShape(20.dp))
             .background(Brush.linearGradient(listOf(Color(0xFF1F2635), Color(0xFF131925))))
-            .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(20.dp)),
+            .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(20.dp))
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        if (draggingSlot >= 0 && event.type == PointerEventType.Release) {
+                            val slot = draggingSlot
+                            val drop = dragDist > threshold
+                            draggingSlot = -1
+                            dragDist = 0f
+                            onDragStop(slot)
+                            if (drop) onRemove(slot)
+                        }
+                    }
+                }
+            },
     ) {
         Row(
             Modifier.fillMaxWidth().height(42.dp).padding(horizontal = 12.dp),
@@ -188,9 +235,43 @@ fun FxRackStrip(
                     FxCard(
                         id = id,
                         selected = selectedSlot == slot,
+                        lifted = draggingSlot == slot,
                         onClick = { onSelect(slot) },
                         onLongClick = { onRemove(slot) },
+                        onDragStart = {
+                            draggingSlot = slot
+                            dragDist = 0f
+                        },
+                        onDrag = { dy ->
+                            dragDist = dy
+                            onDragUpdate(slot, dy)
+                        },
+                        onDragStop = {
+                            draggingSlot = -1
+                            dragDist = 0f
+                            onDragStop(slot)
+                        },
                     )
+                }
+            }
+        }
+        if (overTrash) {
+            Box(
+                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xE67A2216))
+                        .border(1.5.dp, Color(0xFFFF7A5A), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 18.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("\u232B", color = Color(0xFFFFE9E0), fontSize = 18.sp)
+                    Spacer(Modifier.width(10.dp))
+                    Text("Drop here to remove", color = Color(0xFFFFE9E0), fontSize = 12.sp,
+                        fontFamily = FxFonts.ui, fontWeight = FontWeight.Bold)
                 }
             }
         }

@@ -1,22 +1,40 @@
 package com.soundstage.mixer.liveui
 
 import android.app.Application
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.printToString
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
 import androidx.test.core.app.ApplicationProvider
 import com.github.takahirom.roborazzi.captureRoboImage
+import com.soundstage.mixer.fx.FxController
+import com.soundstage.mixer.fx.FxRegistry
 import com.soundstage.mixer.model.ActivePopup
 import com.soundstage.mixer.model.AppScreenPage
 import com.soundstage.mixer.ui.MixerScreen
+import com.soundstage.mixer.ui.fx.FxAddPanel
+import com.soundstage.mixer.ui.fx.FxRackStrip
+import com.soundstage.mixer.ui.fx.FxWindow
 import com.soundstage.mixer.ui.theme.DarkBg
 import com.soundstage.mixer.ui.theme.SoundfontLiveMixerTheme
 import com.soundstage.mixer.viewmodel.MixerViewModel
@@ -55,10 +73,38 @@ class LiveUiLoop {
         val viewModel = MixerViewModel(app)
 
         composeTestRule.mainClock.autoAdvance = false
+        // Preview mode renders the real FX composables directly. The native bridge is
+        // absent under Robolectric, so FxController.setEffect() refuses every id; the
+        // FX state is therefore seeded through the controller's public lists.
+        val fxPreview = mutableStateOf("")
         composeTestRule.setContent {
             SoundfontLiveMixerTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = DarkBg) {
-                    MixerScreen(viewModel = viewModel, skipSplash = true)
+                    when {
+                        fxPreview.value == "rack" -> FxPreviewSurface(Modifier.padding(12.dp)) {
+                            val c = remember { seededController(app, listOf(0, 1, 2)) }
+                            FxRackStrip(
+                                controller = c,
+                                selectedSlot = null,
+                                onSelect = {}, onRemove = {}, onDragUpdate = { _, _ -> },
+                                onDragStop = {}, onAddInstrument = {}, onAddEffect = {}, onClose = {},
+                            )
+                        }
+                        fxPreview.value.startsWith("window:") -> {
+                            val id = fxPreview.value.removePrefix("window:").toIntOrNull() ?: 0
+                            FxPreviewSurface(
+                                Modifier.padding(horizontal = 12.dp).padding(top = 38.dp, bottom = 10.dp),
+                            ) {
+                                val c = remember { seededController(app, listOf(id)) }
+                                FxWindow(effectId = id, slot = 0, controller = c, level = 0.62f, onClose = {})
+                            }
+                        }
+                        fxPreview.value == "add" -> FxPreviewSurface(Modifier.padding(24.dp), Alignment.Center) {
+                            val c = remember { seededController(app, emptyList()) }
+                            FxAddPanel(controller = c, onPick = {}, onClose = {})
+                        }
+                        else -> MixerScreen(viewModel = viewModel, skipSplash = true)
+                    }
                 }
             }
         }
@@ -76,6 +122,7 @@ class LiveUiLoop {
                     val seq = o.optLong("seq", 0L)
                     if (seq != lastSeq) {
                         lastSeq = seq
+                        o.optString("fxPreview").takeIf { it.isNotBlank() }?.let { fxPreview.value = it }
                         o.optString("page").takeIf { it.isNotBlank() }?.let { p ->
                             runCatching { viewModel.navigateToPage(AppScreenPage.valueOf(p)) }
                         }
@@ -95,6 +142,22 @@ class LiveUiLoop {
                                 }
                             }
                         }
+                        // Click controls by their visible label: far more robust than
+                        // raw coordinates when the layout is centred or scrolls.
+                        o.optJSONArray("clickText")?.let { arr ->
+                            for (i in 0 until arr.length()) {
+                                val label = arr.getString(i)
+                                try {
+                                    // Invoke the click action itself: a synthetic tap can
+                                    // miss a node that sits under a scroll/pointer-input
+                                    // wrapper, which is exactly the case in the FX rack.
+                                    val node = composeTestRule.onAllNodesWithText(label)[0]
+                                    node.performSemanticsAction(SemanticsActions.OnClick)
+                                } catch (t: Throwable) {
+                                    File(dir, "clickerr.txt").writeText("$label: ${t.javaClass.simpleName}: ${t.message}")
+                                }
+                            }
+                        }
                         // Fail the sequence (so the driver cannot treat a stale frame
                         // as a pass) when an expected label is missing from the tree.
                         o.optString("assertText").takeIf { it.isNotBlank() }?.let { want ->
@@ -108,6 +171,15 @@ class LiveUiLoop {
                             runCatching {
                                 val label = if (m == "loops") "Loops" else "Pads"
                                 composeTestRule.onAllNodesWithText(label)[0].performClick()
+                            }
+                        }
+                        // Dump the semantics tree for offline inspection when a capture
+                        // looks empty: the quickest way to tell a missing node from an
+                        // invisible one.
+                        if (o.optBoolean("dumpTree", false)) {
+                            runCatching {
+                                File(dir, "tree.txt").writeText(
+                                    composeTestRule.onRoot(useUnmergedTree = true).printToString(maxDepth = 30))
                             }
                         }
                         // Grow the mixer to N visible tracks (JSX reference draws 4).
@@ -143,6 +215,15 @@ class LiveUiLoop {
                 }
                 composeTestRule.mainClock.advanceTimeBy(16)
                 if (!paused) {
+                    // Popups and dialogs compose into their own roots; capturing only
+                    // the first one would silently drop them. Write every root so the
+                    // driver can composite the real screen.
+                    val roots = composeTestRule.onAllNodes(isRoot()).fetchSemanticsNodes()
+                    roots.indices.forEach { i ->
+                        composeTestRule.onAllNodes(isRoot())[i]
+                            .captureRoboImage(File(dir, "screen_r$i.png").absolutePath)
+                    }
+                    File(dir, "roots.txt").writeText(roots.size.toString())
                     composeTestRule.onRoot().captureRoboImage(tmpFile.absolutePath)
                     tmpFile.renameTo(imgFile)
                     // Echo the applied sequence back: the driver waits on this so it can
@@ -155,4 +236,35 @@ class LiveUiLoop {
             Thread.sleep(150)
         }
     }
+}
+
+/**
+ * Seeds an [FxController] without the native bridge, which is unavailable under
+ * Robolectric and makes setEffect() refuse every id. Writing the public lists is
+ * enough for the UI: the composables read effectIds, bypassed and params.
+ */
+private fun seededController(app: Application, ids: List<Int>): FxController {
+    val c = FxController(0, app)
+    ids.forEachIndexed { slot, id ->
+        if (slot < c.slotCount) {
+            c.effectIds[slot] = id
+            c.params[slot] = MutableList(FxRegistry.MAX_PARAMS) { i ->
+                FxRegistry.info(id).params.getOrNull(i)?.default ?: 0f
+            }
+        }
+    }
+    return c
+}
+
+/** Full-bleed backdrop matching the FX overlay, so the preview frames are readable. */
+@Composable
+private fun FxPreviewSurface(
+    modifier: Modifier = Modifier,
+    contentAlignment: Alignment = Alignment.TopStart,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        Modifier.fillMaxSize().background(Color(0xFF05070C)).then(modifier),
+        contentAlignment = contentAlignment,
+    ) { content() }
 }
