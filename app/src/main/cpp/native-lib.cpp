@@ -529,4 +529,129 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_getDrumActiveVoices(
     return gAudioEngine.getDrumSampler().getActiveVoiceCount();
 }
 
+// ---- Æther FX bridge ----
+// Strip layout follows FxMixer: 0..7 tracks, 8 drum channel, 9 tonic pad,
+// 10 drum-pad sampler, 15 master. Enabling must happen before the stream opens.
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setFxEnabled(
+        JNIEnv *env,
+        jobject /* this */,
+        jboolean enabled) {
+    gAudioEngine.setFxEnabled(enabled == JNI_TRUE);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_isFxEnabled(
+        JNIEnv *env,
+        jobject /* this */) {
+    return static_cast<jboolean>(gAudioEngine.isFxEnabled());
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setTrackInstrument(
+        JNIEnv *env,
+        jobject /* this */,
+        jint track,
+        jint fxId) {
+    gAudioEngine.setTrackInstrument(track, fxId);
+    return JNI_TRUE;
+}
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setTrackInstrumentParam(
+        JNIEnv *env,
+        jobject /* this */,
+        jint track,
+        jint param,
+        jfloat norm) {
+    gAudioEngine.setTrackInstrumentParam(track, param, norm);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setFxEffect(
+        JNIEnv *env,
+        jobject /* this */,
+        jint strip,
+        jint slot,
+        jint fxId) {
+    return static_cast<jboolean>(gAudioEngine.setFxEffect(strip, slot, fxId));
+}
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setFxEffectParam(
+        JNIEnv *env,
+        jobject /* this */,
+        jint strip,
+        jint slot,
+        jint param,
+        jfloat norm) {
+    gAudioEngine.setFxEffectParam(strip, slot, param, norm);
+}
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setFxEffectBypass(
+        JNIEnv *env,
+        jobject /* this */,
+        jint strip,
+        jint slot,
+        jboolean bypass) {
+    gAudioEngine.setFxEffectBypass(strip, slot, bypass == JNI_TRUE);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_applyFxPreset(
+        JNIEnv *env,
+        jobject /* this */,
+        jint strip,
+        jint slot,
+        jint preset) {
+    return static_cast<jboolean>(gAudioEngine.applyFxPreset(strip, slot, preset));
+}
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setFxStripGain(
+        JNIEnv *env,
+        jobject /* this */,
+        jint strip,
+        jfloat lin) {
+    gAudioEngine.setFxStripGain(strip, lin);
+}
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setFxStripPan(
+        JNIEnv *env,
+        jobject /* this */,
+        jint strip,
+        jfloat pan) {
+    gAudioEngine.setFxStripPan(strip, pan);
+}
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setFxStripMute(
+        JNIEnv *env,
+        jobject /* this */,
+        jint strip,
+        jboolean mute) {
+    gAudioEngine.setFxStripMute(strip, mute == JNI_TRUE);
+}
+
+JNIEXPORT jfloat JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_fxStripPeak(
+        JNIEnv *env,
+        jobject /* this */,
+        jint strip,
+        jint channel) {
+    return gAudioEngine.fxStripPeak(strip, channel);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_fxEffectId(
+        JNIEnv *env,
+        jobject /* this */,
+        jint strip,
+        jint slot) {
+    return gAudioEngine.fxEffectId(strip, slot);
+}
+
 } // extern "C"

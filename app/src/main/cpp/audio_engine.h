@@ -856,6 +856,7 @@ private:
     // Enabling the FX path arms the multi-channel render and the note router. It
     // must happen before the stream opens: the soundfont engine decides its
     // channel layout at that point.
+ public:
     void setFxEnabled(bool enabled) { mFxEnabled.store(enabled, std::memory_order_relaxed); }
     bool isFxEnabled() const { return mFxEnabled.load(std::memory_order_relaxed); }
 
@@ -866,9 +867,23 @@ private:
     // Recomputes and pushes the generator offsets for a track's shaper. Cheap and
     // idempotent: unchanged values are not queued.
     void refreshTrackGens(int track);
-    bool renderFxPath(float *outputBuffer, int32_t numFrames);
 
+    // FX chain control. strip 0..10, kMaster = 15 (see FxMixer). fxId < 0 clears.
+    bool setFxEffect(int strip, int slot, int fxId) { return mFx.setEffect(strip, slot, fxId); }
+    void setFxEffectParam(int strip, int slot, int param, float norm) { mFx.setParam(strip, slot, param, norm); }
+    void setFxEffectBypass(int strip, int slot, bool b) { mFx.setBypass(strip, slot, b); }
+    bool applyFxPreset(int strip, int slot, int preset) { return mFx.applyPreset(strip, slot, preset); }
+    void setFxStripGain(int strip, float lin) { mFx.setGain(strip, lin); }
+    void setFxStripPan(int strip, float pan) { mFx.setPan(strip, pan); }
+    void setFxStripMute(int strip, bool m) { mFx.setMute(strip, m); }
+    float fxStripPeak(int strip, int channel) { return channel ? mFx.peakR(strip) : mFx.peakL(strip); }
+    int fxEffectId(int strip, int slot) { return mFx.effectId(strip, slot); }
+
+ private:
     bool openAndStartStream();
+    // Audio-thread: renders the whole Æther FX path. Returns false when disabled
+    // so the caller falls back to the legacy mix unchanged.
+    bool renderFxPath(float *outputBuffer, int32_t numFrames);
 
     // Audio-thread hooks installed on the soundfont engine. They are static
     // trampolines: the engine stores a plain function pointer, this instance

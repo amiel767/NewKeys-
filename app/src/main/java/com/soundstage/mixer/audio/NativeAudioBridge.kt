@@ -104,6 +104,32 @@ object NativeAudioBridge {
     external fun setDrumChokeGroup(sampleId: Int, chokeGroup: Int)
     external fun getDrumActiveVoices(): Int
 
+    // ================= ÆTHER FX =================
+    // Strips follow FxMixer: 0..7 tracks, 8 drum channel, 9 tonic pad,
+    // 10 drum-pad sampler, 15 master. fxId < 0 clears a slot.
+    const val FX_STRIP_TRACK_1 = 0
+    const val FX_STRIP_TRACK_8 = 7
+    const val FX_STRIP_DRUM = 8
+    const val FX_STRIP_TONIC_PAD = 9
+    const val FX_STRIP_DRUM_PAD = 10
+    const val FX_STRIP_MASTER = 15
+    const val FX_SLOTS_TRACK = 6
+    const val FX_SLOTS_MASTER = 8
+
+    external fun setFxEnabled(enabled: Boolean)
+    external fun isFxEnabled(): Boolean
+    external fun setTrackInstrument(track: Int, fxId: Int): Boolean
+    external fun setTrackInstrumentParam(track: Int, param: Int, norm: Float)
+    external fun setFxEffect(strip: Int, slot: Int, fxId: Int): Boolean
+    external fun setFxEffectParam(strip: Int, slot: Int, param: Int, norm: Float)
+    external fun setFxEffectBypass(strip: Int, slot: Int, bypass: Boolean)
+    external fun applyFxPreset(strip: Int, slot: Int, preset: Int): Boolean
+    external fun setFxStripGain(strip: Int, lin: Float)
+    external fun setFxStripPan(strip: Int, pan: Float)
+    external fun setFxStripMute(strip: Int, mute: Boolean)
+    external fun fxStripPeak(strip: Int, channel: Int): Float
+    external fun fxEffectId(strip: Int, slot: Int): Int
+
     // Safe wrappers to avoid crashes if native library isn't compiled or loaded
     fun safeIsOboeActive(): Boolean {
         return if (isLibraryLoaded) {
