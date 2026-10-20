@@ -1,0 +1,594 @@
+package com.soundstage.mixer.ui.fx
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.exp
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.pow
+import kotlin.math.roundToInt
+import kotlin.math.sin
+
+/**
+ * Geometry and colours of the FX window, ported unchanged from
+ * `fx-window-preview.html`: logical phone region 825x343, content 779x263 at
+ * (20, 58), bottom rail from y = 214. One canvas px is one dp.
+ */
+object FxStyle {
+    const val PWL = 825f
+    const val PHL = 343f
+    const val OXL = 20f
+    const val OYL = 58f
+    const val RAIL_Y = 214f
+
+    private val accents = mapOf(
+        0 to Color(0xFFA99AD8), 1 to Color(0xFFD4B06A), 2 to Color(0xFF8FD0FF),
+        3 to Color(0xFFB8C2D4), 4 to Color(0xFFC9852C), 5 to Color(0xFFE8C98A),
+        6 to Color(0xFFD9C08A), 7 to Color(0xFFE0A45A), 8 to Color(0xFFECB05C),
+        9 to Color(0xFFE08A4A), 10 to Color(0xFFFF9A3C), 11 to Color(0xFFF0C060),
+        12 to Color(0xFFE8C060), 13 to Color(0xFFC9B8FF), 14 to Color(0xFF7AD0FF),
+    )
+
+    fun accent(id: Int): Color = accents[id] ?: Color(0xFFA99AD8)
+
+    /** Rail material per instrument id, from `RS` in the preview. */
+    data class Rail(val bgTop: Color, val bgBottom: Color, val line: Color, val tx: Color, val pattern: String)
+
+    fun rail(id: Int): Rail = when (id) {
+        6 -> Rail(Color(0xFF4A2A16), Color(0xFF1A0D07), Color(0xFFD9C08A), Color(0xFFF3E6CC), "wood")
+        7 -> Rail(Color(0xFF2A1810), Color(0xFF0E0806), Color(0xFFE0A45A), Color(0xFFF4E4D0), "copper")
+        8 -> Rail(Color(0xFF4A3A20), Color(0xFF1C1408), Color(0xFFD9A05B), Color(0xFFF0E2C8), "wood")
+        9 -> Rail(Color(0xFF2A2E36), Color(0xFF0A0B0E), Color(0xFFC0C8D0), Color(0xFFDFE4EA), "steel")
+        12 -> Rail(Color(0xFF4A0E1C), Color(0xFF14060A), Color(0xFFE8C060), Color(0xFFF4E4C0), "velvet")
+        13 -> Rail(Color(0x22FFFFFF), Color(0x08FFFFFF), Color(0xFFC9B8FF), Color(0xFFE8E4FF), "glass")
+        14 -> Rail(Color(0xFF0A1220), Color(0xFF04060C), Color(0xFF7AD0FF), Color(0xFFA8D8F0), "led")
+        else -> Rail(Color(0xFF1F1F26), Color(0xFF07070A), Color(0xFFE8C98A), Color(0xFFE8E0D0), "lacquer")
+    }
+}
+
+/** Knob geometry as declared by `AB(...)` in the preview, per effect id. */
+data class FxKnobSpec(val param: Int, val x: Float, val y: Float, val size: Float)
+
+private val knobLayout: Map<Int, List<FxKnobSpec>> = buildMap {
+    put(0, (0..6).map { k ->
+        val a = Math.toRadians(-90.0 + k * 360.0 / 7.0)
+        FxKnobSpec(k, (389 + 285 * cos(a)).toFloat(), (114 + 80 * sin(a)).toFloat(), 54f)
+    })
+    put(1, listOf(FxKnobSpec(8, 650f, 70f, 56f), FxKnobSpec(9, 735f, 70f, 56f),
+                  FxKnobSpec(10, 692f, 188f, 56f), FxKnobSpec(11, 95f, 205f, 52f)))
+    put(2, listOf(FxKnobSpec(1, 66f, 126f, 100f), FxKnobSpec(3, 330f, 214f, 60f),
+                  FxKnobSpec(6, 664f, 122f, 78f), FxKnobSpec(4, 430f, 216f, 44f)))
+    put(3, listOf(FxKnobSpec(1, 628f, 78f, 78f), FxKnobSpec(4, 725f, 64f, 50f),
+                  FxKnobSpec(2, 598f, 200f, 54f), FxKnobSpec(3, 670f, 200f, 54f),
+                  FxKnobSpec(5, 742f, 200f, 54f)))
+    put(4, listOf(FxKnobSpec(0, 125f, 128f, 136f), FxKnobSpec(1, 262f, 78f, 76f),
+                  FxKnobSpec(2, 262f, 196f, 50f), FxKnobSpec(3, 340f, 196f, 50f),
+                  FxKnobSpec(4, 340f, 70f, 50f), FxKnobSpec(5, 735f, 128f, 62f)))
+}
+
+fun knobsFor(effectId: Int): List<FxKnobSpec> = knobLayout[effectId] ?: emptyList()
+
+private const val TAU = 6.2831855f
+
+private fun dash(a: Float, b: Float) = PathEffect.dashPathEffect(floatArrayOf(a, b))
+
+private fun hsl(h: Float, s: Float, l: Float): Color {
+    val c = (1f - abs(2f * l - 1f)) * s
+    val hp = (((h % 360f) + 360f) % 360f) / 60f
+    val x = c * (1f - abs(hp % 2f - 1f))
+    val (r, g, b) = when (hp.toInt()) {
+        0 -> Triple(c, x, 0f); 1 -> Triple(x, c, 0f); 2 -> Triple(0f, c, x)
+        3 -> Triple(0f, x, c); 4 -> Triple(x, 0f, c); else -> Triple(c, 0f, x)
+    }
+    val m = l - c / 2f
+    return Color(r + m, g + m, b + m)
+}
+
+private fun DrawScope.oval(cx: Float, cy: Float, rx: Float, ry: Float, rot: Float,
+                           color: Color, width: Float, effect: PathEffect?) {
+    val path = Path()
+    for (i in 0..64) {
+        val a = i * TAU / 64
+        val x = rx * cos(a); val y = ry * sin(a)
+        val px = cx + x * cos(rot) - y * sin(rot)
+        val py = cy + x * sin(rot) + y * cos(rot)
+        if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+    }
+    path.close()
+    drawPath(path, color = color, style = Stroke(width = width, pathEffect = effect))
+}
+
+private fun DrawScope.label(tm: TextMeasurer, text: String, cx: Float, cy: Float,
+                            color: Color, sp: Float, bold: Boolean = false) {
+    val layout = tm.measure(text, style = TextStyle(color = color, fontSize = sp.sp,
+        fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal))
+    drawText(layout, topLeft = Offset(cx - layout.size.width / 2f, cy - layout.size.height / 2f))
+}
+
+// ---------------------------------------------------------------------------
+// Scenes, ported 1:1 from the preview functions of the same name.
+// ---------------------------------------------------------------------------
+
+/** Shared full-window background (preview `bg()`), effects 0..4 only. */
+private fun DrawScope.bg(t: Float, accent: Color) {
+    val w = FxStyle.PWL
+    val h = FxStyle.PHL
+    drawRect(
+        brush = Brush.linearGradient(listOf(Color(0xFF171C28), Color(0xFF0B0E16)),
+            start = Offset(0f, -FxStyle.OYL), end = Offset(0f, h)),
+        topLeft = Offset(-FxStyle.OXL, -FxStyle.OYL), size = Size(w, h),
+    )
+    for (q in 0 until 70) {
+        val a = 0.2f + 0.5f * abs(sin(t * 1.3f + q))
+        val x = -FxStyle.OXL + (sin(q * 91.7f) * 0.5f + 0.5f) * w
+        val y = -FxStyle.OYL + (sin(q * 47.3f) * 0.5f + 0.5f) * h
+        drawRect(Color.White.copy(alpha = a), topLeft = Offset(x, y), size = Size(1.2f, 1.2f))
+    }
+    drawCircle(
+        brush = Brush.radialGradient(listOf(accent.copy(alpha = 0.12f), Color.Transparent),
+            center = Offset(w * 0.5f, 100f), radius = 320f),
+        radius = 320f, center = Offset(w * 0.5f, 100f),
+    )
+}
+
+private fun DrawScope.sceneOrb(v: FloatArray, a: Color, t: Float) {
+    val cx = FxStyle.PWL / 2f
+    val cy = 114f
+    val sz = v[0]; val dc = v[1]; val pd = v[2]; val dm = v[3]; val wd = v[4]; val mx = v[5]; val df = v[6]
+    val r = 40f * (0.7f + sz * 0.8f) * (1f + 0.03f * sin(t * 2f))
+    val col = hsl(268f - dm * 75f, 0.48f, 0.74f)
+    for (w in 0 until 3) {
+        val u = (t * (0.12f + sz * 0.2f) + w / 3f) % 1f
+        if (u < pd * 0.4f) continue
+        drawCircle(col.copy(alpha = (1f - u) * 0.4f), radius = r * (1.1f + u * 5f),
+            center = Offset(cx, cy), style = Stroke(width = 1.6f))
+    }
+    var rx = r * 1.75f
+    oval(cx, cy, rx, rx * (0.3f + wd * 0.18f), -0.35f + sin(t * 0.25f) * wd * 0.55f,
+        col.copy(alpha = 0.3f + 0.5f * mx), 2.2f, PathEffect.dashPathEffect(floatArrayOf(4f + dc * 36f, 9f), -t * 30f * (0.3f + wd)))
+    rx = r * 2.7f
+    val ry = rx * 0.36f
+    val tl1 = 0.25f + cos(t * 0.2f) * wd * 0.4f
+    val n = 22 + (sz * 14f).roundToInt()
+    val l = 3 + (dc * 6f).roundToInt()
+    for (p in 0 until n) {
+        val an = t * (0.25f + wd * 0.9f) + p * TAU / n
+        for (s in 0 until l) {
+            val aa = an - s * 0.08f * (0.4f + dc)
+            val wob = sin(aa * 5f + t * 3f) * df * r * 0.45f
+            val x = (rx + wob) * cos(aa); val y = (ry + wob * 0.4f) * sin(aa)
+            drawCircle(if (s == 0) Color.White else col, radius = 2.1f * (1f - s.toFloat() / l * 0.5f),
+                center = Offset(cx + x * cos(tl1) - y * sin(tl1), cy + x * sin(tl1) + y * cos(tl1)),
+                alpha = (1f - s.toFloat() / l) * 0.85f)
+        }
+    }
+    rx = min(r * 3.7f, 250f)
+    val ry2 = rx * 0.3f
+    val tl2 = -0.6f + sin(t * 0.17f) * wd * 0.3f
+    for (e in 0 until 3) {
+        oval(cx, cy, rx * (1f + e * 0.06f), ry2 * (1f + e * 0.06f), tl2,
+            col.copy(alpha = 0.05f + 0.25f * dc * (1f - e / 3f)), 1f, null)
+    }
+    for (c in 0 until 3) {
+        val an = -t * (0.18f + wd * 0.6f) + c * 2.094f
+        val t2 = 8 + (dc * 20f).roundToInt()
+        for (s in 0 until t2) {
+            val aa = an + s * 0.05f
+            drawCircle(if (s == 0) Color.White else col, radius = 3f * (1f - s.toFloat() / t2 * 0.6f),
+                center = Offset(cx + rx * cos(aa) * cos(tl2) - ry2 * sin(aa) * sin(tl2),
+                                cy + rx * cos(aa) * sin(tl2) + ry2 * sin(aa) * cos(tl2)),
+                alpha = (1f - s.toFloat() / t2) * (0.3f + 0.6f * mx))
+        }
+    }
+    drawCircle(brush = Brush.radialGradient(listOf(Color(0xFFEEE8FF), a, Color(0xFF1D1A38)),
+        center = Offset(cx - r * 0.35f, cy - r * 0.4f), radius = r * 1.4f),
+        radius = r, center = Offset(cx, cy))
+    for (q in 0 until 3) {
+        oval(cx, cy, r * abs(cos(t * 0.4f * (0.5f + wd) + q * 1.05f)), r, 0f,
+            Color.White.copy(alpha = 0.1f + 0.1f * df), 0.8f, null)
+    }
+    drawCircle(Color.White.copy(alpha = 0.08f + 0.4f * mx), radius = r * 1.08f,
+        center = Offset(cx, cy), style = Stroke(width = 1f))
+}
+
+private fun DrawScope.sceneEcho(v: FloatArray, a: Color, t: Float) {
+    val px0 = 190f; val pw = 400f; val py0 = 18f; val ph = 218f; val pb = py0 + ph
+    val rr = 62f
+    val sp = 1.7f - (v[0] + v[2] + v[4] + v[6]) / 4f * 1.3f
+    rotate((t * sp + sin(t * 6f) * v[10] * 0.1f) * 57.29578f, pivot = Offset(95f, 80f)) {
+        drawCircle(brush = Brush.linearGradient(
+            listOf(Color(0xFFE8D2A0), Color(0xFF7D6335), Color(0xFFD9BF86), Color(0xFF5F4A28)),
+            start = Offset(95f - rr, 80f - rr), end = Offset(95f + rr, 80f + rr)),
+            radius = rr, center = Offset(95f, 80f))
+    }
+    for (k in 0 until 6) {
+        rotate(k * 60f, pivot = Offset(95f, 80f)) {
+            drawOval(Color(0xFF14110C), topLeft = Offset(95f + rr * 0.29f, 80f - rr * 0.17f),
+                size = Size(rr * 0.52f, rr * 0.34f))
+        }
+    }
+    drawCircle(Color(0xFF14110C), radius = rr * 0.22f, center = Offset(95f, 80f))
+    drawCircle(brush = Brush.radialGradient(listOf(Color(0x55FFFFFF), Color.Transparent),
+        center = Offset(95f - rr * 0.4f, 80f - rr * 0.45f), radius = rr * 1.2f),
+        radius = rr, center = Offset(95f, 80f))
+    drawRect(Color(0xFF0D0B08), topLeft = Offset(px0, py0), size = Size(pw, ph))
+    for (k in 1 until 5) {
+        drawRect(Color(0x12FFFFFF), topLeft = Offset(px0 + pw * k / 5f, py0), size = Size(1f, ph))
+        drawRect(Color(0x12FFFFFF), topLeft = Offset(px0, py0 + ph * k / 5f), size = Size(pw, 1f))
+    }
+    val p = (0 until 4).map { n -> floatArrayOf(px0 + v[2 * n] * pw, pb - v[2 * n + 1] * ph) }.sortedBy { it[0] }
+    val fb = 0.2f + v[8] * 0.8f
+    for (q in p) drawRect(a.copy(alpha = 0.25f * fb), topLeft = Offset(q[0] - 4f, q[1]), size = Size(8f, pb - q[1]))
+    val sp2 = (p[3][0] - p[0][0]) + pw * 0.1f
+    for (r in 1 until 4) for (q in p) {
+        val gx = q[0] + sp2 * r
+        if (gx < px0 + pw) drawRect(a.copy(alpha = 0.18f * fb.pow(r + 1)),
+            topLeft = Offset(gx - 3f, q[1] + (pb - q[1]) * (1f - fb.pow(r))),
+            size = Size(6f, (pb - q[1]) * fb.pow(r)))
+    }
+    val path = Path().apply {
+        moveTo(px0, pb)
+        p.forEach { lineTo(it[0], it[1]) }
+        lineTo(px0 + pw, pb)
+    }
+    drawPath(path, a.copy(alpha = 0.5f + 0.5f * fb), style = Stroke(width = 2f))
+    val dx = px0 + ((t * 0.28f) % 1f) * pw
+    var dy = pb
+    val pts = listOf(floatArrayOf(px0, pb)) + p + listOf(floatArrayOf(px0 + pw, pb))
+    for (k in 0 until pts.size - 1) {
+        val aa = pts[k]; val bb = pts[k + 1]
+        if (dx >= aa[0] && dx <= bb[0]) {
+            dy = aa[1] + (bb[1] - aa[1]) * (dx - aa[0]) / max(1f, bb[0] - aa[0]); break
+        }
+    }
+    drawCircle(brush = Brush.radialGradient(listOf(Color.White, a, Color.Transparent),
+        center = Offset(dx, dy), radius = 14f), radius = 14f, center = Offset(dx, dy))
+    for (n in 0 until 4) {
+        val x = px0 + v[2 * n] * pw
+        val y = pb - v[2 * n + 1] * ph
+        drawCircle(brush = Brush.radialGradient(
+            listOf(Color(0xFFFFF0C8), Color(0xFFC9A45C), Color(0xFF4A3A1C)),
+            center = Offset(x - 2.7f, y - 2.7f), radius = 9f), radius = 9f, center = Offset(x, y))
+    }
+}
+
+private fun DrawScope.rrect(x0: Float, y0: Float, w: Float, h: Float, r: Float): Path = Path().apply {
+    moveTo(x0 + r, y0)
+    arcTo(Rect(x0 + w - r * 2, y0, x0 + w, y0 + r * 2), -90f, 90f, false)
+    arcTo(Rect(x0 + w - r * 2, y0 + h - r * 2, x0 + w, y0 + h), 0f, 90f, false)
+    arcTo(Rect(x0, y0 + h - r * 2, x0 + r * 2, y0 + h), 90f, 90f, false)
+    arcTo(Rect(x0, y0, x0 + r * 2, y0 + r * 2), 180f, 90f, false)
+    close()
+}
+
+private fun DrawScope.sceneEq(v: FloatArray, t: Float, tm: TextMeasurer) {
+    val x0 = 134f; val wd = 466f; val y0 = 12f; val hh = 138f; val my = y0 + hh / 2f
+    val sg = 0.05f + 0.14f / (0.3f + v[4] * 3.7f)
+    fun cv(u: Float): Float =
+        (v[1] - 0.5f) * 2f / (1f + exp(((u - v[0]) * 16f).toDouble())).toFloat() +
+        (v[3] - 0.5f) * 2f * exp(-((u - v[2]) / sg).toDouble().pow(2.0)).toFloat() +
+        (v[6] - 0.5f) * 2f / (1f + exp((-(u - v[5]) * 16f).toDouble())).toFloat()
+    fun yy(u: Float) = my - cv(u) * hh * 0.4f
+    drawPath(rrect(x0 - 4f, y0 - 4f, wd + 8f, hh + 8f, 16f), color = Color(0x6A000000))
+    drawPath(rrect(x0, y0, wd, hh, 13f), brush = Brush.linearGradient(
+        listOf(Color(0xFF1B070C), Color(0xFF0C0305)), start = Offset(0f, y0), end = Offset(0f, y0 + hh)))
+    clipPath(rrect(x0, y0, wd, hh, 13f)) {
+        drawRect(brush = Brush.linearGradient(
+            listOf(Color(0x2AFF2D4A), Color.Transparent, Color(0x2A6FC8FF)),
+            start = Offset(0f, y0), end = Offset(0f, y0 + hh)),
+            topLeft = Offset(x0, y0), size = Size(wd, hh))
+        for (f in floatArrayOf(0.25f, 0.75f)) drawRect(Color(0x1AFFFFFF), topLeft = Offset(x0, y0 + hh * f), size = Size(wd, 1f))
+        for (f in floatArrayOf(0.2f, 0.4f, 0.6f, 0.8f)) drawRect(Color(0x1AFFFFFF), topLeft = Offset(x0 + f * wd, y0), size = Size(1f, hh))
+        drawLine(Color(0x59FFFFFF), Offset(x0, my), Offset(x0 + wd, my), 1f, pathEffect = dash(5f, 5f))
+        val nb = 70
+        for (k in 0 until nb) {
+            val u = k.toFloat() / nb
+            val h = hh * 0.3f * (0.35f + 0.65f * abs(sin(k * 0.6f + t * 2.1f) * sin(k * 0.17f + t * 0.7f))) *
+                    (1f - u * 0.45f) * (0.55f + v[7] * 0.9f) * (1f + cv(u) * 0.8f)
+            drawRect(if (cv(u) > 0f) Color(0xFFFF6B7E) else Color(0xFF7FD0FF),
+                topLeft = Offset(x0 + u * wd, y0 + hh - max(1f, h)), size = Size(wd / nb - 1f, max(1f, h)),
+                alpha = 0.24f)
+        }
+        fun curve(): Path = Path().apply {
+            moveTo(x0, yy(0f))
+            var k = 0f
+            while (k <= wd) { lineTo(x0 + k, yy(k / wd)); k += 3f }
+        }
+        clipRect(x0, y0, x0 + wd, my) {
+            val p = curve(); p.lineTo(x0 + wd, my); p.lineTo(x0, my); p.close()
+            drawPath(p, brush = Brush.linearGradient(listOf(Color(0xAAFF3D58), Color(0x15FF3D58)),
+                start = Offset(0f, y0), end = Offset(0f, my)))
+        }
+        clipRect(x0, my, x0 + wd, y0 + hh) {
+            val p = curve(); p.lineTo(x0 + wd, my); p.lineTo(x0, my); p.close()
+            drawPath(p, brush = Brush.linearGradient(listOf(Color(0x157FD0FF), Color(0xAA7FD0FF)),
+                start = Offset(0f, my), end = Offset(0f, y0 + hh)))
+        }
+        translate(0f, 5f) { drawPath(curve(), Color(0x99000000), style = Stroke(width = 3.4f)) }
+        clipRect(x0, y0, x0 + wd, my) { drawPath(curve(), Color(0xFFFF5468), style = Stroke(width = 3.4f)) }
+        clipRect(x0, my, x0 + wd, y0 + hh) { drawPath(curve(), Color(0xFF86D6FF), style = Stroke(width = 3.4f)) }
+    }
+    for ((q, f) in listOf("100" to 0.3f, "1k" to 0.6f, "10k" to 0.9f)) {
+        label(tm, q, x0 + f * wd, y0 + hh + 16f, Color(0xBFFFE9E2), 9f)
+    }
+    for (b in 0 until 3) {
+        val fg = listOf(0 to 1, 2 to 3, 5 to 6)[b]
+        val nx = x0 + v[fg.first] * wd
+        val ny = y0 + (1f - v[fg.second]) * hh
+        val up = v[fg.second] >= 0.5f
+        drawCircle(brush = Brush.radialGradient(
+            listOf(Color.White, if (up) Color(0xFFFF6B7E) else Color(0xFF86D6FF),
+                   if (up) Color(0xFF6A0B18) else Color(0xFF124A6A)),
+            center = Offset(nx - 3.8f, ny - 4.4f), radius = 11f),
+            radius = 11f, center = Offset(nx, ny))
+    }
+}
+
+private fun DrawScope.sceneGrip(v: FloatArray, a: Color, t: Float, tm: TextMeasurer) {
+    val th = v[0]
+    val ratios = floatArrayOf(1.5f, 2f, 3f, 4f, 8f, 20f)
+    val r = ratios[(v[1] * 5f).roundToInt().coerceIn(0, 5)]
+    val l = 0.52f + 0.36f * sin(t * 2.3f) * sin(t * 0.7f + 1f) + 0.08f * sin(t * 7.1f)
+    val g1 = min(1f, max(0f, l - th * 0.9f) * (1f - 1f / r) * 2.2f * 1.6f)
+    val gx = 135f; val gy = 218f; val gR = 118f
+    val a0 = Math.PI.toFloat() * 1.17f; val a1 = Math.PI.toFloat() * 1.83f
+    drawArc(Color(0xFF1C1E24), 180f, 180f, true,
+        topLeft = Offset(gx - gR - 8f, gy - gR - 8f), size = Size((gR + 8f) * 2, (gR + 8f) * 2))
+    drawArc(brush = Brush.linearGradient(listOf(Color(0xFFD6D0BB), Color(0xFFA79F86)),
+        start = Offset(0f, gy - gR), end = Offset(0f, gy + 8f)),
+        180f, 180f, true, topLeft = Offset(gx - gR - 3f, gy - gR - 3f), size = Size((gR + 3f) * 2, (gR + 3f) * 2))
+    for (k in 0..20) {
+        val an = a0 + (a1 - a0) * k / 20f
+        val r1 = gR * 0.84f
+        val r2 = gR * (if (k % 5 != 0) 0.9f else 0.96f)
+        drawLine(if (k > 15) Color(0xFFAA3333) else Color(0xFF2A2820),
+            Offset(gx + r1 * cos(an), gy + r1 * sin(an)),
+            Offset(gx + r2 * cos(an), gy + r2 * sin(an)),
+            strokeWidth = if (k % 5 != 0) 1f else 2f)
+    }
+    val na = a0 + (a1 - a0) * g1
+    drawLine(Color(0xFF14120E), Offset(gx, gy + 4f),
+        Offset(gx + gR * 0.9f * cos(na), gy + gR * 0.9f * sin(na)), 2.6f)
+    drawCircle(brush = Brush.radialGradient(listOf(Color(0xFFAAB2C0), Color(0xFF2A2E38)),
+        center = Offset(gx - 3f, gy - 3f), radius = 14f), radius = 13f, center = Offset(gx, gy + 2f))
+    label(tm, "GAIN REDUCTION", gx, gy - gR * 0.42f, Color(0xFF2A2820), 10f, true)
+    val px = 272f; val pw = 150f; val py = 20f; val ph = 223f
+    val gap = ph * (1f - g1 * 0.64f)
+    val pc = py + ph / 2f
+    drawRect(Color(0xFF0C0D10), topLeft = Offset(px, py), size = Size(pw, ph))
+    val wave = Path()
+    var k = 0f
+    while (k <= pw) {
+        val y = pc + sin(k * 0.09f + t * 5f) * (gap / 2f) * 0.9f * (0.6f + 0.4f * sin(k * 0.03f + t))
+        if (k == 0f) wave.moveTo(px + k, y) else wave.lineTo(px + k, y)
+        k += 2f
+    }
+    drawPath(wave, a, style = Stroke(width = 2f))
+    drawRect(brush = Brush.linearGradient(listOf(Color(0xFFE1E6EE), Color(0xFF8A92A1), Color(0xFF4D5461)),
+        start = Offset(0f, py), end = Offset(0f, py + (ph - gap) / 2f)),
+        topLeft = Offset(px, py), size = Size(pw, (ph - gap) / 2f))
+    drawRect(brush = Brush.linearGradient(listOf(Color(0xFFE1E6EE), Color(0xFF8A92A1), Color(0xFF4D5461)),
+        start = Offset(0f, py + ph - (ph - gap) / 2f), end = Offset(0f, py + ph)),
+        topLeft = Offset(px, py + ph - (ph - gap) / 2f), size = Size(pw, (ph - gap) / 2f))
+    for (q in listOf(Offset(px + 10f, py + 8f), Offset(px + pw - 10f, py + 8f),
+                     Offset(px + 10f, py + ph - 8f), Offset(px + pw - 10f, py + ph - 8f))) {
+        drawCircle(Color(0xFF2A2E38), radius = 3f, center = q)
+    }
+    val ty = 30f + (1f - th) * 205f
+    drawRect(Color(0xFF08090C), topLeft = Offset(452f, 30f), size = Size(8f, 205f))
+    drawRect(a.copy(alpha = 0.7f), topLeft = Offset(452f, ty), size = Size(8f, 235f - ty))
+    drawRect(brush = Brush.linearGradient(listOf(Color(0xFFDFE4EC), Color(0xFF8B93A3), Color(0xFF515866)),
+        start = Offset(0f, ty - 11f), end = Offset(0f, ty + 11f)),
+        topLeft = Offset(438f, ty - 11f), size = Size(36f, 22f))
+    drawRect(Color(0xFF14120E), topLeft = Offset(442f, ty - 1f), size = Size(28f, 2f))
+    label(tm, "THRESH ${(th * 60f - 60f).roundToInt()} dB", 456f, 252f, Color(0xFFCFD6E6), 9f, true)
+    drawLine(Color(0x80E0A24A), Offset(px, pc - th * ph * 0.42f), Offset(px + pw, pc - th * ph * 0.42f),
+        1f, pathEffect = dash(4f, 4f))
+}
+
+private fun DrawScope.sceneCeil(v: FloatArray, t: Float) {
+    val am = v[0]; val cl = v[1]
+    val sx = 390f; val sw = 300f; val sy = 20f; val sh = 223f; val my = sy + sh / 2f
+    val kx = 125f; val ky = 128f
+    val r0 = 50f + am * 130f
+    drawCircle(brush = Brush.radialGradient(
+        listOf(Color(0xFFE0A24A).copy(alpha = 0.18f + 0.3f * am), Color.Transparent),
+        center = Offset(kx, ky), radius = r0), radius = r0, center = Offset(kx, ky))
+    for (k in 0 until 26) {
+        val an = -Math.PI.toFloat() * 0.95f + k * Math.PI.toFloat() * 1.9f / 26f + sin(t * 0.5f) * 0.05f
+        val len = 70f + am * 110f * (0.6f + 0.4f * sin(t * 2f + k))
+        drawLine(Color(0xFFE0A24A), Offset(kx + cos(an) * 62f, ky + sin(an) * 62f),
+            Offset(kx + cos(an) * (62f + len), ky + sin(an) * (62f + len)), 1.6f,
+            alpha = 0.08f + 0.28f * am)
+    }
+    drawRect(Color(0xFF17140F), topLeft = Offset(sx, sy), size = Size(sw, sh))
+    val gn = 1f + am * 2.4f
+    val cy = my - cl * sh * 0.42f
+    val fy = my + cl * sh * 0.42f
+    var hit = 0
+    val wave = Path()
+    var k = 0f
+    while (k <= sw) {
+        val u = k / sw
+        val y0 = sin(u * 13f + t * 3f) * 0.72f + sin(u * 31f + t) * 0.2f
+        val s = max(-cl, min(cl, y0 * gn))
+        if (abs(y0 * gn) > cl) hit++
+        if (k == 0f) wave.moveTo(sx + k, my - s * sh * 0.42f) else wave.lineTo(sx + k, my - s * sh * 0.42f)
+        k += 2f
+    }
+    drawPath(wave, Color(0xFFE0A24A), style = Stroke(width = 2.2f))
+    val hf = min(1f, hit / (sw / 2f))
+    drawRect(brush = Brush.linearGradient(listOf(Color.Transparent, Color(0xFFE0A24A).copy(alpha = 0.15f + 0.5f * hf)),
+        start = Offset(0f, cy - 30f), end = Offset(0f, cy)), topLeft = Offset(sx, cy - 30f), size = Size(sw, 30f))
+    drawRect(brush = Brush.linearGradient(listOf(Color(0xFFF1DFAE), Color(0xFFB9934D), Color(0xFF6E5226)),
+        start = Offset(0f, sy), end = Offset(0f, cy)), topLeft = Offset(sx, sy), size = Size(sw, max(3f, cy - sy)))
+    drawRect(brush = Brush.linearGradient(listOf(Color(0xFFF1DFAE), Color(0xFFB9934D), Color(0xFF6E5226)),
+        start = Offset(0f, fy), end = Offset(0f, sy + sh)), topLeft = Offset(sx, fy), size = Size(sw, max(3f, sy + sh - fy)))
+}
+
+/** Bottom rail: material strip plus the Level fader. */
+private fun DrawScope.rail(instrumentId: Int, level: Float, tm: TextMeasurer) {
+    val r = FxStyle.rail(instrumentId)
+    val x0 = -FxStyle.OXL
+    val y0 = FxStyle.RAIL_Y
+    val rw = FxStyle.PWL
+    val rh = max(71f, FxStyle.PHL - FxStyle.OYL - FxStyle.RAIL_Y)
+    drawRect(brush = Brush.linearGradient(listOf(r.bgTop, r.bgBottom),
+        start = Offset(0f, y0), end = Offset(0f, y0 + rh)),
+        topLeft = Offset(x0, y0), size = Size(rw, rh))
+    clipRect(x0, y0, x0 + rw, y0 + rh) {
+        when (r.pattern) {
+            "wood" -> for (k in 0 until 8) {
+                val p = Path()
+                var u = 0f
+                while (u <= rw) {
+                    val y = y0 + 8 + k * 9 + sin(u * 0.02f + k) * 2
+                    if (u == 0f) p.moveTo(x0 + u, y) else p.lineTo(x0 + u, y)
+                    u += 10f
+                }
+                drawPath(p, Color(0x1A000000), style = Stroke(width = 1f))
+            }
+            "steel" -> {
+                var y = 0f
+                while (y < rh) { drawLine(Color(0x12FFFFFF), Offset(x0, y0 + y), Offset(x0 + rw, y0 + y), 1f); y += 2f }
+                for (k in 0 until 8) drawCircle(Color(0x88000000), radius = 2.4f,
+                    center = Offset(x0 + 14 + k * (rw - 28) / 7f, y0 + rh - 10f))
+            }
+            "velvet" -> {
+                var k = -rh
+                while (k < rw) { drawLine(Color(0x1F000000), Offset(x0 + k, y0), Offset(x0 + k + rh, y0 + rh), 1f); k += 7f }
+            }
+            "copper" -> {
+                var k = 0f
+                while (k < rw) { var rr = 0f
+                    while (rr < rh) { drawCircle(Color(0x1AFFD0A0), radius = 1.6f, center = Offset(x0 + k + 7, y0 + rr + 7)); rr += 14f }
+                    k += 14f }
+            }
+            "led" -> {
+                var k = 0f
+                while (k < rw) { drawLine(Color(0x147AD0FF), Offset(x0 + k, y0), Offset(x0 + k, y0 + rh), 1f); k += 18f }
+            }
+            "glass" -> drawRect(brush = Brush.linearGradient(listOf(Color(0x22FFFFFF), Color.Transparent),
+                start = Offset(0f, y0), end = Offset(0f, y0 + rh)), topLeft = Offset(x0, y0), size = Size(rw, rh))
+        }
+    }
+    drawRect(brush = Brush.linearGradient(listOf(r.line.copy(alpha = 0f), r.line, r.line.copy(alpha = 0f)),
+        start = Offset(x0, 0f), end = Offset(x0 + rw, 0f)),
+        topLeft = Offset(x0, y0), size = Size(rw, 2f))
+    val sx = 540f; val sw = 200f; val sy = 252f
+    drawPath(rrect(sx - 3f, sy - 4f, sw + 6f, 8f, 4f), color = Color(0xE6000000))
+    drawRect(brush = Brush.linearGradient(listOf(r.line.copy(alpha = 0.85f), Color.White),
+        start = Offset(sx, 0f), end = Offset(sx + sw, 0f)),
+        topLeft = Offset(sx, sy - 2f), size = Size(max(2f, sw * level), 4f))
+    val tx = sx + sw * level
+    drawRect(brush = Brush.linearGradient(listOf(Color(0xFFF4EFE6), Color(0xFFA8A090), Color(0xFF5C554A)),
+        start = Offset(0f, sy - 11f), end = Offset(0f, sy + 11f)),
+        topLeft = Offset(tx - 8f, sy - 11f), size = Size(16f, 22f))
+    drawRect(Color(0xFF2A1A10), topLeft = Offset(tx - 1f, sy - 7f), size = Size(2f, 14f))
+    label(tm, "LEVEL", sx, sy - 17f, r.tx, 9f)
+    label(tm, "${(level * 30f - 24f)}", sx + sw, sy - 17f, r.tx, 9f)
+}
+
+// ---------------------------------------------------------------------------
+// Knob
+// ---------------------------------------------------------------------------
+
+/**
+ * One knob, ported from `knob()` in the preview: 270 degrees of travel from
+ * -135, accent value arc, metallic cap, white indicator. Drag is relative and
+ * mixed (170 px on either axis is the full course). Double tap resets to the
+ * registry default.
+ */
+@Composable
+fun FxKnob(value: Float, accent: Color, default: Float, sizeDp: Float, onValue: (Float) -> Unit) {
+    var v by remember { mutableFloatStateOf(value) }
+    var dragging by remember { mutableFloatStateOf(0f) }
+    if (dragging == 0f && abs(v - value) > 0.0001f) v = value
+    Box(
+        modifier = Modifier
+            .size(sizeDp.dp)
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { dragging = 1f },
+                    onDragEnd = { dragging = 0f },
+                    onDragCancel = { dragging = 0f },
+                ) { change, drag ->
+                    change.consume()
+                    val nv = (v + (drag.x - drag.y) / 170f).coerceIn(0f, 1f)
+                    v = nv
+                    onValue(nv)
+                }
+            }
+            .pointerInput(Unit) {
+                detectTapGestures(onDoubleTap = {
+                    v = default
+                    onValue(default)
+                })
+            },
+    ) {
+        Canvas(Modifier.size(sizeDp.dp)) {
+            val r = size.minDimension / 2f
+            val cx = size.width / 2f
+            val cy = size.height / 2f
+            drawCircle(Color(0xFF0A0C12), radius = r, center = Offset(cx, cy))
+            drawCircle(Color(0xFF0A0C12), radius = r * 0.9f, center = Offset(cx, cy), style = Stroke(width = 1.6f))
+            val rect = Rect(cx - r * 0.9f, cy - r * 0.9f, cx + r * 0.9f, cy + r * 0.9f)
+            drawArc(accent, -135f, 270f * v, false, topLeft = rect.topLeft, size = rect.size,
+                style = Stroke(width = 1.6f, cap = StrokeCap.Round))
+            drawCircle(brush = Brush.radialGradient(listOf(Color(0xFF9A9AB2), Color(0xFF25263A)),
+                center = Offset(cx - r * 0.3f, cy - r * 0.3f), radius = r * 0.9f),
+                radius = r * 0.62f, center = Offset(cx, cy))
+            val ang = Math.toRadians((-135f + 270f * v).toDouble()).toFloat()
+            drawLine(Color.White, Offset(cx + r * 0.2f * cos(ang), cy + r * 0.2f * sin(ang)),
+                Offset(cx + r * 0.55f * cos(ang), cy + r * 0.55f * sin(ang)), strokeWidth = 2f)
+        }
+    }
+}
+
+/** Draws the scene for [effectId] at the given animation time. */
+fun DrawScope.drawFxScene(effectId: Int, values: FloatArray, t: Float, tm: TextMeasurer) {
+    val accent = FxStyle.accent(effectId)
+    if (effectId in 0..4) bg(t, accent)
+    when (effectId) {
+        0 -> sceneOrb(values, accent, t)
+        1 -> sceneEcho(values, accent, t)
+        2 -> sceneEq(values, t, tm)
+        3 -> sceneGrip(values, accent, t, tm)
+        4 -> sceneCeil(values, t)
+    }
+}
+
+/** Bottom rail, public entry point. */
+fun DrawScope.drawFxRail(instrumentId: Int, level: Float, tm: TextMeasurer) = rail(instrumentId, level, tm)
