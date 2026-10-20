@@ -154,3 +154,35 @@ dans `/tmp` est perdu. Règles :
   rainbow `idx * 30 + 205`. Glow animé via `tween` + `shadow(spotColor = tint)`.
 - **Looper** : action `"clearAll"` dans `LooperEngine.longPressCaseAction`
   (bypass le remplacement par case).
+
+## Session 2026-10-19 (2e passage) — suppression Loops morte + captures
+
+- **Fenêtre Loops morte supprimée** : `ui/components/LoopsDialog.kt` et
+  `ui/components/TopBar.kt` (40 Ko, aucun appelant externe) sont supprimés.
+  `ActivePopup.LOOPS` retiré de `model/MixerState.kt` ; la branche
+  `ActivePopup.LOOPS -> { … }` retirée de `ui/MixerScreen.kt`, ainsi que le
+  `isLoopsPanelOpen` du garde d'overlay. Les setters VM `openLoopsDialog` /
+  `closeLoopsDialog` / `closeLoopsPanel` n'existent plus : ne pas les chercher.
+  Attention : « loops » côté utilisateur = **page DrumPad + fenêtre Drumkit**
+  (catégorie Loop), **pas** ce popup mort.
+- **`SustainPedalButton` refait** : plus de mot SUSTAIN ni de pastille ; une
+  plaque bascule de -17° (repos) à -3° (appuyé) sur charnière gauche, avec glow
+  au sol. Piloté uniquement par `isActive`.
+- **Sustain clavier virtuel** : `MixerScreen.kt` passe désormais
+  `uiState.isSustainActive || uiState.isMidiPedalPressed` au clavier, donc le
+  pédalier MIDI externe (CC64) anime le clavier comme le bouton.
+- **Soundfonts** : les lignes de `SoundfontWindow.kt` (presets + fichiers)
+  utilisent un fond opaque (`0xFF1F2836` / `0xFF19212E`), un contour léger et une
+  ombre (`shadow(4.dp, RowShape)`) au lieu des dégradés translucides qui
+  paraissaient flous.
+- **Stubs câblés** : `DrumPadScreen.kt` — `DpPadEditor.onChange` appelle
+  `updateDrumPadCustomization(id, label, style, isLoopMode)` ; l'onglet Scenes
+  reçoit `uiState.scenes` et `onLoadScene` appelle `selectScene(name)`.
+  `ScenesContent` (DrumPadManager.kt) affiche le vrai nom du preset.
+- **Harnais de capture** : `tools/jsxref/capture_all.py` réécrit. `status.txt`
+  renvoie `ok <seq>` et le driver attend l'ack de **sa** séquence (fini les
+  frames périmées/doublons), puis attend 0,5 s que les animations d'entrée se
+  posent. Sortie 891×411 (moitié de la résolution native). 15 PNG + 2 GIF
+  (`pedal_sustain`, `pedal_midi`). Setlists volontairement exclu de la passe.
+- **Hook test** : `MixerViewModel.debugSetMidiPedal(pressed)` simule CC64 ;
+  `LiveUiLoop.kt` accepte `midiPedal`, `layer`, `keyboard` dans `cmd.json`.
