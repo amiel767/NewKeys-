@@ -133,6 +133,7 @@ private fun DrawScope.oval(cx: Float, cy: Float, rx: Float, ry: Float, rot: Floa
 private fun DrawScope.label(tm: TextMeasurer, text: String, cx: Float, cy: Float,
                             color: Color, sp: Float, bold: Boolean = false) {
     val layout = tm.measure(text, style = TextStyle(color = color, fontSize = sp.sp,
+        fontFamily = FxFonts.mono,
         fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal))
     drawText(layout, topLeft = Offset(cx - layout.size.width / 2f, cy - layout.size.height / 2f))
 }

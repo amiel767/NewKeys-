@@ -36,7 +36,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.withTransform
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
@@ -114,7 +113,7 @@ fun FxWindow(
                 ) {
                     if (p != null) {
                         Text(p.name, color = Color(0xFFB9C2D4), fontSize = (7.5f * scale).sp,
-                            fontFamily = FontFamily.Monospace, maxLines = 1)
+                            fontFamily = FxFonts.mono, maxLines = 1)
                     }
                     FxKnob(
                         value = values.getOrElse(spec.param) { 0f },
@@ -130,7 +129,7 @@ fun FxWindow(
                     if (p != null) {
                         Text(formatParam(p, values.getOrElse(spec.param) { 0f }),
                             color = Color(0xFF9AA4B8), fontSize = (7f * scale).sp,
-                            fontFamily = FontFamily.Monospace, maxLines = 1)
+                            fontFamily = FxFonts.mono, maxLines = 1)
                     }
                 }
             }
@@ -154,20 +153,21 @@ fun FxWindow(
                     Box(Modifier.size(8.dp).clip(CircleShape).background(
                         if (!bypassed) accent else Color(0xFF2A3040)))
                     Spacer(Modifier.width(6.dp))
-                    Text("Bypass", color = Color(0xFF8A94A8), fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                    Text("Bypass", color = Color(0xFF8A94A8), fontSize = 9.sp, fontFamily = FxFonts.mono)
                 }
                 Spacer(Modifier.width(14.dp))
                 Column {
                     Text(info.name, color = Accent, fontSize = (16f * scale).sp,
+                        fontFamily = FxFonts.title(effectId),
                         fontWeight = FontWeight.SemiBold, maxLines = 1)
                     Text(info.type, color = Color(0xFF7A8498), fontSize = (9f * scale).sp,
-                        fontFamily = FontFamily.Monospace, maxLines = 1)
+                        fontFamily = FxFonts.mono, maxLines = 1)
                 }
                 Spacer(Modifier.weight(1f))
                 if (info.presets.isNotEmpty()) {
                     Box {
                         Text(presetName, color = accent, fontSize = (10f * scale).sp,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = FxFonts.mono,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
                                 .background(Color(0x14FFFFFF))
@@ -216,7 +216,7 @@ fun FxRack(controller: FxController, modifier: Modifier = Modifier) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         val count = controller.effectIds.count { it >= 0 }
         Text("$count / ${controller.slotCount} effects", color = Color(0xFF8A94A8),
-            fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+            fontSize = 11.sp, fontFamily = FxFonts.mono)
         controller.effectIds.forEachIndexed { slot, id ->
             if (id >= 0) {
                 Text("• ${FxRegistry.info(id).name}",
