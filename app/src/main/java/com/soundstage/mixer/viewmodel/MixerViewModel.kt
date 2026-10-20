@@ -6146,6 +6146,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(isKeyboardLayerExpanded = !it.isKeyboardLayerExpanded) }
     }
 
+    /** Test/capture hook: drives the same path as an incoming MIDI CC64. */
+    fun debugSetMidiPedal(pressed: Boolean) {
+        _uiState.update { it.copy(isMidiPedalPressed = pressed) }
+    }
+
     // ================= MIDI LEARN & CONTROLLER MAPPING =================
     fun startMidiLearn(actionType: MidiActionType) {
         _uiState.update { it.copy(learningActionType = actionType) }

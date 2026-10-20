@@ -110,6 +110,16 @@ class LiveUiLoop {
                         o.optBoolean("sustain", false).let { on ->
                             runCatching { if (viewModel.uiState.value.isSustainActive != on) viewModel.toggleSustain() }
                         }
+                        // Simulate the external MIDI pedal (CC64) so the pedal animation can be captured.
+                        o.optBoolean("midiPedal", false).let { on ->
+                            runCatching { if (viewModel.uiState.value.isMidiPedalPressed != on) viewModel.debugSetMidiPedal(on) }
+                        }
+                        o.optBoolean("layer", false).let { on ->
+                            runCatching { if (viewModel.uiState.value.isKeyboardLayerExpanded != on) viewModel.toggleKeyboardLayer() }
+                        }
+                        o.optBoolean("keyboard", false).let { on ->
+                            runCatching { viewModel.setKeyboardHeightFraction(if (on) 1f else 0f) }
+                        }
                     }
                     paused = o.optBoolean("pause", false)
                 }
@@ -117,10 +127,12 @@ class LiveUiLoop {
                 if (!paused) {
                     composeTestRule.onRoot().captureRoboImage(tmpFile.absolutePath)
                     tmpFile.renameTo(imgFile)
-                    statusFile.writeText("ok ${System.currentTimeMillis()}")
+                    // Echo the applied sequence back: the driver waits on this so it can
+                    // never copy a stale frame from the previous command.
+                    statusFile.writeText("ok $lastSeq ${System.currentTimeMillis()}")
                 }
             } catch (t: Throwable) {
-                runCatching { statusFile.writeText("err ${t.javaClass.simpleName}: ${t.message}") }
+                runCatching { statusFile.writeText("err $lastSeq ${t.javaClass.simpleName}: ${t.message}") }
             }
             Thread.sleep(150)
         }

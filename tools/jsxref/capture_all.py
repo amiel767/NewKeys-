@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""One bounded pass: start the Robolectric render loop, capture every page/popup,
-stop the loop. Kept in one process so the Gradle daemon is only paid for once
-(restarting it repeatedly is what exhausted memory in earlier sessions).
+"""Bounded capture pass: renders the real Compose UI off-screen and writes one PNG
+per page/popup, plus short GIFs of the animated controls.
 
-Usage: python3 tools/jsxref/capture_all.py [outdir]
+Frames are half-resolution (891x411) so a full pass is quick and light. The driver
+waits for the loop to acknowledge the exact sequence it sent, so a frame can never
+be a leftover of the previous command.
 """
 import json
 import os
@@ -13,42 +14,102 @@ import subprocess
 import sys
 import time
 
+from PIL import Image
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DIR = pathlib.Path("/tmp/liveui")
 CMD, IMG, STATUS = DIR / "cmd.json", DIR / "screen.png", DIR / "status.txt"
+FRAME_W = 891  # half of the 1782 native width
 
-# (name, spec) — each spec is one frame of the real Compose UI.
+# (name, spec) — one frame of the real Compose UI. Setlists is deliberately absent.
 SHOTS = [
-    ("01_mixer",        {"tracks": 4, "page": "MIXER", "keys": []}),
-    ("02_mixer_chord",  {"page": "MIXER", "keys": ["C4", "E4", "G4"]}),
-    ("03_mixer_long_chord", {"page": "MIXER", "keys": ["C4", "E4", "G4", "B4"]}),
-    ("04_mixer_sustain", {"page": "MIXER", "keys": ["C4"], "sustain": True}),
-    ("05_drumpad",      {"page": "DRUMPAD", "keys": []}),
-    ("06_settings",     {"page": "SETTINGS", "keys": []}),
-    ("07_setlists",     {"page": "SETLISTS", "keys": []}),
-    ("08_sheets",       {"page": "SHEETS", "keys": []}),
-    ("09_projects",     {"page": "PROJECTS", "keys": []}),
-    ("10_popup_soundfont", {"page": "MIXER", "popup": "SOUNDFONT"}),
-    ("11_popup_scene",  {"popup": "SCENE"}),
-    ("12_popup_loops",  {"popup": "LOOPS"}),
-    ("13_popup_track_settings", {"popup": "TRACK_SETTINGS"}),
-    ("14_popup_effects", {"popup": "EFFECTS"}),
-    ("15_popup_midi",   {"popup": "MIDI"}),
-    ("16_popup_velocity", {"popup": "VELOCITY_SETTINGS"}),
+    ("01_mixer",              {"tracks": 4, "page": "MIXER", "keys": []}),
+    ("02_mixer_chord",        {"page": "MIXER", "keys": ["C4", "E4", "G4"]}),
+    ("03_mixer_sustain",      {"page": "MIXER", "keys": ["C4"], "sustain": True}),
+    ("04_mixer_midi_pedal",   {"page": "MIXER", "keys": ["C4"], "midiPedal": True}),
+    ("05_drumpad",            {"page": "DRUMPAD", "keys": []}),
+    ("06_settings",           {"page": "SETTINGS", "keys": []}),
+    ("07_sheets",             {"page": "SHEETS", "keys": []}),
+    ("08_projects",           {"page": "PROJECTS", "keys": []}),
+    ("09_vkeyboard_layer",    {"page": "MIXER", "keyboard": True, "layer": True, "keys": []}),
+    ("10_popup_soundfont",    {"page": "MIXER", "popup": "SOUNDFONT"}),
+    ("11_popup_scene",        {"page": "MIXER", "popup": "SCENE"}),
+    ("12_popup_track_settings",        {"page": "MIXER", "popup": "TRACK_SETTINGS"}),
+    ("13_popup_effects",        {"page": "MIXER", "popup": "EFFECTS"}),
+    ("14_popup_midi",        {"page": "MIXER", "popup": "MIDI"}),
+    ("15_popup_velocity",        {"page": "MIXER", "popup": "VELOCITY_SETTINGS"}),
+]
+
+# (name, base spec, animated spec, frames) — the GIFs touch the control being shown.
+GIFS = [
+    ("pedal_sustain", {"page": "MIXER"}, {"sustain": True}, 40),
+    ("pedal_midi",    {"page": "MIXER"}, {"midiPedal": True}, 40),
 ]
 
 
-def drive(seq, spec, out, timeout=45.0):
-    spec = {"seq": seq, **spec}
-    CMD.write_text(json.dumps(spec))
-    time.sleep(1.6)
+def _status_seq():
+    try:
+        parts = STATUS.read_text().split()
+    except OSError:
+        return None, None
+    if len(parts) >= 2 and parts[0] == "ok":
+        try:
+            return "ok", int(parts[1])
+        except ValueError:
+            return None, None
+    return None, None
+
+
+def drive(seq, spec, out, timeout=60.0):
+    """Send one command, wait for its acknowledgement, then copy the frame."""
+    IMG.unlink(missing_ok=True)
+    STATUS.unlink(missing_ok=True)
+    CMD.write_text(json.dumps({"seq": seq, **spec}))
     t0 = time.time()
+    acked = False
     while time.time() - t0 < timeout:
-        if IMG.exists() and STATUS.exists() and STATUS.read_text().startswith("ok "):
-            shutil.copy(IMG, out)
-            return True
+        state, got = _status_seq()
+        if state == "ok" and got == seq and IMG.exists():
+            if acked:
+                # Half-resolution on purpose: a full pass stays light and quick.
+                im = Image.open(IMG).convert("RGB")
+                im = im.resize((FRAME_W, int(im.height * FRAME_W / im.width)), Image.LANCZOS)
+                im.save(out, optimize=True)
+                return True
+            acked = True
+            # Entry animations (chord chip, pedal) need a few render passes to settle.
+            time.sleep(0.5)
         time.sleep(0.1)
     return False
+
+
+def capture_gif(name, base, animated, frames, outdir, seq0):
+    """Toggle the animated field on, sample frames, then release it."""
+    d = pathlib.Path("/tmp/liveui_gif")
+    shutil.rmtree(d, ignore_errors=True)
+    d.mkdir(parents=True, exist_ok=True)
+    shots = []
+    for i in range(frames):
+        spec = dict(base)
+        if i >= 4:
+            spec.update(animated)
+        p = d / f"f{i:03d}.png"
+        if not drive(seq0 + i, spec, p):
+            print(f"  frame {i} timed out")
+            return False
+        shots.append(p)
+    off = dict(base)
+    off[list(animated)[0]] = False
+    drive(seq0 + frames, off, d / "release.png")
+    ims = [Image.open(p).convert("RGB") for p in shots]
+    ims = [im.resize((FRAME_W, int(im.height * FRAME_W / im.width)), Image.LANCZOS) for im in ims]
+    ims = [im.quantize(colors=128, method=Image.MEDIANCUT, dither=Image.FLOYDSTEINBERG) for im in ims]
+    out = outdir / f"{name}.gif"
+    ims[0].save(out, save_all=True, append_images=ims[1:], duration=int(1000 / 15),
+                loop=0, optimize=True, disposal=2)
+    kb = out.stat().st_size // 1024
+    print(f"ok   {name}.gif  ({kb} KB, {frames} frames)")
+    return True
 
 
 def main():
@@ -56,6 +117,7 @@ def main():
     outdir.mkdir(parents=True, exist_ok=True)
     DIR.mkdir(parents=True, exist_ok=True)
     STATUS.unlink(missing_ok=True)
+    IMG.unlink(missing_ok=True)
 
     env = dict(os.environ)
     env.setdefault("JAVA_HOME", "/workspace/jdk/jdk21")
@@ -78,11 +140,17 @@ def main():
         return 1
 
     ok = 0
-    for i, (name, spec) in enumerate(SHOTS):
-        out = outdir / f"{name}.png"
-        got = drive(1000 + i, spec, out)
+    seq = 1000
+    for name, spec in SHOTS:
+        got = drive(seq, spec, outdir / f"{name}.png")
         print(("ok  " if got else "FAIL") + f" {name}")
         ok += got
+        seq += 1
+
+    for name, base, animated, frames in GIFS:
+        if capture_gif(name, base, animated, frames, outdir, seq):
+            ok += 1
+        seq += frames + 2
 
     # Stop the loop immediately: leaving it running is what caused the crashes.
     loop.terminate()
@@ -91,8 +159,9 @@ def main():
     except subprocess.TimeoutExpired:
         loop.kill()
     log.close()
-    print(f"captured {ok}/{len(SHOTS)}; loop stopped")
-    return 0 if ok else 1
+    total = len(SHOTS) + len(GIFS)
+    print(f"captured {ok}/{total}; loop stopped")
+    return 0 if ok == total else 1
 
 
 if __name__ == "__main__":
