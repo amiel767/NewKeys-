@@ -180,18 +180,15 @@ class FileManager(private val context: Context) {
             // 2. Seed a default 120BPM DJ loop if Loops directory is empty
             seedDefaultDemoLoopIfEmpty()
 
-            // 3. Trigger MediaScanner on created folders/files so they appear immediately in file explorer / USB
+            // 3. Trigger MediaScanner on created folders so they appear immediately
+            // in the file explorer / USB. Only the top-level folders are scanned:
+            // listing every soundfont/loop file here queued a huge binder batch on
+            // android.bg and the looper reported a 17 s slow dispatch at startup.
             try {
-                val pathsToScan = mutableListOf<String>()
-                pathsToScan.add(baseDir.absolutePath)
-                pathsToScan.add(File(baseDir, ".soundstage").absolutePath)
-                pathsToScan.add(soundfontsDir.absolutePath)
-                pathsToScan.add(loopsDir.absolutePath)
-                pathsToScan.add(drumPadDir.absolutePath)
-                pathsToScan.add(projectsDir.absolutePath)
-                pathsToScan.add(logsDir.absolutePath)
-                soundfontsDir.listFiles()?.forEach { pathsToScan.add(it.absolutePath) }
-                loopsDir.listFiles()?.forEach { pathsToScan.add(it.absolutePath) }
+                val pathsToScan = listOf(
+                    baseDir, File(baseDir, ".soundstage"), soundfontsDir,
+                    loopsDir, drumPadDir, projectsDir, logsDir,
+                ).map { it.absolutePath }
 
                 MediaScannerConnection.scanFile(
                     context,

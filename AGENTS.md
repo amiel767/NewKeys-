@@ -114,6 +114,42 @@ Un seul nom de brief s'est révélé faux :
 `loadSoundfontToSlot` — le vrai est `loadSoundFontForSlot(slotId, path, ...)`
 (`viewmodel/MixerViewModel.kt:3112`).
 
+## Clavier virtuel — remplacé (vérifié)
+
+L'ancien clavier a été **supprimé**, ne pas le chercher :
+- ~~`VirtualPianoKeyboard`~~ (`ui/components/VirtualPiano.kt`) — supprimé.
+- ~~`SplitterKeyboard`~~ (`ui/components/SplitterKeyboard.kt`) — supprimé (jamais câblé).
+- `KeyboardLayerMapper` **n'existe plus** dans `ui/components/KeyboardLayerMapper.kt` :
+  le fichier ne contient plus que `object KeyPositionMapper` (encore utilisé par le VM).
+
+Nouveau clavier : `ui/components/VirtualKeyboard.kt` (source JSX : `app/assets/VirtualKeyboardPreview.jsx`,
+brief : `app/assets/VirtualKeyboard_Agent_Brief.md`). Symboles réels :
+`VirtualKeyboardContainer`, `KeyboardKeys`, `KeyboardLine`, `KeyboardTheme`,
+`KeyboardThemes` (9 thèmes), `KeyboardChrome`, `KeyboardPressStyle`, `VirtualKeyboardActions`,
+`KeyboardLogic`, `KeyboardThemePicker` / `KeyboardThemeSwatch`, et **`object VkbMidi`** (adaptateur
+String↔MIDI : `ktToMidi` / `midiToKt`).
+
+**Câblage** (`ui/MixerScreen.kt:~543`) : l'UI parle en notes MIDI (`Set<Int>`), la logique
+existante en noms (`Set<String>` `pressedKeys`, VM `onKeyDown/onKeyUp`). La conversion est faite
+**uniquement à la frontière** dans `MixerScreen` via `VkbMidi`. `pressedKeys` reste String :
+ne pas changer le stockage.
+
+**Persistance** : clés `vkb_theme` (défaut `"classic"`) et `vkb_press_style` (`"color"`/`"led"`),
+écrites via `appStatePersistence.saveString` (helpers génériques) et relues dans
+`restoreSavedAppState` (`getString`). Réglages dans **Settings → Interface** (`VkbThemeGrid`,
+`Segmented`) ; « Reset colors » remet aussi Classic + Color.
+
+**Perf** : `KeyboardKeys` dessine dans `Canvas` + `drawWithCache` (géométrie et dégradés
+construits une fois par taille/thème, plus à chaque frame). Ne pas réintroduire de
+`Brush.verticalGradient` par touche dans la boucle de dessin.
+
+**Chrome du conteneur** : `KeyboardChrome` prend ses défauts de la **palette app**
+(`AppColors.PanelBottom` / `AppColors.Well` / `AppColors.Accent`), pas des valeurs du JSX.
+Le conteneur ne suit jamais le thème du clavier.
+
+Pas de poignée de redimensionnement sur le clavier (décision utilisateur). Le bouton
+afficher/masquer reste `viewModel.cycleKeyboardExpansion()` via la bottom bar.
+
 ## Chaînes FX de surface (TonicPad / DrumPad) — vérifié
 
 `g_tonicFx` / `g_padsFx` (`audio_engine.h:734`, struct `SurfaceFxChainState`) sont
@@ -432,3 +468,39 @@ merge **sans aucun conflit**.
   (`pedal_sustain`, `pedal_midi`). Setlists volontairement exclu de la passe.
 - **Hook test** : `MixerViewModel.debugSetMidiPedal(pressed)` simule CC64 ;
   `LiveUiLoop.kt` accepte `midiPedal`, `layer`, `keyboard` dans `cmd.json`.
+
+
+## Perf & crash (session 2026-10-21)
+
+Causes prouvees par le logcat `app/assets/logcat_2026-10-20_15-46-35.zip`
+(Python `zipfile` - `unzip` absent) :
+
+- **Crash** : `FxRegistry.info(id) = all[id]` sans borne. L'`instrumentId == -1`
+  (sentinel "pas d'instrument Aether") passait `all[-1]` depuis
+  `FxController.snapshot()/save()` via le `snapshotFlow` de `FxOverlay.kt:76`.
+  Corrige par `all.getOrElse(id) { all[0] }` + sentinel gere dans `snapshot()`.
+- **Lenteur au lancement** : `W/Looper - Slow dispatch took 16935ms ...`
+  `c=MediaScannerConnection$$ExternalSyntheticLambda1`. Le scan media de
+  demarrage envoyait *tous* les soundfonts/loops ; on ne scanne plus que les
+  **dossiers** (`FileManager.ensureDirectoriesExist`).
+
+Autres points de perf (verifies) :
+
+- `FxRackStrip` : **une seule** horloge 15 im/s pour toutes les `FxCard`
+  (avant : un `LaunchedEffect` par carte). `FxCard` recoit `t: Float`.
+- `DrumPadScreen` : ticker 16 ms `nowNs` compose **uniquement** si
+  `padMode == "loops"` ; ticker beat uniquement si metro ou
+  `uiState.looper.isPlayingAny`.
+- `padCount` est derive de `uiState.padCount` (persiste `KEY_PAD_COUNT`).
+- `AssignBar` (DrumPadManager) : `pads.size` vaut **24** (`initialDrumPads`),
+  donc la barre affichait 24 cellules ; plafonnee a 8/16.
+- `TrackBottomRow` : animation corbeille *gated* par `showTrashBubble`.
+- `MaterialYouNativeMixer.kt`, `BottomBar.kt`, `DrumPadDialog.kt`,
+  `AmbientStudioBackground.kt` ne sont **pas** cables a `MixerScreen` (code
+  mort) : leurs boucles ne tournent pas.
+- **Aucune** boucle `while(true)/while(isActive)` sans suspension ne subsiste
+  dans `ui/` (verifie).
+
+Long-press sur une ligne d'echantillon (onglet Samples du `DpManager`) :
+360 ms -> indicateur 4 barres (`DpPreviewBars`, 0,5->0,86 s, scaleY .35->1),
+relacher annule. Tap = selection.

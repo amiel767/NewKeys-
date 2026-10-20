@@ -109,6 +109,9 @@ data class MixerUiState(
     val keyboardKeyScale: Float = 1.0f,
     val keyboardScrollOffset: Float = 0f,
     val pitchBend: Float = 0.0f,
+    // Virtual keyboard theme + pressed-key style (persisted, keys vkb_theme / vkb_press_style)
+    val vkbTheme: String = "classic",
+    val vkbPressStyle: String = "color",
     
     // Fullscreen Pages Navigation
     val currentPage: AppScreenPage = AppScreenPage.SETLISTS,
@@ -658,6 +661,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         useFlats = saved.useFlats ?: state.useFlats,
                         hapticsEnabled = saved.hapticsEnabled ?: state.hapticsEnabled,
                         reducedMotion = saved.reducedMotion ?: state.reducedMotion,
+                        vkbTheme = appStatePersistence.getString("vkb_theme", "classic"),
+                        vkbPressStyle = appStatePersistence.getString("vkb_press_style", "color"),
                         transportBpm = saved.transportBpm ?: state.transportBpm,
                         transportSignature = saved.transportSignature ?: state.transportSignature,
                         transportSubdivision = saved.transportSubdivision ?: state.transportSubdivision,
@@ -6144,6 +6149,18 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleKeyboardLayer() {
         _uiState.update { it.copy(isKeyboardLayerExpanded = !it.isKeyboardLayerExpanded) }
+    }
+
+    /** Virtual keyboard theme id (see KeyboardThemes). Persisted as "vkb_theme". */
+    fun setVkbTheme(id: String) {
+        _uiState.update { it.copy(vkbTheme = id) }
+        appStatePersistence.saveString("vkb_theme", id)
+    }
+
+    /** "color" or "led". Persisted as "vkb_press_style". */
+    fun setVkbPressStyle(style: String) {
+        _uiState.update { it.copy(vkbPressStyle = style) }
+        appStatePersistence.saveString("vkb_press_style", style)
     }
 
     /** Test/capture hook: drives the same path as an incoming MIDI CC64. */

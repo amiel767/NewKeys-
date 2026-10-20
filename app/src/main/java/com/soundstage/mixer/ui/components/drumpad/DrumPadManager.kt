@@ -1,8 +1,15 @@
 package com.soundstage.mixer.ui.components.drumpad
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,12 +34,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -43,6 +54,8 @@ import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.model.DrumKitData
 import com.soundstage.mixer.model.DrumPadItem
 import com.soundstage.mixer.model.StorageItem
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 // ─────────────────────────────────────────────────────────────────────────
 // DpManager — fenêtre 4 onglets
@@ -495,6 +508,10 @@ private fun StorageListContent(
         items(items, key = { it.name }) { s ->
             val on = selection.contains(s.name)
             val usedBy = pads.firstOrNull { it.sampleFileName == s.name }?.id
+            // Long-press previews the sample (JSX: 360 ms hold shows a 4-bar
+            // activity indicator; release or tap elsewhere cancels it).
+            var previewing by remember(s.name) { mutableStateOf(false) }
+            val scope = rememberCoroutineScope()
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -511,7 +528,20 @@ private fun StorageListContent(
                         if (on) DpColors.ACCENT.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.06f),
                         RoundedCornerShape(12.dp)
                     )
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onItemClick(s) }
+                    .pointerInput(s.name) {
+                        detectTapGestures(
+                            onPress = {
+                                val job = scope.launch {
+                                    delay(360)
+                                    previewing = true
+                                }
+                                tryAwaitRelease()
+                                job.cancel()
+                                previewing = false
+                            },
+                            onTap = { onItemClick(s) },
+                        )
+                    }
                     .padding(horizontal = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -546,6 +576,7 @@ private fun StorageListContent(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
+                if (previewing) DpPreviewBars()
                 if (usedBy != null && !assigning) {
                     Text(
                         "P$usedBy",
@@ -567,6 +598,46 @@ private fun StorageListContent(
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * Four-bar activity indicator shown while a sample row is long-pressed
+ * (JSX `samples` row: bars of 2.5x14 dp, scaleY .35 -> 1, 0.5 + 0.12s per bar).
+ * Only composed while the preview is active, so it costs nothing at rest.
+ */
+@Composable
+private fun DpPreviewBars() {
+    val transition = rememberInfiniteTransition(label = "sfPreview")
+    val bar0 by transition.animateFloat(
+        initialValue = 0.35f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(500, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "sfPreviewBar0")
+    val bar1 by transition.animateFloat(
+        initialValue = 0.35f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(620, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "sfPreviewBar1")
+    val bar2 by transition.animateFloat(
+        initialValue = 0.35f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(740, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "sfPreviewBar2")
+    val bar3 by transition.animateFloat(
+        initialValue = 0.35f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(860, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "sfPreviewBar3")
+    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.Bottom) {
+        listOf(bar0, bar1, bar2, bar3).forEach { sc ->
+            Box(
+                Modifier
+                    .width(2.5.dp)
+                    .height(14.dp)
+                    .graphicsLayer {
+                        scaleY = sc
+                        transformOrigin = TransformOrigin(0.5f, 1f)
+                    }
+                    .background(DpColors.ACCENT, RoundedCornerShape(2.dp))
+            )
         }
     }
 }
@@ -650,8 +721,9 @@ private fun AssignBar(
     onSelectTarget: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Follow the real pad list so a 16-pad grid shows 16 assignable cells.
-    val count = pads.size.coerceAtLeast(8)
+    // Follow the active grid size (8 or 16): the real pad list holds 24 entries,
+    // so keying off `pads.size` squeezed 24 cells into one row.
+    val count = if (pads.size <= 8) 8 else 16
     Row(
         modifier
             .clip(RoundedCornerShape(16.dp))

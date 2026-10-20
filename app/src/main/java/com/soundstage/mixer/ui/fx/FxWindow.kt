@@ -174,7 +174,7 @@ fun FxWindow(
 
     BoxWithConstraints(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxWidth(0.75f)
             .clip(RoundedCornerShape(20.dp))
             .background(Brush.linearGradient(listOf(Color(0xFF1F2635), Color(0xFF131925))))
             .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(20.dp)),

@@ -520,7 +520,6 @@ private fun MixerMainPageContent(
             }
 
             // 5. RETRACTABLE MULTI-TOUCH VIRTUAL PIANO KEYBOARD (Smooth 380ms transition)
-            val activeSlotLedColor = getTrackThemeColor(uiState.activeSoundfontSlotId + 1)
             val activePianoTracks = remember(uiState.tracks, uiState.visibleTracksCount) {
                 uiState.tracks.take(uiState.visibleTracksCount.coerceIn(1, 8)).filter { it.isEnabled }
             }
@@ -540,28 +539,40 @@ private fun MixerMainPageContent(
                     .padding(top = 5.dp)
                     .zIndex(100f)
             ) {
-                VirtualPianoKeyboard(
-                    heightFraction = 1f,
-                    pressedKeys = uiState.pressedKeys,
-                    octave = uiState.octave,
-                    tracks = activePianoTracks,
-                    isLayerExpanded = uiState.isKeyboardLayerExpanded,
-                    onToggleLayerExpanded = { viewModel.toggleKeyboardLayer() },
-                    onRangeChanged = { trackId, minN, maxN -> viewModel.updateTrackKeyRange(trackId, minN, maxN) },
-                    onKeyDown = { viewModel.onKeyDown(it) },
-                    onKeyUp = { viewModel.onKeyUp(it) },
-                    onKeyDownWithVelocity = { key, vel -> viewModel.onKeyDown(key, vel) },
-                    onGrabberDrag = { deltaY ->
-                        val fractionDelta = -deltaY / 200f
-                        viewModel.setKeyboardHeightFraction(uiState.keyboardHeightFraction + fractionDelta)
-                    },
-                    onGrabberClick = { viewModel.cycleKeyboardExpansion() },
-                    isSustainActive = uiState.isSustainActive || uiState.isMidiPedalPressed,
-                    onToggleSustain = { viewModel.toggleSustain() },
-                    pitchBend = uiState.pitchBend,
-                    onPitchBendChange = { viewModel.setPitchBend(it) },
-                    onOctaveChange = { delta -> viewModel.updateOctave(delta) },
-                    activeAuraColor = activeSlotLedColor
+                // Note names (app storage) <-> MIDI numbers (new UI) adapter, at the boundary only.
+                val vkbLines = remember(uiState.tracks, uiState.visibleTracksCount) {
+                    activePianoTracks.map { t ->
+                        KeyboardLine(
+                            id = t.id.toString(),
+                            name = t.name,
+                            color = getTrackThemeColor(t.id),
+                            low = t.splitNoteMin,
+                            high = t.splitNoteMax
+                        )
+                    }
+                }
+                val vkbPressed = remember(uiState.pressedKeys) {
+                    uiState.pressedKeys.mapNotNull { name ->
+                        VkbMidi.ktToMidi(name)?.takeIf { it in VkbMidi.NOTE_MIN..VkbMidi.NOTE_MAX }
+                    }.toSet()
+                }
+                VirtualKeyboardContainer(
+                    lines = vkbLines,
+                    expanded = uiState.isKeyboardLayerExpanded,
+                    pressedNotes = vkbPressed,
+                    theme = KeyboardThemes.byId(uiState.vkbTheme),
+                    pressStyle = if (uiState.vkbPressStyle == "led") KeyboardPressStyle.Led else KeyboardPressStyle.Color,
+                    actions = remember {
+                        VirtualKeyboardActions(
+                            onExpandedChange = { viewModel.toggleKeyboardLayer() },
+                            onLineRangeChange = { id, low, high ->
+                                id.toIntOrNull()?.let { viewModel.updateTrackKeyRange(it, low, high) }
+                            },
+                            onKeyDown = { note -> viewModel.onKeyDown(VkbMidi.midiToKt(note)) },
+                            onKeyUp = { note -> viewModel.onKeyUp(VkbMidi.midiToKt(note)) },
+                            onPitchBend = { viewModel.setPitchBend(it) }
+                        )
+                    }
                 )
             }
 
@@ -790,6 +801,8 @@ fun MixerScreen(
                     accentSaturation = uiState.themeAccentSaturation,
                     backgroundTone = uiState.themeBgSaturation,
                     backgroundLightness = uiState.themeBgLightness,
+                    vkbTheme = uiState.vkbTheme,
+                    vkbPressStyle = uiState.vkbPressStyle,
                     audioEngine = uiState.audioEngine,
                     fluidSynthGain = uiState.fluidSynthGain,
                     hapticsEnabled = uiState.hapticsEnabled,
@@ -818,7 +831,13 @@ fun MixerScreen(
                     override fun onAccentSaturationChange(value: Float) { viewModel.setThemeAccentSaturation(value) }
                     override fun onBackgroundToneChange(value: Float) { viewModel.setThemeBgSaturation(value) }
                     override fun onBackgroundLightnessChange(value: Float) { viewModel.setThemeBgLightness(value) }
-                    override fun onResetColors() { viewModel.resetThemeToDefault() }
+                    override fun onResetColors() {
+                        viewModel.resetThemeToDefault()
+                        viewModel.setVkbTheme("classic")
+                        viewModel.setVkbPressStyle("color")
+                    }
+                    override fun onVkbThemeChange(themeId: String) { viewModel.setVkbTheme(themeId) }
+                    override fun onVkbPressStyleChange(style: String) { viewModel.setVkbPressStyle(style) }
                     override fun onAntiJitterChange(enabled: Boolean) { viewModel.setAntiJitter(enabled) }
                     override fun onJitterWindowChange(ms: Int) { viewModel.setJitterWindowMs(ms) }
                     override fun onOpenMapping(page: MappingPage) { viewModel.onOpenMappingMode(page) }

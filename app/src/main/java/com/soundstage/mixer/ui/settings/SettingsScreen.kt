@@ -134,6 +134,9 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.key
+import com.soundstage.mixer.ui.components.KeyboardChrome
+import com.soundstage.mixer.ui.components.KeyboardThemeSwatch
+import com.soundstage.mixer.ui.components.KeyboardThemes
 
 // ════════════════════════════════════════════════════════════════════════════════════════
 // 1. MODELS
@@ -207,6 +210,9 @@ data class SettingsState(
     val accentSaturation: Float = 1.00f,
     val backgroundTone: Float = 1.60f,
     val backgroundLightness: Float = 1.00f,
+    /** Virtual keyboard theme id (KeyboardThemes) and pressed-key style ("color"/"led"). Persisted. */
+    val vkbTheme: String = "classic",
+    val vkbPressStyle: String = "color",
     // MIDI input (persisted)
     val antiJitter: Boolean = true,
     val jitterWindowMs: Int = 15,
@@ -282,6 +288,8 @@ interface SettingsActions {
     fun onBackgroundToneChange(value: Float) {}
     fun onBackgroundLightnessChange(value: Float) {}
     fun onResetColors() {}
+    fun onVkbThemeChange(themeId: String) {}
+    fun onVkbPressStyleChange(style: String) {}
     fun onAntiJitterChange(enabled: Boolean) {}
     fun onJitterWindowChange(ms: Int) {}
     fun onOpenMapping(page: MappingPage) {}
@@ -859,6 +867,53 @@ private fun InterfaceSection(state: SettingsState, actions: SettingsActions) {
         format = { String.format(java.util.Locale.US, "%.2fx", it) },
         onChange = actions::onBackgroundLightnessChange
     )
+
+    SectionLabel("Virtual keyboard")
+    Text(
+        "Key colors. The container frame never changes.",
+        style = setText(11.sp, FontWeight.SemiBold, SetColors.Mute),
+        modifier = Modifier.padding(top = 2.dp, bottom = 2.dp)
+    )
+    VkbThemeGrid(
+        selectedThemeId = state.vkbTheme,
+        onThemeSelected = actions::onVkbThemeChange
+    )
+    SetDivider()
+    SettingRow(
+        title = "Pressed keys",
+        hint = "Color: flat theme color. LED: adds a short glow behind the key."
+    ) {
+        Segmented(
+            options = listOf("color" to "Color", "led" to "LED"),
+            selected = state.vkbPressStyle,
+            onSelect = actions::onVkbPressStyleChange
+        )
+    }
+}
+
+/**
+ * 3-per-row grid of the keyboard themes. Each swatch shows the theme's real key colors and
+ * its pressed color on the second key; the frame stays the same for every theme.
+ */
+@Composable
+private fun VkbThemeGrid(selectedThemeId: String, onThemeSelected: (String) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        KeyboardThemes.all.chunked(3).forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                row.forEach { t ->
+                    val pick = { onThemeSelected(t.id) }
+                    KeyboardThemeSwatch(
+                        theme = t,
+                        selected = t.id == selectedThemeId,
+                        onClick = pick,
+                        chrome = KeyboardChrome(),
+                        modifier = Modifier.weight(1f).tapScale { pick() }
+                    )
+                }
+                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
 }
 
 @Composable

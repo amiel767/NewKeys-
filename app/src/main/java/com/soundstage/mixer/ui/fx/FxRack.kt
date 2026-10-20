@@ -70,6 +70,7 @@ fun FxCard(
     id: Int,
     selected: Boolean,
     lifted: Boolean,
+    t: Float,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onDragStart: () -> Unit,
@@ -82,15 +83,7 @@ fun FxCard(
     val tm = rememberTextMeasurer()
     val scene = remember(id) { FxSceneState() }
     val values = remember(id) { FloatArray(FxRegistry.MAX_PARAMS) { i -> info.params.getOrNull(i)?.default ?: 0f } }
-    var t by remember { mutableFloatStateOf(0f) }
     var dragY by remember(id) { mutableFloatStateOf(0f) }
-    // Rack cards run at ~15 images/s (doc 03), never at full cadence.
-    LaunchedEffect(Unit) {
-        while (true) {
-            withFrameNanos { t = (it / 1_000_000_000f) }
-            kotlinx.coroutines.delay(66)
-        }
-    }
 
     Column(
         modifier = modifier
@@ -185,6 +178,15 @@ fun FxRackStrip(
     val count = ids.count { it >= 0 }
     var draggingSlot by remember { mutableIntStateOf(-1) }
     var dragDist by remember { mutableFloatStateOf(0f) }
+    // One clock for the whole rack: cards animated at ~15 images/s (doc 03),
+    // previously one LaunchedEffect per card.
+    var cardT by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            withFrameNanos { cardT = (it / 1_000_000_000f) }
+            kotlinx.coroutines.delay(66)
+        }
+    }
     val threshold = 110f
     val overTrash = draggingSlot >= 0 && dragDist > threshold
     Column(
@@ -236,6 +238,7 @@ fun FxRackStrip(
                         id = id,
                         selected = selectedSlot == slot,
                         lifted = draggingSlot == slot,
+                        t = cardT,
                         onClick = { onSelect(slot) },
                         onLongClick = { onRemove(slot) },
                         onDragStart = {

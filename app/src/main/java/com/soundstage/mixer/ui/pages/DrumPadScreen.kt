@@ -87,7 +87,10 @@ fun DrumPadScreen(
     var playEditMode by remember { mutableStateOf("play") }  // "play" | "edit"
     var loopQuantize by remember { mutableStateOf(if (uiState.looper.quantize) "1/16" else "Free") }
     var loopLengthMode by remember { mutableStateOf(uiState.looper.lengthMode) }
-    var padCount by remember { mutableStateOf(uiState.padCount) }
+    // Derived from the VM (persisted under KEY_PAD_COUNT) so the chip and the
+    // grid can never disagree; a local copy captured only the first value and
+    // drifted from the restored state.
+    val padCount = uiState.padCount
     var localPreload by remember { mutableStateOf(true) }
     var localHapticPads by remember { mutableStateOf(true) }
     var localHapticLoops by remember { mutableStateOf(true) }
@@ -115,9 +118,10 @@ fun DrumPadScreen(
         )
     }
 
-    // ─── Beat indicator ───
+    // ─── Beat indicator (only while the metro/transport actually runs) ───
     var beatIdx by remember { mutableStateOf(0) }
-    LaunchedEffect(uiState.transportBpm, uiState.transportSignature) {
+    LaunchedEffect(uiState.transportBpm, uiState.transportSignature, metroOn, uiState.looper.isPlayingAny) {
+        if (!metroOn && !uiState.looper.isPlayingAny) { beatIdx = 0; return@LaunchedEffect }
         val bpm = uiState.transportBpm.coerceAtLeast(30)
         val beats = parseBeatsPerBar(uiState.transportSignature).coerceAtLeast(1)
         val beatMs = (60_000L / bpm).coerceAtLeast(1L)
@@ -127,9 +131,11 @@ fun DrumPadScreen(
         }
     }
 
-    // ─── Frame clock for DpLoopCase ───
+    // ─── Frame clock for DpLoopCase, only when the Loops surface is shown ───
     var nowNs by remember { mutableStateOf(System.nanoTime()) }
-    LaunchedEffect(Unit) {
+    val needsFrameClock = padMode == "loops"
+    LaunchedEffect(needsFrameClock) {
+        if (!needsFrameClock) return@LaunchedEffect
         while (isActive) {
             nowNs = System.nanoTime()
             delay(16L)
@@ -276,9 +282,7 @@ fun DrumPadScreen(
                             modifier = Modifier.width(100.dp)
                         )
                         SmallChip("${padCount}p", Modifier.height(24.dp)) {
-                            val next = if (padCount == 8) 16 else 8
-                            padCount = next
-                            viewModel.setPadCount(next)
+                            viewModel.setPadCount(if (padCount == 8) 16 else 8)
                         }
                         SmallChip("Pads FX", Modifier.height(24.dp)) { padsFxOpen = true }
                     } else {
@@ -386,7 +390,7 @@ fun DrumPadScreen(
     if (settingsOpen) {
         DpDrumPadSettings(
             padCount = padCount,
-            onPadCountChange = { padCount = it; viewModel.setPadCount(it) },
+            onPadCountChange = { viewModel.setPadCount(it) },
             preload = localPreload,
             onPreloadChange = { localPreload = it },
             hapticPads = localHapticPads,

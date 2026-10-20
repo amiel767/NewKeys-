@@ -78,7 +78,7 @@ fun MixerBottomBarV2(
     // Name prompt shown when a snapshot is created (JSX-like flow).
     var namingSlotKey by remember { mutableStateOf<String?>(null) }
 
-    Row(modifier.height(53.dp), // +20% as asked (44 -> 53)
+    Row(modifier.height(40.dp), // -25% as asked (53 -> 40)
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)) {
 
@@ -89,16 +89,16 @@ fun MixerBottomBarV2(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically) {
                 RoundStepV2(size = 26.dp, onClick = { onBpmChange((bpm - 1).coerceIn(40, 240)) }) {
-                    Text("−", color = TextMain, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text("−", color = TextMain, fontSize = 11.2.sp, fontWeight = FontWeight.Bold)
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("$bpm", color = TextMain, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold,
+                    Text("$bpm", color = TextMain, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold,
                         fontFamily = FontFamily.Monospace, lineHeight = 16.sp)
-                    Text("BPM", color = TextDim, fontSize = 8.sp, fontWeight = FontWeight.ExtraBold,
+                    Text("BPM", color = TextDim, fontSize = 6.4.sp, fontWeight = FontWeight.ExtraBold,
                         letterSpacing = 1.3.sp, lineHeight = 9.sp)
                 }
                 RoundStepV2(size = 26.dp, onClick = { onBpmChange((bpm + 1).coerceIn(40, 240)) }) {
-                    Text("+", color = TextMain, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text("+", color = TextMain, fontSize = 11.2.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -160,7 +160,7 @@ fun MixerBottomBarV2(
                                 if (newKey != null) namingSlotKey = newKey
                             },
                         contentAlignment = Alignment.Center) {
-                    Text("+", color = Color(0xFF8E99AD), fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+                    Text("+", color = Color(0xFF8E99AD), fontSize = 14.4.sp, fontWeight = FontWeight.ExtraBold)
                 }
             }
         }
@@ -284,17 +284,17 @@ private fun SnapshotCaseV2(
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             if (custom) {
                 Text(displayName, color = if (isActive) Color(0xFF0F1726) else Color(0xFFDDE3EE),
-                    fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1,
+                    fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1,
                     overflow = TextOverflow.Ellipsis)
             } else {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("SNAPSHOT",
                         color = if (isActive) Color(0x8C0F1726) else Color(0x8CDDE3EE),
-                        fontSize = 8.5.sp, fontWeight = FontWeight.ExtraBold,
+                        fontSize = 6.8.sp, fontWeight = FontWeight.ExtraBold,
                         letterSpacing = 1.4.sp, lineHeight = 9.sp)
                     Text(if (fallbackNumber == null) "Default" else "$fallbackNumber",
                         color = if (isActive) Color(0xFF0F1726) else Color(0xFFDDE3EE),
-                        fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 19.sp)
+                        fontSize = 14.4.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 15.sp)
                 }
             }
             }
@@ -334,13 +334,13 @@ private fun MasterSliderV2(
     Row(Modifier.fillMaxSize().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
             Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Text("MASTER", color = TextDim, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold,
+                Text("MASTER", color = TextDim, fontSize = 7.2.sp, fontWeight = FontWeight.ExtraBold,
                     letterSpacing = 1.4.sp)
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(dbText(value),
                         color = if (value > 0.75f) Color(0xFFD8A24A) else Color(0xFFF1F4FA),
-                        fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
-                    Text(" dB", color = TextDim, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
+                        fontSize = 9.2.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
+                    Text(" dB", color = TextDim, fontSize = 7.2.sp, fontWeight = FontWeight.ExtraBold)
                 }
             }
             Spacer(Modifier.height(3.dp))
@@ -527,7 +527,7 @@ private fun MasterSliderV2(
             Box(Modifier.fillMaxSize()
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onFxClick() },
                 contentAlignment = Alignment.Center) {
-                Text("FX", color = Color(0xFFD4DAE8), fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
+                Text("FX", color = Color(0xFFD4DAE8), fontSize = 8.8.sp, fontWeight = FontWeight.ExtraBold)
             }
         }
     }
@@ -616,9 +616,9 @@ private fun ResourceGaugeV2(label: String, value: String, fraction: Float, tint:
                 style = Stroke(stroke, cap = StrokeCap.Round))
             drawCircle(tint, radius = 1.6.dp.toPx(), center = center)
         }
-        Text(label, color = tint, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold,
+        Text(label, color = tint, fontSize = 8.sp, fontWeight = FontWeight.ExtraBold,
             letterSpacing = 0.8.sp, lineHeight = 12.sp)
-        Text(value, color = TextMain, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold,
+        Text(value, color = TextMain, fontSize = 8.8.sp, fontWeight = FontWeight.ExtraBold,
             fontFamily = FontFamily.Monospace, lineHeight = 13.sp)
     }
 }

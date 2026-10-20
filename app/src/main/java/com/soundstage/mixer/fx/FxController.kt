@@ -129,8 +129,9 @@ class FxController(private val strip: Int, private val context: Context? = null)
     val presetNames = mutableStateListOf<String?>().apply { repeat(slotCount) { add(null) } }
 
     private fun snapshot(): FxPersistence.Strip {
-        val instPreset = FxRegistry.info(instrumentId).presets
-            .firstOrNull { it.values == instrumentParams }?.name
+        val instPreset = if (instrumentId < 0) null
+            else FxRegistry.info(instrumentId).presets
+                .firstOrNull { it.values == instrumentParams }?.name
         return FxPersistence.Strip(
             instrumentId = instrumentId,
             instrumentParams = instrumentParams.toList(),
