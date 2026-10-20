@@ -143,8 +143,9 @@ private fun RowScope.ChordZoneV2(chord: ChordDisplay?) {
                                 Box(Modifier.clip(RoundedCornerShape(7.dp))
                                         .background(Color(0x14FFFFFF))
                                         .padding(horizontal = 7.dp, vertical = 1.dp)) {
-                                    Text(alt, color = TextMain, fontSize = 11.5.sp,
-                                        fontWeight = FontWeight.ExtraBold, maxLines = 1)
+                                    Text(alt, color = TextMain, fontSize = 9.8.sp,
+                                        fontWeight = FontWeight.ExtraBold, maxLines = 1,
+                                        lineHeight = 9.8.sp)
                                 }
                             }
                         }

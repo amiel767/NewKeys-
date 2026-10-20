@@ -62,12 +62,12 @@ fun ChannelStripV2(
             // Name Plate : 22dp hauteur, font 9.5sp
             Box(
                 modifier = Modifier.fillMaxWidth().height(22.dp)
-                    // JSX name plate: drop shadow below + inset top highlight for relief.
-                    // The 1 dp outline is gone: the JSX only draws "inset 0 1px 0".
+                    // Relief: drop shadow below + a light 1 dp outline, flat fill.
                     .shadow(4.dp, RoundedCornerShape(8.dp),
                         spotColor = Color(0x8C000000), ambientColor = Color(0x40000000))
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Brush.verticalGradient(listOf(Color(0xFF2A3448), Color(0xFF1B2230))))
+                    .background(Color(0xFF20293A))
+                    .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(8.dp))
                     .drawWithContent {
                         drawContent()
                         drawLine(
@@ -140,17 +140,16 @@ private fun KeyBtnV2(
 ) {
     val bg = when {
         !isActive -> Brush.verticalGradient(listOf(Color(0xFF3B4560), Color(0xFF2D364D)))
-        isMute    -> Brush.verticalGradient(listOf(Color(0xFF6A2E41), Color(0xFF4C2231)))
+        isMute    -> Brush.verticalGradient(listOf(Color(0xFFC62828), Color(0xFF8E1B1B)))
         else      -> Brush.verticalGradient(listOf(accentColor.copy(alpha = 0.85f), accentColor.copy(alpha = 0.60f)))
     }
     val fg = when {
         !isActive -> Color(0xFFB8C2D6)
-        isMute    -> Color(0xFFF2B0C0)
         else      -> Color.White
     }
     val glowColor = when {
         !isActive -> Color.Transparent
-        isMute    -> Color(0x70C2587A)
+        isMute    -> Color(0x70E53935)
         else      -> accentColor.copy(alpha = 0.44f)
     }
     val glowBlur = if (isActive) 10.dp else 0.dp
