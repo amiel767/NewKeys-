@@ -223,6 +223,27 @@ checks, 0 failed** (verifie).
 - Prochaine etape = 4 (notes vers les sources + offsets de generateurs via la
   file d'evenements existante, `fluid_synth_set_gen` sur le thread audio).
 
+### Divergence remote a connaitre (verifie 2026-10-20)
+
+`origin/main` a **2 commits « Add files via upload »** (`0e9ef19`, `ad93dcb`)
+absents en local. Ils sont **purement additifs** : 5 fichiers dans `app/assets/`
+(`SustainPedal.jsx`, `SustainPedal.kt`, `TrackSettingsPreview.jsx`,
+`aether-fx-package.zip`, `brief-integration-sustain-pedal.txt`). Les deux
+fichiers `SustainPedal.*` sont **identiques** a ceux deja en local, d'ou un
+merge **sans aucun conflit**.
+
+- Verifie avec `git merge-tree --write-tree HEAD origin/main` : arbre propre,
+  exit 0. Le resultat du merge garde bien `aetherfx/`, `renderFxPath` (3),
+  `applySurfaceFx` (4) et la pastille Swing (3).
+- Le remote **ne contient pas** le travail looper/pedale de `main` (pas de
+  `v2/SustainPedal.kt`, pas de `SustainPedalFramesTest.kt`, `applySurfaceFx`
+  absent de `audio_engine.cpp`). C'est **normal** : ces commits locaux n'ont
+  jamais ete pousses (regle « ne pas pousser »).
+- Autrement dit : remote = ancien code + 5 assets ; local = code recent.
+  **Rien a craindre d'un merge**, mais ne pas faire de `checkout --theirs` ni
+  de reset : cela ecraserait tout le travail V2.
+- **Ne pas pousser** sans demande explicite (regle AGENTS.md).
+
 ## Conventions
 
 - Commits : `[Mixer V2] <résumé> — Compile: OK`, avec
