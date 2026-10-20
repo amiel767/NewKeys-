@@ -143,6 +143,30 @@ dans `/tmp` est perdu. Règles :
 - Bridge LiveUI : la commande `keys` (tableau, ex. `["C4","E4","G4"]`) joue un
   accord → l'affichage d'accords est visible dans les captures.
 
+## Session 2026-10-19 (3e passage) — pedale + LiveLooper
+
+- **`SustainPedal`** (`ui/components/v2/SustainPedal.kt`) remplace `SustainPedalButton`
+  (supprime). Port Compose 1:1 de `app/assets/SustainPedal.jsx`, **sans label**
+  (le texte du JSX ferait ~2,8 dp a 42 dp). Dessin dans le repere 100x100 du JSX
+  (`s = px/100`), spring k=340/c=26 a l'appui, k=190/c=19 au retour.
+  `BlurMaskFilter` (Skia : `radius = (sigma-0.5)/0.57735`) pour les `feGaussianBlur`.
+- **minSdk 24 -> 26** (Android 8+), demande utilisateur.
+- **Swing du looper** : `LooperEngine.quantizeAndSwing` retarde les subdivisions
+  impaires a l'enregistrement (`swing/100-0.5`). Avant, `setSwing` stockait la
+  valeur sans l'appliquer. Pastille `Swing N%` dans l'en-tete Loops (clic = cycle
+  50/54/58/62/66), conforme au `Pill>Swing 54%` du JSX.
+- **`isPlayingAny`** est desormais tenu par `LooperEngine.updateCases` (toute
+  mutation de `cases` passe par la). Avant : declare, jamais assigne.
+- **Tete de lecture en REC** : `DpLoopCase` s'ancrait sur `startAtNs` (jamais
+  rempli pendant l'enregistrement) -> utiliser `recStartNs`. Et `bars` vaut 1
+  pendant le REC : le deduire de `lengthMode`.
+- **Capture hors ecran du vrai Compose** : `SustainPedalFramesTest` ecrit une
+  frame PNG par tick. Il FAUT `-Proborazzi.test.record=true` sinon
+  `captureRoboImage` n'ecrit rien (le test passe quand meme).
+- **Harnais `LiveUiLoop`** : nouvelles commandes `drumpadMode` ("pads"/"loops",
+  etat Compose local) et `assertText` (le status passe a `err` si le libelle est
+  absent, donc le driver ne peut pas valider une frame perimee).
+
 ## Conventions
 
 - Commits : `[Mixer V2] <résumé> — Compile: OK`, avec

@@ -7,6 +7,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
 import androidx.test.core.app.ApplicationProvider
@@ -90,6 +93,21 @@ class LiveUiLoop {
                                 runCatching {
                                     composeTestRule.onRoot().performTouchInput { click(Offset(x, y)) }
                                 }
+                            }
+                        }
+                        // Fail the sequence (so the driver cannot treat a stale frame
+                        // as a pass) when an expected label is missing from the tree.
+                        o.optString("assertText").takeIf { it.isNotBlank() }?.let { want ->
+                            if (composeTestRule.onAllNodesWithText(want).fetchSemanticsNodes().isEmpty()) {
+                                throw IllegalStateException("missing text: $want")
+                            }
+                        }
+                        // DrumPad page: Pads / Loops is local Compose state, so it can
+                        // only be driven through the segmented control itself.
+                        o.optString("drumpadMode").takeIf { it.isNotBlank() }?.let { m ->
+                            runCatching {
+                                val label = if (m == "loops") "Loops" else "Pads"
+                                composeTestRule.onAllNodesWithText(label)[0].performClick()
                             }
                         }
                         // Grow the mixer to N visible tracks (JSX reference draws 4).
