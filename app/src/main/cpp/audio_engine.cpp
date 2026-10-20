@@ -23,6 +23,10 @@ AudioEngine::AudioEngine() {
     mSoundGoodizer.init(sampleRate);
     mMasterPunch.init(sampleRate);
     mPadFilter.setLowPass(static_cast<float>(sampleRate), 400.0f * std::pow(45.0f, mPadBrightness), 0.707f);
+    mTonicFxDelay.init(sampleRate);
+    mPadsFxDelay.init(sampleRate);
+    mTonicFxReverb.init(sampleRate);
+    mPadsFxReverb.init(sampleRate);
     mDrumSampler.init(sampleRate);
     mMasterCompressor.init(sampleRate, -15.0f, 1.6f, 12.0f, 120.0f, 4.0f);
     mMasterCompressor.setParams(false, -15.0f, 1.6f, 12.0f, 120.0f, 0.0f);
@@ -111,6 +115,10 @@ bool AudioEngine::openAndStartStream() {
     mSoundGoodizer.init(sampleRate);
     mMasterPunch.init(sampleRate);
     mPadFilter.setLowPass(static_cast<float>(sampleRate), 400.0f * std::pow(45.0f, mPadBrightness), 0.707f);
+    mTonicFxDelay.init(sampleRate);
+    mPadsFxDelay.init(sampleRate);
+    mTonicFxReverb.init(sampleRate);
+    mPadsFxReverb.init(sampleRate);
     mDrumSampler.init(sampleRate);
     mMasterCompressor.init(sampleRate, mMasterCompressorThreshDb, mMasterCompressorRatio, mMasterCompressorAttackMs, mMasterCompressorReleaseMs, mMasterCompressorMakeupDb);
     mSoftClipper.init(sampleRate);
@@ -284,6 +292,111 @@ bool AudioEngine::hasActiveSoundFonts() const {
     return mSynthEngine.isInitialized();
 }
 
+void AudioEngine::processSurfaceFx(float *buf, int32_t numFrames, const SurfaceFxChainState &fx,
+                                   StereoBiquad &filter, StereoDelay &delay, StereoReverb &reverb,
+                                   bool withShimmer, StereoBiquad *brightness) {
+    if (numFrames <= 0) return;
+    float sr = static_cast<float>(mSampleRate > 0 ? mSampleRate : 48000);
+
+    // Filter: low-pass whose cutoff opens with the amount (dark -> open).
+    if (fx.filterOn.load(std::memory_order_relaxed)) {
+        float amt = std::clamp(fx.filterAmt.load(std::memory_order_relaxed), 0.0f, 1.0f);
+        float f0 = 180.0f * std::pow(120.0f, amt); // 180 Hz .. 21.6 kHz
+        filter.setLowPass(sr, f0, 0.707f);
+        filter.process(buf, numFrames);
+    }
+
+    // Brightness: high shelf. Shimmer doubles as a long bright tail on the same chain.
+    if (brightness != nullptr && fx.brightnessOn.load(std::memory_order_relaxed)) {
+        float amt = std::clamp(fx.brightnessAmt.load(std::memory_order_relaxed), 0.0f, 1.0f);
+        brightness->setHighShelf(sr, 3500.0f, (amt - 0.5f) * 18.0f, 0.707f);
+        brightness->process(buf, numFrames);
+    }
+
+    if (fx.delayOn.load(std::memory_order_relaxed)) {
+        float amt = std::clamp(fx.delayAmt.load(std::memory_order_relaxed), 0.0f, 1.0f);
+        delay.setParams(true, 0.16f + amt * 0.34f, 0.18f + amt * 0.42f, amt * 0.55f, false);
+        delay.process(buf, numFrames);
+    } else {
+        delay.setParams(false, 0.3f, 0.3f, 0.0f, false);
+    }
+
+    if (fx.reverbOn.load(std::memory_order_relaxed) || (withShimmer && fx.shimmerOn.load(std::memory_order_relaxed))) {
+        float revAmt = fx.reverbOn.load(std::memory_order_relaxed)
+                       ? std::clamp(fx.reverbAmt.load(std::memory_order_relaxed), 0.0f, 1.0f) : 0.0f;
+        float shimAmt = (withShimmer && fx.shimmerOn.load(std::memory_order_relaxed))
+                        ? std::clamp(fx.shimmerAmt.load(std::memory_order_relaxed), 0.0f, 1.0f) : 0.0f;
+        float size = std::clamp(0.42f + revAmt * 0.5f + shimAmt * 0.08f, 0.0f, 1.0f);
+        float decay = std::clamp(0.5f + revAmt * 0.42f + shimAmt * 0.06f, 0.0f, 0.98f);
+        float mix = std::clamp(std::max(revAmt * 0.6f, shimAmt * 0.7f), 0.0f, 1.0f);
+        if (mix > 0.001f) {
+            reverb.setParams(true, size, decay, 0.45f, mix);
+            reverb.process(buf, numFrames);
+        }
+    }
+}
+
+void AudioEngine::applySurfaceFx(float *mixedBuf, const float *preDrumBuf, float *drumBuf,
+                                 int32_t numFrames, bool padsAudible) {
+    if (numFrames <= 0) return;
+    size_t totalSamples = static_cast<size_t>(numFrames * 2);
+
+    // ── DrumPad chain: the sampler owns its own buffer, so we can process it in
+    //    isolation and add it back. This is a real, audible per-surface chain. ──
+    bool padsFxOn =
+        g_padsFx.filterOn.load(std::memory_order_relaxed) ||
+        g_padsFx.brightnessOn.load(std::memory_order_relaxed) ||
+        g_padsFx.delayOn.load(std::memory_order_relaxed) ||
+        g_padsFx.reverbOn.load(std::memory_order_relaxed);
+    if (padsFxOn) {
+        if (mSurfaceFxBuffer.size() < totalSamples) mSurfaceFxBuffer.resize(totalSamples, 0.0f);
+        if (padsAudible && drumBuf != nullptr) {
+            std::copy(drumBuf, drumBuf + totalSamples, mSurfaceFxBuffer.data());
+            processSurfaceFx(mSurfaceFxBuffer.data(), numFrames, g_padsFx,
+                             mPadsFxFilter, mPadsFxDelay, mPadsFxReverb, false, &mPadsFxBrightness);
+            // mixedBuf currently holds preDrum + dry drums: swap the dry drums for the wet ones.
+            for (size_t i = 0; i < totalSamples; ++i) {
+                mixedBuf[i] += mSurfaceFxBuffer[i] - drumBuf[i];
+            }
+        } else {
+            // Voices are silent: feed silence so reverb/delay tails decay naturally.
+            std::fill(mSurfaceFxBuffer.begin(), mSurfaceFxBuffer.begin() + totalSamples, 0.0f);
+            processSurfaceFx(mSurfaceFxBuffer.data(), numFrames, g_padsFx,
+                             mPadsFxFilter, mPadsFxDelay, mPadsFxReverb, false, &mPadsFxBrightness);
+            for (size_t i = 0; i < totalSamples; ++i) mixedBuf[i] += mSurfaceFxBuffer[i];
+        }
+    }
+
+    // ── TonicPad chain: channel 9 lives inside the shared synth bus and cannot be
+    //    isolated per block, so it is driven through per-channel MIDI CCs, which
+    //    fluidsynth applies to that channel only. Audible, and correctly scoped. ──
+    bool tonicActive = false;
+    float rev = 0.0f, cutoff = 1.0f;
+    if (g_tonicFx.reverbOn.load(std::memory_order_relaxed)) {
+        rev = std::clamp(g_tonicFx.reverbAmt.load(std::memory_order_relaxed), 0.0f, 1.0f);
+        tonicActive = true;
+    }
+    if (g_tonicFx.shimmerOn.load(std::memory_order_relaxed)) {
+        rev = std::clamp(std::max(rev, g_tonicFx.shimmerAmt.load(std::memory_order_relaxed)), 0.0f, 1.0f);
+        tonicActive = true;
+    }
+    if (g_tonicFx.filterOn.load(std::memory_order_relaxed)) {
+        cutoff = std::clamp(g_tonicFx.filterAmt.load(std::memory_order_relaxed), 0.0f, 1.0f);
+        tonicActive = true;
+    }
+    if (tonicActive) {
+        if (std::abs(rev - mTonicCcReverb) > 0.004f) {
+            mTonicCcReverb = rev;
+            mSynthEngine.setChannelReverb(9, rev);
+        }
+        if (std::abs(cutoff - mTonicCcCutoff) > 0.004f) {
+            mTonicCcCutoff = cutoff;
+            mSynthEngine.sendCC(9, 74, static_cast<int>(cutoff * 127.0f));
+        }
+    }
+    (void)preDrumBuf;
+}
+
 int AudioEngine::renderDirect(int16_t *outputBuffer16, int32_t numFrames) {
     if (!this || !outputBuffer16 || numFrames <= 0) return 0;
 
@@ -314,7 +427,13 @@ int AudioEngine::renderDirect(int16_t *outputBuffer16, int32_t numFrames) {
     mSynthEngine.renderStereo(floatBuf, numFrames, false);
 
     // 2. Mix Dedicated SamplePlaybackEngine (DrumPad PCM WAVs)
-    mDrumSampler.renderStereo(floatBuf, numFrames, true);
+    bool padsAudible = mDrumSampler.getActiveVoiceCount() > 0;
+    if (mPadsIsolateBuffer.size() < totalSamples) mPadsIsolateBuffer.resize(totalSamples, 0.0f);
+    if (padsAudible) {
+        mDrumSampler.renderStereo(mPadsIsolateBuffer.data(), numFrames, false);
+        for (size_t i = 0; i < totalSamples; ++i) floatBuf[i] += mPadsIsolateBuffer[i];
+    }
+    applySurfaceFx(floatBuf, nullptr, padsAudible ? mPadsIsolateBuffer.data() : nullptr, numFrames, padsAudible);
 
     if (!mBypassMasterFX.load(std::memory_order_relaxed)) {
         float maxAbs = 0.0f;
@@ -391,7 +510,14 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
         mSynthEngine.renderStereo(floatBuf, numFrames, false);
 
         // 2. Mix Dedicated SamplePlaybackEngine (DrumPad PCM WAVs)
-        mDrumSampler.renderStereo(floatBuf, numFrames, true);
+        bool padsAudible = mDrumSampler.getActiveVoiceCount() > 0;
+        if (mPadsIsolateBuffer.size() < totalSamples) mPadsIsolateBuffer.resize(totalSamples, 0.0f);
+        if (padsAudible) {
+            mDrumSampler.renderStereo(mPadsIsolateBuffer.data(), numFrames, false);
+            for (size_t i = 0; i < totalSamples; ++i) floatBuf[i] += mPadsIsolateBuffer[i];
+        }
+        // Surface FX chains (TonicPad CCs + isolated DrumPad DSP)
+        applySurfaceFx(floatBuf, nullptr, padsAudible ? mPadsIsolateBuffer.data() : nullptr, numFrames, padsAudible);
 
         if (!mBypassMasterFX.load(std::memory_order_relaxed)) {
             float maxAbs = 0.0f;
@@ -436,7 +562,13 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
         mSynthEngine.renderStereo(outputBuffer, numFrames, false);
 
         // 2. Mix Dedicated SamplePlaybackEngine (DrumPad PCM WAVs)
-        mDrumSampler.renderStereo(outputBuffer, numFrames, true);
+        bool padsAudible = mDrumSampler.getActiveVoiceCount() > 0;
+        if (mPadsIsolateBuffer.size() < totalSamples) mPadsIsolateBuffer.resize(totalSamples, 0.0f);
+        if (padsAudible) {
+            mDrumSampler.renderStereo(mPadsIsolateBuffer.data(), numFrames, false);
+            for (size_t i = 0; i < totalSamples; ++i) outputBuffer[i] += mPadsIsolateBuffer[i];
+        }
+        applySurfaceFx(outputBuffer, nullptr, padsAudible ? mPadsIsolateBuffer.data() : nullptr, numFrames, padsAudible);
 
         if (!mBypassMasterFX.load(std::memory_order_relaxed)) {
             float maxAbs = 0.0f;

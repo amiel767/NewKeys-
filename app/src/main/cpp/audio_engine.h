@@ -837,6 +837,15 @@ public:
 
 private:
     void processMasterChain(float *floatBuf, int32_t numFrames);
+    // Applies a surface FX chain (Tonic/Pads) to an isolated stereo block.
+    void processSurfaceFx(float *buf, int32_t numFrames, const SurfaceFxChainState &fx,
+                          StereoBiquad &filter, StereoDelay &delay, StereoReverb &reverb,
+                          bool withShimmer, StereoBiquad *brightness);
+    // Reads the FX globals and routes them: full DSP on the isolated DrumPad
+    // buffer, per-channel MIDI CCs (reverb 91 / cutoff 74) for the TonicPad
+    // synth channel, which cannot be isolated in the shared synth bus.
+    void applySurfaceFx(float *mixedBuf, const float *preDrumBuf, float *drumBuf,
+                        int32_t numFrames, bool padsAudible);
     bool openAndStartStream();
 
     std::shared_ptr<oboe::AudioStream> mStream;
@@ -861,6 +870,26 @@ private:
     SimpleMasterCompressor mMasterCompressor;
     SoftClipper mSoftClipper;
     float mPadBrightness = 0.75f;
+
+    // ── Surface FX chains (TonicPad ch 9 / DrumPad sampler) ──
+    // g_tonicFx / g_padsFx are written by the JNI setters; the audio thread reads
+    // them here so the FX sheets are actually audible. Shimmer is a reverb on the
+    // same chain with a longer tail (approximated by extra reverb mix).
+    StereoBiquad mTonicFxFilter;
+    StereoBiquad mPadsFxFilter;
+    StereoDelay mTonicFxDelay;
+    StereoDelay mPadsFxDelay;
+    StereoReverb mTonicFxReverb;
+    StereoReverb mPadsFxReverb;
+    StereoBiquad mPadsFxBrightness;
+    std::vector<float> mSurfaceFxBuffer;      // pads FX isolation scratch
+    std::vector<float> mTonicRenderBuffer;    // pre-drums snapshot for tonic isolation
+    std::vector<float> mPadsIsolateBuffer;    // pre-drums full-mix snapshot
+    // Tonic chain is a synth channel: reverb/cutoff are routed through per-channel
+    // MIDI CCs (91 / 74). Cache the last sent values so the audio thread only
+    // pushes a CC when the sheet actually moved.
+    float mTonicCcReverb = -1.0f;
+    float mTonicCcCutoff = -1.0f;
 
     // Preserved parameters across stream reconnections (Jack plug/unplug, routing events)
     std::atomic<bool> mIsReconnecting{false};
