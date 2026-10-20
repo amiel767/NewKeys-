@@ -104,7 +104,15 @@ class AppStatePersistence(context: Context) {
         val velocityCurve: Float = 0.5f,
         val velocityConfig: VelocityConfig = VelocityConfig(),
         val splitNoteMin: Int = 24,
-        val splitNoteMax: Int = 108
+        val splitNoteMax: Int = 108,
+        val transpose: Int = 0,
+        val octave: Int = 0,
+        val pitchBendRange: Int = 2,
+        val defaultVolume: Int = 100,
+        val defaultPan: Int = 0,
+        val sustain: Boolean = true,
+        val aftertouch: Boolean = false,
+        val programChange: Boolean = true
     )
 
     data class SavedAudioSlotData(
@@ -297,6 +305,14 @@ class AppStatePersistence(context: Context) {
                     put("velocityConfig", velObj)
                     put("splitNoteMin", t.splitNoteMin)
                     put("splitNoteMax", t.splitNoteMax)
+                    put("transpose", t.transpose)
+                    put("octave", t.octave)
+                    put("pitchBendRange", t.pitchBendRange)
+                    put("defaultVolume", t.defaultVolume)
+                    put("defaultPan", t.defaultPan)
+                    put("sustain", t.sustain)
+                    put("aftertouch", t.aftertouch)
+                    put("programChange", t.programChange)
                 }
                 tracksArray.put(obj)
             }
@@ -658,7 +674,15 @@ class AppStatePersistence(context: Context) {
                                 }
                             },
                             splitNoteMin = obj.optInt("splitNoteMin", 24),
-                            splitNoteMax = obj.optInt("splitNoteMax", 108)
+                            splitNoteMax = obj.optInt("splitNoteMax", 108),
+                            transpose = obj.optInt("transpose", 0),
+                            octave = obj.optInt("octave", 0),
+                            pitchBendRange = obj.optInt("pitchBendRange", 2),
+                            defaultVolume = obj.optInt("defaultVolume", 100),
+                            defaultPan = obj.optInt("defaultPan", 0),
+                            sustain = obj.optBoolean("sustain", true),
+                            aftertouch = obj.optBoolean("aftertouch", false),
+                            programChange = obj.optBoolean("programChange", true)
                         )
                     )
                 }

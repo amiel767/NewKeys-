@@ -74,6 +74,12 @@ import com.soundstage.mixer.ui.patches.PatchesOverlay
 import com.soundstage.mixer.ui.patches.PatchesUiState
 import com.soundstage.mixer.ui.patches.Patch
 import com.soundstage.mixer.ui.patches.PatchesActions
+import com.soundstage.mixer.ui.tracksettings.TsDeviceItem
+import com.soundstage.mixer.ui.tracksettings.TsPage
+import com.soundstage.mixer.ui.tracksettings.TsVelocity
+import com.soundstage.mixer.ui.tracksettings.TrackSettingsActions
+import com.soundstage.mixer.ui.tracksettings.TrackSettingsState
+import com.soundstage.mixer.ui.tracksettings.TrackSettingsWindow
 import com.aetherkeys.sheets.data.SheetsRepository
 import com.soundstage.mixer.ui.components.SoundfontWindow
 import com.soundstage.mixer.ui.components.SoundfontWindowState
@@ -635,6 +641,8 @@ fun MixerScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var isSplashFinished by remember { mutableStateOf(skipSplash) }
+    var tsPage by remember { mutableStateOf(TsPage.Track) }
+    LaunchedEffect(uiState.activeTrackSettingsId) { tsPage = TsPage.Track }
 
     val sf2PickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
@@ -1042,24 +1050,51 @@ fun MixerScreen(
             ActivePopup.TRACK_SETTINGS -> {
                 val targetTrack = uiState.tracks.find { it.id == uiState.activeTrackSettingsId }
                 if (targetTrack != null) {
-                    TrackSettingsDialog(
-                        trackNumber = targetTrack.id,
-                        soundName = if (targetTrack.patchName.isNotBlank()) targetTrack.patchName else if (targetTrack.soundfontName.isNotBlank()) targetTrack.soundfontName else "Default GM",
-                        trackColor = getTrackThemeColor(targetTrack.id, targetTrack.isMaster),
-                        devices = uiState.midiDevices.map { MidiDevice(id = it.id, name = it.name, connected = it.isConnected) },
-                        selectedDeviceId = targetTrack.selectedMidiDeviceId,
-                        midiChannel = targetTrack.midiChannel,
-                        onSelectDevice = { deviceId -> viewModel.updateTrackMidiDevice(targetTrack.id, deviceId) },
-                        onSelectChannel = { channel -> viewModel.updateTrackMidiChannel(targetTrack.id, channel) },
-                        onSetVelocityCurve = { curve -> viewModel.setTrackVelocityCurve(targetTrack.id, curve) },
-                        velocityConfig = targetTrack.velocityConfig,
-                        onVelocityConfigChange = { newConfig -> viewModel.updateTrackVelocityConfig(targetTrack.id, newConfig) },
-                        onOpenVelocity = {},
-                        onDismiss = { viewModel.closeTrackSettings() },
-                        velocityCurve = { t ->
-                            val vCurve = VelocityCurve(targetTrack.velocityConfig.nodes)
-                            vCurve.at(t * 127f) / 127f
-                        }
+                    val tsScreen = tsPage
+                    val tsActions = remember(targetTrack.id) {
+                        TrackSettingsActions(
+                            onNavigate = { tsPage = it },
+                            onClose = { viewModel.closeTrackSettings() },
+                            onVelocityChange = { viewModel.updateTrackVelocityConfig(targetTrack.id, TsVelocity.toEngine(it)) },
+                            onMidiDevice = { viewModel.updateTrackMidiDevice(targetTrack.id, it) },
+                            onMidiChannel = { viewModel.updateTrackMidiChannel(targetTrack.id, it) },
+                            onNoteRange = { lo, hi -> viewModel.updateTrackKeyRange(targetTrack.id, lo, hi) },
+                            onTranspose = { viewModel.setTrackTranspose(targetTrack.id, it) },
+                            onOctave = { viewModel.setTrackOctave(targetTrack.id, it) },
+                            onPitchBendRange = { viewModel.setTrackPitchBendRange(targetTrack.id, it) },
+                            onDefaultVolume = { viewModel.setTrackDefaultVolume(targetTrack.id, it) },
+                            onDefaultPan = { viewModel.setTrackDefaultPan(targetTrack.id, it) },
+                            onSustain = { viewModel.setTrackSustain(targetTrack.id, it) },
+                            onAftertouch = { viewModel.setTrackAftertouch(targetTrack.id, it) },
+                            onProgramChange = { viewModel.setTrackProgramChange(targetTrack.id, it) }
+                        )
+                    }
+                    TrackSettingsWindow(
+                        state = TrackSettingsState(
+                            trackName = "Track ${targetTrack.id}",
+                            soundName = if (targetTrack.patchName.isNotBlank()) targetTrack.patchName else if (targetTrack.soundfontName.isNotBlank()) targetTrack.soundfontName else "Default GM",
+                            color = getTrackThemeColor(targetTrack.id, targetTrack.isMaster),
+                            velocity = TsVelocity.toUi(targetTrack.velocityConfig),
+                            devices = uiState.midiDevices.map { TsDeviceItem(id = it.id, name = it.name, subtitle = if (it.isConnected) "Connected" else "Offline") },
+                            midiDeviceId = targetTrack.selectedMidiDeviceId ?: "all",
+                            midiChannel = targetTrack.midiChannel,
+                            noteLow = targetTrack.splitNoteMin,
+                            noteHigh = targetTrack.splitNoteMax,
+                            transpose = targetTrack.transpose,
+                            octave = targetTrack.octave,
+                            pitchBendRange = targetTrack.pitchBendRange,
+                            defaultVolume = targetTrack.defaultVolume,
+                            defaultPan = targetTrack.defaultPan,
+                            sustain = targetTrack.sustain,
+                            aftertouch = targetTrack.aftertouch,
+                            programChange = targetTrack.programChange
+                        ),
+                        screen = tsScreen,
+                        actions = tsActions,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(600.dp, 370.dp)
+                            .zIndex(120f)
                     )
                 }
             }

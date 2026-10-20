@@ -612,6 +612,9 @@ void SoundfontEngine::drainEvents() {
             case EngineMidiEvent::PITCH_SENS:
                 fluid_synth_pitch_wheel_sens(mSynth, ev.channel, ev.param1);
                 break;
+            case EngineMidiEvent::CHANNEL_PRESSURE:
+                fluid_synth_channel_pressure(mSynth, ev.channel, ev.param1);
+                break;
         }
     }
 }

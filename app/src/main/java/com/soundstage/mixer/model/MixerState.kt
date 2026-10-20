@@ -138,7 +138,16 @@ data class TrackChannel(
     val velocityConfig: VelocityConfig = VelocityConfig(),
     val splitNoteMin: Int = 24, // C1
     val splitNoteMax: Int = 108, // C7
-    val midiChannel: Int = 1, // 0 = Omni, 1..16 = Ch 1-16
+    // Playback / performance (Track Settings window)
+    val transpose: Int = 0,        // -12..+12 semitones
+    val octave: Int = 0,           // -3..+3 octaves
+    val pitchBendRange: Int = 2,   // 1..12 semitones at full bend
+    val defaultVolume: Int = 100,  // 0..127, applied on load
+    val defaultPan: Int = 0,       // -64..63, applied on load
+    val sustain: Boolean = true,
+    val aftertouch: Boolean = false,
+    val programChange: Boolean = true,
+    val midiChannel: Int = 1, // 1..16 = Ch 1-16 (Omni removed)
     val selectedMidiDeviceId: String? = null, // null = All devices
     // Peak meters (0f..1f)
     val peakMeterL: Float = 0.0f,

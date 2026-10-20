@@ -371,6 +371,13 @@ class AudioEngine(private val context: Context) {
     }
 
     var trackVelocityCurveProvider: ((channel: Int) -> Float)? = null
+    /** Per-track playback settings, keyed by engine channel (0..8). Null entry = engine default. */
+    var trackTransposeProvider: ((channel: Int) -> Int)? = null
+    var trackOctaveProvider: ((channel: Int) -> Int)? = null
+    var trackSustainProvider: ((channel: Int) -> Boolean)? = null
+    var trackAftertouchProvider: ((channel: Int) -> Boolean)? = null
+    var trackProgramChangeProvider: ((channel: Int) -> Boolean)? = null
+    var trackBendRangeProvider: ((channel: Int) -> Int)? = null
 
     private fun applyVelocityCurve(velocity: Float, curve: Float): Float {
         val v = velocity.coerceIn(0.01f, 1.0f)
@@ -588,8 +595,12 @@ class AudioEngine(private val context: Context) {
 
         when (command) {
             0xC0 -> { // Program Change
-                coroutineScope.launch(Dispatchers.Main) {
-                    onMidiProgramChangeListener?.invoke(channel, data1)
+                // Ignored when the target track opted out of incoming patch changes.
+                val pcAllowed = targetChannels.any { ch -> trackProgramChangeProvider?.invoke(ch) ?: true }
+                if (pcAllowed) {
+                    coroutineScope.launch(Dispatchers.Main) {
+                        onMidiProgramChangeListener?.invoke(channel, data1)
+                    }
                 }
             }
 
@@ -742,8 +753,10 @@ class AudioEngine(private val context: Context) {
         coroutineScope.launch(Dispatchers.Main) {
             onMidiNoteOffListener?.invoke(midiNumberToNoteName(note))
         }
-        // Sonically: hold in memory if sustain pedal is down, otherwise stop sound immediately
-        if (isSustainPedalDown && targetChannel != NativeAudioBridge.CHANNEL_TONIC_PAD && targetChannel != 9) {
+        // Sonically: hold in memory if sustain pedal is down, otherwise stop sound immediately.
+        // A track with the sustain pedal disabled never holds, whatever the pedal state.
+        val sustainHolds = isSustainPedalDown && (trackSustainProvider?.invoke(targetChannel) ?: true)
+        if (sustainHolds && targetChannel != NativeAudioBridge.CHANNEL_TONIC_PAD && targetChannel != 9) {
             sustainedNotesToRelease.add(note)
         } else {
             stopMidiNote(note, targetChannel)
@@ -769,9 +782,32 @@ class AudioEngine(private val context: Context) {
     }
 
     fun setPitchBend(bend: Float, channel: Int = activeTargetChannel) {
-        pitchBendFactor = (2.0.pow((bend.coerceIn(-1f, 1f) * 2.0) / 12.0)).toFloat()
+        val ch = if (channel == 9) NativeAudioBridge.CHANNEL_TONIC_PAD else channel.coerceIn(0, 8)
+        val range = trackBendRangeProvider?.invoke(ch) ?: 2
+        pitchBendFactor = (2.0.pow((bend.coerceIn(-1f, 1f) * range) / 12.0)).toFloat()
         val midiBend = ((bend + 1.0f) * 8191.5f).toInt().coerceIn(0, 16383)
-        bendMidiPitch(midiBend, channel)
+        bendMidiPitch(midiBend, ch)
+    }
+
+    /** Pitch bend range in semitones for the given channel (1..12), used for the software scaling. */
+    fun pitchBendRangeOf(channel: Int): Int {
+        val ch = if (channel == 9) NativeAudioBridge.CHANNEL_TONIC_PAD else channel.coerceIn(0, 8)
+        return (trackBendRangeProvider?.invoke(ch) ?: 2).coerceIn(1, 12)
+    }
+
+    fun sustainEnabledFor(channel: Int): Boolean {
+        val ch = if (channel == 9) NativeAudioBridge.CHANNEL_TONIC_PAD else channel.coerceIn(0, 8)
+        return trackSustainProvider?.invoke(ch) ?: true
+    }
+
+    fun aftertouchEnabledFor(channel: Int): Boolean {
+        val ch = if (channel == 9) NativeAudioBridge.CHANNEL_TONIC_PAD else channel.coerceIn(0, 8)
+        return trackAftertouchProvider?.invoke(ch) ?: false
+    }
+
+    fun programChangeEnabledFor(channel: Int): Boolean {
+        val ch = if (channel == 9) NativeAudioBridge.CHANNEL_TONIC_PAD else channel.coerceIn(0, 8)
+        return trackProgramChangeProvider?.invoke(ch) ?: true
     }
 
     // -------------------------------------------------------------

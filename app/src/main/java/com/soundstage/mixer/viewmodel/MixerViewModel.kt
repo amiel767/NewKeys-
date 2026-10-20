@@ -455,8 +455,15 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         audioEngine.trackVelocityCurveProvider = { ch ->
             _uiState.value.tracks.getOrNull(ch)?.velocityCurve ?: 0.5f
         }
+        audioEngine.trackTransposeProvider = { ch -> _uiState.value.tracks.getOrNull(ch)?.transpose ?: 0 }
+        audioEngine.trackOctaveProvider = { ch -> _uiState.value.tracks.getOrNull(ch)?.octave ?: 0 }
+        audioEngine.trackSustainProvider = { ch -> _uiState.value.tracks.getOrNull(ch)?.sustain ?: true }
+        audioEngine.trackAftertouchProvider = { ch -> _uiState.value.tracks.getOrNull(ch)?.aftertouch ?: false }
+        audioEngine.trackProgramChangeProvider = { ch -> _uiState.value.tracks.getOrNull(ch)?.programChange ?: true }
+        audioEngine.trackBendRangeProvider = { ch -> _uiState.value.tracks.getOrNull(ch)?.pitchBendRange ?: 2 }
         _uiState.value.tracks.forEach { track ->
             audioEngine.setTrackVelocityProcessor(track.id - 1, VelocityProcessor(track.velocityConfig))
+            applyTrackPlaybackSettings(track)
         }
 
         // Restore persisted state from previous session
@@ -532,7 +539,15 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                                     velocityCurve = savedT.velocityCurve,
                                     velocityConfig = savedT.velocityConfig,
                                     splitNoteMin = savedT.splitNoteMin,
-                                    splitNoteMax = savedT.splitNoteMax
+                                    splitNoteMax = savedT.splitNoteMax,
+                                    transpose = savedT.transpose,
+                                    octave = savedT.octave,
+                                    pitchBendRange = savedT.pitchBendRange,
+                                    defaultVolume = savedT.defaultVolume,
+                                    defaultPan = savedT.defaultPan,
+                                    sustain = savedT.sustain,
+                                    aftertouch = savedT.aftertouch,
+                                    programChange = savedT.programChange
                                 )
                             } else currentTrack
                         }
@@ -2326,12 +2341,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
         // Dynamic Keyboard Layer Mapper: route notes strictly within each active track's assigned key range (splitNoteMin..splitNoteMax)
         // AND strictly match the track's configured MIDI channel:
-        // track.midiChannel == 0 -> OMNI (accepts all channels)
         // track.midiChannel in 1..16 -> accepts only messages where incomingChannel == (track.midiChannel - 1)
+        // Omni (0) was removed: the UI only offers Channel 1..16, default Channel 1.
         val activeChannels = state.tracks.mapIndexedNotNull { idx, track ->
             val isAllowed = track.isEnabled && !track.isMuted && (!anySolo || track.isSolo)
             if (isAllowed) {
-                val isChannelMatch = (incomingChannel == null) || (track.midiChannel == 0) || (incomingChannel == track.midiChannel - 1)
+                val isChannelMatch = (incomingChannel == null) || (incomingChannel == track.midiChannel - 1)
                 if (isChannelMatch) {
                     val isWithinRange = (midiNote == null) || (midiNote in track.splitNoteMin..track.splitNoteMax)
                     if (isWithinRange) {
@@ -2364,6 +2379,17 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(pitchBend = clamped) }
     }
 
+    /** Aftertouch value from the on-screen keyboard, gated by the per-track setting. */
+    fun sendAftertouch(value: Int) {
+        val v = value.coerceIn(0, 127)
+        getActivePerformanceChannels().forEach { channel ->
+            val track = _uiState.value.tracks.getOrNull(channel)
+            if (track?.aftertouch == true) {
+                NativeAudioBridge.safeChannelPressure(channel, v)
+            }
+        }
+    }
+
     private fun applyVelocityCurve(velocity: Float, curve: Float): Float {
         val v = velocity.coerceIn(0.01f, 1.0f)
         return when {
@@ -2393,11 +2419,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val baseVel = state.globalVelocityMin + velocity.coerceIn(0f, 1f) * (state.globalVelocityMax - state.globalVelocityMin)
 
         channels.forEach { channel ->
-            val track = state.tracks.getOrNull(channel)
-            val finalVel = if (track != null) {
-                applyVelocityCurve(baseVel, track.velocityCurve)
-            } else baseVel
-            runCatching { audioEngine.noteOn(key, finalVel, channel) }
+            // Velocity shaping is applied once, by the engine's VelocityProcessor (VelocityConfig).
+            runCatching { audioEngine.noteOn(key, baseVel, channel) }
         }
         // Capture the onset for the looper. Playback goes straight to audioEngine,
         // so this never re-records what it replays.
@@ -3206,6 +3229,15 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 val effectiveVol = if (_uiState.value.tracks.getOrNull(slotId)?.isMuted == true) 0f else targetVol
                 audioEngine.setChannelVolume(targetChannel, effectiveVol)
                 NativeAudioBridge.safeSetTrackVolume(targetChannel, effectiveVol)
+
+                // Apply the track's "defaults at load" (Volume / Pan from Track Settings).
+                _uiState.value.tracks.getOrNull(slotId)?.let { t ->
+                    val v = t.defaultVolume.coerceIn(0, 127) / 127f
+                    val p = (t.defaultPan.coerceIn(-64, 63)) / 63f
+                    updateTrack(t.id) { it.copy(volume = v, pan = p) }
+                    NativeAudioBridge.safeSetTrackVolume(targetChannel, if (t.isMuted) 0f else v)
+                    NativeAudioBridge.safeSetTrackPan(targetChannel, p)
+                }
 
                 // Re-validate program selection for all other active audio slots to ensure complete isolation
                 val currentSlots = _uiState.value.audioSlots
@@ -6119,6 +6151,73 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         persistCurrentStateDebounced()
     }
 
+    /** Pushes the per-track playback settings to the audio engine (transpose, bend range, ...). */
+    private fun applyTrackPlaybackSettings(track: TrackChannel) {
+        val ch = track.id - 1
+        // Native transpose is expressed in semitones; the octave setting is folded in (1 octave = 12 st).
+        NativeAudioBridge.safeSetTrackTranspose(ch, track.transpose + track.octave * 12)
+        NativeAudioBridge.safeSetPitchBendRange(ch, track.pitchBendRange)
+    }
+
+    fun setTrackTranspose(trackId: Int, semitones: Int) {
+        val v = semitones.coerceIn(-12, 12)
+        updateTrack(trackId) { it.copy(transpose = v) }
+        pushTranspose(trackId)
+        persistCurrentStateDebounced()
+    }
+
+    fun setTrackOctave(trackId: Int, octave: Int) {
+        val v = octave.coerceIn(-3, 3)
+        updateTrack(trackId) { it.copy(octave = v) }
+        pushTranspose(trackId)
+        persistCurrentStateDebounced()
+    }
+
+    private fun pushTranspose(trackId: Int) {
+        val track = _uiState.value.tracks.getOrNull(trackId - 1) ?: return
+        NativeAudioBridge.safeSetTrackTranspose(trackId - 1, track.transpose + track.octave * 12)
+    }
+
+    fun setTrackPitchBendRange(trackId: Int, semitones: Int) {
+        val v = semitones.coerceIn(1, 12)
+        updateTrack(trackId) { it.copy(pitchBendRange = v) }
+        NativeAudioBridge.safeSetPitchBendRange(trackId - 1, v)
+        persistCurrentStateDebounced()
+    }
+
+    fun setTrackDefaultVolume(trackId: Int, volume: Int) {
+        val v = volume.coerceIn(0, 127)
+        updateTrack(trackId) { it.copy(defaultVolume = v) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setTrackDefaultPan(trackId: Int, pan: Int) {
+        val v = pan.coerceIn(-64, 63)
+        updateTrack(trackId) { it.copy(defaultPan = v) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setTrackSustain(trackId: Int, enabled: Boolean) {
+        updateTrack(trackId) { it.copy(sustain = enabled) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setTrackAftertouch(trackId: Int, enabled: Boolean) {
+        updateTrack(trackId) { it.copy(aftertouch = enabled) }
+        persistCurrentStateDebounced()
+    }
+
+    fun setTrackProgramChange(trackId: Int, enabled: Boolean) {
+        updateTrack(trackId) { it.copy(programChange = enabled) }
+        persistCurrentStateDebounced()
+    }
+
+    private inline fun updateTrack(trackId: Int, transform: (TrackChannel) -> TrackChannel) {
+        _uiState.update { state ->
+            state.copy(tracks = state.tracks.map { if (it.id == trackId) transform(it) else it })
+        }
+    }
+
     fun openVelocitySettings(trackId: Int) {
         _uiState.update { it.copy(activePopup = ActivePopup.VELOCITY_SETTINGS, activeTrackSettingsId = trackId) }
     }
@@ -6580,14 +6679,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateTrackMidiChannel(trackId: Int, channel: Int) {
+        // 1..16 = Ch 1..16. Omni removed. audioSlots keep their engine channel (midiChannelForSlot),
+        // so they must NOT be overwritten here.
+        val v = channel.coerceIn(1, 16)
         _uiState.update { state ->
-            val updatedTracks = state.tracks.map { tr ->
-                if (tr.id == trackId) tr.copy(midiChannel = channel) else tr
-            }
-            val updatedAudioSlots = state.audioSlots.map { slot ->
-                if (slot.slotId == trackId - 1) slot.copy(midiChannel = channel) else slot
-            }
-            state.copy(tracks = updatedTracks, audioSlots = updatedAudioSlots)
+            state.copy(tracks = state.tracks.map { tr -> if (tr.id == trackId) tr.copy(midiChannel = v) else tr })
         }
         persistCurrentStateDebounced()
     }

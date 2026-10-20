@@ -189,6 +189,26 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_setTrackTranspose(
 }
 
 JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setPitchBendRange(
+        JNIEnv *env,
+        jobject /* this */,
+        jint engineIndex,
+        jint channel,
+        jint semitones) {
+    gAudioEngine.getEngine(engineIndex).setPitchBendSensitivity(channel, semitones);
+}
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_channelPressure(
+        JNIEnv *env,
+        jobject /* this */,
+        jint engineIndex,
+        jint channel,
+        jint value) {
+    gAudioEngine.getEngine(engineIndex).channelPressure(channel, value);
+}
+
+JNIEXPORT void JNICALL
 Java_com_soundstage_mixer_audio_NativeAudioBridge_pitchBend(
         JNIEnv *env,
         jobject /* this */,

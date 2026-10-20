@@ -41,6 +41,7 @@ inline int fluid_synth_process(fluid_synth_t*, int, int, float **, int, float **
 inline int fluid_synth_set_gen(fluid_synth_t*, int, int, float) { return 0; }
 inline float fluid_synth_get_gen(fluid_synth_t*, int, int) { return 0.0f; }
 inline int fluid_synth_pitch_wheel_sens(fluid_synth_t*, int, int) { return 0; }
+inline int fluid_synth_channel_pressure(fluid_synth_t*, int, int) { return 0; }
 #endif
 
 #include <atomic>
@@ -71,7 +72,8 @@ struct EngineMidiEvent {
         // Shaper generator offsets. These must run on the audio thread because the
         // synth is not thread-safe, so they travel through this same queue.
         SET_GEN,
-        PITCH_SENS
+        PITCH_SENS,
+        CHANNEL_PRESSURE
     } type;
     int channel;
     int note;
@@ -205,6 +207,16 @@ public:
         ev.type = EngineMidiEvent::PITCH_SENS;
         ev.channel = channel;
         ev.param1 = semitones;
+        mEventQueue.push(ev);
+    }
+
+    /** Channel pressure (aftertouch). FluidSynth maps it to the SoundFont mod env. */
+    void channelPressure(int channel, int value) {
+        if (channel < 0 || channel >= kMaxChannels) return;
+        EngineMidiEvent ev;
+        ev.type = EngineMidiEvent::CHANNEL_PRESSURE;
+        ev.channel = channel;
+        ev.param1 = std::clamp(value, 0, 127);
         mEventQueue.push(ev);
     }
     void pitchBend(int channel, int bendValue);

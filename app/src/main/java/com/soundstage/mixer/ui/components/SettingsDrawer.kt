@@ -1597,7 +1597,7 @@ private fun MidiRoutingSubPage(
                                             .horizontalScroll(rememberScrollState()),
                                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
-                                        val channelOptions = listOf(-1 to "OMNI") + (0..15).map { it to "Ch.${it + 1}" }
+                                        val channelOptions = (1..16).map { it to "Ch.$it" }
                                         channelOptions.forEach { (chVal, chLabel) ->
                                             val isChSelected = track.midiChannel == chVal
                                             Box(

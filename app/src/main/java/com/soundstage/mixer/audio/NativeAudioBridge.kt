@@ -67,6 +67,8 @@ object NativeAudioBridge {
     external fun setTrackVolume(engineIndex: Int, channel: Int, volume01: Float)
     external fun setTrackPan(engineIndex: Int, channel: Int, pan: Float)
     external fun setTrackTranspose(engineIndex: Int, channel: Int, semitones: Int)
+    external fun setPitchBendRange(engineIndex: Int, channel: Int, semitones: Int)
+    external fun channelPressure(engineIndex: Int, channel: Int, value: Int)
     external fun pitchBend(engineIndex: Int, channel: Int, bendValue: Int)
     external fun setMasterVolume(volume01: Float)
     external fun setFluidSynthGain(gain: Float)
@@ -378,6 +380,34 @@ object NativeAudioBridge {
                 setTrackTranspose(engineIndex, channel, semitones)
             } catch (e: Throwable) {
                 Log.e("NativeAudioBridge", "Error invoking setTrackTranspose: ${e.message}")
+            }
+        }
+    }
+
+    fun safeSetPitchBendRange(
+        channel: Int,
+        semitones: Int,
+        engineIndex: Int = ENGINE_FADER
+    ) {
+        if (isLibraryLoaded) {
+            try {
+                setPitchBendRange(engineIndex, channel, semitones)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking setPitchBendRange: ${e.message}")
+            }
+        }
+    }
+
+    fun safeChannelPressure(
+        channel: Int,
+        value: Int,
+        engineIndex: Int = ENGINE_FADER
+    ) {
+        if (isLibraryLoaded) {
+            try {
+                channelPressure(engineIndex, channel, value)
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking channelPressure: ${e.message}")
             }
         }
     }
