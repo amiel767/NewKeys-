@@ -202,9 +202,26 @@ checks, 0 failed** (verifie).
 - Rappel modele strips : `FxMixer::kStrips = 11` (0..7 pistes, 8 Drum,
   9 TonicPad, 10 sampler), `kMaster = 15`. `instrumentAllowed` = **0..7
   seulement** ; `soundfontPaused` = 0..7 + source active.
-- Etapes restantes : 2 (multi-canaux, risque eleve) -> 3 (`FxMixer` dans le
-  rappel, retirer mutex/LOGI/resize) -> 4 (notes vers sources, gen offsets)
-  -> 5 (JNI) -> 6 (fenetre Compose) -> 7 (persistance) -> 8 (appareil).
+- Etapes restantes : 4 (notes vers sources, gen offsets) -> 5 (JNI) -> 6
+  (fenetre Compose) -> 7 (persistance) -> 8 (appareil).
+- **Etape 2 faite** (commit `655ffe4`) : `SoundfontEngine::renderChannels(out,
+  frames, ch)` rend en **stereo par canal** via `fluid_synth_process` (planar ->
+  entrelace) et `renderStereo` est inchange. `audio-channels`/`audio-groups` = 16
+  et chorus OFF **seulement** si `setMultiChannelEnabled(true)`. Entrelacement
+  verifie hors appareil : erreur 0, somme des canaux == mix mono (critere 1e-5).
+- **Etape 3 faite** (commit `c77010c`) : `aetherfx::FxMixer mFx` dans
+  `AudioEngine` ; `renderFxPath()` fait strips 0..9 (`processStrip`) + sampler 10
+  + `processMaster`, et remplace toute l'ancienne chaine master sur ce chemin.
+  `mFx.prepare(sampleRate, capacity)` et les 3 tampons scratch sont dimensionnes
+  dans `openAndStartStream` (thread de controle), jamais dans le rappel.
+- **Interrupteur** : `AudioEngine::setFxEnabled(bool)` (defaut **false**). Tant
+  qu'il est faux, `renderFxPath` renvoie false et le rappel suit l'ancien mix
+  **a l'identique** — l'app compile et sonne comme avant. Pour activer : appeler
+  `setFxEnabled(true)` **avant** `start()` (le mode multi-canaux se decide a
+  l'ouverture du flux). Reste a faire : exposer cet interrupteur via JNI/Kotlin
+  (etape 5) et la fenetre (etape 6).
+- Prochaine etape = 4 (notes vers les sources + offsets de generateurs via la
+  file d'evenements existante, `fluid_synth_set_gen` sur le thread audio).
 
 ## Conventions
 
