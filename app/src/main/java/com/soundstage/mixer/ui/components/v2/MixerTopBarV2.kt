@@ -61,8 +61,15 @@ fun MixerTopBarV2(
             IconDinV2(size = 22.dp, color = Color.White, withBar = true)
         }
 
-        SustainPedalButton(isActive = isSustainActive, onToggle = onToggleSustain,
-            panelTop = PanelTop, panelBottom = PanelBottom)
+        // Sustained by either the on-screen toggle or an external MIDI CC64 pedal.
+        SustainPedal(
+            value = if (isSustainActive) 127 else 0,
+            caseSize = 42.dp,
+            modifier = Modifier.clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onToggleSustain() },
+        )
 
         TopIconButton(onOpenNotes) {
             Icon(painterResource(R.drawable.ic_quill), "Notes", tint = Color.White,
