@@ -427,10 +427,12 @@ int AudioEngine::renderDirect(int16_t *outputBuffer16, int32_t numFrames) {
     mSynthEngine.renderStereo(floatBuf, numFrames, false);
 
     // 2. Mix Dedicated SamplePlaybackEngine (DrumPad PCM WAVs)
-    bool padsAudible = mDrumSampler.getActiveVoiceCount() > 0;
+    // Always render the sampler so queued triggers are drained this block; the
+    // voice count is only known after rendering.
     if (mPadsIsolateBuffer.size() < totalSamples) mPadsIsolateBuffer.resize(totalSamples, 0.0f);
+    mDrumSampler.renderStereo(mPadsIsolateBuffer.data(), numFrames, false);
+    bool padsAudible = mDrumSampler.getActiveVoiceCount() > 0;
     if (padsAudible) {
-        mDrumSampler.renderStereo(mPadsIsolateBuffer.data(), numFrames, false);
         for (size_t i = 0; i < totalSamples; ++i) floatBuf[i] += mPadsIsolateBuffer[i];
     }
     applySurfaceFx(floatBuf, nullptr, padsAudible ? mPadsIsolateBuffer.data() : nullptr, numFrames, padsAudible);
@@ -510,10 +512,12 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
         mSynthEngine.renderStereo(floatBuf, numFrames, false);
 
         // 2. Mix Dedicated SamplePlaybackEngine (DrumPad PCM WAVs)
-        bool padsAudible = mDrumSampler.getActiveVoiceCount() > 0;
+        // Always render the sampler so queued triggers are drained this block; the
+        // voice count is only known after rendering.
         if (mPadsIsolateBuffer.size() < totalSamples) mPadsIsolateBuffer.resize(totalSamples, 0.0f);
+        mDrumSampler.renderStereo(mPadsIsolateBuffer.data(), numFrames, false);
+        bool padsAudible = mDrumSampler.getActiveVoiceCount() > 0;
         if (padsAudible) {
-            mDrumSampler.renderStereo(mPadsIsolateBuffer.data(), numFrames, false);
             for (size_t i = 0; i < totalSamples; ++i) floatBuf[i] += mPadsIsolateBuffer[i];
         }
         // Surface FX chains (TonicPad CCs + isolated DrumPad DSP)
@@ -562,10 +566,12 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
         mSynthEngine.renderStereo(outputBuffer, numFrames, false);
 
         // 2. Mix Dedicated SamplePlaybackEngine (DrumPad PCM WAVs)
-        bool padsAudible = mDrumSampler.getActiveVoiceCount() > 0;
+        // Always render the sampler so queued triggers are drained this block; the
+        // voice count is only known after rendering.
         if (mPadsIsolateBuffer.size() < totalSamples) mPadsIsolateBuffer.resize(totalSamples, 0.0f);
+        mDrumSampler.renderStereo(mPadsIsolateBuffer.data(), numFrames, false);
+        bool padsAudible = mDrumSampler.getActiveVoiceCount() > 0;
         if (padsAudible) {
-            mDrumSampler.renderStereo(mPadsIsolateBuffer.data(), numFrames, false);
             for (size_t i = 0; i < totalSamples; ++i) outputBuffer[i] += mPadsIsolateBuffer[i];
         }
         applySurfaceFx(outputBuffer, nullptr, padsAudible ? mPadsIsolateBuffer.data() : nullptr, numFrames, padsAudible);
