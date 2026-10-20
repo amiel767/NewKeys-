@@ -79,6 +79,20 @@ Un seul nom de brief s'est révélé faux :
 `loadSoundfontToSlot` — le vrai est `loadSoundFontForSlot(slotId, path, ...)`
 (`viewmodel/MixerViewModel.kt:3112`).
 
+## Chaînes FX de surface (TonicPad / DrumPad) — vérifié
+
+`g_tonicFx` / `g_padsFx` (`audio_engine.h:734`, struct `SurfaceFxChainState`) sont
+écrits par les setters JNI mais **lisaient jamais** : les FX étaient muets.
+
+- **DrumPad (Pads)** : le sampler a son propre buffer → chaîne DSP réelle et isolée
+  (`processSurfaceFx` : low-pass + high-shelf + delay + reverb). `padsAudible` =
+  `mDrumSampler.getActiveVoiceCount() > 0`.
+- **TonicPad (canal 9)** : vit dans le bus partagé du synthé, **non isolable** par
+  bloc. Les FX y passent par des **CC MIDI par canal** (CC91 reverb, CC74 cutoff),
+  appliqués par fluidsynth au seul canal 9. Pas de rendu par canal dans ce fork.
+
+Piège : ne pas tenter de soustraire le canal 9 du bus du synthé — impossible.
+
 ## Architecture des slots audio
 
 `audioSlots` a **10** entrées (indices 0..9) ; `tracks` n'en a que **8** (indices 0..7).
