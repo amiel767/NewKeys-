@@ -579,7 +579,7 @@ fun FxKnob(value: Float, accent: Color, default: Float, sizeDp: Float, onValue: 
 }
 
 /** Draws the scene for [effectId] at the given animation time. */
-fun DrawScope.drawFxScene(effectId: Int, values: FloatArray, t: Float, tm: TextMeasurer) {
+fun DrawScope.drawFxScene(effectId: Int, values: FloatArray, t: Float, tm: TextMeasurer, st: FxSceneState) {
     val accent = FxStyle.accent(effectId)
     if (effectId in 0..4) bg(t, accent)
     when (effectId) {
@@ -588,6 +588,16 @@ fun DrawScope.drawFxScene(effectId: Int, values: FloatArray, t: Float, tm: TextM
         2 -> sceneEq(values, t, tm)
         3 -> sceneGrip(values, accent, t, tm)
         4 -> sceneCeil(values, t)
+        5 -> scenePiano(values, accent, t, tm, st)
+        6 -> sceneOrgan(values, accent, t, tm, st)
+        7 -> sceneSax(values, accent, t, tm, st)
+        8 -> sceneStrings(values, accent, t, tm, st)
+        9 -> sceneGuitar(values, accent, t, tm, st)
+        10 -> sceneAmp(values, accent, t, tm, st)
+        11 -> sceneBass(values, accent, t, tm, st)
+        12 -> sceneBrass(values, accent, t, tm, st)
+        13 -> sceneVoices(values, accent, t, tm, st)
+        14 -> sceneSynth(values, accent, t, tm, st)
     }
 }
 

@@ -74,6 +74,7 @@ fun FxWindow(
     var bypassed by remember(effectId, slot) { mutableStateOf(controller.bypassed.getOrElse(slot) { false }) }
     var presetName by remember(effectId, slot) { mutableStateOf(info.presets.firstOrNull()?.name ?: "Default") }
     var presetOpen by remember { mutableStateOf(false) }
+    val scene = remember(effectId, slot) { FxSceneState() }
 
     LaunchedEffect(Unit) {
         while (true) withFrameNanos { t = (it / 1_000_000_000f) }
@@ -96,8 +97,9 @@ fun FxWindow(
                     translate(FxStyle.OXL * scale, FxStyle.OYL * scale)
                     scale(scale, scale, pivot = Offset.Zero)
                 }) {
-                    drawFxScene(effectId, values, t, tm)
-                    drawFxRail(instrumentId = -1, level = level, tm = tm)
+                    scene.presetIndex = info.presets.indexOfFirst { it.name == presetName }.coerceAtLeast(0)
+                    drawFxScene(effectId, values, t, tm, scene)
+                    drawFxRail(instrumentId = effectId, level = level, tm = tm)
                 }
             }
 
