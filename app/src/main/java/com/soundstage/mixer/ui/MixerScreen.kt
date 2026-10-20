@@ -887,9 +887,18 @@ fun MixerScreen(
         when (uiState.activePopup) {
             ActivePopup.EFFECTS -> {
                 if (FX_WINDOW_V2) {
+                    val slotIdx = if (uiState.activeEffectTrackId == 0) null else uiState.activeEffectTrackId - 1
+                    val sfTrack = slotIdx?.let { uiState.tracks.getOrNull(it) }
                     com.soundstage.mixer.ui.fx.FxOverlay(
                         trackId = uiState.activeEffectTrackId,
+                        soundfontName = sfTrack?.soundfontName.orEmpty(),
+                        program = sfTrack?.program ?: 0,
                         onClose = { viewModel.closePopup() },
+                        onChooseSoundfont = {
+                            if (uiState.activeEffectTrackId in 1..8) {
+                                viewModel.openSoundfontForSlot(uiState.activeEffectTrackId - 1)
+                            }
+                        },
                         modifier = Modifier.fillMaxSize().zIndex(130f),
                     )
                 } else {

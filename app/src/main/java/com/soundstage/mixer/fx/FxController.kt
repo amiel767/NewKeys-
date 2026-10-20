@@ -1,5 +1,6 @@
 package com.soundstage.mixer.fx
 
+import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -13,7 +14,7 @@ import com.soundstage.mixer.audio.NativeAudioBridge
  *
  * All setters are control-thread calls and cheap enough for a slider drag.
  */
-class FxController(private val strip: Int) {
+class FxController(private val strip: Int, private val context: Context? = null) {
     /** Instrument id on this strip, -1 when the soundfont plays as it is. */
     var instrumentId by mutableStateOf(-1)
         private set
@@ -116,4 +117,56 @@ class FxController(private val strip: Int) {
 
     /** Soundfont is silenced while a source instrument is selected. */
     fun soundfontPaused(): Boolean = bridge()?.fxSoundfontPaused(strip) ?: false
+
+    // ---- persistence ----
+
+    /** A/B pair, kept here so it survives a restore and is written back. */
+    var abA: FloatArray? = null
+    var abB: FloatArray? = null
+    var abCur: Int = 0
+
+    /** User-facing preset name per slot, for persistence. */
+    val presetNames = mutableStateListOf<String?>().apply { repeat(slotCount) { add(null) } }
+
+    private fun snapshot(): FxPersistence.Strip {
+        val instPreset = FxRegistry.info(instrumentId).presets
+            .firstOrNull { it.values == instrumentParams }?.name
+        return FxPersistence.Strip(
+            instrumentId = instrumentId,
+            instrumentParams = instrumentParams.toList(),
+            instrumentPreset = instPreset,
+            effects = effectIds.mapIndexed { slot, id ->
+                if (id < 0) null
+                else FxPersistence.Slot(id, presetNames[slot], params[slot].toList(), bypassed[slot])
+            },
+            abA = abA?.toList(),
+            abB = abB?.toList(),
+            abCur = abCur,
+        )
+    }
+
+    /** Persists the current strip state. */
+    fun save() {
+        val ctx = context ?: return
+        FxPersistence.save(ctx, strip, FxPersistence.toJson(strip, snapshot()))
+    }
+
+    /** Restores the strip from storage and pushes everything to the native mixer. */
+    fun restore() {
+        val ctx = context ?: return
+        val saved = FxPersistence.fromJson(FxPersistence.load(ctx, strip), slotCount) ?: return
+        if (saved.instrumentId >= 0) {
+            setInstrument(saved.instrumentId)
+            saved.instrumentParams.forEachIndexed { i, v -> setInstrumentParam(i, v) }
+        }
+        saved.effects.forEachIndexed { slot, entry ->
+            if (entry != null && setEffect(slot, entry.id)) {
+                entry.params.forEachIndexed { i, v -> if (i < params[slot].size) params[slot][i] = v }
+                if (entry.bypass) setBypass(slot, true)
+            }
+        }
+        abA = saved.abA?.toFloatArray()
+        abB = saved.abB?.toFloatArray()
+        abCur = saved.abCur
+    }
 }

@@ -106,7 +106,7 @@ fun FxWindow(
     val locks = remember(effectId, slot) { mutableStateOf(emptySet<Int>()) }
     var abA by remember(effectId, slot) { mutableStateOf<FloatArray?>(null) }
     var abB by remember(effectId, slot) { mutableStateOf<FloatArray?>(null) }
-    var abCur by remember(effectId, slot) { mutableStateOf(0) }
+    var abCur by remember(effectId, slot) { mutableStateOf(controller.abCur) }
     var editOpen by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -130,6 +130,7 @@ fun FxWindow(
                 pushAll(next)
                 kotlinx.coroutines.delay(17)
             }
+            controller.save()
         }
     }
 
@@ -158,10 +159,17 @@ fun FxWindow(
     }
 
     fun abToggle() {
-        if (abA == null) { abA = values.copyOf(); abB = values.copyOf() }
-        if (abCur == 0) abA = values.copyOf() else abB = values.copyOf()
-        abCur = if (abCur == 0) 1 else 0
-        tweenTo(if (abCur == 0) abA!! else abB!!)
+        if (controller.abA == null) {
+            controller.abA = values.copyOf()
+            controller.abB = values.copyOf()
+        }
+        if (controller.abCur == 0) controller.abA = values.copyOf()
+        else controller.abB = values.copyOf()
+        controller.abCur = if (controller.abCur == 0) 1 else 0
+        abA = controller.abA
+        abB = controller.abB
+        abCur = controller.abCur
+        tweenTo(if (controller.abCur == 0) controller.abA!! else controller.abB!!)
     }
 
     BoxWithConstraints(
@@ -267,6 +275,7 @@ fun FxWindow(
                     modifier = Modifier.clickable {
                         bypassed = !bypassed
                         controller.setBypass(slot, bypassed)
+                        controller.save()
                     },
                 ) {
                     Box(Modifier.size(8.dp).clip(CircleShape).background(
@@ -299,11 +308,13 @@ fun FxWindow(
                                     onClick = {
                                         presetOpen = false
                                         presetName = preset.name
+                                        controller.presetNames[slot] = preset.name
                                         if (controller.applyPreset(slot, i)) {
                                             val copy = values.copyOf()
                                             preset.values.forEachIndexed { k, v -> if (k < copy.size) copy[k] = v }
                                             values = copy
                                         }
+                                        controller.save()
                                     },
                                 )
                             }
