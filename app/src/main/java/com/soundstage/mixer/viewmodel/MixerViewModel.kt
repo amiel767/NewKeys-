@@ -60,7 +60,6 @@ data class MixerUiState(
     val isScanningStorage: Boolean = false,
     
     // Loops Module
-    val isLoopsPanelOpen: Boolean = false,
     val isLoopPlaying: Boolean = false,
     val loopVolume: Float = 0.75f,
     val selectedBeatCount: Int = 0,
@@ -1264,7 +1263,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleMidiPanel() {
-        _uiState.update { it.copy(isMidiPanelOpen = !it.isMidiPanelOpen, isLoopsPanelOpen = false, isMetroPanelOpen = false) }
+        _uiState.update { it.copy(isMidiPanelOpen = !it.isMidiPanelOpen, isMetroPanelOpen = false) }
     }
 
     fun closeMidiPanel() {
@@ -1317,27 +1316,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             val parent = java.io.File(current).parentFile?.absolutePath ?: baseLoops
             navigateToLoopDirectory(parent)
         }
-    }
-
-    fun openLoopsDialog() {
-        openPopup(ActivePopup.LOOPS)
-    }
-
-    fun closeLoopsDialog() {
-        closePopup()
-        _uiState.update { it.copy(editingLoopFile = null) }
-    }
-
-    fun toggleLoopsPanel() {
-        // Open the full modal popup for LOOPS
-        openPopup(ActivePopup.LOOPS)
-    }
-
-    fun closeLoopsPanel() {
-        if (_uiState.value.activePopup == ActivePopup.LOOPS) {
-            closePopup()
-        }
-        _uiState.update { it.copy(isLoopsPanelOpen = false, editingLoopFile = null) }
     }
 
     fun toggleLoopPlayPause() {
@@ -1970,7 +1948,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleMetroPanel() {
-        _uiState.update { it.copy(isMetroPanelOpen = !it.isMetroPanelOpen, isLoopsPanelOpen = false, isMidiPanelOpen = false) }
+        _uiState.update { it.copy(isMetroPanelOpen = !it.isMetroPanelOpen, isMidiPanelOpen = false) }
     }
 
     fun closeMetroPanel() {
@@ -2439,7 +2417,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             val tonicPinned = if (popup == ActivePopup.TONIC_PAD) (it.tonicPadWasPinned || it.isTonicPadPinned) else it.isTonicPadPinned
             it.copy(
                 activePopup = popup,
-                isLoopsPanelOpen = false,
                 isMetroPanelOpen = false,
                 isMidiPanelOpen = false,
                 isDrumPadPinned = drumPinned,

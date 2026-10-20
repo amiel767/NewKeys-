@@ -47,6 +47,7 @@ import com.soundstage.mixer.ui.components.drumpad.DpMetronomeOverlay
 import com.soundstage.mixer.ui.components.drumpad.DpNoteKey
 import com.soundstage.mixer.ui.components.drumpad.DpPad
 import com.soundstage.mixer.ui.components.drumpad.DpPadEditor
+import com.soundstage.mixer.model.ScenePreset
 import com.soundstage.mixer.ui.components.drumpad.DpPalette
 import com.soundstage.mixer.ui.components.drumpad.DpSeg
 import com.soundstage.mixer.ui.components.drumpad.DpTopBar
@@ -439,7 +440,9 @@ fun DrumPadScreen(
                 pad = pad,
                 color = DpPalette.at((pad.id - 1).coerceAtLeast(0)),
                 onChange = { updated ->
-                    // V1 : ne persiste pas, B7-1 câblera un setter VM dédié
+                    viewModel.updateDrumPadCustomization(
+                        updated.id, updated.label, updated.colorStyle, updated.isLoopMode
+                    )
                 },
                 onClear = {
                     viewModel.assignDrumSampleOrLoop(pad.id, "", "", isLoop = false)
@@ -467,7 +470,7 @@ fun DrumPadScreen(
             loops = uiState.realLoopFiles,
             kits = uiState.kits,
             activeKitName = activeKitName,
-            scenes = emptyList(),
+            scenes = uiState.scenes,
             onLoadKit = { name -> viewModel.loadKit(name) },
             onDeleteKit = { name -> viewModel.deleteKit(name) },
             onSaveCurrentAsKit = { name -> viewModel.saveCurrentPadsAsKit(name) },
@@ -478,7 +481,9 @@ fun DrumPadScreen(
                 viewModel.assignDrumSampleOrLoop(padIndex, loop.name, loop.path, isLoop = true)
             },
             onImportFiles = onImportFiles,
-            onLoadScene = { /* V1 stub */ },
+            onLoadScene = { scene ->
+                (scene as? ScenePreset)?.let { viewModel.selectScene(it.name) }
+            },
             onClose = { managerOpen = false }
         )
     }

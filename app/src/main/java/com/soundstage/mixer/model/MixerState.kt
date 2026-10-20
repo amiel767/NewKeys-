@@ -8,7 +8,7 @@ import com.soundstage.mixer.ui.theme.SoloAmber
 import com.soundstage.mixer.ui.components.VelocityConfig
 
 enum class ActivePopup {
-    NONE, DRUM_PAD, TONIC_PAD, NOTES, SCENE, EFFECTS, SOUNDFONT, STYLE, MIDI, LOOPS, TRACK_SETTINGS, VELOCITY_SETTINGS
+    NONE, DRUM_PAD, TONIC_PAD, NOTES, SCENE, EFFECTS, SOUNDFONT, STYLE, MIDI, TRACK_SETTINGS, VELOCITY_SETTINGS
 }
 
 enum class AppScreenPage {

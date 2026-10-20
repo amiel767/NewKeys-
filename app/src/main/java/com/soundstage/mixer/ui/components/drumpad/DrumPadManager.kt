@@ -620,7 +620,7 @@ private fun ScenesContent(
                     Text("♫", color = DpColors.ACCENT, fontSize = 16.sp)
                 }
                 Text(
-                    "Scene ${idx + 1}",
+                    (scene as? com.soundstage.mixer.model.ScenePreset)?.name ?: "Scene ${idx + 1}",
                     color = Color(0xFFE9EDF5),
                     fontSize = 14.5.sp,
                     fontWeight = FontWeight.ExtraBold,

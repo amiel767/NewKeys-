@@ -556,7 +556,7 @@ private fun MixerMainPageContent(
                         viewModel.setKeyboardHeightFraction(uiState.keyboardHeightFraction + fractionDelta)
                     },
                     onGrabberClick = { viewModel.cycleKeyboardExpansion() },
-                    isSustainActive = uiState.isSustainActive,
+                    isSustainActive = uiState.isSustainActive || uiState.isMidiPedalPressed,
                     onToggleSustain = { viewModel.toggleSustain() },
                     pitchBend = uiState.pitchBend,
                     onPitchBendChange = { viewModel.setPitchBend(it) },
@@ -567,13 +567,12 @@ private fun MixerMainPageContent(
 
 
             // Outside touch scrim for quick closing of floating dropdowns
-            if (uiState.isLoopsPanelOpen || uiState.isMidiPanelOpen || uiState.activePopup == ActivePopup.SCENE) {
+            if (uiState.isMidiPanelOpen || uiState.activePopup == ActivePopup.SCENE) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(Color(0x22000000))
                         .clickable {
-                            if (uiState.isLoopsPanelOpen) viewModel.closeLoopsPanel()
                             if (uiState.isMidiPanelOpen) viewModel.closeMidiPanel()
                             if (uiState.activePopup == ActivePopup.SCENE) viewModel.closePopup()
                         }
@@ -994,48 +993,6 @@ fun MixerScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .zIndex(120f)
-                )
-            }
-            ActivePopup.LOOPS -> {
-                LoopsDialog(
-                    isOpen = true,
-                    onClose = { viewModel.closeLoopsDialog() },
-                    loopFolders = uiState.loopFolders,
-                    activeLoopFile = uiState.activeLoopFile,
-                    isLoopPlaying = uiState.isLoopPlaying,
-                    loopVolume = uiState.loopVolume,
-                    onLoopVolumeChange = { viewModel.setLoopVolume(it) },
-                    bpm = uiState.bpm,
-                    onUpdateBpm = { viewModel.setGlobalBpm(it) },
-                    selectedBeats = uiState.selectedBeatCount,
-                    onSelectBeats = { viewModel.selectBeatCount(it) },
-                    onToggleFolder = { viewModel.toggleLoopFolder(it) },
-                    onSelectFile = { viewModel.selectAndToggleLoopFile(it) },
-                    onDeleteFile = { viewModel.deleteLoopFile(it) },
-                    editingLoopFile = uiState.editingLoopFile,
-                    onOpenEditFile = { viewModel.openLoopEditor(it) },
-                    onCloseEditFile = { viewModel.closeLoopEditor() },
-                    onToggleEditorPlay = { viewModel.toggleLoopEditorPlayback() },
-                    editorBeats = uiState.loopEditorBeats,
-                    onUpdateEditorBeats = { viewModel.updateLoopEditorBeats(it) },
-                    editorStartMs = uiState.loopEditorStartMs,
-                    editorEndMs = uiState.loopEditorEndMs,
-                    onUpdateEditorTrims = { start, end -> viewModel.updateLoopEditorTrims(start, end) },
-                    editorStartStep = uiState.loopEditorStartStep,
-                    editorEndStep = uiState.loopEditorEndStep,
-                    onUpdateEditorSteps = { start, end -> viewModel.updateLoopEditorSteps(start, end) },
-                    onOverwriteEditChanges = { beats, start, end, sStep, eStep ->
-                        viewModel.overwriteLoopFile(beats, start, end, sStep, eStep)
-                    },
-                    onSaveCopyEditChanges = { beats, start, end, sStep, eStep ->
-                        viewModel.saveCopyLoopFile(beats, start, end, sStep, eStep)
-                    },
-                    onRenameFile = { file, newName ->
-                        viewModel.renameLoopFile(file, newName)
-                    },
-                    onImportLoop = { loopPickerLauncher.launch(arrayOf("audio/*", "*/*")) },
-                    lastPath = uiState.lastLoopsPath,
-                    onUpdateLastPath = { viewModel.updateLastLoopsPath(it) }
                 )
             }
             ActivePopup.TRACK_SETTINGS -> {

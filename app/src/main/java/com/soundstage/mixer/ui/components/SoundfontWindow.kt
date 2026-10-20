@@ -1118,10 +1118,10 @@ private fun SfPresetRow(
                 translationY = (1f - enter.value) * 6.dp.toPx()
             }
             .sfTap(0.985f, onTap)
+            .shadow(4.dp, RowShape, spotColor = Color(0x99000000), ambientColor = Color(0x00000000))
             .clip(RowShape)
-            .background(if (active) Brush.linearGradient(listOf(Color.White.copy(alpha = 0.12f), Color.White.copy(alpha = 0.07f))) else Brush.linearGradient(listOf(Color.White.copy(alpha = 0.065f), Color.White.copy(alpha = 0.03f))))
-            .border(1.dp, if (active) white(0.17f) else white(0.06f), RowShape)
-            .topHairline(if (active) 0.14f else 0.07f)
+            .background(if (active) Color(0xFF1F2836) else Color(0xFF19212E))
+            .border(1.dp, if (active) white(0.15f) else white(0.09f), RowShape)
             .padding(start = 12.dp, end = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -1326,10 +1326,10 @@ private fun SfFileRow(
                     )
                 }
                 .sfTap(0.985f, onTap)
+                .shadow(4.dp, RowShape, spotColor = Color(0x99000000), ambientColor = Color(0x00000000))
                 .clip(RowShape)
-                .background(if (row.isLoaded) Brush.linearGradient(listOf(Color.White.copy(alpha = 0.12f), Color.White.copy(alpha = 0.07f))) else Brush.linearGradient(listOf(Color.White.copy(alpha = 0.065f), Color.White.copy(alpha = 0.03f))))
-                .border(1.dp, if (row.isLoaded) white(0.17f) else white(0.06f), RowShape)
-                .topHairline(if (row.isLoaded) 0.14f else 0.07f)
+                .background(if (row.isLoaded) Color(0xFF1F2836) else Color(0xFF19212E))
+                .border(1.dp, if (row.isLoaded) white(0.15f) else white(0.09f), RowShape)
                 .padding(start = 12.dp, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
