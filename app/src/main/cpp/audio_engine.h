@@ -11,6 +11,7 @@
 #include "soundfont_engine.h"
 #include "sample_playback_engine.h"
 #include "seamless_loop.h"
+#include "fx_mixer.h"
 #include <jni.h>
 #include <memory>
 #include <array>
@@ -846,6 +847,15 @@ private:
     // synth channel, which cannot be isolated in the shared synth bus.
     void applySurfaceFx(float *mixedBuf, const float *preDrumBuf, float *drumBuf,
                         int32_t numFrames, bool padsAudible);
+
+    // Æther FX path. Dormant unless setFxEnabled(true) is called from the control
+    // thread *before* the stream opens, so the default build is bit-identical to
+    // the legacy mix. When enabled it renders per-channel, runs each strip through
+    // FxMixer and skips the legacy master chain (which the FxMixer Master replaces).
+    void setFxEnabled(bool enabled) { mFxEnabled.store(enabled, std::memory_order_relaxed); }
+    bool isFxEnabled() const { return mFxEnabled.load(std::memory_order_relaxed); }
+    bool renderFxPath(float *outputBuffer, int32_t numFrames);
+
     bool openAndStartStream();
 
     std::shared_ptr<oboe::AudioStream> mStream;
@@ -890,6 +900,17 @@ private:
     // pushes a CC when the sheet actually moved.
     float mTonicCcReverb = -1.0f;
     float mTonicCcCutoff = -1.0f;
+
+    // ── Æther FX (dormant unless enabled before stream open) ──
+    aetherfx::FxMixer mFx;
+    std::atomic<bool> mFxEnabled{false};
+    // Interleaved channel scratch (L0,R0,L1,R1,...), the strip mono scratch and
+    // the accumulating master mix. All three are sized in openAndStartStream()
+    // (control thread) and mFx.prepare() is called there too, so the audio
+    // callback never allocates.
+    std::vector<float> mFxChannelBuffer;
+    std::vector<float> mFxStripBuffer;
+    std::vector<float> mFxMixBuffer;
 
     // Preserved parameters across stream reconnections (Jack plug/unplug, routing events)
     std::atomic<bool> mIsReconnecting{false};

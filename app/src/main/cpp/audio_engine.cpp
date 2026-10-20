@@ -105,6 +105,17 @@ bool AudioEngine::openAndStartStream() {
     int sampleRate = mStream->getSampleRate();
     mSampleRate = sampleRate;
 
+    // Size the Æther FX scratch on the control thread before the stream runs. The
+    // capacity is the max Oboe burst the stream can hand us; FxMixer gets the same
+    // number so its internal blocks are never reallocated mid-callback.
+    {
+        int capacity = std::max({burst * 4, reqBuffer, targetBuffer, 2048});
+        mFxChannelBuffer.assign(static_cast<size_t>(capacity) * 2 * 16, 0.0f);
+        mFxStripBuffer.assign(static_cast<size_t>(capacity) * 2, 0.0f);
+        mFxMixBuffer.assign(static_cast<size_t>(capacity) * 2, 0.0f);
+        mFx.prepare(sampleRate, capacity);
+    }
+
     LOGI("Audio stream opened: %d Hz, %d frames/burst, buffer set to %d frames (requested: %d).", 
         sampleRate, burst, targetBuffer, reqBuffer);
 
@@ -475,6 +486,55 @@ int AudioEngine::renderDirect(int16_t *outputBuffer16, int32_t numFrames) {
     return numFrames;
 }
 
+// Æther FX render path. Returns false when the FX path is off or its buffers are
+// not ready, so the caller falls back to the legacy mix unchanged.
+bool AudioEngine::renderFxPath(float *outputBuffer, int32_t numFrames) {
+    if (!mFxEnabled.load(std::memory_order_relaxed)) return false;
+    if (numFrames <= 0 || mFxChannelBuffer.empty() || mFxStripBuffer.empty() || mFxMixBuffer.empty()) return false;
+
+    const int channelCount = 10;  // 0..7 tracks, 8 Drum, 9 TonicPad
+    size_t channelSamples = static_cast<size_t>(numFrames) * 2 * channelCount;
+    size_t stripSamples = static_cast<size_t>(numFrames) * 2;
+    if (channelSamples > mFxChannelBuffer.size() || stripSamples > mFxStripBuffer.size()) {
+        std::fill(outputBuffer, outputBuffer + stripSamples, 0.0f);
+        return true;
+    }
+
+    // 1. Per-channel render of the soundfont engine.
+    if (!mSynthEngine.renderChannels(mFxChannelBuffer.data(), numFrames, channelCount)) {
+        return false;  // multi-channel not armed: let the caller use renderStereo
+    }
+
+    std::fill(mFxMixBuffer.begin(), mFxMixBuffer.begin() + stripSamples, 0.0f);
+
+    // 2. Each synth channel is a strip: a Source replaces the soundfont, every
+    //    strip then runs its own effect chain before being summed into the mix.
+    for (int s = 0; s < channelCount; ++s) {
+        const float *src = mFxChannelBuffer.data() + static_cast<size_t>(s) * 2;
+        float *strip = mFxStripBuffer.data();
+        if (mFx.soundfontPaused(s)) {
+            std::fill(strip, strip + stripSamples, 0.0f);
+        } else {
+            for (int i = 0; i < numFrames; ++i) {
+                strip[2 * i] = src[static_cast<size_t>(i) * 2 * channelCount];
+                strip[2 * i + 1] = src[static_cast<size_t>(i) * 2 * channelCount + 1];
+            }
+        }
+        mFx.processStrip(s, strip, numFrames);
+        for (size_t i = 0; i < stripSamples; ++i) mFxMixBuffer[i] += strip[i];
+    }
+
+    // 3. DrumPad sampler is strip 10.
+    mDrumSampler.renderStereo(mFxStripBuffer.data(), numFrames, false);
+    mFx.processStrip(10, mFxStripBuffer.data(), numFrames);
+    for (size_t i = 0; i < stripSamples; ++i) mFxMixBuffer[i] += mFxStripBuffer[i];
+
+    // 4. Master chain, then the single conversion to the stream format.
+    mFx.processMaster(mFxMixBuffer.data(), numFrames);
+    std::copy(mFxMixBuffer.begin(), mFxMixBuffer.begin() + stripSamples, outputBuffer);
+    return true;
+}
+
 oboe::DataCallbackResult AudioEngine::onAudioReady(
     oboe::AudioStream *audioStream,
     void *audioData,
@@ -507,6 +567,14 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
             mFloatRenderBuffer.resize(totalSamples, 0.0f);
         }
         float *floatBuf = mFloatRenderBuffer.data();
+
+        if (renderFxPath(floatBuf, numFrames)) {
+            for (size_t i = 0; i < totalSamples; ++i) {
+                float s = std::clamp(floatBuf[i], -1.0f, 1.0f);
+                outputBuffer16[i] = static_cast<int16_t>(s * 32767.0f);
+            }
+            return oboe::DataCallbackResult::Continue;
+        }
 
         // 1. Render unified 16-channel Soundfont engine (tracks 0..7, Drum 8, TonicPad 9)
         mSynthEngine.renderStereo(floatBuf, numFrames, false);
@@ -561,6 +629,10 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(
     } else {
         auto *outputBuffer = static_cast<float *>(audioData);
         size_t totalSamples = static_cast<size_t>(numFrames * 2);
+
+        if (renderFxPath(outputBuffer, numFrames)) {
+            return oboe::DataCallbackResult::Continue;
+        }
 
         // 1. Render unified 16-channel Soundfont engine (tracks 0..7, Drum 8, TonicPad 9)
         mSynthEngine.renderStereo(outputBuffer, numFrames, false);
