@@ -3,7 +3,9 @@ package com.soundstage.mixer.ui.fx
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -55,11 +57,13 @@ private val HeaderBg = Brush.linearGradient(listOf(Color(0x14FFFFFF), Color(0x08
  * 158x164 logical units; the scene is drawn at the preview's own mini scale
  * (card width / 825) and centred vertically.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FxCard(
     id: Int,
     selected: Boolean,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val info = remember(id) { FxRegistry.info(id) }
@@ -84,7 +88,7 @@ fun FxCard(
             .border(if (id >= 5 && selected) 1.dp else 1.dp,
                 if (id >= 5) Color(0x66E8C98A) else Color(0x12FFFFFF),
                 RoundedCornerShape(16.dp))
-            .clickable { onClick() }
+            .combinedClickable(onClick = { onClick() }, onLongClick = { onLongClick() })
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
@@ -143,6 +147,7 @@ fun FxRackStrip(
     controller: FxController,
     selectedSlot: Int?,
     onSelect: (Int) -> Unit,
+    onRemove: (Int) -> Unit,
     onAddInstrument: () -> Unit,
     onAddEffect: () -> Unit,
     onClose: () -> Unit,
@@ -180,7 +185,12 @@ fun FxRackStrip(
         ) {
             ids.forEachIndexed { slot, id ->
                 if (id >= 0) {
-                    FxCard(id = id, selected = selectedSlot == slot, onClick = { onSelect(slot) })
+                    FxCard(
+                        id = id,
+                        selected = selectedSlot == slot,
+                        onClick = { onSelect(slot) },
+                        onLongClick = { onRemove(slot) },
+                    )
                 }
             }
         }

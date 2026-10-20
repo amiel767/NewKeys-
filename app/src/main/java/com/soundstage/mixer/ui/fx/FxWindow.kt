@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -27,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -40,10 +42,35 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
+import kotlin.math.floor
+import kotlin.math.min
+import kotlin.math.pow
+import kotlin.math.roundToInt
+import kotlin.random.Random
 import com.soundstage.mixer.fx.FxController
 import com.soundstage.mixer.fx.FxRegistry
 
 private val Accent = Color(0xFFE6EAF3)
+
+/** Quantisation grid per effect, from the preview's STEP table (surprise me). */
+private val STEP: Map<Int, Map<Int, Int>> = mapOf(
+    9 to mapOf(0 to 4, 6 to 4),
+    10 to mapOf(6 to 3, 9 to 2, 10 to 2),
+    11 to mapOf(8 to 3),
+    12 to mapOf(3 to 5, 4 to 5),
+    14 to mapOf(11 to 4, 18 to 4, 19 to 4, 26 to 3),
+)
+
+/** Soundfont edit drawer, from the preview's ED table (shapers only, v1 mock). */
+private val EDIT_GROUPS: List<Pair<String, List<String>>> = listOf(
+    "ENVELOPE" to listOf("Attack", "Decay", "Sustain", "Release"),
+    "FILTER" to listOf("Cutoff", "Resonance"),
+    "TUNING" to listOf("Coarse", "Fine"),
+    "VELOCITY" to listOf("Curve"),
+    "VIBRATO" to listOf("Vib depth", "Vib rate"),
+    "KEY RANGE" to listOf("Key low", "Key high"),
+)
 
 /**
  * The Æther FX window: a single animated surface ported from
@@ -75,9 +102,66 @@ fun FxWindow(
     var presetName by remember(effectId, slot) { mutableStateOf(info.presets.firstOrNull()?.name ?: "Default") }
     var presetOpen by remember { mutableStateOf(false) }
     val scene = remember(effectId, slot) { FxSceneState() }
+    val scope = rememberCoroutineScope()
+    val locks = remember(effectId, slot) { mutableStateOf(emptySet<Int>()) }
+    var abA by remember(effectId, slot) { mutableStateOf<FloatArray?>(null) }
+    var abB by remember(effectId, slot) { mutableStateOf<FloatArray?>(null) }
+    var abCur by remember(effectId, slot) { mutableStateOf(0) }
+    var editOpen by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         while (true) withFrameNanos { t = (it / 1_000_000_000f) }
+    }
+
+    fun pushAll(v: FloatArray) {
+        for (i in v.indices) controller.setEffectParam(slot, i, v[i])
+    }
+
+    // A/B and Surprise me both move the knobs smoothly (420 ms in the preview).
+    fun tweenTo(target: FloatArray) {
+        val from = values.copyOf()
+        scope.launch {
+            val steps = 25
+            for (k in 1..steps) {
+                val u = k / steps.toFloat()
+                val e = 1f - (1f - u).pow(3)
+                val next = FloatArray(from.size) { i -> from[i] + (target[i] - from[i]) * e }
+                values = next
+                pushAll(next)
+                kotlinx.coroutines.delay(17)
+            }
+        }
+    }
+
+    fun surprise() {
+        val target = values.copyOf()
+        for (j in 0 until info.params.size - 1) {
+            if (j in locks.value) continue
+            if (effectId != 6) {
+                var value = 0.12f + Random.nextFloat() * 0.78f
+                val step = STEP[effectId]?.get(j)
+                if (step != null) value = (value * (step - 1)).roundToInt() / (step - 1).toFloat()
+                target[j] = value
+            } else if (j < 18) {
+                target[j] = (if (j == 2 || j == 11) 4f + Random.nextFloat() * 4f else Random.nextFloat() * 8f).roundToInt() / 8f
+            } else if (j < 22 || j == 23 || j == 24) {
+                target[j] = Random.nextFloat().roundToInt().toFloat()
+            } else if (j == 22) {
+                target[j] = floor(Random.nextFloat() * 6f) / 5f
+            } else if (j == 25) {
+                target[j] = if (Random.nextFloat() < 0.5f) 0.5f else 1f
+            } else {
+                target[j] = 0.15f + Random.nextFloat() * 0.7f
+            }
+        }
+        tweenTo(target)
+    }
+
+    fun abToggle() {
+        if (abA == null) { abA = values.copyOf(); abB = values.copyOf() }
+        if (abCur == 0) abA = values.copyOf() else abB = values.copyOf()
+        abCur = if (abCur == 0) 1 else 0
+        tweenTo(if (abCur == 0) abA!! else abB!!)
     }
 
     BoxWithConstraints(
@@ -103,6 +187,34 @@ fun FxWindow(
                 }
             }
 
+            if (editOpen) {
+                Column(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = (34f * scale).dp, end = (10f * scale).dp)
+                        .width(260.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xF01A2130))
+                        .border(1.dp, Color(0x1FFFFFFF), RoundedCornerShape(12.dp))
+                        .padding(12.dp),
+                ) {
+                    Text("Soundfont edit", color = Accent, fontSize = 11.sp,
+                        fontFamily = FxFonts.ui, fontWeight = FontWeight.Bold)
+                    Text("Applies to the soundfont of this track. No reload.",
+                        color = Color(0x99FFFFFF), fontSize = 10.sp, fontFamily = FxFonts.ui)
+                    Spacer(Modifier.height(8.dp))
+                    EDIT_GROUPS.forEach { (head, keys) ->
+                        Text(head, color = accent, fontSize = 9.sp,
+                            fontFamily = FxFonts.mono, fontWeight = FontWeight.Bold)
+                        keys.forEach { k ->
+                            Text(k, color = Color(0xFFB9C2D4), fontSize = 10.sp,
+                                fontFamily = FxFonts.ui)
+                        }
+                        Spacer(Modifier.height(6.dp))
+                    }
+                }
+            }
+
             // Knobs, positioned from the preview's AB() declarations.
             for (spec in knobsFor(effectId)) {
                 val p = info.params.getOrNull(spec.param)
@@ -114,8 +226,13 @@ fun FxWindow(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     if (p != null) {
-                        Text(p.name, color = Color(0xFFB9C2D4), fontSize = (7.5f * scale).sp,
-                            fontFamily = FxFonts.mono, maxLines = 1)
+                        val locked = spec.param in locks.value
+                        Text(p.name, color = if (locked) accent else Color(0xFFB9C2D4),
+                            fontSize = (7.5f * scale).sp, fontFamily = FxFonts.mono, maxLines = 1,
+                            modifier = Modifier.clickable {
+                                locks.value = if (locked) locks.value - spec.param
+                                else locks.value + spec.param
+                            })
                     }
                     FxKnob(
                         value = values.getOrElse(spec.param) { 0f },
@@ -191,6 +308,28 @@ fun FxWindow(
                                 )
                             }
                         }
+                    }
+                    Spacer(Modifier.width(10.dp))
+                }
+                if (effectId >= 5) {
+                    Text("Surprise me", color = accent, fontSize = (10f * scale).sp,
+                        fontFamily = FxFonts.mono,
+                        modifier = Modifier.clip(RoundedCornerShape(6.dp))
+                            .background(Color(0x14FFFFFF)).clickable { surprise() }
+                            .padding(horizontal = 8.dp, vertical = 3.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (abCur == 0) "A" else "B", color = accent, fontSize = (10f * scale).sp,
+                        fontFamily = FxFonts.mono,
+                        modifier = Modifier.clip(RoundedCornerShape(6.dp))
+                            .background(Color(0x14FFFFFF)).clickable { abToggle() }
+                            .padding(horizontal = 10.dp, vertical = 3.dp))
+                    if (effectId in listOf(5, 7, 8, 9, 12)) {
+                        Spacer(Modifier.width(8.dp))
+                        Text("Edit", color = Color(0xFFB9C2D4), fontSize = (10f * scale).sp,
+                            fontFamily = FxFonts.mono,
+                            modifier = Modifier.clip(RoundedCornerShape(6.dp))
+                                .background(Color(0x14FFFFFF)).clickable { editOpen = !editOpen }
+                                .padding(horizontal = 8.dp, vertical = 3.dp))
                     }
                     Spacer(Modifier.width(10.dp))
                 }
