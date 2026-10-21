@@ -876,3 +876,47 @@ Commit `45c5632` sur `recovery/fx-window-shell` (poussé). `clean assembleDebug`
   `amp 24,2 %` (était 69 % au départ), `echo 41,9 %`. Reste au-dessus du seuil : l'écart
   résiduel est le rasterisage navigateur vs Compose/Skia, pas la mise en page.
 - **Reste** : intégrer `FxWindowHost` dans `MixerScreen` (toujours sans appelant hors test).
+
+## B8-1, 2e passe : géométrie corrigée et rail tranché (2026-10-21)
+
+Commit `d0be41d`. `clean assembleDebug` + `recordRoborazziDebug` OK (APK 42,6 Mo).
+
+### Géométrie de référence : 851x394, pas 825x343 ni 840x389
+Mesure sur les PNG : 1728x800 px a S = 2,031, donc **851x394** unités logiques.
+La bande de scene (`.bd`, classe `.xN`) fait **825x343 et est inseree a (13,42)**,
+pas en plein cadre. Ce (13,42) recoupe deux regles CSS : marge de page 12 px
+(`#win{left:12px}`) et header `.wh{height:42px}`. Le `BAND_Y` = 42 EST la hauteur
+du header, par construction.
+- Le test capturait 840x389 : le scale tombait a 0,987 et forçait un
+  reechantillonnage. Aligne sur 851x394 (scale = 1 exact).
+- **Un `Canvas` Compose ne clippe pas.** Les scenes remplissent depuis
+  `(-OXL,-OYL)`, ce qui debordait sur le header et les marges : c'est pourquoi le
+  brun couvrait tout. `clipToBounds()` sur la boite de bande corrige.
+  Gain mesure : amp 21,6 % -> **16,6 %** (c'etait 69 % au depart).
+
+### `rail()` : le brief et DeepSeek avaient tort
+- `RS` dans le preview n'a **aucune cle 10 (ampli) ni 11 (basse)**. Leurs fonctions
+  `amp()`/`bass()` n'appellent **pas** `rail()`. Leur « Level » est un knob normal
+  (`FxKnobBoxes`) et le panneau descend jusqu'en bas.
+- Ma condition `id >= 5` leur dessinait donc un rail en trop : d'ou le **double
+  LEVEL** (le knob a x=738 ET le slider en bas). Corrige par
+  `FxStyle.hasRail()` = ids 5,6,7,8,9,12,13,14.
+- L'ancien code passait `params.lastOrNull()` : faux. `rail(x, v[n], id)` prend un
+  indice **variable** selon l'instrument (piano v[8], orgue v[30], strings v[9],
+  guitar v[10], synth v[31]). Ajoute `FxStyle.railLevelIndex()`.
+- Preuve croisee : `ref-04-solar-ceiling.png` (un effet) reste beige jusqu'en bas ;
+  `ref-10-amp.png` est sombre en bas et le mot LEVEL est absent de `amp()`.
+
+### Modele de coordonnees des knobs
+Les boites de `FxKnobBoxes` sont en coordonnees **fenetre** (elles incluent l'origine
+du contenu) : Gain a x=68 alors que le canvas `.bd` commence a x=20. Les knobs sont
+places en `BAND_X + cx`, `BAND_Y + cy`. Le `withTransform` du canvas n'y touche pas,
+il est interne au DrawScope.
+
+### Reste
+- amp 16,6 %, echo 38,7 %. Repartition de l'ecart **uniforme** sur toutes les bandes
+  (24 a 77) : plus aucun decalage structurel, c'est du rendu (navigateur vs
+  Compose/Skia). Le seuil de 1,5 % de `compare_refs.py` est calibre pour deux rendus
+  du meme moteur et ne peut pas juger un portage inter-moteurs.
+- `FxWindowHost` n'a toujours aucun appelant dans l'app (test seulement).
+- `ref-10-amp-presets.png` est **corrompu** dans le paquet (131 Ko, tronque).
