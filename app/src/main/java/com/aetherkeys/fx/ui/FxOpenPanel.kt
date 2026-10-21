@@ -160,7 +160,7 @@ fun FxOpenPanel(
                 gradientIndex = SKN[module.id] ?: box.sk,
                 valueText = formatValue(module, spec.paramIndex, v),
                 style = KnobStyle.forEffect(module.id),
-                light = module.id in LIGHT_EFFECTS,
+                light = (SKN[module.id] ?: box.sk) in LIGHT_BODIES,
                 onChange = { onParam(spec.paramIndex, it) },
                 modifier = Modifier.offset(
                     x = cx.dp - diameter / 2f,
@@ -181,7 +181,14 @@ fun FxOpenPanel(
 private val SKN = mapOf(5 to 5, 6 to 6, 7 to 10, 8 to 11, 9 to 12, 10 to 7, 11 to 8, 12 to 13, 13 to 14, 14 to 9)
 
 /** Effects whose knob bodies are dark, from `LIGHT` in the reference. */
-private val LIGHT_EFFECTS = setOf(1, 3, 4, 8, 10, 11, 12, 13)
+/**
+ * `LIGHT=[1,3,4,8,10,11,12,13]` from the preview. It is an index into the cap
+ * materials `c0..c14`, NOT an effect id: the check is `LIGHT.includes(kk)` where
+ * `kk = SKN[i] ?? sk`. Testing the effect id instead made every knob of the guitar
+ * (id 9, kk 12) and of the bass (id 11, kk 8) dark when the reference draws them
+ * light.
+ */
+private val LIGHT_BODIES = setOf(1, 3, 4, 8, 10, 11, 12, 13)
 
 /** `.ph .nm`/`label` value readout: the reference prints the raw value plus unit. */
 private fun formatValue(module: EffectModule, index: Int, norm: Float): String {

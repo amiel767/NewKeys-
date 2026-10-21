@@ -79,6 +79,63 @@ class FxWindowCaptureTest {
         }
     }
 
+    /**
+     * One capture per effect, named after the reference file so the side-by-side
+     * compares like with like. `ref-XX-<tag>.png` in fx-screens-spec/references.
+     * One test per effect: `setContent` may only be called once per test.
+     */
+    private val tags = listOf(
+        0 to "space", 1 to "echo", 2 to "prism-tone", 3 to "iron-grip",
+        4 to "solar-ceiling", 5 to "piano", 6 to "organ", 7 to "sax",
+        8 to "strings", 9 to "guitar", 10 to "amp", 11 to "bass",
+        12 to "brass", 13 to "voices", 14 to "synth",
+    )
+
+    private fun captureEffect(id: Int, tag: String) = capture("fx_window_$tag") { store ->
+        store.addEffect(id)
+        store.openId = id
+    }
+
+
+    @Test
+    fun fx_window_space() = captureEffect(0, "space")
+
+    @Test
+    fun fx_window_prism_tone() = captureEffect(2, "prism-tone")
+
+    @Test
+    fun fx_window_iron_grip() = captureEffect(3, "iron-grip")
+
+    @Test
+    fun fx_window_solar_ceiling() = captureEffect(4, "solar-ceiling")
+
+    @Test
+    fun fx_window_piano() = captureEffect(5, "piano")
+
+    @Test
+    fun fx_window_organ() = captureEffect(6, "organ")
+
+    @Test
+    fun fx_window_sax() = captureEffect(7, "sax")
+
+    @Test
+    fun fx_window_strings() = captureEffect(8, "strings")
+
+    @Test
+    fun fx_window_guitar() = captureEffect(9, "guitar")
+
+    @Test
+    fun fx_window_bass() = captureEffect(11, "bass")
+
+    @Test
+    fun fx_window_brass() = captureEffect(12, "brass")
+
+    @Test
+    fun fx_window_voices() = captureEffect(13, "voices")
+
+    @Test
+    fun fx_window_synth() = captureEffect(14, "synth")
+
     @Test
     fun fx_window_rack() {
         capture("fx_window_rack") { store ->

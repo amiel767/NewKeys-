@@ -158,6 +158,9 @@ private fun DrawScope.drawKnob(value: Float, accent: Color, style: KnobStyle, kk
         size = Size(r * 1.84f, r * 0.80f),
     )
 
+    // `dark=LIGHT.includes(kk)`: the reference keys the dark bodies off the cap
+    // material index `kk`, not the effect id. Effect 9 (guitar) maps to kk 12 via
+    // SKN, which is not in LIGHT, so its pointer stays light.
     val dark = light || kk in DARK_BODIES
     val pointer = when {
         kk == 6 -> Color(0xFFF2EAD4)

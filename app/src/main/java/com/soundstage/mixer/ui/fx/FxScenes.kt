@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextMeasurer
@@ -218,11 +219,20 @@ internal val PANEL_BG: Map<Int, Color> = mapOf(
  * references; the accent overlay (`.x0`, `.x2`) is left to `bg()`.
  */
 internal val PANEL_BG_GRADIENT: Map<Int, Pair<Color, Color>> = mapOf(
-    0 to (Color(0xFF2B2C58) to Color(0xFF0F1120)),
+    // `.x0` is a flat #0f1120 under two radial washes; the washes live in `bg()`
+    // because a single Brush cannot stack a radial over a linear.
+    0 to (Color(0xFF0F1120) to Color(0xFF0F1120)),
     1 to (Color(0xFF41382A) to Color(0xFF1F1B14)),
     2 to (Color(0xFFC4182C) to Color(0xFF5A0A14)),
     3 to (Color(0xFF3F444D) to Color(0xFF23262C)),
     4 to (Color(0xFFEFE9DB) to Color(0xFFD6CDB9)),
+    // `.x5`/`.x6` are a flat #120a06.
+    5 to (Color(0xFF120A06) to Color(0xFF120A06)),
+    6 to (Color(0xFF120A06) to Color(0xFF120A06)),
+    // 7, 8 and 9 have no `.xN` rule at all, so they keep `#win`'s own gradient.
+    7 to (Color(0xFF1F2635) to Color(0xFF131925)),
+    8 to (Color(0xFF1F2635) to Color(0xFF131925)),
+    9 to (Color(0xFF1F2635) to Color(0xFF131925)),
     10 to (Color(0xFF0A0806) to Color(0xFF0A0806)),
     11 to (Color(0xFF0A0806) to Color(0xFF0A0806)),
     12 to (Color(0xFF0A0806) to Color(0xFF0A0806)),
@@ -248,47 +258,123 @@ fun fxPanelBrush(effectId: Int): Brush {
     else Brush.verticalGradient(listOf(Color(0xFF171C28), Color(0xFF0B0E16)))
 }
 
-private fun DrawScope.bg(effectId: Int, t: Float, accent: Color) {
+
+/**
+ * A CSS `radial-gradient(<rx> <ry> at <cx> <cy>, colour, transparent <stop>)`.
+ * Compose only has circular radial gradients, so the circle is drawn with radius
+ * [rx] inside a space scaled on Y by `ry/rx`: a circle of radius rx becomes an
+ * ellipse with radii (rx, ry). Skipping the scale made every wash reach too far
+ * sideways at mid-height (the reference ellipse is 110% wide but only 90% tall).
+ */
+private fun DrawScope.radialWash(
+    cx: Float, cy: Float, rx: Float, ry: Float, color: Color, stop: Float,
+) {
+    scale(1f, ry / rx, pivot = Offset(cx, cy)) {
+        drawCircle(
+            brush = Brush.radialGradient(
+                colorStops = arrayOf(0f to color, stop to color.copy(alpha = 0f),
+                    1f to color.copy(alpha = 0f)),
+                center = Offset(cx, cy),
+                radius = rx,
+            ),
+            radius = rx, center = Offset(cx, cy),
+        )
+    }
+}
+
+private fun DrawScope.bg(effectId: Int, v: FloatArray, t: Float, accent: Color) {
+    val X0 = -FxStyle.OXL
+    val Y0 = -FxStyle.OYL
     val w = FxStyle.PWL
     val h = FxStyle.PHL
-    val topLeft = Offset(-FxStyle.OXL, -FxStyle.OYL)
-    val size = Size(w, h)
-    // The `.xN` rule replaces the panel background outright. It is a vertical
-    // gradient, so the band goes from its top colour to its bottom one over the
-    // full height; a flat fill reads too dark next to the reference.
-    val grad = PANEL_BG_GRADIENT[effectId]
-    drawRect(
-        brush = if (grad != null) {
-            // Explicit span: the default endY resolves against the DrawScope size
-            // (the canvas in pixels), which stretched the ramp and left the band
-            // too light in its lower half.
-            Brush.verticalGradient(listOf(grad.first, grad.second),
-                startY = -FxStyle.OYL, endY = -FxStyle.OYL + h)
-        } else {
-            Brush.linearGradient(listOf(Color(0xFF171C28), Color(0xFF0B0E16)),
-                start = Offset(0f, -FxStyle.OYL), end = Offset(0f, h))
-        },
-        topLeft = topLeft, size = size,
-    )
-    // `.x1`: vertical hairline stripes over the base.
+
+    // `bg(i,x,t,v,a)` only draws for effects 0 and 1. Everything else is the `.xN`
+    // CSS rule on the canvas, which covers the whole window.
+    if (effectId == 0) {
+        radialWash(X0 + w * 0.12f, Y0, 1.10f * w, 0.90f * h, Color(0xFF2B2C58), 0.60f)
+        radialWash(X0 + w, Y0 + h, 0.90f * w, 0.70f * h, Color(0xFF1C3B4A), 0.55f)
+        // The four specks are CSS `radial-gradient(1.2px 1.2px at ...)` layers, not
+        // a starfield: exactly four, at fixed positions, never animated. The old
+        // loop drew 70 twinkling dots for every effect, which the reference has
+        // nowhere.
+        listOf(
+            0.12f to 0.22f to 1.2f, 0.58f to 0.12f to 1.0f,
+            0.86f to 0.40f to 1.4f, 0.38f to 0.80f to 1.0f,
+        ).forEach { (p, r) ->
+            drawCircle(Color(0xE6FFFFFF), radius = r, center = Offset(X0 + w * p.first, Y0 + h * p.second))
+        }
+        // `bg(0,...)`: a soft glow around the orb, driven by the damp and the mix.
+        // The reference is `hsla(268-v[3]*75,45%,30%,.18+.35*v[5])`: a dark, low
+        // saturation purple, not the screen accent. Using the accent at the same
+        // alpha washed the whole corner out, +12 per channel.
+        val mix = v.getOrElse(5) { 0f }
+        val damp = v.getOrElse(3) { 0f }
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(hsl(268f - damp * 75f, 0.45f, 0.30f).copy(alpha = 0.18f + 0.35f * mix),
+                    Color.Transparent),
+                center = Offset(389f, 114f),
+                radius = 520f,
+            ),
+            radius = 520f, center = Offset(389f, 114f),
+        )
+    }
+
     if (effectId == 1) {
-        var x = -FxStyle.OXL
-        while (x < -FxStyle.OXL + w) {
-            drawRect(Color(0x14FFFFFF), topLeft = Offset(x, -FxStyle.OYL), size = Size(1f, h))
+        // `.x1` base: `linear-gradient(#41382a,#1f1b14)` with hairline stripes.
+        drawRect(
+            brush = Brush.verticalGradient(listOf(Color(0xFF41382A), Color(0xFF1F1B14)), startY = Y0, endY = Y0 + h),
+            topLeft = Offset(X0, Y0), size = Size(w, h),
+        )
+        var x = X0
+        while (x < X0 + w) {
+            drawRect(Color(0x08FFFFFF), topLeft = Offset(x, Y0), size = Size(1f, h))
             x += 3f
         }
+        // `bg(1,...)`: four expanding rings and two wave lines.
+        val fb = 0.2f + 0.8f * v.getOrElse(8) { 0f }
+        for (k in 0 until 4) {
+            val u = (t * 0.22f + k / 4f) % 1f
+            drawCircle(accent.copy(alpha = (1f - u) * 0.2f * fb), radius = 20f + u * 640f,
+                center = Offset(95f, 80f), style = Stroke(width = 1.5f))
+        }
+        for (r in 0 until 2) {
+            val path = Path()
+            var q = X0
+            var first = true
+            while (q <= X0 + w) {
+                val y = (if (r == 1) Y0 + h - 22f else Y0 + 20f) +
+                    sin(q * 0.02f + t * (1f + v.getOrElse(10) { 0f } * 3f) + r * 2f) * (4f + v.getOrElse(10) { 0f } * 10f)
+                if (first) { path.moveTo(q, y); first = false } else path.lineTo(q, y)
+                q += 8f
+            }
+            drawPath(path, accent.copy(alpha = 0.18f), style = Stroke(width = 1f))
+        }
     }
-    for (q in 0 until 70) {
-        val a = 0.2f + 0.5f * abs(sin(t * 1.3f + q))
-        val x = -FxStyle.OXL + (sin(q * 91.7f) * 0.5f + 0.5f) * w
-        val y = -FxStyle.OYL + (sin(q * 47.3f) * 0.5f + 0.5f) * h
-        drawRect(Color.White.copy(alpha = a), topLeft = Offset(x, y), size = Size(1.2f, 1.2f))
+
+    if (effectId == 2) {
+        // The second `.x2` rule wins over the first: a 160deg three-stop ramp, with
+        // 1px vertical stripes on a 3px pitch over it. Drawn here rather than as the
+        // host brush because a Brush cannot stack a repeating pattern on a ramp.
+        drawRect(
+            brush = Brush.linearGradient(
+                listOf(Color(0xFFC4182C), Color(0xFF93111F), Color(0xFF5A0A14)),
+                start = Offset(X0, Y0), end = Offset(X0 + w * 0.34f, Y0 + h),
+            ),
+            topLeft = Offset(X0, Y0), size = Size(w, h),
+        )
+        var sx = X0
+        while (sx < X0 + w) {
+            drawRect(Color(0x07FFFFFF), topLeft = Offset(sx, Y0), size = Size(1f, h))
+            sx += 3f
+        }
+        radialWash(X0 + w * 0.18f, Y0 - 0.10f * h, 1.30f * w, 0.70f * h, Color(0xFFFF8A8A), 0.60f)
     }
-    drawCircle(
-        brush = Brush.radialGradient(listOf(accent.copy(alpha = 0.12f), Color.Transparent),
-            center = Offset(w * 0.5f, 100f), radius = 320f),
-        radius = 320f, center = Offset(w * 0.5f, 100f),
-    )
+
+    if (effectId == 3) {
+        // `.x3`: `box-shadow:inset 0 2px 0 #ffffff22`, a 2 px highlight along the top.
+        drawRect(Color(0x22FFFFFF), topLeft = Offset(X0, Y0), size = Size(w, 2f))
+    }
 }
 
 private fun DrawScope.sceneOrb(v: FloatArray, a: Color, t: Float) {
@@ -708,7 +794,7 @@ fun FxKnob(value: Float, accent: Color, default: Float, sizeDp: Float, onValue: 
 /** Draws the scene for [effectId] at the given animation time. */
 fun DrawScope.drawFxScene(effectId: Int, values: FloatArray, t: Float, tm: TextMeasurer, st: FxSceneState) {
     val accent = FxStyle.accent(effectId)
-    if (effectId in 0..4) bg(effectId, t, accent)
+    if (effectId in 0..4) bg(effectId, values, t, accent)
     when (effectId) {
         0 -> sceneOrb(values, accent, t)
         1 -> sceneEcho(values, accent, t)

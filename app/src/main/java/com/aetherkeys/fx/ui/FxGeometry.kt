@@ -165,16 +165,20 @@ data class ChipGroup(val label: String, val x: Float, val y: Float, val items: L
 private fun pick(p: Int, v: Float, vararg l: String) =
     l.mapIndexed { i, n -> ChipItem(n, p, v * i) }
 
+/** `SPG(p, html)`: a page of the synth screen, shown one at a time. */
+data class ChipPage(val page: Int, val groups: List<ChipGroup>)
+
 /**
- * `TG(i,label,x,y,items)` from the preview, in window coordinates. These are the
- * preset/section groups (CHANNEL, PEDALS, ADSR, CABINET, BODY, MUTE, SECTION,
- * PERCUSSION, ROTARY) that the reference shows above the knobs. Only the groups a
- * screen really displays are listed; every param stays in the registry regardless.
+ * `TG(i,label,x,y,items)` from the preview, in window coordinates. A `TG` label is
+ * never empty in the source except on the synth, where `TG(14,'',...)` marks a
+ * group that belongs to a page. Effects 5, 7, 8 and 13 have no `TG` call at all:
+ * their chips are ADSR handles drawn on the canvas by `HS`, not DOM groups.
+ *
+ * For 14, `SPG(p, ...)` wraps each page; the reference shows one page at a time and
+ * starts on page 0.
  */
 object FxChipGroups {
-        val byEffect: Map<Int, List<ChipGroup>> = mapOf(
-        5 to listOf(ChipGroup("ADSR", 150f, 252f, listOf(
-            ChipItem("ATT", 5), ChipItem("DEC", 6), ChipItem("SUS", 7)))),
+    val byEffect: Map<Int, List<ChipGroup>> = mapOf(
         6 to listOf(
             ChipGroup("PERCUSSION", 520f, 10f, listOf(
                 ChipItem("ON", 18), ChipItem("SOFT", 19), ChipItem("FAST", 20), ChipItem("3RD", 21))),
@@ -182,18 +186,12 @@ object FxChipGroups {
             ChipGroup("", 640f, 116f, listOf(ChipItem("LOWER", 24))),
             ChipGroup("ROTARY", 520f, 176f, listOf(
                 ChipItem("STOP", 25, 0f), ChipItem("SLOW", 25, 0.5f), ChipItem("FAST", 25, 1f))),
-            ChipGroup("ADSR", 150f, 252f, listOf(
-                ChipItem("ATT", 27), ChipItem("DEC", 28), ChipItem("SUS", 29)))),
-        7 to listOf(ChipGroup("ADSR", 150f, 252f, listOf(
-            ChipItem("ATT", 5), ChipItem("DEC", 6), ChipItem("SUS", 7)))),
-        8 to listOf(ChipGroup("ADSR", 150f, 252f, listOf(
-            ChipItem("ATT", 6), ChipItem("DEC", 7), ChipItem("SUS", 8)))),
+        ),
         9 to listOf(ChipGroup("BODY", 16f, 6f,
             pick(0, 0.333f, "ACOUSTIC", "NYLON", "ELEC DC", "ELEC SC"))),
         10 to listOf(
             ChipGroup("CHANNEL", 16f, 1f, pick(6, 0.5f, "CLEAN", "CRUNCH", "LEAD")),
-            ChipGroup("PEDALS", 560f, 1f, listOf(
-                ChipItem("BOOST", 9), ChipItem("TREM", 10)))),
+            ChipGroup("PEDALS", 560f, 1f, listOf(ChipItem("BOOST", 9), ChipItem("TREM", 10)))),
         11 to listOf(ChipGroup("CABINET", 16f, 134f, listOf(
             ChipItem("1\u00d715", 8, 0f), ChipItem("4\u00d710", 8, 0.5f), ChipItem("8\u00d710", 8, 1f)))),
         12 to listOf(
@@ -203,11 +201,19 @@ object FxChipGroups {
             ChipGroup("SECTION", 500f, 6f, listOf(
                 ChipItem("1", 3, 0f), ChipItem("2", 3, 0.25f), ChipItem("3", 3, 0.5f),
                 ChipItem("4", 3, 0.75f), ChipItem("5", 3, 1f))),
-            ChipGroup("ADSR", 150f, 252f, listOf(
-                ChipItem("ATT", 5), ChipItem("DEC", 6), ChipItem("SUS", 7)))),
-        13 to listOf(ChipGroup("ADSR", 150f, 252f, listOf(
-            ChipItem("ATT", 5), ChipItem("DEC", 6), ChipItem("SUS", 7)))),
-        14 to listOf(ChipGroup("ADSR", 150f, 252f, listOf(
-            ChipItem("ATT", 22), ChipItem("DEC", 23), ChipItem("SUS", 24)))),
-)
+        ),
+    )
+
+    /** The synth's three pages. Page 0 also carries the filter group at (586,120). */
+    val pages: Map<Int, List<ChipPage>> = mapOf(
+        14 to listOf(
+            ChipPage(0, listOf(
+                ChipGroup("", 586f, 120f, pick(11, 0.333f, "LP", "HP", "BP", "NOTCH")))),
+            ChipPage(1, listOf(
+                ChipGroup("", 14f, 178f, pick(18, 0.333f, "SIN", "TRI", "SAW", "SQR")),
+                ChipGroup("", 250f, 178f, pick(19, 0.333f, "CUTOFF", "PITCH", "WAVE", "LEVEL")))),
+            ChipPage(2, listOf(
+                ChipGroup("", 14f, 14f, pick(26, 0.5f, "POLY", "MONO", "LEGATO")))),
+        ),
+    )
 }

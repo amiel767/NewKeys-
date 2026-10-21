@@ -169,7 +169,7 @@ fun FxCard(
                         diameter = dia,
                         style = KnobStyle.forEffect(id),
                         gradientIndex = SKN[id] ?: id,
-                        light = id in MINI_LIGHT,
+                        light = (SKN[id] ?: id) in MINI_LIGHT,
                     )
                 }
                 if (n > shown) {
@@ -184,7 +184,7 @@ fun FxCard(
 /** `SKN` from the reference, used to pick the mini knobs' cap material. */
 private val SKN = mapOf(5 to 5, 6 to 6, 7 to 10, 8 to 11, 9 to 12, 10 to 7, 11 to 8, 12 to 13, 13 to 14, 14 to 9)
 
-/** `LIGHT=[1,3,4,8,10,11,12,13]`: dark knob bodies. */
+/** `LIGHT=[1,3,4,8,10,11,12,13]`: dark bodies, indexed by cap material `kk`. */
 private val MINI_LIGHT = setOf(1, 3, 4, 8, 10, 11, 12, 13)
 
 /** One pill button of the window header. */
