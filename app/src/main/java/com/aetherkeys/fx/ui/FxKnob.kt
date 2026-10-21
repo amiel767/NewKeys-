@@ -2,6 +2,8 @@ package com.aetherkeys.fx.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
@@ -80,10 +82,13 @@ fun FxKnob(
     modifier: Modifier = Modifier,
     gradientIndex: Int = 0,
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier) {
+    // `.kn` is a column with `label` first, so the name sits above the body and the
+    // readout below. Kept out of the flow here: a real column would push the body
+    // down by the label's height and break the `AB()` centre the geometry relies on.
+    Box(modifier = modifier.size(diameter)) {
         Canvas(
             modifier = Modifier
-                .size(diameter)
+                .matchParentSize()
                 .pointerInput(value) {
                     detectDragGestures { change, drag ->
                         change.consume()
@@ -93,10 +98,12 @@ fun FxKnob(
         ) {
             drawKnob(value, accent, style, gradientIndex, light)
         }
-        Text(label.uppercase(), fontSize = 9.sp, fontFamily = FxFonts.ui, fontWeight = FontWeight.Bold,
-            color = Color(0xFFE6EAF3).copy(alpha = 0.65f), maxLines = 1)
+        Text(label.uppercase(), fontSize = 9.sp, fontFamily = FxFonts.ui,
+            fontWeight = FontWeight.Bold, color = Color(0xFFE6EAF3).copy(alpha = 0.65f),
+            maxLines = 1, modifier = Modifier.align(Alignment.TopCenter).offset(y = (-13).dp))
         Text(valueText, fontSize = 11.sp, fontFamily = FxFonts.ui, fontWeight = FontWeight.Bold,
-            color = Color(0xFFE6EAF3), maxLines = 1)
+            color = Color(0xFFE6EAF3), maxLines = 1,
+            modifier = Modifier.align(Alignment.BottomCenter).offset(y = 10.dp))
     }
 }
 
