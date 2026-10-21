@@ -962,3 +962,11 @@ plein cadre + bande inseree, ce qui reproduit la reference.
 - Ecart **uniforme**, sans point chaud : scene 53/70, droite 45/54, header 34/28.
   Le header est la zone la *moins* fausse, ce qui confirme qu'il est correct.
 - Reste = rendu inter-moteurs (police, antialiasing des knobs), pas de structure.
+
+### Note d'environnement
+Les processus d'arriere-plan (serveur de telechargement `python3 -m http.server 12000`,
+builds Gradle) sont **perdus a chaque redemarrage du sandbox**. Si le lien de
+telechargement renvoie 502, relancer :
+`cd /workspace/dl && nohup python3 -m http.server 12000 --bind 0.0.0.0 &`
+PIL et numpy peuvent aussi disparaitre (l'interpreteur change) :
+`pip install pillow numpy`.
