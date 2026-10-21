@@ -100,6 +100,26 @@ fun FxKnob(
     }
 }
 
+/**
+ * A small, read-only knob for the rack cards: same body, arc and pointer as the
+ * full-size [FxKnob], without the drag handling or the label/value readouts. The
+ * reference's slot shows the effect's controls under the preview; this is that row.
+ */
+@Composable
+fun FxMiniKnob(
+    value: Float,
+    accent: Color,
+    diameter: Dp,
+    style: KnobStyle,
+    gradientIndex: Int,
+    light: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Canvas(modifier.size(diameter)) {
+        drawKnob(value, accent, style, gradientIndex, light)
+    }
+}
+
 private fun DrawScope.drawKnob(value: Float, accent: Color, style: KnobStyle, kk: Int, light: Boolean) {
     val c = Offset(size.width / 2f, size.height / 2f)
     val r = size.minDimension / 2f

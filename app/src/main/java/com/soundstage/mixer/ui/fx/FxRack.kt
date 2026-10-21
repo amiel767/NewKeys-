@@ -48,6 +48,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
+import com.aetherkeys.fx.ui.FxMiniKnob
+import com.aetherkeys.fx.ui.KnobStyle
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.soundstage.mixer.fx.FxController
@@ -97,22 +99,9 @@ fun FxCard(
             // 1px inner highlight along the top edge (`.cd` in the reference uses
             // `0 8px 16px #0008, inset 0 1px 0 #ffffff1c`). Selection is shown by
             // the shadow's accent tint instead of a border.
-            .shadow(
-                elevation = if (selected) 14.dp else 8.dp,
-                shape = RoundedCornerShape(16.dp),
-                ambientColor = if (selected) Color(0x66E8C98A) else Color.Black,
-                spotColor = if (selected) Color(0x66E8C98A) else Color.Black,
-            )
-            .clip(RoundedCornerShape(16.dp))
-            .background(CardBg)
-            .drawWithContent {
-                drawContent()
-                drawLine(
-                    brush = Brush.horizontalGradient(
-                        listOf(Color(0x00FFFFFF), Color(0x1CFFFFFF), Color(0x00FFFFFF))),
-                    start = Offset(0f, 0.5f), end = Offset(size.width, 0.5f), strokeWidth = 1f,
-                )
-            }
+            // Raised card, no outline: the lift is the shadow below plus the edge
+            // sheen, and selection deepens the shadow instead of adding a border.
+            .raised(16.dp, if (selected) 13.dp else 8.dp, CardBg)
             .combinedClickable(onClick = { onClick() }, onLongClick = { onLongClick() })
             .pointerInput(id) {
                 detectVerticalDragGestures(
@@ -151,28 +140,37 @@ fun FxCard(
                 }
             }
         }
-        Text("${info.params.size} knobs", color = Color(0xFF8D96AB), fontSize = 9.sp,
-            fontFamily = FxFonts.ui, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        // The slot shows the effect's controls under the preview, as small knobs.
+        // Capped so a 21-knob screen does not blow the card up; the tail is counted.
+        val shown = info.params.size.coerceAtMost(6)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.align(Alignment.CenterHorizontally),
+        ) {
+            repeat(shown) { i ->
+                FxMiniKnob(
+                    value = values.getOrElse(i) { 0f },
+                    accent = accent,
+                    diameter = 26.dp,
+                    style = KnobStyle.forEffect(id),
+                    gradientIndex = SKN[id] ?: id,
+                    light = id in MINI_LIGHT,
+                )
+            }
+            if (info.params.size > shown) {
+                Text("+${info.params.size - shown}", color = Color(0xFF8D96AB), fontSize = 9.sp,
+                    fontFamily = FxFonts.ui, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            }
+        }
     }
 }
 
-/**
- * The raised look shared by the rack's controls: a 1px sheen along the top edge and
- * a faint darker seam along the bottom. No outline — the lift comes from the drop
- * shadow applied before the clip, which is what stops the flat-bordered look.
- */
-private fun Modifier.raisedEdge(): Modifier = drawWithContent {
-    drawContent()
-    drawLine(
-        brush = Brush.horizontalGradient(
-            listOf(Color(0x00FFFFFF), Color(0x22FFFFFF), Color(0x00FFFFFF))),
-        start = Offset(0f, 0.5f), end = Offset(size.width, 0.5f), strokeWidth = 1f)
-    drawLine(
-        brush = Brush.horizontalGradient(
-            listOf(Color(0x00000000), Color(0x38000000), Color(0x00000000))),
-        start = Offset(0f, size.height - 0.5f), end = Offset(size.width, size.height - 0.5f),
-        strokeWidth = 1f, alpha = 0.6f)
-}
+/** `SKN` from the reference, used to pick the mini knobs' cap material. */
+private val SKN = mapOf(5 to 5, 6 to 6, 7 to 10, 8 to 11, 9 to 12, 10 to 7, 11 to 8, 12 to 13, 13 to 14, 14 to 9)
+
+/** `LIGHT=[1,3,4,8,10,11,12,13]`: dark knob bodies. */
+private val MINI_LIGHT = setOf(1, 3, 4, 8, 10, 11, 12, 13)
 
 /** One pill button of the window header. */
 @Composable
@@ -180,10 +178,7 @@ private fun HeaderButton(label: String, onClick: () -> Unit) {
     Box(
         Modifier
             .height(28.dp)
-            .shadow(3.dp, RoundedCornerShape(9.dp), ambientColor = Color.Black, spotColor = Color.Black)
-            .clip(RoundedCornerShape(9.dp))
-            .background(HeaderBg)
-            .raisedEdge()                                   // sheen on top, no outline
+            .raised(9.dp, 4.dp, HeaderBg)
             .clickable { onClick() }
             .padding(horizontal = 12.dp),
         contentAlignment = Alignment.Center,
@@ -361,11 +356,8 @@ fun FxAddPanel(
                         Box(
                             Modifier
                                 .width(180.dp)
-                                .shadow(4.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black, spotColor = Color.Black)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Brush.verticalGradient(
+                                .raised(10.dp, 5.dp, Brush.verticalGradient(
                                     listOf(Color(0x1AFFFFFF), Color(0x0DFFFFFF))))
-                                .raisedEdge()
                                 .clickable { onPick(fx.id) }
                                 .padding(10.dp),
                         ) {

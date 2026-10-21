@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.ui.fx.FxFonts
 import com.soundstage.mixer.ui.fx.FxStyle
+import com.soundstage.mixer.ui.fx.raised
 import com.soundstage.mixer.ui.fx.drawFxRail
 
 /**
@@ -232,23 +233,11 @@ private fun RaisedChip(
     Box(
         modifier = modifier
             .height(28.dp)
-            .shadow(
-                elevation = 3.dp,
-                shape = RoundedCornerShape(9.dp),
-                ambientColor = Color.Black,
-                spotColor = Color.Black,
-            )
-            .clip(RoundedCornerShape(9.dp))
-            .background(
+            .raised(
+                9.dp, 4.dp,
                 if (active) Brush.verticalGradient(listOf(Color(0xFFF2D58A), Color(0xFFE0BE6F)))
-                else Brush.verticalGradient(listOf(Color(0x1AFFFFFF), Color(0x0AFFFFFF))))
-            .border(1.dp, if (active) Color(0x00000000) else Color(0x12FFFFFF), RoundedCornerShape(9.dp))
-            .drawWithContent {
-                drawContent()
-                drawLine(
-                    color = Color(0x14FFFFFF), start = Offset(0f, 0.5f),
-                    end = Offset(size.width, 0.5f), strokeWidth = 1f)
-            }
+                else Brush.verticalGradient(listOf(Color(0x1AFFFFFF), Color(0x0AFFFFFF))),
+            )
             .clickable(onClick = onClick)
             .padding(horizontal = 11.dp),
         contentAlignment = Alignment.Center,
