@@ -66,6 +66,28 @@ object FxStyle {
     /** Rail material per instrument id, from `RS` in the preview. */
     data class Rail(val bgTop: Color, val bgBottom: Color, val line: Color, val tx: Color, val pattern: String)
 
+    /**
+     * True when the instrument draws the bottom rail. `RS` in the preview has no
+     * entry for 10 (amp) and 11 (bass): they carry a regular "Level" knob
+     * (FxKnobBoxes) and fill the panel to the bottom, so calling `rail()` for
+     * every id >= 5 drew a second, wrong LEVEL slider under those two.
+     */
+    fun hasRail(id: Int): Boolean = id == 5 || id == 6 || id == 7 || id == 8 ||
+        id == 9 || id == 12 || id == 13 || id == 14
+
+    /**
+     * Parameter index driven by the rail's LEVEL slider, from the
+     * `rail(x, v[n], id)` calls in the preview. It differs per instrument: the
+     * slider is not always the last parameter (piano uses v[8], organ v[30]…).
+     */
+    fun railLevelIndex(id: Int): Int = when (id) {
+        6 -> 30
+        8 -> 9
+        9 -> 10
+        14 -> 31
+        else -> 8
+    }
+
     fun rail(id: Int): Rail = when (id) {
         6 -> Rail(Color(0xFF4A2A16), Color(0xFF1A0D07), Color(0xFFD9C08A), Color(0xFFF3E6CC), "wood")
         7 -> Rail(Color(0xFF2A1810), Color(0xFF0E0806), Color(0xFFE0A45A), Color(0xFFF4E4D0), "copper")

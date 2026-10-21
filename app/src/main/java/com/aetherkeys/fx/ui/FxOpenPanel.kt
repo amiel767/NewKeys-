@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -38,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.ui.fx.FxFonts
+import com.soundstage.mixer.ui.fx.FxStyle
 import com.soundstage.mixer.ui.fx.drawFxRail
 
 /**
@@ -67,19 +69,29 @@ fun FxOpenPanel(
 ) {
     val clock = rememberFxClock(fullRate = true)
     Box(modifier = modifier.size(CANVAS_W.dp, CANVAS_H.dp)) {
-        // `.bd`: the scene canvas spans the whole 825x343 panel and paints its own
-        // background from (-OXL,-OYL) over PWL x PHL, exactly as the reference.
-        // The scenes are written in logical units where 1 unit = 1 dp, while a
-        // DrawScope works in pixels: the density factor converts one to the other.
-        // Without it the scene only fills the top-left 825x343 px of the canvas.
-        Canvas(Modifier.fillMaxSize()) {
-            val d = this.density
-            withTransform({ scale(d, d, pivot = Offset.Zero) }) {
-                with(module) { drawScene(params, clock.value, mini = false, tm = tm) }
-                // Instruments get the bottom rail (wood/steel/velvet…, with its
-                // LEVEL slider) from the existing `rail()`; the effects keep their
-                // own background all the way down, as ref-04-solar-ceiling.png shows.
-                if (module.id >= 5) drawFxRail(module.id, params.lastOrNull() ?: 0f, tm)
+        // `.bd` is the scene band: 825x343 at (13,42), not the whole window. The
+        // `.xN` background is painted there; the header and the bottom margin show
+        // `#ex`'s own #10141d, which the host draws.
+        Box(
+            Modifier
+                .offset(x = BAND_X.dp, y = BAND_Y.dp)
+                .size(BAND_W.dp, BAND_H.dp)
+                // A Canvas does not clip: the scenes fill from (-OXL,-OYL), which
+                // spills over the header and the margins. The reference band is
+                // bounded, so the spill has to be cut here.
+                .clipToBounds(),
+        ) {
+            Canvas(Modifier.fillMaxSize()) {
+                val d = this.density
+                withTransform({ scale(d, d, pivot = Offset.Zero) }) {
+                    with(module) { drawScene(params, clock.value, mini = false, tm = tm) }
+                    // Only the instruments that actually have one get the bottom rail.
+                    // The amp (10) and the bass (11) have no `RS` entry: their "Level"
+                    // is a regular knob and the panel runs to the bottom.
+                    if (FxStyle.hasRail(module.id)) {
+                        drawFxRail(module.id, params.getOrElse(FxStyle.railLevelIndex(module.id)) { 0f }, tm)
+                    }
+                }
             }
         }
 
@@ -133,7 +145,10 @@ fun FxOpenPanel(
                 style = KnobStyle.forEffect(module.id),
                 light = module.id in LIGHT_EFFECTS,
                 onChange = { onParam(spec.paramIndex, it) },
-                modifier = Modifier.offset(x = cx.dp - diameter / 2f, y = cy.dp - diameter / 2f),
+                modifier = Modifier.offset(
+                    x = (BAND_X + cx).dp - diameter / 2f,
+                    y = (BAND_Y + cy).dp - diameter / 2f,
+                ),
             )
         }
 

@@ -35,13 +35,22 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.ui.fx.FxFonts
-import com.soundstage.mixer.ui.fx.fxPanelBackground
 import kotlinx.coroutines.delay
 import kotlin.math.min
 
-/** Logical canvas of the window: the reference's `PWL` x `PHL`. */
-const val CANVAS_W = 825f
-const val CANVAS_H = 343f
+/**
+ * Logical window, measured on the references: 1728x800 px at S = 2.031, so
+ * 851x394. The scene band inside it is only 825x343, inset at (13, 42) — that
+ * inset also matches the 12 px page margin and the 42 px `.wh` header.
+ */
+const val CANVAS_W = 851f
+const val CANVAS_H = 394f
+
+/** `.bd`: the scene band, 825x343 — the reference's `PWL` x `PHL`. */
+const val BAND_X = 13f
+const val BAND_Y = 42f
+const val BAND_W = 825f
+const val BAND_H = 343f
 
 /**
  * The whole FX window, ported from `#win` in fx-window-preview.html.
@@ -66,7 +75,11 @@ fun FxWindowHost(store: FxShellStore, modifier: Modifier = Modifier) {
                 // With an effect open the reference's `.xN` rule paints #pan, which
                 // spans the whole window; the scene canvas then covers its top-left
                 // 825x343 and the background shows in the right/bottom bands.
-                if (store.openId != null) Brush.verticalGradient(listOf(fxPanelBackground(store.openId!!), fxPanelBackground(store.openId!!)))
+                // `#ex` sits over the whole window and its own background is
+                // `#10141d`; the scene canvas (`.bd`) paints the `.xN` colour only
+                // over the content box, so the header and the bottom margin keep
+                // #10141d in the reference too.
+                if (store.openId != null) Brush.verticalGradient(listOf(Color(0xFF10141D), Color(0xFF10141D)))
                 else Brush.verticalGradient(listOf(Color(0xFF1F2635), Color(0xFF131925))),
             )
             .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(20.dp)),
