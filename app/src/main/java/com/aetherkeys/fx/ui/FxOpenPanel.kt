@@ -288,12 +288,29 @@ private fun ChipGroupRow(group: ChipGroup, params: FloatArray, onSet: (Pair<Int,
     }
 }
 
-/** Preset chip + list (`#pm` / `#pml`), values only, never the surface. */
+/**
+ * Preset chip + list (`#pm` / `#pml`). `#pm` is its own dark surface —
+ * `linear-gradient(#ffffff18,#ffffff0a)` over `#0d1119`, a `#ffffff1a` border and a
+ * 10 px radius — not a `.bt` chip. Drawing it as a translucent chip made it vanish
+ * on the light panels (effect 4), where the reference shows a dark 176x28 bar.
+ */
 @Composable
 private fun PresetChip(current: String, presets: List<String>, onPick: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
-    Box {
-        SmallChip("$current ▾") { open = true }
+    Box(
+        Modifier
+            .width(176.dp)
+            .height(28.dp)
+            .raised(10.dp, 4.dp, Brush.verticalGradient(listOf(Color(0x18FFFFFF), Color(0x0AFFFFFF))))
+            .background(Color(0xFF0D1119), RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(10.dp))
+            .clickable { open = true }
+            .padding(horizontal = 11.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Text("$current ▾", fontSize = 10.sp, fontFamily = FxFonts.ui,
+            fontWeight = FontWeight.Bold, letterSpacing = (10 * 0.06f).sp,
+            color = Color(0xFFE6EAF3), maxLines = 1)
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             presets.forEach { p ->
                 DropdownMenuItem(text = { Text(p) }, onClick = { open = false; onPick(p) })
@@ -301,3 +318,8 @@ private fun PresetChip(current: String, presets: List<String>, onPick: (String) 
         }
     }
 }
+
+/**
+ * `.bt` chip: a low-contrast outline, a top-edge sheen and a short drop shadow so
+ * it reads as raised. The active state (`.chg i.a`) is the brass fill.
+ */
