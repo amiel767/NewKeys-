@@ -47,6 +47,7 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.unit.dp
 import com.aetherkeys.fx.ui.FxMiniKnob
 import com.aetherkeys.fx.ui.KnobStyle
@@ -121,13 +122,30 @@ fun FxCard(
             fontFamily = FxFonts.ui, fontWeight = FontWeight.Bold, maxLines = 1)
         Text(info.name, color = Color(0xFFDFE4EE), fontSize = 20.sp,
             fontFamily = FxFonts.title(id), maxLines = 1)
+        // The scene is 825x343, so on a 136-wide tile it only fills a thin band and
+        // leaves the rest empty. The void is filled with the effect's own colour and
+        // the controls sit at the bottom of the mini display, sized to the effect: a
+        // 4-knob screen gets big knobs, a 21-knob one small ones.
+        val n = info.params.size
+        val dia = when {
+            n <= 4 -> 34.dp
+            n <= 6 -> 27.dp
+            n <= 9 -> 21.dp
+            else -> 16.dp
+        }
+        val gap = 5.dp
+        val fit = (((136.dp - 10.dp) + gap) / (dia + gap)).toInt().coerceAtLeast(1)
+        val shown = n.coerceAtMost(fit)
         Box(
             Modifier
                 .align(Alignment.CenterHorizontally)
                 .width(136.dp)
                 .height(160.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFF12161F)),
+                .background(Brush.verticalGradient(listOf(
+                    Color(0xFF12161F),
+                    accent.copy(alpha = 0.30f).compositeOver(Color(0xFF12161F)),
+                ))),
         ) {
             Canvas(Modifier.fillMaxSize()) {
                 val s = size.width / FxStyle.PWL
@@ -139,28 +157,25 @@ fun FxCard(
                     drawFxScene(id, values, t, tm, scene)
                 }
             }
-        }
-        // The slot shows the effect's controls under the preview, as small knobs.
-        // Capped so a 21-knob screen does not blow the card up; the tail is counted.
-        val shown = info.params.size.coerceAtMost(6)
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.align(Alignment.CenterHorizontally),
-        ) {
-            repeat(shown) { i ->
-                FxMiniKnob(
-                    value = values.getOrElse(i) { 0f },
-                    accent = accent,
-                    diameter = 26.dp,
-                    style = KnobStyle.forEffect(id),
-                    gradientIndex = SKN[id] ?: id,
-                    light = id in MINI_LIGHT,
-                )
-            }
-            if (info.params.size > shown) {
-                Text("+${info.params.size - shown}", color = Color(0xFF8D96AB), fontSize = 9.sp,
-                    fontFamily = FxFonts.ui, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(gap),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp),
+            ) {
+                repeat(shown) { i ->
+                    FxMiniKnob(
+                        value = values.getOrElse(i) { 0f },
+                        accent = accent,
+                        diameter = dia,
+                        style = KnobStyle.forEffect(id),
+                        gradientIndex = SKN[id] ?: id,
+                        light = id in MINI_LIGHT,
+                    )
+                }
+                if (n > shown) {
+                    Text("+${n - shown}", color = Color(0xFF8D96AB), fontSize = 9.sp,
+                        fontFamily = FxFonts.ui, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                }
             }
         }
     }
