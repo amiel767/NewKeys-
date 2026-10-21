@@ -37,9 +37,9 @@ private class RecordingEngine : FxEngine {
 }
 
 /**
- * Captures the real FX window (window 840 x 389 logical, as measured on the
- * 1728 x 800 references at 2x) with the Amp (10) open, for a side-by-side with
- * `ref-10-amp.png`.
+ * Captures the real FX window on its fixed logical canvas (825 x 343, the
+ * reference's PWL/PHL) laid out on the 840 x 389 window measured on the
+ * 1728 x 800 references at 2x, for a side-by-side with `ref-NN-*.png`.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -54,18 +54,27 @@ class FxWindowCaptureTest {
         composeTestRule.mainClock.autoAdvance = false
         composeTestRule.setContent {
             Box(Modifier.size(840.dp, 389.dp).background(Color(0xFF0B0F17))) {
-                FxWindowHost(store = store, scale = 1f)
+                FxWindowHost(store = store)
             }
         }
         composeTestRule.mainClock.advanceTimeBy(1_500)
         composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/$name.png")
     }
 
+    /** `fx_layout_spec.json` order: Ampli (10), Maximizer (4), then the rest. */
     @Test
     fun fx_window_amp() {
         capture("fx_window_amp") { store ->
             store.addEffect(10)
             store.openId = 10
+        }
+    }
+
+    @Test
+    fun fx_window_echo() {
+        capture("fx_window_echo") { store ->
+            store.addEffect(1)
+            store.openId = 1
         }
     }
 

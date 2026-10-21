@@ -814,3 +814,37 @@ Le travail de la session précédente (fenêtre FX, coque `fx-shell-final.zip`) 
   (APK 42,6 Mo). Poussé sur `recovery/fx-window-shell`.
 - **Reste** : intégrer `FxWindowHost` dans `MixerScreen` (aucun appelant hors test),
   puis la validation appareil.
+
+## Session 2026-10-21 (reprise FX window · outillage)
+
+- **Spec de référence dépaquetée** : `app/assets/fx-screens-spec.zip` contient
+  `compare_refs.py`, `fx_layout_spec.json` (mesures par effet), `references/`
+  (33 PNG : `ref-NN-*.png` 2x, `ref-NN-*-presets.png`, `ref-tablet-*.png`) et
+  les deux briefs. `aether-fx-package.zip` contient les sources natives
+  (`fx_*.h`), `fx-window-preview.html` (147 Ko, LA source d'autorité citée par
+  `FxGeometry.kt`, `FxWindowHost.kt`, `FxScenes.kt`) et `gen_kotlin.cpp`.
+  Extraits dans `app/assets/fx-screens-spec/` et `app/assets/aether-fx-package/`
+  (gitignorés : les zips committés sont la source de vérité).
+- **`reference_source_fx_window.html` est VIDE (0 octet) dans le zip livré** —
+  défaut du paquet. L'équivalent réel est `fx-window-preview.html`. Ne pas
+  perdre de temps à chercher : il n'existe nulle part dans l'historique.
+- **Mesures réelles du panneau** : `fx_layout_spec.json` donne w=837,6 h=348,2
+  (pas 825×343). Les références sont en 1728×800 = 2x de 864×400. Le
+  `FxWindowCaptureTest` capture en 2310×1070 (densité 440 dpi) → normaliser
+  avant comparaison.
+- **Chaîne de comparaison complète** :
+  1. `./gradlew :app:recordRoborazziDebug --tests "...FxWindowCaptureTest" --no-daemon --max-workers=2`
+     → écrit `app/src/test/screenshots/fx_window_{amp,rack}.png`.
+     (`testDebugUnitTest` seul ne produit RIEN : il faut la tâche `recordRoborazziDebug`.)
+  2. `python3 tools/fxcompare/compare_scaled.py <capture.png> <reference.png>`
+     → même seuil que `compare_refs.py` (1,5 %, delta 24/255) mais redimensionne
+     d'abord (le script fourni exige des tailles strictement identiques).
+- **Baseline mesurée** : capture amp vs `ref-10-amp.png` = **17,52 %** d'écart
+  (FAIL, attendu : le rendu n'est pas encore aligné). C'est le point de départ
+  chiffré, plus une inconnue.
+- **Outillage installé** : `tools/jsxref` (npm, 89 paquets : react, esbuild,
+  puppeteer-core), Python PIL 13.0.0 + numpy 2.5.4, node v24.21.0 / npm 11.21.0.
+- **Bloqueur unique confirmé** (questionnaire §8.3) : le panneau est en
+  `fillMaxSize()` alors que sa géométrie interne est en repère 825×343 × `scale`
+  (= 1f au seul appelant). Il manque la boîte logique + un scale calculé une
+  seule fois à l'extérieur (patron déjà correct dans `FxWindow.kt:180-194`).

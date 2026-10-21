@@ -169,15 +169,56 @@ private fun DrawScope.label(tm: TextMeasurer, text: String, cx: Float, cy: Float
 // Scenes, ported 1:1 from the preview functions of the same name.
 // ---------------------------------------------------------------------------
 
-/** Shared full-window background (preview `bg()`), effects 0..4 only. */
-private fun DrawScope.bg(t: Float, accent: Color) {
+/**
+ * Per-effect panel background, from the `.xN` rules of `fx-window-preview.html`.
+ * The effects 0..4 are painted by `bg()`; the instruments (5..14) are painted by
+ * their own scene functions. `.x2` is declared twice in the reference (a slate
+ * grid at line 54, a red amp face at line 104) and the later rule wins in CSS:
+ * ref-02-prism-tone.png samples (180,26,43), so the red face is the one to keep.
+ */
+internal val PANEL_BG: Map<Int, Color> = mapOf(
+    0 to Color(0xFF0F1120),
+    1 to Color(0xFF1F1B14),
+    2 to Color(0xFF93111F),
+    3 to Color(0xFF23262C),
+    4 to Color(0xFFD6CDB9),
+    10 to Color(0xFF0A0806),
+    11 to Color(0xFF0A0806),
+    12 to Color(0xFF0A0806),
+    13 to Color(0xFF05040C),
+    14 to Color(0xFF04060C),
+)
+
+/** Base colour of the panel for [effectId], from its `.xN` rule; the shared
+ * gradient is the fallback. The scene canvas does not cover the whole window, so
+ * the host needs the same colour to paint the surrounding band. */
+fun fxPanelBackground(effectId: Int): Color = PANEL_BG[effectId] ?: Color(0xFF171C28)
+
+private fun DrawScope.bg(effectId: Int, t: Float, accent: Color) {
     val w = FxStyle.PWL
     val h = FxStyle.PHL
-    drawRect(
-        brush = Brush.linearGradient(listOf(Color(0xFF171C28), Color(0xFF0B0E16)),
-            start = Offset(0f, -FxStyle.OYL), end = Offset(0f, h)),
-        topLeft = Offset(-FxStyle.OXL, -FxStyle.OYL), size = Size(w, h),
-    )
+    val topLeft = Offset(-FxStyle.OXL, -FxStyle.OYL)
+    val size = Size(w, h)
+    // The `.xN` rule replaces the panel background outright, so the effect's own
+    // colour comes first and the shared gradient is only the fallback.
+    val base = PANEL_BG[effectId]
+    if (base != null) {
+        drawRect(base, topLeft = topLeft, size = size)
+    } else {
+        drawRect(
+            brush = Brush.linearGradient(listOf(Color(0xFF171C28), Color(0xFF0B0E16)),
+                start = Offset(0f, -FxStyle.OYL), end = Offset(0f, h)),
+            topLeft = topLeft, size = size,
+        )
+    }
+    // `.x1`: vertical hairline stripes over the base.
+    if (effectId == 1) {
+        var x = -FxStyle.OXL
+        while (x < -FxStyle.OXL + w) {
+            drawRect(Color(0x14FFFFFF), topLeft = Offset(x, -FxStyle.OYL), size = Size(1f, h))
+            x += 3f
+        }
+    }
     for (q in 0 until 70) {
         val a = 0.2f + 0.5f * abs(sin(t * 1.3f + q))
         val x = -FxStyle.OXL + (sin(q * 91.7f) * 0.5f + 0.5f) * w
@@ -608,7 +649,7 @@ fun FxKnob(value: Float, accent: Color, default: Float, sizeDp: Float, onValue: 
 /** Draws the scene for [effectId] at the given animation time. */
 fun DrawScope.drawFxScene(effectId: Int, values: FloatArray, t: Float, tm: TextMeasurer, st: FxSceneState) {
     val accent = FxStyle.accent(effectId)
-    if (effectId in 0..4) bg(t, accent)
+    if (effectId in 0..4) bg(effectId, t, accent)
     when (effectId) {
         0 -> sceneOrb(values, accent, t)
         1 -> sceneEcho(values, accent, t)

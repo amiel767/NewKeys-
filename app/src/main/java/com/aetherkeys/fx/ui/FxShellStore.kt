@@ -97,11 +97,18 @@ class FxShellStore(
         val v = valuesOf(id)
         if (preset.values.size != v.size) return refuse("Preset size mismatch")
         preset.values.forEachIndexed { i, x -> v[i] = x }
+        activePreset[key(strip, id)] = index
         val slot = slotsOf(strip).indexOf(id)
         if (slot >= 0) engine.applyPreset(strip, slot, index)
         pushAll(id)
         return true
     }
+
+    /** Name of the preset last applied to [id] on this strip, or null when none was. */
+    fun activePresetOf(id: Int): String? =
+        activePreset[key(strip, id)]?.let { FxRegistry.info(id).presets.getOrNull(it)?.name }
+
+    private val activePreset = HashMap<Long, Int>()
 
     /** A/B: first press stores the current state as A and copies it to B. Next presses swap. */
     fun toggleAB(id: Int) {

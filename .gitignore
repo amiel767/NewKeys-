@@ -16,3 +16,7 @@
 local.properties
 .env
 debug.keystore
+# Extracted from the committed zips (app/assets/*.zip); the zips are the source
+# of truth, so the extracted trees are working copies, not tracked content.
+/app/assets/fx-screens-spec/
+/app/assets/aether-fx-package/

@@ -1,0 +1,98 @@
+═══════════════════════════════════════════════════════════════════════════
+BRIEF B8-1 — REFONTE ARCHITECTURALE DE LA COQUE FX (COMPOSE)
+Objectif : Corriger le rendu catastrophique de la fenêtre FX.
+Méthode : Appliquer un canevas logique fixe de 825x343 dp avec un scale
+unique à l'extérieur. Supprimer la superposition Rack/Panneau.
+INTERDIT : Toucher à FxScenes.kt, FxControllerEngine.kt, ou au C++.
+═══════════════════════════════════════════════════════════════════════════
+
+RÈGLES GÉNÉRALES
+- L'agent exécute, ne propose pas d'alternatives.
+- Format commit imposé : [chantier] Titre — Fichiers — Compile: OK
+- Toujours vérifier ./gradlew :app:clean :app:assembleDebug avant de rendre.
+- Note les écarts et continue.
+
+═══════════════════════════════════════════════════════════════════════════
+ÉTAPE 0 — EXTRACTION (OBLIGATOIRE AVANT D'ÉCRIRE)
+═══════════════════════════════════════════════════════════════════════════
+Exécute ces commandes et colle les résultats pour t'adapter aux signatures
+réelles avant de modifier quoi que ce soit :
+grep -n "fun FxWindowHost" -A 60 app/src/main/java/com/aetherkeys/fx/ui/FxWindowHost.kt
+grep -n "fun FxOpenPanel" -A 80 app/src/main/java/com/aetherkeys/fx/ui/FxOpenPanel.kt
+
+═══════════════════════════════════════════════════════════════════════════
+ÉTAPE 1 — LE CANEVAS FIXE ET LE SCALE UNIQUE (FxWindowHost.kt)
+═══════════════════════════════════════════════════════════════════════════
+1.1 — Remplace le `Box` racine de `FxWindowHost` par un `BoxWithConstraints`.
+1.2 — Calcule le scale À L'EXTÉRIEUR :
+ val scale = min(maxWidth.value / 825f, maxHeight.value / 343f)
+1.3 — Crée un `Box` enfant de taille EXACTE : `.width(825.dp).height(343.dp)`.
+ Applique `.graphicsLayer(scaleX = scale, scaleY = scale)` sur ce Box.
+1.4 — SUPPRIME le paramètre `scale: Float` de la signature publique de
+ `FxWindowHost` (il n'est plus fourni de l'extérieur).
+1.5 — SUPPRIME le paramètre `scale` de la signature de `FxOpenPanel`.
+
+═══════════════════════════════════════════════════════════════════════════
+ÉTAPE 2 — LE XOR RACK / PANNEAU (FxWindowHost.kt)
+═══════════════════════════════════════════════════════════════════════════
+2.1 — Dans le canevas 825x343, applique cette logique :
+ if (store.openId == null) {
+ Column { Header(); Rack() }
+ } else {
+ val module = store.modules[store.openId]
+ if (module != null) {
+ FxOpenPanel(module = module, ...)
+ }
+ }
+2.2 — Supprime la superposition : le panneau ne doit PAS être dessiné
+ par-dessus le rack. Le rack disparaît entièrement quand un effet
+ est ouvert.
+
+═══════════════════════════════════════════════════════════════════════════
+ÉTAPE 3 — PURGE DU SCALE INTERNE (FxOpenPanel.kt)
+═══════════════════════════════════════════════════════════════════════════
+3.1 — Dans `FxOpenPanel`, SUPPRIME toutes les occurrences de `* s` ou `* scale`.
+ Les coordonnées sont désormais en dp absolus (1 px logique = 1 dp).
+ Exemple : `x = box.x.dp` au lieu de `x = (box.x * s).dp`.
+3.2 — Le `Box` racine de `FxOpenPanel` fait EXACTEMENT
+ `.width(825.dp).height(343.dp)` (plus de `fillMaxSize()`).
+3.3 — Supprime le `Color(0xFF10141D)` de fond du panneau. Le fond est géré
+ par la scène (drawScene) ou par un `bg()` dédié.
+
+═══════════════════════════════════════════════════════════════════════════
+ÉTAPE 4 — LA BOTTOM BAR (FxOpenPanel.kt)
+═══════════════════════════════════════════════════════════════════════════
+4.1 — Ajoute un `Box` à la position `y = 214.dp`, hauteur `71.dp`,
+ largeur `825.dp`, couleur `#1B1F2B`.
+4.2 — Dans ce Box, ajoute le slider LEVEL à `x = 540.dp`, `y = 252.dp`,
+ largeur `200.dp`.
+4.3 — Ce slider pilote `params[params.size - 1]` (le dernier paramètre).
+ Libellé : "LEVEL" pour les instruments (id >= 5), "OUTPUT" pour
+ les effets (id < 5).
+
+═══════════════════════════════════════════════════════════════════════════
+ÉTAPE 5 — LE FOND ET LES KNOBS (FxOpenPanel.kt)
+═══════════════════════════════════════════════════════════════════════════
+5.1 — Assure-toi que le Canvas de scène (qui appelle `drawScene`) couvre
+ tout le panneau de 0,0 à 825x343. La scène dessine son propre fond
+ (bg() dans FxScenes.kt).
+5.2 — Les knobs sont placés aux coordonnées exactes de `FxKnobBoxes`
+ (x, y, w, h en dp). Plus aucune multiplication.
+ La taille du knob est `diameter = box.w * 0.86f` (en dp).
+
+═══════════════════════════════════════════════════════════════════════════
+ÉTAPE 6 — COMPILATION ET VALIDATION
+═══════════════════════════════════════════════════════════════════════════
+6.1 — Lance : ./gradlew :app:clean :app:assembleDebug
+6.2 — Si ça compile, lance le test de capture sur Æther Echo (ID 1) :
+ ./gradlew :app:testDebugUnitTest --tests "com.soundstage.mixer.FxWindowCaptureTest" -Proborazzi.test.record=true
+6.3 — Rends le rapport :
+ - Statut build (OK/FAIL).
+ - Chemin de la capture générée (fx_window_echo.png ou similaire).
+ - Confirmation visuelle : le rack a-t-il disparu ? le panneau
+ fait-il 825x343 ? le slider LEVEL est-il visible en bas ?
+ - Écarts constatés par rapport à ref-01-echo.png (si tu as pu la voir).
+
+═══════════════════════════════════════════════════════════════════════════
+FIN DU BRIEF B8-1
+═══════════════════════════════════════════════════════════════════════════
