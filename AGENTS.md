@@ -1076,3 +1076,47 @@ deja les 15 gradients `c0..c14` du `<defs>`.
 J'ai encore cherche dans les pixels une information que le **code du preview
 declarait**. Avant toute mesure d'image : lire `AB()`, `SKN`, `KSH`, le CSS. Une
 heure de mesures ne vaut pas dix lignes de source.
+
+## B8-1, 6e passe : groupes de chips, lumiere, relief (2026-10-21)
+
+### Presets et groupes manquants
+Ils existaient dans le preview, je ne les dessinais pas. `TG(i,label,x,y,items)` cree
+les groupes `.chg` — l'equivalent de `AB()` pour les chips :
+```
+TG(10,'CHANNEL',16,6,[['CLEAN',6,'s',0],['CRUNCH',6,'s',.5],['LEAD',6,'s',1]])
+TG(10,'PEDALS',560,6,[['BOOST',9,'t'],['TREM',10,'t']])
+```
+Portes dans `FxChipGroups` (`FxGeometry.kt`), en coordonnees **contenu** : comme
+`AB()`, il faut ajouter `(OXL, OYL)`. Je les avais posees sans l'offset, les groupes
+tombaient 58 trop haut et le detecteur de knobs les prenait pour des knobs.
+Un item avec `value` est une position d'un param etage ; sans `value`, un interrupteur
+lu comme actif au-dessus de 0,5. Rendus par `ChipGroupRow` + `RaisedChip`.
+
+### « Mic 40 · 40 » retire
+Le preview le dessine (`tag(x,'MIC '+...,mx,my+24)`), c'est donc un port fidele — mais
+l'utilisateur le rejette : il encombrait le cabinet. Retire de `sceneAmp`. Les deux
+params `Mic pos` / `Mic dist` restent dans le registre.
+
+### Lumiere des knobs
+`drawHighlight` etait trop dur : alpha .4 sur un blanc deja opaque = un ovale peint.
+Le `hl` du preview est `#ffffffa8 -> transparent` avec `opacity:.5`, soit un voile.
+Baisse a .26, agrandi, plus un rebond bas tres faible (`0x1AFFFFFF`) pour que le
+chapeau reste dans sa jupe au lieu de flotter.
+
+### Relief des chips et du rack
+Regle demandee : **pas de contour**, relief + ombre dessous.
+- `RaisedChip` (chips du haut, `.bt` / `.chg i`) : `shadow(3dp)` + lisere clair 1 px
+  sur le bord superieur. Actif = remplissage laiton `#F2D58A` sur texte `#2A1A10`.
+- `FxRack.raisedEdge()` : meme lisere + une couture sombre en bas. Applique aux
+  boutons d'en-tete et aux tuiles du selecteur. Les 3 `border()` restants sont
+  volontaires (bord de fenetre, avertissement rouge, panneau SFW).
+
+### Etat
+- Ecart : amp **1,31 %**, echo **2,54 %**.
+- Ampli : knobs a 127 contre 128-130 en reference (calage a ~2 unites).
+- Echo : 3 knobs au pixel, le 4e (Mix) a y=262 contre 266.
+
+### Environnement
+Le lien de telechargement peut renvoyer la page 503 « Service Temporarily
+Unavailable » de all-hands.dev : c'est le service, pas le sandbox. Ne pas boucler
+dessus — le fichier est servi par le `http.server` local sur le port 12000.

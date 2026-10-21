@@ -192,14 +192,28 @@ private fun DrawScope.drawSkirt(c: Offset, r: Float, style: KnobStyle) {
         style = Stroke(width = w, pathEffect = PathEffect.dashPathEffect(dashes)))
 }
 
+/**
+ * Soft top-left sheen. The reference's `hl` gradient is `#ffffffa8 -> transparent`
+ * with `opacity:.5`, i.e. a gentle wash, not a hard blob; the old values (alpha
+ * .4 on an already-opaque white) read as a painted-on oval.
+ */
 private fun DrawScope.drawHighlight(c: Offset, r: Float) {
     drawOval(
         brush = Brush.radialGradient(
-            listOf(Color(0xE6FFFFFF), Color(0x00FFFFFF)),
-            center = Offset(c.x - r * 0.16f, c.y - r * 0.26f), radius = r * 0.5f),
-        topLeft = Offset(c.x - r * 0.46f, c.y - r * 0.40f),
-        size = Size(r * 0.60f, r * 0.28f),
-        alpha = 0.4f,
+            listOf(Color(0xB3FFFFFF), Color(0x00FFFFFF)),
+            center = Offset(c.x - r * 0.18f, c.y - r * 0.30f), radius = r * 0.62f),
+        topLeft = Offset(c.x - r * 0.54f, c.y - r * 0.50f),
+        size = Size(r * 0.70f, r * 0.34f),
+        alpha = 0.26f,
+    )
+    // Faint bottom bounce: keeps the cap inside its skirt instead of floating.
+    drawOval(
+        brush = Brush.radialGradient(
+            listOf(Color(0x1AFFFFFF), Color(0x00FFFFFF)),
+            center = Offset(c.x, c.y + r * 0.34f), radius = r * 0.44f),
+        topLeft = Offset(c.x - r * 0.46f, c.y + r * 0.06f),
+        size = Size(r * 0.92f, r * 0.44f),
+        alpha = 0.5f,
     )
 }
 

@@ -799,7 +799,9 @@ fun DrawScope.sceneAmp(v: FloatArray, a: Color, t: Float, tm: TextMeasurer, st: 
     drawPath(Path().apply { moveTo(mx, my); quadraticBezierTo(mx + 60f, my - 30f, 720f, 170f) },
         Color(0x40FFFFFF), style = Stroke(width = 1.2f))
     mic(mx, my, 10f)
-    tag(tm, "MIC ${(mpos * 100).roundToInt()} · ${(mdist * 100).roundToInt()}", mx, my + 24f)
+    // The reference draws `MIC x · y` here (a readout of the two mic params). It is
+    // dropped on request: the amp screen shows the Channel/Pedals groups instead,
+    // and the readout cluttered the cabinet. The params stay in the registry.
 }
 
 fun DrawScope.sceneBass(v: FloatArray, a: Color, t: Float, tm: TextMeasurer, st: FxSceneState) {

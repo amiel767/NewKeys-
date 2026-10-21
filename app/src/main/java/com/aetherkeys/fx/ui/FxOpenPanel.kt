@@ -28,6 +28,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -129,6 +131,14 @@ fun FxOpenPanel(
             }
         }
 
+        // `.chg` groups (`TG(i,label,x,y,items)` in the preview): the preset/section
+        // chips that sit above the knobs — CHANNEL + PEDALS for the amp, ADSR, BODY,
+        // CABINET, MUTE, PERCUSSION, ROTARY for the others. Positions are window
+        // coordinates, like the knob boxes.
+        FxChipGroups.byEffect[module.id].orEmpty().forEach { group ->
+            ChipGroupRow(group, params) { onParam(it.first, it.second) }
+        }
+
         // Knobs, at their boxes. `FxKnobBoxes` is already in window coordinates
         // (the preview's `AB()` centre + (OXL,OYL)), so nothing is added here.
         // `.kn.ab` is translate(-50%,-50%) on the box centre.
@@ -205,18 +215,80 @@ private fun BypassChip(bypassed: Boolean, onClick: () -> Unit) {
 /** `.ib`: height 28, radius 9, gradient #ffffff14 -> #ffffff08, 10 px bold. */
 @Composable
 private fun SmallChip(label: String, onClick: () -> Unit) {
+    RaisedChip(label, active = false, onClick = onClick)
+}
+
+/**
+ * `.bt` chip: a low-contrast outline, a top-edge sheen and a short drop shadow so
+ * it reads as raised. The active state (`.chg i.a`) is the brass fill.
+ */
+@Composable
+private fun RaisedChip(
+    label: String,
+    active: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .height(28.dp)
+            .shadow(
+                elevation = 3.dp,
+                shape = RoundedCornerShape(9.dp),
+                ambientColor = Color.Black,
+                spotColor = Color.Black,
+            )
             .clip(RoundedCornerShape(9.dp))
-            .background(Brush.verticalGradient(listOf(Color(0x14FFFFFF), Color(0x08FFFFFF))))
-            .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(9.dp))
+            .background(
+                if (active) Brush.verticalGradient(listOf(Color(0xFFF2D58A), Color(0xFFE0BE6F)))
+                else Brush.verticalGradient(listOf(Color(0x1AFFFFFF), Color(0x0AFFFFFF))))
+            .border(1.dp, if (active) Color(0x00000000) else Color(0x12FFFFFF), RoundedCornerShape(9.dp))
+            .drawWithContent {
+                drawContent()
+                drawLine(
+                    color = Color(0x14FFFFFF), start = Offset(0f, 0.5f),
+                    end = Offset(size.width, 0.5f), strokeWidth = 1f)
+            }
             .clickable(onClick = onClick)
             .padding(horizontal = 11.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, fontSize = 10.sp, fontFamily = FxFonts.ui, fontWeight = FontWeight.Bold,
-            letterSpacing = (10 * 0.06f).sp, color = Color(0xFFE6EAF3), maxLines = 1)
+        Text(label, fontSize = if (active) 10.sp else 10.sp, fontFamily = FxFonts.ui,
+            fontWeight = FontWeight.Bold, letterSpacing = (10 * 0.06f).sp,
+            color = if (active) Color(0xFF2A1A10) else Color(0xFFE6EAF3), maxLines = 1)
+    }
+}
+
+/**
+ * One `.chg` group: `.chg span` label (46 wide, brass) then `.chg i` options
+ * (padding 6x8, radius 7, `#00000066` fill, `#ffffff14` border, active `#f2d58a`
+ * on `#2a1a10`). An option with a `value` is one position of a stepped param; one
+ * without is a toggle read as "on" above 0.5.
+ */
+@Composable
+private fun ChipGroupRow(group: ChipGroup, params: FloatArray, onSet: (Pair<Int, Float>) -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            // `TG` positions are content coordinates, like `AB`; shift by the same
+            // (OXL, OYL) the scenes already carry.
+            .offset(x = (group.x + FxStyle.OXL).dp, y = (group.y + FxStyle.OYL).dp)
+            .padding(vertical = 2.dp),
+    ) {
+        if (group.label.isNotEmpty()) {
+            Text(group.label, fontSize = 8.sp, fontFamily = FxFonts.ui, fontWeight = FontWeight.Bold,
+                letterSpacing = (8 * 0.12f).sp, color = Color(0xFFC9B88F),
+                maxLines = 1, modifier = Modifier.width(46.dp))
+        }
+        group.items.forEach { item ->
+            val v = params.getOrElse(item.param) { 0f }
+            val on = if (item.value == null) v > 0.5f else kotlin.math.abs(v - item.value) < 0.01f
+            RaisedChip(
+                label = item.label,
+                active = on,
+                modifier = Modifier.padding(start = 4.dp),
+            ) { onSet(item.param to (item.value ?: if (v > 0.5f) 0f else 1f)) }
+        }
     }
 }
 

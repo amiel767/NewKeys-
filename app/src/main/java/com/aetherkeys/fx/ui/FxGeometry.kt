@@ -103,13 +103,13 @@ object FxKnobBoxes {
             KnobBox("Space", 429.0f, 289.0f, 42.0f, 42.0f, 9),
         ),
                         10 to listOf(
-            KnobBox("Gain", 67.0f, 121.0f, 46.0f, 46.0f, 4),
-            KnobBox("Bass", 147.0f, 121.0f, 46.0f, 46.0f, 1),
-            KnobBox("Mid", 227.0f, 121.0f, 46.0f, 46.0f, 4),
-            KnobBox("Treble", 307.0f, 121.0f, 46.0f, 46.0f, 1),
-            KnobBox("Presence", 387.0f, 121.0f, 46.0f, 46.0f, 4),
-            KnobBox("Master", 467.0f, 121.0f, 46.0f, 46.0f, 1),
-            KnobBox("Level", 727.0f, 121.0f, 46.0f, 46.0f, 4),
+            KnobBox("Gain", 67.0f, 117.0f, 46.0f, 46.0f, 4),
+            KnobBox("Bass", 147.0f, 117.0f, 46.0f, 46.0f, 1),
+            KnobBox("Mid", 227.0f, 117.0f, 46.0f, 46.0f, 4),
+            KnobBox("Treble", 307.0f, 117.0f, 46.0f, 46.0f, 1),
+            KnobBox("Presence", 387.0f, 117.0f, 46.0f, 46.0f, 4),
+            KnobBox("Master", 467.0f, 117.0f, 46.0f, 46.0f, 1),
+            KnobBox("Level", 727.0f, 117.0f, 46.0f, 46.0f, 4),
         ),
                         11 to listOf(
             KnobBox("Drive", 328.0f, 108.0f, 44.0f, 44.0f, 1),
@@ -154,4 +154,60 @@ object FxKnobBoxes {
             KnobBox("Macro 3", 298.0f, 140.0f, 44.0f, 44.0f, 4),
         ),
     )
+}
+
+/** One option inside a `.chg` group. [value] null means a toggle on [param]. */
+data class ChipItem(val label: String, val param: Int, val value: Float? = null)
+
+/** A `.chg` group: a label plus its options, at an absolute window position. */
+data class ChipGroup(val label: String, val x: Float, val y: Float, val items: List<ChipItem>)
+
+private fun pick(p: Int, v: Float, vararg l: String) =
+    l.mapIndexed { i, n -> ChipItem(n, p, v * i) }
+
+/**
+ * `TG(i,label,x,y,items)` from the preview, in window coordinates. These are the
+ * preset/section groups (CHANNEL, PEDALS, ADSR, CABINET, BODY, MUTE, SECTION,
+ * PERCUSSION, ROTARY) that the reference shows above the knobs. Only the groups a
+ * screen really displays are listed; every param stays in the registry regardless.
+ */
+object FxChipGroups {
+        val byEffect: Map<Int, List<ChipGroup>> = mapOf(
+        5 to listOf(ChipGroup("ADSR", 150f, 252f, listOf(
+            ChipItem("ATT", 5), ChipItem("DEC", 6), ChipItem("SUS", 7)))),
+        6 to listOf(
+            ChipGroup("PERCUSSION", 520f, 10f, listOf(
+                ChipItem("ON", 18), ChipItem("SOFT", 19), ChipItem("FAST", 20), ChipItem("3RD", 21))),
+            ChipGroup("", 640f, 84f, listOf(ChipItem("UPPER", 23))),
+            ChipGroup("", 640f, 116f, listOf(ChipItem("LOWER", 24))),
+            ChipGroup("ROTARY", 520f, 176f, listOf(
+                ChipItem("STOP", 25, 0f), ChipItem("SLOW", 25, 0.5f), ChipItem("FAST", 25, 1f))),
+            ChipGroup("ADSR", 150f, 252f, listOf(
+                ChipItem("ATT", 27), ChipItem("DEC", 28), ChipItem("SUS", 29)))),
+        7 to listOf(ChipGroup("ADSR", 150f, 252f, listOf(
+            ChipItem("ATT", 5), ChipItem("DEC", 6), ChipItem("SUS", 7)))),
+        8 to listOf(ChipGroup("ADSR", 150f, 252f, listOf(
+            ChipItem("ATT", 6), ChipItem("DEC", 7), ChipItem("SUS", 8)))),
+        9 to listOf(ChipGroup("BODY", 16f, 6f,
+            pick(0, 0.333f, "ACOUSTIC", "NYLON", "ELEC DC", "ELEC SC"))),
+        10 to listOf(
+            ChipGroup("CHANNEL", 16f, 6f, pick(6, 0.5f, "CLEAN", "CRUNCH", "LEAD")),
+            ChipGroup("PEDALS", 560f, 6f, listOf(
+                ChipItem("BOOST", 9), ChipItem("TREM", 10)))),
+        11 to listOf(ChipGroup("CABINET", 16f, 134f, listOf(
+            ChipItem("1\u00d715", 8, 0f), ChipItem("4\u00d710", 8, 0.5f), ChipItem("8\u00d710", 8, 1f)))),
+        12 to listOf(
+            ChipGroup("MUTE", 16f, 6f, listOf(
+                ChipItem("OPEN", 4, 0f), ChipItem("STRAIGHT", 4, 0.25f), ChipItem("CUP", 4, 0.5f),
+                ChipItem("HARMON", 4, 0.75f), ChipItem("PLUNGER", 4, 1f))),
+            ChipGroup("SECTION", 500f, 6f, listOf(
+                ChipItem("1", 3, 0f), ChipItem("2", 3, 0.25f), ChipItem("3", 3, 0.5f),
+                ChipItem("4", 3, 0.75f), ChipItem("5", 3, 1f))),
+            ChipGroup("ADSR", 150f, 252f, listOf(
+                ChipItem("ATT", 5), ChipItem("DEC", 6), ChipItem("SUS", 7)))),
+        13 to listOf(ChipGroup("ADSR", 150f, 252f, listOf(
+            ChipItem("ATT", 5), ChipItem("DEC", 6), ChipItem("SUS", 7)))),
+        14 to listOf(ChipGroup("ADSR", 150f, 252f, listOf(
+            ChipItem("ATT", 22), ChipItem("DEC", 23), ChipItem("SUS", 24)))),
+)
 }

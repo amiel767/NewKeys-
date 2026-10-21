@@ -156,15 +156,34 @@ fun FxCard(
     }
 }
 
+/**
+ * The raised look shared by the rack's controls: a 1px sheen along the top edge and
+ * a faint darker seam along the bottom. No outline — the lift comes from the drop
+ * shadow applied before the clip, which is what stops the flat-bordered look.
+ */
+private fun Modifier.raisedEdge(): Modifier = drawWithContent {
+    drawContent()
+    drawLine(
+        brush = Brush.horizontalGradient(
+            listOf(Color(0x00FFFFFF), Color(0x22FFFFFF), Color(0x00FFFFFF))),
+        start = Offset(0f, 0.5f), end = Offset(size.width, 0.5f), strokeWidth = 1f)
+    drawLine(
+        brush = Brush.horizontalGradient(
+            listOf(Color(0x00000000), Color(0x38000000), Color(0x00000000))),
+        start = Offset(0f, size.height - 0.5f), end = Offset(size.width, size.height - 0.5f),
+        strokeWidth = 1f, alpha = 0.6f)
+}
+
 /** One pill button of the window header. */
 @Composable
 private fun HeaderButton(label: String, onClick: () -> Unit) {
     Box(
         Modifier
             .height(28.dp)
+            .shadow(3.dp, RoundedCornerShape(9.dp), ambientColor = Color.Black, spotColor = Color.Black)
             .clip(RoundedCornerShape(9.dp))
             .background(HeaderBg)
-            .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(9.dp))
+            .raisedEdge()                                   // sheen on top, no outline
             .clickable { onClick() }
             .padding(horizontal = 12.dp),
         contentAlignment = Alignment.Center,
@@ -342,9 +361,11 @@ fun FxAddPanel(
                         Box(
                             Modifier
                                 .width(180.dp)
+                                .shadow(4.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black, spotColor = Color.Black)
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(Color(0x14FFFFFF))
-                                .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(10.dp))
+                                .background(Brush.verticalGradient(
+                                    listOf(Color(0x1AFFFFFF), Color(0x0DFFFFFF))))
+                                .raisedEdge()
                                 .clickable { onPick(fx.id) }
                                 .padding(10.dp),
                         ) {
