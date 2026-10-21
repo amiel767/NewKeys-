@@ -848,3 +848,31 @@ Le travail de la session précédente (fenêtre FX, coque `fx-shell-final.zip`) 
   `fillMaxSize()` alors que sa géométrie interne est en repère 825×343 × `scale`
   (= 1f au seul appelant). Il manque la boîte logique + un scale calculé une
   seule fois à l'extérieur (patron déjà correct dans `FxWindow.kt:180-194`).
+
+## Brief B8-1 exécuté (2026-10-21)
+
+Commit `45c5632` sur `recovery/fx-window-shell` (poussé). `clean assembleDebug` OK (APK 42,6 Mo).
+
+- **Géométrie retenue : 825×343**, pas 837,6×348,2. Le JSON mesure bien 837,6 mais tout le
+  système de scènes (`FxStyle.PWL/PHL`, rail `RW=PWL`, canvas mini `.cd` en 136×160) est
+  bâti sur 825×343. Un panneau à 837,6 laisserait une bande morte que les scènes ne
+  peignent pas. Décision documentée, écart signalé au demandeur.
+- **Cause racine du « rendu catastrophique »** : `FxOpenPanel` était en `fillMaxSize()` avec
+  la géométrie en 825×343 × `scale`(=1f). Corrigé par la boîte logique + le scale unique.
+- **Cause racine n°2, trouvée par la mesure** : un `DrawScope` travaille en **pixels**, or les
+  scènes sont écrites en unités logiques 1 unité = 1 dp. Sans `scale(density, density)` la
+  scène ne remplissait que le coin haut-gauche 825×343 **px** (≈30 % de la surface en 440 dpi).
+  C'est ce facteur, et non le canevas, qui produisait le rendu tronqué.
+- **Le canvas de scène est en (0,0)**, pas centré : le fond `.xN` de la référence couvre
+  toute la fenêtre et le canvas n'en occupe que le coin haut-gauche. Le host peint donc
+  `fxPanelBackground(id)` plein écran quand un effet est ouvert.
+- **`rail()` n'existe que pour les instruments (id ≥ 5)**. Preuve : `ref-04-solar-ceiling.png`
+  reste beige (lum 121→174) jusqu'en bas, alors que `ref-10-amp.png` est sombre en bas.
+  Le vrai `drawFxRail()` de `FxScenes.kt` est câblé dans le panneau ; ma barre maison
+  `#1B1F2B` faisait doublon avec une mauvaise couleur et a été supprimée.
+- **Conflit `.x2`** : la règle est déclarée deux fois (grille ardoise l.54, face rouge l.104).
+  La preuve `ref-02-prism-tone.png` = (180,26,43) tranche pour la face rouge.
+- **Baselines mesurées** (capture 2310×1070 → ref 1728×800, seuil 1,5 %) :
+  `amp 24,2 %` (était 69 % au départ), `echo 41,9 %`. Reste au-dessus du seuil : l'écart
+  résiduel est le rasterisage navigateur vs Compose/Skia, pas la mise en page.
+- **Reste** : intégrer `FxWindowHost` dans `MixerScreen` (toujours sans appelant hors test).
