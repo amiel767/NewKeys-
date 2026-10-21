@@ -40,7 +40,7 @@ class FxModule(private val effectId: Int) : EffectModule {
     override val knobs: List<FxKnobSpec> = knobsFor(effectId).map { s ->
         FxKnobSpec(
             label = info.params.getOrNull(s.param)?.name ?: "",
-            box = KnobBox(info.params.getOrNull(s.param)?.name ?: "", s.x, s.y, s.size, s.size),
+            box = KnobBox(info.params.getOrNull(s.param)?.name ?: "", s.x, s.y, s.size, s.size, effectId),
             paramIndex = s.param,
         )
     }

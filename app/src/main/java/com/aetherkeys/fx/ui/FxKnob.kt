@@ -118,6 +118,19 @@ private fun DrawScope.drawKnob(value: Float, accent: Color, style: KnobStyle, kk
             topLeft = Offset(c.x - ar, c.y - ar), size = Size(ar * 2, ar * 2))
     }
 
+    // `.kb{filter:drop-shadow(0 7px 7px #000a)}`: the body sits on a soft shadow.
+    // Drawn here rather than with `Modifier.shadow` so it also shows up in the
+    // Roborazzi capture, which does not render platform elevation.
+    drawOval(
+        brush = Brush.radialGradient(
+            colors = listOf(Color(0x7A000000), Color(0x00000000)),
+            center = Offset(c.x, c.y + r * 0.42f),
+            radius = r * 0.98f,
+        ),
+        topLeft = Offset(c.x - r * 0.92f, c.y + r * 0.10f),
+        size = Size(r * 1.84f, r * 0.80f),
+    )
+
     val dark = light || kk in DARK_BODIES
     val pointer = when {
         kk == 6 -> Color(0xFFF2EAD4)

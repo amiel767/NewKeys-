@@ -129,33 +129,45 @@ fun FxOpenPanel(
             }
         }
 
-        // Knobs, at their measured boxes. `.kn.ab` is translate(-50%,-50%) on the
-        // box centre, so the visual centre is box.x + box.w/2.
+        // Knobs, at their boxes. `FxKnobBoxes` is already in window coordinates
+        // (the preview's `AB()` centre + (OXL,OYL)), so nothing is added here.
+        // `.kn.ab` is translate(-50%,-50%) on the box centre.
         FxKnobBoxes.byEffect[module.id].orEmpty().forEachIndexed { i, box ->
             val spec = module.knobs.getOrNull(i) ?: return@forEachIndexed
             if (box.w <= 0f) return@forEachIndexed
             val v = params.getOrElse(spec.paramIndex) { 0f }
             val cx = box.x + box.w / 2f
             val cy = box.y + box.h / 2f
-            val diameter = (box.w * 0.86f).dp
+            // `AB(i,j,x,y,z)` passes the diameter z straight through; the old
+            // 0.86 factor shrank every knob by 13 % (amp 40 vs 46, echo 47 vs 56).
+            val diameter = box.w.dp
             FxKnob(
                 label = box.label,
                 value = v,
                 accent = module.accent,
                 diameter = diameter,
+                gradientIndex = SKN[module.id] ?: box.sk,
                 valueText = formatValue(module, spec.paramIndex, v),
                 style = KnobStyle.forEffect(module.id),
                 light = module.id in LIGHT_EFFECTS,
                 onChange = { onParam(spec.paramIndex, it) },
                 modifier = Modifier.offset(
-                    x = (SCENE_X + cx).dp - diameter / 2f,
-                    y = (SCENE_Y + cy).dp - diameter / 2f,
+                    x = cx.dp - diameter / 2f,
+                    y = cy.dp - diameter / 2f,
                 ),
             )
         }
 
     }
 }
+
+/**
+ * `SKN={5:5,6:6,7:10,8:11,9:12,10:7,11:8,12:13,13:14,14:9}`: the cap material per
+ * effect. In the preview `kk = SKN[i] !== undefined ? SKN[i] : sk`, so this wins
+ * over the per-knob `sk` from `AB()`. The amp, for instance, asks for 1/4 in its
+ * `AB()` calls but ends up on 7.
+ */
+private val SKN = mapOf(5 to 5, 6 to 6, 7 to 10, 8 to 11, 9 to 12, 10 to 7, 11 to 8, 12 to 13, 13 to 14, 14 to 9)
 
 /** Effects whose knob bodies are dark, from `LIGHT` in the reference. */
 private val LIGHT_EFFECTS = setOf(1, 3, 4, 8, 10, 11, 12, 13)

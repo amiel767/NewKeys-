@@ -1020,3 +1020,59 @@ mesurer les BORDS DU FOND, pas de comparer des medianes par rangee sur toute l'i
 ### Lecon
 Quand un rendu semble « decale », mesurer d'abord les BORDS du conteneur, pas les
 contenus. Un cadre faux produit exactement les symptomes d'un contenu mal place.
+
+## B8-1, 5e passe : geometrie et materiaux pris du preview (2026-10-21)
+
+Retour utilisateur : « les knobs de l'ampli sont trop bas et un peu plus petits »,
+« pour Echo les knobs devraient etre dores, relief 3D prononce, plus haut et plus
+grand ». Les deux etaient justes.
+
+### La source de verite, c'est le preview, pas mes mesures
+Le preview declare tout, au chiffre pres :
+```js
+AB(i,j,x,y,z,sk)   // centre (x,y) en coordonnees CONTENU, diametre z
+AB(10,j,70+j*80,86,46,j%2?1:4)   // ampli : y=86, d=46
+AB(1,8,650,70,56)  AB(1,9,735,70,56)  AB(1,10,692,188,56)  AB(1,11,95,205,52)
+const SKN={5:5,6:6,7:10,8:11,9:12,10:7,11:8,12:13,13:14,14:9}
+const KSH={6:'flute',10:'knurl',11:'chrome',13:'glass',14:'flat'}
+```
+`FxGeometry.kt` est desormais **genere depuis cette table** (script d'extraction) :
+centre fenetre = (x+OXL, y+OYL), boite = centre - z/2. J'ai verifie que les 14 effets
+ont le meme nombre de knobs dans `AB()` et dans les labels existants (4,4,5,6,3,4,3,
+9,3,7,4,3,6,21) — correspondance exacte.
+
+### Trois erreurs corrigees
+1. **Diametre** : je posais `box.w * 0.86`. Le preview passe z **plein**. Tous les
+   knobs etaient 13 % trop petits (amp 40 au lieu de 46, echo 47 au lieu de 56).
+2. **Double offset** : la nouvelle geometrie est en coordonnees **fenetre**, mais le
+   panneau ajoutait encore `SCENE_X/SCENE_Y`. Les knobs partaient 20/58 trop loin.
+   Symptome : aucun knob detecte aux abscisses attendues. Corrige en retirant
+   l'offset (le panneau place maintenant `cx.dp`, sans rien ajouter).
+3. **Rangree confondue** : j'avais lu `y=252` (celle du piano/organ/sax) pour
+   l'ampli. L'ampli est a `y=86`, **au-dessus** de la baffle. D'ou « trop bas ».
+
+### Materiaux
+`gradientIndex = SKN[id] ?: box.sk` — dans le preview `kk = SKN[i] !== undefined ?
+SKN[i] : sk`, donc `SKN` gagne. L'ampli demande 1/4 dans ses `AB()` mais finit sur
+**7** (gris fonce) ; l'echo n'est pas dans `SKN`, il garde donc `sk=1`, le **laiton**
+`c1 = #E3CC96 -> #8D7240 -> #EED9A6 -> #7A6234 -> #CDB27A`. `CAP_GRADIENTS` avait
+deja les 15 gradients `c0..c14` du `<defs>`.
+
+### Ajouts demandes
+- **Ombre sous les knobs** : `.kb{filter:drop-shadow(0 7px 7px #000a)}`. Dessinee en
+  Canvas (`drawOval` + `radialGradient`) et non via `Modifier.shadow`, parce que la
+  capture Roborazzi ne rend pas l'elevation de plateforme.
+- **Cartes du haut (`.cd`)** : contour retire, remplace par un relief sureleve
+  (`Modifier.shadow`, 8dp normal / 14dp selectionne, teinte accent) + un lisere clair
+  de 1 px sur le bord superieur (`inset 0 1px 0 #ffffff1c`). La selection se lit
+  desormais a la teinte de l'ombre, plus au contour.
+
+### Etat
+- Ecart fenetre a fenetre : amp **1,26 %**, echo **2,54 %**.
+- Echo : 3 knobs sur 4 tombent **au pixel** (112/112, 112/112, 230/231), le 4e a ~6.
+- Ampli : ~3 a 4 unites sous la reference — reste a affiner, l'ecart est constant.
+
+### Lecon (2e fois)
+J'ai encore cherche dans les pixels une information que le **code du preview
+declarait**. Avant toute mesure d'image : lire `AB()`, `SKN`, `KSH`, le CSS. Une
+heure de mesures ne vaut pas dix lignes de source.

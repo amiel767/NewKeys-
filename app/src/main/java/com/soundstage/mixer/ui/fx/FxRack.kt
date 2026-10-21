@@ -36,6 +36,8 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -91,11 +93,26 @@ fun FxCard(
             .zIndex(if (lifted) 20f else 0f)
             .offset(y = dragY.dp)
             .graphicsLayer { alpha = if (lifted) 0.92f else 1f }
+            // Raised card: no outline, the lift comes from the drop shadow and a
+            // 1px inner highlight along the top edge (`.cd` in the reference uses
+            // `0 8px 16px #0008, inset 0 1px 0 #ffffff1c`). Selection is shown by
+            // the shadow's accent tint instead of a border.
+            .shadow(
+                elevation = if (selected) 14.dp else 8.dp,
+                shape = RoundedCornerShape(16.dp),
+                ambientColor = if (selected) Color(0x66E8C98A) else Color.Black,
+                spotColor = if (selected) Color(0x66E8C98A) else Color.Black,
+            )
             .clip(RoundedCornerShape(16.dp))
             .background(CardBg)
-            .border(if (id >= 5 && selected) 1.dp else 1.dp,
-                if (id >= 5) Color(0x66E8C98A) else Color(0x12FFFFFF),
-                RoundedCornerShape(16.dp))
+            .drawWithContent {
+                drawContent()
+                drawLine(
+                    brush = Brush.horizontalGradient(
+                        listOf(Color(0x00FFFFFF), Color(0x1CFFFFFF), Color(0x00FFFFFF))),
+                    start = Offset(0f, 0.5f), end = Offset(size.width, 0.5f), strokeWidth = 1f,
+                )
+            }
             .combinedClickable(onClick = { onClick() }, onLongClick = { onLongClick() })
             .pointerInput(id) {
                 detectVerticalDragGestures(
