@@ -282,6 +282,29 @@ private fun DrawScope.radialWash(
     }
 }
 
+
+/**
+ * A CSS `linear-gradient(<deg>, ...)` over the box (x0, y0, w, h). CSS angles run
+ * clockwise from "to top", so the direction is `(sin a, -cos a)` and the line is
+ * `|w·sin a| + |h·cos a|` long. Hand-picking a start/end pair for 160deg put the
+ * ramp almost horizontal, which washed the header of effect 2 out.
+ */
+private fun cssLinearGradient(
+    x0: Float, y0: Float, w: Float, h: Float, deg: Float, colors: List<Color>,
+): Brush {
+    val a = Math.toRadians(deg.toDouble())
+    val dx = sin(a).toFloat()
+    val dy = -cos(a).toFloat()
+    val len = abs(w * dx) + abs(h * dy)
+    val cx = x0 + w / 2f
+    val cy = y0 + h / 2f
+    return Brush.linearGradient(
+        colors,
+        start = Offset(cx - dx * len / 2f, cy - dy * len / 2f),
+        end = Offset(cx + dx * len / 2f, cy + dy * len / 2f),
+    )
+}
+
 private fun DrawScope.bg(effectId: Int, v: FloatArray, t: Float, accent: Color) {
     val X0 = -FxStyle.OXL
     val Y0 = -FxStyle.OYL
@@ -357,10 +380,8 @@ private fun DrawScope.bg(effectId: Int, v: FloatArray, t: Float, accent: Color) 
         // 1px vertical stripes on a 3px pitch over it. Drawn here rather than as the
         // host brush because a Brush cannot stack a repeating pattern on a ramp.
         drawRect(
-            brush = Brush.linearGradient(
-                listOf(Color(0xFFC4182C), Color(0xFF93111F), Color(0xFF5A0A14)),
-                start = Offset(X0, Y0), end = Offset(X0 + w * 0.34f, Y0 + h),
-            ),
+            brush = cssLinearGradient(X0, Y0, w, h, 160f,
+                listOf(Color(0xFFC4182C), Color(0xFF93111F), Color(0xFF5A0A14))),
             topLeft = Offset(X0, Y0), size = Size(w, h),
         )
         var sx = X0
