@@ -920,3 +920,45 @@ il est interne au DrawScope.
   du meme moteur et ne peut pas juger un portage inter-moteurs.
 - `FxWindowHost` n'a toujours aucun appelant dans l'app (test seulement).
 - `ref-10-amp-presets.png` est **corrompu** dans le paquet (131 Ko, tronque).
+
+## B8-1, 3e passe : fond d'effet en degrade, chrome mesure (2026-10-21)
+
+Reponse a l'analyse DeepSeek (share/8bztzirywj195zbouv). Verdict : **un point juste,
+un point faux, un point juste mais pour une autre raison.**
+
+### DeepSeek a raison : le fond ne remplissait pas la bande
+Mon `PANEL_BG` etait une couleur **plate**. Or les regles `.xN` du CSS sont des
+**degrades** : `.x1` = `linear-gradient(#41382a,#1f1b14)`. Une couleur plate rendait
+la bande trop sombre et trop uniforme. Ajoute `PANEL_BG_GRADIENT` (haut/bas releves
+sur les references) et `bg()` l'utilise desormais.
+- Piege : `Brush.verticalGradient` sans bornes calcule `endY` sur la taille du
+  **DrawScope**, qui est le canvas en **pixels**, pas en unites logiques. Le degrade
+  etait donc etale sur 343*2,75 px au lieu de 343. Il faut `startY = -OYL`,
+  `endY = -OYL + h`. Gain : echo 46,4 % -> **35,7 %**.
+
+### DeepSeek a tort : le header n'herite PAS du fond de l'effet
+Elle deduit du CSS (`.ph` sans `background`, donc herite de `.pn`) que le header doit
+etre de la couleur de l'effet. Le rendu reel dit l'inverse. Mesure de la mediane par
+rangee sur trois references dont deux a fond clair :
+
+| px y | Solar Ceiling (fond beige) | Prism Tone (fond rouge) | Echo (fond brun) |
+|---|---|---|---|
+| 10-70 | `#0f1622` -> `#0b111d` | `#0f1622` -> `#0b111d` | `#0f1622` -> `#0b111d` |
+| 81+ | `#efe9db` beige | `#b22130` rouge | `#41382a` brun |
+
+Le header est **chrome bleu nuit identique pour les trois**, y compris Solar dont le
+fond est beige clair. Donc le header est **opaque**, pas transparent. Idem en bas :
+a y=392 la reference est `#06090e`, du chrome, pas la couleur d'effet.
+
+### Ce qui est vrai : la bande doit aller d'un bord a l'autre
+DeepSeek a raison que la bande etait trop etroite en x. Mais la bonne conclusion est
+que **`.pn` remplit tout et porte la couleur**, tandis que **`.bd` reste insere a
+(13,42)** en 825x343. J'ai d'abord essaye le plein cadre (faux : la reference a du
+chrome en haut ET en bas, et l'effet commence a y=41, pas y=0). Etat final : chrome
+plein cadre + bande inseree, ce qui reproduit la reference.
+
+### Etat
+- amp 16,6 %, echo **35,7 %** (etait 69 / 44 au depart).
+- Ecart **uniforme**, sans point chaud : scene 53/70, droite 45/54, header 34/28.
+  Le header est la zone la *moins* fausse, ce qui confirme qu'il est correct.
+- Reste = rendu inter-moteurs (police, antialiasing des knobs), pas de structure.

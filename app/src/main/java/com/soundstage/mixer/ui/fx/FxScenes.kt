@@ -211,28 +211,65 @@ internal val PANEL_BG: Map<Int, Color> = mapOf(
     14 to Color(0xFF04060C),
 )
 
+/**
+ * Panel background for [effectId] as the `.xN` rule declares it. Those rules are
+ * gradients, not flat colours — `.x1` is `linear-gradient(#41382a,#1f1b14)` — so a
+ * single colour renders too dark and flat. Top and bottom are sampled from the
+ * references; the accent overlay (`.x0`, `.x2`) is left to `bg()`.
+ */
+internal val PANEL_BG_GRADIENT: Map<Int, Pair<Color, Color>> = mapOf(
+    0 to (Color(0xFF2B2C58) to Color(0xFF0F1120)),
+    1 to (Color(0xFF41382A) to Color(0xFF1F1B14)),
+    2 to (Color(0xFFC4182C) to Color(0xFF5A0A14)),
+    3 to (Color(0xFF3F444D) to Color(0xFF23262C)),
+    4 to (Color(0xFFEFE9DB) to Color(0xFFD6CDB9)),
+    10 to (Color(0xFF0A0806) to Color(0xFF0A0806)),
+    11 to (Color(0xFF0A0806) to Color(0xFF0A0806)),
+    12 to (Color(0xFF0A0806) to Color(0xFF0A0806)),
+    13 to (Color(0xFF05040C) to Color(0xFF05040C)),
+    14 to (Color(0xFF04060C) to Color(0xFF04060C)),
+)
+
+/** Vertical gradient of the panel, or null for an unknown id (shared fallback). */
+fun fxPanelGradient(effectId: Int): Pair<Color, Color>? = PANEL_BG_GRADIENT[effectId]
+
 /** Base colour of the panel for [effectId], from its `.xN` rule; the shared
  * gradient is the fallback. The scene canvas does not cover the whole window, so
  * the host needs the same colour to paint the surrounding band. */
-fun fxPanelBackground(effectId: Int): Color = PANEL_BG[effectId] ?: Color(0xFF171C28)
+fun fxPanelBackground(effectId: Int): Color =
+    fxPanelGradient(effectId)?.first ?: Color(0xFF171C28)
+
+/** Panel background as a brush, used both by the host (whole window) and by the
+ * scene (`bg()`), so the two agree. */
+@Composable
+fun fxPanelBrush(effectId: Int): Brush {
+    val g = fxPanelGradient(effectId)
+    return if (g != null) Brush.verticalGradient(listOf(g.first, g.second))
+    else Brush.verticalGradient(listOf(Color(0xFF171C28), Color(0xFF0B0E16)))
+}
 
 private fun DrawScope.bg(effectId: Int, t: Float, accent: Color) {
     val w = FxStyle.PWL
     val h = FxStyle.PHL
     val topLeft = Offset(-FxStyle.OXL, -FxStyle.OYL)
     val size = Size(w, h)
-    // The `.xN` rule replaces the panel background outright, so the effect's own
-    // colour comes first and the shared gradient is only the fallback.
-    val base = PANEL_BG[effectId]
-    if (base != null) {
-        drawRect(base, topLeft = topLeft, size = size)
-    } else {
-        drawRect(
-            brush = Brush.linearGradient(listOf(Color(0xFF171C28), Color(0xFF0B0E16)),
-                start = Offset(0f, -FxStyle.OYL), end = Offset(0f, h)),
-            topLeft = topLeft, size = size,
-        )
-    }
+    // The `.xN` rule replaces the panel background outright. It is a vertical
+    // gradient, so the band goes from its top colour to its bottom one over the
+    // full height; a flat fill reads too dark next to the reference.
+    val grad = PANEL_BG_GRADIENT[effectId]
+    drawRect(
+        brush = if (grad != null) {
+            // Explicit span: the default endY resolves against the DrawScope size
+            // (the canvas in pixels), which stretched the ramp and left the band
+            // too light in its lower half.
+            Brush.verticalGradient(listOf(grad.first, grad.second),
+                startY = -FxStyle.OYL, endY = -FxStyle.OYL + h)
+        } else {
+            Brush.linearGradient(listOf(Color(0xFF171C28), Color(0xFF0B0E16)),
+                start = Offset(0f, -FxStyle.OYL), end = Offset(0f, h))
+        },
+        topLeft = topLeft, size = size,
+    )
     // `.x1`: vertical hairline stripes over the base.
     if (effectId == 1) {
         var x = -FxStyle.OXL

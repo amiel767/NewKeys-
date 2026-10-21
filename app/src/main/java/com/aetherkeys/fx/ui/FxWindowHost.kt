@@ -35,6 +35,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.ui.fx.FxFonts
+import com.soundstage.mixer.ui.fx.fxPanelBrush
 import kotlinx.coroutines.delay
 import kotlin.math.min
 
@@ -46,7 +47,11 @@ import kotlin.math.min
 const val CANVAS_W = 851f
 const val CANVAS_H = 394f
 
-/** `.bd`: the scene band, 825x343 — the reference's `PWL` x `PHL`. */
+/**
+ * `.bd`: the scene band, 825x343 at (13,42). `.pn` spans the whole window and
+ * carries the `.xN` colour, so the effect colour reaches the edges (x 0..851,
+ * measured) while the scene itself only occupies 13..838.
+ */
 const val BAND_X = 13f
 const val BAND_Y = 42f
 const val BAND_W = 825f
@@ -75,10 +80,10 @@ fun FxWindowHost(store: FxShellStore, modifier: Modifier = Modifier) {
                 // With an effect open the reference's `.xN` rule paints #pan, which
                 // spans the whole window; the scene canvas then covers its top-left
                 // 825x343 and the background shows in the right/bottom bands.
-                // `#ex` sits over the whole window and its own background is
-                // `#10141d`; the scene canvas (`.bd`) paints the `.xN` colour only
-                // over the content box, so the header and the bottom margin keep
-                // #10141d in the reference too.
+                // Window chrome. Measured: the effect colour spans y 41..384 and
+                // x 13..838 only — the header (top) and the 10px bottom margin stay
+                // dark chrome in every reference (y=392 is #06090e, not the effect
+                // colour). FxOpenPanel paints the effect gradient over the band.
                 if (store.openId != null) Brush.verticalGradient(listOf(Color(0xFF10141D), Color(0xFF10141D)))
                 else Brush.verticalGradient(listOf(Color(0xFF1F2635), Color(0xFF131925))),
             )

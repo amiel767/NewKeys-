@@ -69,9 +69,8 @@ fun FxOpenPanel(
 ) {
     val clock = rememberFxClock(fullRate = true)
     Box(modifier = modifier.size(CANVAS_W.dp, CANVAS_H.dp)) {
-        // `.bd` is the scene band: 825x343 at (13,42), not the whole window. The
-        // `.xN` background is painted there; the header and the bottom margin show
-        // `#ex`'s own #10141d, which the host draws.
+        // `.bd`: the scene band, 825x343 at (13,42). The host already painted the
+        // `.xN` colour over the whole window, so this band adds the scene on top.
         Box(
             Modifier
                 .offset(x = BAND_X.dp, y = BAND_Y.dp)
@@ -94,6 +93,16 @@ fun FxOpenPanel(
                 }
             }
         }
+
+        // `.ph`: the header keeps the window chrome. Measured on the references,
+        // #0f1622 -> #0b111d sits behind the title for every effect, including
+        // ref-04-solar-ceiling.png whose panel is light beige, so the header is
+        // opaque chrome rather than a see-through of the effect colour.
+        Box(
+            Modifier
+                .size(CANVAS_W.dp, 42.dp)
+                .background(Brush.verticalGradient(listOf(Color(0xFF0F1622), Color(0xFF0B111D)))),
+        )
 
         // `#cl`: close chip pinned at 12,12 (top-left), the `.ph` padding clears it.
         Box(Modifier.offset(x = 12.dp, y = 12.dp)) {
