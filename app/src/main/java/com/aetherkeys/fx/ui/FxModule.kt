@@ -16,7 +16,8 @@ import com.soundstage.mixer.ui.fx.knobsFor
  * port of the reference's per-effect drawing functions.
  */
 class FxModule(private val effectId: Int) : EffectModule {
-    private val info = FxRegistry.all[effectId]
+    // Same bound as FxRegistry.info(): an unknown id must never index all[id] and crash.
+    private val info = FxRegistry.all.getOrElse(effectId) { FxRegistry.all[0] }
 
     override val id = effectId
     override val name = info.name

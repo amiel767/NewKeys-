@@ -39,7 +39,7 @@ class FxShellStore(
 
     /** Current values of [id] on the current strip. Created from the registry defaults on first use. */
     fun valuesOf(id: Int): FloatArray = values.getOrPut(key(strip, id)) {
-        FxRegistry.all[id].params.map { it.default }.toFloatArray()
+        FxRegistry.info(id).params.map { it.default }.toFloatArray()
     }
 
     fun isBypassed(id: Int) = bypass[key(strip, id)] ?: false
@@ -93,7 +93,7 @@ class FxShellStore(
 
     /** Applies preset [index] from the registry: updates local values and tells the engine. */
     fun applyPreset(id: Int, index: Int): Boolean {
-        val preset = FxRegistry.all[id].presets.getOrNull(index) ?: return false
+        val preset = FxRegistry.info(id).presets.getOrNull(index) ?: return false
         val v = valuesOf(id)
         if (preset.values.size != v.size) return refuse("Preset size mismatch")
         preset.values.forEachIndexed { i, x -> v[i] = x }

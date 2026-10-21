@@ -140,7 +140,8 @@ private fun Header(store: FxShellStore, s: Float) {
             letterSpacing = (10 * s * 0.12f).sp,
             color = Color(0xFF8D96AB),
         )
-        Chip("Soundfont · Grand Piano ▾", s) {}
+        // Not yet wired to the mixer's soundfont window: say so instead of a silent no-op.
+        Chip("Soundfont · Grand Piano ▾", s) { store.notice = "Soundfont: open it from the mixer track" }
         Chip("+ Instrument", s) { store.addTab = FxAddTab.INSTRUMENT; store.addOpen = true }
         Chip("+ Effect", s) { store.addTab = FxAddTab.EFFECTS; store.addOpen = true }
     }
