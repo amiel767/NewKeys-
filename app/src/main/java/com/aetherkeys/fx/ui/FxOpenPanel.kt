@@ -118,7 +118,9 @@ fun FxOpenPanel(
             BypassChip(bypassed, onBypass)
             Spacer(Modifier.width(12.dp))
             Column {
-                Text(module.name, fontSize = 30.sp, fontFamily = FxFonts.title(module.id),
+                val style = NAME_STYLES[module.id] ?: NAME_STYLES.getValue(0)
+                Text(module.name, fontSize = style.first.sp, fontFamily = FxFonts.title(module.id),
+                    fontWeight = style.second, letterSpacing = style.third.sp,
                     color = Color(0xFFDFE4EE), maxLines = 1)
                 Text(module.type.uppercase(), fontSize = 9.sp, fontFamily = FxFonts.ui,
                     fontWeight = FontWeight.Bold, letterSpacing = (9 * 0.18f).sp,
@@ -219,6 +221,30 @@ private fun BypassChip(bypassed: Boolean, onClick: () -> Unit) {
             fontWeight = FontWeight.Bold, letterSpacing = (10 * 0.06f).sp, color = Color(0xFFE6EAF3))
     }
 }
+
+
+/**
+ * The preview's `TS` table: a per-effect override for the name line that beats the
+ * base `.nm{font-size:30px}`. Using 30 px everywhere made echo's name 253 px wide
+ * against 160 in the reference, and synth's far too large.
+ */
+private val NAME_STYLES: Map<Int, Triple<Int, FontWeight, Float>> = mapOf(
+    0 to Triple(28, FontWeight.Light, 0f),
+    1 to Triple(22, FontWeight.Medium, 0f),
+    2 to Triple(21, FontWeight.SemiBold, 21f * 0.04f),
+    3 to Triple(23, FontWeight.Normal, 0f),
+    4 to Triple(24, FontWeight.ExtraBold, 0f),
+    5 to Triple(24, FontWeight.Medium, 24f * 0.02f),
+    6 to Triple(24, FontWeight.Medium, 24f * 0.02f),
+    7 to Triple(24, FontWeight.Medium, 0f),
+    8 to Triple(26, FontWeight.Light, 0f),
+    9 to Triple(24, FontWeight.SemiBold, 0f),
+    10 to Triple(22, FontWeight.SemiBold, 22f * 0.06f),
+    11 to Triple(24, FontWeight.ExtraBold, 0f),
+    12 to Triple(24, FontWeight.SemiBold, 0f),
+    13 to Triple(26, FontWeight.Light, 0f),
+    14 to Triple(14, FontWeight.Bold, 14f * 0.03f),
+)
 
 /** `.ib`: height 28, radius 9, gradient #ffffff14 -> #ffffff08, 10 px bold. */
 @Composable

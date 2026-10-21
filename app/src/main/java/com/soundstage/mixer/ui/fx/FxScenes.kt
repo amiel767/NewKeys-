@@ -462,19 +462,26 @@ private fun DrawScope.sceneEcho(v: FloatArray, a: Color, t: Float) {
     val px0 = 190f; val pw = 400f; val py0 = 18f; val ph = 218f; val pb = py0 + ph
     val rr = 62f
     val sp = 1.7f - (v[0] + v[2] + v[4] + v[6]) / 4f * 1.3f
+    // The whole wheel — gradient disc, the six ports and the hub — is drawn inside
+    // the wheel's own rotation. Drawing the ports in a separate rotate block left
+    // them at absolute angles while the reference spins them with the disc, which
+    // was most of the 10.8/255 error on the wheel.
+    val wheelGrad = Brush.linearGradient(
+        colorStops = arrayOf(0f to Color(0xFFE8D2A0), 0.40f to Color(0xFF7D6335),
+            0.70f to Color(0xFFD9BF86), 1f to Color(0xFF5F4A28)),
+        start = Offset(95f - rr, 80f - rr), end = Offset(95f + rr, 80f + rr),
+    )
     rotate((t * sp + sin(t * 6f) * v[10] * 0.1f) * 57.29578f, pivot = Offset(95f, 80f)) {
-        drawCircle(brush = Brush.linearGradient(
-            listOf(Color(0xFFE8D2A0), Color(0xFF7D6335), Color(0xFFD9BF86), Color(0xFF5F4A28)),
-            start = Offset(95f - rr, 80f - rr), end = Offset(95f + rr, 80f + rr)),
-            radius = rr, center = Offset(95f, 80f))
-    }
-    for (k in 0 until 6) {
-        rotate(k * 60f, pivot = Offset(95f, 80f)) {
-            drawOval(Color(0xFF14110C), topLeft = Offset(95f + rr * 0.29f, 80f - rr * 0.17f),
-                size = Size(rr * 0.52f, rr * 0.34f))
+        drawCircle(brush = wheelGrad, radius = rr, center = Offset(95f, 80f))
+        for (k in 0 until 6) {
+            rotate(k * 60f, pivot = Offset(95f, 80f)) {
+                drawOval(Color(0xFF14110C), topLeft = Offset(95f + rr * 0.29f, 80f - rr * 0.17f),
+                    size = Size(rr * 0.52f, rr * 0.34f))
+            }
         }
+        // The hub reuses the disc gradient, not a flat dark fill.
+        drawCircle(brush = wheelGrad, radius = rr * 0.22f, center = Offset(95f, 80f))
     }
-    drawCircle(Color(0xFF14110C), radius = rr * 0.22f, center = Offset(95f, 80f))
     drawCircle(brush = Brush.radialGradient(listOf(Color(0x55FFFFFF), Color.Transparent),
         center = Offset(95f - rr * 0.4f, 80f - rr * 0.45f), radius = rr * 1.2f),
         radius = rr, center = Offset(95f, 80f))
