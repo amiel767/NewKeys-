@@ -80,14 +80,12 @@ fun FxOpenPanel(
         ) {
             Canvas(Modifier.fillMaxSize()) {
                 val d = this.density
-                // scale: logical unit -> pixel. translate: move the origin to the
-                // content origin, since the scenes are written in content-local
-                // coordinates and paint their background from (-OXL,-OYL), which
-                // this lands back exactly on the band.
-                withTransform({
-                    scale(d, d, pivot = Offset.Zero)
-                    translate(20f, 58f)
-                }) {
+                // Only the logical-unit -> pixel scale. The scenes already carry the
+                // (OXL, OYL) offset in their coordinates (`y0 = -OYL`), so they are
+                // drawn at the window origin and the background lands at (0,0).
+                // Adding translate(20,58) on top shifted everything down by 58 and
+                // inset the background, which is what truncated the bottom.
+                withTransform({ scale(d, d, pivot = Offset.Zero) }) {
                     with(module) { drawScene(params, clock.value, mini = false, tm = tm) }
                     // Only the instruments that actually have one get the bottom rail.
                     // The amp (10) and the bass (11) have no `RS` entry: their "Level"
