@@ -96,6 +96,33 @@ private val knobLayout: Map<Int, List<FxKnobSpec>> = buildMap {
     put(4, listOf(FxKnobSpec(0, 125f, 128f, 136f), FxKnobSpec(1, 262f, 78f, 76f),
                   FxKnobSpec(2, 262f, 196f, 50f), FxKnobSpec(3, 340f, 196f, 50f),
                   FxKnobSpec(4, 340f, 70f, 50f), FxKnobSpec(5, 735f, 128f, 62f)))
+    // Effects 5..14, from the `AB(id,param,x,y,z)` calls in the reference BODY table.
+    // Positions are window coordinates (the -OXL/-OYL translate), sizes are the
+    // knob diameter `z` — not the wider label box from fx_layout_spec.json.
+    put(5, listOf(FxKnobSpec(5, 150f, 252f, 42f), FxKnobSpec(6, 290f, 252f, 42f), FxKnobSpec(7, 430f, 252f, 42f)))
+    put(6, listOf(FxKnobSpec(26, 742f, 106f, 40f), FxKnobSpec(27, 150f, 252f, 42f),
+                  FxKnobSpec(28, 290f, 252f, 42f), FxKnobSpec(29, 430f, 252f, 42f)))
+    put(7, listOf(FxKnobSpec(5, 150f, 252f, 42f), FxKnobSpec(6, 290f, 252f, 42f), FxKnobSpec(7, 430f, 252f, 42f)))
+    put(8, listOf(FxKnobSpec(5, 96f, 176f, 40f), FxKnobSpec(4, 212f, 176f, 40f), FxKnobSpec(3, 389f, 168f, 62f),
+                  FxKnobSpec(2, 566f, 176f, 40f), FxKnobSpec(0, 680f, 176f, 40f), FxKnobSpec(1, 756f, 176f, 40f),
+                  FxKnobSpec(6, 150f, 252f, 42f), FxKnobSpec(7, 290f, 252f, 42f), FxKnobSpec(8, 430f, 252f, 42f)))
+    put(9, listOf(FxKnobSpec(7, 150f, 252f, 42f), FxKnobSpec(8, 290f, 252f, 42f), FxKnobSpec(9, 430f, 252f, 42f)))
+    // Effect 10 (Aether Amp): AB(10,j,70+j*80,86,46) for j=0..5, plus Level (param 11)
+    // at AB(10,11,730,86,46). Params 6..10 are scene hotspots, not DOM knobs.
+    put(10, (0..5).map { j -> FxKnobSpec(j, 70f + j * 80f, 86f, 46f) } + FxKnobSpec(11, 730f, 86f, 46f))
+    put(11, listOf(FxKnobSpec(0, 330f, 72f, 44f), FxKnobSpec(1, 400f, 72f, 44f),
+                   FxKnobSpec(2, 470f, 72f, 44f), FxKnobSpec(9, 730f, 206f, 46f)))
+    put(12, listOf(FxKnobSpec(5, 150f, 252f, 42f), FxKnobSpec(6, 290f, 252f, 42f), FxKnobSpec(7, 430f, 252f, 42f)))
+    put(13, listOf(FxKnobSpec(2, 70f, 56f, 44f), FxKnobSpec(3, 70f, 150f, 44f), FxKnobSpec(4, 700f, 60f, 44f),
+                   FxKnobSpec(5, 150f, 252f, 42f), FxKnobSpec(6, 290f, 252f, 42f), FxKnobSpec(7, 430f, 252f, 42f)))
+    put(14, listOf(FxKnobSpec(0, 45f, 102f, 40f), FxKnobSpec(1, 125f, 102f, 40f), FxKnobSpec(2, 205f, 102f, 40f),
+                   FxKnobSpec(3, 45f, 170f, 40f), FxKnobSpec(4, 125f, 170f, 40f), FxKnobSpec(5, 205f, 170f, 40f),
+                   FxKnobSpec(9, 630f, 64f, 40f), FxKnobSpec(10, 700f, 64f, 40f), FxKnobSpec(6, 764f, 64f, 40f),
+                   FxKnobSpec(16, 50f, 128f, 40f), FxKnobSpec(17, 130f, 128f, 40f),
+                   FxKnobSpec(20, 290f, 128f, 40f), FxKnobSpec(21, 370f, 128f, 40f),
+                   FxKnobSpec(25, 650f, 176f, 40f), FxKnobSpec(27, 60f, 104f, 44f), FxKnobSpec(28, 140f, 104f, 44f),
+                   FxKnobSpec(29, 220f, 104f, 44f), FxKnobSpec(30, 300f, 104f, 44f),
+                   FxKnobSpec(22, 150f, 252f, 42f), FxKnobSpec(23, 290f, 252f, 42f), FxKnobSpec(24, 430f, 252f, 42f)))
 }
 
 fun knobsFor(effectId: Int): List<FxKnobSpec> = knobLayout[effectId] ?: emptyList()

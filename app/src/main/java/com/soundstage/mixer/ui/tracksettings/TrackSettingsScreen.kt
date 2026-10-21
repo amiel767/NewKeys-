@@ -594,11 +594,16 @@ private fun CurveCanvas(vel: VelocitySettings, color: Color, test: Int, onPoint:
     val axis = remember { TextStyle(color = Dim, fontSize = 8.sp, fontFamily = Mono) }
     var active by remember { mutableStateOf<Int?>(null) }
     val latest by rememberUpdatedState(vel)
+    // `pointerInput(Unit)` is never restarted, so it would keep the first `onPoint`
+    // closure and therefore the first `vel`: each new point then overwrote the
+    // previous one with stale values. Reading it through rememberUpdatedState keeps
+    // the gesture on the current curve.
+    val currentOnPoint by rememberUpdatedState(onPoint)
     Canvas(
         Modifier
             .fillMaxWidth()
             .aspectRatio(CW / CH)
-            .pointerInput(Unit) {
+            .pointerInput(vel) {
                 awaitPointerEventScope {
                     while (true) {
                         val down = awaitFirstDown(requireUnconsumed = false)
@@ -617,7 +622,7 @@ private fun CurveCanvas(vel: VelocitySettings, color: Color, test: Int, onPoint:
                             down.consume()
                             drag(down.id) { ch ->
                                 ch.consume()
-                                onPoint(best, 1f - ((ch.position.y / s) - PY0) / (PY1 - PY0))
+                                currentOnPoint(best, 1f - ((ch.position.y / s) - PY0) / (PY1 - PY0))
                             }
                             active = null
                         }
@@ -823,11 +828,6 @@ private fun RangePage(state: TrackSettingsState, a: TrackSettingsActions) {
                 )
                 drawRoundRect(Color.Black.copy(alpha = 0.28f), Offset(x, ky), Size(kw, kh), r, style = Stroke(0.6f * px))
                 drawRoundRect(Color.Black.copy(alpha = 0.05f), Offset(x + px, ky + kh - 16 * px), Size(kw - 2 * px, 16 * px), CornerRadius(2 * px))
-                // small light under the key: lit for notes inside the range
-                drawRoundRect(
-                    if (on) Color.White.copy(alpha = 0.95f) else Color(0xFFC9CED9).copy(alpha = 0.6f),
-                    Offset(x + kw / 2f - 6 * px, ky + kh - 12 * px), Size(12 * px, 4 * px), CornerRadius(2 * px)
-                )
             }
             // black keys
             RangeKeys.blacks.forEach { m ->
@@ -846,10 +846,6 @@ private fun RangePage(state: TrackSettingsState, a: TrackSettingsActions) {
                 )
                 drawRoundRect(Color.Black.copy(alpha = 0.6f), Offset(c - bw / 2f, ky), Size(bw, bh), r, style = Stroke(0.6f * px))
                 drawRoundRect(Color.White.copy(alpha = if (on) 0.35f else 0.14f), Offset(c - bw / 2f + 1.5f * px, ky + 1.5f * px), Size(bw - 3 * px, 3 * px), CornerRadius(1.2f * px))
-                drawRoundRect(
-                    if (on) Color.White.copy(alpha = 0.95f) else Color(0xFF3A4152),
-                    Offset(c - 4.5f * px, ky + bh - 11 * px), Size(9 * px, 3.5f * px), CornerRadius(1.8f * px)
-                )
             }
 
             // range bar: full width, the selected span in the track color

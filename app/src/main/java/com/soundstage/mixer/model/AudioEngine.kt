@@ -69,7 +69,7 @@ class AudioEngine(private val context: Context) {
     private val fallbackSynth = FallbackSynth()
 
     private var audioManager: AudioManager? = null
-    var activeLayerChannelsProvider: ((midiNote: Int, incomingChannel: Int) -> List<Int>)? = null
+    var activeLayerChannelsProvider: ((midiNote: Int, incomingChannel: Int, deviceId: String?) -> List<Int>)? = null
     private var isFirstAudioDeviceCallback = true
     private var reconnectJob: kotlinx.coroutines.Job? = null
 
@@ -581,10 +581,10 @@ class AudioEngine(private val context: Context) {
     // -------------------------------------------------------------
     // DIRECT ZERO-LATENCY MIDI PROCESSOR (RUNS ON MIDI IO THREAD)
     // -------------------------------------------------------------
-    fun handleIncomingMidi(channel: Int, command: Int, data1: Int, data2: Int) {
+    fun handleIncomingMidi(channel: Int, command: Int, data1: Int, data2: Int, deviceId: String? = null) {
         val effectiveNote = (data1 + globalOctaveShift * 12).coerceIn(0, 127)
         val targetChannels = if (usbMidiRouteToActiveSlot) {
-            activeLayerChannelsProvider?.invoke(effectiveNote, channel) ?: listOf(activeTargetChannel)
+            activeLayerChannelsProvider?.invoke(effectiveNote, channel, deviceId) ?: listOf(activeTargetChannel)
         } else {
             listOf(midiChannelForSlot(channel))
         }
@@ -885,7 +885,7 @@ class AudioEngine(private val context: Context) {
                                                 command = 0x80
                                             }
                                             
-                                            handleIncomingMidi(channel, command, data1, data2)
+                                            handleIncomingMidi(channel, command, data1, data2, devIdStr)
                                             i += if (hasTwoDataBytes) 3 else 2
                                         } else {
                                             i++

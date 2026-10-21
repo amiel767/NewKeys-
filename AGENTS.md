@@ -4,6 +4,32 @@ Mémoire persistante du dépôt. **Toujours vérifier un nom ici avant de l'util
 plusieurs briefs ont référencé des symboles inexistants, ce qui a causé des
 malentendus coûteux.
 
+## Captures d'écran sans émulateur (Roborazzi — vérifié)
+
+Pas d'AVD/émulateur dans cet environnement. La capture passe par **Roborazzi +
+Robolectric** (déjà dans `libs.versions.toml`) :
+
+```bash
+export JAVA_HOME=/workspace/jdk/jdk21 && export ANDROID_HOME=/workspace/android-sdk
+./gradlew :app:testDebugUnitTest --tests "com.soundstage.mixer.XxxCaptureTest" -Proborazzi.test.record=true
+```
+
+- Sans `-Proborazzi.test.record=true`, **aucun PNG n'est écrit** (build OK, silencieux).
+- Qualifier paysage obligatoire pour coller au device : `@Config(qualifiers = "w851dp-h393dp-440dpi", sdk = [36])`.
+  `RobolectricDeviceQualifiers.Pixel6` rend en **portrait** (trompeur).
+- `MixerScreen` complet lève `AppNotIdleException` (animations infinies). Fix :
+  `composeTestRule.mainClock.autoAdvance = false` puis `advanceTimeBy(1500)` avant `captureRoboImage`.
+- `GreetingScreenshotTest` (ancien) échoue pour cette raison — ne pas s'y fier.
+- Échelle mesurée : **2.7497 px/dp** en w851dp-h393dp-440dpi (2340×1080).
+- Pièges de capture (vérifiés) : `MixerViewModel` démarre sur **`AppScreenPage.SETLISTS`**
+  et restaure la page sauvegardée en **asynchrone** → forcer `navigateToPage(MIXER)`
+  **après** le restore (`runOnIdle` + `Thread.sleep`), sinon la capture montre Setlists.
+  Et **ne pas appeler deux fois** `cycleKeyboardExpansion()` / `toggleKeyboardLayer()`
+  (bascule → état inverse).
+- Le clavier est **déjà** décalé au-dessus de la bottom bar par un espaceur
+  (`keyboardSpacer`, `MixerScreen.kt:496-509`). Ne **pas** ajouter de `padding(bottom)`
+  au clavier : ça le remonte par-dessus la bottom bar.
+
 ## Environnement de build
 
 ```bash
@@ -542,3 +568,223 @@ Autres points de perf (verifies) :
 Long-press sur une ligne d'echantillon (onglet Samples du `DpManager`) :
 360 ms -> indicateur 4 barres (`DpPreviewBars`, 0,5->0,86 s, scaleY .35->1),
 relacher annule. Tap = selection.
+
+## Assets de reference recus (2026-10-21, commit `f6535d7`)
+
+Trois fichiers ajoutes par l'utilisateur dans `app/assets/` — **sources d'autorite**.
+
+### `SettingsTabIcons.jsx` + `SettingsTabIcons.kt` (icones des onglets Settings)
+Famille unique : grille **24x24**, trait **2 px**, `strokeLinecap/Join = round`.
+Quatre icones, en trait (sauf les points du MIDI, remplis) :
+
+| Onglet | Nom Compose | Contenu |
+|---|---|---|
+| Audio | `SettingsTabIcons.Audio` | waveform symetrique, 5 barres, la plus haute au centre |
+| Interface | `SettingsTabIcons.Interface` | fenetre applicative : barre d'en-tete + panneau lateral |
+| MIDI | `SettingsTabIcons.Midi` | connecteur DIN 5 broches : anneau + 5 points (remplis) |
+| System | `SettingsTabIcons.System` | puce avec broches sur les 4 cotes |
+
+Le `.kt` fourni est **pret a copier** (package a adapter). Noir dans le fichier :
+la couleur reelle vient de `tint`. Usage : `Icon(imageVector = SettingsTabIcons.Interface,
+tint = if (selected) Color(0xFF8FB2E8) else Color(0xFF8E99AD), modifier = Modifier.size(24.dp))`.
+Ne requiert **que** `compose-ui` + `compose-material3.Icon` (pas de
+`material-icons-extended`).
+
+**Actuel a remplacer** : `SettingsScreen.kt:1876` `SetIconKind` (canvas maison) ;
+mapping l.633-638 : Audio->`Wave`, Interface->`Swatch`, Midi->`Midi`, System->`Gear`.
+Appel l.624 : `SetIcon(tab.iconKind(), c, Modifier.size(18.dp))`.
+Reference visuelle exacte : le `SettingsTabIconsDemo` en bas du `.jsx`
+(largeur 230, lignes h=52, radius 16, padding 0 16, gap 16, icone 24,
+actif `#8FB2E8` / inactif `#8E99AD`).
+
+### `fx-screens-spec.zip` (specification exacte de la fenetre FX)
+Contenu : `00-LIS-MOI-EN-PREMIER.md`, `01-ecrans-a-reproduire.md`,
+`fx_layout_spec.json`, `compare_refs.py`, `references/` (32 PNG),
+`reference_source_fx_window.html`.
+
+**CONTRADICTION A SIGNALER** : la regle du LISEZ-MOI dit « source 1 =
+`reference_source_fx_window.html` gagne », mais ce fichier est **VIDE (0 octet)**
+dans le zip. Sources utilisables : le JSON + les PNG. Ne pas choisir en silence.
+
+- `fx_layout_spec.json` : boites en px logiques, origine = coin du panneau.
+  Toutes les scenes sont **837,6 x 348,2**. Champs par effet :
+  `id, name, type, font, accent, knobs[], presets[], layout{w,h,knobs[],body,title,buttons}`.
+  **Aucune** zone de scene (pas de cle `scene`) : les controles dessines
+  (tirettes orgue, pistes synthe, micros ampli, pad XY) sont dans le code de
+  reference — **introuvable ici** (le HTML est vide). A demander a l'utilisateur.
+- `references/ref-NN-*.png` : **1728 x 800** (2x). Presets : 1728x1600
+  (1728x1200 pour les instruments). Tablette : 1230x582.
+- `compare_refs.py` : PASS si **<= 1,5 %** de pixels different de > 24/255 ;
+  taille de capture **exactement** egale a la reference, sinon FAIL.
+
+**Ecart mesure Kotlin <-> spec** (preuve) : `knobLayout` (`FxScenes.kt:84-101`)
+ne couvre que les effets **0..4** ; les instruments 5..14 n'ont **aucun** potard
+positionne (`AB()` absent de `FxInstrumentScenes.kt`). Et meme pour 0..4 les
+coordonnees divergent de la spec, ex. effet 0 :
+
+| Potard | JSON (centre) | Kotlin |
+|---|---|---|
+| Size | (415,2 ; 93,4) | (389 ; 34) |
+| Decay | (641,5 ; 124,0) | (490 ; 97) |
+| Pre-delay | (697,3 ; 192,7) | (572 ; 193) |
+| Damp | (540,8 ; 247,8) | (490 ; 194) |
+| Width | (289,7 ; 247,8) | (288 ; 194) |
+| Mix | (133,1 ; 192,7) | (180 ; 193) |
+| Diffuse | (189,0 ; 124,0) | (288 ; 34) |
+
+Effet 10 (Amp) : 7 potards alignes a y=146,2, x = 91,3 / 172,5 / 253,8 / 335,1 /
+416,3 / 497,5 / 761,5 ; 7 boutons (Surprise me, A, CLEAN, CRUNCH, LEAD, BOOST,
+TREM). Effet 4 : 6 potards dont `Amount` enorme (138,1). Effet 5 : 3 potards a
+y=314,7 + boutons Surprise me / A / Edit.
+
+### Anciens assets toujours presents (ne pas confondre)
+`app/assets/aether-fx-package.zip` (docs C++/JNI + `fx-window-preview.html`
+728 l. + icones) et `JetBrains_Mono,Orbitron,...zip` (polices). Le nouveau
+`fx-screens-spec.zip` **complete** l'ancien (mesures), il ne le remplace pas.
+
+## Assets de référence reçus (2026-10-21, commit `f6535d7`)
+
+Trois fichiers ajoutés par l'utilisateur dans `app/assets/` — **sources d'autorité**.
+
+### `SettingsTabIcons.jsx` + `SettingsTabIcons.kt` (icônes des onglets Settings)
+Famille unique : grille **24×24**, trait **2 px**, `strokeLinecap/Join = round`.
+Quatre icônes, en trait (sauf les points du MIDI, remplis) :
+
+| Onglet | Nom Compose | Contenu |
+|---|---|---|
+| Audio | `SettingsTabIcons.Audio` | waveform symétrique, 5 barres, la plus haute au centre |
+| Interface | `SettingsTabIcons.Interface` | fenêtre applicative : barre d'en-tête + panneau latéral |
+| MIDI | `SettingsTabIcons.Midi` | connecteur DIN 5 broches : anneau + 5 points (remplis) |
+| System | `SettingsTabIcons.System` | puce avec broches sur les 4 côtés |
+
+Le `.kt` fourni est **prêt à copier** (package à adapter). Noir dans le fichier :
+la couleur réelle vient de `tint`. Usage : `Icon(imageVector = SettingsTabIcons.Interface,
+tint = if (selected) Color(0xFF8FB2E8) else Color(0xFF8E99AD), modifier = Modifier.size(24.dp))`.
+Ne requiert **que** `compose-ui` + `compose-material3.Icon` (pas de
+`material-icons-extended`).
+
+**Actuel à remplacer** : `SettingsScreen.kt:1876` `SetIconKind` (canvas maison) ;
+mapping l.633-638 : Audio→`Wave`, Interface→`Swatch`, Midi→`Midi`, System→`Gear`.
+Appel l.624 : `SetIcon(tab.iconKind(), c, Modifier.size(18.dp))`.
+Référence visuelle exacte : le `SettingsTabIconsDemo` en bas du `.jsx`
+(largeur 230, lignes h=52, radius 16, padding 0 16, gap 16, icône 24,
+actif `#8FB2E8` / inactif `#8E99AD`).
+
+### `fx-screens-spec.zip` (spécification exacte de la fenêtre FX)
+Contenu : `00-LIS-MOI-EN-PREMIER.md`, `01-ecrans-a-reproduire.md`,
+`fx_layout_spec.json`, `compare_refs.py`, `references/` (32 PNG),
+`reference_source_fx_window.html`.
+
+**CONTRADICTION À SIGNALER** : la règle du LISEZ-MOI dit « source 1 =
+`reference_source_fx_window.html` gagne », mais ce fichier est **VIDE (0 octet)**
+dans le zip. Sources utilisables : le JSON + les PNG. Ne pas choisir en silence.
+
+- `fx_layout_spec.json` : boîtes en px logiques, origine = coin du panneau.
+  Toutes les scènes sont **837,6 × 348,2**. Champs par effet :
+  `id, name, type, font, accent, knobs[], presets[], layout{w,h,knobs[],body,title,buttons}`.
+  **Aucune** zone de scène (pas de clé `scene`) : les contrôles dessinés
+  (tirettes orgue, pistes synthé, micros ampli, pad XY) sont dans le code de
+  référence — **introuvable ici** (le HTML est vide). À demander à l'utilisateur.
+- `references/ref-NN-*.png` : **1728 × 800** (2×). Presets : 1728×1600
+  (1728×1200 pour les instruments). Tablette : 1230×582.
+- `compare_refs.py` : PASS si **≤ 1,5 %** de pixels diffèrent de > 24/255 ;
+  taille de capture **exactement** égale à la référence, sinon FAIL.
+
+**Écart mesuré Kotlin ↔ spec** (preuve) : `knobLayout` (`FxScenes.kt:84-101`)
+ne couvre que les effets **0..4** ; les instruments 5..14 n'ont **aucun** potard
+positionné (`AB()` absent de `FxInstrumentScenes.kt`). Et même pour 0..4 les
+coordonnées divergent de la spec, ex. effet 0 :
+
+| Potard | JSON (centre) | Kotlin |
+|---|---|---|
+| Size | (415,2 ; 93,4) | (389 ; 34) |
+| Decay | (641,5 ; 124,0) | (490 ; 97) |
+| Pre-delay | (697,3 ; 192,7) | (572 ; 193) |
+| Damp | (540,8 ; 247,8) | (490 ; 194) |
+| Width | (289,7 ; 247,8) | (288 ; 194) |
+| Mix | (133,1 ; 192,7) | (180 ; 193) |
+| Diffuse | (189,0 ; 124,0) | (288 ; 34) |
+
+Effet 10 (Amp) : 7 potards alignés à y=146,2, x = 91,3 / 172,5 / 253,8 / 335,1 /
+416,3 / 497,5 / 761,5 ; 7 boutons (Surprise me, A, CLEAN, CRUNCH, LEAD, BOOST,
+TREM). Effet 4 : 6 potards dont `Amount` énorme (138,1). Effet 5 : 3 potards à
+y=314,7 + boutons Surprise me / A / Edit.
+
+### Anciens assets toujours présents (ne pas confondre)
+`app/assets/aether-fx-package.zip` (docs C++/JNI + `fx-window-preview.html`
+728 l. + icônes) et `JetBrains_Mono,Orbitron,...zip` (polices). Le nouveau
+`fx-screens-spec.zip` **complète** l'ancien (mesures), il ne le remplace pas.
+
+## Session 2026-10-21 (suite) — débordement clavier + Phases 4/5
+
+### Débordement Virtual Keyboard (état au repos) — CORRIGÉ
+`MixerScreen.kt` : l'espaceur de la bottom bar utilisait une hauteur **estimée**
+(`48 + pianoRestStripHeight + 11`, ≈65 dp pour 1 piste) alors que le conteneur
+clavier mesure ~74 dp au repos → chevauchement de ~10 dp.
+
+Correction : la hauteur réelle du conteneur est **mesurée** (`onSizeChanged`) et
+**verrouillée au repos** (`keyboardRestHeight`, seulement quand
+`!isKeyboardLayerExpanded`), puis utilisée pour l'espaceur. L'état **déployé**
+n'est pas touché (il continue de flotter au-dessus, comportement voulu).
+
+Mesure : conteneur au repos à **317,7 dp**, barre **272→318 dp** → collés, plus
+de chevauchement. Déployé inchangé (conteneur à 276 dp).
+
+### Phase 4 — TrackSettings — FAIT
+- Scrim : `.blur(18.dp)` sur le contenu de fond quand `activePopup` est
+  `TRACK_SETTINGS`/`VELOCITY_SETTINGS`, + scrim `0x66000000` cliquable
+  (`zIndex(119f)`) qui ferme la fenêtre (`closeTrackSettings()`) et bloque les
+  touches derrière.
+- Page **Note range** : les « puces » blanches sous les touches (blanches et
+  noires) sont retirées.
+- `CurveCanvas` : `pointerInput(Unit)` → `pointerInput(vel)`, et le callback passe
+  par `rememberUpdatedState(onPoint)`. Sans ça la closure restait figée sur la
+  première `vel` → chaque nouveau point écrasait le précédent (Velocity « ne
+  prend pas effet »).
+
+### Phase 5 — Fluidité thumb fader — FAIT
+`CustomVerticalFader.kt` : `LaunchedEffect(value)` téléportait `localValue`
+(saut). Remplacé par `animate(...)` (220 ms, FastOutSlowInEasing) quand
+`!isDragging` ; le drag suit toujours le doigt directement.
+
+### Pièges vérifiés
+- Les 2 namespaces et les doublons `SettingsScreen`/`SetlistsScreen` restent.
+- Aucun commit/push. Captures sous `app/src/test/screenshots/` (outils, pas tests).
+- `TrackSettingsCaptureTest.kt` ajouté (capture scrim, non commité).
+
+## Session 2026-10-21 (suite) — débordement clavier + Phases 4/5
+
+### Débordement Virtual Keyboard (état au repos) — CORRIGÉ
+`MixerScreen.kt` : l'espaceur de la bottom bar utilisait une hauteur **estimée**
+(`48 + pianoRestStripHeight + 11`, ≈65 dp pour 1 piste) alors que le conteneur
+clavier mesure ~74 dp au repos → chevauchement de ~10 dp.
+
+Correction : la hauteur réelle du conteneur est **mesurée** (`onSizeChanged`) et
+**verrouillée au repos** (`keyboardRestHeight`, seulement quand
+`!isKeyboardLayerExpanded`), puis utilisée pour l'espaceur. L'état **déployé**
+n'est pas touché (il continue de flotter au-dessus, comportement voulu).
+
+Mesure : conteneur au repos à **317,7 dp**, barre **272→318 dp** → collés, plus
+de chevauchement. Déployé inchangé (conteneur à 276 dp).
+
+### Phase 4 — TrackSettings — FAIT
+- Scrim : `.blur(18.dp)` sur le contenu de fond quand `activePopup` est
+  `TRACK_SETTINGS`/`VELOCITY_SETTINGS`, + scrim `0x66000000` cliquable
+  (`zIndex(119f)`) qui ferme la fenêtre (`closeTrackSettings()`) et bloque les
+  touches derrière.
+- Page **Note range** : les « puces » blanches sous les touches (blanches et
+  noires) sont retirées.
+- `CurveCanvas` : `pointerInput(Unit)` → `pointerInput(vel)`, et le callback passe
+  par `rememberUpdatedState(onPoint)`. Sans ça la closure restait figée sur la
+  première `vel` → chaque nouveau point écrasait le précédent (Velocity « ne
+  prend pas effet »).
+
+### Phase 5 — Fluidité thumb fader — FAIT
+`CustomVerticalFader.kt` : `LaunchedEffect(value)` téléportait `localValue`
+(saut). Remplacé par `animate(...)` (220 ms, FastOutSlowInEasing) quand
+`!isDragging` ; le drag suit toujours le doigt directement.
+
+### Pièges vérifiés
+- Les 2 namespaces et les doublons `SettingsScreen`/`SetlistsScreen` restent.
+- Aucun commit/push. Captures sous `app/src/test/screenshots/` (outils, pas tests).
+- `TrackSettingsCaptureTest.kt` ajouté (capture scrim, non commité).

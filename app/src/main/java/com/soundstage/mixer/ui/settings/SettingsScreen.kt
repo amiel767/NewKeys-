@@ -73,6 +73,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -621,7 +622,12 @@ private fun TabRail(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        SetIcon(tab.iconKind(), c, Modifier.size(18.dp))
+                        Icon(
+                            imageVector = tab.tabIcon(),
+                            contentDescription = null,
+                            tint = c,
+                            modifier = Modifier.size(24.dp)
+                        )
                         Text(tab.label, style = setText(14.5.sp, FontWeight.Bold, if (on) SetColors.Ink else Color(0xFF9AA5BA)))
                     }
                 }
@@ -630,11 +636,11 @@ private fun TabRail(
     }
 }
 
-private fun SettingsTab.iconKind(): SetIconKind = when (this) {
-    SettingsTab.Audio -> SetIconKind.Wave
-    SettingsTab.Interface -> SetIconKind.Swatch
-    SettingsTab.Midi -> SetIconKind.Midi
-    SettingsTab.System -> SetIconKind.Gear
+private fun SettingsTab.tabIcon(): androidx.compose.ui.graphics.vector.ImageVector = when (this) {
+    SettingsTab.Audio -> SettingsTabIcons.Audio
+    SettingsTab.Interface -> SettingsTabIcons.Interface
+    SettingsTab.Midi -> SettingsTabIcons.Midi
+    SettingsTab.System -> SettingsTabIcons.System
 }
 
 @Composable
@@ -869,11 +875,6 @@ private fun InterfaceSection(state: SettingsState, actions: SettingsActions) {
     )
 
     SectionLabel("Virtual keyboard")
-    Text(
-        "Key colors. The container frame never changes.",
-        style = setText(11.sp, FontWeight.SemiBold, SetColors.Mute),
-        modifier = Modifier.padding(top = 2.dp, bottom = 2.dp)
-    )
     VkbThemeGrid(
         selectedThemeId = state.vkbTheme,
         onThemeSelected = actions::onVkbThemeChange
@@ -1873,7 +1874,7 @@ object MappingCatalog {
 // 7. ICONS (drawn, no dependency)
 // ════════════════════════════════════════════════════════════════════════════════════════
 
-private enum class SetIconKind { Back, Search, Close, Chevron, Reset, Wave, Swatch, Midi, Gear }
+private enum class SetIconKind { Back, Search, Close, Chevron, Reset }
 
 @Composable
 private fun SetIcon(kind: SetIconKind, color: Color, modifier: Modifier) {
@@ -1890,10 +1891,6 @@ private fun SetIcon(kind: SetIconKind, color: Color, modifier: Modifier) {
             SetIconKind.Close -> { line(0.15f, 0.15f, 0.85f, 0.85f); line(0.85f, 0.15f, 0.15f, 0.85f) }
             SetIconKind.Chevron -> { line(0.35f, 0.15f, 0.7f, 0.5f); line(0.7f, 0.5f, 0.35f, 0.85f) }
             SetIconKind.Reset -> { drawArc(color, 40f, 290f, false, Offset(w * 0.15f, h * 0.15f), Size(w * 0.7f, h * 0.7f), style = st) }
-            SetIconKind.Wave -> { line(0.1f, 0.5f, 0.2f, 0.5f); line(0.3f, 0.2f, 0.3f, 0.8f); line(0.5f, 0.05f, 0.5f, 0.95f); line(0.7f, 0.3f, 0.7f, 0.7f); line(0.9f, 0.4f, 0.9f, 0.6f) }
-            SetIconKind.Swatch -> { drawCircle(color, w * 0.4f, Offset(w / 2f, h / 2f), style = st) }
-            SetIconKind.Midi -> { drawCircle(color, w * 0.42f, Offset(w / 2f, h / 2f), style = st); drawCircle(color, w * 0.06f, Offset(w * 0.3f, h * 0.5f)) }
-            SetIconKind.Gear -> { drawCircle(color, w * 0.22f, Offset(w / 2f, h / 2f), style = st); drawCircle(color, w * 0.4f, Offset(w / 2f, h / 2f), style = st) }
         }
     }
 }

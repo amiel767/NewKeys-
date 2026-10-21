@@ -35,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.audio.LooperEngine
+import com.soundstage.mixer.ui.components.windowBackdropBlur
 import com.soundstage.mixer.ui.components.drumpad.DpColors
 import com.soundstage.mixer.ui.components.drumpad.DpDrumPadSettings
 import com.soundstage.mixer.ui.components.drumpad.DpFxCase
@@ -159,6 +160,9 @@ fun DrumPadScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            // The manager is a floating window over this page: blur the page behind it, but the
+            // manager itself is a sibling below, so it stays crisp.
+            .windowBackdropBlur(managerOpen)
             .background(Brush.verticalGradient(listOf(Color(0xFF141B27), Color(0xFF0F141D))))
     ) {
         // ═══════════ TopBar ═══════════

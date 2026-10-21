@@ -449,8 +449,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         // Connect multi-channel layer performance routing for USB MIDI
-        audioEngine.activeLayerChannelsProvider = { midiNote, incomingChannel ->
-            getActivePerformanceChannels(midiNote, incomingChannel)
+        audioEngine.activeLayerChannelsProvider = { midiNote, incomingChannel, deviceId ->
+            getActivePerformanceChannels(midiNote, incomingChannel, deviceId)
         }
         audioEngine.trackVelocityCurveProvider = { ch ->
             _uiState.value.tracks.getOrNull(ch)?.velocityCurve ?: 0.5f
@@ -548,6 +548,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                                     sustain = savedT.sustain,
                                     aftertouch = savedT.aftertouch,
                                     programChange = savedT.programChange,
+                                    selectedMidiDeviceId = savedT.selectedMidiDeviceId,
                                     customColorArgb = savedT.customColorArgb
                                 )
                             } else currentTrack
@@ -2336,7 +2337,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun getActivePerformanceChannels(midiNote: Int? = null, incomingChannel: Int? = null): List<Int> {
+    fun getActivePerformanceChannels(midiNote: Int? = null, incomingChannel: Int? = null, deviceId: String? = null): List<Int> {
         val state = _uiState.value
         val anySolo = state.tracks.any { it.isSolo }
 
@@ -2344,11 +2345,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         // AND strictly match the track's configured MIDI channel:
         // track.midiChannel == 0 -> OMNI (accepts all channels)
         // track.midiChannel in 1..16 -> accepts only messages where incomingChannel == (track.midiChannel - 1)
+        // AND match the track's selected input device: null/"all" -> every device.
         val activeChannels = state.tracks.mapIndexedNotNull { idx, track ->
             val isAllowed = track.isEnabled && !track.isMuted && (!anySolo || track.isSolo)
             if (isAllowed) {
+                val isDeviceMatch = (deviceId == null) || (track.selectedMidiDeviceId == null) || (track.selectedMidiDeviceId == deviceId)
                 val isChannelMatch = (incomingChannel == null) || (track.midiChannel == 0) || (incomingChannel == track.midiChannel - 1)
-                if (isChannelMatch) {
+                if (isDeviceMatch && isChannelMatch) {
                     val isWithinRange = (midiNote == null) || (midiNote in track.splitNoteMin..track.splitNoteMax)
                     if (isWithinRange) {
                         val slot = state.audioSlots.getOrNull(idx)

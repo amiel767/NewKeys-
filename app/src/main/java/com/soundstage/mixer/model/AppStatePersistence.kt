@@ -113,6 +113,7 @@ class AppStatePersistence(context: Context) {
         val sustain: Boolean = true,
         val aftertouch: Boolean = false,
         val programChange: Boolean = true,
+        val selectedMidiDeviceId: String? = null,
         val customColorArgb: Int? = null
     )
 
@@ -314,6 +315,7 @@ class AppStatePersistence(context: Context) {
                     put("sustain", t.sustain)
                     put("aftertouch", t.aftertouch)
                     put("programChange", t.programChange)
+                    t.selectedMidiDeviceId?.let { put("selectedMidiDeviceId", it) }
                     t.customColorArgb?.let { put("customColorArgb", it) }
                 }
                 tracksArray.put(obj)
@@ -685,6 +687,7 @@ class AppStatePersistence(context: Context) {
                             sustain = obj.optBoolean("sustain", true),
                             aftertouch = obj.optBoolean("aftertouch", false),
                             programChange = obj.optBoolean("programChange", true),
+                            selectedMidiDeviceId = if (obj.has("selectedMidiDeviceId")) obj.optString("selectedMidiDeviceId").ifEmpty { null } else null,
                             customColorArgb = if (obj.has("customColorArgb")) obj.optInt("customColorArgb") else null
                         )
                     )
