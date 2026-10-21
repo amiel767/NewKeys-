@@ -1120,3 +1120,48 @@ Regle demandee : **pas de contour**, relief + ombre dessous.
 Le lien de telechargement peut renvoyer la page 503 « Service Temporarily
 Unavailable » de all-hands.dev : c'est le service, pas le sandbox. Ne pas boucler
 dessus — le fichier est servi par le `http.server` local sur le port 12000.
+
+## Lecons B8-1 (a lire AVANT toute passe FX)
+
+### 1. Lire le preview avant de mesurer le moindre pixel
+Le preview declare tout, au chiffre pres. A chaque fois que j'ai mesure des pixels
+d'abord, j'ai perdu une heure a repondre a la mauvaise question :
+- `AB(i,j,x,y,z,sk)` : centre et diametre de chaque knob. Table complete extraite.
+- `TG(i,label,x,y,items)` : les groupes de chips (CHANNEL, PEDALS, ADSR, CABINET...).
+- `SKN={...}` et `KSH={...}` : materiau et forme du chapeau, par effet.
+- `<defs>` : les 15 gradients `c0..c14`.
+- CSS `.cd`, `.bt`, `.chg`, `.kb` : remplissages, ombres, rayons.
+Une heure de mesures ne vaut pas dix lignes de source.
+
+### 2. Le piege du double decalage (arrive DEUX fois)
+Les scenes et les tables `AB()`/`TG()` sont en coordonnees **contenu** et portent deja
+`(-OXL, -OYL)` (`y0 = -OYL` dans le code des scenes). Donc :
+- une scene se dessine a **(0,0)**, sans translate supplementaire ;
+- une boite `AB()` se place a **(x+OXL, y+OYL)**.
+Ajouter `SCENE_X/SCENE_Y` par-dessus a produit le `translate(20,58)` en trop (fond
+inset, contenu 58 trop bas) puis, la fois suivante, des knobs 20/58 trop loin.
+**Symptome typique** : plus rien n'est detecte aux abscisses attendues, ou un `dy`
+constant sur toutes les zones. Avant de toucher une position : verifier QUI ajoute
+l'offset, et une seule fois.
+
+### 3. `Modifier.shadow` ne marche pas ici
+Deux raisons, les deux verifiees :
+- la capture Roborazzi ne rend pas l'ombre de plateforme, elle est donc invisible
+  dans les tests — donc invérifiable ;
+- elle est peinte **au-dessus** du contenu, donc elle ressort **a travers** une case
+  au remplissage translucide. C'est ce que l'utilisateur voyait comme « moche ».
+Solution : `FxSurface.kt`, `Modifier.raised(corner, elevation, fill)` — ombre peinte
+en `drawBehind`, demarrage du degrade exactement au bord bas, donc toujours dessous,
+plus un lisere clair en haut et une couture sombre en bas. A utiliser pour toute case.
+
+### 4. Le diametre d'un knob est `z` plein
+`AB()` passe le diametre directement. J'avais mis un facteur `* 0.86` : 13 % trop
+petit partout. Ne pas reintroduire de coefficient.
+
+### 5. Environnement
+- Le lien de telechargement renvoie parfois la page 503 de all-hands.dev : c'est le
+  service, pas le sandbox. Ne pas boucler dessus.
+- Le `http.server` du port 12000 ne survit PAS a un redemarrage : le relancer avec
+  `cd /workspace/dl && (nohup python3 -m http.server 12000 --bind 0.0.0.0 &)`.
+- `pillow` et `numpy` disparaissent aussi : `pip install pillow numpy`.
+- `ss -ltn` n'est pas fiable pour verifier le port ; tester avec `curl`.

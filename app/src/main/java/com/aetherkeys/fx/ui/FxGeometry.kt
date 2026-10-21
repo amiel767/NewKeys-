@@ -103,13 +103,13 @@ object FxKnobBoxes {
             KnobBox("Space", 429.0f, 289.0f, 42.0f, 42.0f, 9),
         ),
                         10 to listOf(
-            KnobBox("Gain", 67.0f, 115.0f, 46.0f, 46.0f, 4),
-            KnobBox("Bass", 147.0f, 115.0f, 46.0f, 46.0f, 1),
-            KnobBox("Mid", 227.0f, 115.0f, 46.0f, 46.0f, 4),
-            KnobBox("Treble", 307.0f, 115.0f, 46.0f, 46.0f, 1),
-            KnobBox("Presence", 387.0f, 115.0f, 46.0f, 46.0f, 4),
-            KnobBox("Master", 467.0f, 115.0f, 46.0f, 46.0f, 1),
-            KnobBox("Level", 727.0f, 115.0f, 46.0f, 46.0f, 4),
+            KnobBox("Gain", 67.0f, 117.0f, 46.0f, 46.0f, 4),
+            KnobBox("Bass", 147.0f, 117.0f, 46.0f, 46.0f, 1),
+            KnobBox("Mid", 227.0f, 117.0f, 46.0f, 46.0f, 4),
+            KnobBox("Treble", 307.0f, 117.0f, 46.0f, 46.0f, 1),
+            KnobBox("Presence", 387.0f, 117.0f, 46.0f, 46.0f, 4),
+            KnobBox("Master", 467.0f, 117.0f, 46.0f, 46.0f, 1),
+            KnobBox("Level", 727.0f, 117.0f, 46.0f, 46.0f, 4),
         ),
                         11 to listOf(
             KnobBox("Drive", 328.0f, 108.0f, 44.0f, 44.0f, 1),
@@ -191,8 +191,8 @@ object FxChipGroups {
         9 to listOf(ChipGroup("BODY", 16f, 6f,
             pick(0, 0.333f, "ACOUSTIC", "NYLON", "ELEC DC", "ELEC SC"))),
         10 to listOf(
-            ChipGroup("CHANNEL", 16f, 6f, pick(6, 0.5f, "CLEAN", "CRUNCH", "LEAD")),
-            ChipGroup("PEDALS", 560f, 6f, listOf(
+            ChipGroup("CHANNEL", 16f, 3f, pick(6, 0.5f, "CLEAN", "CRUNCH", "LEAD")),
+            ChipGroup("PEDALS", 560f, 3f, listOf(
                 ChipItem("BOOST", 9), ChipItem("TREM", 10)))),
         11 to listOf(ChipGroup("CABINET", 16f, 134f, listOf(
             ChipItem("1\u00d715", 8, 0f), ChipItem("4\u00d710", 8, 0.5f), ChipItem("8\u00d710", 8, 1f)))),
