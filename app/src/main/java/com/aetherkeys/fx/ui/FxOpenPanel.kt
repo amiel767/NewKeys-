@@ -28,7 +28,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -69,20 +68,26 @@ fun FxOpenPanel(
 ) {
     val clock = rememberFxClock(fullRate = true)
     Box(modifier = modifier.size(CANVAS_W.dp, CANVAS_H.dp)) {
-        // `.bd`: the scene band, 825x343 at (13,42). The host already painted the
-        // `.xN` colour over the whole window, so this band adds the scene on top.
+        // `.bd`: the scene canvas, 779x263 at the content origin (20,58). The
+        // scenes are written in content-local coordinates and paint their `.xN`
+        // background from (-OXL,-OYL), which lands exactly on the window, so the
+        // effect colour fills the frame and no clip is needed here: the host's
+        // rounded clip already bounds the window.
         Box(
             Modifier
-                .offset(x = BAND_X.dp, y = BAND_Y.dp)
-                .size(BAND_W.dp, BAND_H.dp)
-                // A Canvas does not clip: the scenes fill from (-OXL,-OYL), which
-                // spills over the header and the margins. The reference band is
-                // bounded, so the spill has to be cut here.
-                .clipToBounds(),
+                .offset(x = SCENE_X.dp, y = SCENE_Y.dp)
+                .size(779.dp, 263.dp),
         ) {
             Canvas(Modifier.fillMaxSize()) {
                 val d = this.density
-                withTransform({ scale(d, d, pivot = Offset.Zero) }) {
+                // scale: logical unit -> pixel. translate: move the origin to the
+                // content origin, since the scenes are written in content-local
+                // coordinates and paint their background from (-OXL,-OYL), which
+                // this lands back exactly on the band.
+                withTransform({
+                    scale(d, d, pivot = Offset.Zero)
+                    translate(20f, 58f)
+                }) {
                     with(module) { drawScene(params, clock.value, mini = false, tm = tm) }
                     // Only the instruments that actually have one get the bottom rail.
                     // The amp (10) and the bass (11) have no `RS` entry: their "Level"
@@ -93,16 +98,6 @@ fun FxOpenPanel(
                 }
             }
         }
-
-        // `.ph`: the header keeps the window chrome. Measured on the references,
-        // #0f1622 -> #0b111d sits behind the title for every effect, including
-        // ref-04-solar-ceiling.png whose panel is light beige, so the header is
-        // opaque chrome rather than a see-through of the effect colour.
-        Box(
-            Modifier
-                .size(CANVAS_W.dp, 42.dp)
-                .background(Brush.verticalGradient(listOf(Color(0xFF0F1622), Color(0xFF0B111D)))),
-        )
 
         // `#cl`: close chip pinned at 12,12 (top-left), the `.ph` padding clears it.
         Box(Modifier.offset(x = 12.dp, y = 12.dp)) {
@@ -155,8 +150,8 @@ fun FxOpenPanel(
                 light = module.id in LIGHT_EFFECTS,
                 onChange = { onParam(spec.paramIndex, it) },
                 modifier = Modifier.offset(
-                    x = (BAND_X + cx).dp - diameter / 2f,
-                    y = (BAND_Y + cy).dp - diameter / 2f,
+                    x = (SCENE_X + cx).dp - diameter / 2f,
+                    y = (SCENE_Y + cy).dp - diameter / 2f,
                 ),
             )
         }

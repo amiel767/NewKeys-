@@ -37,14 +37,14 @@ private class RecordingEngine : FxEngine {
 }
 
 /**
- * Captures the real FX window on its fixed logical canvas (851 x 394, the
- * 1728 x 800 references at S = 2.031) so the scale is exactly 1 and the capture
- * can be compared with `ref-NN-*.png` without resampling. The scene band inside
- * it is 825 x 343 at (13, 42).
+ * Captures the real FX window on its fixed logical canvas (825 x 343, the
+ * reference's PWL x PHL) so the scale is exactly 1. The 1728 x 800 references
+ * carry a page margin (12 px sides, 38 px top, 10 px bottom) around the window;
+ * `compare_scaled.py` resizes for the side-by-side.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(qualifiers = "w851dp-h394dp-440dpi", sdk = [36])
+@Config(qualifiers = "w825dp-h343dp-440dpi", sdk = [36])
 class FxWindowCaptureTest {
 
     @get:Rule val composeTestRule = createComposeRule()
@@ -54,7 +54,7 @@ class FxWindowCaptureTest {
         configure(store)
         composeTestRule.mainClock.autoAdvance = false
         composeTestRule.setContent {
-            Box(Modifier.size(851.dp, 394.dp).background(Color(0xFF0B0F17))) {
+            Box(Modifier.size(825.dp, 343.dp).background(Color(0xFF0B0F17))) {
                 FxWindowHost(store = store)
             }
         }

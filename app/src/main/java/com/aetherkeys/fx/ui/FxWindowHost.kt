@@ -40,22 +40,24 @@ import kotlinx.coroutines.delay
 import kotlin.math.min
 
 /**
- * Logical window, measured on the references: 1728x800 px at S = 2.031, so
- * 851x394. The scene band inside it is only 825x343, inset at (13, 42) — that
- * inset also matches the 12 px page margin and the 42 px `.wh` header.
+ * The window is the effect area itself: 825x343, the reference's `PWL` x `PHL`.
+ * It is *not* the 851x394 of the PNG — that is the screenshot, which includes the
+ * page margin (12 px left/right, 38 px top, 10 px bottom) around the window.
+ * Measured: the effect background spans y_log 39.4..381.6 and x_log 12.8..837.0,
+ * so 825x343 with the page outside it. Taking 851x394 as the window is what made
+ * the background look undersized.
  */
-const val CANVAS_W = 851f
-const val CANVAS_H = 394f
+const val CANVAS_W = 825f
+const val CANVAS_H = 343f
 
 /**
- * `.bd`: the scene band, 825x343 at (13,42). `.pn` spans the whole window and
- * carries the `.xN` colour, so the effect colour reaches the edges (x 0..851,
- * measured) while the scene itself only occupies 13..838.
+ * `.bd`: the scene canvas, 779x263 at the content origin (20,58) inside the
+ * window. The scenes are written in content-local coordinates and paint their own
+ * `.xN` background from (-OXL,-OYL), which lands exactly on the window. Painting
+ * them at the window origin dropped every element by (20,58).
  */
-const val BAND_X = 13f
-const val BAND_Y = 42f
-const val BAND_W = 825f
-const val BAND_H = 343f
+const val SCENE_X = 20f
+const val SCENE_Y = 58f
 
 /**
  * The whole FX window, ported from `#win` in fx-window-preview.html.
@@ -84,7 +86,7 @@ fun FxWindowHost(store: FxShellStore, modifier: Modifier = Modifier) {
                 // x 13..838 only — the header (top) and the 10px bottom margin stay
                 // dark chrome in every reference (y=392 is #06090e, not the effect
                 // colour). FxOpenPanel paints the effect gradient over the band.
-                if (store.openId != null) Brush.verticalGradient(listOf(Color(0xFF10141D), Color(0xFF10141D)))
+                if (store.openId != null) fxPanelBrush(store.openId!!)
                 else Brush.verticalGradient(listOf(Color(0xFF1F2635), Color(0xFF131925))),
             )
             .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(20.dp)),

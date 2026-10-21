@@ -970,3 +970,53 @@ telechargement renvoie 502, relancer :
 `cd /workspace/dl && nohup python3 -m http.server 12000 --bind 0.0.0.0 &`
 PIL et numpy peuvent aussi disparaitre (l'interpreteur change) :
 `pip install pillow numpy`.
+
+## B8-1, 4e passe : la fenetre EST le fond (idee utilisateur, validee)
+
+L'utilisateur a insiste : « la fenetre est grande et exactement de la taille de
+l'ecran, les fonds ont une taille a eux — reduire la fenetre pour que les fonds
+remplissent toute la fenetre ». Il avait raison, et mes mesures precedentes l'avaient
+ecarte a tort parce que je prenais la mauvaise echelle.
+
+### L'erreur : 851x394 n'est pas la fenetre, c'est l'IMAGE
+Les PNG de reference font 1728x800 px. A S = 2,031 cela fait **851x394** — et j'ai
+pris cette valeur pour la fenetre. C'est faux : 851x394 est la capture d'ecran, qui
+**inclut la marge de page** autour de la fenetre (`#win{left:12px;right:12px;
+top:38px;bottom:10px}`). La vraie fenetre est le fond d'effet lui-meme.
+
+Mesure decisive, seuil de luminance sur `ref-01-echo.png` :
+- fond d'effet vertical   : y_log **39,4 .. 381,6**  -> hauteur **342,7**
+- fond d'effet horizontal : x_log **12,8 .. 837,0**  -> largeur **824,7**
+- donc la fenetre = **825x343**, la page occupe le reste (12 px de chaque cote,
+  38 en haut, 10 en bas).
+
+### Pourquoi mes passes precedentes tournaient en rond
+J'avais 851x394 pour la fenetre, donc :
+- je peignais du « chrome » en haut et en bas — or il n'y a **pas de chrome** :
+  ce que je prenais pour un header sombre est la page, AU-DESSUS de la fenetre ;
+- je croyais que le fond d'effet ne remplissait que 825x343 de la fenetre, alors
+  qu'il la remplit entierement ;
+- je cherchais un decalage de contenu a corriger par des offsets, alors que le
+  probleme etait le cadre.
+DeepSeek disait la meme chose (« le fond doit remplir toute la fenetre ») ; mon
+test d'echelle l'avait fait passer pour faux. Le raisonnement correct etait de
+mesurer les BORDS DU FOND, pas de comparer des medianes par rangee sur toute l'image.
+
+### Etat final
+- Fenetre = **825x343**, le fond d'effet la remplit exactement (mesure : y 0..342,
+  x 0..824 dans la capture).
+- Scene (`.bd`) = 779x263 a **(20,58)**, en coordonnees contenu, avec
+  `translate(20,58)` dans le `withTransform`.
+- Knobs places en `SCENE_X + cx`, `SCENE_Y + cy`.
+- Plus de bande de chrome ni de `clipToBounds` : le fond ne deborde plus, donc le
+  clip arrondi du host suffit.
+- **Ecarts, compares fenetre a fenetre** (recadrage de la reference sur les bords
+  reels du fond) : amp **6,64 %**, echo **8,06 %**. Contre 10,2 / 33,7 % mesures sur
+  l'image entiere — l'ecart de l'echo etait du cadrage, pas du contenu.
+- Le script `compare_scaled.py` compare l'IMAGE a l'image ; pour juger le rendu il
+  faut recadrer la reference sur (12,8 / 39,4 / 837,0 / 381,6) puis redimensionner
+  en 825x343.
+
+### Lecon
+Quand un rendu semble « decale », mesurer d'abord les BORDS du conteneur, pas les
+contenus. Un cadre faux produit exactement les symptomes d'un contenu mal place.
