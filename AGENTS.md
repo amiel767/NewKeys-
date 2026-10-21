@@ -788,3 +788,29 @@ de chevauchement. Déployé inchangé (conteneur à 276 dp).
 - Les 2 namespaces et les doublons `SettingsScreen`/`SetlistsScreen` restent.
 - Aucun commit/push. Captures sous `app/src/test/screenshots/` (outils, pas tests).
 - `TrackSettingsCaptureTest.kt` ajouté (capture scrim, non commité).
+
+## Session 2026-10-21 (5e passage) — récupération après crash + toolchain
+
+Conversation source : `23255f8abab04b489d05d2e6b5c0ee18` (`sandbox_status=ERROR`).
+Le travail de la session précédente (fenêtre FX, coque `fx-shell-final.zip`) n'avait
+**jamais été poussé** : il a été perdu avec le sandbox.
+
+- **Toolchain provisionné** dans le sandbox : `JAVA_HOME=/workspace/jdk/jdk21`,
+  `ANDROID_HOME=/workspace/android-sdk` (platform 36, build-tools 36.0.0,
+  NDK 27.0.12077973, CMake 3.22.1). `local.properties` et `debug.keystore` sont
+  gitignorés et doivent être régénérés après chaque crash.
+  Wrapper : `/workspace/build.sh <tâche>`.
+- **Récupération** : les actions `file_editor` et les commandes terminal de la
+  trajectoire (9423 événements, `GET /api/v1/app-conversations/<id>/download`) ont
+  été **rejouées** dans l'ordre chronologique → arbre identique au `git status`
+  perdu. Une seule édition `str_replace` a échoué (fichier réécrit plus tard,
+  bénin) ; un import dupliqué (`MutableInteractionSource` dans `MixerScreen.kt`)
+  était un artefact de rejeu, corrigé à la main.
+- **Branché/sécurisé** : `FxModule` et `FxShellStore` n'indexent plus
+  `FxRegistry.all[id]` sans borne (utilisent `FxRegistry.info(id)`) — même classe
+  que le crash `all[-1]` déjà corrigé. La puce Soundfont de `FxWindowHost` n'est
+  plus un callback vide.
+- **Vérifié** : `:app:compileDebugKotlin` et `:app:assembleDebug` → BUILD SUCCESSFUL
+  (APK 42,6 Mo). Poussé sur `recovery/fx-window-shell`.
+- **Reste** : intégrer `FxWindowHost` dans `MixerScreen` (aucun appelant hors test),
+  puis la validation appareil.
