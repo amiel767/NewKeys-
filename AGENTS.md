@@ -1165,3 +1165,73 @@ petit partout. Ne pas reintroduire de coefficient.
   `cd /workspace/dl && (nohup python3 -m http.server 12000 --bind 0.0.0.0 &)`.
 - `pillow` et `numpy` disparaissent aussi : `pip install pillow numpy`.
 - `ss -ltn` n'est pas fiable pour verifier le port ; tester avec `curl`.
+
+## Session récupération (2026-10-21, 3e) — mesure réparée + frontière moteur durcie
+
+Contexte : 3e conversation après deux redémarrages du sandbox. Objectif demandé :
+intégrer le contexte, **sécuriser pour éviter le crash sandbox** et les problèmes
+de **callback qui empêchent d'envoyer des messages**.
+
+### 1. La mesure était fausse, pas le port (cause racine)
+Les pourcentages de la conversation précédente (echo 33,72 %, moyenne 14,90 %)
+venaient d'une comparaison **image entière → image entière** alors que
+`FxWindowCaptureTest` ne rend **que la fenêtre** (825×343, la boîte logique).
+`tools/fxcompare/compare_scaled.py` redimensionne la capture sur la référence
+complète, ce qui aligne la fenêtre sur la **marge de page** (12/38/10 px) et
+gonfle tous les écarts d'environ +22 points.
+
+- **Outil correct** : `tools/fxcompare/compare_window.py`. Il recadre d'abord la
+  référence sur la fenêtre (y 39,4..381,6 et x 12,8..837,0 de la page 851×393),
+  puis applique le même seuil (1,5 %, delta 24).
+- Mesure réparée (capture 2268×943 → fenêtre) :
+  space 10,73 · echo 33,72 · prism-tone 20,22 · iron-grip 8,72 ·
+  solar-ceiling 27,66 · piano 11,14 · organ 13,18 · sax 18,35 · strings 15,31 ·
+  guitar 12,53 · amp 6,83 · bass 6,08 · brass 8,83 · voices 14,55 · synth 13,34.
+  **Moyenne 14,73 %.**
+- `compare_scaled.py` reste valable **uniquement** pour une capture pleine page
+  (`w851dp-h393dp`). Pour la fenêtre, toujours `compare_window.py`.
+
+### 2. Les PNG de référence restent la cible (vérifié)
+J'ai rendu `fx-window-preview.html` en headless (Chromium présent :
+`/usr/bin/chromium`, `tools/refcheck/render_ref.mjs`) pour lever le doute
+« références périmées ? ». Elles **ne le sont pas** : mon rendu headless donne
+14,7 % de différence moyenne avec la référence, ce qui est la signature d'un
+rendu **sans les polices Google** (le preview les charge par réseau) et non d'une
+géométrie divergente. Conclusion : les PNG livrés sont la cible ; ne pas les
+remplacer par un rendu headless.
+
+### 3. Le calque ambiant `bg()` est la vraie lacune restante
+`bg(i,x,t,v,a)` du preview peint **des couches qui couvrent toute la fenêtre**,
+pas seulement la scène. Porté seulement pour les effets 0 et 1 (`.x1` y est
+fusionné). **Manquant** :
+- `bg(2)` : 3 bandes diagonales lumineuses qui défilent (`px = X0+((t*30+k*300)%(w+400))-200`).
+- `bg(3)` : 17 lignes horizontales en éventail (`k` de -8 à 8, alpha `.06+.06*(1-|k|/8)`),
+  compressées par `gs[0]` (enveloppe du compresseur).
+- `bg(4)` : l'horizon du solar-ceiling — `ty = Y0+26+(1-v[1])*40`, ligne `#c9852c`
+  épaisseur 2 à alpha `.25+.3*v[0]`, puis dégradé `#c9852c55 → transparent` sur 100 px.
+  C'est la cause n°1 de l'écart de solar-ceiling (bande pleine largeur y 33..88).
+- `.x0` (espace) et `.x2` (prism-tone) : **deux** règles `.x2` existent dans le
+  preview (grille ardoise l.54, face rouge l.104) ; la seconde gagne. Vérifié :
+  la face rouge est bien la bonne.
+- Le fond de scène du solar-ceiling doit être `linear-gradient(#efe9db,#d6cdb9)`
+  soit **(239,233,219)→(214,205,185)** : le port rend (235,228,213) en haut, trop
+  clair — la rampe est décalée, pas seulement le calque ambiant.
+
+### 4. Frontière moteur durcie (anti-crash callback)
+Le moteur est un pont JNI : une bibliothèque absente ou un appel refusé **lève**
+au lieu de retourner. Une exception lancée depuis un gestionnaire d'événement
+Compose **démonte la fenêtre** sans retour possible — c'est exactement le
+« problème de callback qui empêche d'envoyer des messages ».
+- `FxShellStore` : tout appel moteur passe par `guard`/`guardBool`, qui replie
+  l'échec dans `notice` au lieu de propager. Couvre addEffect, setInstrument,
+  removeEffect, setParam/setInstrumentParam, toggleBypass, applyPreset.
+- `FxOverlay` : la boucle de niveau (30 Hz, `peak()`) est enveloppée dans
+  `runCatching`, elle garde le dernier niveau au lieu de tuer la fenêtre.
+- Preuve : `FxShellStoreResilienceTest` (5 tests) — moteur mort (`DeadEngine`) et
+  moteur qui refuse les écritures (`WriteDeadEngine`). 5/5 PASS.
+
+### 5. Anti-crash sandbox
+- Gradle toujours en **arrière-plan + bridé** : `--no-daemon --max-workers=2`,
+  redirection vers `/tmp/*.log`, puis lecture du log. Jamais au premier plan sur
+  une tâche longue.
+- `scipy` installé (`pip install scipy`) pour l'analyse d'images par composantes.

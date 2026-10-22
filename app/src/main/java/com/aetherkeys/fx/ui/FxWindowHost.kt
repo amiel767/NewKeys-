@@ -122,6 +122,10 @@ fun FxWindowHost(store: FxShellStore, modifier: Modifier = Modifier) {
                         onAb = { store.toggleAB(module.id) },
                         onSurprise = { store.surprise(module.id) },
                         onClose = { store.openId = null },
+                        page = store.page,
+                        onPage = { store.page = it },
+                        onEdit = { store.editOpen = !store.editOpen },
+                        editOpen = store.editOpen,
                         tm = tm,
                     )
                 }

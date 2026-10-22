@@ -47,8 +47,9 @@ class FxModule(private val effectId: Int) : EffectModule {
 
     private val sceneState = FxSceneState()
 
-    override fun DrawScope.drawScene(params: FloatArray, t: Float, mini: Boolean, tm: TextMeasurer) {
-        sceneState.presetIndex = 0
+    override fun DrawScope.drawScene(params: FloatArray, t: Float, mini: Boolean, tm: TextMeasurer, page: Int) {
+        // The synth's `SYPG` global: the scene draws only the active `SPG` page.
+        sceneState.presetIndex = if (effectId == 14 && page >= 0) page else 0
         drawFxScene(effectId, params, t, tm, sceneState)
     }
 }

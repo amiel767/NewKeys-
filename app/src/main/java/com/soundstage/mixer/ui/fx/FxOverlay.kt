@@ -84,10 +84,11 @@ fun FxOverlay(
             }
     }
 
-    // Peak poll for the rail, 30 Hz.
+    // Peak poll for the rail, 30 Hz. A native meter call that throws would take
+    // the whole effect window down with it, so the poll keeps the last level.
     androidx.compose.runtime.LaunchedEffect(strip) {
         while (true) {
-            level = maxOf(controller.peak(0), controller.peak(1))
+            level = runCatching { maxOf(controller.peak(0), controller.peak(1)) }.getOrDefault(level)
             kotlinx.coroutines.delay(33)
         }
     }

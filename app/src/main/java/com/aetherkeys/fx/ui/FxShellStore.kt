@@ -21,6 +21,10 @@ class FxShellStore(
     var openId by mutableStateOf<Int?>(null)
     var addOpen by mutableStateOf(false)
     var addTab by mutableStateOf(FxAddTab.EFFECTS)
+    /** Active `SPG` page of the open panel. Only the synth uses more than one. */
+    var page by mutableStateOf(0)
+    /** `#ed`: the soundfont edit panel, toggled by the Edit chip on effects 5/7/8/9/12. */
+    var editOpen by mutableStateOf(false)
     /** Short message shown in the window (refusals, replacements). Cleared by the UI after display. */
     var notice by mutableStateOf<String?>(null)
 
@@ -51,7 +55,7 @@ class FxShellStore(
         val list = slotsOf(strip)
         val free = list.indexOfFirst { it == null }
         if (free < 0) return refuse("All effect slots are full")
-        if (!engine.setEffect(strip, free, id)) return refuse("Engine refused ${m.name}")
+        if (!guardBool("add effect") { engine.setEffect(strip, free, id) }) return refuse("Engine refused ${m.name}")
         list[free] = id
         pushAll(id)
         return true
@@ -63,7 +67,7 @@ class FxShellStore(
         val m = modules[id] ?: return refuse("Unknown instrument")
         if (m.kind == FxScreenKind.EFFECT) return refuse("${m.name} is an effect")
         val old = instrument[strip]
-        if (!engine.setInstrument(strip, id)) return refuse("Engine refused ${m.name}")
+        if (!guardBool("instrument") { engine.setInstrument(strip, id) }) return refuse("Engine refused ${m.name}")
         instrument[strip] = id
         if (old != null && old != id) notice = "${m.name} replaces ${modules[old]?.name ?: "previous"}"
         pushAll(id)
@@ -73,8 +77,8 @@ class FxShellStore(
     fun removeEffect(id: Int) {
         val list = slotsOf(strip)
         val slot = list.indexOf(id)
-        if (slot >= 0) { engine.setEffect(strip, slot, -1); list[slot] = null }
-        if (instrument[strip] == id) { engine.setInstrument(strip, -1); instrument[strip] = null }
+        if (slot >= 0) { guard("remove effect") { engine.setEffect(strip, slot, -1) }; list[slot] = null }
+        if (instrument[strip] == id) { guard("remove instrument") { engine.setInstrument(strip, -1) }; instrument[strip] = null }
     }
 
     fun setParam(id: Int, index: Int, value: Float) {
@@ -88,7 +92,7 @@ class FxShellStore(
         val now = !isBypassed(id)
         bypass[key(strip, id)] = now
         val slot = slotsOf(strip).indexOf(id)
-        if (slot >= 0) engine.setBypass(strip, slot, now)
+        if (slot >= 0) guard("bypass") { engine.setBypass(strip, slot, now) }
     }
 
     /** Applies preset [index] from the registry: updates local values and tells the engine. */
@@ -99,7 +103,7 @@ class FxShellStore(
         preset.values.forEachIndexed { i, x -> v[i] = x }
         activePreset[key(strip, id)] = index
         val slot = slotsOf(strip).indexOf(id)
-        if (slot >= 0) engine.applyPreset(strip, slot, index)
+        if (slot >= 0) guard("preset") { engine.applyPreset(strip, slot, index) }
         pushAll(id)
         return true
     }
@@ -146,9 +150,32 @@ class FxShellStore(
     private fun pushParam(id: Int, index: Int) {
         val v = valuesOf(id)
         val slot = slotsOf(strip).indexOf(id)
-        if (slot >= 0) engine.setParam(strip, slot, index, v[index])
-        else if (instrument[strip] == id) engine.setInstrumentParam(strip, index, v[index])
+        if (slot >= 0) guard("param") { engine.setParam(strip, slot, index, v[index]) }
+        else if (instrument[strip] == id) guard("param") { engine.setInstrumentParam(strip, index, v[index]) }
     }
 
     private fun refuse(msg: String): Boolean { notice = msg; return false }
+
+    /**
+     * Every engine call goes through here. The engine is a native bridge: a
+     * refused call or a missing library raises instead of returning, and an
+     * exception thrown from a Compose event handler tears the window down
+     * without a way back. Folding it into [notice] keeps the UI alive and tells
+     * the user what did not apply.
+     */
+    private inline fun guard(what: String, block: () -> Unit) {
+        try {
+            block()
+        } catch (e: Throwable) {
+            notice = "$what failed: ${e.message ?: e::class.simpleName}"
+        }
+    }
+
+    /** [guard] for the engine calls that report success with a Boolean. */
+    private inline fun guardBool(what: String, block: () -> Boolean): Boolean = try {
+        block()
+    } catch (e: Throwable) {
+        notice = "$what failed: ${e.message ?: e::class.simpleName}"
+        false
+    }
 }

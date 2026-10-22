@@ -42,6 +42,37 @@ enum class KnobStyle {
     }
 }
 
+
+/**
+ * `.kn label` and `.vl` in the preview are re-typed per effect: the base rule is
+ * `700 9px 'Plus Jakarta Sans'` / `700 11px`, but `.x2 .kn label{font-family:'Share
+ * Tech Mono';font-weight:400}`, `.x10 .kn label{font-family:'Orbitron'}`, `.x6
+ * .vl{font-size:12px}`, and so on override both the family and the weight. Hard-coding
+ * Plus Jakarta Sans everywhere is what made the readouts look out of proportion and
+ * what clipped the `E` off the amp's `PRESENCE` (Orbitron is far wider at 9 px).
+ */
+data class ReadoutFont(val family: androidx.compose.ui.text.font.FontFamily, val weight: FontWeight, val size: Float)
+
+private val READOUT_FONTS: Map<Int, ReadoutFont> = mapOf(
+    2 to ReadoutFont(FxFonts.mono, FontWeight.Normal, 12f),
+    5 to ReadoutFont(FxFonts.sora, FontWeight.Bold, 11f),
+    6 to ReadoutFont(FxFonts.mono, FontWeight.Normal, 12f),
+    7 to ReadoutFont(FxFonts.sora, FontWeight.Bold, 11f),
+    8 to ReadoutFont(FxFonts.spaceGrotesk, FontWeight.Bold, 11f),
+    9 to ReadoutFont(FxFonts.jetBrainsMono, FontWeight.Bold, 11f),
+    10 to ReadoutFont(FxFonts.orbitron, FontWeight.Bold, 11f),
+    11 to ReadoutFont(FxFonts.sora, FontWeight.Bold, 11f),
+    12 to ReadoutFont(FxFonts.spaceGrotesk, FontWeight.Bold, 11f),
+    13 to ReadoutFont(FxFonts.spaceGrotesk, FontWeight.Light, 11f),
+    14 to ReadoutFont(FxFonts.mono, FontWeight.Normal, 12f),
+)
+
+/** The label is the same face as the value, but the base weight is 700 9px. */
+private fun labelFont(id: Int): ReadoutFont {
+    val f = READOUT_FONTS[id] ?: return ReadoutFont(FxFonts.ui, FontWeight.Bold, 9f)
+    return f.copy(size = 9f, weight = if (f.family == FxFonts.mono) FontWeight.Normal else FontWeight.Bold)
+}
+
 /** `LIGHT=[1,3,4,8,10,11,12,13]`: dark knob bodies, so the pointer turns dark too. */
 private val DARK_BODIES = setOf(1, 3, 4, 8, 10, 11, 12, 13)
 
@@ -81,6 +112,7 @@ fun FxKnob(
     onChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
     gradientIndex: Int = 0,
+    effectId: Int = -1,
 ) {
     // `.kn` is a column with `label` first, so the name sits above the body and the
     // readout below. Kept out of the flow here: a real column would push the body
@@ -98,11 +130,14 @@ fun FxKnob(
         ) {
             drawKnob(value, accent, style, gradientIndex, light)
         }
-        Text(label.uppercase(), fontSize = 9.sp, fontFamily = FxFonts.ui,
-            fontWeight = FontWeight.Bold, color = Color(0xFFE6EAF3).copy(alpha = 0.65f),
-            maxLines = 1, modifier = Modifier.align(Alignment.TopCenter).offset(y = (-13).dp))
-        Text(valueText, fontSize = 11.sp, fontFamily = FxFonts.ui, fontWeight = FontWeight.Bold,
-            color = Color(0xFFE6EAF3), maxLines = 1,
+        val lf = labelFont(effectId)
+        val vf = READOUT_FONTS[effectId] ?: ReadoutFont(FxFonts.ui, FontWeight.Bold, 11f)
+        Text(label.uppercase(), fontSize = lf.size.sp, fontFamily = lf.family,
+            fontWeight = lf.weight, color = Color(0xFFE6EAF3).copy(alpha = 0.65f),
+            softWrap = false, maxLines = 1,
+            modifier = Modifier.align(Alignment.TopCenter).offset(y = (-13).dp))
+        Text(valueText, fontSize = vf.size.sp, fontFamily = vf.family, fontWeight = vf.weight,
+            color = Color(0xFFE6EAF3), softWrap = false, maxLines = 1,
             modifier = Modifier.align(Alignment.BottomCenter).offset(y = 10.dp))
     }
 }

@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -66,6 +67,10 @@ fun FxOpenPanel(
     onAb: () -> Unit,
     onSurprise: () -> Unit,
     onClose: () -> Unit,
+    page: Int,
+    onPage: (Int) -> Unit,
+    onEdit: () -> Unit,
+    editOpen: Boolean,
     tm: TextMeasurer,
     modifier: Modifier = Modifier,
 ) {
@@ -89,7 +94,7 @@ fun FxOpenPanel(
                 // Adding translate(20,58) on top shifted everything down by 58 and
                 // inset the background, which is what truncated the bottom.
                 withTransform({ scale(d, d, pivot = Offset.Zero) }) {
-                    with(module) { drawScene(params, clock.value, mini = false, tm = tm) }
+                    with(module) { drawScene(params, clock.value, mini = false, tm = tm, page = page) }
                     // Only the instruments that actually have one get the bottom rail.
                     // The amp (10) and the bass (11) have no `RS` entry: their "Level"
                     // is a regular knob and the panel runs to the bottom.
@@ -131,15 +136,38 @@ fun FxOpenPanel(
                 SmallChip("Surprise me", onSurprise)
                 Spacer(Modifier.width(8.dp))
                 SmallChip(abLabel, onAb)
+                // `[5,7,8,9,12].includes(i)`: the soundfont-backed instruments
+                // carry the Edit chip; the preview only toggles `.on` on `#ed`,
+                // which has no markup of its own, so the panel below is a stand-in.
+                if (module.id in EDIT_EFFECTS) {
+                    Spacer(Modifier.width(8.dp))
+                    SmallChip("Edit", onEdit, active = editOpen)
+                }
             }
         }
+
+        if (editOpen) EditPanel(module.id)
 
         // `.chg` groups (`TG(i,label,x,y,items)` in the preview): the preset/section
         // chips that sit above the knobs — CHANNEL + PEDALS for the amp, ADSR, BODY,
         // CABINET, MUTE, PERCUSSION, ROTARY for the others. Positions are window
         // coordinates, like the knob boxes.
-        FxChipGroups.byEffect[module.id].orEmpty().forEach { group ->
+        val chipGroups = FxChipGroups.byEffect[module.id].orEmpty()
+        val pageChips = FxChipGroups.pages[module.id]
+        (pageChips?.firstOrNull { it.page == page }?.groups ?: chipGroups).forEach { group ->
             ChipGroupRow(group, params) { onParam(it.first, it.second) }
+        }
+
+        // `.pgt` (`SPG` tabs): only the synth has pages. The reference shows SOUND.
+        if (pageChips != null) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.offset(x = 288.dp, y = 14.dp),
+            ) {
+                listOf("SOUND", "MOTION", "VOICE").forEachIndexed { k, name ->
+                    PageTab(name, active = k == page) { onPage(k) }
+                }
+            }
         }
 
         // Knobs, at their boxes. `FxKnobBoxes` is already in window coordinates
@@ -148,6 +176,8 @@ fun FxOpenPanel(
         FxKnobBoxes.byEffect[module.id].orEmpty().forEachIndexed { i, box ->
             val spec = module.knobs.getOrNull(i) ?: return@forEachIndexed
             if (box.w <= 0f) return@forEachIndexed
+            // `SPG`: knobs outside the active synth page are `display:none`.
+            if (box.page >= 0 && page != -1 && box.page != page) return@forEachIndexed
             val v = params.getOrElse(spec.paramIndex) { 0f }
             val cx = box.x + box.w / 2f
             val cy = box.y + box.h / 2f
@@ -162,6 +192,7 @@ fun FxOpenPanel(
                 gradientIndex = SKN[module.id] ?: box.sk,
                 valueText = formatValue(module, spec.paramIndex, v),
                 style = KnobStyle.forEffect(module.id),
+                effectId = module.id,
                 light = (SKN[module.id] ?: box.sk) in LIGHT_BODIES,
                 onChange = { onParam(spec.paramIndex, it) },
                 modifier = Modifier.offset(
@@ -198,6 +229,23 @@ private fun formatValue(module: EffectModule, index: Int, norm: Float): String {
     val raw = p.min + (p.max - p.min) * norm
     val d = p.decimals
     return "%.${d}f%s".format(raw, p.unit)
+}
+
+/** `.pgt i`: 5x9 padding, radius 99, `#ffffff10` fill, active `#7ad0ff` on `#04101c`. */
+@Composable
+private fun PageTab(name: String, active: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(99.dp))
+            .background(if (active) Color(0xFF7AD0FF) else Color(0x10FFFFFF))
+            .border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(99.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 9.dp, vertical = 5.dp),
+    ) {
+        Text(name, fontSize = 9.sp, fontFamily = FxFonts.ui, fontWeight = FontWeight.Bold,
+            letterSpacing = (9 * 0.08f).sp,
+            color = if (active) Color(0xFF04101C) else Color(0xFFE6EAF3))
+    }
 }
 
 @Composable
@@ -248,9 +296,52 @@ private val NAME_STYLES: Map<Int, Triple<Int, FontWeight, Float>> = mapOf(
 
 /** `.ib`: height 28, radius 9, gradient #ffffff14 -> #ffffff08, 10 px bold. */
 @Composable
-private fun SmallChip(label: String, onClick: () -> Unit) {
-    RaisedChip(label, active = false, onClick = onClick)
+private fun SmallChip(label: String, onClick: () -> Unit, active: Boolean = false) {
+    RaisedChip(label, active = active, onClick = onClick)
 }
+
+/** `[5,7,8,9,12].includes(i)`: the instruments backed by a soundfont. */
+private val EDIT_EFFECTS = setOf(5, 7, 8, 9, 12)
+
+/**
+ * `#ed`, the panel the Edit chip toggles. The preview's `#ed` has no markup of its
+ * own, so this is the soundfont group list the older window carried, kept verbatim.
+ */
+@Composable
+private fun EditPanel(effectId: Int) {
+    Column(
+        Modifier
+            .offset(x = 545.dp, y = 44.dp)
+            .width(268.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xF01A2130))
+            .border(1.dp, Color(0x1FFFFFFF), RoundedCornerShape(12.dp))
+            .padding(12.dp),
+    ) {
+        Text("Soundfont edit", fontSize = 11.sp, fontFamily = FxFonts.ui,
+            fontWeight = FontWeight.Bold, color = FxStyle.accent(effectId))
+        Text("Applies to the soundfont of this track. No reload.", fontSize = 10.sp,
+            fontFamily = FxFonts.ui, color = Color(0x99FFFFFF))
+        Spacer(Modifier.height(8.dp))
+        EDIT_GROUPS.forEach { (head, keys) ->
+            Text(head, fontSize = 9.sp, fontFamily = FxFonts.mono,
+                fontWeight = FontWeight.Bold, color = FxStyle.accent(effectId))
+            keys.forEach { k ->
+                Text(k, fontSize = 10.sp, fontFamily = FxFonts.ui, color = Color(0xFFB9C2D4))
+            }
+            Spacer(Modifier.height(6.dp))
+        }
+    }
+}
+
+private val EDIT_GROUPS: List<Pair<String, List<String>>> = listOf(
+    "ENVELOPE" to listOf("Attack", "Decay", "Sustain", "Release"),
+    "FILTER" to listOf("Cutoff", "Resonance"),
+    "TUNING" to listOf("Coarse", "Fine"),
+    "VELOCITY" to listOf("Curve"),
+    "VIBRATO" to listOf("Vib depth", "Vib rate"),
+    "KEY RANGE" to listOf("Key low", "Key high"),
+)
 
 /**
  * `.bt` chip: a low-contrast outline, a top-edge sheen and a short drop shadow so
@@ -275,9 +366,32 @@ private fun RaisedChip(
             .padding(horizontal = 11.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, fontSize = if (active) 10.sp else 10.sp, fontFamily = FxFonts.ui,
+        Text(label, fontSize = 10.sp, fontFamily = FxFonts.ui,
             fontWeight = FontWeight.Bold, letterSpacing = (10 * 0.06f).sp,
             color = if (active) Color(0xFF2A1A10) else Color(0xFFE6EAF3), maxLines = 1)
+    }
+}
+
+/**
+ * `.chg i`: `padding:6px 8px; border-radius:7px; background:#00000066; border:1px
+ * solid #ffffff14; font:700 10px`, active `#f2d58a` on `#2a1a10`. This is NOT the
+ * same chip as `.ib` in the header (radius 9, gradient fill, 0 11 px, drop shadow):
+ * reusing the header chip made every option 6 px too wide and gave it a shadow the
+ * reference does not draw.
+ */
+@Composable
+private fun ChgChip(label: String, active: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .padding(start = 4.dp)
+            .clip(RoundedCornerShape(7.dp))
+            .background(if (active) Color(0xFFF2D58A) else Color(0x66000000))
+            .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(7.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+    ) {
+        Text(label, fontSize = 10.sp, fontFamily = FxFonts.ui, fontWeight = FontWeight.Bold,
+            color = if (active) Color(0xFF2A1A10) else Color(0xFFE9DCC0), maxLines = 1)
     }
 }
 
@@ -294,22 +408,21 @@ private fun ChipGroupRow(group: ChipGroup, params: FloatArray, onSet: (Pair<Int,
         modifier = Modifier
             // `TG` positions are content coordinates, like `AB`; shift by the same
             // (OXL, OYL) the scenes already carry.
-            .offset(x = (group.x + FxStyle.OXL).dp, y = (group.y + FxStyle.OYL).dp)
-            .padding(vertical = 2.dp),
+            .offset(x = (group.x + FxStyle.OXL).dp, y = (group.y + FxStyle.OYL).dp),
     ) {
         if (group.label.isNotEmpty()) {
+            // `TG` writes `style="width:auto;margin-right:6px"` on the span, which
+            // beats `.chg span{width:46px}`: the label wraps its text and only the
+            // 6 px gap separates it from the first option. Forcing 46 px pushed
+            // every option to the right and made the row too wide.
             Text(group.label, fontSize = 8.sp, fontFamily = FxFonts.ui, fontWeight = FontWeight.Bold,
                 letterSpacing = (8 * 0.12f).sp, color = Color(0xFFC9B88F),
-                maxLines = 1, modifier = Modifier.width(46.dp))
+                maxLines = 1, modifier = Modifier.padding(end = 6.dp))
         }
         group.items.forEach { item ->
             val v = params.getOrElse(item.param) { 0f }
             val on = if (item.value == null) v > 0.5f else kotlin.math.abs(v - item.value) < 0.01f
-            RaisedChip(
-                label = item.label,
-                active = on,
-                modifier = Modifier.padding(start = 4.dp),
-            ) { onSet(item.param to (item.value ?: if (v > 0.5f) 0f else 1f)) }
+            ChgChip(item.label, on) { onSet(item.param to (item.value ?: if (v > 0.5f) 0f else 1f)) }
         }
     }
 }

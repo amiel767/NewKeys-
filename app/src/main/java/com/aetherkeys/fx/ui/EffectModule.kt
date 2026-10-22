@@ -36,7 +36,7 @@ interface EffectModule {
      * [t]: seconds since the screen opened (never reset by a preset change).
      * [mini]: true when drawing a rack card (reduced detail, same layout).
      */
-    fun DrawScope.drawScene(params: FloatArray, t: Float, mini: Boolean, tm: TextMeasurer)
+    fun DrawScope.drawScene(params: FloatArray, t: Float, mini: Boolean, tm: TextMeasurer, page: Int = -1)
 }
 
 /** Used until a real scene exists: the frame, the knobs and the header are real, the scene area is empty. */
@@ -51,5 +51,5 @@ class PlaceholderModule(
     override val presets: List<String>,
     override val params: List<FxParam> = emptyList(),
 ) : EffectModule {
-    override fun DrawScope.drawScene(params: FloatArray, t: Float, mini: Boolean, tm: TextMeasurer) = Unit
+    override fun DrawScope.drawScene(params: FloatArray, t: Float, mini: Boolean, tm: TextMeasurer, page: Int) = Unit
 }
