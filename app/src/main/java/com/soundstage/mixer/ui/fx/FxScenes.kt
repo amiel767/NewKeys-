@@ -31,6 +31,7 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.abs
@@ -183,9 +184,15 @@ private fun DrawScope.oval(cx: Float, cy: Float, rx: Float, ry: Float, rot: Floa
 private fun DrawScope.label(tm: TextMeasurer, text: String, cx: Float, cy: Float,
                             color: Color, sp: Float, bold: Boolean = false,
                             align: LabelAlign = LabelAlign.CENTER) {
+    // Measured at density 1 on purpose: the scene canvas is already scaled by the
+    // display density (`scale(d, d)` in FxOpenPanel/RackCard), so a `sp` resolved at
+    // the real density was multiplied by it a second time — every scene label came
+    // out 2.75x too large on a 440dpi device. At density 1 the `sp` is 1:1 with the
+    // scene's logical units, which is what the preview's `9px` means.
     val layout = tm.measure(text, style = TextStyle(color = color, fontSize = sp.sp,
         fontFamily = FxFonts.mono,
-        fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal))
+        fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal),
+        density = Density(1f, 1f))
     val x = when (align) {
         LabelAlign.CENTER -> cx - layout.size.width / 2f
         LabelAlign.LEFT -> cx

@@ -259,8 +259,10 @@ private fun BypassChip(bypassed: Boolean, onClick: () -> Unit, ink: Color) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .height(28.dp)
-            .clip(RoundedCornerShape(9.dp))
-            .background(Brush.verticalGradient(listOf(Color(0x14FFFFFF), Color(0x08FFFFFF))))
+            // `.bt` carries `box-shadow:0 2px 4px #0006` plus the usual top bevel, so
+            // it reads as a raised key like `.ib`. `raised` is the project's chip
+            // relief (two-pass shadow, top highlight, bottom shade).
+            .raised(9.dp, 4.dp, Brush.verticalGradient(listOf(Color(0x14FFFFFF), Color(0x08FFFFFF))))
             .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(9.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 11.dp),
