@@ -129,9 +129,16 @@ fun FxOpenPanel(
                 // (`.x4`) is dark ink on a cream face, and the hard-coded light grey
                 // made the whole title invisible.
                 val ink = fxPanelText(module.id)
+                // `lineHeight = fontSize`: a `Text` in this 58 px header would
+                // otherwise inherit the Material3 line height (24 sp) and sit ~2 px
+                // low. Measured against the reference every title was +2 px down.
+                // `.ph .nm{font-size:30px;line-height:1}` declares no weight and no
+                // tracking, so the title keeps the per-effect face from the doc 03
+                // table but takes weight 400 and zero tracking. `lineHeight =
+                // fontSize` stops the Material3 24 sp line height from pushing it low.
                 Text(module.name, fontSize = style.first.sp, fontFamily = FxFonts.title(module.id),
-                    fontWeight = style.second, letterSpacing = style.third.sp,
-                    color = ink, maxLines = 1)
+                    fontWeight = FontWeight.Normal, letterSpacing = 0.sp,
+                    lineHeight = style.first.sp, color = ink, maxLines = 1)
                 Text(module.type.uppercase(), fontSize = SUB_TITLE_SIZE[module.id]?.sp ?: 9.sp, fontFamily = FxFonts.ui,
                     fontWeight = FontWeight.Bold, letterSpacing = (9 * 0.18f).sp,
                     color = ink.copy(alpha = 0.6f), maxLines = 1)

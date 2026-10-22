@@ -1306,3 +1306,19 @@ Never chase this score alone — it cannot distinguish a real defect from a time
 scene-to-scene with the crop `(26, 80, 1702, 776)`, which is the empirically optimal
 window on the known-good faces. A whole-window crop silently misaligns every later
 read: it once produced a bogus "space is offset by 8 px" result.
+
+**The effect title has one rule, but its face comes from the spec.** In the preview
+`.ph .nm{font-size:30px;line-height:1}` is the *only* title rule: no font-family, no
+font-weight, no letter-spacing. Do not conclude from that alone that the title uses
+the body face. The per-effect faces in `fx_layout_spec.json` (`font` field, doc 03
+table: Space Grotesk, JetBrains Mono, Orbitron, Share Tech Mono, Sora) are the
+source of truth, and `FxFonts.title(id)` implements them. Measured A/B on the title
+band (x 140..430, y 0..45), keeping the per-effect face while dropping the *invented*
+weight and tracking scored best (18.62) against both the body face (18.96) and the
+status quo (19.76). Keep `fontWeight = Normal`, `letterSpacing = 0` and
+`lineHeight = fontSize`; the last one removes the ~2 px sink the Material3 24 sp line
+height causes. `NAME_STYLES`'s weight/tracking columns are not in the preview.
+
+**The names carry a ligature.** `fx_layout_spec.json` spells effects 0 and 1
+`Æther Space` / `Æther Echo` with U+00C6. The port had plain `Aether`, which is a
+one-glyph difference in the widest part of the title.
