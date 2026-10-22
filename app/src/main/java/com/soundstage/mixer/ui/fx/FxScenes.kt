@@ -213,6 +213,31 @@ internal val PANEL_BG: Map<Int, Color> = mapOf(
 )
 
 /**
+ * Per-effect text colour, from the `color` of the same `.xN` rule that gives the
+ * panel its background. The port had `#DFE4EE` / `#E6EAF3` hard-coded for every
+ * readout, so solar (`.x4`, background `#efe9db`) painted cream text on cream and
+ * the page looked empty. `.x4` declares `#2a241b`; ids 7/8/9 have no rule of their
+ * own and fall back to the `#st` colour the preview inherits from `body`.
+ */
+internal val PANEL_TEXT: Map<Int, Color> = mapOf(
+    0 to Color(0xFFE7E3F6),
+    1 to Color(0xFFF0E4C8),
+    2 to Color(0xFFFFF1EA),   // the later `.x2` rule (red face) wins over the first
+    3 to Color(0xFFE3E8F0),
+    4 to Color(0xFF2A241B),
+    5 to Color(0xFFF3E6CC),
+    6 to Color(0xFFF3E6CC),
+    10 to Color(0xFFF3E6CC),
+    11 to Color(0xFFF3E6CC),
+    12 to Color(0xFFF3E6CC),
+    13 to Color(0xFFE8E4FF),
+    14 to Color(0xFFE0F2FF),
+)
+
+/** Text colour of [effectId]'s panel, or the `body` colour for the ids without a rule. */
+fun fxPanelText(effectId: Int): Color = PANEL_TEXT[effectId] ?: Color(0xFFE6EAF3)
+
+/**
  * Panel background for [effectId] as the `.xN` rule declares it. Those rules are
  * gradients, not flat colours — `.x1` is `linear-gradient(#41382a,#1f1b14)` — so a
  * single colour renders too dark and flat. Top and bottom are sampled from the
@@ -595,6 +620,24 @@ private fun DrawScope.sceneEq(v: FloatArray, t: Float, tm: TextMeasurer) {
                    if (up) Color(0xFF6A0B18) else Color(0xFF124A6A)),
             center = Offset(nx - 3.8f, ny - 4.4f), radius = 11f),
             radius = 11f, center = Offset(nx, ny))
+    }
+
+    // `if(!m)`: the OUT fader at the far right of the curve. The port had no fader
+    // at all — `sceneEq` stopped at the band dots — so prism-tone rendered with a
+    // bare right edge. Geometry and colours are the preview's `eq()` block.
+    run {
+        val fx = 752f; val ty = 26f; val by = 232f
+        val th = ty + (1f - v[7]) * (by - ty)
+        drawPath(rrect(fx - 4f, ty - 6f, 8f, by - ty + 12f, 4f), color = Color(0x66000000))
+        drawPath(rrect(fx - 2f, th, 4f, by - th, 2f), brush = Brush.linearGradient(
+            listOf(Color(0xFFFFE9E2), Color(0xFFFFB9A8)),
+            start = Offset(0f, th), end = Offset(0f, by)))
+        drawPath(rrect(fx - 15f, th - 11f, 30f, 22f, 5f), brush = Brush.linearGradient(
+            listOf(Color(0xFFF4F0EA), Color(0xFFA39B95), Color(0xFF5C5550)),
+            start = Offset(0f, th - 11f), end = Offset(0f, th + 11f)))
+        drawRect(Color(0xFF2A0C10), topLeft = Offset(fx - 10f, th - 1f), size = Size(20f, 2f))
+        label(tm, "OUT", fx, ty - 12f, Color(0xFFFFE9E2), 9f)
+        label(tm, "%.1f dB".format((v[7] - 0.5f) * 24f), fx, by + 20f, Color(0xFFFFE9E2), 9f)
     }
 }
 

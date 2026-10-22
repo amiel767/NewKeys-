@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.ui.fx.FxFonts
+import com.soundstage.mixer.ui.fx.fxPanelText
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -132,12 +133,15 @@ fun FxKnob(
         }
         val lf = labelFont(effectId)
         val vf = READOUT_FONTS[effectId] ?: ReadoutFont(FxFonts.ui, FontWeight.Bold, 11f)
+        // `.xN` sets the text colour per effect; the readouts inherited a hard-coded
+        // light grey, which is invisible on the light panels (solar `.x4`).
+        val ink = fxPanelText(effectId)
         Text(label.uppercase(), fontSize = lf.size.sp, fontFamily = lf.family,
-            fontWeight = lf.weight, color = Color(0xFFE6EAF3).copy(alpha = 0.65f),
+            fontWeight = lf.weight, color = ink.copy(alpha = 0.65f),
             softWrap = false, maxLines = 1,
             modifier = Modifier.align(Alignment.TopCenter).offset(y = (-13).dp))
         Text(valueText, fontSize = vf.size.sp, fontFamily = vf.family, fontWeight = vf.weight,
-            color = Color(0xFFE6EAF3), softWrap = false, maxLines = 1,
+            color = ink, softWrap = false, maxLines = 1,
             modifier = Modifier.align(Alignment.BottomCenter).offset(y = 10.dp))
     }
 }

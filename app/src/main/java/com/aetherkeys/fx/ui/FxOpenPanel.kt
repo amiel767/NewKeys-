@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.ui.fx.FxFonts
+import com.soundstage.mixer.ui.fx.fxPanelText
 import com.soundstage.mixer.ui.fx.FxStyle
 import com.soundstage.mixer.ui.fx.raised
 import com.soundstage.mixer.ui.fx.drawFxRail
@@ -124,12 +125,16 @@ fun FxOpenPanel(
             Spacer(Modifier.width(12.dp))
             Column {
                 val style = NAME_STYLES[module.id] ?: NAME_STYLES.getValue(0)
+                // `.ph .nm`/`.ty` take their colour from the panel's `.xN` rule: solar
+                // (`.x4`) is dark ink on a cream face, and the hard-coded light grey
+                // made the whole title invisible.
+                val ink = fxPanelText(module.id)
                 Text(module.name, fontSize = style.first.sp, fontFamily = FxFonts.title(module.id),
                     fontWeight = style.second, letterSpacing = style.third.sp,
-                    color = Color(0xFFDFE4EE), maxLines = 1)
+                    color = ink, maxLines = 1)
                 Text(module.type.uppercase(), fontSize = 9.sp, fontFamily = FxFonts.ui,
                     fontWeight = FontWeight.Bold, letterSpacing = (9 * 0.18f).sp,
-                    color = Color(0xFFE6EAF3).copy(alpha = 0.6f), maxLines = 1)
+                    color = ink.copy(alpha = 0.6f), maxLines = 1)
             }
             Spacer(Modifier.weight(1f))
             if (module.id >= 5) {
