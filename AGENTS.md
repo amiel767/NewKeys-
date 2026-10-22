@@ -1347,3 +1347,44 @@ older `FxRackStrip`/`FxWindow`/`FxAddPanel` trio. It now builds one
 every effect and parameter into the native mixer, so the engine is the authority),
 then `store.seed(...)` copies that state into the shell without re-pushing. The
 controller keeps persistence and the native bridge; the store owns the UI state.
+
+## Sandbox environment (survives nothing — re-provision every session)
+
+The sandbox is wiped between conversations. Nothing below persists except what is
+committed, so restore it before any build.
+
+```bash
+export JAVA_HOME=/workspace/jdk/jdk21
+export ANDROID_HOME=/workspace/android-sdk
+export ANDROID_SDK_ROOT=/workspace/android-sdk
+export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$PATH"
+```
+
+`/workspace/build.sh` already exports these and bounds memory
+(`--no-daemon --max-workers=2`); the native fluidsynth build for 4 ABIs plus a
+4 GB Gradle daemon is what put earlier sandboxes under pressure. Prefer it.
+
+### Screenshots
+
+Roborazzi only writes images when the record task runs. Plain
+`testDebugUnitTest` executes the tests and produces no PNG:
+
+```bash
+./gradlew :app:recordRoborazziDebug --tests "com.soundstage.mixer.*CaptureTest"
+```
+
+Never run `recordRoborazziDebug` unfiltered: `LiveUiLoop.run()` is an infinite
+loop by design (an external process drives it through `cmd.json`) and the suite
+hangs until killed. Always pass `--tests`.
+
+### Release workflow
+
+`.github/workflows/release.yml` is manual only: `workflow_dispatch`, no push or
+tag trigger. Start it with "Run workflow". It uploads the APK as an artifact and
+publishes a release unless the `release` input is false.
+
+### Repository state
+
+Work happens on `recovery/fx-window-shell`, not `main`. `main` has no
+`aetherkeys/fx` package at all, so any APK built from `main` predates the FX
+window. Merge the branch before expecting it in a release.
