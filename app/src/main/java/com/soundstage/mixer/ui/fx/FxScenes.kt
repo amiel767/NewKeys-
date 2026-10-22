@@ -667,6 +667,15 @@ private fun DrawScope.sceneEq(v: FloatArray, t: Float, tm: TextMeasurer) {
         drawPath(rrect(fx - 2f, th, 4f, by - th, 2f), brush = Brush.linearGradient(
             listOf(Color(0xFFFFE9E2), Color(0xFFFFB9A8)),
             start = Offset(0f, th), end = Offset(0f, by)))
+        // The preview saves/restores a `shadowColor '#000a', shadowBlur 7,
+        // shadowOffsetY 4` around the cap. The port dropped that block, so the
+        // handle looked pasted on: measured under it, the reference ramps down
+        // 116 -> 223 over 9 px while the capture fell straight to the 233
+        // background. The scene canvas has no blur, so the penumbra is painted as
+        // a band with a vertical gradient, the way `raised()` fakes it.
+        drawPath(rrect(fx - 17f, th + 11f, 34f, 10f, 5f), brush = Brush.verticalGradient(
+            listOf(Color(0x80000000), Color(0x00000000)),
+            startY = th + 11f, endY = th + 21f))
         drawPath(rrect(fx - 15f, th - 11f, 30f, 22f, 5f), brush = Brush.linearGradient(
             listOf(Color(0xFFF4F0EA), Color(0xFFA39B95), Color(0xFF5C5550)),
             start = Offset(0f, th - 11f), end = Offset(0f, th + 11f)))
