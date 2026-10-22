@@ -448,6 +448,15 @@ private fun DrawScope.sceneOrb(v: FloatArray, a: Color, t: Float) {
     val sz = v[0]; val dc = v[1]; val pd = v[2]; val dm = v[3]; val wd = v[4]; val mx = v[5]; val df = v[6]
     val r = 40f * (0.7f + sz * 0.8f) * (1f + 0.03f * sin(t * 2f))
     val col = hsl(268f - dm * 75f, 0.48f, 0.74f)
+    // `for(let q=0;q<70;q++)`: the starfield. Seventy 1.2 px dots at fixed hashed
+    // positions, each twinkling on its own phase. The port had none, so the reverb
+    // read as a bare orb on a flat field.
+    for (q in 0 until 70) {
+        val sx = -FxStyle.OXL + (sin(q * 91.7f) * 0.5f + 0.5f) * FxStyle.PWL
+        val sy = -FxStyle.OYL + (sin(q * 47.3f) * 0.5f + 0.5f) * FxStyle.PHL
+        drawRect(Color.White.copy(alpha = 0.2f + 0.5f * abs(sin(t * 1.3f + q))),
+            topLeft = Offset(sx, sy), size = Size(1.2f, 1.2f))
+    }
     for (w in 0 until 3) {
         val u = (t * (0.12f + sz * 0.2f) + w / 3f) % 1f
         if (u < pd * 0.4f) continue
@@ -671,18 +680,18 @@ private fun DrawScope.sceneEq(v: FloatArray, t: Float, tm: TextMeasurer) {
             listOf(Color(0xFFFFE9E2), Color(0xFFFFB9A8)),
             start = Offset(0f, th), end = Offset(0f, by)))
         // The preview saves/restores a `shadowColor '#000a', shadowBlur 7,
-        // shadowOffsetY 4` around the cap. The port dropped that block, so the
-        // handle looked pasted on: measured under it, the reference ramps down
-        // 116 -> 223 over 9 px while the capture fell straight to the 233
-        // background. The scene canvas has no blur, so the penumbra is painted as
-        // a band with a vertical gradient, the way `raised()` fakes it.
-        // Six stops approximating a Gaussian falloff. A two-stop ramp read as a hard
-        // grey bar; a blurred shadow decays fast at the edge then tails off, which
-        // this curve follows (0.20, 0.18, 0.13, 0.08, 0.03, 0).
-        drawPath(rrect(fx - 17f, th + 11f, 34f, 13f, 6f), brush = Brush.verticalGradient(
-            listOf(Color(0x94000000), Color(0x78000000), Color(0x5C000000), Color(0x42000000),
-                   Color(0x2B000000), Color(0x17000000), Color(0x08000000), Color(0x00000000)),
-            startY = th + 11f, endY = th + 24f))
+        // shadowOffsetY 4` around the cap. A blurred shadow is not a band: it
+        // spreads sideways past the object as well as downwards, and it is darkest
+        // right under the bottom edge. An earlier attempt used a 34 px wide rrect
+        // with a vertical ramp, which kept hard vertical sides and read as an
+        // invisible outline around the handle. This is an elliptical penumbra
+        // centred below the cap, wider than the cap itself, fading out in every
+        // direction: a radial gradient drawn into an oval bounds.
+        drawOval(
+            brush = Brush.radialGradient(
+                listOf(Color(0x8A000000), Color(0x5E000000), Color(0x2E000000), Color(0x00000000)),
+                center = Offset(fx, th + 15f), radius = 24f),
+            topLeft = Offset(fx - 24f, th + 6f), size = Size(48f, 18f))
         drawPath(rrect(fx - 15f, th - 11f, 30f, 22f, 5f), brush = Brush.linearGradient(
             listOf(Color(0xFFF4F0EA), Color(0xFFA39B95), Color(0xFF5C5550)),
             start = Offset(0f, th - 11f), end = Offset(0f, th + 11f)))

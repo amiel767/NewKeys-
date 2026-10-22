@@ -55,6 +55,9 @@ enum class KnobStyle {
 data class ReadoutFont(val family: androidx.compose.ui.text.font.FontFamily, val weight: FontWeight, val size: Float)
 
 private val READOUT_FONTS: Map<Int, ReadoutFont> = mapOf(
+    // Effect 0 (space) had no entry, so it took the 11 sp default. Its readouts
+    // read a touch large against the reference, so they are set to 10 sp.
+    0 to ReadoutFont(FxFonts.ui, FontWeight.Bold, 10f),
     2 to ReadoutFont(FxFonts.mono, FontWeight.Normal, 11f),
     4 to ReadoutFont(FxFonts.ui, FontWeight.Bold, 10f),
     5 to ReadoutFont(FxFonts.sora, FontWeight.Bold, 11f),
