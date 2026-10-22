@@ -3,7 +3,11 @@ package com.soundstage.mixer.model
 enum class MidiControlType(val displayName: String) {
     CC("Control Change (CC)"),
     NOTE("MIDI Note"),
-    PROGRAM_CHANGE("Program Change (PC)")
+    PROGRAM_CHANGE("Program Change (PC)"),
+    /** Channel Aftertouch (0xD0). A single data byte, like a Program Change. */
+    AFTERTOUCH("Channel Aftertouch"),
+    /** Pitch Bend (0xE0). Two data bytes forming a 14-bit value. */
+    PITCH_BEND("Pitch Bend")
 }
 
 enum class MidiControlMode(val displayName: String) {
@@ -121,6 +125,8 @@ data class MidiMappingItem(
                 "Note $name (#$controlNumber) · $chStr"
             }
             MidiControlType.PROGRAM_CHANGE -> "PC #$controlNumber · $chStr"
+            MidiControlType.AFTERTOUCH -> "Aftertouch · $chStr"
+            MidiControlType.PITCH_BEND -> "Pitch Bend · $chStr"
         }
     }
 }

@@ -1385,6 +1385,27 @@ publishes a release unless the `release` input is false.
 
 ### Repository state
 
-Work happens on `recovery/fx-window-shell`, not `main`. `main` has no
-`aetherkeys/fx` package at all, so any APK built from `main` predates the FX
-window. Merge the branch before expecting it in a release.
+`main` is the working branch. The `com.aetherkeys.fx` package (FX window, 15
+effects, engine) is present on `main`, so APKs built from it include the FX
+window. The earlier `recovery/fx-window-shell` branch has been merged; older
+log entries below that mention it are historical, not instructions.
+
+### MIDI mapping page (recovery work)
+
+The direct/overlay MIDI mapping UI is gone. Mapping now lives in
+`ui/settings/MidiMappingPage.kt`, reached from Settings > MIDI. Do not
+reintroduce `SettingsDrawer.kt`, `MidiLearnSubPage.kt`, `MappingRegistry`,
+`MappingCatalog`, or the `Modifier.mappable(...)` modifier.
+
+`MidiControlType` covers CC, Note, Program Change, Channel Aftertouch (0xD0)
+and Pitch Bend (0xE0). Single-data-byte messages read their value from `data1`,
+never `data2`. A PC bound to an action drives the mapping only, via
+`AudioEngine.mappedProgramChangeProvider`, so it cannot also swap the patch.
+
+Anti-jitter has one control pair, `antiJitter` (default false) and
+`jitterWindowMs`. The old `midiDebounce*` pair was a second hidden control and
+has been removed from the app state.
+
+Test notes: `ExampleRobolectricTest` and `GreetingScreenshotTest` fail on a
+clean `main` checkout, so they are pre-existing. A full
+`:app:testDebugUnitTest` run takes over 20 minutes; prefer `--tests` filters.

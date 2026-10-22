@@ -3,15 +3,12 @@
 package com.soundstage.mixer.ui.settings
 
 /*
- * ÆTHER KEYS — SETTINGS PAGE + MIDI MAPPING MODE (final UI)
+ * ÆTHER KEYS — SETTINGS PAGE (final UI)
  *
  * What this file contains
  *  - SettingsScreen : full-screen settings page (tabs Audio / Interface / MIDI / System).
  *    No container, no card outline: flat sections separated by hairlines.
- *  - MappingMode    : the mapping mode. It renders the REAL page (Mixer or DrumPad) passed in
- *    as `pageContent`, frozen, slightly darkened and softly blurred, with one chip per mappable
- *    control drawn on top, and the mapping bar.
- *  - Mapping registry : `Modifier.mappable(id)` records the on-screen bounds of a control.
+ *  - The MIDI tab opens [MidiMappingPage], a page inside Settings, never a window.
  *
  * What this file does NOT contain
  *  - The MIDI learn engine, the storage, the audio engine, the chord display, the existing
@@ -19,7 +16,7 @@ package com.soundstage.mixer.ui.settings
  *    and [SettingsState]. Every action has an empty default body.
  *
  * Requirements: Jetpack Compose foundation 1.7+, material3 (Text only), ui-tooling-preview (preview only).
- * Blur: Modifier.blur is applied to the page content only when the API level is 31+ (see MappingMode).
+ * Blur: Modifier.blur is applied to the page content only when the API level is 31+.
  *
  * All user-facing text is English.
  */
@@ -134,6 +131,10 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.soundstage.mixer.model.MidiActionType
+import com.soundstage.mixer.model.MidiControlType
+import com.soundstage.mixer.model.MidiControlMode
+import com.soundstage.mixer.model.MidiMappingItem
 import androidx.compose.runtime.key
 import com.soundstage.mixer.ui.components.KeyboardChrome
 import com.soundstage.mixer.ui.components.KeyboardThemeSwatch
@@ -149,8 +150,6 @@ enum class SettingsTab(val label: String, val subtitle: String) {
     Midi("MIDI", "Controllers & mapping"),
     System("System", "Language & display")
 }
-
-enum class MappingPage(val label: String) { Mixer("Mixer"), DrumPad("DrumPad") }
 
 enum class Notation { Sharps, Flats }
 
@@ -187,17 +186,6 @@ data class MidiMessage(val family: MidiFamily, val number: Int, val channel: Int
  * [standalone] = true for actions that have no visible element (Panic, Tap tempo, Metronome,
  * Previous/Next snapshot): they are listed in "Other actions" instead of getting a chip on the page.
  */
-data class MappableControl(
-    val id: String,
-    val name: String,
-    val family: MidiFamily,
-    val page: MappingPage,
-    val standalone: Boolean = false
-)
-
-data class MidiConflict(val controlId: String, val otherId: String, val message: MidiMessage)
-
-/** Everything the settings page and the mapping mode display. Persisted values are marked. */
 data class SettingsState(
     val tab: SettingsTab = SettingsTab.Audio,                 // persisted (last tab)
     val query: String = "",                                   // not persisted
@@ -215,26 +203,23 @@ data class SettingsState(
     val vkbTheme: String = "classic",
     val vkbPressStyle: String = "color",
     // MIDI input (persisted)
-    val antiJitter: Boolean = true,
+    val antiJitter: Boolean = false,
     val jitterWindowMs: Int = 15,
     // System (persisted)
     val notation: Notation = Notation.Sharps,
     val keepScreenOn: Boolean = true,
-    // Mappings (persisted): control id -> message
-    val mappings: Map<String, MidiMessage> = emptyMap(),
-    /** The app's real list of mappable controls (ids, names, families, page). Provided by the app. */
-    val catalog: List<MappableControl> = MappingCatalog.controls,
-    // Mapping mode (not persisted)
-    val mappingPage: MappingPage? = null,
-    val listeningId: String? = null,
-    val conflict: MidiConflict? = null,
+    // Mapping page (not persisted): the MIDI mapping page replaces the MIDI tab body.
+    val midiMappingOpen: Boolean = false,
+    /** Persisted bindings, one per action. */
+    val midiMappings: List<MidiMappingItem> = emptyList(),
+    val learningActionType: MidiActionType? = null,
+    val lastMidiSummary: String = "No MIDI activity yet",
     // Extended Audio (persisted)
     val audioEngine: String = "oboe",
     val fluidSynthGain: Float = 1.20f,
     // System (persisted)
     val hapticsEnabled: Boolean = true,
     val reducedMotion: Boolean = false,
-    val otherActionsOpen: Boolean = false,
     /** Live list of USB MIDI devices currently attached, provided by the app. */
     val midiDevices: List<com.soundstage.mixer.model.MidiDeviceItem> = emptyList()
 )
@@ -293,9 +278,17 @@ interface SettingsActions {
     fun onVkbPressStyleChange(style: String) {}
     fun onAntiJitterChange(enabled: Boolean) {}
     fun onJitterWindowChange(ms: Int) {}
-    fun onOpenMapping(page: MappingPage) {}
-    fun onResetMappingsToDefaults() {}
-    fun onClearAllMappings() {}
+    fun onStartMidiLearn(action: MidiActionType) {}
+    fun onCancelMidiLearn() {}
+    fun onUnmapMidiAction(action: MidiActionType) {}
+    fun onToggleMidiMappingEnabled(action: MidiActionType) {}
+    fun onUpdateManualMidiMapping(action: MidiActionType, type: MidiControlType, channel: Int, number: Int) {}
+    fun onSetMidiMappingMode(action: MidiActionType, mode: MidiControlMode) {}
+    fun onResetMidiMappings() {}
+    fun onClearMidiMappings() {}
+    fun onToggleMidiDevice(deviceId: String) {}
+    fun onOpenMidiMapping() {}
+    fun onCloseMidiMapping() {}
     fun onNotationChange(notation: Notation) {}
     fun onKeepScreenOnChange(enabled: Boolean) {}
     fun onOpenLanguage() {}
@@ -305,15 +298,6 @@ interface SettingsActions {
     fun onHapticsChange(enabled: Boolean) {}
     fun onReducedMotionChange(enabled: Boolean) {}
 
-    // ── mapping mode ──
-    /** Switching between Mixer and DrumPad closes the mapping mode (see brief). */
-    fun onCloseMapping() {}
-    fun onStartListening(controlId: String) {}
-    fun onCancelListening() {}
-    fun onClearMapping(controlId: String) {}
-    /** Replace the mapping of [conflict].otherId by the current one (the app clears the other). */
-    fun onReplaceConflict() {}
-    fun onToggleOtherActions() {}
 }
 
 object NoOpSettingsActions : SettingsActions
@@ -347,12 +331,9 @@ object SettingsLogic {
         Entry("Accent color saturation", SettingsTab.Interface, "color"),
         Entry("Background tone saturation", SettingsTab.Interface, "color"),
         Entry("Background lightness", SettingsTab.Interface, "color brightness"),
+        Entry("MIDI mapping", SettingsTab.Midi, "learn controller pads faders"),
         Entry("Anti-jitter filter", SettingsTab.Midi, "debounce burst"),
         Entry("Filter sensitivity window", SettingsTab.Midi, "debounce ms"),
-        Entry("Map Mixer", SettingsTab.Midi, "midi learn controller"),
-        Entry("Map DrumPad", SettingsTab.Midi, "midi learn pads"),
-        Entry("Reset to defaults", SettingsTab.Midi, "midi mapping"),
-        Entry("Clear all mappings", SettingsTab.Midi, "midi mapping"),
         Entry("Musical notation", SettingsTab.System, "sharps flats"),
         Entry("Keep screen on", SettingsTab.System, "sleep"),
         Entry("Haptics", SettingsTab.System, "vibration feedback"),
@@ -365,22 +346,6 @@ object SettingsLogic {
         return index.filter { (it.title + " " + it.keywords).lowercase().contains(q) }
     }
 
-    /**
-     * Conflict rule (single rule used everywhere): two messages conflict when they have the same
-     * family and number AND their channels overlap. Omni (null channel) overlaps every channel,
-     * two different explicit channels do not overlap.
-     */
-    fun conflicts(a: MidiMessage, b: MidiMessage): Boolean =
-        a.family == b.family && a.number == b.number &&
-            (a.channel == null || b.channel == null || a.channel == b.channel)
-
-    /** Id of the control (other than [controlId]) whose mapping conflicts with [incoming], or null. */
-    fun findConflict(mappings: Map<String, MidiMessage>, controlId: String, incoming: MidiMessage): String? =
-        mappings.entries.firstOrNull { (id, m) -> id != controlId && conflicts(m, incoming) }?.key
-
-    /** Number of mapped controls on a page (for the MIDI tab counters and the mapping bar). */
-    fun mappedCount(page: MappingPage, controls: List<MappableControl>, mappings: Map<String, MidiMessage>): Int =
-        controls.count { it.page == page && !it.standalone && mappings.containsKey(it.id) }
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════════
@@ -442,9 +407,9 @@ internal object SetColors {
     val BackgroundBottom = Color(0xFF0F141D)
 }
 
-private fun white(a: Float) = Color.White.copy(alpha = a)
+internal fun white(a: Float) = Color.White.copy(alpha = a)
 
-private fun setText(size: TextUnit, weight: FontWeight = FontWeight.Normal, color: Color = SetColors.Ink) =
+internal fun setText(size: TextUnit, weight: FontWeight = FontWeight.Normal, color: Color = SetColors.Ink) =
     TextStyle(fontSize = size, fontWeight = weight, color = color, fontFeatureSettings = "tnum")
 
 private fun Modifier.setSunk(shape: androidx.compose.ui.graphics.Shape): Modifier = this
@@ -511,7 +476,28 @@ fun SettingsScreen(
         Column(Modifier.weight(1f).fillMaxHeight()) {
             SettingsHeader(state, actions)
             Box(Modifier.fillMaxWidth().height(1.dp).background(white(0.07f)))
-            if (state.query.isNotBlank()) {
+            if (state.midiMappingOpen) {
+                MidiMappingPage(
+                    mappings = state.midiMappings,
+                    antiJitter = state.antiJitter,
+                    jitterWindowMs = state.jitterWindowMs,
+                    midiDevices = state.midiDevices,
+                    learningActionType = state.learningActionType,
+                    lastMidiSummary = state.lastMidiSummary,
+                    onStartLearn = { actions.onStartMidiLearn(it) },
+                    onCancelLearn = { actions.onCancelMidiLearn() },
+                    onUnmap = { actions.onUnmapMidiAction(it) },
+                    onToggleEnabled = { actions.onToggleMidiMappingEnabled(it) },
+                    onUpdateManual = { a, t, c, n -> actions.onUpdateManualMidiMapping(a, t, c, n) },
+                    onSetMode = { a, m -> actions.onSetMidiMappingMode(a, m) },
+                    onResetDefaults = { actions.onResetMidiMappings() },
+                    onClearAll = { actions.onClearMidiMappings() },
+                    onToggleDevice = { actions.onToggleMidiDevice(it) },
+                    onAntiJitterChange = { actions.onAntiJitterChange(it) },
+                    onJitterWindowChange = { actions.onJitterWindowChange(it) },
+                    onBack = { actions.onCloseMidiMapping() }
+                )
+            } else if (state.query.isNotBlank()) {
                 SearchResults(state, actions)
             } else {
                 TabContent(state, actions)
@@ -923,7 +909,7 @@ private fun MidiSection(state: SettingsState, actions: SettingsActions) {
         val n = state.midiDevices.count { it.isConnected }
         Text("$n connected", style = setText(10.5.sp, FontWeight.Bold, if (n > 0) SetColors.Ok else SetColors.Mute))
     }
-    MidiDevicesCard(state.midiDevices)
+    MidiDevicesCard(state.midiDevices, actions::onToggleMidiDevice)
 
     SectionLabel("Input")
     SettingRow(
@@ -947,50 +933,20 @@ private fun MidiSection(state: SettingsState, actions: SettingsActions) {
     )
 
     SectionLabel("MIDI mapping")
-    val mixerCount = remember(state.catalog, state.mappings) { mappedLabel(state, MappingPage.Mixer) }
-    val drumCount = remember(state.catalog, state.mappings) { mappedLabel(state, MappingPage.DrumPad) }
+    val mappedCount = remember(state.midiMappings) { state.midiMappings.count { it.isAssigned } }
+    val totalCount = remember { MidiActionType.values().size }
     SettingRow(
-        title = "Map Mixer",
-        hint = "Faders, mute and solo, snapshots, master.",
-        onClick = { actions.onOpenMapping(MappingPage.Mixer) }
+        title = "MIDI Mapping",
+        hint = "Snapshots, patches, tracks, drum pads and global controls.",
+        onClick = { actions.onOpenMidiMapping() }
     ) {
-        Text(mixerCount, style = setText(12.sp, FontWeight.Bold, SetColors.Mute))
-        SetIcon(SetIconKind.Chevron, SetColors.Mute, Modifier.size(16.dp))
-    }
-    SetDivider()
-    SettingRow(
-        title = "Map DrumPad",
-        hint = "Pad triggers and loop stop.",
-        onClick = { actions.onOpenMapping(MappingPage.DrumPad) }
-    ) {
-        Text(drumCount, style = setText(12.sp, FontWeight.Bold, SetColors.Mute))
+        Text("$mappedCount / $totalCount", style = setText(12.sp, FontWeight.Bold, SetColors.Mute))
         SetIcon(SetIconKind.Chevron, SetColors.Mute, Modifier.size(16.dp))
     }
 
-    SectionLabel("Management")
-    SettingRow(
-        title = "Reset to defaults",
-        hint = "Restore the standard CC#7 volume mapping.",
-        onClick = { actions.onResetMappingsToDefaults() }
-    ) {
-        SetIcon(SetIconKind.Chevron, SetColors.Mute, Modifier.size(16.dp))
-    }
-    SetDivider()
-    SettingRow(
-        title = "Clear all mappings",
-        hint = "Unassign every controller and start blank.",
-        onClick = { actions.onClearAllMappings() }
-    ) {
-        SetIcon(SetIconKind.Chevron, SetColors.Mute, Modifier.size(16.dp))
-    }
 }
 
 /** Counter shown next to Map Mixer / Map DrumPad. The count is recomputed by the app's catalog (see brief). */
-private fun mappedLabel(state: SettingsState, page: MappingPage): String {
-    val total = state.catalog.count { it.page == page && !it.standalone }
-    val done = SettingsLogic.mappedCount(page, state.catalog, state.mappings)
-    return "$done / $total"
-}
 
 /**
  * USB MIDI devices currently attached to the app. Each device is a raised row: a
@@ -1001,7 +957,10 @@ private fun mappedLabel(state: SettingsState, page: MappingPage): String {
  * settings stroke weight and picks up the status colour.
  */
 @Composable
-private fun MidiDevicesCard(devices: List<com.soundstage.mixer.model.MidiDeviceItem>) {
+private fun MidiDevicesCard(
+    devices: List<com.soundstage.mixer.model.MidiDeviceItem>,
+    onToggleDevice: (String) -> Unit
+) {
     val shape = RoundedCornerShape(16.dp)
     Column(
         Modifier
@@ -1059,6 +1018,7 @@ private fun MidiDevicesCard(devices: List<com.soundstage.mixer.model.MidiDeviceI
                 Box(
                     Modifier.clip(RoundedCornerShape(9.dp))
                         .background(if (dev.isEnabled) SetColors.Accent.copy(alpha = 0.16f) else white(0.05f))
+                        .clickable(enabled = dev.isConnected) { onToggleDevice(dev.id) }
                         .padding(horizontal = 9.dp, vertical = 4.dp)
                 ) {
                     Text(
@@ -1147,7 +1107,7 @@ private fun SystemSection(state: SettingsState, actions: SettingsActions) {
 // ────────────────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun SectionLabel(text: String, trailing: (@Composable () -> Unit)? = null) {
+internal fun SectionLabel(text: String, trailing: (@Composable () -> Unit)? = null) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -1166,13 +1126,13 @@ private fun SectionLabel(text: String, trailing: (@Composable () -> Unit)? = nul
 }
 
 @Composable
-private fun SetDivider() {
+internal fun SetDivider() {
     Box(Modifier.fillMaxWidth().height(1.dp).background(white(0.06f)))
 }
 
 /** A setting line: title and hint on the left, control on the right. */
 @Composable
-private fun SettingRow(
+internal fun SettingRow(
     title: String,
     hint: String? = null,
     onClick: (() -> Unit)? = null,
@@ -1203,7 +1163,7 @@ private fun SettingRow(
 }
 
 @Composable
-private fun SetSwitch(on: Boolean, onChange: (Boolean) -> Unit, enabled: Boolean = true) {
+internal fun SetSwitch(on: Boolean, onChange: (Boolean) -> Unit, enabled: Boolean = true) {
     val track by androidx.compose.animation.animateColorAsState(
         if (on) SetColors.Accent else white(0.14f), tween(250), label = "swTrack"
     )
@@ -1294,7 +1254,7 @@ private fun <T> Segmented(
  * the value differs from the default.
  */
 @Composable
-private fun SliderRow(
+internal fun SliderRow(
     title: String,
     hint: String?,
     value: Float,
@@ -1384,500 +1344,13 @@ private fun SliderRow(
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════════
-// 5. MAPPING MODE (real page + frozen + chips + bar)
-// ════════════════════════════════════════════════════════════════════════════════════════
-
-/** Layout registry: the on-screen bounds (in root coordinates) of every mappable control. */
-class MappingRegistry {
-    val bounds = mutableStateMapOf<String, Rect>()
-}
-
-val LocalMappingRegistry = compositionLocalOf<MappingRegistry?> { null }
-
-/**
- * Put this modifier on the real composable of a control (fader, button, pad, snapshot slot…).
- * It records the bounds so the chip is placed on the element itself.
- * Outside of mapping mode the registry is null and this modifier does nothing.
- */
-fun Modifier.mappable(id: String): Modifier = composed {
-    val registry = LocalMappingRegistry.current
-    if (registry == null) {
-        this
-    } else {
-        // An element that leaves the composition (lazy list, scrolled away) must not keep a stale chip.
-        DisposableEffect(registry, id) { onDispose { registry.bounds.remove(id) } }
-        this.onGloballyPositioned { coords -> registry.bounds[id] = coords.boundsInRoot() }
-    }
-}
-
-/**
- * Mapping mode. [pageContent] is the REAL page (Mixer or DrumPad) of the app, rendered with
- * `Modifier.mappable(...)` on its controls. The page is frozen (no touch reaching it) and
- * softly darkened.
- *
- * The host must render the page COMPLETE: all 8 tracks, the 5 snapshots, etc. (horizontal
- * scroll stays available on the mixer in fixed-width mode).
- *
- * [barAlignment] / [barPadding] place the mapping bar where the FX / settings / on-off row sits, without
- * resizing anything underneath.
- *
- * [pageScroll] is the horizontal scroll state of the mixer (fixed-width mode). The page itself is
- * frozen, so the mapping mode forwards horizontal drags and the edge arrows to this state. Pass null
- * when the page does not scroll (DrumPad, or the mixer in auto-fit mode).
- */
-@Composable
-fun MappingMode(
-    state: SettingsState,
-    actions: SettingsActions,
-    pageContent: @Composable () -> Unit,
-    modifier: Modifier = Modifier,
-    pageScroll: ScrollableState? = null,
-    barAlignment: Alignment = Alignment.BottomCenter,
-    barPadding: PaddingValues = PaddingValues(bottom = 8.dp)
-) {
-    // The host calls this composable only when state.mappingPage != null.
-    val page = state.mappingPage ?: MappingPage.Mixer
-    val registry = remember(page) { MappingRegistry() }
-    val pageControls = remember(page, state.catalog) { state.catalog.filter { it.page == page } }
-    val visibleControls = remember(pageControls) { pageControls.filter { !it.standalone } }
-    val standalone = remember(pageControls) { pageControls.filter { it.standalone } }
-    var leaving by remember { mutableStateOf(false) }
-    var origin by remember { mutableStateOf(Offset.Zero) }
-    var overlaySize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
-    val scope = rememberCoroutineScope()
-
-    fun close() {
-        if (leaving) return
-        leaving = true
-        scope.launch {
-            delay(MappingTiming.exitTotalMs)
-            actions.onCloseMapping()
-            leaving = false
-        }
-    }
-
-    Box(
-        modifier
-            .fillMaxSize()
-            .onGloballyPositioned { origin = it.positionInRoot() }
-            .onSizeChanged { overlaySize = it }
-    ) {
-        CompositionLocalProvider(LocalMappingRegistry provides registry) {
-            // Frozen real page. Blur is light and only where the platform supports it.
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .then(if (android.os.Build.VERSION.SDK_INT >= 31) Modifier.blur(1.5.dp) else Modifier)
-            ) {
-                pageContent()
-            }
-        }
-        // Darkening veil: it blocks every touch to the page (no fader, pad or button can react) and
-        // keeps the chips readable. Horizontal drags are forwarded to the mixer scroll state.
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Color(0xB0080B12))
-                .pointerInput(Unit) { detectTapGestures { } }
-                .pointerInput(pageScroll) {
-                    if (pageScroll != null) {
-                        detectHorizontalDragGestures { change, dx ->
-                            change.consume()
-                            scope.launch { pageScroll.scrollBy(-dx) }
-                        }
-                    }
-                }
-        )
-
-        // Chips: one per mappable element, on the element's own bounds. Elements that are
-        // not currently on screen (scrolled away) get no chip. The entrance order follows
-        // the reading order of the actual on-screen positions.
-        val located = visibleControls.mapNotNull { c ->
-            registry.bounds[c.id]?.let { r -> c to r.translate(-origin.x, -origin.y) }
-        }
-        val hiddenLeft = located.count { it.second.center.x < 0f }
-        val hiddenRight = located.count { it.second.center.x > overlaySize.width }
-        val placed = located
-            .filter { (_, r) ->
-                r.center.x in 0f..overlaySize.width.toFloat() && r.center.y in 0f..overlaySize.height.toFloat()
-            }
-            .sortedWith(compareBy<Pair<MappableControl, Rect>>({ (it.second.top / 70f).roundToInt() }, { it.second.left }))
-
-        placed.forEachIndexed { index, (control, rect) ->
-            key(control.id) {
-                MapChip(
-                    control = control,
-                    message = state.mappings[control.id],
-                    rank = index,
-                    leaving = leaving,
-                    total = placed.size,
-                    listening = state.listeningId == control.id,
-                    conflict = state.conflict?.let { it.controlId == control.id || it.otherId == control.id } == true,
-                    rect = rect,
-                    overlaySize = overlaySize,
-                    onTap = { actions.onStartListening(control.id) },
-                    onLongPress = { actions.onClearMapping(control.id) }
-                )
-            }
-        }
-
-        // Edge markers: how many controls are out of view on each side (mixer in fixed-width mode).
-        if (pageScroll != null) {
-            EdgeMarker(
-                count = hiddenLeft, left = true,
-                onClick = { scope.launch { pageScroll.animateScrollBy(-overlaySize.width * 0.6f) } },
-                modifier = Modifier.align(Alignment.CenterStart).padding(start = 8.dp).zIndex(6f)
-            )
-            EdgeMarker(
-                count = hiddenRight, left = false,
-                onClick = { scope.launch { pageScroll.animateScrollBy(overlaySize.width * 0.6f) } },
-                modifier = Modifier.align(Alignment.CenterEnd).padding(end = 8.dp).zIndex(6f)
-            )
-        }
-
-        // Listening / conflict card
-        AnimatedVisibility(
-            visible = state.listeningId != null,
-            enter = fadeIn(tween(200)) + slideInVertically(tween(240)) { it / 3 },
-            exit = fadeOut(tween(160)) + slideOutVertically(tween(180)) { it / 3 },
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 60.dp),
-            label = "listenCard"
-        ) {
-            ListeningCard(state, control = state.catalog.firstOrNull { it.id == state.listeningId }, actions = actions)
-        }
-
-        // Other actions (controls without a visible element)
-        AnimatedVisibility(
-            visible = state.otherActionsOpen,
-            enter = fadeIn(tween(180)) + slideInVertically(tween(220)) { it / 4 },
-            exit = fadeOut(tween(140)),
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 60.dp),
-            label = "otherActions"
-        ) {
-            OtherActionsCard(standalone, state, actions)
-        }
-
-        MappingBar(
-            page = page,
-            mapped = SettingsLogic.mappedCount(page, state.catalog, state.mappings),
-            total = visibleControls.size,
-            otherOpen = state.otherActionsOpen,
-            onOther = actions::onToggleOtherActions,
-            onDone = { close() },
-            leaving = leaving,
-            modifier = Modifier.align(barAlignment).padding(barPadding).zIndex(21f)
-        )
-    }
-}
-
-private object MappingTiming {
-    const val EntranceStepMs = 12L      // delay between two chips
-    const val ExitStepMs = 7L
-    const val ChipAnimMs = 300
-    const val exitTotalMs = 520L
-}
-
-@Composable
-private fun MapChip(
-    control: MappableControl,
-    message: MidiMessage?,
-    rank: Int,
-    leaving: Boolean,
-    total: Int,
-    listening: Boolean,
-    conflict: Boolean,
-    rect: Rect,
-    overlaySize: androidx.compose.ui.unit.IntSize,
-    onTap: () -> Unit,
-    onLongPress: () -> Unit
-) {
-    val density = LocalDensity.current
-    val progress = remember(control.id) { Animatable(0f) }
-    val mapped = message != null
-    val tapNow by rememberUpdatedState(onTap)
-    val longNow by rememberUpdatedState(onLongPress)
-    val mappedNow by rememberUpdatedState(mapped)
-
-    // Entrance wave: left to right, top to bottom (order given by the host's control list).
-    LaunchedEffect(leaving) {
-        if (!leaving) {
-            delay(rank * MappingTiming.EntranceStepMs + 60L)
-            progress.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = 420f))
-        } else {
-            delay((total - rank) * MappingTiming.ExitStepMs)
-            progress.animateTo(0f, tween(MappingTiming.ChipAnimMs, easing = FastOutSlowInEasing))
-        }
-    }
-
-    val breathe = rememberInfiniteTransition(label = "chipBreathe")
-    val scale by breathe.animateFloat(
-        1f, 1.035f, infiniteRepeatable(tween(3400, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "breathe"
-    )
-    val ring by breathe.animateFloat(
-        0f, 1f, infiniteRepeatable(tween(1100, easing = LinearEasing)), label = "ring"
-    )
-
-    val base = control.family.color
-    val borderColor = when {
-        conflict -> SetColors.Warn
-        listening -> base
-        mapped -> base.copy(alpha = 0.7f)
-        else -> base.copy(alpha = 0.35f)
-    }
-    val fill = when {
-        listening -> base.copy(alpha = 0.22f)
-        mapped -> base.copy(alpha = 0.16f)
-        else -> Color(0xCC1A2232)
-    }
-    val text = if (mapped) message!!.short() else "+"
-
-    // Chip sits on the top-right corner of its element ([rect] is already local to the overlay).
-    val marginW = with(density) { 60.dp.toPx() }
-    val marginH = with(density) { 28.dp.toPx() }
-    val maxX = if (overlaySize.width > 0) (overlaySize.width - marginW).coerceAtLeast(4f) else Float.MAX_VALUE
-    val maxY = if (overlaySize.height > 0) (overlaySize.height - marginH).coerceAtLeast(4f) else Float.MAX_VALUE
-    val xPx = (rect.right - with(density) { 10.dp.toPx() }).coerceIn(4f, maxX)
-    val yPx = (rect.top - with(density) { 10.dp.toPx() }).coerceIn(4f, maxY)
-
-    Box(
-        Modifier
-            .offset { IntOffset(xPx.roundToInt(), yPx.roundToInt()) }
-            .zIndex(if (listening || conflict) 5f else 2f)
-            .graphicsLayer {
-                val p = progress.value
-                alpha = p
-                scaleX = p * scale
-                scaleY = p * scale
-            }
-            .shadow(3.dp, RoundedCornerShape(10.dp))
-            .clip(RoundedCornerShape(10.dp))
-            .background(fill)
-            .border(1.dp, borderColor, RoundedCornerShape(10.dp))
-            .pointerInput(control.id) {
-                detectTapGestures(
-                    onTap = { tapNow() },
-                    onLongPress = { if (mappedNow) longNow() }
-                )
-            }
-            .defaultMinSize(minWidth = 36.dp, minHeight = 26.dp)
-            .padding(horizontal = 7.dp, vertical = 3.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (mapped) Box(Modifier.size(4.dp).clip(CircleShape).background(base))
-            Text(
-                if (listening) "…" else text,
-                style = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = if (mapped) SetColors.Ink else base, fontFamily = FontFamily.Monospace),
-                maxLines = 1
-            )
-        }
-        if (listening) {
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .graphicsLayer { alpha = 1f - ring; scaleX = 1f + ring * 0.3f; scaleY = 1f + ring * 0.3f }
-                    .clip(RoundedCornerShape(10.dp))
-                    .border(1.dp, base, RoundedCornerShape(10.dp))
-            )
-        }
-    }
-}
-
-@Composable
-private fun EdgeMarker(count: Int, left: Boolean, onClick: () -> Unit, modifier: Modifier) {
-    AnimatedVisibility(
-        visible = count > 0,
-        enter = fadeIn(tween(200)),
-        exit = fadeOut(tween(160)),
-        modifier = modifier,
-        label = "edgeMarker"
-    ) {
-        val shape = RoundedCornerShape(12.dp)
-        Box(
-            Modifier
-                .height(26.dp)
-                .tapScale(0.94f, onClick)
-                .clip(shape)
-                .background(Color(0xE6222C40))
-                .border(1.dp, white(0.2f), shape)
-                .padding(horizontal = 10.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                if (left) "‹ $count" else "$count ›",
-                style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = SetColors.Soft, fontFamily = FontFamily.Monospace)
-            )
-        }
-    }
-}
-
-@Composable
-private fun ListeningCard(state: SettingsState, control: MappableControl?, actions: SettingsActions) {
-    val conflict = state.conflict
-    val shape = RoundedCornerShape(16.dp)
-    Row(
-        Modifier
-            .widthIn(min = 360.dp, max = 480.dp)
-            .shadow(12.dp, shape)
-            .clip(shape)
-            .background(Brush.verticalGradient(listOf(SetColors.PanelTop, SetColors.PanelBottom)))
-            .border(1.dp, if (conflict != null) SetColors.Warn.copy(alpha = 0.5f) else white(0.10f), shape)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        Box(Modifier.size(10.dp).clip(CircleShape).background(if (conflict != null) SetColors.Warn else (control?.family?.color ?: SetColors.Accent)))
-        Column(Modifier.weight(1f)) {
-            if (conflict == null) {
-                Text("Move a control on your controller", style = setText(14.sp, FontWeight.ExtraBold, Color(0xFFF1F4FA)), maxLines = 1)
-                val now = control?.id?.let { state.mappings[it] }?.let { " · now ${it.full()}" }.orEmpty()
-                Text(
-                    control?.name.orEmpty() + now,
-                    style = setText(11.5.sp, color = SetColors.Mute),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            } else {
-                val other = state.catalog.firstOrNull { it.id == conflict.otherId }?.name.orEmpty()
-                Text("${conflict.message.full()} is already used", style = setText(14.sp, FontWeight.ExtraBold, Color(0xFFF1F4FA)), maxLines = 1)
-                Text("by $other", style = setText(11.5.sp, color = SetColors.Warn), maxLines = 1)
-            }
-        }
-        if (conflict != null) {
-            ActionPill("Replace", primary = true) { actions.onReplaceConflict() }
-        }
-        ActionPill("Cancel", primary = false) { actions.onCancelListening() }
-    }
-}
-
-@Composable
-private fun OtherActionsCard(standalone: List<MappableControl>, state: SettingsState, actions: SettingsActions) {
-    val shape = RoundedCornerShape(16.dp)
-    Column(
-        Modifier
-            .widthIn(min = 320.dp, max = 420.dp)
-            .shadow(12.dp, shape)
-            .clip(shape)
-            .background(Brush.verticalGradient(listOf(SetColors.PanelTop, SetColors.PanelBottom)))
-            .border(1.dp, white(0.10f), shape)
-            .padding(8.dp)
-    ) {
-        Text(
-            "ACTIONS WITHOUT A BUTTON ON SCREEN",
-            style = TextStyle(fontSize = 10.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold, color = Color(0xFF7B859A)),
-            modifier = Modifier.padding(start = 8.dp, top = 4.dp, bottom = 6.dp)
-        )
-        standalone.forEach { control ->
-            val msg = state.mappings[control.id]
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .height(40.dp)
-                    .tapScale(0.98f) { actions.onStartListening(control.id) }
-                    .padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Box(Modifier.size(7.dp).clip(CircleShape).background(control.family.color))
-                Text(control.name, style = setText(13.5.sp, FontWeight.SemiBold, SetColors.Soft), modifier = Modifier.weight(1f), maxLines = 1)
-                Text(msg?.short() ?: "+", style = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = if (msg != null) control.family.color else SetColors.Mute, fontFamily = FontFamily.Monospace))
-            }
-        }
-    }
-}
-
-/**
- * Mapping bar. Placed by the host (see [MappingMode] parameter) on the FX / settings row, so the
- * page underneath keeps its size. Shows the page, the count, Other actions and Done.
- */
-@Composable
-fun MappingBar(
-    page: MappingPage,
-    mapped: Int,
-    total: Int,
-    otherOpen: Boolean,
-    onOther: () -> Unit,
-    onDone: () -> Unit,
-    leaving: Boolean,
-    modifier: Modifier = Modifier
-) {
-    val shape = RoundedCornerShape(16.dp)
-    val slide by animateFloatAsState(if (leaving) 1f else 0f, tween(260, easing = FastOutSlowInEasing), label = "barOut")
-    Row(
-        modifier
-            .fillMaxWidth(0.9f)
-            .height(44.dp)
-            .graphicsLayer { translationY = slide * 70.dp.toPx(); alpha = 1f - slide }
-            .shadow(8.dp, shape)
-            .clip(shape)
-            .background(Brush.verticalGradient(listOf(SetColors.PanelTop, SetColors.PanelBottom)))
-            .border(1.dp, white(0.10f), shape)
-            .padding(start = 16.dp, end = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Text("Mapping · ${page.label}", style = setText(13.sp, FontWeight.ExtraBold, Color(0xFFF1F4FA)), maxLines = 1)
-        Text("$mapped / $total mapped", style = setText(12.sp, FontWeight.Bold, SetColors.Mute), maxLines = 1)
-        Spacer(Modifier.weight(1f))
-        ActionPill("Other actions", primary = false, active = otherOpen, onClick = onOther)
-        ActionPill("Done", primary = true, onClick = onDone)
-    }
-}
-
-@Composable
-private fun ActionPill(label: String, primary: Boolean, active: Boolean = false, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(12.dp)
-    Box(
-        Modifier
-            .height(32.dp)
-            .tapScale(0.95f, onClick)
-            .clip(shape)
-            .background(
-                when {
-                    primary -> Brush.verticalGradient(listOf(Color(0xFF9DBDEB), SetColors.AccentDeep))
-                    active -> Brush.verticalGradient(listOf(white(0.14f), white(0.10f)))
-                    else -> Brush.verticalGradient(listOf(white(0.07f), white(0.04f)))
-                }
-            )
-            .border(1.dp, if (primary) white(0.2f) else white(0.12f), shape)
-            .padding(horizontal = 14.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(label, style = setText(12.5.sp, FontWeight.ExtraBold, if (primary) SetColors.AccentText else SetColors.Soft), maxLines = 1)
-    }
-}
-
-// ════════════════════════════════════════════════════════════════════════════════════════
-// 6. CATALOG (to be aligned with the app's real mapping ids — see brief)
-// ════════════════════════════════════════════════════════════════════════════════════════
-
-object MappingCatalog {
-    val controls: List<MappableControl> = buildList {
-        add(MappableControl("mixer.master", "Master Volume", MidiFamily.ControlChange, MappingPage.Mixer))
-        for (t in 1..8) {
-            add(MappableControl("mixer.t$t.fader", "Track $t · Fader Volume", MidiFamily.ControlChange, MappingPage.Mixer))
-            add(MappableControl("mixer.t$t.mute", "Track $t · Mute / Unmute", MidiFamily.ControlChange, MappingPage.Mixer))
-            add(MappableControl("mixer.t$t.solo", "Track $t · Solo", MidiFamily.ControlChange, MappingPage.Mixer))
-        }
-        for (s in 1..5) add(MappableControl("mixer.snap$s", "Snapshot $s", MidiFamily.Snapshot, MappingPage.Mixer))
-        add(MappableControl("mixer.default", "Default Snapshot", MidiFamily.Snapshot, MappingPage.Mixer))
-        add(MappableControl("mixer.panic", "Panic / All Notes Off", MidiFamily.Panic, MappingPage.Mixer, standalone = true))
-        add(MappableControl("mixer.tap", "Tap Tempo", MidiFamily.Transport, MappingPage.Mixer, standalone = true))
-        add(MappableControl("mixer.metro", "Metronome On / Off", MidiFamily.Transport, MappingPage.Mixer, standalone = true))
-        add(MappableControl("mixer.prevSnap", "Previous Snapshot", MidiFamily.Snapshot, MappingPage.Mixer, standalone = true))
-        add(MappableControl("mixer.nextSnap", "Next Snapshot", MidiFamily.Snapshot, MappingPage.Mixer, standalone = true))
-        for (p in 1..8) add(MappableControl("drum.pad$p", "Drum Pad $p", MidiFamily.Note, MappingPage.DrumPad))
-        add(MappableControl("drum.stop", "Loop Stop", MidiFamily.Transport, MappingPage.DrumPad, standalone = true))
-    }
-}
-
-// ════════════════════════════════════════════════════════════════════════════════════════
 // 7. ICONS (drawn, no dependency)
 // ════════════════════════════════════════════════════════════════════════════════════════
 
-private enum class SetIconKind { Back, Search, Close, Chevron, Reset }
+internal enum class SetIconKind { Back, Search, Close, Chevron, Reset }
 
 @Composable
-private fun SetIcon(kind: SetIconKind, color: Color, modifier: Modifier) {
+internal fun SetIcon(kind: SetIconKind, color: Color, modifier: Modifier) {
     Canvas(modifier) {
         val w = size.width
         val h = size.height

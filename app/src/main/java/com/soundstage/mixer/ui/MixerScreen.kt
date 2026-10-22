@@ -52,6 +52,9 @@ import com.soundstage.mixer.ui.components.v2.MixerBottomBarV2
 import com.soundstage.mixer.ui.pages.DrumPadScreen
 import com.soundstage.mixer.ui.pages.ProjectsPage
 import com.soundstage.mixer.ui.pages.SheetsPage
+import com.soundstage.mixer.model.MidiActionType
+import com.soundstage.mixer.model.MidiControlMode
+import com.soundstage.mixer.model.MidiControlType
 import com.soundstage.mixer.ui.settings.NoOpSettingsActions
 import com.soundstage.mixer.ui.settings.SettingsScreen
 import com.soundstage.mixer.ui.settings.SettingsState
@@ -137,7 +140,7 @@ private fun MixerMainPageContent(
                     onOpenDrumPad = { viewModel.navigateToPage(AppScreenPage.DRUMPAD) },
                     onPanic = { viewModel.triggerPanic() },
                     onOpenScenes = { viewModel.openPopup(ActivePopup.SCENE) },
-                    onOpenSettings = { viewModel.openSettingsDrawer() },
+                    onOpenSettings = { viewModel.openSettings() },
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -779,7 +782,7 @@ fun MixerScreen(
                             override fun onOnlyPinnedChange(only: Boolean) { viewModel.setSetlistsOnlyPinned(only) }
                             override fun onPrefsChange(prefs: SetlistsPrefs) { viewModel.updateSetlistsPrefs(prefs) }
                             override fun onResetPrefs() { viewModel.resetSetlistsPrefs() }
-                            override fun onOpenAppSettings() { viewModel.openSettingsDrawer() }
+                            override fun onOpenAppSettings() { viewModel.openSettings() }
                         }
                     )
                 }
@@ -834,12 +837,10 @@ fun MixerScreen(
                     jitterWindowMs = uiState.jitterWindowMs,
                     keepScreenOn = uiState.keepScreenOn,
                     notation = if (uiState.useFlats) Notation.Flats else Notation.Sharps,
-                    mappingPage = uiState.mappingPage,
-                    listeningId = uiState.mappingListeningControlId,
-                    conflict = uiState.mappingConflict,
-                    otherActionsOpen = uiState.mappingOtherActionsOpen,
-                    mappings = viewModel.getActiveSettingsStateMappings(),
-                    catalog = MappingCatalog.controls,
+                    midiMappingOpen = uiState.midiMappingOpen,
+                    midiMappings = uiState.midiMappings,
+                    learningActionType = uiState.learningActionType,
+                    lastMidiSummary = uiState.lastMidiSummary,
                     midiDevices = uiState.midiDevices
                 )
                 val settingsActions = object : SettingsActions {
@@ -863,9 +864,21 @@ fun MixerScreen(
                     override fun onVkbPressStyleChange(style: String) { viewModel.setVkbPressStyle(style) }
                     override fun onAntiJitterChange(enabled: Boolean) { viewModel.setAntiJitter(enabled) }
                     override fun onJitterWindowChange(ms: Int) { viewModel.setJitterWindowMs(ms) }
-                    override fun onOpenMapping(page: MappingPage) { viewModel.onOpenMappingMode(page) }
-                    override fun onResetMappingsToDefaults() { viewModel.resetMidiMappingsToDefaults() }
-                    override fun onClearAllMappings() { viewModel.clearAllMidiMappings() }
+                    override fun onStartMidiLearn(action: MidiActionType) { viewModel.startMidiLearn(action) }
+                    override fun onCancelMidiLearn() { viewModel.cancelMidiLearn() }
+                    override fun onUnmapMidiAction(action: MidiActionType) { viewModel.unmapMidiAction(action) }
+                    override fun onToggleMidiMappingEnabled(action: MidiActionType) { viewModel.toggleMidiMappingEnabled(action) }
+                    override fun onUpdateManualMidiMapping(action: MidiActionType, type: MidiControlType, channel: Int, number: Int) {
+                        viewModel.updateMidiMappingManual(action, type, channel, number)
+                    }
+                    override fun onSetMidiMappingMode(action: MidiActionType, mode: MidiControlMode) {
+                        viewModel.setMidiMappingMode(action, mode)
+                    }
+                    override fun onResetMidiMappings() { viewModel.resetMidiMappingsToDefaults() }
+                    override fun onClearMidiMappings() { viewModel.clearAllMidiMappings() }
+                    override fun onToggleMidiDevice(deviceId: String) { viewModel.toggleMidiDevice(deviceId) }
+                    override fun onOpenMidiMapping() { viewModel.openMidiMappingPage() }
+                    override fun onCloseMidiMapping() { viewModel.closeMidiMappingPage() }
                     override fun onNotationChange(notation: Notation) { viewModel.toggleUseFlats() }
                     override fun onKeepScreenOnChange(enabled: Boolean) { viewModel.setKeepScreenOn(enabled) }
                     override fun onAudioEngineChange(engine: String) { viewModel.setAudioEngine(engine) }
@@ -874,54 +887,13 @@ fun MixerScreen(
                     override fun onReducedMotionChange(enabled: Boolean) { viewModel.setReducedMotion(enabled) }
                     override fun onOpenLanguage() { /* no-op */ }
                     override fun onOpenAppSettings() { /* no-op */ }
-                    override fun onCloseMapping() { viewModel.onCloseMappingMode() }
-                    override fun onStartListening(controlId: String) { viewModel.startMappingListening(controlId) }
-                    override fun onCancelListening() { viewModel.cancelMappingListening() }
-                    override fun onClearMapping(controlId: String) { viewModel.clearMappingForControl(controlId) }
-                    override fun onReplaceConflict() { viewModel.replaceMappingConflict() }
-                    override fun onToggleOtherActions() { viewModel.toggleMappingOtherActions() }
                 }
 
-                if (uiState.mappingPage == null) {
-                    SettingsScreen(
-                        state = settingsState,
-                        actions = settingsActions,
-                        background = Brush.verticalGradient(listOf(AppColors.BgTop, AppColors.BgBottom))
-                    )
-                } else {
-                    MappingMode(
-                        state = settingsState,
-                        actions = settingsActions,
-                        pageContent = {
-                            when (uiState.mappingPage) {
-                                MappingPage.Mixer -> {
-                                    MixerMainPageContent(
-                                        uiState = uiState,
-                                        viewModel = viewModel,
-                                        safeBottomPadding = safeBottomPadding,
-                                        detectedChord = detectedChord,
-                                        isKeyboardVisible = isKeyboardVisible,
-                                        trackScrollState = trackScrollState,
-                                        onImportDrumPadAudio = { drumPadPickerLauncher.launch(arrayOf("audio/*", "*/*")) }
-                                    )
-                                }
-                                MappingPage.DrumPad -> {
-                                    DrumPadScreen(
-                                        viewModel = viewModel,
-                                        uiState = uiState,
-                                        onImportFiles = { tab ->
-                                            if (tab == "Loops") loopPickerLauncher.launch(arrayOf("audio/*", "*/*"))
-                                            else drumPadPickerLauncher.launch(arrayOf("audio/*", "*/*"))
-                                        },
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                }
-                                else -> {}
-                            }
-                        },
-                        pageScroll = if (uiState.mappingPage == MappingPage.Mixer && !uiState.isFaderAutoFit) trackScrollState else null
-                    )
-                }
+                SettingsScreen(
+                    state = settingsState,
+                    actions = settingsActions,
+                    background = Brush.verticalGradient(listOf(AppColors.BgTop, AppColors.BgBottom))
+                )
             }
         }
     }
@@ -1145,70 +1117,6 @@ fun MixerScreen(
             else -> {}
         }
 
-        // Settings Drawer (AOSP Material You settings & engine controls)
-        SettingsDrawer(
-            isOpen = uiState.isSettingsDrawerOpen,
-            onClose = { viewModel.closeSettingsDrawer() },
-            subPage = uiState.settingsSubPage,
-            onNavigateSubPage = { viewModel.setSettingsSubPage(it) },
-            midiDevices = uiState.midiDevices,
-            onToggleMidiDevice = { viewModel.toggleMidiDevice(it) },
-            midiMappings = uiState.midiMappings,
-            learningActionType = uiState.learningActionType,
-            lastMidiSummary = uiState.lastMidiSummary,
-            onStartMidiLearn = { viewModel.startMidiLearn(it) },
-            onCancelMidiLearn = { viewModel.cancelMidiLearn() },
-            onUnmapMidiAction = { viewModel.unmapMidiAction(it) },
-            onToggleMidiMappingEnabled = { viewModel.toggleMidiMappingEnabled(it) },
-            onUpdateManualMidiMapping = { action, type, ch, num -> viewModel.updateMidiMappingManual(action, type, ch, num) },
-            onResetMidiMappings = { viewModel.resetMidiMappingsToDefaults() },
-            onClearMidiMappings = { viewModel.clearAllMidiMappings() },
-            midiDebounceEnabled = uiState.midiDebounceEnabled,
-            midiDebounceMs = uiState.midiDebounceMs,
-            onToggleMidiDebounce = { viewModel.toggleMidiDebounce() },
-            onUpdateMidiDebounceMs = { viewModel.updateMidiDebounceMs(it) },
-            tracks = uiState.tracks,
-            selectedMidiOutputDevice = uiState.selectedMidiOutputDevice,
-            onSelectMidiOutputDevice = { viewModel.selectMidiOutputDevice(it) },
-            onUpdateTrackMidiChannel = { trackId, channel -> viewModel.updateTrackMidiChannel(trackId, channel) },
-            onUpdateTrackColor = { trackId, argb -> viewModel.setTrackColor(trackId, argb) },
-            audioEngine = uiState.audioEngine,
-            onSelectAudioEngine = { viewModel.setAudioEngine(it) },
-            audioBufferSize = uiState.audioBufferSize,
-            onSelectBufferSize = { viewModel.setAudioBufferSize(it) },
-            polyphony = uiState.polyphony,
-            onSelectPolyphony = { viewModel.setPolyphony(it) },
-            fluidSynthGain = uiState.fluidSynthGain,
-            onFluidSynthGainChange = { viewModel.setFluidSynthGain(it) },
-            selectedLanguage = uiState.selectedLanguage,
-            onSelectLanguage = { viewModel.setSelectedLanguage(it) },
-            masterPunch = uiState.masterPunch,
-            onMasterPunchChange = { viewModel.setMasterPunch(it) },
-            spatialWidener = uiState.spatialWidener,
-            onSpatialWidenerChange = { viewModel.setSpatialWidener(it) },
-            keepScreenOn = uiState.keepScreenOn,
-            onToggleKeepScreenOn = { viewModel.toggleKeepScreenOn() },
-            velocityMin = uiState.globalVelocityMin,
-            velocityMax = uiState.globalVelocityMax,
-            onVelocityRangeChange = { min, max -> viewModel.setGlobalVelocityRange(min, max) },
-            useFlats = uiState.useFlats,
-            onToggleUseFlats = { viewModel.toggleUseFlats() },
-            themeHue = uiState.themeHue,
-            onThemeHueChange = { viewModel.setThemeHue(it) },
-            themeAccentSaturation = uiState.themeAccentSaturation,
-            onThemeAccentSaturationChange = { viewModel.setThemeAccentSaturation(it) },
-            themeBgSaturation = uiState.themeBgSaturation,
-            onThemeBgSaturationChange = { viewModel.setThemeBgSaturation(it) },
-            themeBgLightness = uiState.themeBgLightness,
-            onThemeBgLightnessChange = { viewModel.setThemeBgLightness(it) },
-            themeModulesLightness = uiState.themeModulesLightness,
-            onThemeModulesLightnessChange = { viewModel.setThemeModulesLightness(it) },
-            themePaletteName = uiState.themePaletteName,
-            onSelectThemePalette = { viewModel.setThemePalette(it) },
-            onResetTheme = { viewModel.resetThemeToDefault() },
-            isFaderAutoFit = uiState.isFaderAutoFit,
-            onToggleFaderAutoFit = { viewModel.toggleFaderAutoFit() }
-        )
 
         // Floating Sheet Window (Spotify style, 0 contour, free drag + magnetic snap, double-tap dismiss)
         if (uiState.floatingSheet != null && uiState.currentPage == AppScreenPage.MIXER) {

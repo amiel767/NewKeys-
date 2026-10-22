@@ -170,9 +170,7 @@ data class MixerUiState(
     val activePatchId: String? = null,
     
     // Settings Drawer (Material Expressive AOSP style)
-    val isSettingsDrawerOpen: Boolean = false,
     val isSheetsDrawerOpen: Boolean = false,
-    val settingsSubPage: String = "main",
     val isLowLatencyAudio: Boolean = true,
     val isKeyboardVelocityTouch: Boolean = true,
     val isMetronomeInRec: Boolean = false,
@@ -203,15 +201,10 @@ data class MixerUiState(
     val learningActionType: MidiActionType? = null,
     val lastMidiSummary: String = "",
     val lastMidiTriggerTime: Long = 0L,
-    val midiDebounceEnabled: Boolean = false,
-    val midiDebounceMs: Long = 30L,
     val selectedMidiOutputDevice: String = "All Connected Devices",
 
-    // MIDI Mapping Mode (SettingsScreen overlay)
-    val mappingPage: MappingPage? = null,
-    val mappingListeningControlId: String? = null,
-    val mappingConflict: MidiConflict? = null,
-    val mappingOtherActionsOpen: Boolean = false,
+    // MIDI mapping page (inside SettingsScreen, never a window)
+    val midiMappingOpen: Boolean = false,
     val settingsTab: SettingsTab = SettingsTab.Audio,
     val settingsQuery: String = "",
 
@@ -460,6 +453,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         audioEngine.trackSustainProvider = { ch -> _uiState.value.tracks.getOrNull(ch)?.sustain ?: true }
         audioEngine.trackAftertouchProvider = { ch -> _uiState.value.tracks.getOrNull(ch)?.aftertouch ?: false }
         audioEngine.trackProgramChangeProvider = { ch -> _uiState.value.tracks.getOrNull(ch)?.programChange ?: true }
+        audioEngine.mappedProgramChangeProvider = { number, _ ->
+            _uiState.value.midiMappings.any { m ->
+                m.isEnabled && m.isAssigned &&
+                    m.midiType == MidiControlType.PROGRAM_CHANGE && m.controlNumber == number
+            }
+        }
         audioEngine.trackBendRangeProvider = { ch -> _uiState.value.tracks.getOrNull(ch)?.pitchBendRange ?: 2 }
         _uiState.value.tracks.forEach { track ->
             audioEngine.setTrackVelocityProcessor(track.id - 1, VelocityProcessor(track.velocityConfig))
@@ -649,8 +648,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         trackColorSaturation = saved.trackColorSaturation ?: state.trackColorSaturation,
                         isFaderAutoFit = saved.isFaderAutoFit ?: state.isFaderAutoFit,
                         midiMappings = if (saved.midiMappings.isNotEmpty()) saved.midiMappings else state.midiMappings,
-                        midiDebounceEnabled = saved.midiDebounceEnabled ?: state.midiDebounceEnabled,
-                        midiDebounceMs = saved.midiDebounceMs ?: state.midiDebounceMs,
                         settingsTab = runCatching { SettingsTab.valueOf(appStatePersistence.getString("last_settings_tab", SettingsTab.Audio.name)) }.getOrDefault(SettingsTab.Audio),
                         lastOpenedSetlistId = appStatePersistence.getString("setlist_last_opened", "").ifEmpty { null },
                         setlistsSort = runCatching { SetlistSort.valueOf(appStatePersistence.getString("setlists_sort", SetlistSort.Recent.name)) }.getOrDefault(SetlistSort.Recent),
@@ -806,8 +803,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             patches = updatedPatches,
             activePatchId = state.activePatchId,
             midiMappings = state.midiMappings,
-            midiDebounceEnabled = state.midiDebounceEnabled,
-            midiDebounceMs = state.midiDebounceMs,
             audioBufferSize = state.audioBufferSize,
             polyphony = state.polyphony,
             headroom = state.headroom,
@@ -5390,11 +5385,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // ================= SETTINGS FULL-SCREEN PAGE & MIDI MAPPING (FINAL DESIGN) =================
-    fun openSettingsDrawer() {
+    fun openSettings() {
         _uiState.update { it.copy(currentPage = AppScreenPage.SETTINGS) }
     }
 
-    fun closeSettingsDrawer() {
+    fun closeSettings() {
         _uiState.update { it.copy(currentPage = AppScreenPage.MIXER) }
     }
 
@@ -5405,227 +5400,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onSettingsQueryChanged(query: String) {
         _uiState.update { it.copy(settingsQuery = query) }
-    }
-
-    fun onOpenMappingMode(page: MappingPage) {
-        _uiState.update { 
-            it.copy(
-                mappingPage = page,
-                mappingListeningControlId = null,
-                mappingConflict = null,
-                mappingOtherActionsOpen = false
-            )
-        }
-    }
-
-    fun onCloseMappingMode() {
-        _uiState.update { 
-            it.copy(
-                mappingPage = null,
-                mappingListeningControlId = null,
-                mappingConflict = null,
-                mappingOtherActionsOpen = false,
-                currentPage = AppScreenPage.SETTINGS,
-                settingsTab = SettingsTab.Midi
-            )
-        }
-    }
-
-    fun startMappingListening(controlId: String) {
-        _uiState.update { 
-            it.copy(
-                mappingListeningControlId = controlId,
-                mappingConflict = null
-            )
-        }
-    }
-
-    fun cancelMappingListening() {
-        _uiState.update { 
-            it.copy(
-                mappingListeningControlId = null,
-                mappingConflict = null
-            )
-        }
-    }
-
-    fun toggleMappingOtherActions() {
-        _uiState.update { it.copy(mappingOtherActionsOpen = !it.mappingOtherActionsOpen) }
-    }
-
-    fun clearMappingForControl(controlId: String) {
-        val action = mapControlIdToActionType(controlId) ?: return
-        unmapMidiAction(action)
-    }
-
-    fun replaceMappingConflict() {
-        val conf = _uiState.value.mappingConflict ?: return
-        val currentCtrlId = conf.controlId
-        val otherCtrlId = conf.otherId
-        val targetAction = mapControlIdToActionType(currentCtrlId)
-        val otherAction = mapControlIdToActionType(otherCtrlId)
-
-        if (targetAction != null) {
-            val incomingMidiType = when (conf.message.family) {
-                MidiFamily.ControlChange, MidiFamily.Panic, MidiFamily.Transport, MidiFamily.Snapshot -> MidiControlType.CC
-                MidiFamily.Note -> MidiControlType.NOTE
-                MidiFamily.ProgramChange -> MidiControlType.PROGRAM_CHANGE
-            }
-            val incomingChannel = conf.message.channel ?: -1
-            val incomingCtrlNum = conf.message.number
-
-            _uiState.update { state ->
-                val updated = state.midiMappings.map { m ->
-                    when (m.actionType) {
-                        targetAction -> m.copy(
-                            midiType = incomingMidiType,
-                            channel = incomingChannel,
-                            controlNumber = incomingCtrlNum,
-                            isEnabled = true
-                        )
-                        otherAction -> m.copy(
-                            controlNumber = -1,
-                            channel = -1
-                        )
-                        else -> m
-                    }
-                }
-                state.copy(
-                    midiMappings = updated,
-                    mappingListeningControlId = null,
-                    mappingConflict = null
-                )
-            }
-            persistCurrentStateDebounced()
-        }
-    }
-
-    fun mapControlIdToActionType(id: String): MidiActionType? = when (id) {
-        "mixer.master" -> MidiActionType.MASTER_VOLUME
-        "mixer.t1.fader" -> MidiActionType.TRACK_1_VOL
-        "mixer.t1.mute" -> MidiActionType.TRACK_1_MUTE
-        "mixer.t1.solo" -> MidiActionType.TRACK_1_SOLO
-        "mixer.t2.fader" -> MidiActionType.TRACK_2_VOL
-        "mixer.t2.mute" -> MidiActionType.TRACK_2_MUTE
-        "mixer.t2.solo" -> MidiActionType.TRACK_2_SOLO
-        "mixer.t3.fader" -> MidiActionType.TRACK_3_VOL
-        "mixer.t3.mute" -> MidiActionType.TRACK_3_MUTE
-        "mixer.t3.solo" -> MidiActionType.TRACK_3_SOLO
-        "mixer.t4.fader" -> MidiActionType.TRACK_4_VOL
-        "mixer.t4.mute" -> MidiActionType.TRACK_4_MUTE
-        "mixer.t4.solo" -> MidiActionType.TRACK_4_SOLO
-        "mixer.t5.fader" -> MidiActionType.TRACK_5_VOL
-        "mixer.t5.mute" -> MidiActionType.TRACK_5_MUTE
-        "mixer.t5.solo" -> MidiActionType.TRACK_5_SOLO
-        "mixer.t6.fader" -> MidiActionType.TRACK_6_VOL
-        "mixer.t6.mute" -> MidiActionType.TRACK_6_MUTE
-        "mixer.t6.solo" -> MidiActionType.TRACK_6_SOLO
-        "mixer.t7.fader" -> MidiActionType.TRACK_7_VOL
-        "mixer.t7.mute" -> MidiActionType.TRACK_7_MUTE
-        "mixer.t7.solo" -> MidiActionType.TRACK_7_SOLO
-        "mixer.t8.fader" -> MidiActionType.TRACK_8_VOL
-        "mixer.t8.mute" -> MidiActionType.TRACK_8_MUTE
-        "mixer.t8.solo" -> MidiActionType.TRACK_8_SOLO
-        "mixer.default" -> MidiActionType.SNAPSHOT_DEFAULT
-        "mixer.snap1" -> MidiActionType.SNAPSHOT_1
-        "mixer.snap2" -> MidiActionType.SNAPSHOT_2
-        "mixer.snap3" -> MidiActionType.SNAPSHOT_3
-        "mixer.snap4" -> MidiActionType.SNAPSHOT_4
-        "mixer.panic" -> MidiActionType.PANIC_ALL_NOTES_OFF
-        "mixer.tap" -> MidiActionType.TAP_TEMPO
-        "mixer.metro" -> MidiActionType.METRONOME_TOGGLE
-        "mixer.prevSnap" -> MidiActionType.SNAPSHOT_PREV
-        "mixer.nextSnap" -> MidiActionType.SNAPSHOT_NEXT
-        "drum.pad1" -> MidiActionType.DRUMPAD_PAD_1
-        "drum.pad2" -> MidiActionType.DRUMPAD_PAD_2
-        "drum.pad3" -> MidiActionType.DRUMPAD_PAD_3
-        "drum.pad4" -> MidiActionType.DRUMPAD_PAD_4
-        "drum.pad5" -> MidiActionType.DRUMPAD_PAD_5
-        "drum.pad6" -> MidiActionType.DRUMPAD_PAD_6
-        "drum.pad7" -> MidiActionType.DRUMPAD_PAD_7
-        "drum.pad8" -> MidiActionType.DRUMPAD_PAD_8
-        "drum.stop" -> MidiActionType.DRUMPAD_STOP_ALL
-        else -> null
-    }
-
-    fun mapActionTypeToControlId(action: MidiActionType): String? = when (action) {
-        MidiActionType.MASTER_VOLUME -> "mixer.master"
-        MidiActionType.TRACK_1_VOL -> "mixer.t1.fader"
-        MidiActionType.TRACK_1_MUTE -> "mixer.t1.mute"
-        MidiActionType.TRACK_1_SOLO -> "mixer.t1.solo"
-        MidiActionType.TRACK_2_VOL -> "mixer.t2.fader"
-        MidiActionType.TRACK_2_MUTE -> "mixer.t2.mute"
-        MidiActionType.TRACK_2_SOLO -> "mixer.t2.solo"
-        MidiActionType.TRACK_3_VOL -> "mixer.t3.fader"
-        MidiActionType.TRACK_3_MUTE -> "mixer.t3.mute"
-        MidiActionType.TRACK_3_SOLO -> "mixer.t3.solo"
-        MidiActionType.TRACK_4_VOL -> "mixer.t4.fader"
-        MidiActionType.TRACK_4_MUTE -> "mixer.t4.mute"
-        MidiActionType.TRACK_4_SOLO -> "mixer.t4.solo"
-        MidiActionType.TRACK_5_VOL -> "mixer.t5.fader"
-        MidiActionType.TRACK_5_MUTE -> "mixer.t5.mute"
-        MidiActionType.TRACK_5_SOLO -> "mixer.t5.solo"
-        MidiActionType.TRACK_6_VOL -> "mixer.t6.fader"
-        MidiActionType.TRACK_6_MUTE -> "mixer.t6.mute"
-        MidiActionType.TRACK_6_SOLO -> "mixer.t6.solo"
-        MidiActionType.TRACK_7_VOL -> "mixer.t7.fader"
-        MidiActionType.TRACK_7_MUTE -> "mixer.t7.mute"
-        MidiActionType.TRACK_7_SOLO -> "mixer.t7.solo"
-        MidiActionType.TRACK_8_VOL -> "mixer.t8.fader"
-        MidiActionType.TRACK_8_MUTE -> "mixer.t8.mute"
-        MidiActionType.TRACK_8_SOLO -> "mixer.t8.solo"
-        MidiActionType.SNAPSHOT_DEFAULT -> "mixer.default"
-        MidiActionType.SNAPSHOT_1 -> "mixer.snap1"
-        MidiActionType.SNAPSHOT_2 -> "mixer.snap2"
-        MidiActionType.SNAPSHOT_3 -> "mixer.snap3"
-        MidiActionType.SNAPSHOT_4 -> "mixer.snap4"
-        MidiActionType.PANIC_ALL_NOTES_OFF -> "mixer.panic"
-        MidiActionType.TAP_TEMPO -> "mixer.tap"
-        MidiActionType.METRONOME_TOGGLE -> "mixer.metro"
-        MidiActionType.SNAPSHOT_PREV -> "mixer.prevSnap"
-        MidiActionType.SNAPSHOT_NEXT -> "mixer.nextSnap"
-        MidiActionType.DRUMPAD_PAD_1 -> "drum.pad1"
-        MidiActionType.DRUMPAD_PAD_2 -> "drum.pad2"
-        MidiActionType.DRUMPAD_PAD_3 -> "drum.pad3"
-        MidiActionType.DRUMPAD_PAD_4 -> "drum.pad4"
-        MidiActionType.DRUMPAD_PAD_5 -> "drum.pad5"
-        MidiActionType.DRUMPAD_PAD_6 -> "drum.pad6"
-        MidiActionType.DRUMPAD_PAD_7 -> "drum.pad7"
-        MidiActionType.DRUMPAD_PAD_8 -> "drum.pad8"
-        MidiActionType.DRUMPAD_STOP_ALL -> "drum.stop"
-        else -> null
-    }
-
-    fun getActiveSettingsStateMappings(): Map<String, MidiMessage> {
-        val map = mutableMapOf<String, MidiMessage>()
-        _uiState.value.midiMappings.filter { it.isAssigned }.forEach { item ->
-            val ctrlId = mapActionTypeToControlId(item.actionType)
-            if (ctrlId != null) {
-                val family = when (item.actionType.category) {
-                    MidiActionCategory.SNAPSHOTS -> MidiFamily.Snapshot
-                    MidiActionCategory.GLOBAL -> when (item.actionType) {
-                        MidiActionType.PANIC_ALL_NOTES_OFF -> MidiFamily.Panic
-                        MidiActionType.TAP_TEMPO, MidiActionType.METRONOME_TOGGLE -> MidiFamily.Transport
-                        else -> when (item.midiType) {
-                            MidiControlType.CC -> MidiFamily.ControlChange
-                            MidiControlType.NOTE -> MidiFamily.Note
-                            MidiControlType.PROGRAM_CHANGE -> MidiFamily.ProgramChange
-                        }
-                    }
-                    MidiActionCategory.DRUMPAD -> when (item.actionType) {
-                        MidiActionType.DRUMPAD_STOP_ALL -> MidiFamily.Transport
-                        else -> MidiFamily.Note
-                    }
-                    else -> when (item.midiType) {
-                        MidiControlType.CC -> MidiFamily.ControlChange
-                        MidiControlType.NOTE -> MidiFamily.Note
-                        MidiControlType.PROGRAM_CHANGE -> MidiFamily.ProgramChange
-                    }
-                }
-                map[ctrlId] = MidiMessage(family, item.controlNumber, if (item.channel < 0) null else (item.channel + 1))
-            }
-        }
-        return map
     }
 
     // ================= SHEETS DRAWER OVERLAY =================
@@ -5639,10 +5413,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleSheetsDrawer() {
         _uiState.update { it.copy(isSheetsDrawerOpen = !it.isSheetsDrawerOpen) }
-    }
-
-    fun setSettingsSubPage(page: String) {
-        _uiState.update { it.copy(settingsSubPage = page) }
     }
 
     fun setAudioEngine(engine: String) {
@@ -6278,6 +6048,14 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // ================= MIDI LEARN & CONTROLLER MAPPING =================
+    fun openMidiMappingPage() {
+        _uiState.update { it.copy(midiMappingOpen = true) }
+    }
+
+    fun closeMidiMappingPage() {
+        _uiState.update { it.copy(midiMappingOpen = false, settingsTab = SettingsTab.Midi) }
+    }
+
     fun startMidiLearn(actionType: MidiActionType) {
         _uiState.update { it.copy(learningActionType = actionType) }
     }
@@ -6316,6 +6094,16 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 if (m.actionType == actionType) {
                     m.copy(midiType = type, channel = channel, controlNumber = controlNum, isEnabled = true)
                 } else m
+            }
+            state.copy(midiMappings = updated)
+        }
+        persistCurrentStateDebounced()
+    }
+
+    fun setMidiMappingMode(actionType: MidiActionType, mode: MidiControlMode) {
+        _uiState.update { state ->
+            val updated = state.midiMappings.map { m ->
+                if (m.actionType == actionType) m.copy(mode = mode) else m
             }
             state.copy(midiMappings = updated)
         }
@@ -6418,70 +6206,29 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     private fun handleMidiMappingEvent(channel: Int, command: Int, data1: Int, data2: Int) {
         val statusCmd = if (command >= 0x80) (command and 0xF0) else command
         val midiType = when (statusCmd) {
-            0x90 -> MidiControlType.NOTE
-            0x80 -> MidiControlType.NOTE
+            0x90, 0x80 -> MidiControlType.NOTE
             0xB0 -> MidiControlType.CC
             0xC0 -> MidiControlType.PROGRAM_CHANGE
+            0xD0 -> MidiControlType.AFTERTOUCH
+            0xE0 -> MidiControlType.PITCH_BEND
             else -> return
         }
-        val ctrlNumber = data1
-        val value = if (statusCmd == 0x80) 0 else data2
-
-        // Mapping Mode Learning (Settings & Mapping screen)
-        val mappingListeningId = _uiState.value.mappingListeningControlId
-        if (mappingListeningId != null) {
-            if (midiType != MidiControlType.PROGRAM_CHANGE && value <= 0) return
-            val incomingFamily = when (midiType) {
-                MidiControlType.CC -> MidiFamily.ControlChange
-                MidiControlType.NOTE -> MidiFamily.Note
-                MidiControlType.PROGRAM_CHANGE -> MidiFamily.ProgramChange
-            }
-            val incomingMsg = MidiMessage(incomingFamily, ctrlNumber, channel + 1)
-            val currentMappings = getActiveSettingsStateMappings()
-            val conflictId = SettingsLogic.findConflict(currentMappings, mappingListeningId, incomingMsg)
-
-            if (conflictId != null) {
-                _uiState.update { 
-                    it.copy(
-                        mappingConflict = MidiConflict(
-                            controlId = mappingListeningId,
-                            otherId = conflictId,
-                            message = incomingMsg
-                        )
-                    )
-                }
-            } else {
-                val targetAction = mapControlIdToActionType(mappingListeningId)
-                if (targetAction != null) {
-                    _uiState.update { state ->
-                        val updated = state.midiMappings.map { m ->
-                            if (m.actionType == targetAction) {
-                                m.copy(
-                                    midiType = midiType,
-                                    channel = channel,
-                                    controlNumber = ctrlNumber,
-                                    isEnabled = true
-                                )
-                            } else m
-                        }
-                        state.copy(
-                            midiMappings = updated,
-                            mappingListeningControlId = null,
-                            mappingConflict = null,
-                            lastMidiSummary = "Assigned: ${targetAction.title} ➔ ${midiType.name} #$ctrlNumber (Ch. ${channel + 1})",
-                            lastMidiTriggerTime = System.currentTimeMillis()
-                        )
-                    }
-                    persistCurrentStateDebounced()
-                }
-            }
-            return
+        // A Program Change and a Channel Aftertouch carry ONE data byte: the value lives in
+        // data1, and data2 is the channel byte. Reading data2 there would always give 0.
+        // Pitch Bend carries LSB then MSB, so the 14-bit value is (MSB << 7) or LSB.
+        val ctrlNumber = if (midiType == MidiControlType.PITCH_BEND) 0 else data1
+        val value = when (statusCmd) {
+            0x80 -> 0
+            0xC0, 0xD0 -> data1
+            0xE0 -> ((data2 shl 7) or data1) shr 6
+            else -> data2
         }
 
         val learningType = _uiState.value.learningActionType
         if (learningType != null) {
             // When learning, require a positive press (ignore release/NoteOff, but allow Program Change which has value=0)
-            if (midiType != MidiControlType.PROGRAM_CHANGE && value <= 0) return
+            if (midiType != MidiControlType.PROGRAM_CHANGE &&
+                midiType != MidiControlType.AFTERTOUCH && value <= 0) return
             _uiState.update { state ->
                 val updated = state.midiMappings.map { m ->
                     if (m.actionType == learningType) {
@@ -6508,6 +6255,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val summary = when (midiType) {
             MidiControlType.CC -> "CC #$ctrlNumber (Ch. ${channel + 1}, Val $value)"
             MidiControlType.NOTE -> "Note #$ctrlNumber (Ch. ${channel + 1}, Vel $value)"
+            MidiControlType.AFTERTOUCH -> "Aftertouch (Ch. ${channel + 1}, Val $value)"
+            MidiControlType.PITCH_BEND -> "Pitch Bend (Ch. ${channel + 1}, Val $value)"
             MidiControlType.PROGRAM_CHANGE -> "PC #$ctrlNumber (Ch. ${channel + 1})"
         }
         _uiState.update { it.copy(lastMidiSummary = summary, lastMidiTriggerTime = System.currentTimeMillis()) }
@@ -6518,8 +6267,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         val now = System.currentTimeMillis()
-        val debounceActive = _uiState.value.midiDebounceEnabled
-        val debounceMs = _uiState.value.midiDebounceMs
+        // Single jitter filter. `antiJitter` / `jitterWindowMs` are the only knobs:
+        // the old `midiDebounce*` pair was a second, hidden control for the same job.
+        val debounceActive = _uiState.value.antiJitter
+        val debounceMs = _uiState.value.jitterWindowMs.toLong()
 
         for (m in activeMappings) {
             if (debounceActive && debounceMs > 0) {
@@ -6663,16 +6414,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun toggleMidiDebounce() {
-        _uiState.update { it.copy(midiDebounceEnabled = !it.midiDebounceEnabled) }
-        persistCurrentStateDebounced()
-    }
-
-    fun updateMidiDebounceMs(ms: Long) {
-        _uiState.update { it.copy(midiDebounceMs = ms.coerceIn(5L, 120L)) }
-        persistCurrentStateDebounced()
-    }
-
     fun selectMidiOutputDevice(deviceName: String) {
         _uiState.update { it.copy(selectedMidiOutputDevice = deviceName) }
         persistCurrentStateDebounced()
@@ -6793,7 +6534,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             MidiActionType.OCTAVE_UP -> updateOctave(1)
             MidiActionType.OCTAVE_DOWN -> updateOctave(-1)
             MidiActionType.OPEN_PATCHES -> openPopup(ActivePopup.SCENE)
-            MidiActionType.OPEN_SETTINGS -> openSettingsDrawer()
+            MidiActionType.OPEN_SETTINGS -> openSettings()
         }
     }
 

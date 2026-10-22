@@ -377,6 +377,12 @@ class AudioEngine(private val context: Context) {
     var trackSustainProvider: ((channel: Int) -> Boolean)? = null
     var trackAftertouchProvider: ((channel: Int) -> Boolean)? = null
     var trackProgramChangeProvider: ((channel: Int) -> Boolean)? = null
+    /**
+     * True when a Program Change number is bound to an app action. A mapped PC must drive the
+     * mapping only: without this the same signal would also swap the track's soundfont, so the
+     * user would see the patch change instead of the action they mapped.
+     */
+    var mappedProgramChangeProvider: ((number: Int, channel: Int) -> Boolean)? = null
     var trackBendRangeProvider: ((channel: Int) -> Int)? = null
 
     private fun applyVelocityCurve(velocity: Float, curve: Float): Float {
@@ -595,8 +601,11 @@ class AudioEngine(private val context: Context) {
 
         when (command) {
             0xC0 -> { // Program Change
+                // A PC bound to an action drives the mapping only (see mappedProgramChangeProvider).
+                val isMapped = mappedProgramChangeProvider?.invoke(data1, channel) ?: false
                 // Ignored when the target track opted out of incoming patch changes.
-                val pcAllowed = targetChannels.any { ch -> trackProgramChangeProvider?.invoke(ch) ?: true }
+                val pcAllowed = !isMapped &&
+                    targetChannels.any { ch -> trackProgramChangeProvider?.invoke(ch) ?: true }
                 if (pcAllowed) {
                     coroutineScope.launch(Dispatchers.Main) {
                         onMidiProgramChangeListener?.invoke(channel, data1)
