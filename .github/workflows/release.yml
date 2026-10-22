@@ -1,11 +1,14 @@
 name: Build & Release Debug APK
 
 on:
-  push:
-    branches: [ "main", "master" ]
-    tags:
-      - "v*"
+  # Manual only: the build starts when someone picks "Run workflow" in the
+  # Actions tab. No push or tag trigger, by request.
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Publish the APK as a GitHub release"
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -83,9 +86,16 @@ jobs:
           echo "Found APK at: $APK_PATH"
           echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
 
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: ${{ steps.find_apk.outputs.apk_path }}
+          if-no-files-found: error
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
-        if: steps.find_apk.outputs.apk_path != ''
+        if: steps.find_apk.outputs.apk_path != '' && inputs.release != false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
