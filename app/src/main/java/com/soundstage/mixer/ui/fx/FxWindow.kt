@@ -191,7 +191,14 @@ fun FxWindow(
                 }) {
                     scene.presetIndex = info.presets.indexOfFirst { it.name == presetName }.coerceAtLeast(0)
                     drawFxScene(effectId, values, t, tm, scene)
-                    drawFxRail(instrumentId = effectId, level = level, tm = tm)
+                    // The preview calls `rail()` for 5,6,7,8,9,12,13,14 only — its
+                    // `RS` table has no other key. Without this guard the rail was
+                    // painted on all 15, adding a copper line and a #2a1810 band
+                    // across the bottom of sax (and a lighter band on piano,
+                    // guitar, brass, iron-grip), which the reference does not have.
+                    if (FxStyle.hasRail(effectId)) {
+                        drawFxRail(instrumentId = effectId, level = level, tm = tm)
+                    }
                 }
             }
 
