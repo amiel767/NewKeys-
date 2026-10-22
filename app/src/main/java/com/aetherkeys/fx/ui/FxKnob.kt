@@ -55,7 +55,8 @@ enum class KnobStyle {
 data class ReadoutFont(val family: androidx.compose.ui.text.font.FontFamily, val weight: FontWeight, val size: Float)
 
 private val READOUT_FONTS: Map<Int, ReadoutFont> = mapOf(
-    2 to ReadoutFont(FxFonts.mono, FontWeight.Normal, 12f),
+    2 to ReadoutFont(FxFonts.mono, FontWeight.Normal, 11f),
+    4 to ReadoutFont(FxFonts.ui, FontWeight.Bold, 10f),
     5 to ReadoutFont(FxFonts.sora, FontWeight.Bold, 11f),
     6 to ReadoutFont(FxFonts.mono, FontWeight.Normal, 12f),
     7 to ReadoutFont(FxFonts.sora, FontWeight.Bold, 11f),
@@ -70,9 +71,13 @@ private val READOUT_FONTS: Map<Int, ReadoutFont> = mapOf(
 
 /** The label is the same face as the value, but the base weight is 700 9px. */
 private fun labelFont(id: Int): ReadoutFont {
-    val f = READOUT_FONTS[id] ?: return ReadoutFont(FxFonts.ui, FontWeight.Bold, 9f)
-    return f.copy(size = 9f, weight = if (f.family == FxFonts.mono) FontWeight.Normal else FontWeight.Bold)
+    val f = READOUT_FONTS[id] ?: return ReadoutFont(FxFonts.ui, FontWeight.Bold, LABEL_SIZE)
+    return f.copy(size = LABEL_SIZE, weight = if (f.family == FxFonts.mono) FontWeight.Normal else FontWeight.Bold)
 }
+
+/** Base label size is 9px; EQ and solar read a step large against their bodies. */
+private const val LABEL_SIZE = 9f
+private val SMALL_LABELS = setOf(2, 4)
 
 /** `LIGHT=[1,3,4,8,10,11,12,13]`: dark knob bodies, so the pointer turns dark too. */
 private val DARK_BODIES = setOf(1, 3, 4, 8, 10, 11, 12, 13)
@@ -131,7 +136,7 @@ fun FxKnob(
         ) {
             drawKnob(value, accent, style, gradientIndex, light)
         }
-        val lf = labelFont(effectId)
+        val lf = labelFont(effectId).let { if (effectId in SMALL_LABELS) it.copy(size = 8f) else it }
         val vf = READOUT_FONTS[effectId] ?: ReadoutFont(FxFonts.ui, FontWeight.Bold, 11f)
         // `.xN` sets the text colour per effect; the readouts inherited a hard-coded
         // light grey, which is invisible on the light panels (solar `.x4`).

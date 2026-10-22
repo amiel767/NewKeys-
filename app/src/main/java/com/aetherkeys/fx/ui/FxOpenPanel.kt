@@ -121,7 +121,7 @@ fun FxOpenPanel(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth().height(58.dp).padding(start = 58.dp, end = 200.dp),
         ) {
-            BypassChip(bypassed, onBypass)
+            BypassChip(bypassed, onBypass, fxPanelText(module.id))
             Spacer(Modifier.width(12.dp))
             Column {
                 val style = NAME_STYLES[module.id] ?: NAME_STYLES.getValue(0)
@@ -132,7 +132,7 @@ fun FxOpenPanel(
                 Text(module.name, fontSize = style.first.sp, fontFamily = FxFonts.title(module.id),
                     fontWeight = style.second, letterSpacing = style.third.sp,
                     color = ink, maxLines = 1)
-                Text(module.type.uppercase(), fontSize = 9.sp, fontFamily = FxFonts.ui,
+                Text(module.type.uppercase(), fontSize = SUB_TITLE_SIZE[module.id]?.sp ?: 9.sp, fontFamily = FxFonts.ui,
                     fontWeight = FontWeight.Bold, letterSpacing = (9 * 0.18f).sp,
                     color = ink.copy(alpha = 0.6f), maxLines = 1)
             }
@@ -254,7 +254,7 @@ private fun PageTab(name: String, active: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun BypassChip(bypassed: Boolean, onClick: () -> Unit) {
+private fun BypassChip(bypassed: Boolean, onClick: () -> Unit, ink: Color) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -270,8 +270,10 @@ private fun BypassChip(bypassed: Boolean, onClick: () -> Unit) {
                 .background(if (bypassed) Color(0xFF2A3040) else Color(0xFFF2D58A)),
         )
         Spacer(Modifier.width(7.dp))
+        // `.bt{color:inherit}`: the chip takes the panel's `.xN` text colour, so it
+        // is dark ink on solar's cream face instead of invisible light grey.
         Text("Bypass", fontSize = 10.sp, fontFamily = FxFonts.ui,
-            fontWeight = FontWeight.Bold, letterSpacing = (10 * 0.06f).sp, color = Color(0xFFE6EAF3))
+            fontWeight = FontWeight.Bold, letterSpacing = (10 * 0.06f).sp, color = ink)
     }
 }
 
@@ -281,12 +283,16 @@ private fun BypassChip(bypassed: Boolean, onClick: () -> Unit) {
  * base `.nm{font-size:30px}`. Using 30 px everywhere made echo's name 253 px wide
  * against 160 in the reference, and synth's far too large.
  */
+/** `.ph .ty` is a flat 9px in the preview; solar's block reads a touch large next
+ * to its 22px title, so it drops one step. */
+private val SUB_TITLE_SIZE: Map<Int, Int> = mapOf(4 to 8)
+
 private val NAME_STYLES: Map<Int, Triple<Int, FontWeight, Float>> = mapOf(
     0 to Triple(28, FontWeight.Light, 0f),
     1 to Triple(22, FontWeight.Medium, 0f),
     2 to Triple(21, FontWeight.SemiBold, 21f * 0.04f),
     3 to Triple(23, FontWeight.Normal, 0f),
-    4 to Triple(24, FontWeight.ExtraBold, 0f),
+    4 to Triple(22, FontWeight.ExtraBold, 0f),
     5 to Triple(24, FontWeight.Medium, 24f * 0.02f),
     6 to Triple(24, FontWeight.Medium, 24f * 0.02f),
     7 to Triple(24, FontWeight.Medium, 0f),

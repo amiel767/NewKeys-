@@ -181,12 +181,21 @@ private fun DrawScope.oval(cx: Float, cy: Float, rx: Float, ry: Float, rot: Floa
 }
 
 private fun DrawScope.label(tm: TextMeasurer, text: String, cx: Float, cy: Float,
-                            color: Color, sp: Float, bold: Boolean = false) {
+                            color: Color, sp: Float, bold: Boolean = false,
+                            align: LabelAlign = LabelAlign.CENTER) {
     val layout = tm.measure(text, style = TextStyle(color = color, fontSize = sp.sp,
         fontFamily = FxFonts.mono,
         fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal))
-    drawText(layout, topLeft = Offset(cx - layout.size.width / 2f, cy - layout.size.height / 2f))
+    val x = when (align) {
+        LabelAlign.CENTER -> cx - layout.size.width / 2f
+        LabelAlign.LEFT -> cx
+        LabelAlign.RIGHT -> cx - layout.size.width
+    }
+    drawText(layout, topLeft = Offset(x, cy - layout.size.height / 2f))
 }
+
+/** `textAlign` of a canvas `fillText`. */
+enum class LabelAlign { LEFT, CENTER, RIGHT }
 
 // ---------------------------------------------------------------------------
 // Scenes, ported 1:1 from the preview functions of the same name.
@@ -609,6 +618,25 @@ private fun DrawScope.sceneEq(v: FloatArray, t: Float, tm: TextMeasurer) {
     }
     for ((q, f) in listOf("100" to 0.3f, "1k" to 0.6f, "10k" to 0.9f)) {
         label(tm, q, x0 + f * wd, y0 + hh + 16f, Color(0xBFFFE9E2), 9f)
+    }
+    // Left axis: the preview draws `+12 / 0 / -12` right-aligned at x0-9. The port
+    // had no vertical scale at all, so the curve's dB range was unreadable.
+    for ((q, f) in listOf("+12" to 0f, "0" to 0.5f, "-12" to 1f)) {
+        label(tm, q, x0 - 9f, y0 + hh * f + (if (f != 0f) 3f else 9f),
+            Color(0xBFFFE9E2), 9f, align = LabelAlign.RIGHT)
+    }
+    // `L`/`M`/`H` inside each band dot, and the per-band readout at the top left of
+    // the curve: `LOW 200 Hz +0.0 dB`. Both were missing from the port.
+    for ((b, fg) in listOf(0 to (0 to 1), 1 to (2 to 3), 2 to (5 to 6))) {
+        val nx = x0 + v[fg.first] * wd
+        val ny = y0 + (1f - v[fg.second]) * hh
+        label(tm, "LMH"[b].toString(), nx, ny + 3.2f, Color(0xFF1A0508), 9f, bold = true)
+        val hz = 20f * 1000f.pow(v[fg.first])
+        val gd = (v[fg.second] - 0.5f) * 24f
+        val hzTxt = if (hz >= 1000f) "%.1f kHz".format(hz / 1000f) else "${hz.roundToInt()} Hz"
+        val gdTxt = (if (gd >= 0f) "+" else "") + "%.1f dB".format(gd)
+        label(tm, "${listOf("LOW", "MID", "HIGH")[b]}  $hzTxt  $gdTxt",
+            x0 + 12f, y0 + 12f, Color(0xFFFFE9E2), 10f, align = LabelAlign.LEFT)
     }
     for (b in 0 until 3) {
         val fg = listOf(0 to 1, 2 to 3, 5 to 6)[b]
