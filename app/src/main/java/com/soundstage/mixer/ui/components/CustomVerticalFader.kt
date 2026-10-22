@@ -1,6 +1,7 @@
 package com.soundstage.mixer.ui.components
 
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -68,9 +69,16 @@ fun CustomVerticalFader(
     var isDragging by remember { mutableStateOf(false) }
     var localValue by remember { mutableFloatStateOf(value) }
 
+    // Snapshot changes assign a new value in one frame: snapping `localValue` there
+    // made the thumb jump. Animating towards it keeps the glide continuous, and
+    // while the user drags we follow the finger directly.
     LaunchedEffect(value) {
         if (!isDragging) {
-            localValue = value.coerceIn(0f, 1f)
+            animate(
+                initialValue = localValue,
+                targetValue = value.coerceIn(0f, 1f),
+                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+            ) { _, v -> localValue = v }
         }
     }
 
