@@ -216,6 +216,13 @@ fun DrawScope.scenePiano(v: FloatArray, a: Color, t: Float, tm: TextMeasurer, st
         lineTo(x0 + rw * 0.97f, bot + 8f); close()
     }
     drawPath(harp, Color(0x29C9A45C))
+    // `if(kind==1&&!m){...}`: the felt-strip marker of the upright. A 3 px post from
+    // 30% down plus a filled 22 px disc beside it, in near-black `#07090c`. The port
+    // had neither, so `kind==1` (the second preset) showed no marker at all.
+    if (kind == 1) {
+        drawRect(Color(0xFF07090C), topLeft = Offset(x0 + 54f, y0 + rh * 0.3f), size = Size(3f, rh * 0.4f))
+        drawCircle(Color(0xFF07090C), radius = 22f, center = Offset(x0 + 55f, y0 + rh * 0.3f))
+    }
     if (kind == 2) drawRect(Color(0xD98A1C24), topLeft = Offset(x0, top + (bot - top) * 0.38f),
         size = Size(rw, 9f))
 
