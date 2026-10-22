@@ -86,11 +86,16 @@ jobs:
           echo "Found APK at: $APK_PATH"
           echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
 
+      # Artifact storage has a 500 MB quota on the free plan, and every run
+      # stores a ~28 MB APK, so the quota fills after ~18 runs. Never let a
+      # full quota fail the job: the Release step below still delivers the APK.
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: app-debug-apk
           path: ${{ steps.find_apk.outputs.apk_path }}
+          retention-days: 3
           if-no-files-found: error
 
       - name: Create GitHub Release
