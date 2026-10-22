@@ -1235,3 +1235,45 @@ Compose **démonte la fenêtre** sans retour possible — c'est exactement le
   redirection vers `/tmp/*.log`, puis lecture du log. Jamais au premier plan sur
   une tâche longue.
 - `scipy` installé (`pip install scipy`) pour l'analyse d'images par composantes.
+
+## CORRECTION importante (meme session) — mon rendu du preview etait FAUX
+
+`tools/refcheck/render_ref.mjs` est buggue et **ne rendait pas la fenetre FX** :
+- il capture `#st`, qui est le **rack du device entier**, pas `#win` (la fenetre FX) ;
+- il appelle `window.open(id)` — or `open` est la fonction native du navigateur,
+  pas l'API du preview. L'appel etait donc sans effet (il levait, on l'avalait).
+
+Consequence : les `prev-NN.png` montraient le **rack**, d'ou le « le preview ne
+ressemble pas a la reference » de la passe precedente. **La conclusion « les PNG
+de reference ne sont pas perimes » etait donc tiree d'un rendu invalide et doit
+etre refaite.** Ne pas s'appuyer dessus.
+
+### Le vrai signal, lui, est solide
+Mesure **fenetre a fenetre** (boite 825x343 = x 12,8..837,0 / y 39,4..381,6 de la
+page 851x393), capture 2268x943 -> 825x343, seuil 1,5 % / delta 24 :
+- echo **43,31** · solar-ceiling 35,12 · prism-tone 29,48 · guitar 28,16 ·
+  sax 26,44 · organ 26,24 · brass 25,51 · piano 24,00 · voices 23,09 ·
+  strings 23,00 · synth 19,60 · iron-grip 18,73 · amp 18,53 · bass 15,31 ·
+  space 12,29. **Moyenne 24,59 %.** Aucun effet au seuil.
+- Les valeurs « 14,73 % » de la passe precedente venaient d'un recadrage
+  different (meilleur alignement trouve a l'oeil) : **ne pas melanger les deux
+  jeux de chiffres.** L'outil de reference est `tools/fxcompare/compare_window.py`.
+
+### Cause n°1 identifiee : la couche de scene n'est pas la meme
+Pour **echo**, la capture dessine une **grande roue de delay** (centre ~(115,138),
+rayon ~60, disque + 6 ports + moyeu) que la **reference n'a pas du tout** : la
+reference a un fond brun chaud uniforme (56,49,36) a cet endroit. Idem le panneau
+sombre `#0d0b08` du preview (`x.fillStyle='#0d0b08';x.fillRect(px0,py0,pw,ph)`),
+present dans la capture, **absent de la reference**.
+- Geometrie du chrome : identique (les 4 boutons tombent aux memes coordonnees a
+  ~2 px pres), donc la mise en page n'est pas en cause.
+- Autrement dit : **la reference ressemble a une capture « chrome + fond » sans
+  la couche de scene**, alors que le port (et le preview, qui EST la source de
+  verite) la dessine. A trancher avant de « corriger » les scenes : si le preview
+  doit gagner, c'est la *reference* qui n'est pas la bonne cible pour les scenes.
+
+### Images
+`python3 tools/fxcompare/sheets.py` ecrit une planche par effet dans
+`tools/fxcompare/sheets/`, et `tools/fxcompare/contact.png` est la planche de
+contact des 15 (REFERENCE | CAPTURE, triee par ecart). Copies servies dans
+`/workspace/dl/fx-sheets/` (port 12000).
