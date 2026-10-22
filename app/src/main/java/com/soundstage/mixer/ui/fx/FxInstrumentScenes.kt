@@ -653,6 +653,54 @@ fun DrawScope.sceneGuitar(v: FloatArray, a: Color, t: Float, tm: TextMeasurer, s
             if (res > 0.05f) drawCircle(brush = Brush.radialGradient(
                 listOf(Color(0xFFFFB45A).copy(alpha = 0.35f * res), Color.Transparent),
                 center = Offset(650f, 92f), radius = r0 + 60f), radius = r0 + 60f, center = Offset(650f, 92f))
+            // `fillStyle '#1a1008'`: the acoustic bridge — a dark block, a light
+            // saddle rail and six saddle dots. It belongs to this branch only; the
+            // preview nests it inside `if(!elec)`.
+            val bw = if (bt == 1) 30f else 18f
+            val bx0 = if (bt == 1) 694f else 698f
+            drawPath(rrect(bx0, 64f, bw, 56f, 3f), color = Color(0xFF1A1008))
+            drawRect(Color(0xFFEFE6D0), topLeft = Offset(if (bt == 1) 700f else 702f, 66f), size = Size(2f, 52f))
+            for (k in 0..5) drawCircle(Color(0xFFD8D0C0), radius = 1.6f,
+                center = Offset(if (bt == 1) 712f else 710f, 68f + k * 9.5f))
+        } else if (bt == 2) {
+            // Preview `else if(bt==2)`: three single-coil rails sunk in a pickguard.
+            // This whole branch was missing, which is why the audit found 14 of the
+            // preview's 58 guitar colours unused.
+            drawRect(Color(0xFFEFE8D8), topLeft = Offset(576f, 16f), size = Size(134f, 150f), alpha = 0.92f)
+            for ((idx, px) in listOf(596f, 632f, 668f).withIndex()) {
+                drawPath(rrect(px - 7f, 58f, 14f, 66f, 3f), color = Color(0xFFF4F0E6))
+                drawPath(rrect(px - 7f, 58f, 14f, 66f, 3f), color = Color(0x33000000), style = Stroke(width = 1f))
+                for (q in 0 until 6) drawCircle(Color(0xFF3A3A40), radius = 2.2f, center = Offset(px, 66f + q * 9f))
+                if (abs(pu * 2f - idx) < 0.75f) drawPath(rrect(px - 9f, 56f, 18f, 70f, 4f),
+                    color = parseHex(pal[2]), style = Stroke(width = 2f))
+            }
+            drawPath(rrect(694f, 62f, 10f, 60f, 2f), color = Color(0xFFC0C4CC))
+            for (k in 0..2) {
+                drawCircle(Color(0xFFB8BCC4), radius = 8f, center = Offset(654f + k * 26f, 160f))
+                drawCircle(Color(0x88000000), radius = 8f, center = Offset(654f + k * 26f, 160f), style = Stroke(width = 1f))
+            }
+        } else {
+            // Preview `else`: two humbuckers in milled cavities, six screws each, a
+            // ring that lights up when the selector is near, a bridge and four
+            // gold-plated screws.
+            for ((k, px) in listOf(594f, 640f).withIndex()) {
+                drawPath(rrect(px - 22f, 58f, 44f, 68f, 5f), brush = Brush.linearGradient(
+                    listOf(Color(0xFFE8EAEE), Color(0xFF9AA0AA), Color(0xFFD4D8DE)),
+                    start = Offset(px - 22f, 0f), end = Offset(px + 22f, 0f)))
+                drawPath(rrect(px - 22f, 58f, 44f, 68f, 5f), color = Color(0x88000000), style = Stroke(width = 1f))
+                for (q in 0 until 6) {
+                    drawCircle(Color(0xFF2A2A30), radius = 2f, center = Offset(px - 8f, 68f + q * 10f))
+                    drawCircle(Color(0xFF2A2A30), radius = 2f, center = Offset(px + 8f, 68f + q * 10f))
+                }
+                if (abs(pu - k) < 0.55f || pu == 0.5f) drawPath(rrect(px - 24f, 56f, 48f, 72f, 6f),
+                    color = parseHex(pal[2]), style = Stroke(width = 2f))
+            }
+            drawPath(rrect(672f, 62f, 8f, 60f, 2f), color = Color(0xFFC0C4CC))
+            drawPath(rrect(706f, 62f, 10f, 60f, 2f), color = Color(0xFFC0C4CC))
+            for (qy in listOf(150f, 176f)) for (qx in listOf(654f, 684f)) {
+                drawCircle(Color(0xFFD8B050), radius = 8f, center = Offset(qx, qy))
+                drawCircle(Color(0x88000000), radius = 8f, center = Offset(qx, qy), style = Stroke(width = 1f))
+            }
         }
     }
     // neck: fretboard, binding, fret wires, inlays
@@ -678,11 +726,23 @@ fun DrawScope.sceneGuitar(v: FloatArray, a: Color, t: Float, tm: TextMeasurer, s
         drawLine(Color(0xFFD9D6CC), Offset(fx, fb0 + 1f), Offset(fx, fb1 - 1f), 2f)
         drawLine(Color(0xB3FFFFFF), Offset(fx - 0.5f, fb0 + 1f), Offset(fx - 0.5f, fb1 - 1f), 0.8f)
     }
+    // `strokeStyle '#eadfc2'`: the binding along both edges of the fretboard.
+    drawLine(Color(0xFFEADFC2), Offset(104f, fb0 + 0.8f), Offset(fe, fb0 + 0.8f), 1.6f)
+    drawLine(Color(0xFFEADFC2), Offset(104f, fb1 - 0.8f), Offset(fe, fb1 - 0.8f), 1.6f)
     for (k in listOf(3, 5, 7, 9, 15)) {
         val cx = (FW[k - 1] + FW[k]) / 2f
         drawCircle(brush = Brush.radialGradient(listOf(Color.White, Color(0xFFB8B0A0)),
             center = Offset(cx - 1f, 89f), radius = 4f), radius = 3.6f, center = Offset(cx, 91f))
+        // `fillStyle '#e6dfd0'`: the small dot marking each inlay at the top edge.
+        drawCircle(Color(0xFFE6DFD0), radius = 1.2f, center = Offset(cx, fb0 - 3.2f))
     }
+    // Second inlay pair, at the octave, with the same top-edge dot.
+    val cx12 = (FW[11] + FW[12]) / 2f
+    for (yy in listOf(80f, 102f)) {
+        drawCircle(brush = Brush.radialGradient(listOf(Color.White, Color(0xFFB8B0A0)),
+            center = Offset(cx12 - 1f, yy - 1f), radius = 4f), radius = 3.5f, center = Offset(cx12, yy))
+    }
+    drawCircle(Color(0xFFE6DFD0), radius = 1.2f, center = Offset(cx12, fb0 - 3.2f))
     drawRect(Color(0xFFEFE6D0), topLeft = Offset(102f, fb0 - 2f), size = Size(7f, fb1 - fb0 + 4f))
     // headstock
     drawPath(Path().apply {
@@ -732,6 +792,13 @@ fun DrawScope.sceneGuitar(v: FloatArray, a: Color, t: Float, tm: TextMeasurer, s
             drawLine(Color(0x55FFFFFF), Offset(94f, ys - 3f), Offset(100f, ys + 3f), 1.2f)
             drawLine(Color(0x55FFFFFF), Offset(100f, ys - 3f), Offset(94f, ys + 3f), 1.2f)
         }
+    }
+    // `strokeStyle '#cfd2d8'`: one thin guide per string, from the nut to its peg.
+    for (s2 in 0 until 6) {
+        val ys = 69.5f + s2 * 8f
+        val tp = pegs[s2]
+        drawLine(Color(0xFFCFD2D8), Offset(110f, ys),
+            Offset(tp.first, tp.second + (if (tp.second < 91f) 6f else -6f)), 0.8f)
     }
     if (ph2 < 0.25f) for (k in 0 until 7) {
         drawCircle(parseHex(pal[2]), radius = 1.5f,
@@ -1061,6 +1128,7 @@ fun DrawScope.sceneSynth(v: FloatArray, a: Color, t: Float, tm: TextMeasurer, st
             scope(14f, 8f, 110f, 58f, { u -> wave(u * 2f + t * 0.4f, v[0]) * 0.6f + wave(u * 2f + t * 0.4f + v[2] * 0.3f, v[0]) * 0.4f }, Color(0xFF7AD0FF))
             scope(134f, 8f, 110f, 58f, { u -> wave(u * 2f - t * 0.3f, v[1]) }, Color(0xFFFF9AD0))
             drawPath(rrect(270f, 8f, 290f, 104f, 10f), color = Color(0x66000000))
+            drawPath(rrect(270f, 8f, 290f, 104f, 10f), Color(0x18FFFFFF), style = Stroke(width = 1f))
             val p = Path()
             for (i in 0..120) {
                 val u = i / 120f
@@ -1070,6 +1138,11 @@ fun DrawScope.sceneSynth(v: FloatArray, a: Color, t: Float, tm: TextMeasurer, st
                 if (i == 0) p.moveTo(270f, yy) else p.lineTo(270f + u * 290f, yy)
             }
             drawPath(p, Color(0xFF7AD0FF), style = Stroke(width = 2.2f))
+            // The preview fills the area under the response curve with a fading
+            // `#7ad0ff` wash before drawing the ADSR envelope.
+            drawPath(Path().apply { addPath(p); lineTo(560f, 112f); lineTo(270f, 112f); close() },
+                brush = Brush.verticalGradient(listOf(Color(0x667AD0FF), Color(0x007AD0FF)),
+                    startY = 8f, endY = 112f))
             val pxx = 270f + v[7] * 290f; val pyy = 8f + (1f - v[8]) * 104f
             drawCircle(Color.White, radius = 7f + sin(t * 4f) * 1.2f, center = Offset(pxx, pyy))
             drawCircle(Color(0xFF7AD0FF), radius = 12f, center = Offset(pxx, pyy), style = Stroke(width = 2f))
@@ -1079,13 +1152,26 @@ fun DrawScope.sceneSynth(v: FloatArray, a: Color, t: Float, tm: TextMeasurer, st
             val ax = 282f + v[12] * 70f; val dx = ax + v[13] * 70f
             val sy = 136f + (1f - v[14]) * 64f; val sx = dx + 40f; val rx = sx + v[15] * 70f
             drawPath(rrect(270f, 120f, 290f, 88f, 10f), color = Color(0x66000000))
+            drawPath(rrect(270f, 120f, 290f, 88f, 10f), Color(0x18FFFFFF), style = Stroke(width = 1f))
             val ap = Path().apply {
                 moveTo(282f, 200f); lineTo(ax, 136f); lineTo(dx, sy); lineTo(sx, sy); lineTo(rx, 200f)
             }
             drawPath(ap, Color(0xFFFFA0D0), style = Stroke(width = 2.2f))
+            // Same for the envelope: `#ffa0d0` wash down to the panel floor.
+            drawPath(Path().apply { addPath(ap); lineTo(282f, 200f); close() },
+                brush = Brush.verticalGradient(listOf(Color(0x44FFA0D0), Color(0x00FFA0D0)),
+                    startY = 136f, endY = 200f))
             listOf(ax to 136f, dx to sy, rx to 200f).forEach { (hx, hy) ->
                 drawCircle(Color.White, radius = 6f, center = Offset(hx, hy))
                 drawCircle(Color(0xFFFFA0D0), radius = 10f, center = Offset(hx, hy), style = Stroke(width = 2f))
+            }
+            // `fillStyle '#e8b0cc'`: A/D/S under the three envelope handles, offset
+            // 22 px down except D which sits 14 px above its handle.
+            listOf("A" to (ax to 136f), "D" to (dx to sy), "S" to (rx to 200f)).forEachIndexed { k, (nm, h) ->
+                val lt = tm.measure(nm, style = TextStyle(color = Color(0xFFE8B0CC), fontSize = 8.sp,
+                    fontFamily = FxFonts.mono, fontWeight = FontWeight.Bold))
+                drawText(lt, topLeft = Offset(h.first - lt.size.width / 2f,
+                    h.second + (if (k == 1) -14f else 22f) - lt.size.height / 2f))
             }
             val ot = tm.measure("OSC A", style = TextStyle(color = Color(0xFF8FB8D8), fontSize = 8.sp,
                 fontFamily = FxFonts.mono, fontWeight = FontWeight.Bold))
@@ -1122,6 +1208,24 @@ fun DrawScope.sceneSynth(v: FloatArray, a: Color, t: Float, tm: TextMeasurer, st
                 val lt = tm.measure(nm, style = TextStyle(color = Color(0xFF8FB8D8), fontSize = 8.sp, fontFamily = FxFonts.mono))
                 drawText(lt, topLeft = Offset(764f, y2 + 3f - lt.size.height / 2f))
             }
+            // White dots travelling along each curve, and the socket rings at both
+            // ends of the patch cables.
+            src.forEachIndexed { k, (_, am) ->
+                val y1 = 34f + k * 28f; val y2 = 34f + map[k] * 28f
+                val pu = (t * 0.5f + k * 0.25f) % 1f
+                val bx = 548f + (752f - 548f) * pu
+                val by = y1 + (y2 - y1) * (pu * pu * (3f - 2f * pu))
+                drawCircle(Color.White, radius = 2.4f + am * 2f, center = Offset(bx, by))
+                drawCircle(Color(0xFF0C1424), radius = 5f, center = Offset(548f, y1))
+                drawCircle(Color(0xFF7AD0FF), radius = 5f, center = Offset(548f, y1), style = Stroke(width = 1.6f))
+            }
+            dst.forEachIndexed { k, _ ->
+                val y2 = 34f + k * 28f
+                drawCircle(Color(0xFF0C1424), radius = 5f, center = Offset(752f, y2))
+                drawCircle(Color(0xFFFF9AD0), radius = 5f, center = Offset(752f, y2), style = Stroke(width = 1.6f))
+            }
+            val mt = tm.measure("MODULATION", style = TextStyle(color = Color(0xFF8FB8D8), fontSize = 8.sp, fontFamily = FxFonts.mono))
+            drawText(mt, topLeft = Offset(520f, 16f - mt.size.height / 2f))
         }
         else -> {
             val act = intArrayOf(0, 2, 4, 7, 9, 4)[(floor(t * 3.2f).toInt()) % 6]
@@ -1130,6 +1234,12 @@ fun DrawScope.sceneSynth(v: FloatArray, a: Color, t: Float, tm: TextMeasurer, st
                 drawPath(rrect(kx, 150f, 48f, 56f, 4f), brush = Brush.linearGradient(
                     listOf(if (on) Color(0xFF7AD0FF) else Color(0xFFF4F6FA), if (on) Color(0xFF4AA0D0) else Color(0xFFC8CCD6)),
                     start = Offset(0f, 150f), end = Offset(0f, 208f)))
+            }
+            // `fillStyle '#10141c'`: the black keys, only over the ten slots the
+            // preview lists. They were absent, leaving a bare white keyboard.
+            for (k in listOf(0, 1, 3, 4, 5, 7, 8, 10, 11, 12)) {
+                drawPath(rrect(20f + (k + 1) * 50.6f - 14f, 150f, 28f, 34f, 3f),
+                    color = if (k.toFloat() == act + 0.5f) Color(0xFF7AD0FF) else Color(0xFF10141C))
             }
             val nv = 1 + (v[28] * 15f).roundToInt()
             for (k in 0 until 16) drawCircle(if (k < nv) Color(0xFF7AD0FF) else Color(0x22FFFFFF), radius = 4.2f,
