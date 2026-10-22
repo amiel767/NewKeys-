@@ -90,6 +90,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: v${{ github.run_number }}
+          # Without this the tag lands on the default branch's HEAD, so a release
+          # built from a side branch is tagged with a commit it was never built
+          # from. Pin it to the commit this run actually checked out.
+          target_commitish: ${{ github.sha }}
           name: "Release v${{ github.run_number }} (Debug APK)"
           draft: false
           prerelease: false
