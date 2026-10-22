@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -25,10 +26,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -74,91 +77,96 @@ fun FxWindowHost(store: FxShellStore, modifier: Modifier = Modifier) {
     LaunchedEffect(store.notice) {
         if (store.notice != null) { delay(2400); store.notice = null }
     }
+    // The scrim stays full screen, but the window itself keeps the reference's own
+    // size: 825x343 logical, centred, and never blown up past 1:1. Filling the screen
+    // stretched the rack and the effect window on tablets and looked nothing like the
+    // preview.
     BoxWithConstraints(
-        modifier = modifier
-            .fillMaxSize()
-            .clip(RoundedCornerShape(20.dp))
-            .background(
-                // With an effect open the reference's `.xN` rule paints #pan, which
-                // spans the whole window; the scene canvas then covers its top-left
-                // 825x343 and the background shows in the right/bottom bands.
-                // Window chrome. Measured: the effect colour spans y 41..384 and
-                // x 13..838 only — the header (top) and the 10px bottom margin stay
-                // dark chrome in every reference (y=392 is #06090e, not the effect
-                // colour). FxOpenPanel paints the effect gradient over the band.
-                if (store.openId != null) fxPanelBrush(store.openId!!)
-                else Brush.verticalGradient(listOf(Color(0xFF1F2635), Color(0xFF131925))),
-            )
-            .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(20.dp)),
-        contentAlignment = Alignment.TopStart,
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
     ) {
-        val scale = min(maxWidth.value / CANVAS_W, maxHeight.value / CANVAS_H)
-        val tm = rememberTextMeasurer()
+        val scale = minOf(maxWidth.value / CANVAS_W, maxHeight.value / CANVAS_H, 1f)
+        val winW = (CANVAS_W * scale).dp
+        val winH = (CANVAS_H * scale).dp
         Box(
             modifier = Modifier
-                .width(CANVAS_W.dp)
-                .height(CANVAS_H.dp)
-                .graphicsLayer(scaleX = scale, scaleY = scale),
+                .width(winW)
+                .height(winH)
+                .clip(RoundedCornerShape(20.dp))
+                .background(
+                    if (store.openId != null) fxPanelBrush(store.openId!!)
+                    else Brush.verticalGradient(listOf(Color(0xFF1F2635), Color(0xFF131925))),
+                )
+                .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(20.dp)),
+            contentAlignment = Alignment.TopStart,
         ) {
-            val openId = store.openId
-            if (openId == null) {
-                Column(Modifier.fillMaxSize()) {
-                    Header(store)
-                    Rack(store, tm)
+            val tm = rememberTextMeasurer()
+            Box(
+                modifier = Modifier
+                    .width(CANVAS_W.dp)
+                    .height(CANVAS_H.dp)
+                    .graphicsLayer(scaleX = scale, scaleY = scale, transformOrigin = TransformOrigin(0f, 0f)),
+            ) {
+                val openId = store.openId
+                if (openId == null) {
+                    Column(Modifier.fillMaxSize()) {
+                        Header(store)
+                        Rack(store, tm)
+                    }
+                } else {
+                    val module = store.modules[openId]
+                    if (module != null) {
+                        FxOpenPanel(
+                            module = module,
+                            params = store.valuesOf(module.id),
+                            presets = module.presets,
+                            activePreset = store.activePresetOf(module.id),
+                            bypassed = store.isBypassed(module.id),
+                            abLabel = store.abLabel(module.id),
+                            onParam = { i, v -> store.setParam(module.id, i, v) },
+                            onPreset = { name -> store.applyPreset(module.id, module.presets.indexOf(name)) },
+                            onBypass = { store.toggleBypass(module.id) },
+                            onAb = { store.toggleAB(module.id) },
+                            onSurprise = { store.surprise(module.id) },
+                            onClose = { store.openId = null },
+                            page = store.page,
+                            onPage = { store.page = it },
+                            onEdit = { store.editOpen = !store.editOpen },
+                            editOpen = store.editOpen,
+                            tm = tm,
+                        )
+                    }
                 }
-            } else {
-                val module = store.modules[openId]
-                if (module != null) {
-                    FxOpenPanel(
-                        module = module,
-                        params = store.valuesOf(module.id),
-                        presets = module.presets,
-                        activePreset = store.activePresetOf(module.id),
-                        bypassed = store.isBypassed(module.id),
-                        abLabel = store.abLabel(module.id),
-                        onParam = { i, v -> store.setParam(module.id, i, v) },
-                        onPreset = { name -> store.applyPreset(module.id, module.presets.indexOf(name)) },
-                        onBypass = { store.toggleBypass(module.id) },
-                        onAb = { store.toggleAB(module.id) },
-                        onSurprise = { store.surprise(module.id) },
-                        onClose = { store.openId = null },
-                        page = store.page,
-                        onPage = { store.page = it },
-                        onEdit = { store.editOpen = !store.editOpen },
-                        editOpen = store.editOpen,
-                        tm = tm,
+            }
+            // `#ad` and the notice are window chrome, not canvas content: they stay
+            // unscaled so hit targets do not shrink with the canvas.
+            if (store.addOpen) {
+                Box(Modifier.fillMaxSize().background(Color(0xE60A0E16))) {
+                    FxAddOverlay(
+                        modules = store.modules.values.sortedBy { it.id },
+                        tab = store.addTab,
+                        onTab = { store.addTab = it },
+                        onPick = { m ->
+                            val ok = if (m.kind == FxScreenKind.EFFECT) store.addEffect(m.id) else store.setInstrument(m.id)
+                            if (ok) store.addOpen = false
+                        },
+                        isOn = { store.isOn(it) },
+                        effectsUsed = store.effectCount(),
+                        onClose = { store.addOpen = false },
                     )
                 }
             }
-        }
-        // `#ad` and the notice are window chrome, not canvas content: they stay
-        // unscaled so hit targets do not shrink with the canvas.
-        if (store.addOpen) {
-            Box(Modifier.fillMaxSize().background(Color(0xE60A0E16))) {
-                FxAddOverlay(
-                    modules = store.modules.values.sortedBy { it.id },
-                    tab = store.addTab,
-                    onTab = { store.addTab = it },
-                    onPick = { m ->
-                        val ok = if (m.kind == FxScreenKind.EFFECT) store.addEffect(m.id) else store.setInstrument(m.id)
-                        if (ok) store.addOpen = false
-                    },
-                    isOn = { store.isOn(it) },
-                    effectsUsed = store.effectCount(),
-                    onClose = { store.addOpen = false },
-                )
+            store.notice?.let { msg ->
+                Box(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 14.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0xFF2A3042))
+                        .border(1.dp, Color(0x1CFFFFFF), RoundedCornerShape(14.dp))
+                        .padding(horizontal = 18.dp, vertical = 10.dp),
+                ) { Text(msg, fontSize = 12.sp, fontFamily = FxFonts.ui, fontWeight = FontWeight.SemiBold, color = Color(0xFFE6EAF3)) }
             }
-        }
-        store.notice?.let { msg ->
-            Box(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 14.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0xFF2A3042))
-                    .border(1.dp, Color(0x1CFFFFFF), RoundedCornerShape(14.dp))
-                    .padding(horizontal = 18.dp, vertical = 10.dp),
-            ) { Text(msg, fontSize = 12.sp, fontFamily = FxFonts.ui, fontWeight = FontWeight.SemiBold, color = Color(0xFFE6EAF3)) }
         }
     }
 }
@@ -202,6 +210,9 @@ internal fun Chip(label: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .height(28.dp)
+            // Raised look: the reference gives every chip a soft drop shadow. Without
+            // it the buttons read as flat text and did not look pressable.
+            .shadow(3.dp, RoundedCornerShape(9.dp), clip = false)
             .clip(RoundedCornerShape(9.dp))
             .background(Brush.verticalGradient(listOf(Color(0x14FFFFFF), Color(0x08FFFFFF))))
             .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(9.dp))
@@ -217,10 +228,15 @@ internal fun Chip(label: String, onClick: () -> Unit) {
 /** `#rack`: gap 12, padding 4 14 14. */
 @Composable
 private fun Rack(store: FxShellStore, tm: androidx.compose.ui.text.TextMeasurer) {
+    val slots = store.slotsOf(store.strip)
     val ids = buildList {
         store.instrumentOf(store.strip)?.let { add(it) }
-        store.slotsOf(store.strip).forEach { if (it != null) add(it) }
+        slots.forEach { if (it != null) add(it) }
     }
+    // The rack always ends with an empty `+` slot: it is the only way to reach the add
+    // sheet, and the reference shows it as a card of the same size. It used to be
+    // missing entirely, so adding an effect had no visible entry point.
+    val hasRoom = slots.any { it == null }
     LazyRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.fillMaxSize().padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 14.dp),
@@ -229,6 +245,41 @@ private fun Rack(store: FxShellStore, tm: androidx.compose.ui.text.TextMeasurer)
             val m = store.modules[id] ?: return@items
             RackCard(m, store.valuesOf(id), tm) { store.openId = id }
         }
+        if (hasRoom) {
+            item { AddSlotCard { store.addTab = FxAddTab.EFFECTS; store.addOpen = true } }
+        }
+    }
+}
+
+/** The trailing empty slot: same footprint as a card, a `+` instead of a scene. */
+@Composable
+private fun AddSlotCard(onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .width(158.dp)
+            .fillMaxHeight()
+            .shadow(6.dp, RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(16.dp))
+            .background(Brush.verticalGradient(listOf(Color(0xFF2B3242), Color(0xFF1B2130))))
+            .border(1.dp, Color(0x1FFFFFFF), RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .padding(10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(46.dp)
+                .clip(CircleShape)
+                .background(Brush.verticalGradient(listOf(Color(0x24FFFFFF), Color(0x0AFFFFFF))))
+                .border(1.dp, Color(0x26FFFFFF), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("+", fontSize = 26.sp, fontFamily = FxFonts.ui, fontWeight = FontWeight.Bold, color = Color(0xFFE6EAF3))
+        }
+        Spacer(Modifier.height(10.dp))
+        Text("ADD EFFECT", fontSize = 10.sp, fontFamily = FxFonts.ui, fontWeight = FontWeight.Bold,
+            letterSpacing = (10 * 0.12f).sp, color = Color(0xFF8D96AB))
     }
 }
 
@@ -243,6 +294,7 @@ internal fun RackCard(m: EffectModule, params: FloatArray, tm: androidx.compose.
         modifier = Modifier
             .width(158.dp)
             .fillMaxHeight()
+            .shadow(8.dp, RoundedCornerShape(16.dp), clip = false)
             .clip(RoundedCornerShape(16.dp))
             .background(Brush.verticalGradient(listOf(Color(0xFF323845), Color(0xFF222733))))
             .border(1.dp, Color(0x12FFFFFF), RoundedCornerShape(16.dp))

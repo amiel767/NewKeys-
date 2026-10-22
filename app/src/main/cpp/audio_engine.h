@@ -885,6 +885,8 @@ private:
     bool fxApplyInstrumentPreset(int strip, int preset) { return mFx.applyInstrumentPreset(strip, preset); }
     float fxMeter(int strip, int slot, int i) { return mFx.meter(strip, slot, i); }
     void fxCollectGarbage() { mFx.collectGarbage(); }
+    /** Panic: clears every Æther effect tail so a runaway loop stops ringing. */
+    void fxPanic() { mFx.requestPanic(); }
 
  private:
     bool openAndStartStream();

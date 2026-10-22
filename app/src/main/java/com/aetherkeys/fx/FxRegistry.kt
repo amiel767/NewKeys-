@@ -387,7 +387,7 @@ object FxRegistry {
             )),
     )
 
-    fun info(id: Int): FxInfo = all[id]
+    fun info(id: Int): FxInfo = all.getOrElse(id) { all[0] }
     fun toReal(p: FxParam, norm: Float): Float = when (p.curve) {
         FxCurve.FREQ_LOG -> 20f * Math.pow(1000.0, norm.toDouble()).toFloat()
         FxCurve.RATIO_STEP -> floatArrayOf(1.5f, 2f, 3f, 4f, 8f, 20f)[Math.round(norm * 5f)]

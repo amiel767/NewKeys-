@@ -41,18 +41,38 @@ class FxController(private val strip: Int, private val context: Context? = null)
 
     private fun bridge() = if (NativeAudioBridge.isLibraryLoaded) NativeAudioBridge else null
 
+    /**
+     * Every native call goes through here. The bridge is a JNI boundary: a missing
+     * library, a stale native build or a rejected argument raises, and an exception
+     * thrown from a Compose event handler tears the window (and sometimes the process)
+     * down with no way back. Swallowing it into [lastError] keeps the UI alive; the
+     * shell surfaces [lastError] through its notice.
+     */
+    var lastError: String? = null
+        private set
+
+    private inline fun <T> safe(fallback: T, what: String, block: () -> T): T = try {
+        block()
+    } catch (e: Throwable) {
+        lastError = "$what failed: ${e.message ?: e::class.simpleName}"
+        fallback
+    }
+
     // ---- instrument ----
 
-    fun setInstrument(id: Int) {
-        val b = bridge() ?: return
-        if (!b.setTrackInstrument(strip, id)) return
+    fun setInstrument(id: Int): Boolean {
+        val b = bridge() ?: return false
+        if (id < 0) { instrumentId = -1; return true }
+        if (!safe(false, "setInstrument") { b.setTrackInstrument(strip, id) }) return false
         instrumentId = id
+        return true
     }
 
     fun setInstrumentParam(param: Int, norm: Float) {
         if (instrumentId < 0) return
+        if (param !in 0 until FxRegistry.MAX_PARAMS) return
         paramsOfInstrument(param)[param] = norm
-        bridge()?.setTrackInstrumentParam(strip, param, norm)
+        safe(Unit, "setInstrumentParam") { bridge()?.setTrackInstrumentParam(strip, param, norm) }
     }
 
     private val instrumentParams = MutableList(FxRegistry.MAX_PARAMS) { 0f }
@@ -60,7 +80,8 @@ class FxController(private val strip: Int, private val context: Context? = null)
 
     fun applyInstrumentPreset(preset: Int) {
         val b = bridge() ?: return
-        if (!b.fxApplyInstrumentPreset(strip, preset)) return
+        if (instrumentId < 0) return
+        if (!safe(false, "applyInstrumentPreset") { b.fxApplyInstrumentPreset(strip, preset) }) return
         FxRegistry.info(instrumentId).presets.getOrNull(preset)?.values?.forEachIndexed { i, v ->
             if (i < instrumentParams.size) instrumentParams[i] = v
         }
@@ -70,32 +91,36 @@ class FxController(private val strip: Int, private val context: Context? = null)
 
     /** Installs [id] in [slot]. Returns false when the id is not valid for the slot. */
     fun setEffect(slot: Int, id: Int): Boolean {
+        if (slot !in effectIds.indices) return false
         val b = bridge() ?: return false
-        if (!b.setFxEffect(strip, slot, id)) return false
+        if (!safe(false, "setEffect") { b.setFxEffect(strip, slot, id) }) return false
         effectIds[slot] = id
         bypassed[slot] = false
         params[slot] = MutableList(FxRegistry.MAX_PARAMS) { i ->
             if (id >= 0) FxRegistry.info(id).params.getOrNull(i)?.default ?: 0f else 0f
         }
-        b.fxCollectGarbage()
+        safe(Unit, "fxCollectGarbage") { b.fxCollectGarbage() }
         return true
     }
 
     fun setEffectParam(slot: Int, param: Int, norm: Float) {
         if (slot !in effectIds.indices || effectIds[slot] < 0) return
-        params[slot][param] = norm
-        bridge()?.setFxEffectParam(strip, slot, param, norm)
+        val p = params.getOrNull(slot) ?: return
+        if (param !in p.indices) return
+        p[param] = norm
+        safe(Unit, "setEffectParam") { bridge()?.setFxEffectParam(strip, slot, param, norm) }
     }
 
     fun setBypass(slot: Int, bypass: Boolean) {
         if (slot !in bypassed.indices) return
         bypassed[slot] = bypass
-        bridge()?.setFxEffectBypass(strip, slot, bypass)
+        safe(Unit, "setBypass") { bridge()?.setFxEffectBypass(strip, slot, bypass) }
     }
 
     fun applyPreset(slot: Int, preset: Int): Boolean {
         val b = bridge() ?: return false
-        if (!b.applyFxPreset(strip, slot, preset)) return false
+        if (slot !in effectIds.indices) return false
+        if (!safe(false, "applyPreset") { b.applyFxPreset(strip, slot, preset) }) return false
         val id = effectIds.getOrNull(slot) ?: return true
         FxRegistry.info(id).presets.getOrNull(preset)?.values?.forEachIndexed { i, v ->
             if (i < params[slot].size) params[slot][i] = v
@@ -105,18 +130,18 @@ class FxController(private val strip: Int, private val context: Context? = null)
 
     // ---- strip ----
 
-    fun setGain(lin: Float) = bridge()?.setFxStripGain(strip, lin)
-    fun setPan(pan: Float) = bridge()?.setFxStripPan(strip, pan)
-    fun setMute(mute: Boolean) = bridge()?.setFxStripMute(strip, mute)
+    fun setGain(lin: Float) = safe(Unit, "setGain") { bridge()?.setFxStripGain(strip, lin) }
+    fun setPan(pan: Float) = safe(Unit, "setPan") { bridge()?.setFxStripPan(strip, pan) }
+    fun setMute(mute: Boolean) = safe(Unit, "setMute") { bridge()?.setFxStripMute(strip, mute) }
 
     /** Peak level 0..1 for [channel] (0 = left, 1 = right). Safe to poll at 30 Hz. */
-    fun peak(channel: Int): Float = bridge()?.fxStripPeak(strip, channel) ?: 0f
+    fun peak(channel: Int): Float = safe(0f, "peak") { bridge()?.fxStripPeak(strip, channel) ?: 0f }
 
     /** Effect meter for the vu-meters; safe to poll at 30 Hz. */
-    fun meter(slot: Int, index: Int): Float = bridge()?.fxGetMeter(strip, slot, index) ?: 0f
+    fun meter(slot: Int, index: Int): Float = safe(0f, "meter") { bridge()?.fxGetMeter(strip, slot, index) ?: 0f }
 
     /** Soundfont is silenced while a source instrument is selected. */
-    fun soundfontPaused(): Boolean = bridge()?.fxSoundfontPaused(strip) ?: false
+    fun soundfontPaused(): Boolean = safe(false, "soundfontPaused") { bridge()?.fxSoundfontPaused(strip) ?: false }
 
     // ---- persistence ----
 

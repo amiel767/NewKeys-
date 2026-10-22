@@ -624,6 +624,25 @@ bool AudioEngine::renderFxPath(float *outputBuffer, int32_t numFrames) {
 
     // 4. Master chain, then the single conversion to the stream format.
     mFx.processMaster(mFxMixBuffer.data(), numFrames);
+
+    // 5. The legacy master bus stays on the FX path. Switching the render over to the
+    //    FX path used to drop it entirely: no glue compressor, no soft clipper and,
+    //    worst of all, no limiter — so a hot preset clipped and cracked instead of
+    //    being tamed, and the mix lost the character it had before the FX window.
+    if (!mBypassMasterFX.load(std::memory_order_relaxed)) {
+        float *mix = mFxMixBuffer.data();
+        mMasterChorus.process(mix, numFrames);
+        mMasterDelay.process(mix, numFrames);
+        mMasterReverb.process(mix, numFrames);
+        mSoundGoodizer.process(mix, numFrames);
+        mMasterPunch.process(mix, numFrames);
+        mSpatialWidener.process(mix, numFrames);
+        mEqLow.process(mix, numFrames);
+        mEqMid.process(mix, numFrames);
+        mEqHigh.process(mix, numFrames);
+        processMasterChain(mix, numFrames);
+    }
+
     std::copy(mFxMixBuffer.begin(), mFxMixBuffer.begin() + stripSamples, outputBuffer);
     return true;
 }

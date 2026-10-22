@@ -51,6 +51,12 @@ class FxMixer {
   float peakL(int strip) const { const FxStrip* s = fxStripC(strip); return s ? s->peakL() : 0.f; }
   float peakR(int strip) const { const FxStrip* s = fxStripC(strip); return s ? s->peakR() : 0.f; }
   void collectGarbage() { for (auto& t : tracks_) t.collectGarbage(); master_.chain.collectGarbage(); }
+
+  /** Panic: clears every effect tail (delay/reverb loops, filter state) on all strips. */
+  void requestPanic() {
+    for (auto& t : tracks_) { t.instrument.requestPanic(); t.strip.chain.requestPanic(); }
+    master_.chain.requestPanic();
+  }
   // true when the track's soundfont channel can be skipped in the render loop (a source is selected)
   bool soundfontPaused(int strip) const { return instrumentAllowed(strip) && tracks_[strip].hasSource(); }
 

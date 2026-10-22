@@ -725,6 +725,13 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_fxCollectGarbage(
     gAudioEngine.fxCollectGarbage();
 }
 
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_fxPanic(
+        JNIEnv *env,
+        jobject /* this */) {
+    gAudioEngine.fxPanic();
+}
+
 // Compatibility check between a shaper and the soundfont preset loaded on the
 // track. 0 = Ok, 1 = Weak, 2 = Mismatch (see aetherfx::Match in fx_match.h).
 JNIEXPORT jint JNICALL

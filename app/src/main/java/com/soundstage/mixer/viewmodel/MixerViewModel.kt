@@ -2133,6 +2133,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         audioEngine.stopMetronome()
         audioEngine.stopLoopPlayer()
         audioEngine.stopMidiPlayer()
+        // Also drop the Æther effect tails: allNotesOff only clears the notes, so a
+        // delay or reverb with high feedback kept ringing after the panic button.
+        NativeAudioBridge.safeFxPanic()
+        NativeAudioBridge.safeStopAllDrumSamples()
         _uiState.update { state ->
             state.copy(
                 pressedKeys = emptySet(),
@@ -3229,13 +3233,14 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 audioEngine.setChannelVolume(targetChannel, effectiveVol)
                 NativeAudioBridge.safeSetTrackVolume(targetChannel, effectiveVol)
 
-                // Apply the track's "defaults at load" (Volume / Pan from Track Settings).
+                // Track Settings' "defaults at load" are applied when the user moves
+                // those sliders, not here. Re-applying them on every soundfont load
+                // overwrote the live fader: defaultVolume is 100 (0.787) while the
+                // normal fader is 0.85, so every load silently pulled track 1 down and
+                // the user had to nudge a snapshot to get the level back. Pan is still
+                // restored here because it has no separate live fader write.
                 _uiState.value.tracks.getOrNull(slotId)?.let { t ->
-                    val v = t.defaultVolume.coerceIn(0, 127) / 127f
-                    val p = (t.defaultPan.coerceIn(-64, 63)) / 63f
-                    updateTrack(t.id) { it.copy(volume = v, pan = p) }
-                    NativeAudioBridge.safeSetTrackVolume(targetChannel, if (t.isMuted) 0f else v)
-                    NativeAudioBridge.safeSetTrackPan(targetChannel, p)
+                    NativeAudioBridge.safeSetTrackPan(targetChannel, (t.defaultPan.coerceIn(-64, 63)) / 63f)
                 }
 
                 // Re-validate program selection for all other active audio slots to ensure complete isolation

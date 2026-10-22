@@ -123,9 +123,18 @@ class FxChain {
   int slots() const { return n_; }
   Effect* peek(int slot) const { return (slot >= 0 && slot < n_) ? slot_[slot].fx.load(std::memory_order_acquire) : nullptr; }
 
+  /** Ask the audio thread to clear every effect state on its next block. Control thread. */
+  void requestPanic() { panic_.store(true, std::memory_order_release); }
+
   // ---- audio thread ----
   void process(float* io, int frames) {
     epoch_.fetch_add(1, std::memory_order_acq_rel);
+    if (panic_.exchange(false, std::memory_order_acq_rel)) {
+      // Panic: drop every tail (delay/reverb loops, filter state) so a runaway
+      // feedback cannot keep ringing after the notes are off. Done here, on the
+      // audio thread, because reset() is not safe to call while process() runs.
+      for (int i = 0; i < n_; ++i) if (Effect* e = slot_[i].fx.load(std::memory_order_acquire)) e->reset();
+    }
     if (frames > maxBlock_) frames = maxBlock_;  // never exceed what prepare() sized
     NoDenormals nd;
     const float xfStep = 1.0f / std::max(1.f, 0.010f * static_cast<float>(sr_));
@@ -169,6 +178,7 @@ class FxChain {
   std::mutex ctl_;
   std::vector<Retired> garbage_;
   std::atomic<uint64_t> epoch_{0};
+  std::atomic<bool> panic_{false};
 };
 
 // A mixer strip: FX chain -> fader -> balance -> mute. Gains are smoothed per sample. Used for every track and the master.

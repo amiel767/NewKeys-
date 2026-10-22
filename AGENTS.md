@@ -1409,3 +1409,35 @@ has been removed from the app state.
 Test notes: `ExampleRobolectricTest` and `GreetingScreenshotTest` fail on a
 clean `main` checkout, so they are pre-existing. A full
 `:app:testDebugUnitTest` run takes over 20 minutes; prefer `--tests` filters.
+
+### Sandbox recovery notes (session 3)
+
+The workspace environment is wiped between sessions. Reinstall before building:
+
+    apt: openjdk-21-jdk-headless unzip zip   # Debian trixie has no openjdk-17
+    Android SDK at /workspace/android-sdk (cmdline-tools, platform-34, build-tools 34)
+    NDK 28.2.13676358 (the version pinned by AGP); do NOT put ndk.dir in local.properties,
+    AGP resolves the pinned NDK from sdk.dir on its own and ndk.dir triggers CXX1104.
+    local.properties only needs `sdk.dir=/workspace/android-sdk`.
+    Scripts: /workspace/tools/install_sdk.sh, /workspace/tools/build.sh (logs in /workspace/tools).
+
+Build with ANDROID_HOME/JAVA_HOME exported; `:app:assembleDebug` takes ~4 min.
+
+### FX window (Æther FX) invariants
+
+- `com.aetherkeys.fx.FxRegistry` is generated from
+  `app/assets/aether-fx-package/gen_kotlin.cpp`. That package is gitignored, so the
+  tracked source of truth is the generated `FxRegistry.kt`; keep both in sync.
+  `FxRegistry.info(id)` MUST stay bounded (`all.getOrElse(id) { all[0] }`): an
+  out-of-range id used to throw straight out of a Compose callback.
+- `FxShellStore` must keep `slots`/`instrument` as Compose snapshot state
+  (`mutableStateMapOf`), otherwise added effects never recompose.
+- The rack ends with an `AddSlotCard` (the `+`): it is the only entry point to the
+  add sheet.
+- Every native call from `FxController` goes through its private `safe(...)` helper;
+  never call `NativeAudioBridge` directly from a Compose event handler.
+- Panic path: `MixerViewModel.triggerPanic()` calls `NativeAudioBridge.safeFxPanic()`
+  (drops delay/reverb tails) plus `safeStopAllDrumSamples()`. Native side:
+  `FxChain::requestPanic()` -> `FxMixer` -> `AudioEngine::fxPanic()` -> JNI `fxPanic`.
+- `AudioEngine::renderFxPath` must still run the legacy master chain
+  (`processMaster`) or the limiter is skipped and the output clips (the "crackle").

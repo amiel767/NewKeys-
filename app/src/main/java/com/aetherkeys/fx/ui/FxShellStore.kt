@@ -1,8 +1,11 @@
 package com.aetherkeys.fx.ui
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import com.aetherkeys.fx.FxRegistry
 
 /**
@@ -14,9 +17,11 @@ import com.aetherkeys.fx.FxRegistry
 class FxShellStore(
     val modules: Map<Int, EffectModule>,
     private val engine: FxEngine,
+    /** Strip this store edits. Passed in so the first frame never renders strip 0 by mistake. */
+    initialStrip: Int = 0,
 ) {
     /** Currently edited strip: 0..7 tracks, 8 drum, 9 tonic pad, 10 drum-pad sampler, 15 master. */
-    var strip by mutableStateOf(0)
+    var strip by mutableStateOf(initialStrip)
     /** Id of the open panel, or null for the rack. */
     var openId by mutableStateOf<Int?>(null)
     var addOpen by mutableStateOf(false)
@@ -28,15 +33,21 @@ class FxShellStore(
     /** Short message shown in the window (refusals, replacements). Cleared by the UI after display. */
     var notice by mutableStateOf<String?>(null)
 
-    private val slots = HashMap<Int, MutableList<Int?>>()
-    private val instrument = HashMap<Int, Int?>()
+    // Compose observes these: a plain HashMap made `addEffect` invisible. The rack
+    // read `slotsOf(strip)` once and nothing invalidated it, so a newly added effect
+    // never appeared until the window was closed and reopened. Snapshot state makes
+    // every read of the rack recompose when a slot or the instrument changes.
+    private val slots = mutableStateMapOf<Int, SnapshotStateList<Int?>>()
+    private val instrument = mutableStateMapOf<Int, Int?>()
     private val values = HashMap<Long, FloatArray>()
     private val bypass = HashMap<Long, Boolean>()
     private val abSnap = HashMap<Long, Pair<FloatArray, FloatArray>>()
 
     private fun key(strip: Int, id: Int) = (strip.toLong() shl 32) or id.toLong()
 
-    fun slotsOf(strip: Int): MutableList<Int?> = slots.getOrPut(strip) { MutableList(if (strip == 15) 8 else 6) { null } }
+    fun slotsOf(strip: Int): SnapshotStateList<Int?> = slots.getOrPut(strip) {
+        mutableStateListOf<Int?>().apply { repeat(if (strip == 15) 8 else 6) { add(null) } }
+    }
     fun instrumentOf(strip: Int): Int? = instrument[strip]
     fun effectCount(strip: Int = this.strip) = slotsOf(strip).count { it != null }
     fun isOn(id: Int): Boolean = slotsOf(strip).contains(id) || instrument[strip] == id

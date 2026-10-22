@@ -717,6 +717,21 @@ fun MixerScreen(
     val safeBottomPadding = animatedBottomPadding.coerceAtLeast(0.dp)
     val trackScrollState = rememberScrollState()
 
+    // Blur is a RenderEffect: enabling it on the same frame the window opens makes
+    // that frame render the whole page through an offscreen pass, which is the
+    // stutter seen when tapping Track Settings or the FX button. Settle one frame
+    // first, then let the blur take effect.
+    val wantsBlur = uiState.activePopup.isFloatingWindow()
+    var blurActive by remember { mutableStateOf(false) }
+    LaunchedEffect(wantsBlur) {
+        if (wantsBlur) {
+            withFrameNanos { }
+            blurActive = true
+        } else {
+            blurActive = false
+        }
+    }
+
     // Fullscreen Stage Container (Unpadded for 100% full-bleed overlays like SplashScreen)
     CompositionLocalProvider(LocalHapticsEnabled provides uiState.hapticsEnabled) {
     Box(
@@ -741,7 +756,7 @@ fun MixerScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .windowBackdropBlur(
-                    active = uiState.activePopup.isFloatingWindow(),
+                    active = blurActive,
                     radius = if (uiState.activePopup == ActivePopup.VELOCITY_SETTINGS) 18.dp else 2.5.dp
                 )
         ) { currentPage ->
@@ -885,8 +900,8 @@ fun MixerScreen(
                     override fun onFluidSynthGainChange(value: Float) { viewModel.setFluidSynthGain(value) }
                     override fun onHapticsChange(enabled: Boolean) { viewModel.setHapticsEnabled(enabled) }
                     override fun onReducedMotionChange(enabled: Boolean) { viewModel.setReducedMotion(enabled) }
-                    override fun onOpenLanguage() { /* no-op */ }
-                    override fun onOpenAppSettings() { /* no-op */ }
+                    override fun onOpenLanguage() { viewModel.openLanguageDialog() }
+                    override fun onOpenAppSettings() { viewModel.openSettings() }
                 }
 
                 SettingsScreen(

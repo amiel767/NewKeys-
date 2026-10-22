@@ -137,6 +137,7 @@ object NativeAudioBridge {
     external fun fxApplyInstrumentPreset(strip: Int, preset: Int): Boolean
     external fun fxGetMeter(strip: Int, slot: Int, index: Int): Float
     external fun fxCollectGarbage()
+    external fun fxPanic()
     external fun fxMatchShaper(fxId: Int, presetName: String, gmProgram: Int, bank: Int, keyLow: Int, keyHigh: Int): Int
 
     // Safe wrappers to avoid crashes if native library isn't compiled or loaded
@@ -674,6 +675,16 @@ object NativeAudioBridge {
                 stopDrumSample(sampleId)
             } catch (e: Throwable) {
                 Log.e("NativeAudioBridge", "Error invoking stopDrumSample: ${e.message}")
+            }
+        }
+    }
+
+    fun safeFxPanic() {
+        if (isLibraryLoaded) {
+            try {
+                fxPanic()
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking fxPanic: ${e.message}")
             }
         }
     }

@@ -58,7 +58,7 @@ fun FxOverlay(
     val controller = remember(strip) { FxController(strip, appContext) }
     // The new shell owns the rack, the effect window and the add sheet. The
     // controller stays the bridge to the native mixer and the persistence layer.
-    val store = remember(strip) { FxShellStore(fxModules(), FxControllerEngine(controller)) }
+    val store = remember(strip) { FxShellStore(fxModules(), FxControllerEngine(controller), strip) }
     val warned = remember(strip) { mutableStateOf(emptySet<Int>()) }
     val inst = controller.instrumentId
     val warnId = if (inst >= 0 && FxSfWarning.checked(inst) && inst !in warned.value &&

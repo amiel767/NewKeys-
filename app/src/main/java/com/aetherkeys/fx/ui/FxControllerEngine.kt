@@ -12,10 +12,7 @@ class FxControllerEngine(private val controller: FxController) : FxEngine {
 
     override fun setEffect(strip: Int, slot: Int, id: Int): Boolean = controller.setEffect(slot, id)
 
-    override fun setInstrument(strip: Int, id: Int): Boolean {
-        controller.setInstrument(id)
-        return true
-    }
+    override fun setInstrument(strip: Int, id: Int): Boolean = controller.setInstrument(id)
 
     override fun setParam(strip: Int, slot: Int, index: Int, value: Float) =
         controller.setEffectParam(slot, index, value)
