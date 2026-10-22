@@ -18,8 +18,9 @@ SOURCES = [
 ]
 
 # (effect id, preview function name, Kotlin scene function suffix)
+# NB: the preview names 0 and 2 `orb` and `eq`, not `space`/`tone`.
 EFFECTS = [
-    (0, "space", "sceneOrb"), (1, "echo", "sceneEcho"), (2, "tone", "sceneEq"),
+    (0, "orb", "sceneOrb"), (1, "echo", "sceneEcho"), (2, "eq", "sceneEq"),
     (3, "grip", "sceneGrip"), (4, "ceiling", "sceneCeil"), (5, "piano", "scenePiano"),
     (6, "organ", "sceneOrgan"), (7, "sax", "sceneSax"), (8, "strings", "sceneStrings"),
     (9, "guitar", "sceneGuitar"), (10, "amp", "sceneAmp"), (11, "bass", "sceneBass"),

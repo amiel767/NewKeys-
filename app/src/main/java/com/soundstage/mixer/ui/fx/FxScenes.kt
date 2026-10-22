@@ -384,23 +384,6 @@ private fun DrawScope.bg(effectId: Int, v: FloatArray, t: Float, accent: Color) 
         )
     }
 
-    if (effectId == 2) {
-        // `.x2` (the later rule, the red amp face) is three layers, not the flat
-        // two-stop gradient the host paints: a 160deg ramp with a 46% stop, 3px
-        // hairlines, and a radial highlight at 18% -10%. Missing them made the
-        // panel uniformly lighter — measured (233,113,118) against the reference's
-        // (200,63,77) across the whole top band.
-        drawRect(brush = Brush.verticalGradient(
-            listOf(Color(0xFFC4182C), Color(0xFF93111F), Color(0xFF5A0A14)),
-            startY = Y0, endY = Y0 + h), topLeft = Offset(X0, Y0), size = Size(w, h))
-        var hx = X0
-        while (hx < X0 + w) {
-            drawRect(Color(0x07FFFFFF), topLeft = Offset(hx, Y0), size = Size(1f, h))
-            hx += 3f
-        }
-        radialWash(X0 + w * 0.18f, Y0 - h * 0.10f, 1.30f * w, 0.70f * h, Color(0x33FF8A8A), 0.60f)
-    }
-
     if (effectId == 1) {
         // `.x1` base: `linear-gradient(#41382a,#1f1b14)` with hairline stripes.
         drawRect(
@@ -447,7 +430,10 @@ private fun DrawScope.bg(effectId: Int, v: FloatArray, t: Float, accent: Color) 
             drawRect(Color(0x07FFFFFF), topLeft = Offset(sx, Y0), size = Size(1f, h))
             sx += 3f
         }
-        radialWash(X0 + w * 0.18f, Y0 - 0.10f * h, 1.30f * w, 0.70f * h, Color(0xFFFF8A8A), 0.60f)
+        // `#ff8a8a33` in the preview: alpha 0x33, not full. A full-alpha wash here
+        // over-brightened the whole top band — measured (215,93,101) against the
+        // reference's (188,55,70).
+        radialWash(X0 + w * 0.18f, Y0 - 0.10f * h, 1.30f * w, 0.70f * h, Color(0x33FF8A8A), 0.60f)
     }
 
     if (effectId == 3) {

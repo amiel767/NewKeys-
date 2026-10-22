@@ -570,6 +570,9 @@ fun DrawScope.sceneStrings(v: FloatArray, a: Color, t: Float, tm: TextMeasurer, 
         start = Offset(0f, 56f), end = Offset(0f, 76f)), topLeft = Offset(340f, 56f), size = Size(206f, 20f))
     drawCircle(hs(20f, 60f, 70f, 0.6f), radius = 13f, center = Offset(570f, 66f), style = Stroke(width = 1.2f))
     drawArc(hs(20f, 60f, 70f, 0.6f), 28f, 270f, false, topLeft = Offset(563f, 59f), size = Size(14f, 14f), style = Stroke(width = 1.2f))
+    // The preview draws three concentric arcs at (570,66): r13 full, r7 from 0.5 to
+    // 5.2 rad, and r3 from 0 to 4 rad. The innermost was missing.
+    drawArc(hs(20f, 60f, 70f, 0.6f), 0f, 229f, false, topLeft = Offset(567f, 63f), size = Size(6f, 6f), style = Stroke(width = 1.2f))
     for ((qx, qy) in listOf(540f to 50f, 552f to 82f)) {
         drawOval(hs(20f, 40f, 60f, 0.8f), topLeft = Offset(qx - 5f, qy - 3f), size = Size(10f, 6f))
     }

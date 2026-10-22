@@ -331,7 +331,7 @@ fun FxWindow(
                     // space with the leading one, so the selector sits left of the
                     // right-hand cluster. Deliberate deviation from the reference,
                     // which pins it to the far right.
-                    Spacer(Modifier.weight(0.45f))
+                    Spacer(Modifier.weight(0.25f))
                 }
                 if (effectId >= 5) {
                     Text("Surprise me", color = accent, fontSize = (10f * scale).sp,
