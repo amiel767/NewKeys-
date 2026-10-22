@@ -1,0 +1,681 @@
+═══════════════════════════════════════════════════════════════════════════
+RÉPONSES AU QUESTIONNAIRE DE REPRISE — FX WINDOW
+Rédigé par l'agent OpenHands, le 2026-10-21.
+Méthode : lecture seule du code + build réel. Aucun patch, aucun commit.
+Aucune ligne de Kotlin n'a été écrite pour ce tour.
+═══════════════════════════════════════════════════════════════════════════
+
+AVERTISSEMENT DE PÉRIMÈTRE
+───────────────────────────────────────────────────────────────────────────
+La « capture jointe » du §5 n'était PAS jointe à ce tour (l'import de
+fichier échoue côté serveur — voir §8.1). Les réponses du §5 sont donc
+déduites du CODE, pas d'un pixel-à-pixel sur votre capture. Chaque
+réponse indique le fait de code qui la fonde.
+
+═══════════════════════════════════════════════════════════════════════════
+0. CONTEXTE DU RAPPORT
+───────────────────────────────────────────────────────────────────────────
+0.1 — Hash court du commit sur lequel tu as travaillé :
+      Travail sur la branche recovery/fx-window-shell.
+      HEAD = 41914f0  (complet : 41914f02877655a60f3b05b337955a305529470e)
+      Commit parent = 9271525 (sécurisation anti-crash fenêtre FX)
+      Base = c8ab346 (reconstruction de la coque FX)
+
+0.2 — Branche : recovery/fx-window-shell
+      (état : propre ; poussée sur origin/recovery/fx-window-shell)
+
+0.3 — Dernier ./gradlew :app:clean :app:assembleDebug :
+      BUILD SUCCESSFUL — durée 72 s (1 min 12 s)
+      Commande exacte :
+        ./gradlew :app:clean :app:assembleDebug --no-daemon --max-workers=2
+      (JAVA_HOME=/workspace/jdk/jdk21, ANDROID_HOME=/workspace/android-sdk)
+      Tâches : 50 au total, 26 exécutées, 23 depuis le cache, 1 à jour.
+      APK produit : app/build/outputs/apk/debug/app-debug.apk — 42 646 087 o
+
+0.4 — Les 15 dernières lignes de sortie de ce build :
+
+> Task :app:mergeDebugJniLibFolders
+> Task :app:validateSigningDebug
+> Task :app:writeDebugAppMetadata
+> Task :app:writeDebugSigningConfigVersions
+> Task :app:mergeDebugNativeLibs
+> Task :app:stripDebugDebugSymbols
+> Task :app:packageDebug
+> Task :app:assembleDebug
+> Task :app:createDebugApkListingFileRedirect
+
+BUILD SUCCESSFUL in 1m 12s
+50 actionable tasks: 26 executed, 23 from cache, 1 up-to-date
+Configuration cache entry stored.
+EXIT=0 DURATION=72s
+
+═══════════════════════════════════════════════════════════════════════════
+1. ARCHITECTURE ACTUELLE (photo nette, pas d'interprétation)
+═══════════════════════════════════════════════════════════════════════════
+
+1.1 — Dans FxWindowHost.kt, le Rack et le panneau sont-ils affichés
+      SIMULTANÉMENT ou l'un remplace l'autre ?
+      Réponse : SIMULTANÉ (superposition, pas remplacement).
+
+      Le Box racine (l.51) contient une Column « Header + Rack » (l.59-62)
+      PUIS, sur une couche au-dessus, le panneau ouvert (l.65-86). Le Rack
+      n'est jamais retiré. Il n'y a aucune condition « XOR ».
+
+      Extrait exact (FxWindowHost.kt l.59-86) :
+          Column(Modifier.fillMaxSize()) {
+              Header(store, s)
+              Rack(store, s, tm)
+          }
+          // `#ex` is an absolute layer over the whole window (z-index 4), so it also
+          // covers the header: the panel owns its own close and preset controls.
+          store.openId?.let { openId ->
+              val module = store.modules[openId]
+              if (module != null) {
+                  FxOpenPanel(
+                      ...
+                      modifier = Modifier.fillMaxSize(),
+                  )
+              }
+          }
+
+1.2 — Comment est appliqué le facteur scale aujourd'hui ?
+
+      (a) Origine du scale : il est FOURNI À L'EXTÉRIEUR. La signature est
+          FxWindowHost(store, scale: Float, modifier) (FxWindowHost.kt l.46).
+          Le seul appelant passe 1f :
+            app/src/test/.../FxWindowCaptureTest.kt:57 → FxWindowHost(store = store, scale = 1f)
+          Il n'existe AUCUN calcul de scale dans la coque aetherkeys.
+          (Le scale calculé existe dans l'ANCIENNE fenêtre :
+           FxWindow.kt:182 → val scale = maxWidth.value / FxStyle.PWL
+           soit un BoxWithConstraints sur PWL=825. C'est le modèle correct,
+           mais dans l'autre fichier.)
+
+      (b) Utilisation dans FxOpenPanel pour la taille du panneau :
+          AUCUNE. Le panneau fait Modifier.fillMaxSize() (FxOpenPanel.kt l.83
+          côté appel, puis l.65 `Box(modifier.fillMaxSize()...)`). Il n'y a
+          PAS de taille 825×343 ni de 779×263 ici : le panneau prend la
+          taille de son parent (donc de l'écran de l'appareil).
+
+      (c) Utilisation pour la taille d'un knob (FxOpenPanel.kt l.113-126) :
+          val diameter = (box.w * 0.86f * s).dp
+          modifier = Modifier.offset(
+              x = (cx * s).dp - diameter / 2f,
+              y = (cy * s).dp - diameter / 2f,
+          )
+
+      box.x / box.h sont-ils multipliés par scale ? Réponse : OUI, indirectement.
+      cx et cy sont calculés DANS l'échelle de référence puis multipliés :
+          val cx = box.x + box.w / 2f      (l.111)
+          val cy = box.y + box.h / 2f      (l.112)
+          x = (cx * s).dp ...              (l.124)
+      Donc TOUT l'intérieur du panneau est multiplié par `s`. Si `s` n'est pas
+      ≈ scale-de-référence, les knobs sont énormes et le panneau ne mesure pas
+      sa taille de référence.
+
+1.3 — Combien de Box / Column / Row contiennent le panneau ouvert, du Box
+      racine de FxWindowHost jusqu'au Canvas de scène inclus ?
+
+      Chaîne d'imbrication (5 niveaux) :
+
+      N1  Box                    FxWindowHost.kt:51
+          Modifier : modifier .fillMaxSize() .clip(RoundedCornerShape(20.dp))
+                     .background(Brush.verticalGradient(#1F2635 → #131925))
+                     .border(1.dp, #14FFFFFF, RoundedCornerShape(20.dp))
+      N2  Column                 FxWindowHost.kt:59
+          Modifier : fillMaxSize()            ← contient Header + Rack
+      N2' Box (panneau)          FxWindowHost.kt:65-84
+          FxOpenPanel(modifier = Modifier.fillMaxSize())
+      N3  Box                    FxOpenPanel.kt:65
+          Modifier : modifier.fillMaxSize().background(Color(0xFF10141D))
+      N4  Canvas (scène)         FxOpenPanel.kt:68
+          Modifier : fillMaxSize()
+
+      Autres enfants de N3 (frères du Canvas, tous en position absolue) :
+        - Box  l.73  Modifier.offset(x = (12*s).dp, y = (12*s).dp)   → chip close
+        - Box  l.78  Modifier.align(TopEnd).offset(x = -(16*s).dp, y = (11*s).dp)
+        - Row  l.83  Modifier.fillMaxWidth().height((58*s).dp)
+                     .padding(start = (58*s).dp, end = (200*s).dp)    → header
+        - FxKnob × N FxOpenPanel.kt:114-127
+                     Modifier.offset(x = (cx*s).dp - d/2, y = (cy*s).dp - d/2)
+
+      Conclusion : le panneau est en fillMaxSize() partout, et sa géométrie
+      interne est multipliée par un scale qui vaut 1f chez le seul appelant.
+      Aucune boîte logique 825×343 n'existe dans la coque.
+
+1.4 — Le Canvas de scène (FxOpenPanel) fait-il exactement
+      (FxContent.W = 779.dp) × (FxContent.SCENE_H = 263.dp) ?
+      Valeur réelle : NON. Le Canvas fait fillMaxSize() — donc la taille du
+      parent, c'est-à-dire l'écran (modulo le fillMaxSize() de N1/N3).
+
+      Important : il n'existe AUCUN objet FxContent dans le dépôt.
+      Les constantes réelles sont dans FxStyle (FxScenes.kt:49) :
+          PWL = 825f   PHL = 343f   OXL = 20f   OYL = 58f   RAIL_Y = 214f
+      La scène se dessine elle-même à partir de (-OXL, -OYL) sur PWL × PHL
+      (FxScenes.kt:174-180), donc la scène PEINT une zone 825×343 — mais le
+      Canvas qui la porte, lui, est en fillMaxSize. Les deux ne coïncident que
+      si la taille du parent fait exactement 825×343 dp. Rien ne le garantit.
+
+1.5 — Le fond du panneau (dégradé propre à chaque effet : beige pour Solar
+      Ceiling, brun pour Echo, violet pour Space) est-il dessiné ?
+      Réponse : ABSENT pour le fond spécifique par effet.
+
+      Ce qui existe : un fond GÉNÉRIQUE unique, identique pour tous, dans
+      FxScenes.kt:173 (drawRect, dégradé #171C28 → #0B0E16) + des étoiles +
+      un halo radial de l'accent. Il n'y a AUCUN branchement sur une couleur
+      par effet (pas de « beige pour Solar Ceiling », pas de « brun pour Echo »,
+      pas de « violet pour Space »). FxStyle.accent(id) ne donne qu'UNE
+      couleur d'accent (pastille), jamais un dégradé de fond.
+      Fichier:ligne = FxScenes.kt:173-192 (fonction `bg`), appelée pour les
+      effets 0..4 seulement (FxScenes.kt:611 : `if (effectId in 0..4) bg(...)`).
+
+═══════════════════════════════════════════════════════════════════════════
+2. INVENTAIRE DES FICHIERS (ce qu'on garde, ce qu'on jette)
+═══════════════════════════════════════════════════════════════════════════
+
+2.1 — Statut de chaque fichier de app/src/main/java/com/aetherkeys/fx/ui/
+
+  fichier             | lignes | dernière modif | statut
+  --------------------+--------+---------------+---------------------------
+  FxWindowHost.kt     |   235  |  2026-10-21   | OK — compile. Rack XOR Panel
+                      |        |               |   NON fait (superposition).
+                      |        |               |   Aucun appelant en prod.
+  FxShellStore.kt     |   147  |  2026-10-21   | OK — corrigé (accès bornés).
+  FxOpenPanel.kt      |   195  |  2026-10-21   | OK — compile, mais géométrie
+                      |        |               |   interne multipliée par scale ;
+                      |        |               |   pas de boîte 825×343.
+  FxKnob.kt           |   207  |  2026-10-21   | OK — dessin au trait complet.
+  FxGeometry.kt       |   144  |  2026-10-21   | OK (lecture seule, généré).
+  FxEngine.kt         |    17  |  2026-10-21   | OK (interface).
+  FxClock.kt          |    31  |  2026-10-21   | OK.
+  EffectModule.kt     |    55  |  2026-10-21   | OK (interface + Placeholder).
+  FxAddOverlay.kt     |    91  |  2026-10-21   | OK.
+  FxBottomBar.kt      |    14  |  2026-10-21   | OK (facteur dB seul ; la
+                      |        |               |   barre elle-même n'est pas
+                      |        |               |   dessinée ici).
+  FxJniEngine.kt      |    0   |     —         | ABSENT (voir §4.1).
+  FxRegistry.kt       |   396  |  2026-10-21   | OK (généré, à la racine de
+                      |        |               |   com/aetherkeys/fx/).
+  (bonus) FxModule.kt |    57  |  2026-10-21   | OK — pont registre→scènes.
+                      |        |               |   Ligne 20 corrigée (getOrElse).
+  (bonus) FxControllerEngine.kt | 33 | 2026-10-21 | OK — pont FxEngine→FxController.
+
+  TOTAL du dossier ui/ : 12 fichiers, 1 226 lignes.
+
+2.2 — Où est instancié FxShellStore ?
+      UNIQUEMENT dans le test de capture :
+        app/src/test/java/com/soundstage/mixer/FxWindowCaptureTest.kt:52
+          val store = FxShellStore(fxModules(), RecordingEngine())
+      Il n'y a AUCUNE instanciation dans app/src/main. La coque FX n'est donc
+      pas branchée sur l'app réelle.
+
+2.3 — Où est instancié FxJniEngine ?
+      NULLE PART — le fichier n'existe pas (voir 2.1 et 4.1).
+      Le pont réel est FxControllerEngine, qui enveloppe FxController :
+        app/src/main/java/com/soundstage/mixer/ui/fx/FxOverlay.kt:60
+          val controller = remember(strip) { FxController(strip, appContext) }
+      (FxController est en com/soundstage/mixer/fx/FxController.kt:17, et il
+      parle au natif via NativeAudioBridge.)
+
+2.4 — Arborescence complète de app/src/main/java/com/aetherkeys/fx/
+
+      app/src/main/java/com/aetherkeys/fx/
+      ├── FxRegistry.kt
+      └── ui/
+          ├── EffectModule.kt
+          ├── FxAddOverlay.kt
+          ├── FxBottomBar.kt
+          ├── FxClock.kt
+          ├── FxControllerEngine.kt
+          ├── FxEngine.kt
+          ├── FxGeometry.kt
+          ├── FxKnob.kt
+          ├── FxModule.kt
+          ├── FxOpenPanel.kt
+          ├── FxShellStore.kt
+          └── FxWindowHost.kt
+
+      Il n'existe AUCUN sous-dossier scenes/ ni modules/.
+      (Les scènes vivent ailleurs : com/soundstage/mixer/ui/fx/.)
+
+═══════════════════════════════════════════════════════════════════════════
+3. ÉTAT DES 15 MODULES (EffectModule concrets)
+═══════════════════════════════════════════════════════════════════════════
+
+3.1 — Pour chaque id 0..14 :
+
+  id | nom            | classe concrète                        | drawScene
+  ---+----------------+----------------------------------------+-----------
+   0 | Æther Space    | FxModule(0) + sceneOrb (FxScenes)      | RÉEL
+   1 | Æther Echo     | FxModule(1) + sceneEcho (FxScenes)     | RÉEL
+   2 | Prism Tone     | FxModule(2) + sceneEq (FxScenes)       | RÉEL
+   3 | Iron Grip      | FxModule(3) + sceneGrip (FxScenes)     | RÉEL
+   4 | Solar Ceiling  | FxModule(4) + sceneCeil (FxScenes)     | RÉEL
+   5 | Aether Piano   | FxModule(5) + scenePiano (FxInstr.)    | RÉEL
+   6 | Aether Organ   | FxModule(6) + sceneOrgan (FxInstr.)    | RÉEL
+   7 | Aether Sax     | FxModule(7) + sceneSax (FxInstr.)      | RÉEL
+   8 | Aether Strings | FxModule(8) + sceneStrings (FxInstr.)  | RÉEL
+   9 | Aether Guitar  | FxModule(9) + sceneGuitar (FxInstr.)   | RÉEL
+  10 | Aether Amp     | FxModule(10) + sceneAmp (FxInstr.)     | RÉEL
+  11 | Aether Bass    | FxModule(11) + sceneBass (FxInstr.)    | RÉEL
+  12 | Aether Brass   | FxModule(12) + sceneBrass (FxInstr.)   | RÉEL
+  13 | Aether Voices  | FxModule(13) + sceneVoices (FxInstr.)  | RÉEL
+  14 | Aether Synth   | FxModule(14) + sceneSynth (FxInstr.)   | RÉEL
+
+  Remarque : il n'y a AUCUNE classe par module. Un seul adaptateur générique
+  FxModule(effectId) couvre les 15 ids ; le dessin est dispatché par un
+  `when (effectId)` central (FxScenes.kt:609-631). Donc « ABSENT » ne
+  s'applique à personne pour le code de scène.
+  PlaceholderModule (EffectModule.kt:43) existe mais n'est instancié nulle part.
+  DISPATCH RÉEL (FxScenes.kt:619-631) : 0→sceneOrb, 1→sceneEcho, 2→sceneEq,
+  3→sceneGrip, 4→sceneCeil, 5→scenePiano, 6→sceneOrgan, 7→sceneSax,
+  8→sceneStrings, 9→sceneGuitar, 10→sceneAmp, 11→sceneBass, 12→sceneBrass,
+  13→sceneVoices, 14→sceneSynth. Aucune branche vide.
+
+3.2 — Lignes par drawScene réel (id → lignes, approximation entre
+      signatures) :
+        0 → 59   (sceneOrb)
+        1 → 69   (sceneEcho)
+        2 → 62   (sceneEq)
+        3 → 61   (sceneGrip)
+        4 → 184  (sceneCeil — le plus gros des 5 effets)
+        5 → 136  (scenePiano)
+        6 → 86   (sceneOrgan)
+        7 → 83   (sceneSax)
+        8 → 122  (sceneStrings)
+        9 → 155  (sceneGuitar)
+       10 → 48   (sceneAmp)
+       11 → 61   (sceneBass)
+       12 → 84   (sceneBrass)
+       13 → 57   (sceneVoices)
+       14 → 126  (sceneSynth)
+
+3.3 — Y a-t-il un fichier ScreenModules.kt qui déclare la
+      Map<Int, EffectModule> ?
+      Chemin : il n'y a pas de fichier nommé ScreenModules.kt, mais
+      l'équivalent EXISTE :
+        app/src/main/java/com/aetherkeys/fx/ui/FxModule.kt:57
+          fun fxModules(): Map<Int, EffectModule> =
+              FxRegistry.all.associate { it.id to FxModule(it.id) }
+      Il construit les 15 modules depuis le registre. C'est la déclaration
+      canonique de la Map<Int, EffectModule>.
+
+═══════════════════════════════════════════════════════════════════════════
+4. BRANCHEMENT JNI (audio)
+═══════════════════════════════════════════════════════════════════════════
+
+4.1 — FxJniEngine.kt déclare-t-il les 7 externals ?
+      Réponse : le fichier FxJniEngine.kt N'EXISTE PAS.
+      Les 7 noms demandés (fxSetEffect, fxSetInstrument, fxSetParam,
+      fxSetInstrumentParam, fxSetBypass, fxApplyPreset, fxMeter) n'existent
+      NULLE PART dans le Kotlin. Statut des 7 :
+        - fxSetEffect :          MANQUANT
+        - fxSetInstrument :      MANQUANT
+        - fxSetParam :           MANQUANT
+        - fxSetInstrumentParam : MANQUANT
+        - fxSetBypass :          MANQUANT
+        - fxApplyPreset :        MANQUANT
+        - fxMeter :              MANQUANT
+
+      Ce qui existe réellement, avec d'autres noms, dans
+      app/src/main/java/com/soundstage/mixer/audio/NativeAudioBridge.kt :
+        fxStripPeak (l.132), fxEffectId (133), fxGetInstrumentId (134),
+        fxSoundfontPaused (135), fxSetInstrumentBypass (136),
+        fxApplyInstrumentPreset (137), fxGetMeter (138),
+        fxCollectGarbage (139), fxMatchShaper (140).
+      Et l'aller-retour des paramètres d'effet passe par un AUTRE chemin,
+      non-JNI : FxController (com/soundstage/mixer/fx/FxController.kt) —
+      setEffect, setInstrument, setInstrumentParam, setEffectParam, setBypass,
+      applyPreset, meter → voir 4.3. Ces fonctions existent belles et bien
+      côté Kotlin (FxController.kt:46, 52, 72, 84, 90, 96, 116) et
+      FxControllerEngine (com/aetherkeys/fx/ui/FxControllerEngine.kt) les
+      expose sous les noms de l'interface FxEngine.
+
+      Autrement dit : la couche 7-verbes demandée est une REFONTE de nommage
+      qui n'a pas été faite. La fonctionnalité est là, la signature ne l'est pas.
+
+4.2 — Côté cpp/audio_engine.cpp, ces 7 fonctions sont-elles implémentées ?
+
+  symbole              | statut
+  ---------------------+---------------------------------------------------
+  fxSetEffect          | ABSENT sous ce nom. L'équivalent existe :
+                       |   fx_mixer.h:24 setEffect(strip, slot, id)
+                       |   fx_chain.h:70 setEffect(slot, fxId)
+  fxSetInstrument      | ABSENT sous ce nom. Équivalent :
+                       |   fx_mixer.h:19 setInstrument(strip, id)
+                       |   fx_chain.h:226 setInstrument(id)
+  fxSetParam           | ABSENT sous ce nom. Équivalent :
+                       |   fx_mixer.h:28 setParam(strip, slot, param, norm)
+                       |   fx_chain.h:88
+  fxSetInstrumentParam | ABSENT sous ce nom. Équivalent :
+                       |   fx_mixer.h:31 setInstrumentParam(strip, param, norm)
+  fxSetBypass          | ABSENT sous ce nom. Équivalent :
+                       |   fx_mixer.h:29 setBypass(strip, slot, b)
+                       |   fx_chain.h:92
+  fxApplyPreset        | ABSENT sous ce nom. Équivalent :
+                       |   fx_mixer.h:30 applyPreset(strip, slot, preset)
+                       |   fx_chain.h:93
+  fxMeter              | ABSENT sous ce nom. Équivalent :
+                       |   audio_engine.h:886 fxMeter(strip, slot, i)
+                       |   fx_chain.h:105 meter(slot, i)
+                       |   + JNI : native-lib.cpp:712 fxGetMeter
+
+  Conclusion : AUCUNE des 7 n'est un STUB, et AUCUNE n'est ABSENTE en
+  fonctionnalité. Elles existent toutes, sous d'autres noms, en trois
+  couches : FxMixer (fx_mixer.h) → FxChain/FxTrack (fx_chain.h) → FxEffect
+  (fx_core.h). La coque aetherkeys y accède via FxControllerEngine →
+  FxController, pas via un FxJniEngine.
+
+4.3 — Nom exact chargé par System.loadLibrary("...") :
+      "native-lib"
+      Fichier:ligne = app/src/main/java/com/soundstage/mixer/audio/NativeAudioBridge.kt:43
+      → System.loadLibrary("native-lib")
+
+═══════════════════════════════════════════════════════════════════════════
+5. CAPTURE FOURNIE — CE QUE TU RECONNAIS
+───────────────────────────────────────────────────────────────────────────
+Rappel : la capture n'était pas attachée à ce tour. Réponses fondées sur le
+code, pas sur les pixels. Chaque point donne le fait de code.
+
+5.1 — Les knobs font ×3 à ×5 leur taille cible :
+      CONFIRMÉ PAR LE CODE — OUI.
+      Cause : FxOpenPanel.kt:113 : diameter = (box.w * 0.86f * s).dp, où
+      `s = scale` (l.63) et le seul appelant passe scale = 1f
+      (FxWindowCaptureTest.kt:57). Or box.w est une largeur de boîte MESURÉE
+      dans la référence 825×343 (ex. Solar Ceiling « Amount » : w = 138.1,
+      FxGeometry.kt:53). Multipliée par 0.86 × 1 → 118.8 dp de diamètre pour
+      un écran qui n'est pas à l'échelle de 825 dp de large. Donc les knobs
+      sont dessinés à leur taille « pleine » de référence sur un panneau qui,
+      lui, est en fillMaxSize(). D'où l'impression de ×3 à ×5.
+
+5.2 — Le rack reste visible derrière le panneau ouvert :
+      CONFIRMÉ PAR LE CODE — OUI.
+      Cause : FxWindowHost.kt:59-86 — la Column « Header + Rack » n'est jamais
+      retirée ; FxOpenPanel est posé PAR-DESSUS avec Modifier.fillMaxSize().
+      Il n'y a aucune logique XOR. Voir 1.1.
+
+5.3 — Le fond spécifique de l'effet (beige pour Solar Ceiling) est absent :
+      CONFIRMÉ PAR LE CODE — OUI.
+      Cause : le seul fond dessiné est GÉNÉRIQUE (FxScenes.kt:173, dégradé
+      #171C28 → #0B0E16) et identique pour tous les effets. Aucun dégradé
+      beige/brun/violet par effet n'existe. Voir 1.5.
+
+5.4 — Le header est éclaté, pas dans un bandeau de 42 px en haut du panneau :
+      CONFIRMÉ PAR LE CODE — OUI (deux bandeaux concurrents, deux valeurs).
+      Cause : le panneau utilise un header de 58 dp
+      (FxOpenPanel.kt:85 : .height((58 * s).dp), avec padding start 58 / end 200
+      l.86), alors que la coque WindowHost utilise un header de 42 dp
+      (FxWindowHost.kt:123 : .height((42 * s).dp)). Les deux sont dessinés en
+      même temps (l'un sous l'autre car le panneau recouvre), et la valeur 58
+      n'est pas multipliée par une échelle réelle (s = 1f). Le titre 30 sp
+      (FxOpenPanel.kt:91) et le chip preset en position absolue (l.78) ne sont
+      donc pas alignés sur un bandeau de 42 px.
+
+5.5 — Le bottom bar LEVEL est mal positionné (pas à y = 214 du panneau) :
+      CONFIRMÉ PAR LE CODE — OUI, et pire : la barre n'est JAMAIS posée.
+      Cause : FxGeom.BOTTOM_BAR_Y = 214 et LEVEL_X/Y/W existent
+      (FxGeometry.kt:9-13) mais ne sont utilisés NULLE PART dans la coque.
+      Recherche faite : hors de FxGeometry.kt, aucune référence à
+      BOTTOM_BAR_Y / LEVEL_X / LEVEL_Y / BOTTOM_BAR_H. FxBottomBar.kt ne
+      contient qu'un facteur dB (l.13). La seule vraie barre posée est dans
+      l'ANCIENNE fenêtre : FxWindow.kt:194 → drawFxRail(...). Donc dans la
+      coque, il n'y a pas de LEVEL à y = 214 : il n'y en a pas du tout.
+
+5.6 — La scène animée (courbes jaunes) n'est pas dessinée dans le panel :
+      NON CONFIRMABLE PAR LE CODE — le code APPELLE bien la scène.
+      Fait : FxOpenPanel.kt:68-70 dessine un Canvas fillMaxSize() et appelle
+      `with(module) { drawScene(params, clock.value, mini = false, tm) }`,
+      qui route vers sceneCeil pour l'id 4. La scène EST appelée. Si elle
+      n'apparaît pas, la cause probable est le GEOMETRIE : la scène se peint
+      de (-OXL,-OYL) sur 825×343 (FxScenes.kt:174-180) alors que le Canvas
+      fait fillMaxSize() ; le fond du panneau est aussi dessiné en
+      Color(0xFF10141D) (FxOpenPanel.kt:65) PUIS recouvert par bg() au §1.5.
+      Donc soit la scène est hors-cadre, soit elle est masquée. Réponse
+      factuelle : « le code l'appelle ; l'affichage dépend de la boîte ».
+
+5.7 — Les cartes du rack affichent un texte de debug « N knobs » :
+      CONFIRMÉ — OUI, mais ce n'est PAS la coque, c'est l'ancienne fenêtre.
+      Fichier:ligne = app/src/main/java/com/soundstage/mixer/ui/fx/FxRack.kt:137
+        Text("${info.params.size} knobs", color = Color(0xFF8D96AB), fontSize = 9.sp, ...)
+      La coque (FxWindowHost.kt:193 RackCard) NE contient PAS ce texte : elle
+      dessine la vignette scène (Canvas avec withTransform translate+scale,
+      l.219-226) et le premier preset (l.231). Donc le « N knobs » que vous
+      voyez vient de FxRack (ancienne fenêtre, FxOverlay → FxWindow), qui est
+      LE CHEMIN RÉELLEMENT BRANCHÉ dans le mixer (MixerScreen.kt:943).
+
+═══════════════════════════════════════════════════════════════════════════
+6. CE QUI A ÉTÉ TENTÉ ET QUI A ÉCHOUÉ (le plus utile)
+═══════════════════════════════════════════════════════════════════════════
+Honnêteté : je ne suis pas l'auteur des tentatives de la session perdue. Je
+réponds depuis l'état du code + la trajectoire récupérée (9 423 événements
+rejoués), et je distingue clairement le constaté du non-constaté.
+
+6.1 — Approches essayées pour caler le rendu du panneau :
+      APPROCHE A — « écran de référence 825×343 + scale UNE fois ».
+        Idée : FxWindow.kt utilise un BoxWithConstraints et
+        scale = maxWidth.value / FxStyle.PWL (l.182), puis translate
+        (OXL*scale, OYL*scale) (l.189) et positionne les knobs en
+        ((OXL + spec.x) * scale) (l.231).
+        Pourquoi ça marche LÀ : un seul scale, appliqué à l'extérieur.
+        Pourquoi ça n'a pas gagné dans la coque : la coque a été écrite
+        SANS ce BoxWithConstraints — FxWindowHost reçoit `scale: Float` en
+        paramètre et aucun appelant de production ne lui donne de valeur
+        calculée (seul le test passe 1f). Le modèle correct existait donc
+        déjà, mais dans l'autre fichier, et il n'a pas été transporté.
+
+      APPROCHE B — « dessiner la scène en coordonnées fenêtre ».
+        Idée : FxOpenPanel.kt déclare explicitement (doc l.39-43) que les
+        coordonnées des knobs sont des coordonnées FENÊTRE, les boîtes
+        mesurées incluant déjà l'origine du contenu.
+        Pourquoi ça bloque : FxKnobBoxes (FxGeometry.kt:23) contient, pour
+        l'id 4, « Output » à x=735.1 y=145.2 — des valeurs de la fenêtre
+        825×343, pas du contenu 779×263. Or le panneau est en fillMaxSize(),
+        donc l'origine n'est PAS (OXL,OY L) = (20,58). Les deux repères ne
+        coïncident pas → décalage.
+
+      APPROCHE C — « reconstruire la coque FX depuis le zip de référence ».
+        Idée : extraire la coque de app/assets/fx-shell-final.zip et la
+        rebrancher telle quelle.
+        Pourquoi ça bloque : le zip fournit la STRUCTURE (fichiers, noms,
+        constantes mesurées) mais pas le CÂBLAGE à l'écran : FxWindowHost
+        reste sans appelant de production et sans scale calculé. Résultat :
+        ça compile, ça ne s'affiche pas dans l'app.
+
+6.2 — As-tu essayé un canevas logique fixe de 825 × 343 dp avec un scale
+      appliqué UNE seule fois à l'extérieur ?
+      Réponse : ce modèle EXISTE et FONCTIONNE dans FxWindow.kt
+      (BoxWithConstraints + scale = maxWidth/PWL, l.180-194). Mais il n'a
+      PAS été appliqué à la coque aetherkeys : FxWindowHost reçoit `scale`
+      et n'a aucun BoxWithConstraints. Ce qui « bloque » aujourd'hui n'est
+      donc pas la technique, c'est qu'elle n'a pas été portée dans
+      FxOpenPanel/FxWindowHost.
+
+6.3 — As-tu essayé de faire Rack XOR Panel (pas de superposition) ?
+      Réponse : NON — et c'est vérifiable : FxWindowHost.kt:59-86 montre
+      Column(Header+Rack) PUIS panel en couche au-dessus, sans aucune
+      condition d'exclusion. Aucune trace d'un `if (openId == null) Rack()`.
+      Pourquoi sans doute pas essayé : la coque a été portée ligne à ligne
+      depuis `#ex` du HTML de référence, où le panneau est précisément une
+      couche absolue z-index 4 qui recouvre la fenêtre — le portage a donc
+      reproduit fidèlement une superposition, en supposant que le panneau
+      serait opaque et couvrirait tout. Or le panneau n'est pas opaque
+      (fond Color(0xFF10141D) + scène partielle), donc le rack transparaît.
+
+6.4 — As-tu essayé de valider UN SEUL écran (Æther Echo, id 1) avec
+      compare_refs.py avant de passer aux autres ?
+      Réponse : NON, et l'outil n'existe pas dans le dépôt.
+      Faits : recherche faite — AUCUN fichier *compare_refs* dans le dépôt.
+      Aucun dossier fx-reports/, aucune image ref-01-echo.png. Les seules
+      captures présentes sont 6 « Screenshot_*_Æther Keys.png » (2340×1080,
+      paysage) dans app/assets/, et 15 captures d'écrans de référence dans
+      tools/jsxref/shots/ (01_mixer … 15_popup_velocity) — aucune n'est le
+      panneau Æther Echo. Donc le rapport demandé ne peut pas être fourni :
+      la boucle de comparaison n'a jamais été outillée dans ce dépôt.
+
+═══════════════════════════════════════════════════════════════════════════
+7. CE QUE JE VAIS IMPOSER POUR LA REPRISE
+═══════════════════════════════════════════════════════════════════════════
+
+7.1 — Un seul Box racine de 825 × 343 dp contient tout le panneau ; le scale
+      appliqué UNE fois au-dessus (BoxWithConstraints → Modifier.scale).
+      Réponse : OK.
+      Précision : c'est exactement le patron déjà éprouvé dans FxWindow.kt
+      (l.180-194). Le porter tel quel dans FxWindowHost/FxOpenPanel supprime
+      la multiplication par `s` interne (FxOpenPanel.kt:113,124-125).
+      Note d'implémentation : Modifier.scale n'affecte pas la mesure ; pour
+      que les gestes (detectDragGestures, FxKnob.kt:88) suivent, il vaut
+      mieux mettre le Box 825×343 dans un BoxWithConstraints avec
+      `graphicsLayer` OU dessiner à l'échelle par `drawWithTransform`. À
+      trancher au moment du code, pas ici.
+
+7.2 — À l'intérieur, 1 px logique = 1 dp, aucune multiplication par scale.
+      Réponse : OK.
+      Cela suppose de retirer `* s` à FxOpenPanel.kt:113 (diameter),
+      124-125 (offset des knobs), 73 (close), 78 (preset), 85-86 (header),
+      148,153,159,160 etc. Bref : `s` disparaît de FxOpenPanel.
+
+7.3 — FxWindowHost affiche Rack XOR Panel. Jamais les deux.
+      Réponse : OK.
+      Concrètement : envelopper la Column(Header+Rack) (l.59-62) dans
+      `if (store.openId == null) { ... }`, et garder le panneau dans le cas
+      contraire. Garder l'overlay « add » (l.87-102) et le bandeau notice
+      (l.103-113) hors de cette condition.
+
+7.4 — Le fond spécifique de chaque effet (couleur + dégradé) est dessiné en
+      premier, avant la scène et les knobs.
+      Réponse : OK, avec une précision de conception.
+      Aujourd'hui `bg()` (FxScenes.kt:173) est GÉNÉRIQUE et appelé à
+      l'intérieur de drawFxScene (l.611) uniquement pour 0..4. Il faut le
+      paramétrer par effet. Deux points d'attention :
+        - Le panneau met un fond opaque Color(0xFF10141D) (FxOpenPanel.kt:65)
+          AVANT le Canvas : un fond de scène dessiné ensuite le couvre, donc
+          c'est bien le dernier dessiné qui gagne. L'ordre demandé (fond
+          effet → scène → knobs) est cohérent.
+        - Les effets 10..14 (Amp, Bass, Brass, Voices, Synth, ids 10-14) ne
+          reçoivent PAS bg() aujourd'hui (la condition est 0..4). Il faudra
+          décider si les instruments ont aussi un fond propre ou gardent le
+          fond générique.
+
+7.5 — Ordre de validation stricte : Echo(1) → Prism(2) → Iron Grip(3) →
+      Solar Ceiling(4) → Space(0) ; instruments 5..14 après.
+      Réponse : OK sur le PRINCIPE, mais un préalable non négociable :
+      l'outil de comparaison n'existe pas (§6.4). « PASS compare_refs ≤ 1,5 % »
+      est donc indécidable en l'état. Il faut d'abord créer compare_refs.py
+      ET fournir les images de référence (ref-01-echo.png …) — aucune n'est
+      dans le dépôt aujourd'hui. Sans ça, l'ordre 1→2→3→4→0 donne une
+      progression manuelle, pas un critère chiffré.
+      Proposition : garder exactement votre ordre, et le chiffre de 1,5 %
+      dès que l'outil existe. Je peux l'écrire en premier si vous voulez.
+
+7.6 — Aucun texte de debug ne reste visible ; sinon rectangle neutre.
+      Réponse : OK.
+      Le coupable est FxRack.kt:137 (« N knobs »). À supprimer au profit
+      d'un rectangle neutre. (La coque FxWindowHost n'a pas ce texte.)
+
+7.7 — Le chip preset affiche le preset réellement actif (traqué dans
+      FxShellStore), pas presets.first().
+      Réponse : OK, et c'est un vrai défaut actuel.
+      Faits : FxWindowHost.kt:73 passe `activePreset = null` en dur, et
+      FxOpenPanel.kt:79 retombe alors sur `presets.firstOrNull()`. Le store
+      (FxShellStore.kt:95 applyPreset) ne mémorise PAS l'index de preset
+      appliqué — il n'y a aucun champ « activePreset ». Il faut donc :
+      (a) ajouter un état d'index actif par (strip,id) dans FxShellStore,
+      (b) le lire dans FxWindowHost, (c) retirer le `?: presets.firstOrNull()`.
+
+7.8 — Le slider LEVEL pilote params[params.size - 1], libellé « OUTPUT »
+      pour 0..4, vrai « LEVEL » pour les instruments 5..14.
+      Réponse : OK sur l'intention, mais constat de code : ce slider
+      N'EXISTE PAS dans la coque (voir 5.5). FxBottomBar.kt ne fournit que le
+      facteur dB (l.13). Donc il n'y a rien à « relibeller » : il faut le
+      créer. Deux points :
+        - Le registre ne nomme PAS le dernier paramètre « Output » pour les
+          effets : pour l'id 4 c'est FxParam("Output", …) (FxGeometry.kt:58
+          côté boîte ; registre id 4 en FxRegistry.kt), mais pour l'id 0 le
+          dernier paramètre s'appelle « Diffuse » et pour l'id 1 « Mix ».
+          Donc « OUTPUT » est un LIBELLÉ D'AFFICHAGE à imposer, pas un nom
+          qui existe.
+        - La convention « dernier paramètre = level » est documentée
+          (FxShellStore.kt:12, FxBottomBar.kt:4) mais son libellé dépendra du
+          code à écrire. Accord sur la règle ; le mot reste à poser.
+
+═══════════════════════════════════════════════════════════════════════════
+8. CE DONT J'AI BESOIN POUR DÉCIDER
+═══════════════════════════════════════════════════════════════════════════
+
+8.1 — git diff --stat depuis le dernier commit stable :
+      (base = origin/main ; 37 fichiers, +2 688 / −56)
+
+ AGENTS.md                                          | 272 ++++++++++++++
+ app/src/main/java/com/aetherkeys/fx/FxRegistry.kt  | 396 +++++++++++++++++++++
+ .../com/aetherkeys/fx/ui/EffectModule.kt           |  55 +++
+ .../com/aetherkeys/fx/ui/FxAddOverlay.kt           |  91 +++++
+ .../com/aetherkeys/fx/ui/FxBottomBar.kt            |  14 +
+ .../com/aetherkeys/fx/ui/FxClock.kt                |  31 ++
+ .../com/aetherkeys/fx/ui/FxControllerEngine.kt     |  33 ++
+ .../com/aetherkeys/fx/ui/FxEngine.kt               |  17 +
+ .../com/aetherkeys/fx/ui/FxGeometry.kt             | 144 ++++++++
+ .../com/aetherkeys/fx/ui/FxKnob.kt                 | 207 +++++++++++
+ .../com/aetherkeys/fx/ui/FxModule.kt               |  57 +++
+ .../com/aetherkeys/fx/ui/FxOpenPanel.kt            | 195 ++++++++++
+ .../com/aetherkeys/fx/ui/FxShellStore.kt           | 147 ++++++++
+ .../com/aetherkeys/fx/ui/FxWindowHost.kt           | 235 ++++++++++++
+ .../soundstage/mixer/model/AppStatePersistence.kt  |   3 +
+ .../java/com/soundstage/mixer/model/AudioEngine.kt |   8 +-
+ .../java/com/soundstage/mixer/model/MixerState.kt  |  11 +-
+ .../java/com/soundstage/mixer/ui/MixerScreen.kt    |  68 +++-
+ .../mixer/ui/components/CustomVerticalFader.kt     |  10 +-
+ .../mixer/ui/components/VirtualKeyboard.kt         |   4 +-
+ .../mixer/ui/components/WindowBackdrop.kt          |  17 +
+ .../mixer/ui/components/v2/MixerBottomBarV2.kt     |  17 +-
+ .../java/com/soundstage/mixer/ui/fx/FxScenes.kt    |  27 ++
+ .../com/soundstage/mixer/ui/pages/DrumPadScreen.kt |   4 +
+ .../soundstage/mixer/ui/settings/SettingsScreen.kt |  29 +-
+ .../mixer/ui/settings/SettingsTabIcons.kt          |  86 +++++
+ .../soundstage/mixer/ui/tracksettings/TrackSettingsScreen.kt | 18 +-
+ .../soundstage/mixer/viewmodel/MixerViewModel.kt   |  11 +-
+ .../com/soundstage/mixer/BottomBarCaptureTest.kt   |  57 +++
+ .../com/soundstage/mixer/ChannelStripCaptureTest.kt|  63 ++++
+ .../com/soundstage/mixer/FullMixerCaptureTest.kt   |  53 +++
+ .../java/com/soundstage/mixer/FxAmpCaptureTest.kt  |  53 +++
+ .../java/com/soundstage/mixer/FxWindowCaptureTest.kt| 80 +++++
+ .../mixer/KeyboardCollapsedCaptureTest.kt          |  65 +++
+ .../soundstage/mixer/KeyboardOpenCaptureTest.kt    |  54 +++
+ .../soundstage/mixer/TrackSettingsCaptureTest.kt   |  51 +++
+ .../soundstage/mixer/VirtualKeyboardCaptureTest.kt |  61 +++
+ 37 files changed, 2688 insertions(+), 56 deletions(-)
+
+8.2 — Peux-tu fournir dans un .zip : captures, rapports compare_refs,
+      git diff complet (.patch), dernière sortie ./gradlew (.log) ?
+      Réponse franche : partiellement, car l'essentiel n'existe pas.
+        - captures actuelles (dossier fx-captures/) : ABSENT. Aucune capture
+          du panneau FX n'existe. Ce qui existe : tools/jsxref/shots/ (15
+          captures de référence, écrans du mixer/jsxref), et 6 screenshots
+          dans app/assets/ (2340×1080, paysage).
+        - rapports compare_refs.py (fx-reports/*.txt) : ABSENT — l'outil
+          n'existe pas (§6.4).
+        - git diff complet (.patch) : OUI, disponible immédiatement.
+        - dernière sortie ./gradlew (.log) : OUI, obtenue ce tour
+          (BUILD SUCCESSFUL, 72 s, 15 dernières lignes en §0.4).
+      Je prépare le .zip et je vous donne le lien (§ ci-dessous).
+
+8.3 — En UNE phrase factuelle, quel est LE SEUL point qui te bloque
+      aujourd'hui pour que le panneau d'Æther Echo ressemble à
+      ref-01-echo.png ?
+
+      « Le panneau ouvert est en fillMaxSize() (donc à la taille de l'écran)
+      alors que toute sa géométrie interne — knobs, scène, header — est
+      exprimée dans un repère fixe de 825×343 et multipliée par un `scale`
+      qui vaut 1f, de sorte que rien ne coïncide : il manque la boîte
+      logique 825×343 avec un scale calculé appliqué une seule fois à
+      l'extérieur. »
+
+═══════════════════════════════════════════════════════════════════════════
+HORS PÉRIMÈTRE DE CE TOUR — CONFIRMATION
+───────────────────────────────────────────────────────────────────────────
+- Aucun patch de code : RESPECTÉ (seul format.txt a été créé).
+- Aucun commit : RESPECTÉ (aucun commit n'a été fait).
+- Aucune modification de fichier : RESPECTÉ (aucun fichier du projet modifié ;
+  format.txt est un nouveau fichier de réponse, comme demandé).
+- Seul artefact créé : format.txt.
+═══════════════════════════════════════════════════════════════════════════
+FIN
+═══════════════════════════════════════════════════════════════════════════

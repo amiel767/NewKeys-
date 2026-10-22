@@ -8,7 +8,16 @@ import com.soundstage.mixer.ui.theme.SoloAmber
 import com.soundstage.mixer.ui.components.VelocityConfig
 
 enum class ActivePopup {
-    NONE, DRUM_PAD, TONIC_PAD, NOTES, SCENE, EFFECTS, SOUNDFONT, STYLE, MIDI, TRACK_SETTINGS, VELOCITY_SETTINGS
+    NONE, DRUM_PAD, TONIC_PAD, NOTES, SCENE, EFFECTS, SOUNDFONT, STYLE, MIDI, TRACK_SETTINGS, VELOCITY_SETTINGS;
+
+    /**
+     * True for popups drawn as a centred floating window over the current page, which dim and
+     * blur the page behind them. Inline panels (keyboard bar, notes) are not windows.
+     */
+    fun isFloatingWindow(): Boolean = when (this) {
+        SOUNDFONT, EFFECTS, SCENE, TRACK_SETTINGS, VELOCITY_SETTINGS -> true
+        else -> false
+    }
 }
 
 enum class AppScreenPage {

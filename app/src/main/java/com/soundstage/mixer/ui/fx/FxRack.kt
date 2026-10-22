@@ -36,6 +36,8 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -45,7 +47,10 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.unit.dp
+import com.aetherkeys.fx.ui.FxMiniKnob
+import com.aetherkeys.fx.ui.KnobStyle
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.soundstage.mixer.fx.FxController
@@ -91,11 +96,13 @@ fun FxCard(
             .zIndex(if (lifted) 20f else 0f)
             .offset(y = dragY.dp)
             .graphicsLayer { alpha = if (lifted) 0.92f else 1f }
-            .clip(RoundedCornerShape(16.dp))
-            .background(CardBg)
-            .border(if (id >= 5 && selected) 1.dp else 1.dp,
-                if (id >= 5) Color(0x66E8C98A) else Color(0x12FFFFFF),
-                RoundedCornerShape(16.dp))
+            // Raised card: no outline, the lift comes from the drop shadow and a
+            // 1px inner highlight along the top edge (`.cd` in the reference uses
+            // `0 8px 16px #0008, inset 0 1px 0 #ffffff1c`). Selection is shown by
+            // the shadow's accent tint instead of a border.
+            // Raised card, no outline: the lift is the shadow below plus the edge
+            // sheen, and selection deepens the shadow instead of adding a border.
+            .raised(16.dp, if (selected) 13.dp else 8.dp, CardBg)
             .combinedClickable(onClick = { onClick() }, onLongClick = { onLongClick() })
             .pointerInput(id) {
                 detectVerticalDragGestures(
@@ -115,13 +122,30 @@ fun FxCard(
             fontFamily = FxFonts.ui, fontWeight = FontWeight.Bold, maxLines = 1)
         Text(info.name, color = Color(0xFFDFE4EE), fontSize = 20.sp,
             fontFamily = FxFonts.title(id), maxLines = 1)
+        // The scene is 825x343, so on a 136-wide tile it only fills a thin band and
+        // leaves the rest empty. The void is filled with the effect's own colour and
+        // the controls sit at the bottom of the mini display, sized to the effect: a
+        // 4-knob screen gets big knobs, a 21-knob one small ones.
+        val n = info.params.size
+        val dia = when {
+            n <= 4 -> 34.dp
+            n <= 6 -> 27.dp
+            n <= 9 -> 21.dp
+            else -> 16.dp
+        }
+        val gap = 5.dp
+        val fit = (((136.dp - 10.dp) + gap) / (dia + gap)).toInt().coerceAtLeast(1)
+        val shown = n.coerceAtMost(fit)
         Box(
             Modifier
                 .align(Alignment.CenterHorizontally)
                 .width(136.dp)
                 .height(160.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFF12161F)),
+                .background(Brush.verticalGradient(listOf(
+                    Color(0xFF12161F),
+                    accent.copy(alpha = 0.30f).compositeOver(Color(0xFF12161F)),
+                ))),
         ) {
             Canvas(Modifier.fillMaxSize()) {
                 val s = size.width / FxStyle.PWL
@@ -133,11 +157,35 @@ fun FxCard(
                     drawFxScene(id, values, t, tm, scene)
                 }
             }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(gap),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp),
+            ) {
+                repeat(shown) { i ->
+                    FxMiniKnob(
+                        value = values.getOrElse(i) { 0f },
+                        accent = accent,
+                        diameter = dia,
+                        style = KnobStyle.forEffect(id),
+                        gradientIndex = SKN[id] ?: id,
+                        light = (SKN[id] ?: id) in MINI_LIGHT,
+                    )
+                }
+                if (n > shown) {
+                    Text("+${n - shown}", color = Color(0xFF8D96AB), fontSize = 9.sp,
+                        fontFamily = FxFonts.ui, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                }
+            }
         }
-        Text("${info.params.size} knobs", color = Color(0xFF8D96AB), fontSize = 9.sp,
-            fontFamily = FxFonts.ui, fontWeight = FontWeight.SemiBold, maxLines = 1)
     }
 }
+
+/** `SKN` from the reference, used to pick the mini knobs' cap material. */
+private val SKN = mapOf(5 to 5, 6 to 6, 7 to 10, 8 to 11, 9 to 12, 10 to 7, 11 to 8, 12 to 13, 13 to 14, 14 to 9)
+
+/** `LIGHT=[1,3,4,8,10,11,12,13]`: dark bodies, indexed by cap material `kk`. */
+private val MINI_LIGHT = setOf(1, 3, 4, 8, 10, 11, 12, 13)
 
 /** One pill button of the window header. */
 @Composable
@@ -145,9 +193,7 @@ private fun HeaderButton(label: String, onClick: () -> Unit) {
     Box(
         Modifier
             .height(28.dp)
-            .clip(RoundedCornerShape(9.dp))
-            .background(HeaderBg)
-            .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(9.dp))
+            .raised(9.dp, 4.dp, HeaderBg)
             .clickable { onClick() }
             .padding(horizontal = 12.dp),
         contentAlignment = Alignment.Center,
@@ -325,9 +371,8 @@ fun FxAddPanel(
                         Box(
                             Modifier
                                 .width(180.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color(0x14FFFFFF))
-                                .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(10.dp))
+                                .raised(10.dp, 5.dp, Brush.verticalGradient(
+                                    listOf(Color(0x1AFFFFFF), Color(0x0DFFFFFF))))
                                 .clickable { onPick(fx.id) }
                                 .padding(10.dp),
                         ) {

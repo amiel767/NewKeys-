@@ -15,6 +15,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
@@ -33,6 +34,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -41,7 +44,6 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soundstage.mixer.model.ActivePopup
 import com.soundstage.mixer.model.AppScreenPage
-import com.soundstage.mixer.model.FxParameters
 import com.soundstage.mixer.ui.components.*
 import com.soundstage.mixer.ui.components.v2.MixerBackgroundV2
 import com.soundstage.mixer.ui.components.v2.ChannelStripV2
@@ -102,6 +104,11 @@ private fun MixerMainPageContent(
 ) {
 // Full-screen Studio Layout (No enclosing bento box, edge-to-edge layout)
 // Fond V2 (degrade + vignettes) : remplace MaterialTheme.colorScheme.background.
+                // Real height of the keyboard overlay at rest, published by onSizeChanged below.
+                // Only the resting height is latched so the expanded state keeps floating
+                // over the bottom bar exactly as before.
+                var keyboardRestHeight by remember { mutableStateOf(0.dp) }
+                val density = LocalDensity.current
                 MixerBackgroundV2 {
                     Box(
                         modifier = Modifier
@@ -468,7 +475,7 @@ private fun MixerMainPageContent(
                     onMasterVolumeChange = { vol -> viewModel.setTrackVolume(0, vol) },
                     onMasterFxClick = { viewModel.openEffectsForTrack(0) },
                     bpm = uiState.bpm,
-                    onBpmChange = { viewModel.setGlobalBpm(it) },
+                    onBpmStep = { viewModel.updateBpm(it) },
                     isSnapshotArmMode = uiState.isSnapshotArmMode,
                     onToggleSnapshotArm = { viewModel.toggleSnapshotArm() },
                     activeSnapshotSlot = uiState.activeSnapshotSlot,
@@ -488,12 +495,13 @@ private fun MixerMainPageContent(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                // 4. FIXED LAYOUT SLOT FOR RETRACTABLE PIANO (Exact fit with 5dp margin without overlapping)
-                val activePianoTracksCount = remember(uiState.tracks, uiState.visibleTracksCount) {
-                    uiState.tracks.take(uiState.visibleTracksCount.coerceIn(1, 8)).count { it.isEnabled }.coerceIn(1, 8)
-                }
-                val pianoRestStripHeight = (3.4f * activePianoTracksCount + 3f).dp.coerceIn(6.dp, 32.dp)
-                val targetKeyboardSlotHeight = if (isKeyboardVisible) 48.dp + pianoRestStripHeight + 11.dp else 0.dp
+                // 4. FIXED LAYOUT SLOT FOR RETRACTABLE PIANO
+                // The keyboard is an overlay anchored to the bottom, so the column
+                // must reserve its real measured height: a fixed estimate left the
+                // resting container ~10 dp over the bottom bar.
+                // A small breathing gap keeps the bar clear of the keyboard's top edge.
+                val keyboardGap = 6.dp
+                val targetKeyboardSlotHeight = if (isKeyboardVisible) keyboardRestHeight + keyboardGap else 0.dp
                 val keyboardHeight by animateDpAsState(
                     targetValue = targetKeyboardSlotHeight,
                     animationSpec = tween(300, easing = EaseOutExpo),
@@ -517,7 +525,7 @@ private fun MixerMainPageContent(
                         .background(Color(0x88000000))
                         .zIndex(60f)
                         .clickable(
-                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            interactionSource = remember { MutableInteractionSource() },
                             indication = null
                         ) {
                             viewModel.toggleKeyboardLayer()
@@ -543,14 +551,22 @@ private fun MixerMainPageContent(
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .padding(top = 5.dp)
+                    .onSizeChanged { size ->
+                        // Latch the resting height only: while the layer lines are folded
+                        // the overlay is at its lowest, which is the height the bottom bar
+                        // must sit above.
+                        if (!uiState.isKeyboardLayerExpanded && size.height > 0) {
+                            keyboardRestHeight = with(density) { size.height.toDp() }
+                        }
+                    }
                     .zIndex(100f)
             ) {
-                // Note names (app storage) <-> MIDI numbers (new UI) adapter, at the boundary only.
+                // Layer lines show the loaded soundfont, not the generic track name.
                 val vkbLines = remember(uiState.tracks, uiState.visibleTracksCount) {
                     activePianoTracks.map { t ->
                         KeyboardLine(
                             id = t.id.toString(),
-                            name = t.name,
+                            name = t.patchName.ifBlank { t.soundfontName.ifBlank { t.name } },
                             color = t.resolvedColor(),
                             low = t.splitNoteMin,
                             high = t.splitNoteMax
@@ -622,14 +638,6 @@ private fun MixerMainPageContent(
                 }
                 }
 
-
-
-/**
- * Switches the Effects popup to the ported Aether FX window. The legacy
- * EffectsDialog stays reachable until the new window is validated on device
- * (doc: remove the old FX once everything is implemented).
- */
-private const val FX_WINDOW_V2 = true
 
 
 @Composable
@@ -725,7 +733,14 @@ fun MixerScreen(
                 fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(220))
             },
             label = "screen_page_switch",
-            modifier = Modifier.fillMaxSize()
+            // Only the page content blurs: popup windows are siblings, so they stay crisp.
+            // Velocity settings keeps its previous heavier blur; the listed windows get a light one.
+            modifier = Modifier
+                .fillMaxSize()
+                .windowBackdropBlur(
+                    active = uiState.activePopup.isFloatingWindow(),
+                    radius = if (uiState.activePopup == ActivePopup.VELOCITY_SETTINGS) 18.dp else 2.5.dp
+                )
         ) { currentPage ->
             when (currentPage) {
                 AppScreenPage.PROJECTS, AppScreenPage.SETLISTS -> {
@@ -913,36 +928,23 @@ fun MixerScreen(
 
         when (uiState.activePopup) {
             ActivePopup.EFFECTS -> {
-                if (FX_WINDOW_V2) {
-                    val slotIdx = if (uiState.activeEffectTrackId == 0) null else uiState.activeEffectTrackId - 1
-                    val sfTrack = slotIdx?.let { uiState.tracks.getOrNull(it) }
-                    com.soundstage.mixer.ui.fx.FxOverlay(
-                        trackId = uiState.activeEffectTrackId,
-                        soundfontName = sfTrack?.soundfontName.orEmpty(),
-                        program = sfTrack?.program ?: 0,
-                        onClose = { viewModel.closePopup() },
-                        onChooseSoundfont = {
-                            if (uiState.activeEffectTrackId in 1..8) {
-                                viewModel.openSoundfontForSlot(uiState.activeEffectTrackId - 1)
-                            }
-                        },
-                        modifier = Modifier.fillMaxSize().zIndex(130f),
-                    )
-                } else {
-                    val fxParams = uiState.fxParameters[uiState.activeEffectTrackId] ?: FxParameters()
-                    val currentTrack = if (uiState.activeEffectTrackId == 0) uiState.masterTrack else uiState.tracks.find { it.id == uiState.activeEffectTrackId }
-                    EffectsDialog(
-                        trackId = uiState.activeEffectTrackId,
-                        track = currentTrack,
-                        fxParameters = fxParams,
-                        onUpdateFx = { transform -> viewModel.updateFxParameter(uiState.activeEffectTrackId, transform) },
-                        onSetReverbPreset = { viewModel.setTrackReverbPreset(uiState.activeEffectTrackId, it) },
-                        onSetVelocityCurve = { viewModel.setTrackVelocityCurve(uiState.activeEffectTrackId, it) },
-                        activeTab = uiState.activeFxTab,
-                        onTabChange = { viewModel.setFxTab(it) },
-                        onClose = { viewModel.closePopup() }
-                    )
-                }
+                // The Æther FX window is the only Effects surface. The legacy
+                // EffectsDialog is gone: FxOverlay renders FxWindowHost, the
+                // ported shell (rack, effect window, add panel).
+                val slotIdx = if (uiState.activeEffectTrackId == 0) null else uiState.activeEffectTrackId - 1
+                val sfTrack = slotIdx?.let { uiState.tracks.getOrNull(it) }
+                com.soundstage.mixer.ui.fx.FxOverlay(
+                    trackId = uiState.activeEffectTrackId,
+                    soundfontName = sfTrack?.soundfontName.orEmpty(),
+                    program = sfTrack?.program ?: 0,
+                    onClose = { viewModel.closePopup() },
+                    onChooseSoundfont = {
+                        if (uiState.activeEffectTrackId in 1..8) {
+                            viewModel.openSoundfontForSlot(uiState.activeEffectTrackId - 1)
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize().zIndex(130f),
+                )
             }
             ActivePopup.SOUNDFONT -> {
                 val slot = uiState.audioSlots.getOrNull(uiState.activeSoundfontSlotId)
@@ -1050,6 +1052,18 @@ fun MixerScreen(
             ActivePopup.TRACK_SETTINGS -> {
                 val targetTrack = uiState.tracks.find { it.id == uiState.activeTrackSettingsId }
                 if (targetTrack != null) {
+                    // Dimming scrim: taps outside the window dismiss it, and it swallows
+                    // every touch so nothing behind reacts.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color(0x66000000))
+                            .zIndex(119f)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { viewModel.closeTrackSettings() }
+                    )
                     val tsScreen = tsPage
                     val tsActions = remember(targetTrack.id) {
                         TrackSettingsActions(
@@ -1101,6 +1115,16 @@ fun MixerScreen(
             ActivePopup.VELOCITY_SETTINGS -> {
                 val targetTrack = uiState.tracks.find { it.id == uiState.activeTrackSettingsId }
                 if (targetTrack != null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color(0x66000000))
+                            .zIndex(119f)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { viewModel.closeTrackSettings() }
+                    )
                     VelocitySettingsDialog(
                         trackNumber = targetTrack.id,
                         soundName = if (targetTrack.patchName.isNotBlank()) targetTrack.patchName else if (targetTrack.soundfontName.isNotBlank()) targetTrack.soundfontName else "Default GM",

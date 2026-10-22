@@ -828,7 +828,7 @@ fun KeyboardThemeSwatch(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(5.dp)
     ) {
-        Canvas(Modifier.fillMaxWidth().height(30.dp)) {
+        Canvas(Modifier.fillMaxWidth().height(38.dp)) {
             val px = 1.dp.toPx()
             drawRoundRect(chrome.frame, cornerRadius = CornerRadius(6 * px)) // the frame is the same for every theme
             val pad = 4 * px
@@ -845,7 +845,7 @@ fun KeyboardThemeSwatch(
                 drawRoundRect(theme.blackMid, Offset(c - kw * 0.3f, pad), Size(kw * 0.6f, (size.height - pad * 2) * 0.58f), CornerRadius(1.5f * px))
             }
         }
-        Text(theme.name, color = Color(0xFFC9D2E2), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        Text(theme.name, color = Color(0xFFC9D2E2), fontSize = 8.sp, fontWeight = FontWeight.Bold, maxLines = 1)
     }
 }
 

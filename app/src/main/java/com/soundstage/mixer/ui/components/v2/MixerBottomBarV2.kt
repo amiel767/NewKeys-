@@ -60,7 +60,7 @@ fun MixerBottomBarV2(
     masterTrack: TrackChannel,
     onMasterVolumeChange: (Float) -> Unit,
     onMasterFxClick: () -> Unit,
-    bpm: Int, onBpmChange: (Int) -> Unit,
+    bpm: Int, onBpmStep: (Int) -> Unit,
     isSnapshotArmMode: Boolean, onToggleSnapshotArm: () -> Unit,
     activeSnapshotSlot: String?,
     snapshots: Map<String, SubSceneSnapshot>,
@@ -78,7 +78,7 @@ fun MixerBottomBarV2(
     // Name prompt shown when a snapshot is created (JSX-like flow).
     var namingSlotKey by remember { mutableStateOf<String?>(null) }
 
-    Row(modifier.height(40.dp), // -25% as asked (53 -> 40)
+    Row(modifier.height(46.dp), // +15% as asked (40 -> 46)
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)) {
 
@@ -88,7 +88,7 @@ fun MixerBottomBarV2(
             Row(Modifier.fillMaxSize().padding(horizontal = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically) {
-                RoundStepV2(size = 26.dp, onClick = { onBpmChange((bpm - 1).coerceIn(40, 240)) }) {
+                RoundStepV2(size = 26.dp, onClick = { onBpmStep(-1) }) {
                     Text("−", color = TextMain, fontSize = 11.2.sp, fontWeight = FontWeight.Bold)
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -97,7 +97,7 @@ fun MixerBottomBarV2(
                     Text("BPM", color = TextDim, fontSize = 6.4.sp, fontWeight = FontWeight.ExtraBold,
                         letterSpacing = 1.3.sp, lineHeight = 9.sp)
                 }
-                RoundStepV2(size = 26.dp, onClick = { onBpmChange((bpm + 1).coerceIn(40, 240)) }) {
+                RoundStepV2(size = 26.dp, onClick = { onBpmStep(+1) }) {
                     Text("+", color = TextMain, fontSize = 11.2.sp, fontWeight = FontWeight.Bold)
                 }
             }
@@ -247,8 +247,10 @@ private fun SnapshotCaseV2(
         animationSpec = if (dragY > 0f) tween(0) else spring(0.6f, 500f), label = "snapY")
     val isSwiping = dragY > 30f
 
-    // A custom name replaces the SNAPSHOT/number stack; the raw default keeps it.
-    val custom = displayName != "Default" && !displayName.matches(Regex("^Snapshot\\s+\\d+$"))
+    // Default is the app's own slot: it shows only its name, never the
+    // SNAPSHOT/number stack (the stack is for the user's numbered snapshots).
+    val isDefaultSlot = key == "slot_default"
+    val custom = isDefaultSlot || (displayName != "Default" && !displayName.matches(Regex("^Snapshot\\s+\\d+$")))
 
     val shape = RoundedCornerShape(14.dp)
     MixerModuleV2(
@@ -332,6 +334,9 @@ private fun MasterSliderV2(
         animationSpec = spring(dampingRatio = 0.9f, stiffness = 900f), label = "thumbPos")
 
     Row(Modifier.fillMaxSize().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        // The FX button on the right reserves 6 + 30 dp; matching it on the left
+        // keeps the rail centred in the case (user request, deviates from the JSX).
+        Spacer(Modifier.width(36.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
             Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
                 Text("MASTER", color = TextDim, fontSize = 7.2.sp, fontWeight = FontWeight.ExtraBold,

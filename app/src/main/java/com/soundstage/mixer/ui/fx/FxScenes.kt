@@ -24,12 +24,14 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.abs
@@ -66,6 +68,28 @@ object FxStyle {
     /** Rail material per instrument id, from `RS` in the preview. */
     data class Rail(val bgTop: Color, val bgBottom: Color, val line: Color, val tx: Color, val pattern: String)
 
+    /**
+     * True when the instrument draws the bottom rail. `RS` in the preview has no
+     * entry for 10 (amp) and 11 (bass): they carry a regular "Level" knob
+     * (FxKnobBoxes) and fill the panel to the bottom, so calling `rail()` for
+     * every id >= 5 drew a second, wrong LEVEL slider under those two.
+     */
+    fun hasRail(id: Int): Boolean = id == 5 || id == 6 || id == 7 || id == 8 ||
+        id == 9 || id == 12 || id == 13 || id == 14
+
+    /**
+     * Parameter index driven by the rail's LEVEL slider, from the
+     * `rail(x, v[n], id)` calls in the preview. It differs per instrument: the
+     * slider is not always the last parameter (piano uses v[8], organ v[30]…).
+     */
+    fun railLevelIndex(id: Int): Int = when (id) {
+        6 -> 30
+        8 -> 9
+        9 -> 10
+        14 -> 31
+        else -> 8
+    }
+
     fun rail(id: Int): Rail = when (id) {
         6 -> Rail(Color(0xFF4A2A16), Color(0xFF1A0D07), Color(0xFFD9C08A), Color(0xFFF3E6CC), "wood")
         7 -> Rail(Color(0xFF2A1810), Color(0xFF0E0806), Color(0xFFE0A45A), Color(0xFFF4E4D0), "copper")
@@ -96,6 +120,33 @@ private val knobLayout: Map<Int, List<FxKnobSpec>> = buildMap {
     put(4, listOf(FxKnobSpec(0, 125f, 128f, 136f), FxKnobSpec(1, 262f, 78f, 76f),
                   FxKnobSpec(2, 262f, 196f, 50f), FxKnobSpec(3, 340f, 196f, 50f),
                   FxKnobSpec(4, 340f, 70f, 50f), FxKnobSpec(5, 735f, 128f, 62f)))
+    // Effects 5..14, from the `AB(id,param,x,y,z)` calls in the reference BODY table.
+    // Positions are window coordinates (the -OXL/-OYL translate), sizes are the
+    // knob diameter `z` — not the wider label box from fx_layout_spec.json.
+    put(5, listOf(FxKnobSpec(5, 150f, 252f, 42f), FxKnobSpec(6, 290f, 252f, 42f), FxKnobSpec(7, 430f, 252f, 42f)))
+    put(6, listOf(FxKnobSpec(26, 742f, 106f, 40f), FxKnobSpec(27, 150f, 252f, 42f),
+                  FxKnobSpec(28, 290f, 252f, 42f), FxKnobSpec(29, 430f, 252f, 42f)))
+    put(7, listOf(FxKnobSpec(5, 150f, 252f, 42f), FxKnobSpec(6, 290f, 252f, 42f), FxKnobSpec(7, 430f, 252f, 42f)))
+    put(8, listOf(FxKnobSpec(5, 96f, 176f, 40f), FxKnobSpec(4, 212f, 176f, 40f), FxKnobSpec(3, 389f, 168f, 62f),
+                  FxKnobSpec(2, 566f, 176f, 40f), FxKnobSpec(0, 680f, 176f, 40f), FxKnobSpec(1, 756f, 176f, 40f),
+                  FxKnobSpec(6, 150f, 252f, 42f), FxKnobSpec(7, 290f, 252f, 42f), FxKnobSpec(8, 430f, 252f, 42f)))
+    put(9, listOf(FxKnobSpec(7, 150f, 252f, 42f), FxKnobSpec(8, 290f, 252f, 42f), FxKnobSpec(9, 430f, 252f, 42f)))
+    // Effect 10 (Aether Amp): AB(10,j,70+j*80,86,46) for j=0..5, plus Level (param 11)
+    // at AB(10,11,730,86,46). Params 6..10 are scene hotspots, not DOM knobs.
+    put(10, (0..5).map { j -> FxKnobSpec(j, 70f + j * 80f, 86f, 46f) } + FxKnobSpec(11, 730f, 86f, 46f))
+    put(11, listOf(FxKnobSpec(0, 330f, 72f, 44f), FxKnobSpec(1, 400f, 72f, 44f),
+                   FxKnobSpec(2, 470f, 72f, 44f), FxKnobSpec(9, 730f, 206f, 46f)))
+    put(12, listOf(FxKnobSpec(5, 150f, 252f, 42f), FxKnobSpec(6, 290f, 252f, 42f), FxKnobSpec(7, 430f, 252f, 42f)))
+    put(13, listOf(FxKnobSpec(2, 70f, 56f, 44f), FxKnobSpec(3, 70f, 150f, 44f), FxKnobSpec(4, 700f, 60f, 44f),
+                   FxKnobSpec(5, 150f, 252f, 42f), FxKnobSpec(6, 290f, 252f, 42f), FxKnobSpec(7, 430f, 252f, 42f)))
+    put(14, listOf(FxKnobSpec(0, 45f, 102f, 40f), FxKnobSpec(1, 125f, 102f, 40f), FxKnobSpec(2, 205f, 102f, 40f),
+                   FxKnobSpec(3, 45f, 170f, 40f), FxKnobSpec(4, 125f, 170f, 40f), FxKnobSpec(5, 205f, 170f, 40f),
+                   FxKnobSpec(9, 630f, 64f, 40f), FxKnobSpec(10, 700f, 64f, 40f), FxKnobSpec(6, 764f, 64f, 40f),
+                   FxKnobSpec(16, 50f, 128f, 40f), FxKnobSpec(17, 130f, 128f, 40f),
+                   FxKnobSpec(20, 290f, 128f, 40f), FxKnobSpec(21, 370f, 128f, 40f),
+                   FxKnobSpec(25, 650f, 176f, 40f), FxKnobSpec(27, 60f, 104f, 44f), FxKnobSpec(28, 140f, 104f, 44f),
+                   FxKnobSpec(29, 220f, 104f, 44f), FxKnobSpec(30, 300f, 104f, 44f),
+                   FxKnobSpec(22, 150f, 252f, 42f), FxKnobSpec(23, 290f, 252f, 42f), FxKnobSpec(24, 430f, 252f, 42f)))
 }
 
 fun knobsFor(effectId: Int): List<FxKnobSpec> = knobLayout[effectId] ?: emptyList()
@@ -131,37 +182,264 @@ private fun DrawScope.oval(cx: Float, cy: Float, rx: Float, ry: Float, rot: Floa
 }
 
 private fun DrawScope.label(tm: TextMeasurer, text: String, cx: Float, cy: Float,
-                            color: Color, sp: Float, bold: Boolean = false) {
+                            color: Color, sp: Float, bold: Boolean = false,
+                            align: LabelAlign = LabelAlign.CENTER) {
+    // Measured at density 1 on purpose: the scene canvas is already scaled by the
+    // display density (`scale(d, d)` in FxOpenPanel/RackCard), so a `sp` resolved at
+    // the real density was multiplied by it a second time — every scene label came
+    // out 2.75x too large on a 440dpi device. At density 1 the `sp` is 1:1 with the
+    // scene's logical units, which is what the preview's `9px` means.
     val layout = tm.measure(text, style = TextStyle(color = color, fontSize = sp.sp,
         fontFamily = FxFonts.mono,
-        fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal))
-    drawText(layout, topLeft = Offset(cx - layout.size.width / 2f, cy - layout.size.height / 2f))
+        fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal),
+        density = Density(1f, 1f))
+    val x = when (align) {
+        LabelAlign.CENTER -> cx - layout.size.width / 2f
+        LabelAlign.LEFT -> cx
+        LabelAlign.RIGHT -> cx - layout.size.width
+    }
+    drawText(layout, topLeft = Offset(x, cy - layout.size.height / 2f))
 }
+
+/** `textAlign` of a canvas `fillText`. */
+enum class LabelAlign { LEFT, CENTER, RIGHT }
 
 // ---------------------------------------------------------------------------
 // Scenes, ported 1:1 from the preview functions of the same name.
 // ---------------------------------------------------------------------------
 
-/** Shared full-window background (preview `bg()`), effects 0..4 only. */
-private fun DrawScope.bg(t: Float, accent: Color) {
+/**
+ * Per-effect panel background, from the `.xN` rules of `fx-window-preview.html`.
+ * The effects 0..4 are painted by `bg()`; the instruments (5..14) are painted by
+ * their own scene functions. `.x2` is declared twice in the reference (a slate
+ * grid at line 54, a red amp face at line 104) and the later rule wins in CSS:
+ * ref-02-prism-tone.png samples (180,26,43), so the red face is the one to keep.
+ */
+internal val PANEL_BG: Map<Int, Color> = mapOf(
+    0 to Color(0xFF0F1120),
+    1 to Color(0xFF1F1B14),
+    2 to Color(0xFF93111F),
+    3 to Color(0xFF23262C),
+    4 to Color(0xFFD6CDB9),
+    10 to Color(0xFF0A0806),
+    11 to Color(0xFF0A0806),
+    12 to Color(0xFF0A0806),
+    13 to Color(0xFF05040C),
+    14 to Color(0xFF04060C),
+)
+
+/**
+ * Per-effect text colour, from the `color` of the same `.xN` rule that gives the
+ * panel its background. The port had `#DFE4EE` / `#E6EAF3` hard-coded for every
+ * readout, so solar (`.x4`, background `#efe9db`) painted cream text on cream and
+ * the page looked empty. `.x4` declares `#2a241b`; ids 7/8/9 have no rule of their
+ * own and fall back to the `#st` colour the preview inherits from `body`.
+ */
+internal val PANEL_TEXT: Map<Int, Color> = mapOf(
+    0 to Color(0xFFE7E3F6),
+    1 to Color(0xFFF0E4C8),
+    2 to Color(0xFFFFF1EA),   // the later `.x2` rule (red face) wins over the first
+    3 to Color(0xFFE3E8F0),
+    4 to Color(0xFF2A241B),
+    5 to Color(0xFFF3E6CC),
+    6 to Color(0xFFF3E6CC),
+    10 to Color(0xFFF3E6CC),
+    11 to Color(0xFFF3E6CC),
+    12 to Color(0xFFF3E6CC),
+    13 to Color(0xFFE8E4FF),
+    14 to Color(0xFFE0F2FF),
+)
+
+/** Text colour of [effectId]'s panel, or the `body` colour for the ids without a rule. */
+fun fxPanelText(effectId: Int): Color = PANEL_TEXT[effectId] ?: Color(0xFFE6EAF3)
+
+/**
+ * Panel background for [effectId] as the `.xN` rule declares it. Those rules are
+ * gradients, not flat colours — `.x1` is `linear-gradient(#41382a,#1f1b14)` — so a
+ * single colour renders too dark and flat. Top and bottom are sampled from the
+ * references; the accent overlay (`.x0`, `.x2`) is left to `bg()`.
+ */
+internal val PANEL_BG_GRADIENT: Map<Int, Pair<Color, Color>> = mapOf(
+    // `.x0` is a flat #0f1120 under two radial washes; the washes live in `bg()`
+    // because a single Brush cannot stack a radial over a linear.
+    0 to (Color(0xFF0F1120) to Color(0xFF0F1120)),
+    1 to (Color(0xFF41382A) to Color(0xFF1F1B14)),
+    2 to (Color(0xFFC4182C) to Color(0xFF5A0A14)),
+    3 to (Color(0xFF3F444D) to Color(0xFF23262C)),
+    4 to (Color(0xFFEFE9DB) to Color(0xFFD6CDB9)),
+    // `.x5`/`.x6` are a flat #120a06.
+    5 to (Color(0xFF120A06) to Color(0xFF120A06)),
+    6 to (Color(0xFF120A06) to Color(0xFF120A06)),
+    // 7, 8 and 9 have no `.xN` rule at all, so they keep `#win`'s own gradient.
+    7 to (Color(0xFF1F2635) to Color(0xFF131925)),
+    8 to (Color(0xFF1F2635) to Color(0xFF131925)),
+    9 to (Color(0xFF1F2635) to Color(0xFF131925)),
+    10 to (Color(0xFF0A0806) to Color(0xFF0A0806)),
+    11 to (Color(0xFF0A0806) to Color(0xFF0A0806)),
+    12 to (Color(0xFF0A0806) to Color(0xFF0A0806)),
+    13 to (Color(0xFF05040C) to Color(0xFF05040C)),
+    14 to (Color(0xFF04060C) to Color(0xFF04060C)),
+)
+
+/** Vertical gradient of the panel, or null for an unknown id (shared fallback). */
+fun fxPanelGradient(effectId: Int): Pair<Color, Color>? = PANEL_BG_GRADIENT[effectId]
+
+/** Base colour of the panel for [effectId], from its `.xN` rule; the shared
+ * gradient is the fallback. The scene canvas does not cover the whole window, so
+ * the host needs the same colour to paint the surrounding band. */
+fun fxPanelBackground(effectId: Int): Color =
+    fxPanelGradient(effectId)?.first ?: Color(0xFF171C28)
+
+/** Panel background as a brush, used both by the host (whole window) and by the
+ * scene (`bg()`), so the two agree. */
+@Composable
+fun fxPanelBrush(effectId: Int): Brush {
+    val g = fxPanelGradient(effectId)
+    return if (g != null) Brush.verticalGradient(listOf(g.first, g.second))
+    else Brush.verticalGradient(listOf(Color(0xFF171C28), Color(0xFF0B0E16)))
+}
+
+
+/**
+ * A CSS `radial-gradient(<rx> <ry> at <cx> <cy>, colour, transparent <stop>)`.
+ * Compose only has circular radial gradients, so the circle is drawn with radius
+ * [rx] inside a space scaled on Y by `ry/rx`: a circle of radius rx becomes an
+ * ellipse with radii (rx, ry). Skipping the scale made every wash reach too far
+ * sideways at mid-height (the reference ellipse is 110% wide but only 90% tall).
+ */
+private fun DrawScope.radialWash(
+    cx: Float, cy: Float, rx: Float, ry: Float, color: Color, stop: Float,
+) {
+    scale(1f, ry / rx, pivot = Offset(cx, cy)) {
+        drawCircle(
+            brush = Brush.radialGradient(
+                colorStops = arrayOf(0f to color, stop to color.copy(alpha = 0f),
+                    1f to color.copy(alpha = 0f)),
+                center = Offset(cx, cy),
+                radius = rx,
+            ),
+            radius = rx, center = Offset(cx, cy),
+        )
+    }
+}
+
+
+/**
+ * A CSS `linear-gradient(<deg>, ...)` over the box (x0, y0, w, h). CSS angles run
+ * clockwise from "to top", so the direction is `(sin a, -cos a)` and the line is
+ * `|w·sin a| + |h·cos a|` long. Hand-picking a start/end pair for 160deg put the
+ * ramp almost horizontal, which washed the header of effect 2 out.
+ */
+private fun cssLinearGradient(
+    x0: Float, y0: Float, w: Float, h: Float, deg: Float, colors: List<Color>,
+): Brush {
+    val a = Math.toRadians(deg.toDouble())
+    val dx = sin(a).toFloat()
+    val dy = -cos(a).toFloat()
+    val len = abs(w * dx) + abs(h * dy)
+    val cx = x0 + w / 2f
+    val cy = y0 + h / 2f
+    return Brush.linearGradient(
+        colors,
+        start = Offset(cx - dx * len / 2f, cy - dy * len / 2f),
+        end = Offset(cx + dx * len / 2f, cy + dy * len / 2f),
+    )
+}
+
+private fun DrawScope.bg(effectId: Int, v: FloatArray, t: Float, accent: Color) {
+    val X0 = -FxStyle.OXL
+    val Y0 = -FxStyle.OYL
     val w = FxStyle.PWL
     val h = FxStyle.PHL
-    drawRect(
-        brush = Brush.linearGradient(listOf(Color(0xFF171C28), Color(0xFF0B0E16)),
-            start = Offset(0f, -FxStyle.OYL), end = Offset(0f, h)),
-        topLeft = Offset(-FxStyle.OXL, -FxStyle.OYL), size = Size(w, h),
-    )
-    for (q in 0 until 70) {
-        val a = 0.2f + 0.5f * abs(sin(t * 1.3f + q))
-        val x = -FxStyle.OXL + (sin(q * 91.7f) * 0.5f + 0.5f) * w
-        val y = -FxStyle.OYL + (sin(q * 47.3f) * 0.5f + 0.5f) * h
-        drawRect(Color.White.copy(alpha = a), topLeft = Offset(x, y), size = Size(1.2f, 1.2f))
+
+    // `bg(i,x,t,v,a)` only draws for effects 0 and 1. Everything else is the `.xN`
+    // CSS rule on the canvas, which covers the whole window.
+    if (effectId == 0) {
+        radialWash(X0 + w * 0.12f, Y0, 1.10f * w, 0.90f * h, Color(0xFF2B2C58), 0.60f)
+        radialWash(X0 + w, Y0 + h, 0.90f * w, 0.70f * h, Color(0xFF1C3B4A), 0.55f)
+        // The four specks are CSS `radial-gradient(1.2px 1.2px at ...)` layers, not
+        // a starfield: exactly four, at fixed positions, never animated. The old
+        // loop drew 70 twinkling dots for every effect, which the reference has
+        // nowhere.
+        listOf(
+            0.12f to 0.22f to 1.2f, 0.58f to 0.12f to 1.0f,
+            0.86f to 0.40f to 1.4f, 0.38f to 0.80f to 1.0f,
+        ).forEach { (p, r) ->
+            drawCircle(Color(0xE6FFFFFF), radius = r, center = Offset(X0 + w * p.first, Y0 + h * p.second))
+        }
+        // `bg(0,...)`: a soft glow around the orb, driven by the damp and the mix.
+        // The reference is `hsla(268-v[3]*75,45%,30%,.18+.35*v[5])`: a dark, low
+        // saturation purple, not the screen accent. Using the accent at the same
+        // alpha washed the whole corner out, +12 per channel.
+        val mix = v.getOrElse(5) { 0f }
+        val damp = v.getOrElse(3) { 0f }
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(hsl(268f - damp * 75f, 0.45f, 0.30f).copy(alpha = 0.18f + 0.35f * mix),
+                    Color.Transparent),
+                center = Offset(389f, 114f),
+                radius = 520f,
+            ),
+            radius = 520f, center = Offset(389f, 114f),
+        )
     }
-    drawCircle(
-        brush = Brush.radialGradient(listOf(accent.copy(alpha = 0.12f), Color.Transparent),
-            center = Offset(w * 0.5f, 100f), radius = 320f),
-        radius = 320f, center = Offset(w * 0.5f, 100f),
-    )
+
+    if (effectId == 1) {
+        // `.x1` base: `linear-gradient(#41382a,#1f1b14)` with hairline stripes.
+        drawRect(
+            brush = Brush.verticalGradient(listOf(Color(0xFF41382A), Color(0xFF1F1B14)), startY = Y0, endY = Y0 + h),
+            topLeft = Offset(X0, Y0), size = Size(w, h),
+        )
+        var x = X0
+        while (x < X0 + w) {
+            drawRect(Color(0x08FFFFFF), topLeft = Offset(x, Y0), size = Size(1f, h))
+            x += 3f
+        }
+        // `bg(1,...)`: four expanding rings and two wave lines.
+        val fb = 0.2f + 0.8f * v.getOrElse(8) { 0f }
+        for (k in 0 until 4) {
+            val u = (t * 0.22f + k / 4f) % 1f
+            drawCircle(accent.copy(alpha = (1f - u) * 0.2f * fb), radius = 20f + u * 640f,
+                center = Offset(95f, 80f), style = Stroke(width = 1.5f))
+        }
+        for (r in 0 until 2) {
+            val path = Path()
+            var q = X0
+            var first = true
+            while (q <= X0 + w) {
+                val y = (if (r == 1) Y0 + h - 22f else Y0 + 20f) +
+                    sin(q * 0.02f + t * (1f + v.getOrElse(10) { 0f } * 3f) + r * 2f) * (4f + v.getOrElse(10) { 0f } * 10f)
+                if (first) { path.moveTo(q, y); first = false } else path.lineTo(q, y)
+                q += 8f
+            }
+            drawPath(path, accent.copy(alpha = 0.18f), style = Stroke(width = 1f))
+        }
+    }
+
+    if (effectId == 2) {
+        // The second `.x2` rule wins over the first: a 160deg three-stop ramp, with
+        // 1px vertical stripes on a 3px pitch over it. Drawn here rather than as the
+        // host brush because a Brush cannot stack a repeating pattern on a ramp.
+        drawRect(
+            brush = cssLinearGradient(X0, Y0, w, h, 160f,
+                listOf(Color(0xFFC4182C), Color(0xFF93111F), Color(0xFF5A0A14))),
+            topLeft = Offset(X0, Y0), size = Size(w, h),
+        )
+        var sx = X0
+        while (sx < X0 + w) {
+            drawRect(Color(0x07FFFFFF), topLeft = Offset(sx, Y0), size = Size(1f, h))
+            sx += 3f
+        }
+        // `#ff8a8a33` in the preview: alpha 0x33, not full. A full-alpha wash here
+        // over-brightened the whole top band — measured (215,93,101) against the
+        // reference's (188,55,70).
+        radialWash(X0 + w * 0.18f, Y0 - 0.10f * h, 1.30f * w, 0.70f * h, Color(0x33FF8A8A), 0.60f)
+    }
+
+    if (effectId == 3) {
+        // `.x3`: `box-shadow:inset 0 2px 0 #ffffff22`, a 2 px highlight along the top.
+        drawRect(Color(0x22FFFFFF), topLeft = Offset(X0, Y0), size = Size(w, 2f))
+    }
 }
 
 private fun DrawScope.sceneOrb(v: FloatArray, a: Color, t: Float) {
@@ -170,6 +448,15 @@ private fun DrawScope.sceneOrb(v: FloatArray, a: Color, t: Float) {
     val sz = v[0]; val dc = v[1]; val pd = v[2]; val dm = v[3]; val wd = v[4]; val mx = v[5]; val df = v[6]
     val r = 40f * (0.7f + sz * 0.8f) * (1f + 0.03f * sin(t * 2f))
     val col = hsl(268f - dm * 75f, 0.48f, 0.74f)
+    // `for(let q=0;q<70;q++)`: the starfield. Seventy 1.2 px dots at fixed hashed
+    // positions, each twinkling on its own phase. The port had none, so the reverb
+    // read as a bare orb on a flat field.
+    for (q in 0 until 70) {
+        val sx = -FxStyle.OXL + (sin(q * 91.7f) * 0.5f + 0.5f) * FxStyle.PWL
+        val sy = -FxStyle.OYL + (sin(q * 47.3f) * 0.5f + 0.5f) * FxStyle.PHL
+        drawRect(Color.White.copy(alpha = 0.2f + 0.5f * abs(sin(t * 1.3f + q))),
+            topLeft = Offset(sx, sy), size = Size(1.2f, 1.2f))
+    }
     for (w in 0 until 3) {
         val u = (t * (0.12f + sz * 0.2f) + w / 3f) % 1f
         if (u < pd * 0.4f) continue
@@ -228,19 +515,26 @@ private fun DrawScope.sceneEcho(v: FloatArray, a: Color, t: Float) {
     val px0 = 190f; val pw = 400f; val py0 = 18f; val ph = 218f; val pb = py0 + ph
     val rr = 62f
     val sp = 1.7f - (v[0] + v[2] + v[4] + v[6]) / 4f * 1.3f
+    // The whole wheel — gradient disc, the six ports and the hub — is drawn inside
+    // the wheel's own rotation. Drawing the ports in a separate rotate block left
+    // them at absolute angles while the reference spins them with the disc, which
+    // was most of the 10.8/255 error on the wheel.
+    val wheelGrad = Brush.linearGradient(
+        colorStops = arrayOf(0f to Color(0xFFE8D2A0), 0.40f to Color(0xFF7D6335),
+            0.70f to Color(0xFFD9BF86), 1f to Color(0xFF5F4A28)),
+        start = Offset(95f - rr, 80f - rr), end = Offset(95f + rr, 80f + rr),
+    )
     rotate((t * sp + sin(t * 6f) * v[10] * 0.1f) * 57.29578f, pivot = Offset(95f, 80f)) {
-        drawCircle(brush = Brush.linearGradient(
-            listOf(Color(0xFFE8D2A0), Color(0xFF7D6335), Color(0xFFD9BF86), Color(0xFF5F4A28)),
-            start = Offset(95f - rr, 80f - rr), end = Offset(95f + rr, 80f + rr)),
-            radius = rr, center = Offset(95f, 80f))
-    }
-    for (k in 0 until 6) {
-        rotate(k * 60f, pivot = Offset(95f, 80f)) {
-            drawOval(Color(0xFF14110C), topLeft = Offset(95f + rr * 0.29f, 80f - rr * 0.17f),
-                size = Size(rr * 0.52f, rr * 0.34f))
+        drawCircle(brush = wheelGrad, radius = rr, center = Offset(95f, 80f))
+        for (k in 0 until 6) {
+            rotate(k * 60f, pivot = Offset(95f, 80f)) {
+                drawOval(Color(0xFF14110C), topLeft = Offset(95f + rr * 0.29f, 80f - rr * 0.17f),
+                    size = Size(rr * 0.52f, rr * 0.34f))
+            }
         }
+        // The hub reuses the disc gradient, not a flat dark fill.
+        drawCircle(brush = wheelGrad, radius = rr * 0.22f, center = Offset(95f, 80f))
     }
-    drawCircle(Color(0xFF14110C), radius = rr * 0.22f, center = Offset(95f, 80f))
     drawCircle(brush = Brush.radialGradient(listOf(Color(0x55FFFFFF), Color.Transparent),
         center = Offset(95f - rr * 0.4f, 80f - rr * 0.45f), radius = rr * 1.2f),
         radius = rr, center = Offset(95f, 80f))
@@ -344,6 +638,25 @@ private fun DrawScope.sceneEq(v: FloatArray, t: Float, tm: TextMeasurer) {
     for ((q, f) in listOf("100" to 0.3f, "1k" to 0.6f, "10k" to 0.9f)) {
         label(tm, q, x0 + f * wd, y0 + hh + 16f, Color(0xBFFFE9E2), 9f)
     }
+    // Left axis: the preview draws `+12 / 0 / -12` right-aligned at x0-9. The port
+    // had no vertical scale at all, so the curve's dB range was unreadable.
+    for ((q, f) in listOf("+12" to 0f, "0" to 0.5f, "-12" to 1f)) {
+        label(tm, q, x0 - 9f, y0 + hh * f + (if (f != 0f) 3f else 9f),
+            Color(0xBFFFE9E2), 9f, align = LabelAlign.RIGHT)
+    }
+    // `L`/`M`/`H` inside each band dot, and the per-band readout at the top left of
+    // the curve: `LOW 200 Hz +0.0 dB`. Both were missing from the port.
+    for ((b, fg) in listOf(0 to (0 to 1), 1 to (2 to 3), 2 to (5 to 6))) {
+        val nx = x0 + v[fg.first] * wd
+        val ny = y0 + (1f - v[fg.second]) * hh
+        label(tm, "LMH"[b].toString(), nx, ny + 3.2f, Color(0xFF1A0508), 9f, bold = true)
+        val hz = 20f * 1000f.pow(v[fg.first])
+        val gd = (v[fg.second] - 0.5f) * 24f
+        val hzTxt = if (hz >= 1000f) "%.1f kHz".format(hz / 1000f) else "${hz.roundToInt()} Hz"
+        val gdTxt = (if (gd >= 0f) "+" else "") + "%.1f dB".format(gd)
+        label(tm, "${listOf("LOW", "MID", "HIGH")[b]}  $hzTxt  $gdTxt",
+            x0 + 12f, y0 + 12f, Color(0xFFFFE9E2), 10f, align = LabelAlign.LEFT)
+    }
     for (b in 0 until 3) {
         val fg = listOf(0 to 1, 2 to 3, 5 to 6)[b]
         val nx = x0 + v[fg.first] * wd
@@ -354,6 +667,37 @@ private fun DrawScope.sceneEq(v: FloatArray, t: Float, tm: TextMeasurer) {
                    if (up) Color(0xFF6A0B18) else Color(0xFF124A6A)),
             center = Offset(nx - 3.8f, ny - 4.4f), radius = 11f),
             radius = 11f, center = Offset(nx, ny))
+    }
+
+    // `if(!m)`: the OUT fader at the far right of the curve. The port had no fader
+    // at all — `sceneEq` stopped at the band dots — so prism-tone rendered with a
+    // bare right edge. Geometry and colours are the preview's `eq()` block.
+    run {
+        val fx = 752f; val ty = 26f; val by = 232f
+        val th = ty + (1f - v[7]) * (by - ty)
+        drawPath(rrect(fx - 4f, ty - 6f, 8f, by - ty + 12f, 4f), color = Color(0x66000000))
+        drawPath(rrect(fx - 2f, th, 4f, by - th, 2f), brush = Brush.linearGradient(
+            listOf(Color(0xFFFFE9E2), Color(0xFFFFB9A8)),
+            start = Offset(0f, th), end = Offset(0f, by)))
+        // The preview saves/restores a `shadowColor '#000a', shadowBlur 7,
+        // shadowOffsetY 4` around the cap. A blurred shadow is not a band: it
+        // spreads sideways past the object as well as downwards, and it is darkest
+        // right under the bottom edge. An earlier attempt used a 34 px wide rrect
+        // with a vertical ramp, which kept hard vertical sides and read as an
+        // invisible outline around the handle. This is an elliptical penumbra
+        // centred below the cap, wider than the cap itself, fading out in every
+        // direction: a radial gradient drawn into an oval bounds.
+        drawOval(
+            brush = Brush.radialGradient(
+                listOf(Color(0x8A000000), Color(0x5E000000), Color(0x2E000000), Color(0x00000000)),
+                center = Offset(fx, th + 15f), radius = 24f),
+            topLeft = Offset(fx - 24f, th + 6f), size = Size(48f, 18f))
+        drawPath(rrect(fx - 15f, th - 11f, 30f, 22f, 5f), brush = Brush.linearGradient(
+            listOf(Color(0xFFF4F0EA), Color(0xFFA39B95), Color(0xFF5C5550)),
+            start = Offset(0f, th - 11f), end = Offset(0f, th + 11f)))
+        drawRect(Color(0xFF2A0C10), topLeft = Offset(fx - 10f, th - 1f), size = Size(20f, 2f))
+        label(tm, "OUT", fx, ty - 12f, Color(0xFFFFE9E2), 9f)
+        label(tm, "%.1f dB".format((v[7] - 0.5f) * 24f), fx, by + 20f, Color(0xFFFFE9E2), 9f)
     }
 }
 
@@ -581,7 +925,7 @@ fun FxKnob(value: Float, accent: Color, default: Float, sizeDp: Float, onValue: 
 /** Draws the scene for [effectId] at the given animation time. */
 fun DrawScope.drawFxScene(effectId: Int, values: FloatArray, t: Float, tm: TextMeasurer, st: FxSceneState) {
     val accent = FxStyle.accent(effectId)
-    if (effectId in 0..4) bg(t, accent)
+    if (effectId in 0..4) bg(effectId, values, t, accent)
     when (effectId) {
         0 -> sceneOrb(values, accent, t)
         1 -> sceneEcho(values, accent, t)

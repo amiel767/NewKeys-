@@ -4,6 +4,32 @@ Mémoire persistante du dépôt. **Toujours vérifier un nom ici avant de l'util
 plusieurs briefs ont référencé des symboles inexistants, ce qui a causé des
 malentendus coûteux.
 
+## Captures d'écran sans émulateur (Roborazzi — vérifié)
+
+Pas d'AVD/émulateur dans cet environnement. La capture passe par **Roborazzi +
+Robolectric** (déjà dans `libs.versions.toml`) :
+
+```bash
+export JAVA_HOME=/workspace/jdk/jdk21 && export ANDROID_HOME=/workspace/android-sdk
+./gradlew :app:testDebugUnitTest --tests "com.soundstage.mixer.XxxCaptureTest" -Proborazzi.test.record=true
+```
+
+- Sans `-Proborazzi.test.record=true`, **aucun PNG n'est écrit** (build OK, silencieux).
+- Qualifier paysage obligatoire pour coller au device : `@Config(qualifiers = "w851dp-h393dp-440dpi", sdk = [36])`.
+  `RobolectricDeviceQualifiers.Pixel6` rend en **portrait** (trompeur).
+- `MixerScreen` complet lève `AppNotIdleException` (animations infinies). Fix :
+  `composeTestRule.mainClock.autoAdvance = false` puis `advanceTimeBy(1500)` avant `captureRoboImage`.
+- `GreetingScreenshotTest` (ancien) échoue pour cette raison — ne pas s'y fier.
+- Échelle mesurée : **2.7497 px/dp** en w851dp-h393dp-440dpi (2340×1080).
+- Pièges de capture (vérifiés) : `MixerViewModel` démarre sur **`AppScreenPage.SETLISTS`**
+  et restaure la page sauvegardée en **asynchrone** → forcer `navigateToPage(MIXER)`
+  **après** le restore (`runOnIdle` + `Thread.sleep`), sinon la capture montre Setlists.
+  Et **ne pas appeler deux fois** `cycleKeyboardExpansion()` / `toggleKeyboardLayer()`
+  (bascule → état inverse).
+- Le clavier est **déjà** décalé au-dessus de la bottom bar par un espaceur
+  (`keyboardSpacer`, `MixerScreen.kt:496-509`). Ne **pas** ajouter de `padding(bottom)`
+  au clavier : ça le remonte par-dessus la bottom bar.
+
 ## Environnement de build
 
 ```bash
@@ -542,3 +568,823 @@ Autres points de perf (verifies) :
 Long-press sur une ligne d'echantillon (onglet Samples du `DpManager`) :
 360 ms -> indicateur 4 barres (`DpPreviewBars`, 0,5->0,86 s, scaleY .35->1),
 relacher annule. Tap = selection.
+
+## Assets de reference recus (2026-10-21, commit `f6535d7`)
+
+Trois fichiers ajoutes par l'utilisateur dans `app/assets/` — **sources d'autorite**.
+
+### `SettingsTabIcons.jsx` + `SettingsTabIcons.kt` (icones des onglets Settings)
+Famille unique : grille **24x24**, trait **2 px**, `strokeLinecap/Join = round`.
+Quatre icones, en trait (sauf les points du MIDI, remplis) :
+
+| Onglet | Nom Compose | Contenu |
+|---|---|---|
+| Audio | `SettingsTabIcons.Audio` | waveform symetrique, 5 barres, la plus haute au centre |
+| Interface | `SettingsTabIcons.Interface` | fenetre applicative : barre d'en-tete + panneau lateral |
+| MIDI | `SettingsTabIcons.Midi` | connecteur DIN 5 broches : anneau + 5 points (remplis) |
+| System | `SettingsTabIcons.System` | puce avec broches sur les 4 cotes |
+
+Le `.kt` fourni est **pret a copier** (package a adapter). Noir dans le fichier :
+la couleur reelle vient de `tint`. Usage : `Icon(imageVector = SettingsTabIcons.Interface,
+tint = if (selected) Color(0xFF8FB2E8) else Color(0xFF8E99AD), modifier = Modifier.size(24.dp))`.
+Ne requiert **que** `compose-ui` + `compose-material3.Icon` (pas de
+`material-icons-extended`).
+
+**Actuel a remplacer** : `SettingsScreen.kt:1876` `SetIconKind` (canvas maison) ;
+mapping l.633-638 : Audio->`Wave`, Interface->`Swatch`, Midi->`Midi`, System->`Gear`.
+Appel l.624 : `SetIcon(tab.iconKind(), c, Modifier.size(18.dp))`.
+Reference visuelle exacte : le `SettingsTabIconsDemo` en bas du `.jsx`
+(largeur 230, lignes h=52, radius 16, padding 0 16, gap 16, icone 24,
+actif `#8FB2E8` / inactif `#8E99AD`).
+
+### `fx-screens-spec.zip` (specification exacte de la fenetre FX)
+Contenu : `00-LIS-MOI-EN-PREMIER.md`, `01-ecrans-a-reproduire.md`,
+`fx_layout_spec.json`, `compare_refs.py`, `references/` (32 PNG),
+`reference_source_fx_window.html`.
+
+**CONTRADICTION A SIGNALER** : la regle du LISEZ-MOI dit « source 1 =
+`reference_source_fx_window.html` gagne », mais ce fichier est **VIDE (0 octet)**
+dans le zip. Sources utilisables : le JSON + les PNG. Ne pas choisir en silence.
+
+- `fx_layout_spec.json` : boites en px logiques, origine = coin du panneau.
+  Toutes les scenes sont **837,6 x 348,2**. Champs par effet :
+  `id, name, type, font, accent, knobs[], presets[], layout{w,h,knobs[],body,title,buttons}`.
+  **Aucune** zone de scene (pas de cle `scene`) : les controles dessines
+  (tirettes orgue, pistes synthe, micros ampli, pad XY) sont dans le code de
+  reference — **introuvable ici** (le HTML est vide). A demander a l'utilisateur.
+- `references/ref-NN-*.png` : **1728 x 800** (2x). Presets : 1728x1600
+  (1728x1200 pour les instruments). Tablette : 1230x582.
+- `compare_refs.py` : PASS si **<= 1,5 %** de pixels different de > 24/255 ;
+  taille de capture **exactement** egale a la reference, sinon FAIL.
+
+**Ecart mesure Kotlin <-> spec** (preuve) : `knobLayout` (`FxScenes.kt:84-101`)
+ne couvre que les effets **0..4** ; les instruments 5..14 n'ont **aucun** potard
+positionne (`AB()` absent de `FxInstrumentScenes.kt`). Et meme pour 0..4 les
+coordonnees divergent de la spec, ex. effet 0 :
+
+| Potard | JSON (centre) | Kotlin |
+|---|---|---|
+| Size | (415,2 ; 93,4) | (389 ; 34) |
+| Decay | (641,5 ; 124,0) | (490 ; 97) |
+| Pre-delay | (697,3 ; 192,7) | (572 ; 193) |
+| Damp | (540,8 ; 247,8) | (490 ; 194) |
+| Width | (289,7 ; 247,8) | (288 ; 194) |
+| Mix | (133,1 ; 192,7) | (180 ; 193) |
+| Diffuse | (189,0 ; 124,0) | (288 ; 34) |
+
+Effet 10 (Amp) : 7 potards alignes a y=146,2, x = 91,3 / 172,5 / 253,8 / 335,1 /
+416,3 / 497,5 / 761,5 ; 7 boutons (Surprise me, A, CLEAN, CRUNCH, LEAD, BOOST,
+TREM). Effet 4 : 6 potards dont `Amount` enorme (138,1). Effet 5 : 3 potards a
+y=314,7 + boutons Surprise me / A / Edit.
+
+### Anciens assets toujours presents (ne pas confondre)
+`app/assets/aether-fx-package.zip` (docs C++/JNI + `fx-window-preview.html`
+728 l. + icones) et `JetBrains_Mono,Orbitron,...zip` (polices). Le nouveau
+`fx-screens-spec.zip` **complete** l'ancien (mesures), il ne le remplace pas.
+
+## Assets de référence reçus (2026-10-21, commit `f6535d7`)
+
+Trois fichiers ajoutés par l'utilisateur dans `app/assets/` — **sources d'autorité**.
+
+### `SettingsTabIcons.jsx` + `SettingsTabIcons.kt` (icônes des onglets Settings)
+Famille unique : grille **24×24**, trait **2 px**, `strokeLinecap/Join = round`.
+Quatre icônes, en trait (sauf les points du MIDI, remplis) :
+
+| Onglet | Nom Compose | Contenu |
+|---|---|---|
+| Audio | `SettingsTabIcons.Audio` | waveform symétrique, 5 barres, la plus haute au centre |
+| Interface | `SettingsTabIcons.Interface` | fenêtre applicative : barre d'en-tête + panneau latéral |
+| MIDI | `SettingsTabIcons.Midi` | connecteur DIN 5 broches : anneau + 5 points (remplis) |
+| System | `SettingsTabIcons.System` | puce avec broches sur les 4 côtés |
+
+Le `.kt` fourni est **prêt à copier** (package à adapter). Noir dans le fichier :
+la couleur réelle vient de `tint`. Usage : `Icon(imageVector = SettingsTabIcons.Interface,
+tint = if (selected) Color(0xFF8FB2E8) else Color(0xFF8E99AD), modifier = Modifier.size(24.dp))`.
+Ne requiert **que** `compose-ui` + `compose-material3.Icon` (pas de
+`material-icons-extended`).
+
+**Actuel à remplacer** : `SettingsScreen.kt:1876` `SetIconKind` (canvas maison) ;
+mapping l.633-638 : Audio→`Wave`, Interface→`Swatch`, Midi→`Midi`, System→`Gear`.
+Appel l.624 : `SetIcon(tab.iconKind(), c, Modifier.size(18.dp))`.
+Référence visuelle exacte : le `SettingsTabIconsDemo` en bas du `.jsx`
+(largeur 230, lignes h=52, radius 16, padding 0 16, gap 16, icône 24,
+actif `#8FB2E8` / inactif `#8E99AD`).
+
+### `fx-screens-spec.zip` (spécification exacte de la fenêtre FX)
+Contenu : `00-LIS-MOI-EN-PREMIER.md`, `01-ecrans-a-reproduire.md`,
+`fx_layout_spec.json`, `compare_refs.py`, `references/` (32 PNG),
+`reference_source_fx_window.html`.
+
+**CONTRADICTION À SIGNALER** : la règle du LISEZ-MOI dit « source 1 =
+`reference_source_fx_window.html` gagne », mais ce fichier est **VIDE (0 octet)**
+dans le zip. Sources utilisables : le JSON + les PNG. Ne pas choisir en silence.
+
+- `fx_layout_spec.json` : boîtes en px logiques, origine = coin du panneau.
+  Toutes les scènes sont **837,6 × 348,2**. Champs par effet :
+  `id, name, type, font, accent, knobs[], presets[], layout{w,h,knobs[],body,title,buttons}`.
+  **Aucune** zone de scène (pas de clé `scene`) : les contrôles dessinés
+  (tirettes orgue, pistes synthé, micros ampli, pad XY) sont dans le code de
+  référence — **introuvable ici** (le HTML est vide). À demander à l'utilisateur.
+- `references/ref-NN-*.png` : **1728 × 800** (2×). Presets : 1728×1600
+  (1728×1200 pour les instruments). Tablette : 1230×582.
+- `compare_refs.py` : PASS si **≤ 1,5 %** de pixels diffèrent de > 24/255 ;
+  taille de capture **exactement** égale à la référence, sinon FAIL.
+
+**Écart mesuré Kotlin ↔ spec** (preuve) : `knobLayout` (`FxScenes.kt:84-101`)
+ne couvre que les effets **0..4** ; les instruments 5..14 n'ont **aucun** potard
+positionné (`AB()` absent de `FxInstrumentScenes.kt`). Et même pour 0..4 les
+coordonnées divergent de la spec, ex. effet 0 :
+
+| Potard | JSON (centre) | Kotlin |
+|---|---|---|
+| Size | (415,2 ; 93,4) | (389 ; 34) |
+| Decay | (641,5 ; 124,0) | (490 ; 97) |
+| Pre-delay | (697,3 ; 192,7) | (572 ; 193) |
+| Damp | (540,8 ; 247,8) | (490 ; 194) |
+| Width | (289,7 ; 247,8) | (288 ; 194) |
+| Mix | (133,1 ; 192,7) | (180 ; 193) |
+| Diffuse | (189,0 ; 124,0) | (288 ; 34) |
+
+Effet 10 (Amp) : 7 potards alignés à y=146,2, x = 91,3 / 172,5 / 253,8 / 335,1 /
+416,3 / 497,5 / 761,5 ; 7 boutons (Surprise me, A, CLEAN, CRUNCH, LEAD, BOOST,
+TREM). Effet 4 : 6 potards dont `Amount` énorme (138,1). Effet 5 : 3 potards à
+y=314,7 + boutons Surprise me / A / Edit.
+
+### Anciens assets toujours présents (ne pas confondre)
+`app/assets/aether-fx-package.zip` (docs C++/JNI + `fx-window-preview.html`
+728 l. + icônes) et `JetBrains_Mono,Orbitron,...zip` (polices). Le nouveau
+`fx-screens-spec.zip` **complète** l'ancien (mesures), il ne le remplace pas.
+
+## Session 2026-10-21 (suite) — débordement clavier + Phases 4/5
+
+### Débordement Virtual Keyboard (état au repos) — CORRIGÉ
+`MixerScreen.kt` : l'espaceur de la bottom bar utilisait une hauteur **estimée**
+(`48 + pianoRestStripHeight + 11`, ≈65 dp pour 1 piste) alors que le conteneur
+clavier mesure ~74 dp au repos → chevauchement de ~10 dp.
+
+Correction : la hauteur réelle du conteneur est **mesurée** (`onSizeChanged`) et
+**verrouillée au repos** (`keyboardRestHeight`, seulement quand
+`!isKeyboardLayerExpanded`), puis utilisée pour l'espaceur. L'état **déployé**
+n'est pas touché (il continue de flotter au-dessus, comportement voulu).
+
+Mesure : conteneur au repos à **317,7 dp**, barre **272→318 dp** → collés, plus
+de chevauchement. Déployé inchangé (conteneur à 276 dp).
+
+### Phase 4 — TrackSettings — FAIT
+- Scrim : `.blur(18.dp)` sur le contenu de fond quand `activePopup` est
+  `TRACK_SETTINGS`/`VELOCITY_SETTINGS`, + scrim `0x66000000` cliquable
+  (`zIndex(119f)`) qui ferme la fenêtre (`closeTrackSettings()`) et bloque les
+  touches derrière.
+- Page **Note range** : les « puces » blanches sous les touches (blanches et
+  noires) sont retirées.
+- `CurveCanvas` : `pointerInput(Unit)` → `pointerInput(vel)`, et le callback passe
+  par `rememberUpdatedState(onPoint)`. Sans ça la closure restait figée sur la
+  première `vel` → chaque nouveau point écrasait le précédent (Velocity « ne
+  prend pas effet »).
+
+### Phase 5 — Fluidité thumb fader — FAIT
+`CustomVerticalFader.kt` : `LaunchedEffect(value)` téléportait `localValue`
+(saut). Remplacé par `animate(...)` (220 ms, FastOutSlowInEasing) quand
+`!isDragging` ; le drag suit toujours le doigt directement.
+
+### Pièges vérifiés
+- Les 2 namespaces et les doublons `SettingsScreen`/`SetlistsScreen` restent.
+- Aucun commit/push. Captures sous `app/src/test/screenshots/` (outils, pas tests).
+- `TrackSettingsCaptureTest.kt` ajouté (capture scrim, non commité).
+
+## Session 2026-10-21 (suite) — débordement clavier + Phases 4/5
+
+### Débordement Virtual Keyboard (état au repos) — CORRIGÉ
+`MixerScreen.kt` : l'espaceur de la bottom bar utilisait une hauteur **estimée**
+(`48 + pianoRestStripHeight + 11`, ≈65 dp pour 1 piste) alors que le conteneur
+clavier mesure ~74 dp au repos → chevauchement de ~10 dp.
+
+Correction : la hauteur réelle du conteneur est **mesurée** (`onSizeChanged`) et
+**verrouillée au repos** (`keyboardRestHeight`, seulement quand
+`!isKeyboardLayerExpanded`), puis utilisée pour l'espaceur. L'état **déployé**
+n'est pas touché (il continue de flotter au-dessus, comportement voulu).
+
+Mesure : conteneur au repos à **317,7 dp**, barre **272→318 dp** → collés, plus
+de chevauchement. Déployé inchangé (conteneur à 276 dp).
+
+### Phase 4 — TrackSettings — FAIT
+- Scrim : `.blur(18.dp)` sur le contenu de fond quand `activePopup` est
+  `TRACK_SETTINGS`/`VELOCITY_SETTINGS`, + scrim `0x66000000` cliquable
+  (`zIndex(119f)`) qui ferme la fenêtre (`closeTrackSettings()`) et bloque les
+  touches derrière.
+- Page **Note range** : les « puces » blanches sous les touches (blanches et
+  noires) sont retirées.
+- `CurveCanvas` : `pointerInput(Unit)` → `pointerInput(vel)`, et le callback passe
+  par `rememberUpdatedState(onPoint)`. Sans ça la closure restait figée sur la
+  première `vel` → chaque nouveau point écrasait le précédent (Velocity « ne
+  prend pas effet »).
+
+### Phase 5 — Fluidité thumb fader — FAIT
+`CustomVerticalFader.kt` : `LaunchedEffect(value)` téléportait `localValue`
+(saut). Remplacé par `animate(...)` (220 ms, FastOutSlowInEasing) quand
+`!isDragging` ; le drag suit toujours le doigt directement.
+
+### Pièges vérifiés
+- Les 2 namespaces et les doublons `SettingsScreen`/`SetlistsScreen` restent.
+- Aucun commit/push. Captures sous `app/src/test/screenshots/` (outils, pas tests).
+- `TrackSettingsCaptureTest.kt` ajouté (capture scrim, non commité).
+
+## Session 2026-10-21 (5e passage) — récupération après crash + toolchain
+
+Conversation source : `23255f8abab04b489d05d2e6b5c0ee18` (`sandbox_status=ERROR`).
+Le travail de la session précédente (fenêtre FX, coque `fx-shell-final.zip`) n'avait
+**jamais été poussé** : il a été perdu avec le sandbox.
+
+- **Toolchain provisionné** dans le sandbox : `JAVA_HOME=/workspace/jdk/jdk21`,
+  `ANDROID_HOME=/workspace/android-sdk` (platform 36, build-tools 36.0.0,
+  NDK 27.0.12077973, CMake 3.22.1). `local.properties` et `debug.keystore` sont
+  gitignorés et doivent être régénérés après chaque crash.
+  Wrapper : `/workspace/build.sh <tâche>`.
+- **Récupération** : les actions `file_editor` et les commandes terminal de la
+  trajectoire (9423 événements, `GET /api/v1/app-conversations/<id>/download`) ont
+  été **rejouées** dans l'ordre chronologique → arbre identique au `git status`
+  perdu. Une seule édition `str_replace` a échoué (fichier réécrit plus tard,
+  bénin) ; un import dupliqué (`MutableInteractionSource` dans `MixerScreen.kt`)
+  était un artefact de rejeu, corrigé à la main.
+- **Branché/sécurisé** : `FxModule` et `FxShellStore` n'indexent plus
+  `FxRegistry.all[id]` sans borne (utilisent `FxRegistry.info(id)`) — même classe
+  que le crash `all[-1]` déjà corrigé. La puce Soundfont de `FxWindowHost` n'est
+  plus un callback vide.
+- **Vérifié** : `:app:compileDebugKotlin` et `:app:assembleDebug` → BUILD SUCCESSFUL
+  (APK 42,6 Mo). Poussé sur `recovery/fx-window-shell`.
+- **Reste** : intégrer `FxWindowHost` dans `MixerScreen` (aucun appelant hors test),
+  puis la validation appareil.
+
+## Session 2026-10-21 (reprise FX window · outillage)
+
+- **Spec de référence dépaquetée** : `app/assets/fx-screens-spec.zip` contient
+  `compare_refs.py`, `fx_layout_spec.json` (mesures par effet), `references/`
+  (33 PNG : `ref-NN-*.png` 2x, `ref-NN-*-presets.png`, `ref-tablet-*.png`) et
+  les deux briefs. `aether-fx-package.zip` contient les sources natives
+  (`fx_*.h`), `fx-window-preview.html` (147 Ko, LA source d'autorité citée par
+  `FxGeometry.kt`, `FxWindowHost.kt`, `FxScenes.kt`) et `gen_kotlin.cpp`.
+  Extraits dans `app/assets/fx-screens-spec/` et `app/assets/aether-fx-package/`
+  (gitignorés : les zips committés sont la source de vérité).
+- **`reference_source_fx_window.html` est VIDE (0 octet) dans le zip livré** —
+  défaut du paquet. L'équivalent réel est `fx-window-preview.html`. Ne pas
+  perdre de temps à chercher : il n'existe nulle part dans l'historique.
+- **Mesures réelles du panneau** : `fx_layout_spec.json` donne w=837,6 h=348,2
+  (pas 825×343). Les références sont en 1728×800 = 2x de 864×400. Le
+  `FxWindowCaptureTest` capture en 2310×1070 (densité 440 dpi) → normaliser
+  avant comparaison.
+- **Chaîne de comparaison complète** :
+  1. `./gradlew :app:recordRoborazziDebug --tests "...FxWindowCaptureTest" --no-daemon --max-workers=2`
+     → écrit `app/src/test/screenshots/fx_window_{amp,rack}.png`.
+     (`testDebugUnitTest` seul ne produit RIEN : il faut la tâche `recordRoborazziDebug`.)
+  2. `python3 tools/fxcompare/compare_scaled.py <capture.png> <reference.png>`
+     → même seuil que `compare_refs.py` (1,5 %, delta 24/255) mais redimensionne
+     d'abord (le script fourni exige des tailles strictement identiques).
+- **Baseline mesurée** : capture amp vs `ref-10-amp.png` = **17,52 %** d'écart
+  (FAIL, attendu : le rendu n'est pas encore aligné). C'est le point de départ
+  chiffré, plus une inconnue.
+- **Outillage installé** : `tools/jsxref` (npm, 89 paquets : react, esbuild,
+  puppeteer-core), Python PIL 13.0.0 + numpy 2.5.4, node v24.21.0 / npm 11.21.0.
+- **Bloqueur unique confirmé** (questionnaire §8.3) : le panneau est en
+  `fillMaxSize()` alors que sa géométrie interne est en repère 825×343 × `scale`
+  (= 1f au seul appelant). Il manque la boîte logique + un scale calculé une
+  seule fois à l'extérieur (patron déjà correct dans `FxWindow.kt:180-194`).
+
+## Brief B8-1 exécuté (2026-10-21)
+
+Commit `45c5632` sur `recovery/fx-window-shell` (poussé). `clean assembleDebug` OK (APK 42,6 Mo).
+
+- **Géométrie retenue : 825×343**, pas 837,6×348,2. Le JSON mesure bien 837,6 mais tout le
+  système de scènes (`FxStyle.PWL/PHL`, rail `RW=PWL`, canvas mini `.cd` en 136×160) est
+  bâti sur 825×343. Un panneau à 837,6 laisserait une bande morte que les scènes ne
+  peignent pas. Décision documentée, écart signalé au demandeur.
+- **Cause racine du « rendu catastrophique »** : `FxOpenPanel` était en `fillMaxSize()` avec
+  la géométrie en 825×343 × `scale`(=1f). Corrigé par la boîte logique + le scale unique.
+- **Cause racine n°2, trouvée par la mesure** : un `DrawScope` travaille en **pixels**, or les
+  scènes sont écrites en unités logiques 1 unité = 1 dp. Sans `scale(density, density)` la
+  scène ne remplissait que le coin haut-gauche 825×343 **px** (≈30 % de la surface en 440 dpi).
+  C'est ce facteur, et non le canevas, qui produisait le rendu tronqué.
+- **Le canvas de scène est en (0,0)**, pas centré : le fond `.xN` de la référence couvre
+  toute la fenêtre et le canvas n'en occupe que le coin haut-gauche. Le host peint donc
+  `fxPanelBackground(id)` plein écran quand un effet est ouvert.
+- **`rail()` n'existe que pour les instruments (id ≥ 5)**. Preuve : `ref-04-solar-ceiling.png`
+  reste beige (lum 121→174) jusqu'en bas, alors que `ref-10-amp.png` est sombre en bas.
+  Le vrai `drawFxRail()` de `FxScenes.kt` est câblé dans le panneau ; ma barre maison
+  `#1B1F2B` faisait doublon avec une mauvaise couleur et a été supprimée.
+- **Conflit `.x2`** : la règle est déclarée deux fois (grille ardoise l.54, face rouge l.104).
+  La preuve `ref-02-prism-tone.png` = (180,26,43) tranche pour la face rouge.
+- **Baselines mesurées** (capture 2310×1070 → ref 1728×800, seuil 1,5 %) :
+  `amp 24,2 %` (était 69 % au départ), `echo 41,9 %`. Reste au-dessus du seuil : l'écart
+  résiduel est le rasterisage navigateur vs Compose/Skia, pas la mise en page.
+- **Reste** : intégrer `FxWindowHost` dans `MixerScreen` (toujours sans appelant hors test).
+
+## B8-1, 2e passe : géométrie corrigée et rail tranché (2026-10-21)
+
+Commit `d0be41d`. `clean assembleDebug` + `recordRoborazziDebug` OK (APK 42,6 Mo).
+
+### Géométrie de référence : 851x394, pas 825x343 ni 840x389
+Mesure sur les PNG : 1728x800 px a S = 2,031, donc **851x394** unités logiques.
+La bande de scene (`.bd`, classe `.xN`) fait **825x343 et est inseree a (13,42)**,
+pas en plein cadre. Ce (13,42) recoupe deux regles CSS : marge de page 12 px
+(`#win{left:12px}`) et header `.wh{height:42px}`. Le `BAND_Y` = 42 EST la hauteur
+du header, par construction.
+- Le test capturait 840x389 : le scale tombait a 0,987 et forçait un
+  reechantillonnage. Aligne sur 851x394 (scale = 1 exact).
+- **Un `Canvas` Compose ne clippe pas.** Les scenes remplissent depuis
+  `(-OXL,-OYL)`, ce qui debordait sur le header et les marges : c'est pourquoi le
+  brun couvrait tout. `clipToBounds()` sur la boite de bande corrige.
+  Gain mesure : amp 21,6 % -> **16,6 %** (c'etait 69 % au depart).
+
+### `rail()` : le brief et DeepSeek avaient tort
+- `RS` dans le preview n'a **aucune cle 10 (ampli) ni 11 (basse)**. Leurs fonctions
+  `amp()`/`bass()` n'appellent **pas** `rail()`. Leur « Level » est un knob normal
+  (`FxKnobBoxes`) et le panneau descend jusqu'en bas.
+- Ma condition `id >= 5` leur dessinait donc un rail en trop : d'ou le **double
+  LEVEL** (le knob a x=738 ET le slider en bas). Corrige par
+  `FxStyle.hasRail()` = ids 5,6,7,8,9,12,13,14.
+- L'ancien code passait `params.lastOrNull()` : faux. `rail(x, v[n], id)` prend un
+  indice **variable** selon l'instrument (piano v[8], orgue v[30], strings v[9],
+  guitar v[10], synth v[31]). Ajoute `FxStyle.railLevelIndex()`.
+- Preuve croisee : `ref-04-solar-ceiling.png` (un effet) reste beige jusqu'en bas ;
+  `ref-10-amp.png` est sombre en bas et le mot LEVEL est absent de `amp()`.
+
+### Modele de coordonnees des knobs
+Les boites de `FxKnobBoxes` sont en coordonnees **fenetre** (elles incluent l'origine
+du contenu) : Gain a x=68 alors que le canvas `.bd` commence a x=20. Les knobs sont
+places en `BAND_X + cx`, `BAND_Y + cy`. Le `withTransform` du canvas n'y touche pas,
+il est interne au DrawScope.
+
+### Reste
+- amp 16,6 %, echo 38,7 %. Repartition de l'ecart **uniforme** sur toutes les bandes
+  (24 a 77) : plus aucun decalage structurel, c'est du rendu (navigateur vs
+  Compose/Skia). Le seuil de 1,5 % de `compare_refs.py` est calibre pour deux rendus
+  du meme moteur et ne peut pas juger un portage inter-moteurs.
+- `FxWindowHost` n'a toujours aucun appelant dans l'app (test seulement).
+- `ref-10-amp-presets.png` est **corrompu** dans le paquet (131 Ko, tronque).
+
+## B8-1, 3e passe : fond d'effet en degrade, chrome mesure (2026-10-21)
+
+Reponse a l'analyse DeepSeek (share/8bztzirywj195zbouv). Verdict : **un point juste,
+un point faux, un point juste mais pour une autre raison.**
+
+### DeepSeek a raison : le fond ne remplissait pas la bande
+Mon `PANEL_BG` etait une couleur **plate**. Or les regles `.xN` du CSS sont des
+**degrades** : `.x1` = `linear-gradient(#41382a,#1f1b14)`. Une couleur plate rendait
+la bande trop sombre et trop uniforme. Ajoute `PANEL_BG_GRADIENT` (haut/bas releves
+sur les references) et `bg()` l'utilise desormais.
+- Piege : `Brush.verticalGradient` sans bornes calcule `endY` sur la taille du
+  **DrawScope**, qui est le canvas en **pixels**, pas en unites logiques. Le degrade
+  etait donc etale sur 343*2,75 px au lieu de 343. Il faut `startY = -OYL`,
+  `endY = -OYL + h`. Gain : echo 46,4 % -> **35,7 %**.
+
+### DeepSeek a tort : le header n'herite PAS du fond de l'effet
+Elle deduit du CSS (`.ph` sans `background`, donc herite de `.pn`) que le header doit
+etre de la couleur de l'effet. Le rendu reel dit l'inverse. Mesure de la mediane par
+rangee sur trois references dont deux a fond clair :
+
+| px y | Solar Ceiling (fond beige) | Prism Tone (fond rouge) | Echo (fond brun) |
+|---|---|---|---|
+| 10-70 | `#0f1622` -> `#0b111d` | `#0f1622` -> `#0b111d` | `#0f1622` -> `#0b111d` |
+| 81+ | `#efe9db` beige | `#b22130` rouge | `#41382a` brun |
+
+Le header est **chrome bleu nuit identique pour les trois**, y compris Solar dont le
+fond est beige clair. Donc le header est **opaque**, pas transparent. Idem en bas :
+a y=392 la reference est `#06090e`, du chrome, pas la couleur d'effet.
+
+### Ce qui est vrai : la bande doit aller d'un bord a l'autre
+DeepSeek a raison que la bande etait trop etroite en x. Mais la bonne conclusion est
+que **`.pn` remplit tout et porte la couleur**, tandis que **`.bd` reste insere a
+(13,42)** en 825x343. J'ai d'abord essaye le plein cadre (faux : la reference a du
+chrome en haut ET en bas, et l'effet commence a y=41, pas y=0). Etat final : chrome
+plein cadre + bande inseree, ce qui reproduit la reference.
+
+### Etat
+- amp 16,6 %, echo **35,7 %** (etait 69 / 44 au depart).
+- Ecart **uniforme**, sans point chaud : scene 53/70, droite 45/54, header 34/28.
+  Le header est la zone la *moins* fausse, ce qui confirme qu'il est correct.
+- Reste = rendu inter-moteurs (police, antialiasing des knobs), pas de structure.
+
+### Note d'environnement
+Les processus d'arriere-plan (serveur de telechargement `python3 -m http.server 12000`,
+builds Gradle) sont **perdus a chaque redemarrage du sandbox**. Si le lien de
+telechargement renvoie 502, relancer :
+`cd /workspace/dl && nohup python3 -m http.server 12000 --bind 0.0.0.0 &`
+PIL et numpy peuvent aussi disparaitre (l'interpreteur change) :
+`pip install pillow numpy`.
+
+## B8-1, 4e passe : la fenetre EST le fond (idee utilisateur, validee)
+
+L'utilisateur a insiste : « la fenetre est grande et exactement de la taille de
+l'ecran, les fonds ont une taille a eux — reduire la fenetre pour que les fonds
+remplissent toute la fenetre ». Il avait raison, et mes mesures precedentes l'avaient
+ecarte a tort parce que je prenais la mauvaise echelle.
+
+### L'erreur : 851x394 n'est pas la fenetre, c'est l'IMAGE
+Les PNG de reference font 1728x800 px. A S = 2,031 cela fait **851x394** — et j'ai
+pris cette valeur pour la fenetre. C'est faux : 851x394 est la capture d'ecran, qui
+**inclut la marge de page** autour de la fenetre (`#win{left:12px;right:12px;
+top:38px;bottom:10px}`). La vraie fenetre est le fond d'effet lui-meme.
+
+Mesure decisive, seuil de luminance sur `ref-01-echo.png` :
+- fond d'effet vertical   : y_log **39,4 .. 381,6**  -> hauteur **342,7**
+- fond d'effet horizontal : x_log **12,8 .. 837,0**  -> largeur **824,7**
+- donc la fenetre = **825x343**, la page occupe le reste (12 px de chaque cote,
+  38 en haut, 10 en bas).
+
+### Pourquoi mes passes precedentes tournaient en rond
+J'avais 851x394 pour la fenetre, donc :
+- je peignais du « chrome » en haut et en bas — or il n'y a **pas de chrome** :
+  ce que je prenais pour un header sombre est la page, AU-DESSUS de la fenetre ;
+- je croyais que le fond d'effet ne remplissait que 825x343 de la fenetre, alors
+  qu'il la remplit entierement ;
+- je cherchais un decalage de contenu a corriger par des offsets, alors que le
+  probleme etait le cadre.
+DeepSeek disait la meme chose (« le fond doit remplir toute la fenetre ») ; mon
+test d'echelle l'avait fait passer pour faux. Le raisonnement correct etait de
+mesurer les BORDS DU FOND, pas de comparer des medianes par rangee sur toute l'image.
+
+### Etat final
+- Fenetre = **825x343**, le fond d'effet la remplit exactement (mesure : y 0..342,
+  x 0..824 dans la capture).
+- Scene (`.bd`) = 779x263 a **(20,58)**, en coordonnees contenu, avec
+  `translate(20,58)` dans le `withTransform`.
+- Knobs places en `SCENE_X + cx`, `SCENE_Y + cy`.
+- Plus de bande de chrome ni de `clipToBounds` : le fond ne deborde plus, donc le
+  clip arrondi du host suffit.
+- **Ecarts, compares fenetre a fenetre** (recadrage de la reference sur les bords
+  reels du fond) : amp **6,64 %**, echo **8,06 %**. Contre 10,2 / 33,7 % mesures sur
+  l'image entiere — l'ecart de l'echo etait du cadrage, pas du contenu.
+- Le script `compare_scaled.py` compare l'IMAGE a l'image ; pour juger le rendu il
+  faut recadrer la reference sur (12,8 / 39,4 / 837,0 / 381,6) puis redimensionner
+  en 825x343.
+
+### Lecon
+Quand un rendu semble « decale », mesurer d'abord les BORDS du conteneur, pas les
+contenus. Un cadre faux produit exactement les symptomes d'un contenu mal place.
+
+## B8-1, 5e passe : geometrie et materiaux pris du preview (2026-10-21)
+
+Retour utilisateur : « les knobs de l'ampli sont trop bas et un peu plus petits »,
+« pour Echo les knobs devraient etre dores, relief 3D prononce, plus haut et plus
+grand ». Les deux etaient justes.
+
+### La source de verite, c'est le preview, pas mes mesures
+Le preview declare tout, au chiffre pres :
+```js
+AB(i,j,x,y,z,sk)   // centre (x,y) en coordonnees CONTENU, diametre z
+AB(10,j,70+j*80,86,46,j%2?1:4)   // ampli : y=86, d=46
+AB(1,8,650,70,56)  AB(1,9,735,70,56)  AB(1,10,692,188,56)  AB(1,11,95,205,52)
+const SKN={5:5,6:6,7:10,8:11,9:12,10:7,11:8,12:13,13:14,14:9}
+const KSH={6:'flute',10:'knurl',11:'chrome',13:'glass',14:'flat'}
+```
+`FxGeometry.kt` est desormais **genere depuis cette table** (script d'extraction) :
+centre fenetre = (x+OXL, y+OYL), boite = centre - z/2. J'ai verifie que les 14 effets
+ont le meme nombre de knobs dans `AB()` et dans les labels existants (4,4,5,6,3,4,3,
+9,3,7,4,3,6,21) — correspondance exacte.
+
+### Trois erreurs corrigees
+1. **Diametre** : je posais `box.w * 0.86`. Le preview passe z **plein**. Tous les
+   knobs etaient 13 % trop petits (amp 40 au lieu de 46, echo 47 au lieu de 56).
+2. **Double offset** : la nouvelle geometrie est en coordonnees **fenetre**, mais le
+   panneau ajoutait encore `SCENE_X/SCENE_Y`. Les knobs partaient 20/58 trop loin.
+   Symptome : aucun knob detecte aux abscisses attendues. Corrige en retirant
+   l'offset (le panneau place maintenant `cx.dp`, sans rien ajouter).
+3. **Rangree confondue** : j'avais lu `y=252` (celle du piano/organ/sax) pour
+   l'ampli. L'ampli est a `y=86`, **au-dessus** de la baffle. D'ou « trop bas ».
+
+### Materiaux
+`gradientIndex = SKN[id] ?: box.sk` — dans le preview `kk = SKN[i] !== undefined ?
+SKN[i] : sk`, donc `SKN` gagne. L'ampli demande 1/4 dans ses `AB()` mais finit sur
+**7** (gris fonce) ; l'echo n'est pas dans `SKN`, il garde donc `sk=1`, le **laiton**
+`c1 = #E3CC96 -> #8D7240 -> #EED9A6 -> #7A6234 -> #CDB27A`. `CAP_GRADIENTS` avait
+deja les 15 gradients `c0..c14` du `<defs>`.
+
+### Ajouts demandes
+- **Ombre sous les knobs** : `.kb{filter:drop-shadow(0 7px 7px #000a)}`. Dessinee en
+  Canvas (`drawOval` + `radialGradient`) et non via `Modifier.shadow`, parce que la
+  capture Roborazzi ne rend pas l'elevation de plateforme.
+- **Cartes du haut (`.cd`)** : contour retire, remplace par un relief sureleve
+  (`Modifier.shadow`, 8dp normal / 14dp selectionne, teinte accent) + un lisere clair
+  de 1 px sur le bord superieur (`inset 0 1px 0 #ffffff1c`). La selection se lit
+  desormais a la teinte de l'ombre, plus au contour.
+
+### Etat
+- Ecart fenetre a fenetre : amp **1,26 %**, echo **2,54 %**.
+- Echo : 3 knobs sur 4 tombent **au pixel** (112/112, 112/112, 230/231), le 4e a ~6.
+- Ampli : ~3 a 4 unites sous la reference — reste a affiner, l'ecart est constant.
+
+### Lecon (2e fois)
+J'ai encore cherche dans les pixels une information que le **code du preview
+declarait**. Avant toute mesure d'image : lire `AB()`, `SKN`, `KSH`, le CSS. Une
+heure de mesures ne vaut pas dix lignes de source.
+
+## B8-1, 6e passe : groupes de chips, lumiere, relief (2026-10-21)
+
+### Presets et groupes manquants
+Ils existaient dans le preview, je ne les dessinais pas. `TG(i,label,x,y,items)` cree
+les groupes `.chg` — l'equivalent de `AB()` pour les chips :
+```
+TG(10,'CHANNEL',16,6,[['CLEAN',6,'s',0],['CRUNCH',6,'s',.5],['LEAD',6,'s',1]])
+TG(10,'PEDALS',560,6,[['BOOST',9,'t'],['TREM',10,'t']])
+```
+Portes dans `FxChipGroups` (`FxGeometry.kt`), en coordonnees **contenu** : comme
+`AB()`, il faut ajouter `(OXL, OYL)`. Je les avais posees sans l'offset, les groupes
+tombaient 58 trop haut et le detecteur de knobs les prenait pour des knobs.
+Un item avec `value` est une position d'un param etage ; sans `value`, un interrupteur
+lu comme actif au-dessus de 0,5. Rendus par `ChipGroupRow` + `RaisedChip`.
+
+### « Mic 40 · 40 » retire
+Le preview le dessine (`tag(x,'MIC '+...,mx,my+24)`), c'est donc un port fidele — mais
+l'utilisateur le rejette : il encombrait le cabinet. Retire de `sceneAmp`. Les deux
+params `Mic pos` / `Mic dist` restent dans le registre.
+
+### Lumiere des knobs
+`drawHighlight` etait trop dur : alpha .4 sur un blanc deja opaque = un ovale peint.
+Le `hl` du preview est `#ffffffa8 -> transparent` avec `opacity:.5`, soit un voile.
+Baisse a .26, agrandi, plus un rebond bas tres faible (`0x1AFFFFFF`) pour que le
+chapeau reste dans sa jupe au lieu de flotter.
+
+### Relief des chips et du rack
+Regle demandee : **pas de contour**, relief + ombre dessous.
+- `RaisedChip` (chips du haut, `.bt` / `.chg i`) : `shadow(3dp)` + lisere clair 1 px
+  sur le bord superieur. Actif = remplissage laiton `#F2D58A` sur texte `#2A1A10`.
+- `FxRack.raisedEdge()` : meme lisere + une couture sombre en bas. Applique aux
+  boutons d'en-tete et aux tuiles du selecteur. Les 3 `border()` restants sont
+  volontaires (bord de fenetre, avertissement rouge, panneau SFW).
+
+### Etat
+- Ecart : amp **1,31 %**, echo **2,54 %**.
+- Ampli : knobs a 127 contre 128-130 en reference (calage a ~2 unites).
+- Echo : 3 knobs au pixel, le 4e (Mix) a y=262 contre 266.
+
+### Environnement
+Le lien de telechargement peut renvoyer la page 503 « Service Temporarily
+Unavailable » de all-hands.dev : c'est le service, pas le sandbox. Ne pas boucler
+dessus — le fichier est servi par le `http.server` local sur le port 12000.
+
+## Lecons B8-1 (a lire AVANT toute passe FX)
+
+### 1. Lire le preview avant de mesurer le moindre pixel
+Le preview declare tout, au chiffre pres. A chaque fois que j'ai mesure des pixels
+d'abord, j'ai perdu une heure a repondre a la mauvaise question :
+- `AB(i,j,x,y,z,sk)` : centre et diametre de chaque knob. Table complete extraite.
+- `TG(i,label,x,y,items)` : les groupes de chips (CHANNEL, PEDALS, ADSR, CABINET...).
+- `SKN={...}` et `KSH={...}` : materiau et forme du chapeau, par effet.
+- `<defs>` : les 15 gradients `c0..c14`.
+- CSS `.cd`, `.bt`, `.chg`, `.kb` : remplissages, ombres, rayons.
+Une heure de mesures ne vaut pas dix lignes de source.
+
+### 2. Le piege du double decalage (arrive DEUX fois)
+Les scenes et les tables `AB()`/`TG()` sont en coordonnees **contenu** et portent deja
+`(-OXL, -OYL)` (`y0 = -OYL` dans le code des scenes). Donc :
+- une scene se dessine a **(0,0)**, sans translate supplementaire ;
+- une boite `AB()` se place a **(x+OXL, y+OYL)**.
+Ajouter `SCENE_X/SCENE_Y` par-dessus a produit le `translate(20,58)` en trop (fond
+inset, contenu 58 trop bas) puis, la fois suivante, des knobs 20/58 trop loin.
+**Symptome typique** : plus rien n'est detecte aux abscisses attendues, ou un `dy`
+constant sur toutes les zones. Avant de toucher une position : verifier QUI ajoute
+l'offset, et une seule fois.
+
+### 3. `Modifier.shadow` ne marche pas ici
+Deux raisons, les deux verifiees :
+- la capture Roborazzi ne rend pas l'ombre de plateforme, elle est donc invisible
+  dans les tests — donc invérifiable ;
+- elle est peinte **au-dessus** du contenu, donc elle ressort **a travers** une case
+  au remplissage translucide. C'est ce que l'utilisateur voyait comme « moche ».
+Solution : `FxSurface.kt`, `Modifier.raised(corner, elevation, fill)` — ombre peinte
+en `drawBehind`, demarrage du degrade exactement au bord bas, donc toujours dessous,
+plus un lisere clair en haut et une couture sombre en bas. A utiliser pour toute case.
+
+### 4. Le diametre d'un knob est `z` plein
+`AB()` passe le diametre directement. J'avais mis un facteur `* 0.86` : 13 % trop
+petit partout. Ne pas reintroduire de coefficient.
+
+### 5. Environnement
+- Le lien de telechargement renvoie parfois la page 503 de all-hands.dev : c'est le
+  service, pas le sandbox. Ne pas boucler dessus.
+- Le `http.server` du port 12000 ne survit PAS a un redemarrage : le relancer avec
+  `cd /workspace/dl && (nohup python3 -m http.server 12000 --bind 0.0.0.0 &)`.
+- `pillow` et `numpy` disparaissent aussi : `pip install pillow numpy`.
+- `ss -ltn` n'est pas fiable pour verifier le port ; tester avec `curl`.
+
+## Session récupération (2026-10-21, 3e) — mesure réparée + frontière moteur durcie
+
+Contexte : 3e conversation après deux redémarrages du sandbox. Objectif demandé :
+intégrer le contexte, **sécuriser pour éviter le crash sandbox** et les problèmes
+de **callback qui empêchent d'envoyer des messages**.
+
+### 1. La mesure était fausse, pas le port (cause racine)
+Les pourcentages de la conversation précédente (echo 33,72 %, moyenne 14,90 %)
+venaient d'une comparaison **image entière → image entière** alors que
+`FxWindowCaptureTest` ne rend **que la fenêtre** (825×343, la boîte logique).
+`tools/fxcompare/compare_scaled.py` redimensionne la capture sur la référence
+complète, ce qui aligne la fenêtre sur la **marge de page** (12/38/10 px) et
+gonfle tous les écarts d'environ +22 points.
+
+- **Outil correct** : `tools/fxcompare/compare_window.py`. Il recadre d'abord la
+  référence sur la fenêtre (y 39,4..381,6 et x 12,8..837,0 de la page 851×393),
+  puis applique le même seuil (1,5 %, delta 24).
+- Mesure réparée (capture 2268×943 → fenêtre) :
+  space 10,73 · echo 33,72 · prism-tone 20,22 · iron-grip 8,72 ·
+  solar-ceiling 27,66 · piano 11,14 · organ 13,18 · sax 18,35 · strings 15,31 ·
+  guitar 12,53 · amp 6,83 · bass 6,08 · brass 8,83 · voices 14,55 · synth 13,34.
+  **Moyenne 14,73 %.**
+- `compare_scaled.py` reste valable **uniquement** pour une capture pleine page
+  (`w851dp-h393dp`). Pour la fenêtre, toujours `compare_window.py`.
+
+### 2. Les PNG de référence restent la cible (vérifié)
+J'ai rendu `fx-window-preview.html` en headless (Chromium présent :
+`/usr/bin/chromium`, `tools/refcheck/render_ref.mjs`) pour lever le doute
+« références périmées ? ». Elles **ne le sont pas** : mon rendu headless donne
+14,7 % de différence moyenne avec la référence, ce qui est la signature d'un
+rendu **sans les polices Google** (le preview les charge par réseau) et non d'une
+géométrie divergente. Conclusion : les PNG livrés sont la cible ; ne pas les
+remplacer par un rendu headless.
+
+### 3. Le calque ambiant `bg()` est la vraie lacune restante
+`bg(i,x,t,v,a)` du preview peint **des couches qui couvrent toute la fenêtre**,
+pas seulement la scène. Porté seulement pour les effets 0 et 1 (`.x1` y est
+fusionné). **Manquant** :
+- `bg(2)` : 3 bandes diagonales lumineuses qui défilent (`px = X0+((t*30+k*300)%(w+400))-200`).
+- `bg(3)` : 17 lignes horizontales en éventail (`k` de -8 à 8, alpha `.06+.06*(1-|k|/8)`),
+  compressées par `gs[0]` (enveloppe du compresseur).
+- `bg(4)` : l'horizon du solar-ceiling — `ty = Y0+26+(1-v[1])*40`, ligne `#c9852c`
+  épaisseur 2 à alpha `.25+.3*v[0]`, puis dégradé `#c9852c55 → transparent` sur 100 px.
+  C'est la cause n°1 de l'écart de solar-ceiling (bande pleine largeur y 33..88).
+- `.x0` (espace) et `.x2` (prism-tone) : **deux** règles `.x2` existent dans le
+  preview (grille ardoise l.54, face rouge l.104) ; la seconde gagne. Vérifié :
+  la face rouge est bien la bonne.
+- Le fond de scène du solar-ceiling doit être `linear-gradient(#efe9db,#d6cdb9)`
+  soit **(239,233,219)→(214,205,185)** : le port rend (235,228,213) en haut, trop
+  clair — la rampe est décalée, pas seulement le calque ambiant.
+
+### 4. Frontière moteur durcie (anti-crash callback)
+Le moteur est un pont JNI : une bibliothèque absente ou un appel refusé **lève**
+au lieu de retourner. Une exception lancée depuis un gestionnaire d'événement
+Compose **démonte la fenêtre** sans retour possible — c'est exactement le
+« problème de callback qui empêche d'envoyer des messages ».
+- `FxShellStore` : tout appel moteur passe par `guard`/`guardBool`, qui replie
+  l'échec dans `notice` au lieu de propager. Couvre addEffect, setInstrument,
+  removeEffect, setParam/setInstrumentParam, toggleBypass, applyPreset.
+- `FxOverlay` : la boucle de niveau (30 Hz, `peak()`) est enveloppée dans
+  `runCatching`, elle garde le dernier niveau au lieu de tuer la fenêtre.
+- Preuve : `FxShellStoreResilienceTest` (5 tests) — moteur mort (`DeadEngine`) et
+  moteur qui refuse les écritures (`WriteDeadEngine`). 5/5 PASS.
+
+### 5. Anti-crash sandbox
+- Gradle toujours en **arrière-plan + bridé** : `--no-daemon --max-workers=2`,
+  redirection vers `/tmp/*.log`, puis lecture du log. Jamais au premier plan sur
+  une tâche longue.
+- `scipy` installé (`pip install scipy`) pour l'analyse d'images par composantes.
+
+## CORRECTION importante (meme session) — mon rendu du preview etait FAUX
+
+`tools/refcheck/render_ref.mjs` est buggue et **ne rendait pas la fenetre FX** :
+- il capture `#st`, qui est le **rack du device entier**, pas `#win` (la fenetre FX) ;
+- il appelle `window.open(id)` — or `open` est la fonction native du navigateur,
+  pas l'API du preview. L'appel etait donc sans effet (il levait, on l'avalait).
+
+Consequence : les `prev-NN.png` montraient le **rack**, d'ou le « le preview ne
+ressemble pas a la reference » de la passe precedente. **La conclusion « les PNG
+de reference ne sont pas perimes » etait donc tiree d'un rendu invalide et doit
+etre refaite.** Ne pas s'appuyer dessus.
+
+### Le vrai signal, lui, est solide
+Mesure **fenetre a fenetre** (boite 825x343 = x 12,8..837,0 / y 39,4..381,6 de la
+page 851x393), capture 2268x943 -> 825x343, seuil 1,5 % / delta 24 :
+- echo **43,31** · solar-ceiling 35,12 · prism-tone 29,48 · guitar 28,16 ·
+  sax 26,44 · organ 26,24 · brass 25,51 · piano 24,00 · voices 23,09 ·
+  strings 23,00 · synth 19,60 · iron-grip 18,73 · amp 18,53 · bass 15,31 ·
+  space 12,29. **Moyenne 24,59 %.** Aucun effet au seuil.
+- Les valeurs « 14,73 % » de la passe precedente venaient d'un recadrage
+  different (meilleur alignement trouve a l'oeil) : **ne pas melanger les deux
+  jeux de chiffres.** L'outil de reference est `tools/fxcompare/compare_window.py`.
+
+### Cause n°1 identifiee : la couche de scene n'est pas la meme
+Pour **echo**, la capture dessine une **grande roue de delay** (centre ~(115,138),
+rayon ~60, disque + 6 ports + moyeu) que la **reference n'a pas du tout** : la
+reference a un fond brun chaud uniforme (56,49,36) a cet endroit. Idem le panneau
+sombre `#0d0b08` du preview (`x.fillStyle='#0d0b08';x.fillRect(px0,py0,pw,ph)`),
+present dans la capture, **absent de la reference**.
+- Geometrie du chrome : identique (les 4 boutons tombent aux memes coordonnees a
+  ~2 px pres), donc la mise en page n'est pas en cause.
+- Autrement dit : **la reference ressemble a une capture « chrome + fond » sans
+  la couche de scene**, alors que le port (et le preview, qui EST la source de
+  verite) la dessine. A trancher avant de « corriger » les scenes : si le preview
+  doit gagner, c'est la *reference* qui n'est pas la bonne cible pour les scenes.
+
+### Images
+`python3 tools/fxcompare/sheets.py` ecrit une planche par effet dans
+`tools/fxcompare/sheets/`, et `tools/fxcompare/contact.png` est la planche de
+contact des 15 (REFERENCE | CAPTURE, triee par ecart). Copies servies dans
+`/workspace/dl/fx-sheets/` (port 12000).
+
+## FX port: two traps that cost a full debugging cycle
+
+**Scene text density.** `FxScenes.label()` must measure with `density = Density(1f, 1f)`.
+The scene canvas already applies the display density (`scale(d, d)` in `FxOpenPanel`
+and `RackCard`), so a `sp` resolved at the real density is multiplied by it a second
+time. On the 440dpi test device every scene label came out 2.75x too large, which is
+what made prism-tone's band readouts an unreadable block. Verify any new scene text
+with `grep`-free measurement: compare the glyph height against the reference crop.
+
+**Panel text colour.** The `.xN` rule gives both the background *and* the text colour.
+Use `fxPanelText(effectId)` for every label, value, title, sub-title and chip on the
+panel. Hard-coding `#DFE4EE`/`#E6EAF3` makes the text invisible on the light faces
+(solar `.x4` is dark ink `#2a241b` on cream `#efe9db`).
+
+**Animation phase dominates the pixel metric.** The per-effect score
+(`tools/fxcompare/error_map.py`) correlates with *how animated* an effect is, not with
+how faithful the port is. The four static faces (bass 5.10, amp 8.54, organ 8.63,
+piano 8.69) sit at the top while animated ones (echo 15.88, solar 15.21) sit at the
+bottom. A phase-shifted but correct animation scores worse than a wrong static face.
+Before "fixing" a low-scoring effect, verify the animation phase: cross-correlate the
+two images and check for a lag. `strings` and `space` both cross-correlate at lag 0.
+Never chase this score alone — it cannot distinguish a real defect from a time offset.
+
+**The scene is not the window.** The 1728x800 references are full *windows*
+(scale 2.0292, header included); the 825x343 captures are the *scene* only. Compare
+scene-to-scene with the crop `(26, 80, 1702, 776)`, which is the empirically optimal
+window on the known-good faces. A whole-window crop silently misaligns every later
+read: it once produced a bogus "space is offset by 8 px" result.
+
+**The effect title has one rule, but its face comes from the spec.** In the preview
+`.ph .nm{font-size:30px;line-height:1}` is the *only* title rule: no font-family, no
+font-weight, no letter-spacing. Do not conclude from that alone that the title uses
+the body face. The per-effect faces in `fx_layout_spec.json` (`font` field, doc 03
+table: Space Grotesk, JetBrains Mono, Orbitron, Share Tech Mono, Sora) are the
+source of truth, and `FxFonts.title(id)` implements them. Measured A/B on the title
+band (x 140..430, y 0..45), keeping the per-effect face while dropping the *invented*
+weight and tracking scored best (18.62) against both the body face (18.96) and the
+status quo (19.76). Keep `fontWeight = Normal`, `letterSpacing = 0` and
+`lineHeight = fontSize`; the last one removes the ~2 px sink the Material3 24 sp line
+height causes. `NAME_STYLES`'s weight/tracking columns are not in the preview.
+
+**The names carry a ligature.** `fx_layout_spec.json` spells effects 0 and 1
+`Æther Space` / `Æther Echo` with U+00C6. The port had plain `Aether`, which is a
+one-glyph difference in the widest part of the title.
+
+**The Æther FX path has two dormant switches, and both default to off.** The audio
+chain is fully built — `FxMixer` with `kStrips = 11` plus `kMaster = 15`, per-strip
+chains, a master strip — but nothing reaches it until both are set:
+
+1. `mFxEnabled{false}` in `audio_engine.h`. `renderFxPath()` returns early while it
+   is false, and `AudioEngine::render` falls back to the legacy stereo mix. Set from
+   Kotlin by `setFxEnabled(true)`, which nothing called. It is now invoked from
+   `NativeAudioBridge.safeStartEngine` right after a successful `startEngine`.
+2. `mMultiChannelEnabled{false}` in `soundfont_engine.h`. `renderChannels()` returns
+   false while it is off, and `renderFxPath` then bails out even with `mFxEnabled`
+   true. It must be set *before* `init()`: `synth.audio-channels` and
+   `synth.audio-groups` are only honoured at FluidSynth init, which is why
+   `setMultiChannelEnabled(true)` sits above both `mSynthEngine.init()` call sites in
+   `audio_engine.cpp`. Enabling it also turns the synth chorus off, so the audible
+   result changes by design.
+
+**The window the app opens is `FxOverlay`, not `FxWindowHost`.** `FxWindowHost` is
+the ported shell; `FxOverlay` is the host the mixer calls, and it used to render the
+older `FxRackStrip`/`FxWindow`/`FxAddPanel` trio. It now builds one
+`FxShellStore(fxModules(), FxControllerEngine(controller))` per strip and renders
+`FxWindowHost`. Restore order matters: `controller.restore()` runs first (it pushes
+every effect and parameter into the native mixer, so the engine is the authority),
+then `store.seed(...)` copies that state into the shell without re-pushing. The
+controller keeps persistence and the native bridge; the store owns the UI state.
+
+## Sandbox environment (survives nothing — re-provision every session)
+
+The sandbox is wiped between conversations. Nothing below persists except what is
+committed, so restore it before any build.
+
+```bash
+export JAVA_HOME=/workspace/jdk/jdk21
+export ANDROID_HOME=/workspace/android-sdk
+export ANDROID_SDK_ROOT=/workspace/android-sdk
+export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$PATH"
+```
+
+`/workspace/build.sh` already exports these and bounds memory
+(`--no-daemon --max-workers=2`); the native fluidsynth build for 4 ABIs plus a
+4 GB Gradle daemon is what put earlier sandboxes under pressure. Prefer it.
+
+### Screenshots
+
+Roborazzi only writes images when the record task runs. Plain
+`testDebugUnitTest` executes the tests and produces no PNG:
+
+```bash
+./gradlew :app:recordRoborazziDebug --tests "com.soundstage.mixer.*CaptureTest"
+```
+
+Never run `recordRoborazziDebug` unfiltered: `LiveUiLoop.run()` is an infinite
+loop by design (an external process drives it through `cmd.json`) and the suite
+hangs until killed. Always pass `--tests`.
+
+### Release workflow
+
+`.github/workflows/release.yml` is manual only: `workflow_dispatch`, no push or
+tag trigger. Start it with "Run workflow". It uploads the APK as an artifact and
+publishes a release unless the `release` input is false.
+
+### Repository state
+
+Work happens on `recovery/fx-window-shell`, not `main`. `main` has no
+`aetherkeys/fx` package at all, so any APK built from `main` predates the FX
+window. Merge the branch before expecting it in a release.

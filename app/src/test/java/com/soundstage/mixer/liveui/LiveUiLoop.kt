@@ -27,14 +27,13 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
 import androidx.test.core.app.ApplicationProvider
 import com.github.takahirom.roborazzi.captureRoboImage
-import com.soundstage.mixer.fx.FxController
-import com.soundstage.mixer.fx.FxRegistry
 import com.soundstage.mixer.model.ActivePopup
 import com.soundstage.mixer.model.AppScreenPage
 import com.soundstage.mixer.ui.MixerScreen
-import com.soundstage.mixer.ui.fx.FxAddPanel
-import com.soundstage.mixer.ui.fx.FxRackStrip
-import com.soundstage.mixer.ui.fx.FxWindow
+import com.aetherkeys.fx.ui.FxEngine
+import com.aetherkeys.fx.ui.FxShellStore
+import com.aetherkeys.fx.ui.FxWindowHost
+import com.aetherkeys.fx.ui.fxModules
 import com.soundstage.mixer.ui.theme.DarkBg
 import com.soundstage.mixer.ui.theme.SoundfontLiveMixerTheme
 import com.soundstage.mixer.viewmodel.MixerViewModel
@@ -81,27 +80,17 @@ class LiveUiLoop {
             SoundfontLiveMixerTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = DarkBg) {
                     when {
-                        fxPreview.value == "rack" -> FxPreviewSurface(Modifier.padding(12.dp)) {
-                            val c = remember { seededController(app, listOf(0, 1, 2)) }
-                            FxRackStrip(
-                                controller = c,
-                                selectedSlot = null,
-                                onSelect = {}, onRemove = {}, onDragUpdate = { _, _ -> },
-                                onDragStop = {}, onAddInstrument = {}, onAddEffect = {}, onClose = {},
-                            )
-                        }
-                        fxPreview.value.startsWith("window:") -> {
-                            val id = fxPreview.value.removePrefix("window:").toIntOrNull() ?: 0
-                            FxPreviewSurface(
-                                Modifier.padding(horizontal = 12.dp).padding(top = 38.dp, bottom = 10.dp),
-                            ) {
-                                val c = remember { seededController(app, listOf(id)) }
-                                FxWindow(effectId = id, slot = 0, controller = c, level = 0.62f, onClose = {})
-                            }
-                        }
+                        // FX previews render the ported shell directly: the same
+                        // FxShellStore/FxWindowHost the app now uses for Effects.
                         fxPreview.value == "add" -> FxPreviewSurface(Modifier.padding(24.dp), Alignment.Center) {
-                            val c = remember { seededController(app, emptyList()) }
-                            FxAddPanel(controller = c, onPick = {}, onClose = {})
+                            val store = remember { previewStore("add") }
+                            FxWindowHost(store = store, modifier = Modifier.fillMaxSize())
+                        }
+                        fxPreview.value.isNotEmpty() -> FxPreviewSurface(
+                            Modifier.padding(horizontal = 12.dp).padding(top = 38.dp, bottom = 10.dp),
+                        ) {
+                            val store = remember(fxPreview.value) { previewStore(fxPreview.value) }
+                            FxWindowHost(store = store, modifier = Modifier.fillMaxSize())
                         }
                         else -> MixerScreen(viewModel = viewModel, skipSplash = true)
                     }
@@ -239,21 +228,30 @@ class LiveUiLoop {
 }
 
 /**
- * Seeds an [FxController] without the native bridge, which is unavailable under
- * Robolectric and makes setEffect() refuse every id. Writing the public lists is
- * enough for the UI: the composables read effectIds, bypassed and params.
+ * Builds a store for the FX previews without the native bridge. Under Robolectric
+ * the bridge is absent, so FxController refuses every id; the store is driven
+ * directly instead. `fxPreview` values: "rack", "add", or "window:<id>".
  */
-private fun seededController(app: Application, ids: List<Int>): FxController {
-    val c = FxController(0, app)
-    ids.forEachIndexed { slot, id ->
-        if (slot < c.slotCount) {
-            c.effectIds[slot] = id
-            c.params[slot] = MutableList(FxRegistry.MAX_PARAMS) { i ->
-                FxRegistry.info(id).params.getOrNull(i)?.default ?: 0f
-            }
+private fun previewStore(key: String): FxShellStore {
+    val store = FxShellStore(fxModules(), object : FxEngine {
+        override fun setEffect(strip: Int, slot: Int, id: Int) = true
+        override fun setInstrument(strip: Int, id: Int) = true
+        override fun setParam(strip: Int, slot: Int, index: Int, value: Float) = Unit
+        override fun setInstrumentParam(strip: Int, index: Int, value: Float) = Unit
+        override fun setBypass(strip: Int, slot: Int, bypassed: Boolean) = Unit
+        override fun applyPreset(strip: Int, slot: Int, presetIndex: Int) = true
+        override fun meter(strip: Int, slot: Int, index: Int) = 0f
+    })
+    when {
+        key == "add" -> store.addOpen = true
+        key.startsWith("window:") -> {
+            val id = key.removePrefix("window:").toIntOrNull() ?: 0
+            store.addEffect(id)
+            store.openId = id
         }
+        else -> listOf(10, 0, 1).forEach { store.addEffect(it) }
     }
-    return c
+    return store
 }
 
 /** Full-bleed backdrop matching the FX overlay, so the preview frames are readable. */

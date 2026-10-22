@@ -31,7 +31,7 @@ object FxRegistry {
     val instrumentIds = listOf(5, 6, 7, 8, 9, 12, 14)
 
     val all: List<FxInfo> = listOf(
-        FxInfo(0, "Aether Space", "Reverb", FxKind.EFFECT,
+        FxInfo(0, "Æther Space", "Reverb", FxKind.EFFECT,
             listOf(
                 FxParam("Size", 0f, 100f, "%", 0, 0.62f, FxCurve.LINEAR, false),
                 FxParam("Decay", 0.4f, 8f, "s", 1, 0.7f, FxCurve.LINEAR, false),

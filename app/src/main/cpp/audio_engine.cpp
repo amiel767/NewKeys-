@@ -17,6 +17,11 @@ AudioEngine::AudioEngine() {
     int sampleRate = 48000;
     mSampleRate = sampleRate;
     mFloatRenderBuffer.resize(2048, 0.0f);
+    // One stereo output group per MIDI channel: renderFxPath() needs each track's
+    // soundfont render in its own group, and FluidSynth only honours
+    // synth.audio-groups at init time. Without this renderChannels() returns false
+    // and the whole Æther FX path silently falls back to the legacy stereo mix.
+    mSynthEngine.setMultiChannelEnabled(true);
     mSynthEngine.init(sampleRate);
     mMasterDelay.init(sampleRate);
     mMasterReverb.init(sampleRate);
@@ -154,6 +159,7 @@ bool AudioEngine::openAndStartStream() {
 
     // Initialize unified FluidSynth engine (16 MIDI channels covering Tracks 1..8, Drum 8, TonicPad 9)
     if (!mSynthEngine.isInitialized()) {
+        mSynthEngine.setMultiChannelEnabled(true);
         mSynthEngine.init(sampleRate, kFaderPolyphony, "UnifiedSynthEngine");
     }
     mSynthEngine.setGain(mMasterGain);
