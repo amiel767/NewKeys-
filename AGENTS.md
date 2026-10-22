@@ -1322,3 +1322,28 @@ height causes. `NAME_STYLES`'s weight/tracking columns are not in the preview.
 **The names carry a ligature.** `fx_layout_spec.json` spells effects 0 and 1
 `Æther Space` / `Æther Echo` with U+00C6. The port had plain `Aether`, which is a
 one-glyph difference in the widest part of the title.
+
+**The Æther FX path has two dormant switches, and both default to off.** The audio
+chain is fully built — `FxMixer` with `kStrips = 11` plus `kMaster = 15`, per-strip
+chains, a master strip — but nothing reaches it until both are set:
+
+1. `mFxEnabled{false}` in `audio_engine.h`. `renderFxPath()` returns early while it
+   is false, and `AudioEngine::render` falls back to the legacy stereo mix. Set from
+   Kotlin by `setFxEnabled(true)`, which nothing called. It is now invoked from
+   `NativeAudioBridge.safeStartEngine` right after a successful `startEngine`.
+2. `mMultiChannelEnabled{false}` in `soundfont_engine.h`. `renderChannels()` returns
+   false while it is off, and `renderFxPath` then bails out even with `mFxEnabled`
+   true. It must be set *before* `init()`: `synth.audio-channels` and
+   `synth.audio-groups` are only honoured at FluidSynth init, which is why
+   `setMultiChannelEnabled(true)` sits above both `mSynthEngine.init()` call sites in
+   `audio_engine.cpp`. Enabling it also turns the synth chorus off, so the audible
+   result changes by design.
+
+**The window the app opens is `FxOverlay`, not `FxWindowHost`.** `FxWindowHost` is
+the ported shell; `FxOverlay` is the host the mixer calls, and it used to render the
+older `FxRackStrip`/`FxWindow`/`FxAddPanel` trio. It now builds one
+`FxShellStore(fxModules(), FxControllerEngine(controller))` per strip and renders
+`FxWindowHost`. Restore order matters: `controller.restore()` runs first (it pushes
+every effect and parameter into the native mixer, so the engine is the authority),
+then `store.seed(...)` copies that state into the shell without re-pushing. The
+controller keeps persistence and the native bridge; the store owns the UI state.

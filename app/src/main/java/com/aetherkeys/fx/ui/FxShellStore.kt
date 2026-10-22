@@ -42,8 +42,28 @@ class FxShellStore(
     fun isOn(id: Int): Boolean = slotsOf(strip).contains(id) || instrument[strip] == id
 
     /** Current values of [id] on the current strip. Created from the registry defaults on first use. */
-    fun valuesOf(id: Int): FloatArray = values.getOrPut(key(strip, id)) {
+    fun valuesOf(id: Int): FloatArray = valuesOf(strip, id)
+
+    private fun valuesOf(s: Int, id: Int): FloatArray = values.getOrPut(key(s, id)) {
         FxRegistry.info(id).params.map { it.default }.toFloatArray()
+    }
+
+    /**
+     * Fills the local state of [s] from an already-restored source *without*
+     * pushing to the engine. Used when the shell adopts an existing strip: the
+     * engine is the authority at that point, re-pushing would only replay it.
+     */
+    fun seed(s: Int, ids: List<Int>, params: List<List<Float>>, byp: List<Boolean>, inst: Int?) {
+        val list = slotsOf(s)
+        ids.forEachIndexed { i, id -> if (i < list.size) list[i] = id.takeIf { it >= 0 } }
+        ids.forEachIndexed { i, id ->
+            if (id >= 0) {
+                val v = valuesOf(s, id)
+                params.getOrNull(i)?.forEachIndexed { j, x -> if (j < v.size) v[j] = x }
+                bypass[key(s, id)] = byp.getOrNull(i) ?: false
+            }
+        }
+        instrument[s] = inst
     }
 
     fun isBypassed(id: Int) = bypass[key(strip, id)] ?: false

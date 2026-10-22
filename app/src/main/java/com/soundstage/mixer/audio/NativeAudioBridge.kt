@@ -153,7 +153,13 @@ object NativeAudioBridge {
     fun safeStartEngine(driverType: Int = 0): Boolean {
         return if (isLibraryLoaded) {
             try {
-                startEngine(driverType)
+                val ok = startEngine(driverType)
+                // The Æther FX path is dormant until this is set: the native render
+                // returns early while `mFxEnabled` is false, so every effect the UI
+                // showed was silently skipped. Enable it once the stream is up.
+                if (ok) runCatching { setFxEnabled(true) }
+                    .onFailure { Log.e("NativeAudioBridge", "setFxEnabled failed: ${it.message}") }
+                ok
             } catch (e: Throwable) {
                 Log.e("NativeAudioBridge", "Error invoking startEngine: ${e.message}")
                 false
