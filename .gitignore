@@ -20,3 +20,6 @@ debug.keystore
 # of truth, so the extracted trees are working copies, not tracked content.
 /app/assets/fx-screens-spec/
 /app/assets/aether-fx-package/
+
+# Generated reference renders (tools/refcheck/render_ref.mjs output)
+tools/refcheck/out/
