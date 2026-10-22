@@ -44,7 +44,6 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soundstage.mixer.model.ActivePopup
 import com.soundstage.mixer.model.AppScreenPage
-import com.soundstage.mixer.model.FxParameters
 import com.soundstage.mixer.ui.components.*
 import com.soundstage.mixer.ui.components.v2.MixerBackgroundV2
 import com.soundstage.mixer.ui.components.v2.ChannelStripV2
@@ -641,14 +640,6 @@ private fun MixerMainPageContent(
 
 
 
-/**
- * Switches the Effects popup to the ported Aether FX window. The legacy
- * EffectsDialog stays reachable until the new window is validated on device
- * (doc: remove the old FX once everything is implemented).
- */
-private const val FX_WINDOW_V2 = true
-
-
 @Composable
 fun MixerScreen(
     viewModel: MixerViewModel,
@@ -937,36 +928,23 @@ fun MixerScreen(
 
         when (uiState.activePopup) {
             ActivePopup.EFFECTS -> {
-                if (FX_WINDOW_V2) {
-                    val slotIdx = if (uiState.activeEffectTrackId == 0) null else uiState.activeEffectTrackId - 1
-                    val sfTrack = slotIdx?.let { uiState.tracks.getOrNull(it) }
-                    com.soundstage.mixer.ui.fx.FxOverlay(
-                        trackId = uiState.activeEffectTrackId,
-                        soundfontName = sfTrack?.soundfontName.orEmpty(),
-                        program = sfTrack?.program ?: 0,
-                        onClose = { viewModel.closePopup() },
-                        onChooseSoundfont = {
-                            if (uiState.activeEffectTrackId in 1..8) {
-                                viewModel.openSoundfontForSlot(uiState.activeEffectTrackId - 1)
-                            }
-                        },
-                        modifier = Modifier.fillMaxSize().zIndex(130f),
-                    )
-                } else {
-                    val fxParams = uiState.fxParameters[uiState.activeEffectTrackId] ?: FxParameters()
-                    val currentTrack = if (uiState.activeEffectTrackId == 0) uiState.masterTrack else uiState.tracks.find { it.id == uiState.activeEffectTrackId }
-                    EffectsDialog(
-                        trackId = uiState.activeEffectTrackId,
-                        track = currentTrack,
-                        fxParameters = fxParams,
-                        onUpdateFx = { transform -> viewModel.updateFxParameter(uiState.activeEffectTrackId, transform) },
-                        onSetReverbPreset = { viewModel.setTrackReverbPreset(uiState.activeEffectTrackId, it) },
-                        onSetVelocityCurve = { viewModel.setTrackVelocityCurve(uiState.activeEffectTrackId, it) },
-                        activeTab = uiState.activeFxTab,
-                        onTabChange = { viewModel.setFxTab(it) },
-                        onClose = { viewModel.closePopup() }
-                    )
-                }
+                // The Æther FX window is the only Effects surface. The legacy
+                // EffectsDialog is gone: FxOverlay renders FxWindowHost, the
+                // ported shell (rack, effect window, add panel).
+                val slotIdx = if (uiState.activeEffectTrackId == 0) null else uiState.activeEffectTrackId - 1
+                val sfTrack = slotIdx?.let { uiState.tracks.getOrNull(it) }
+                com.soundstage.mixer.ui.fx.FxOverlay(
+                    trackId = uiState.activeEffectTrackId,
+                    soundfontName = sfTrack?.soundfontName.orEmpty(),
+                    program = sfTrack?.program ?: 0,
+                    onClose = { viewModel.closePopup() },
+                    onChooseSoundfont = {
+                        if (uiState.activeEffectTrackId in 1..8) {
+                            viewModel.openSoundfontForSlot(uiState.activeEffectTrackId - 1)
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize().zIndex(130f),
+                )
             }
             ActivePopup.SOUNDFONT -> {
                 val slot = uiState.audioSlots.getOrNull(uiState.activeSoundfontSlotId)
