@@ -337,10 +337,10 @@ fun DrawScope.sceneOrgan(v: FloatArray, a: Color, t: Float, tm: TextMeasurer, st
             brush = Brush.linearGradient(listOf(Color(0xFF1D1814), Color(0xFF0E0B09)), start = Offset(0f, 0f), end = Offset(0f, 200f)))
         drawPath(rrect(ox - 16f, 2f, 238f, 200f, 10f), Color(0x55C9A45C), style = Stroke(width = 1.2f))
         val lt = tm.measure(title, style = TextStyle(color = Color(0xFFF2D58A), fontSize = 9.sp,
-            fontFamily = FxFonts.mono, fontWeight = FontWeight.Bold))
+            fontFamily = FxFonts.mono, fontWeight = FontWeight.Bold), density = Density(1f, 1f))
         drawText(lt, topLeft = Offset(ox - 6f, 16f - lt.size.height / 2f))
         val rt = tm.measure("${vals[0].toInt()}${vals[1].toInt()} ${vals[2].toInt()}${vals[3].toInt()}${vals[4].toInt()}${vals[5].toInt()} ${vals[6].toInt()}${vals[7].toInt()}${vals[8].toInt()}",
-            style = TextStyle(color = Color(0xFFF2D58A), fontSize = 9.sp, fontFamily = FxFonts.mono, fontWeight = FontWeight.Bold))
+            style = TextStyle(color = Color(0xFFF2D58A), fontSize = 9.sp, fontFamily = FxFonts.mono, fontWeight = FontWeight.Bold), density = Density(1f, 1f))
         drawText(rt, topLeft = Offset(ox + 214f - rt.size.width, 16f - rt.size.height / 2f))
         for (k in 0 until 9) {
             val px = ox + k * 26f; val top = 38f; val len = 124f
@@ -351,9 +351,9 @@ fun DrawScope.sceneOrgan(v: FloatArray, a: Color, t: Float, tm: TextMeasurer, st
             drawPath(rrect(px - 11f, cy - 8f, 22f, 16f, 4f), color = parseHex(cap[k]))
             val vt = tm.measure(vals[k].toInt().toString(), style = TextStyle(
                 color = if (cap[k] == "#f2eadb") Color(0xFF2A1A10) else Color(0xFFF2EADB),
-                fontSize = 9.sp, fontFamily = FxFonts.mono, fontWeight = FontWeight.Bold))
+                fontSize = 9.sp, fontFamily = FxFonts.mono, fontWeight = FontWeight.Bold), density = Density(1f, 1f))
             drawText(vt, topLeft = Offset(px - vt.size.width / 2f, cy + 3.2f - vt.size.height / 2f))
-            val nt = tm.measure(nm[k], style = TextStyle(color = Color(0xFFC9B88F), fontSize = 7.sp, fontFamily = FxFonts.mono))
+            val nt = tm.measure(nm[k], style = TextStyle(color = Color(0xFFC9B88F), fontSize = 7.sp, fontFamily = FxFonts.mono), density = Density(1f, 1f))
             drawText(nt, topLeft = Offset(px - nt.size.width / 2f, top - 12f - nt.size.height / 2f))
         }
     }
@@ -368,7 +368,7 @@ fun DrawScope.sceneOrgan(v: FloatArray, a: Color, t: Float, tm: TextMeasurer, st
     for (k in 0 until 6) {
         val an = Math.toRadians((-200f + k * 40f).toDouble()).toFloat()
         val lt = tm.measure(lab[k], style = TextStyle(color = if (k == vi) Color(0xFFF2D58A) else Color(0xFFC9B88F),
-            fontSize = 8.sp, fontFamily = FxFonts.mono, fontWeight = FontWeight.Bold))
+            fontSize = 8.sp, fontFamily = FxFonts.mono, fontWeight = FontWeight.Bold), density = Density(1f, 1f))
         drawText(lt, topLeft = Offset(dcx + 38f * cos(an) - lt.size.width / 2f, dcy + 38f * sin(an) + 3f - lt.size.height / 2f))
         drawCircle(if (k == vi) Color(0xFFF2D58A) else Color(0xFF5A4A30), radius = 1.6f,
             center = Offset(dcx + 29f * cos(an), dcy + 29f * sin(an)))
@@ -912,7 +912,7 @@ fun DrawScope.sceneBass(v: FloatArray, a: Color, t: Float, tm: TextMeasurer, st:
         drawPath(rrect(sx - 9f, ty - 6f, 18f, 12f, 3f), brush = Brush.linearGradient(
             listOf(Color(0xFF6A6258), Color(0xFFF0E8DA), Color(0xFF5A5248)), start = Offset(sx - 9f, 0f), end = Offset(sx + 9f, 0f)))
         val lt = tm.measure(listOf("63", "250", "1k", "3k", "8k")[k],
-            style = TextStyle(color = Color(0xFFC9B88F), fontSize = 8.sp, fontFamily = FxFonts.mono))
+            style = TextStyle(color = Color(0xFFC9B88F), fontSize = 8.sp, fontFamily = FxFonts.mono), density = Density(1f, 1f))
         drawText(lt, topLeft = Offset(sx - lt.size.width / 2f, 119f - lt.size.height / 2f))
     }
     val cols: List<Triple<Float, Float, Float>> = when (cab) {
@@ -934,7 +934,7 @@ fun DrawScope.sceneBass(v: FloatArray, a: Color, t: Float, tm: TextMeasurer, st:
         drawCircle(Color(0xFF111111), radius = r * 0.24f * pump, center = Offset(ccx, ccy))
     }
     val vt = tm.measure("VU", style = TextStyle(color = Color(0xFF3A2A10), fontSize = 8.sp,
-        fontFamily = FxFonts.mono, fontWeight = FontWeight.Bold))
+        fontFamily = FxFonts.mono, fontWeight = FontWeight.Bold), density = Density(1f, 1f))
     drawText(vt, topLeft = Offset(vx - vt.size.width / 2f, 32f - vt.size.height / 2f))
 }
 
@@ -1056,7 +1056,7 @@ fun DrawScope.sceneVoices(v: FloatArray, a: Color, t: Float, tm: TextMeasurer, s
     for ((l, u, w) in listOf(Triple("I", 0.1f, 0.9f), Triple("U", 0.9f, 0.9f), Triple("E", 0.25f, 0.55f),
         Triple("O", 0.75f, 0.55f), Triple("A", 0.5f, 0.1f))) {
         val lt = tm.measure(l, style = TextStyle(color = Color(0xFFC9B8FF), fontSize = 22.sp,
-            fontFamily = FxFonts.spaceGrotesk, fontWeight = FontWeight.Bold))
+            fontFamily = FxFonts.spaceGrotesk, fontWeight = FontWeight.Bold), density = Density(1f, 1f))
         drawText(lt, topLeft = Offset(px0 + pw * u - lt.size.width / 2f, py0 + ph * (1f - w) + 8f - lt.size.height / 2f),
             alpha = 0.7f)
     }
@@ -1077,7 +1077,7 @@ fun DrawScope.sceneVoices(v: FloatArray, a: Color, t: Float, tm: TextMeasurer, s
         if (i == 0) fp.moveTo(xx, yy) else fp.lineTo(xx, yy)
     }
     drawPath(fp, Color(0xFFC9B8FF), style = Stroke(width = 2f))
-    val ft = tm.measure("FORMANTS  F1 F2 F3", style = TextStyle(color = Color(0xFFC9B8FF), fontSize = 8.sp, fontFamily = FxFonts.mono))
+    val ft = tm.measure("FORMANTS  F1 F2 F3", style = TextStyle(color = Color(0xFFC9B8FF), fontSize = 8.sp, fontFamily = FxFonts.mono), density = Density(1f, 1f))
     drawText(ft, topLeft = Offset(590f, 206f))
 }
 
@@ -1147,7 +1147,7 @@ fun DrawScope.sceneSynth(v: FloatArray, a: Color, t: Float, tm: TextMeasurer, st
             drawCircle(Color.White, radius = 7f + sin(t * 4f) * 1.2f, center = Offset(pxx, pyy))
             drawCircle(Color(0xFF7AD0FF), radius = 12f, center = Offset(pxx, pyy), style = Stroke(width = 2f))
             val lt = tm.measure("CUTOFF ${fc.roundToInt()} Hz  ·  RES ${(v[8] * 100).roundToInt()}%",
-                style = TextStyle(color = Color(0xFF8FB8D8), fontSize = 8.sp, fontFamily = FxFonts.mono))
+                style = TextStyle(color = Color(0xFF8FB8D8), fontSize = 8.sp, fontFamily = FxFonts.mono), density = Density(1f, 1f))
             drawText(lt, topLeft = Offset(278f, 22f - lt.size.height / 2f))
             val ax = 282f + v[12] * 70f; val dx = ax + v[13] * 70f
             val sy = 136f + (1f - v[14]) * 64f; val sx = dx + 40f; val rx = sx + v[15] * 70f
@@ -1169,15 +1169,15 @@ fun DrawScope.sceneSynth(v: FloatArray, a: Color, t: Float, tm: TextMeasurer, st
             // 22 px down except D which sits 14 px above its handle.
             listOf("A" to (ax to 136f), "D" to (dx to sy), "S" to (rx to 200f)).forEachIndexed { k, (nm, h) ->
                 val lt = tm.measure(nm, style = TextStyle(color = Color(0xFFE8B0CC), fontSize = 8.sp,
-                    fontFamily = FxFonts.mono, fontWeight = FontWeight.Bold))
+                    fontFamily = FxFonts.mono, fontWeight = FontWeight.Bold), density = Density(1f, 1f))
                 drawText(lt, topLeft = Offset(h.first - lt.size.width / 2f,
                     h.second + (if (k == 1) -14f else 22f) - lt.size.height / 2f))
             }
             val ot = tm.measure("OSC A", style = TextStyle(color = Color(0xFF8FB8D8), fontSize = 8.sp,
-                fontFamily = FxFonts.mono, fontWeight = FontWeight.Bold))
+                fontFamily = FxFonts.mono, fontWeight = FontWeight.Bold), density = Density(1f, 1f))
             drawText(ot, topLeft = Offset(22f, 20f - ot.size.height / 2f))
             val ob = tm.measure("OSC B", style = TextStyle(color = Color(0xFF8FB8D8), fontSize = 8.sp,
-                fontFamily = FxFonts.mono, fontWeight = FontWeight.Bold))
+                fontFamily = FxFonts.mono, fontWeight = FontWeight.Bold), density = Density(1f, 1f))
             drawText(ob, topLeft = Offset(142f, 20f - ob.size.height / 2f))
         }
         1 -> {
@@ -1200,12 +1200,12 @@ fun DrawScope.sceneSynth(v: FloatArray, a: Color, t: Float, tm: TextMeasurer, st
                 drawPath(Path().apply { moveTo(548f, y1); cubicTo(640f, y1, 660f, y2, 752f, y2) },
                     brush = Brush.linearGradient(listOf(Color(0xFF7AD0FF), Color(0xFFFF9AD0)), start = Offset(530f, 0f), end = Offset(770f, 0f)),
                     style = Stroke(width = 1f + am * 5f), alpha = 0.25f + 0.6f * am)
-                val lt = tm.measure(nm, style = TextStyle(color = Color(0xFF8FB8D8), fontSize = 8.sp, fontFamily = FxFonts.mono))
+                val lt = tm.measure(nm, style = TextStyle(color = Color(0xFF8FB8D8), fontSize = 8.sp, fontFamily = FxFonts.mono), density = Density(1f, 1f))
                 drawText(lt, topLeft = Offset(540f - lt.size.width, y1 + 3f - lt.size.height / 2f))
             }
             dst.forEachIndexed { k, nm ->
                 val y2 = 34f + k * 28f
-                val lt = tm.measure(nm, style = TextStyle(color = Color(0xFF8FB8D8), fontSize = 8.sp, fontFamily = FxFonts.mono))
+                val lt = tm.measure(nm, style = TextStyle(color = Color(0xFF8FB8D8), fontSize = 8.sp, fontFamily = FxFonts.mono), density = Density(1f, 1f))
                 drawText(lt, topLeft = Offset(764f, y2 + 3f - lt.size.height / 2f))
             }
             // White dots travelling along each curve, and the socket rings at both
@@ -1224,7 +1224,7 @@ fun DrawScope.sceneSynth(v: FloatArray, a: Color, t: Float, tm: TextMeasurer, st
                 drawCircle(Color(0xFF0C1424), radius = 5f, center = Offset(752f, y2))
                 drawCircle(Color(0xFFFF9AD0), radius = 5f, center = Offset(752f, y2), style = Stroke(width = 1.6f))
             }
-            val mt = tm.measure("MODULATION", style = TextStyle(color = Color(0xFF8FB8D8), fontSize = 8.sp, fontFamily = FxFonts.mono))
+            val mt = tm.measure("MODULATION", style = TextStyle(color = Color(0xFF8FB8D8), fontSize = 8.sp, fontFamily = FxFonts.mono), density = Density(1f, 1f))
             drawText(mt, topLeft = Offset(520f, 16f - mt.size.height / 2f))
         }
         else -> {
@@ -1245,7 +1245,7 @@ fun DrawScope.sceneSynth(v: FloatArray, a: Color, t: Float, tm: TextMeasurer, st
             for (k in 0 until 16) drawCircle(if (k < nv) Color(0xFF7AD0FF) else Color(0x22FFFFFF), radius = 4.2f,
                 center = Offset(560f + k * 13f, 40f))
             val lt = tm.measure("VOICES $nv  ·  ${listOf("POLY", "MONO", "LEGATO")[(v[26] * 2f).roundToInt().coerceIn(0, 2)]}",
-                style = TextStyle(color = Color(0xFF8FB8D8), fontSize = 8.sp, fontFamily = FxFonts.mono, fontWeight = FontWeight.Bold))
+                style = TextStyle(color = Color(0xFF8FB8D8), fontSize = 8.sp, fontFamily = FxFonts.mono, fontWeight = FontWeight.Bold), density = Density(1f, 1f))
             drawText(lt, topLeft = Offset(560f, 62f - lt.size.height / 2f))
         }
     }
