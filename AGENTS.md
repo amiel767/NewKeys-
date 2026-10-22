@@ -1277,3 +1277,17 @@ present dans la capture, **absent de la reference**.
 `tools/fxcompare/sheets/`, et `tools/fxcompare/contact.png` est la planche de
 contact des 15 (REFERENCE | CAPTURE, triee par ecart). Copies servies dans
 `/workspace/dl/fx-sheets/` (port 12000).
+
+## FX port: two traps that cost a full debugging cycle
+
+**Scene text density.** `FxScenes.label()` must measure with `density = Density(1f, 1f)`.
+The scene canvas already applies the display density (`scale(d, d)` in `FxOpenPanel`
+and `RackCard`), so a `sp` resolved at the real density is multiplied by it a second
+time. On the 440dpi test device every scene label came out 2.75x too large, which is
+what made prism-tone's band readouts an unreadable block. Verify any new scene text
+with `grep`-free measurement: compare the glyph height against the reference crop.
+
+**Panel text colour.** The `.xN` rule gives both the background *and* the text colour.
+Use `fxPanelText(effectId)` for every label, value, title, sub-title and chip on the
+panel. Hard-coding `#DFE4EE`/`#E6EAF3` makes the text invisible on the light faces
+(solar `.x4` is dark ink `#2a241b` on cream `#efe9db`).
