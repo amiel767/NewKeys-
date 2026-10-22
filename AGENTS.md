@@ -1291,3 +1291,18 @@ with `grep`-free measurement: compare the glyph height against the reference cro
 Use `fxPanelText(effectId)` for every label, value, title, sub-title and chip on the
 panel. Hard-coding `#DFE4EE`/`#E6EAF3` makes the text invisible on the light faces
 (solar `.x4` is dark ink `#2a241b` on cream `#efe9db`).
+
+**Animation phase dominates the pixel metric.** The per-effect score
+(`tools/fxcompare/error_map.py`) correlates with *how animated* an effect is, not with
+how faithful the port is. The four static faces (bass 5.10, amp 8.54, organ 8.63,
+piano 8.69) sit at the top while animated ones (echo 15.88, solar 15.21) sit at the
+bottom. A phase-shifted but correct animation scores worse than a wrong static face.
+Before "fixing" a low-scoring effect, verify the animation phase: cross-correlate the
+two images and check for a lag. `strings` and `space` both cross-correlate at lag 0.
+Never chase this score alone — it cannot distinguish a real defect from a time offset.
+
+**The scene is not the window.** The 1728x800 references are full *windows*
+(scale 2.0292, header included); the 825x343 captures are the *scene* only. Compare
+scene-to-scene with the crop `(26, 80, 1702, 776)`, which is the empirically optimal
+window on the known-good faces. A whole-window crop silently misaligns every later
+read: it once produced a bogus "space is offset by 8 px" result.
