@@ -690,9 +690,13 @@ private fun DrawScope.sceneEq(v: FloatArray, t: Float, tm: TextMeasurer) {
         // 116 -> 223 over 9 px while the capture fell straight to the 233
         // background. The scene canvas has no blur, so the penumbra is painted as
         // a band with a vertical gradient, the way `raised()` fakes it.
-        drawPath(rrect(fx - 17f, th + 11f, 34f, 10f, 5f), brush = Brush.verticalGradient(
-            listOf(Color(0x80000000), Color(0x00000000)),
-            startY = th + 11f, endY = th + 21f))
+        // Six stops approximating a Gaussian falloff. A two-stop ramp read as a hard
+        // grey bar; a blurred shadow decays fast at the edge then tails off, which
+        // this curve follows (0.20, 0.18, 0.13, 0.08, 0.03, 0).
+        drawPath(rrect(fx - 17f, th + 11f, 34f, 13f, 6f), brush = Brush.verticalGradient(
+            listOf(Color(0x94000000), Color(0x78000000), Color(0x5C000000), Color(0x42000000),
+                   Color(0x2B000000), Color(0x17000000), Color(0x08000000), Color(0x00000000)),
+            startY = th + 11f, endY = th + 24f))
         drawPath(rrect(fx - 15f, th - 11f, 30f, 22f, 5f), brush = Brush.linearGradient(
             listOf(Color(0xFFF4F0EA), Color(0xFFA39B95), Color(0xFF5C5550)),
             start = Offset(0f, th - 11f), end = Offset(0f, th + 11f)))

@@ -18,6 +18,7 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.sp
 import kotlin.math.abs
 import kotlin.math.cos
@@ -148,8 +149,12 @@ private fun DrawScope.rrect(x0: Float, y0: Float, w: Float, h: Float, r: Float):
 }
 
 private fun DrawScope.tag(tm: TextMeasurer, text: String, cx: Float, cy: Float, alignCenter: Boolean = true) {
+    // Density 1, same reason as `label()`: the scene canvas already applies the
+    // display density, so an `sp` resolved at the real density was multiplied by it
+    // twice. Sax's BREATH/REED/GROWL tags measured 33 px tall against the
+    // reference's 16 (2.06x) until this was pinned.
     val layout = tm.measure(text, style = TextStyle(color = Color(0xCCF3E6CC), fontSize = 8.sp,
-        fontFamily = FxFonts.mono))
+        fontFamily = FxFonts.mono), density = Density(1f, 1f))
     drawText(layout, topLeft = Offset(if (alignCenter) cx - layout.size.width / 2f else cx, cy - 8f))
 }
 
