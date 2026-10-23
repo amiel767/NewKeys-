@@ -477,8 +477,6 @@ private fun MixerMainPageContent(
                     masterTrack = uiState.masterTrack,
                     onMasterVolumeChange = { vol -> viewModel.setTrackVolume(0, vol) },
                     onMasterFxClick = { viewModel.openEffectsForTrack(0) },
-                    bpm = uiState.bpm,
-                    onBpmStep = { viewModel.updateBpm(it) },
                     isSnapshotArmMode = uiState.isSnapshotArmMode,
                     onToggleSnapshotArm = { viewModel.toggleSnapshotArm() },
                     activeSnapshotSlot = uiState.activeSnapshotSlot,

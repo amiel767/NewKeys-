@@ -59,7 +59,6 @@ import kotlin.math.roundToInt
 private val PanelTop = Color(0xFF2B3348)
 private val PanelBottom = Color(0xFF1D2433)
 private val TextMain = Color(0xFFE9EDF5)
-private val TextDim = Color(0xFF7B859A)
 private val Accent = Color(0xFF8FB2E8)
 
 @Composable
@@ -67,7 +66,6 @@ fun MixerBottomBarV2(
     masterTrack: TrackChannel,
     onMasterVolumeChange: (Float) -> Unit,
     onMasterFxClick: () -> Unit,
-    bpm: Int, onBpmStep: (Int) -> Unit,
     isSnapshotArmMode: Boolean, onToggleSnapshotArm: () -> Unit,
     activeSnapshotSlot: String?,
     snapshots: Map<String, SubSceneSnapshot>,
@@ -87,28 +85,13 @@ fun MixerBottomBarV2(
 
     Row(modifier.height(46.dp), // +15% as asked (40 -> 46)
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        horizontalArrangement = Arrangement.spacedBy(4.dp)) {
 
         ResourceMonitorV2(94.dp)
 
-        MixerModuleV2(modifier = Modifier.width(92.dp).fillMaxHeight()) {
-            Row(Modifier.fillMaxSize().padding(horizontal = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically) {
-                RoundStepV2(size = 26.dp, onClick = { onBpmStep(-1) }) {
-                    Text("−", color = TextMain, fontSize = 11.2.sp, fontWeight = FontWeight.Bold)
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("$bpm", color = TextMain, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold,
-                        fontFamily = FontFamily.Monospace, lineHeight = 16.sp)
-                    Text("BPM", color = TextDim, fontSize = 6.4.sp, fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = 1.3.sp, lineHeight = 9.sp)
-                }
-                RoundStepV2(size = 26.dp, onClick = { onBpmStep(+1) }) {
-                    Text("+", color = TextMain, fontSize = 11.2.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
+        // The BPM case was removed from the bottom bar as asked: tempo is still
+        // reachable from the drum pad and the top bar, and the freed room goes to
+        // the snapshot cases so they read longer.
 
         // Snapshot cases share the free room, but each is capped at the JSX
         // max-width (Default 150, numbered 124). `weight(1f)` cannot be used here:
@@ -116,9 +99,12 @@ fun MixerBottomBarV2(
         // made a lone case stretch across the whole row.
         BoxWithConstraints(Modifier.weight(1f)) {
             val count = configuredSnapshotSlots.size + if (configuredSnapshotSlots.size < 5) 1 else 0
-            val gapTotal = 6.dp * (count - 1).coerceAtLeast(0)
+            // 4 dp between cases instead of the preview's 6 dp: the user reads the
+            // 6 dp gutters as a large gap, and the tighter spacing gives every case a
+            // little more length.
+            val gapTotal = 4.dp * (count - 1).coerceAtLeast(0)
             val share = if (count > 0) (maxWidth - gapTotal) / count else 0.dp
-            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(6.dp),
+            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 configuredSnapshotSlots.forEachIndexed { idx, key ->
                     val defaultLabel = if (key == "slot_default") "Default" else "Snapshot ${idx}"
@@ -185,17 +171,9 @@ fun MixerBottomBarV2(
             }
         }
 
-        // The master case used to be a hard 178 dp: with 4 or 5 snapshot cases the
-        // snapshots were squeezed into unreadable slivers because the master never
-        // gave up any room. It now shortens *dynamically* with the number of snapshot
-        // cases (still anchored at the same place, only its length changes) so the
-        // snapshots keep their size instead of shrinking.
-        val masterWidth = when {
-            configuredSnapshotSlots.size >= 5 -> 132.dp
-            configuredSnapshotSlots.size == 4 -> 148.dp
-            configuredSnapshotSlots.size == 3 -> 164.dp
-            else -> 178.dp
-        }
+        // With the BPM case gone the bar has room again, so the master is back to
+        // its full 178 dp and the snapshot cases keep the rest.
+        val masterWidth = 178.dp
         MixerModuleV2(modifier = Modifier.width(masterWidth).fillMaxHeight()) {
             MasterSliderV2(masterTrack.volume, onMasterVolumeChange,
                 masterTrack.peakMeterL, masterTrack.peakMeterR, onMasterFxClick)
