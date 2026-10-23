@@ -1550,3 +1550,85 @@ deroulant `DrumPad` / `LiveLooper`** place dans la TopBar (titre). Le Kotlin act
   `ensureEngineStarted()` (seul `selectScene` l.3491 et l.4471 le font).
 - `LooperController.midiLearn()` est un stub (`/* hook to ... */`).
 - `LooperController` n'a pas encore de hook "demarrage sans son" / count-in audible.
+
+---
+
+## Session 2026-10-23 (5e passage) — robustesse anti-crash + callbacks
+
+Objectif : intégrer le contexte, **sécuriser l'environnement et les callbacks** pour
+éviter les crashs sandbox et les callbacks qui bloquent l'envoi de messages, et
+installer ce qu'il faut **en arrière-plan**.
+
+### Environnement : auto-restauration idempotente
+
+- `/workspace/restore_env.sh` (nouveau) : détecte le JDK réellement présent
+  (`/workspace/jdk/jdk-21*`, `jdk21`, `/usr/lib/jvm/*21*`) au lieu de coder en dur
+  `/workspace/jdk/jdk21` (l'ancien chemin n'existait plus après crash → build cassé).
+  Installe seulement ce qui manque (JDK 21, cmdline-tools, platform-tools,
+  android-36, build-tools 36.0.0, cmake 3.22.1, ndk 27.0.12077973, Pillow).
+  Idempotent, sûr en arrière-plan : `nohup /workspace/restore_env.sh >/dev/null 2>&1 &`
+  → log `/workspace/tools_logs/restore_env.log`.
+- `/workspace/build.sh` (réécrit) : détecte le JDK, appelle `restore_env.sh` s'il
+  manque, borne la mémoire (`--max-workers=2`).
+- `gradle.properties` : `org.gradle.jvmargs=-Xmx2560m -XX:MaxMetaspaceSize=768m`
+  (avant 4g) et `org.gradle.workers.max=2` (avant 4). C'est la pression mémoire
+  (daemon 4g + 4 workers + parallel + build natif fluidsynth 4 ABI) qui tuait la
+  sandbox.
+
+### Callbacks sécurisés (échec loggé au lieu de tuer le thread)
+
+Toutes ces fonctions tournent sur un thread système (MIDI IO, framework audio,
+SoundPool, MediaPlayer). Une exception qui s'en échappe tue le thread de réception
+→ **le device continue d'émettre mais plus rien n'est traité** (le « callback
+problem ») ou crash. Chaque corps est maintenant enveloppé (`try/catch(Throwable)`
++ `Log.e`) dans `model/AudioEngine.kt` :
+
+- `MidiReceiver.onSend` (parsing des octets, `offset+count` borné à `msg.size`),
+- `handleIncomingMidi` (délégué à `handleIncomingMidiUnsafe`),
+- le callback `midiManager.openDevice`,
+- `refreshMidiDevicesList` / `onDeviceListChanged`,
+- `AudioDeviceCallback.onAudioDevicesAdded/Removed`,
+- `headsetPlugReceiver.onReceive`,
+- `SoundPool.setOnLoadCompleteListener`, `MediaPlayer.setOnCompletionListener`,
+  `AudioFocusChangeListener`.
+
+### Point 4.5 — reset des queues FX + fermeture fenêtre au changement de patch
+
+`MixerViewModel.selectPatch()` : après `allNotesOff()` →
+`NativeAudioBridge.safeFxPanic()` (vide les buffers delay/reverb de l'ancien patch)
+et ferme le popup `EFFECTS` si ouvert (sinon le rack affichait encore l'ancien patch).
+
+### C3 — MasterSliderV2 (MixerBottomBarV2.kt)
+
+Le rail vertical `FaderRail` est tourné à l'horizontale via un modificateur
+`swapAxes()` (`layout` qui échange les contraintes) + `graphicsLayer(rotationZ=90f)`.
+Sans l'échange de contraintes, un `rotationZ` ne change pas la taille mesurée et le
+rail vertical s'effondrait en carré dans la fente courte. Le case prend toute la
+hauteur de la barre (46 dp) pour ne pas rogner le cap 40 dp ; le dB n'apparaît
+qu'au toucher (chip centré).
+
+### État build/tests
+
+- `:app:compileDebugKotlin` → **BUILD SUCCESSFUL**.
+- `:app:testDebugUnitTest --tests FxShellStoreResilienceTest` → **BUILD SUCCESSFUL**.
+- Captures régénérées (recordRoborazziDebug) : `bottom_bar.png`, `fx_window_amp.png`,
+  `track_settings_scrim.png` + les 15 fenêtres FX.
+
+### Tests Robolectric : contamination JVM, pas une régression
+
+La suite complète `:app:testDebugUnitTest` **hang** (le « Test worker » reste
+`WAITING (parking)` dans `Sandbox.runOnMainThread`), et plusieurs captures
+(`KeyboardOpenCaptureTest`, `KeyboardCollapsedCaptureTest`, `TrackSettingsCaptureTest`)
+échouent en `UncaughtExceptionsBeforeTest` **quand elles partagent le JVM** : une
+exception non capturée d'un test précédent est ré-attribuée au suivant. Preuve :
+chaque test **isolé** (`--tests "…KeyboardOpenCaptureTest"` seul) est
+**BUILD SUCCESSFUL**. Ces échecs sont **pré-existants** (fichiers non modifiés par la
+session). Pour un verdict fiable, lancer les tests **un par un** ou par petits lots,
+jamais la suite entière ; ne pas interpréter `UncaughtExceptionsBeforeTest` comme une
+régression du code testé.
+
+### Ne jamais lancer deux builds Gradle en parallèle
+
+Deux `testDebugUnitTest` simultanés (deux daemons, ~1 Go chacun) sont exactement la
+pression qui tue la sandbox. Vérifier `pgrep -f "Gradle Test Executor"` avant de
+lancer, et tuer l'ancien run (`kill <pid>`) plutôt que d'en démarrer un second.
