@@ -12,6 +12,7 @@ import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -24,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
@@ -34,17 +36,22 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.model.SubSceneSnapshot
 import com.soundstage.mixer.model.TrackChannel
+import com.soundstage.mixer.ui.components.FaderRail
+import com.soundstage.mixer.ui.components.FaderThumb
 import com.soundstage.mixer.ui.components.FloppyDiskIcon
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
@@ -118,6 +125,10 @@ fun MixerBottomBarV2(
                     val displayName = snapshotCustomNames[key] ?: defaultLabel
                     val isActive = activeSnapshotSlot == key || (activeSnapshotSlot == null && key == "slot_default")
                     val cap = if (key == "slot_default") 150.dp else 124.dp
+                    // Never let a case collapse below a readable width: at 5 cases the
+                    // shared room can be smaller than the text needs, and a 40 dp sliver
+                    // is worse than a slightly narrower neighbour.
+                    val width = minOf(cap, share).coerceAtLeast(56.dp)
                     SnapshotCaseV2(
                         key = key,
                         displayName = displayName,
@@ -174,7 +185,18 @@ fun MixerBottomBarV2(
             }
         }
 
-        MixerModuleV2(modifier = Modifier.width(178.dp).fillMaxHeight()) {
+        // The master case used to be a hard 178 dp: with 4 or 5 snapshot cases the
+        // snapshots were squeezed into unreadable slivers because the master never
+        // gave up any room. It now shortens *dynamically* with the number of snapshot
+        // cases (still anchored at the same place, only its length changes) so the
+        // snapshots keep their size instead of shrinking.
+        val masterWidth = when {
+            configuredSnapshotSlots.size >= 5 -> 132.dp
+            configuredSnapshotSlots.size == 4 -> 148.dp
+            configuredSnapshotSlots.size == 3 -> 164.dp
+            else -> 178.dp
+        }
+        MixerModuleV2(modifier = Modifier.width(masterWidth).fillMaxHeight()) {
             MasterSliderV2(masterTrack.volume, onMasterVolumeChange,
                 masterTrack.peakMeterL, masterTrack.peakMeterR, onMasterFxClick)
         }
@@ -305,234 +327,190 @@ private fun SnapshotCaseV2(
 }
 
 /**
- * Master slider, translated from the JSX `MasterSlider` (MixerPreview.jsx:301) and
- * merged with the mixer fader codes as asked: the rail takes the fader rail
- * treatment (recessed groove, tick scale, unity mark, peak hold) and the thumb
- * takes the fader cap treatment (gradient, top highlight, grip groove, side ridges).
+ * Measures the child with width and height swapped, reports the swapped size, and
+ * centres the child. Combined with a 90° rotation this turns a vertical composable
+ * (the fader rail) into a horizontal one without the parent clamping its height:
+ * a plain `graphicsLayer(rotationZ)` only rotates the pixels, it does not change
+ * the measured size, so a vertical rail inside a short horizontal slot collapses
+ * to a square. Swapping the constraints is what keeps the rail at full length.
+ */
+private fun Modifier.swapAxes(): Modifier = this.layout { measurable, constraints ->
+    val swapped = Constraints(
+        minWidth = constraints.minHeight,
+        maxWidth = constraints.maxHeight,
+        minHeight = constraints.minWidth,
+        maxHeight = constraints.maxWidth,
+    )
+    val placeable = measurable.measure(swapped)
+    layout(placeable.height, placeable.width) {
+        // Centre the (unrotated) child inside the reported box; after the 90°
+        // rotation about the box centre it lands exactly on the box.
+        placeable.place(
+            ((placeable.height - placeable.width) / 2f).toInt(),
+            ((placeable.width - placeable.height) / 2f).toInt(),
+        )
+    }
+}
+
+/**
+ * Master fader, rebuilt from the mixer's own fader parts as asked: the rail is
+ * [FaderRail] and the cap is [FaderThumb] — the exact composables the track strips
+ * use — rotated to run horizontally. The old version was a JSX re-translation drawn
+ * with one-shot Canvas code, which is why it never matched the strips.
  *
- * Premium touches on top of the reference codes:
- *  - the thumb lifts and grows slightly while it is being dragged (press state),
- *  - the filled part of the rail gets a soft glow around the thumb,
- *  - the value is animated with a spring so a tap slides instead of jumping.
+ * Layout rules from the request:
+ *  - no "MASTER" label and no permanent dB readout: the case is just the fader,
+ *  - the dB value appears only while the fader is being touched, as a small pop-up
+ *    above the cap, then fades away,
+ *  - the rail is [FaderRail] at the strips' 18 dp thickness,
+ *  - the cap is [FaderThumb] at the strips' 32x40 aspect, turned on its side.
  */
 @Composable
 private fun MasterSliderV2(
     value: Float, onValueChange: (Float) -> Unit, peakL: Float, peakR: Float, onFxClick: () -> Unit
 ) {
     val currentValue by rememberUpdatedState(value)
-    var localPeak by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(peakL, peakR) {
-        val target = value * maxOf(peakL, peakR)
-        if (target > localPeak) localPeak = target
+    var dragging by remember { mutableStateOf(false) }
+    // Show the value only while the finger is down, plus a short tail so the number
+    // stays readable for a beat after release.
+    var showValue by remember { mutableStateOf(false) }
+    LaunchedEffect(dragging) {
+        if (dragging) showValue = true
+        else { delay(900); showValue = false }
     }
 
-    var pressed by remember { mutableStateOf(false) }
-    val pressScale by animateFloatAsState(if (pressed) 1.18f else 1f,
-        animationSpec = spring(dampingRatio = 0.45f, stiffness = 700f), label = "thumbPress")
-    // Animate the displayed position so taps glide instead of snapping.
     val shown by animateFloatAsState(value.coerceIn(0f, 1f),
-        animationSpec = spring(dampingRatio = 0.9f, stiffness = 900f), label = "thumbPos")
+        animationSpec = spring(dampingRatio = 0.9f, stiffness = 900f), label = "masterPos")
 
-    Row(Modifier.fillMaxSize().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        // The FX button on the right reserves 6 + 30 dp; matching it on the left
-        // keeps the rail centred in the case (user request, deviates from the JSX).
-        Spacer(Modifier.width(36.dp))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
-            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Text("MASTER", color = TextDim, fontSize = 7.2.sp, fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 1.4.sp)
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text(dbText(value),
-                        color = if (value > 0.75f) Color(0xFFD8A24A) else Color(0xFFF1F4FA),
-                        fontSize = 9.2.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
-                    Text(" dB", color = TextDim, fontSize = 7.2.sp, fontWeight = FontWeight.ExtraBold)
+    Box(Modifier.fillMaxSize().padding(horizontal = 8.dp), contentAlignment = Alignment.Center) {
+        // Fader case: same panel treatment as the strip faders, no extra chrome. It
+        // takes the full bar height (46 dp) so the 40 dp cap is not clipped by the
+        // case's rounded clip, which a shorter case would do.
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Brush.verticalGradient(listOf(PanelTop, PanelBottom))),
+        ) {
+            BoxWithConstraints(
+                Modifier
+                    .fillMaxSize()
+                    .padding(start = 8.dp, end = 8.dp + 36.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                val travel = maxWidth
+                // Same numbers as the strip faders (CustomVerticalFader defaults):
+                // rail 18 dp, cap 32x40.
+                val railThickness = 18.dp
+                // Cap reduced 25% (32x40 -> 24x30) then turned on its side: the final
+                // footprint is horizontal (30 wide x 24 tall) so the thumb lies along
+                // the rail instead of standing upright.
+                val capLong = 30.dp
+                val capShort = 24.dp
+
+                // Gesture layer: the full case height, so the touch target is the
+                // whole band and not just the 18 dp rail.
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectTapGestures(onPress = {
+                                dragging = true
+                                tryAwaitRelease()
+                                dragging = false
+                            }) { o -> onValueChange((o.x / size.width.toFloat()).coerceIn(0f, 1f)) }
+                        }
+                        .pointerInput(Unit) {
+                            detectHorizontalDragGestures(
+                                onDragStart = { dragging = true },
+                                onDragEnd = { dragging = false },
+                                onDragCancel = { dragging = false }
+                            ) { change, delta ->
+                                change.consume()
+                                onValueChange((currentValue + delta / travel.value).coerceIn(0f, 1f))
+                            }
+                        },
+                )
+
+                // Rail: the strip's own vertical rail, rotated clockwise 90° so its
+                // "bottom" (where the level fills from) lands on the left.
+                Box(
+                    Modifier
+                        .size(width = travel, height = railThickness)
+                        .swapAxes()
+                        .graphicsLayer(rotationZ = 90f, transformOrigin = TransformOrigin(0.5f, 0.5f)),
+                ) {
+                    FaderRail(
+                        accent = Accent,
+                        modifier = Modifier.fillMaxSize(),
+                        level = shown,
+                        glow = if (dragging) 0.85f else 0.35f,
+                    )
+                }
+
+                // Cap on top of the rail, positioned along the travel. The cap is the
+                // strips' portrait FaderThumb, rotated 90° so it lies horizontally,
+                // then reduced 25%. swapAxes() gives it a horizontal footprint
+                // (capLong x capShort) before the rotation so nothing is clipped.
+                Box(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .offset(x = (travel * shown).coerceIn(0.dp, travel) - (capLong / 2))
+                        .size(capLong, capShort),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        Modifier
+                            .size(capLong, capShort)
+                            .swapAxes()
+                            .graphicsLayer(rotationZ = 90f, transformOrigin = TransformOrigin(0.5f, 0.5f)),
+                    ) {
+                        FaderThumb(
+                            accent = Accent,
+                            modifier = Modifier.fillMaxSize(),
+                            glow = if (dragging) 1f else 0.6f,
+                        )
+                    }
                 }
             }
-            Spacer(Modifier.height(3.dp))
-            BoxWithConstraints(Modifier.fillMaxWidth().height(20.dp)) {
-                val w = maxWidth
+
+            // FX entry point, kept on the right of the case (as before) so opening the
+            // FX window stays reachable without a separate bar.
+            MixerModuleV2(
+                modifier = Modifier.align(Alignment.CenterEnd).padding(end = 4.dp).size(30.dp),
+                shape = RoundedCornerShape(10.dp),
+                panelTop = Color(0xFF3A4258), panelBottom = Color(0xFF2E3549), elevation = 2.dp,
+            ) {
                 Box(Modifier.fillMaxSize()
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onPress = {
-                                pressed = true
-                                tryAwaitRelease()
-                                pressed = false
-                            }
-                        ) { o -> onValueChange((o.x / size.width.toFloat()).coerceIn(0f, 1f)) }
-                    }
-                    .pointerInput(Unit) {
-                        detectHorizontalDragGestures(
-                            onDragStart = { pressed = true },
-                            onDragEnd = { pressed = false },
-                            onDragCancel = { pressed = false }
-                        ) { change, delta ->
-                            change.consume()
-                            onValueChange((currentValue + delta / size.width.toFloat()).coerceIn(0f, 1f))
-                        }
-                    })
-                // Rail: 6 dp groove with an inset shadow, plus a light bottom lip so
-                // the groove reads as carved into the panel (relief).
-                Canvas(Modifier.fillMaxWidth().height(20.dp)) {
-                    val railH = 6.dp.toPx()
-                    val top = (size.height - railH) / 2f
-                    drawRoundRect(
-                        brush = Brush.verticalGradient(
-                            listOf(Color(0xFF080C14), Color(0xFF141A26), Color(0xFF0E131C))
-                        ),
-                        topLeft = Offset(0f, top),
-                        size = Size(size.width, railH),
-                        cornerRadius = CornerRadius(railH / 2f)
-                    )
-                    drawRoundRect(
-                        color = Color.Black.copy(alpha = 0.55f),
-                        topLeft = Offset(0f, top + 1.dp.toPx()),
-                        size = Size(size.width, railH * 0.5f),
-                        cornerRadius = CornerRadius(railH / 2f)
-                    )
-                    // Light bottom lip of the groove: 1 px of relief under the rail.
-                    drawRoundRect(
-                        color = Color.White.copy(alpha = 0.05f),
-                        topLeft = Offset(railH / 2f, top + railH),
-                        size = Size((size.width - railH).coerceAtLeast(0f), 1.dp.toPx()),
-                        cornerRadius = CornerRadius(0.5.dp.toPx())
-                    )
-                    // Fader scale: faint ticks every 10 % of the travel.
-                    for (i in 0..10) {
-                        val tx = size.width * (i / 10f)
-                        drawLine(
-                            color = Color.White.copy(alpha = if (i % 5 == 0) 0.16f else 0.07f),
-                            start = Offset(tx, top + railH + 2.dp.toPx()),
-                            end = Offset(tx, top + railH + if (i % 5 == 0) 5.dp.toPx() else 4.dp.toPx()),
-                            strokeWidth = 1.dp.toPx()
-                        )
-                    }
-                    // Filled portion, from the fader rail colour code.
-                    val filled = size.width * shown
-                    if (filled > 0f) {
-                        drawRoundRect(
-                            brush = Brush.horizontalGradient(
-                                listOf(Color(0x668FB2E8), Accent),
-                                endX = filled.coerceAtLeast(1f)
-                            ),
-                            topLeft = Offset(0f, top),
-                            size = Size(filled, railH),
-                            cornerRadius = CornerRadius(railH / 2f)
-                        )
-                        drawRoundRect(
-                            color = Color.White.copy(alpha = 0.28f),
-                            topLeft = Offset(1.dp.toPx(), top + 0.5.dp.toPx()),
-                            size = Size((filled - 2.dp.toPx()).coerceAtLeast(0f), railH * 0.22f),
-                            cornerRadius = CornerRadius(railH / 4f)
-                        )
-                        // Soft glow around the thumb, stronger while dragging.
-                        drawCircle(
-                            brush = Brush.radialGradient(
-                                listOf(
-                                    Accent.copy(alpha = if (pressed) 0.34f else 0.18f),
-                                    Color.Transparent
-                                ),
-                                center = Offset(filled, top + railH / 2f),
-                                radius = railH * 3.2f
-                            ),
-                            radius = railH * 3.2f,
-                            center = Offset(filled, top + railH / 2f)
-                        )
-                    }
-                    // Unity mark at 0 dB (JSX: 0.75), plus peak hold.
-                    drawLine(
-                        color = Color.White.copy(alpha = 0.25f),
-                        start = Offset(size.width * 0.75f, top - 3.dp.toPx()),
-                        end = Offset(size.width * 0.75f, top + railH + 3.dp.toPx()),
-                        strokeWidth = 1.dp.toPx()
-                    )
-                    if (localPeak > 0.01f) {
-                        val px = (size.width * localPeak).coerceIn(0f, size.width - 2.dp.toPx())
-                        drawRoundRect(
-                            color = Color(0xFFA9C6F0),
-                            topLeft = Offset(px, top - 2.dp.toPx()),
-                            size = Size(2.dp.toPx(), railH + 4.dp.toPx()),
-                            cornerRadius = CornerRadius(1.dp.toPx())
-                        )
-                    }
-                }
-                // Thumb: fader cap treatment (gradient + top highlight + grip groove).
-                Canvas(Modifier.offset(x = (w * shown).coerceIn(0.dp, w) - 9.dp)
-                    .size(18.dp, 20.dp)) {
-                    withTransform({ scale(pressScale, pressScale, pivot = center) }) {
-                        // Drop shadow under the cap.
-                        drawRoundRect(
-                            color = Color.Black.copy(alpha = 0.5f),
-                            topLeft = Offset(0f, 2.dp.toPx()),
-                            size = size,
-                            cornerRadius = CornerRadius(6.dp.toPx())
-                        )
-                        // Cap body: three-stop gradient for a domed look.
-                        drawRoundRect(
-                            brush = Brush.verticalGradient(
-                                listOf(Color(0xFF8A94B6), Color(0xFF5C6688), Color(0xFF3F4766))
-                            ),
-                            size = size,
-                            cornerRadius = CornerRadius(6.dp.toPx())
-                        )
-                        // Darker lower third, so the cap looks bevelled.
-                        drawRoundRect(
-                            color = Color.Black.copy(alpha = 0.45f),
-                            topLeft = Offset(0f, size.height * 0.72f),
-                            size = Size(size.width, size.height * 0.28f),
-                            cornerRadius = CornerRadius(6.dp.toPx())
-                        )
-                        // Outer rim highlight (1 px) to separate cap from panel.
-                        drawRoundRect(
-                            color = Color.White.copy(alpha = 0.14f),
-                            size = size,
-                            cornerRadius = CornerRadius(6.dp.toPx()),
-                            style = Stroke(1.dp.toPx())
-                        )
-                        // Top highlight ridge.
-                        drawLine(
-                            color = Color.White.copy(alpha = 0.40f),
-                            start = Offset(size.width * 0.22f, 1.5.dp.toPx()),
-                            end = Offset(size.width * 0.78f, 1.5.dp.toPx()),
-                            strokeWidth = 1.2.dp.toPx(), cap = StrokeCap.Round
-                        )
-                        // Left edge light, right edge shade: rounded relief.
-                        drawLine(
-                            color = Color.White.copy(alpha = 0.18f),
-                            start = Offset(1.2.dp.toPx(), size.height * 0.28f),
-                            end = Offset(1.2.dp.toPx(), size.height * 0.78f),
-                            strokeWidth = 1.dp.toPx()
-                        )
-                        drawLine(
-                            color = Color.Black.copy(alpha = 0.30f),
-                            start = Offset(size.width - 1.2.dp.toPx(), size.height * 0.28f),
-                            end = Offset(size.width - 1.2.dp.toPx(), size.height * 0.78f),
-                            strokeWidth = 1.dp.toPx()
-                        )
-                        // Grip groove, like the fader cap centre line.
-                        drawLine(
-                            color = Color.Black.copy(alpha = 0.5f),
-                            start = Offset(size.width * 0.20f, size.height * 0.55f),
-                            end = Offset(size.width * 0.80f, size.height * 0.55f),
-                            strokeWidth = 2.6.dp.toPx(), cap = StrokeCap.Round
-                        )
-                        drawLine(
-                            color = Accent.copy(alpha = if (pressed) 1f else 0.9f),
-                            start = Offset(size.width * 0.22f, size.height * 0.52f),
-                            end = Offset(size.width * 0.78f, size.height * 0.52f),
-                            strokeWidth = 1.6.dp.toPx(), cap = StrokeCap.Round
-                        )
-                    }
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onFxClick() },
+                    contentAlignment = Alignment.Center) {
+                    Text("FX", color = Color(0xFFD4DAE8), fontSize = 8.8.sp, fontWeight = FontWeight.ExtraBold)
                 }
             }
         }
-        Spacer(Modifier.width(6.dp))
-        MixerModuleV2(modifier = Modifier.size(30.dp), shape = RoundedCornerShape(10.dp),
-            panelTop = Color(0xFF3A4258), panelBottom = Color(0xFF2E3549), elevation = 2.dp) {
-            Box(Modifier.fillMaxSize()
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onFxClick() },
-                contentAlignment = Alignment.Center) {
-                Text("FX", color = Color(0xFFD4DAE8), fontSize = 8.8.sp, fontWeight = FontWeight.ExtraBold)
+
+        // dB pop-up: only while touched. The bar is 46 dp and the cap already fills
+        // it, so the value is shown as a centred chip over the fader instead of above
+        // it — above would be clipped by the bar.
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showValue,
+            enter = fadeIn(tween(120)) + androidx.compose.animation.slideInVertically(initialOffsetY = { it / 2 }),
+            exit = fadeOut(tween(220)),
+            modifier = Modifier.align(Alignment.Center).offset(y = (-16).dp),
+        ) {
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xE60A0E16))
+                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 8.dp, vertical = 3.dp),
+            ) {
+                Text(
+                    "${dbText(value)} dB",
+                    color = if (value > 0.75f) Color(0xFFD8A24A) else Color(0xFFF1F4FA),
+                    fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace,
+                )
             }
         }
     }

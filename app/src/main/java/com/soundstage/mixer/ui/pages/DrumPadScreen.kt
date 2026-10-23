@@ -83,6 +83,10 @@ fun DrumPadScreen(
     var managerTab by remember { mutableStateOf("Kits") }
     var managerTarget by remember { mutableStateOf<Int?>(1) }
 
+    // ─── LiveLooper page (top-bar selector DrumPad / LiveLooper) ───
+    var liveLooperPage by remember { mutableStateOf(false) }
+    val liveLooperActions = remember { viewModel.liveLooperActions() }
+
     // ─── Grid modes ───
     var padMode by remember { mutableStateOf("pads") }       // "pads" | "loops"
     var playEditMode by remember { mutableStateOf("play") }  // "play" | "edit"
@@ -143,6 +147,16 @@ fun DrumPadScreen(
         }
     }
 
+    // ─── Frame clock for the LiveLooper rings (bars position) ───
+    var liveLooperNowBar by remember { mutableStateOf(0.0) }
+    LaunchedEffect(liveLooperPage) {
+        if (!liveLooperPage) return@LaunchedEffect
+        while (isActive) {
+            liveLooperNowBar = viewModel.liveLooperNowBar()
+            delay(16L)
+        }
+    }
+
     // Long-press on a loop case opens the action menu (Undo / Double / Play / Clear).
     var loopMenuIndex by remember { mutableStateOf<Int?>(null) }
 
@@ -176,9 +190,38 @@ fun DrumPadScreen(
             metroOn = metroOn,
             onOpenMetro = { metroOpen = true },
             onOpenSettings = { settingsOpen = true },
+            pageSelector = {
+                com.soundstage.mixer.looper.LooperPageSelector(
+                    current = if (liveLooperPage) com.soundstage.mixer.looper.DrumPadPage.LiveLooper
+                    else com.soundstage.mixer.looper.DrumPadPage.DrumPad,
+                    onSelect = { liveLooperPage = it == com.soundstage.mixer.looper.DrumPadPage.LiveLooper },
+                )
+            },
         )
 
-        // ═══════════ Main row ═══════════
+        if (liveLooperPage) {
+            // ═══════════ LiveLooper page ═══════════
+            Row(
+                Modifier.weight(1f).fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Column(Modifier.width(168.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    com.soundstage.mixer.looper.LoopPatchChip(uiState.liveLooperState, liveLooperActions)
+                    Spacer(Modifier.weight(1f))
+                    com.soundstage.mixer.looper.LoopsSummaryCard(
+                        uiState.liveLooperState,
+                        Modifier.fillMaxWidth().height(56.dp),
+                    )
+                }
+                com.soundstage.mixer.looper.LiveLooperContent(
+                    state = uiState.liveLooperState,
+                    nowBar = liveLooperNowBar,
+                    actions = liveLooperActions,
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                )
+            }
+        } else {
+
         Row(Modifier.weight(1f).fillMaxWidth()) {
 
             // ─── Colonne gauche (196dp) ───
@@ -367,6 +410,7 @@ fun DrumPadScreen(
             }
         }
     }
+    } // end !liveLooperPage
 
     // ═══════════ Overlays ═══════════
     if (metroOpen) {
@@ -502,6 +546,15 @@ fun DrumPadScreen(
                 (scene as? ScenePreset)?.let { viewModel.selectScene(it.name) }
             },
             onClose = { managerOpen = false }
+        )
+    }
+
+    // ═══════════ LiveLooper overlays (patch window, dialogs, toast) ═══════════
+    if (liveLooperPage) {
+        com.soundstage.mixer.looper.LiveLooperOverlays(
+            state = uiState.liveLooperState,
+            actions = liveLooperActions,
+            modifier = Modifier.fillMaxSize(),
         )
     }
 }

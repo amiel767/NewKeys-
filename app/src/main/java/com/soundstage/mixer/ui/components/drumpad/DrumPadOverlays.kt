@@ -99,6 +99,7 @@ fun DpTopBar(
     onOpenMetro: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
+    pageSelector: (@Composable () -> Unit)? = null,
 ) {
     Row(
         modifier = modifier
@@ -113,7 +114,8 @@ fun DpTopBar(
             Spacer(Modifier.width(4.dp))
             Text("Mixer", color = DpColors.SOFT, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
         }
-        DpPill(onClick = null) {
+        // The DrumPad pill is replaced by the page selector on the LiveLooper page.
+        if (pageSelector != null) pageSelector() else DpPill(onClick = null) {
             Text("DrumPad", color = DpColors.SOFT, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
         }
 

@@ -75,24 +75,40 @@ class AudioEngine(private val context: Context) {
 
     private val audioDeviceCallback = object : android.media.AudioDeviceCallback() {
         override fun onAudioDevicesAdded(addedDevices: Array<out android.media.AudioDeviceInfo>?) {
-            super.onAudioDevicesAdded(addedDevices)
-            Log.i(TAG, "Audio output device attached (jack/headphones). Reconnecting audio stream cleanly...")
-            reconnectAudioStreamDebounced()
+            // System callbacks run on a framework thread: an exception here is not
+            // caught for us and can take the routing down, so it is logged instead.
+            try {
+                super.onAudioDevicesAdded(addedDevices)
+                Log.i(TAG, "Audio output device attached (jack/headphones). Reconnecting audio stream cleanly...")
+                reconnectAudioStreamDebounced()
+            } catch (t: Throwable) {
+                Log.e(TAG, "onAudioDevicesAdded failed: ${t.message}", t)
+            }
         }
 
         override fun onAudioDevicesRemoved(removedDevices: Array<out android.media.AudioDeviceInfo>?) {
-            super.onAudioDevicesRemoved(removedDevices)
-            Log.i(TAG, "Audio output device removed. Reconnecting audio stream cleanly...")
-            reconnectAudioStreamDebounced()
+            try {
+                super.onAudioDevicesRemoved(removedDevices)
+                Log.i(TAG, "Audio output device removed. Reconnecting audio stream cleanly...")
+                reconnectAudioStreamDebounced()
+            } catch (t: Throwable) {
+                Log.e(TAG, "onAudioDevicesRemoved failed: ${t.message}", t)
+            }
         }
     }
 
     private val headsetPlugReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(ctx: Context?, intent: android.content.Intent?) {
-            if (intent?.action == android.content.Intent.ACTION_HEADSET_PLUG) {
-                val state = intent.getIntExtra("state", -1)
-                Log.i(TAG, "ACTION_HEADSET_PLUG detected: state=$state (0: unplugged, 1: plugged). Restoring clean stage stream...")
-                reconnectAudioStreamDebounced()
+            // Broadcast receiver: never let an exception escape, it would be an ANR
+            // / crash on the main thread and stop future audio route updates.
+            try {
+                if (intent?.action == android.content.Intent.ACTION_HEADSET_PLUG) {
+                    val state = intent.getIntExtra("state", -1)
+                    Log.i(TAG, "ACTION_HEADSET_PLUG detected: state=$state (0: unplugged, 1: plugged). Restoring clean stage stream...")
+                    reconnectAudioStreamDebounced()
+                }
+            } catch (t: Throwable) {
+                Log.e(TAG, "headsetPlugReceiver failed: ${t.message}", t)
             }
         }
     }
@@ -135,8 +151,13 @@ class AudioEngine(private val context: Context) {
                     .setAcceptsDelayedFocusGain(false)
                     .setWillPauseWhenDucked(false) // TOTAL DUCKING DISABLE: OS is forbidden from dipping volume!
                     .setOnAudioFocusChangeListener { focusChange ->
-                        // Strict zero-ducking policy: preserve full dynamic volume
-                        Log.d(TAG, "AudioFocus changed: $focusChange (Audio Ducking disabled)")
+                        // Strict zero-ducking policy: preserve full dynamic volume.
+                        // Guarded: the listener fires from a framework thread.
+                        try {
+                            Log.d(TAG, "AudioFocus changed: $focusChange (Audio Ducking disabled)")
+                        } catch (t: Throwable) {
+                            Log.e(TAG, "AudioFocus listener failed: ${t.message}", t)
+                        }
                     }
                     .build()
                 audioFocusRequest = request
@@ -588,6 +609,21 @@ class AudioEngine(private val context: Context) {
     // DIRECT ZERO-LATENCY MIDI PROCESSOR (RUNS ON MIDI IO THREAD)
     // -------------------------------------------------------------
     fun handleIncomingMidi(channel: Int, command: Int, data1: Int, data2: Int, deviceId: String? = null) {
+        // This runs on the MIDI IO thread, inside a MidiReceiver.onSend callback. An
+        // exception escaping here is not caught by the framework: it kills the MIDI
+        // receive thread, and after that the device keeps sending but nothing is
+        // delivered — the "callback problem" where messages stop being processed.
+        // Every provider and listener below is app code that can throw (a stale
+        // route, a bad mapping), so the whole body is guarded and a failure is
+        // logged instead of taking the thread down.
+        try {
+            handleIncomingMidiUnsafe(channel, command, data1, data2, deviceId)
+        } catch (t: Throwable) {
+            Log.e(TAG, "handleIncomingMidi failed (cmd=0x${command.toString(16)} ch=$channel): ${t.message}", t)
+        }
+    }
+
+    private fun handleIncomingMidiUnsafe(channel: Int, command: Int, data1: Int, data2: Int, deviceId: String?) {
         val effectiveNote = (data1 + globalOctaveShift * 12).coerceIn(0, 127)
         val targetChannels = if (usbMidiRouteToActiveSlot) {
             activeLayerChannelsProvider?.invoke(effectiveNote, channel, deviceId) ?: listOf(activeTargetChannel)
@@ -862,6 +898,10 @@ class AudioEngine(private val context: Context) {
             try {
                 val devIdStr = info.id.toString()
                 midiManager?.openDevice(info, { device: MidiDevice? ->
+                    // openDevice's callback runs on the MIDI handler thread.
+                    // A throw here would be swallowed by the framework and the
+                    // port would never connect, so it is logged instead.
+                    try {
                     if (device != null) {
                         openDevices.add(device)
                         val portInfo = info.ports.firstOrNull { it.type == MidiDeviceInfo.PortInfo.TYPE_OUTPUT }
@@ -869,40 +909,51 @@ class AudioEngine(private val context: Context) {
                             val outputPort = device.openOutputPort(portInfo.portNumber)
                             outputPort?.connect(object : MidiReceiver() {
                                 override fun onSend(msg: ByteArray?, offset: Int, count: Int, timestamp: Long) {
-                                    if (disabledMidiDeviceIds.contains(devIdStr)) return
-                                    if (msg == null || count == 0) return
-                                    
-                                    var i = offset
-                                    val end = offset + count
-                                    while (i < end) {
-                                        val status = msg[i].toInt() and 0xFF
-                                        if (status >= 0xF8) {
-                                            i++
-                                            continue
-                                        }
-                                        
-                                        if (status >= 0x80 && status < 0xF0) {
-                                            var command = status and 0xF0
-                                            val channel = status and 0x0F
-                                            val hasTwoDataBytes = (command != 0xC0 && command != 0xD0)
-                                            
-                                            val data1 = if (i + 1 < end) (msg[i + 1].toInt() and 0x7F) else 0
-                                            val data2 = if (hasTwoDataBytes && i + 2 < end) (msg[i + 2].toInt() and 0x7F) else 0
-                                            
-                                            // Core fix: explicitly convert Note On with velocity 0 to Note Off
-                                            if (command == 0x90 && data2 == 0) {
-                                                command = 0x80
+                                    // Same rule as handleIncomingMidi: this is a MIDI IO
+                                    // callback. A malformed packet or a throwing provider
+                                    // must not escape and kill the receive thread, or the
+                                    // device goes silent until the app is restarted.
+                                    try {
+                                        if (disabledMidiDeviceIds.contains(devIdStr)) return
+                                        if (msg == null || count == 0) return
+
+                                        var i = offset
+                                        val end = (offset + count).coerceAtMost(msg.size)
+                                        while (i < end) {
+                                            val status = msg[i].toInt() and 0xFF
+                                            if (status >= 0xF8) {
+                                                i++
+                                                continue
                                             }
-                                            
-                                            handleIncomingMidi(channel, command, data1, data2, devIdStr)
-                                            i += if (hasTwoDataBytes) 3 else 2
-                                        } else {
-                                            i++
+
+                                            if (status >= 0x80 && status < 0xF0) {
+                                                var command = status and 0xF0
+                                                val channel = status and 0x0F
+                                                val hasTwoDataBytes = (command != 0xC0 && command != 0xD0)
+
+                                                val data1 = if (i + 1 < end) (msg[i + 1].toInt() and 0x7F) else 0
+                                                val data2 = if (hasTwoDataBytes && i + 2 < end) (msg[i + 2].toInt() and 0x7F) else 0
+
+                                                // Core fix: explicitly convert Note On with velocity 0 to Note Off
+                                                if (command == 0x90 && data2 == 0) {
+                                                    command = 0x80
+                                                }
+
+                                                handleIncomingMidi(channel, command, data1, data2, devIdStr)
+                                                i += if (hasTwoDataBytes) 3 else 2
+                                            } else {
+                                                i++
+                                            }
                                         }
+                                    } catch (t: Throwable) {
+                                        Log.e(TAG, "MIDI onSend failed: ${t.message}", t)
                                     }
                                 }
                             })
                         }
+                    }
+                    } catch (t: Throwable) {
+                        Log.e(TAG, "openDevice callback failed: ${t.message}", t)
                     }
                 }, midiHandler)
             } catch (e: Exception) {
@@ -956,9 +1007,15 @@ class AudioEngine(private val context: Context) {
     }
 
     private fun refreshMidiDevicesList() {
-        val list = getConnectedUsbMidiDevices()
+        val list = try { getConnectedUsbMidiDevices() } catch (t: Throwable) {
+            Log.e(TAG, "getConnectedUsbMidiDevices failed: ${t.message}", t); emptyList()
+        }
         coroutineScope.launch(Dispatchers.Main) {
-            onDeviceListChanged?.invoke(list)
+            // A throwing consumer must not cancel the launcher; the list refresh is
+            // best-effort and the device callbacks must keep flowing.
+            try { onDeviceListChanged?.invoke(list) } catch (t: Throwable) {
+                Log.e(TAG, "onDeviceListChanged failed: ${t.message}", t)
+            }
         }
     }
 
@@ -1105,11 +1162,17 @@ class AudioEngine(private val context: Context) {
             .build()
 
         soundPool?.setOnLoadCompleteListener { pool, sampleId, status ->
-            if (status == 0) {
-                val pendingVol = pendingSamplePlays.remove(sampleId)
-                if (pendingVol != null) {
-                    pool.play(sampleId, pendingVol, pendingVol, 1, 0, 1.0f)
+            // SoundPool callback thread: guard it so a bad sample or a full stream
+            // pool cannot escape and crash the process.
+            try {
+                if (status == 0) {
+                    val pendingVol = pendingSamplePlays.remove(sampleId)
+                    if (pendingVol != null) {
+                        pool.play(sampleId, pendingVol, pendingVol, 1, 0, 1.0f)
+                    }
                 }
+            } catch (t: Throwable) {
+                Log.e(TAG, "SoundPool load-complete failed: ${t.message}", t)
             }
         }
     }
@@ -1314,7 +1377,11 @@ class AudioEngine(private val context: Context) {
                 setVolume(volume, volume)
                 this.isLooping = isLooping
                 setOnCompletionListener {
-                    onMidiCompletionListener?.invoke()
+                    // MediaPlayer notifies on its own thread; a throwing consumer
+                    // must not escape into the framework.
+                    try { onMidiCompletionListener?.invoke() } catch (t: Throwable) {
+                        Log.e(TAG, "onMidiCompletionListener failed: ${t.message}", t)
+                    }
                 }
                 prepare()
                 start()

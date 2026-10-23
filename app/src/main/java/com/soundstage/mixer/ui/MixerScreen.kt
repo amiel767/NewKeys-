@@ -757,7 +757,7 @@ fun MixerScreen(
                 .fillMaxSize()
                 .windowBackdropBlur(
                     active = blurActive,
-                    radius = if (uiState.activePopup == ActivePopup.VELOCITY_SETTINGS) 18.dp else 2.5.dp
+                    radius = if (uiState.activePopup == ActivePopup.VELOCITY_SETTINGS) 18.dp else 1.5.dp
                 )
         ) { currentPage ->
             when (currentPage) {

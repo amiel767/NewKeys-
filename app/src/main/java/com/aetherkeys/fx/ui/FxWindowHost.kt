@@ -73,7 +73,7 @@ const val SCENE_Y = 58f
  * replaces the rack entirely instead of overlaying it.
  */
 @Composable
-fun FxWindowHost(store: FxShellStore, modifier: Modifier = Modifier) {
+fun FxWindowHost(store: FxShellStore, modifier: Modifier = Modifier, onClose: (() -> Unit)? = null) {
     LaunchedEffect(store.notice) {
         if (store.notice != null) { delay(2400); store.notice = null }
     }
@@ -110,7 +110,7 @@ fun FxWindowHost(store: FxShellStore, modifier: Modifier = Modifier) {
                 val openId = store.openId
                 if (openId == null) {
                     Column(Modifier.fillMaxSize()) {
-                        Header(store)
+                        Header(store, onClose)
                         Rack(store, tm)
                     }
                 } else {
@@ -173,7 +173,7 @@ fun FxWindowHost(store: FxShellStore, modifier: Modifier = Modifier) {
 
 /** `.wh`: height 42, padding 0 12, gap 10. */
 @Composable
-private fun Header(store: FxShellStore) {
+private fun Header(store: FxShellStore, onClose: (() -> Unit)? = null) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -201,6 +201,35 @@ private fun Header(store: FxShellStore) {
         Chip("Soundfont · Grand Piano ▾") { store.notice = "Soundfont: open it from the mixer track" }
         Chip("+ Instrument") { store.addTab = FxAddTab.INSTRUMENT; store.addOpen = true }
         Chip("+ Effect") { store.addTab = FxAddTab.EFFECTS; store.addOpen = true }
+        if (onClose != null) CloseChip(onClose)
+    }
+}
+
+/**
+ * Window close button. The FX window is a modal overlay with no other way out, so
+ * this is the one control the user needs to leave it; it sits last in the header,
+ * on the same rhythm as the other chips.
+ */
+@Composable
+private fun CloseChip(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(28.dp)
+            .shadow(3.dp, RoundedCornerShape(9.dp), clip = false)
+            .clip(RoundedCornerShape(9.dp))
+            .background(Brush.verticalGradient(listOf(Color(0x1FFFFFFF), Color(0x0FFFFFFF))))
+            .border(1.dp, Color(0x1FFFFFFF), RoundedCornerShape(9.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        // Two strokes so the cross is crisp at this size without an icon dependency.
+        androidx.compose.foundation.Canvas(Modifier.size(12.dp)) {
+            val w = size.width
+            val h = size.height
+            val stroke = 1.6f * density
+            drawLine(Color(0xFFE6EAF3), Offset(0f, 0f), Offset(w, h), stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            drawLine(Color(0xFFE6EAF3), Offset(w, 0f), Offset(0f, h), stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+        }
     }
 }
 
@@ -210,12 +239,12 @@ internal fun Chip(label: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .height(28.dp)
-            // Raised look: the reference gives every chip a soft drop shadow. Without
-            // it the buttons read as flat text and did not look pressable.
-            .shadow(3.dp, RoundedCornerShape(9.dp), clip = false)
+            // Raised look: a soft drop shadow plus a 1 dp top highlight. Without the
+            // highlight the buttons read as flat text and did not look pressable.
+            .shadow(4.dp, RoundedCornerShape(9.dp), clip = false)
             .clip(RoundedCornerShape(9.dp))
-            .background(Brush.verticalGradient(listOf(Color(0x14FFFFFF), Color(0x08FFFFFF))))
-            .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(9.dp))
+            .background(Brush.verticalGradient(listOf(Color(0x24FFFFFF), Color(0x08FFFFFF))))
+            .border(1.dp, Color(0x1FFFFFFF), RoundedCornerShape(9.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp),
         contentAlignment = Alignment.Center,
@@ -251,17 +280,23 @@ private fun Rack(store: FxShellStore, tm: androidx.compose.ui.text.TextMeasurer)
     }
 }
 
-/** The trailing empty slot: same footprint as a card, a `+` instead of a scene. */
+/**
+ * The trailing empty slot: same footprint as a card, but carved *into* the window
+ * instead of raised on top of it. A raised card here read as a filled effect; the
+ * inset gradient (dark at the top, catching light at the bottom) plus the inner
+ * shadow rim is what makes it read as an empty socket waiting for an effect.
+ */
 @Composable
 private fun AddSlotCard(onClick: () -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
     Column(
         modifier = Modifier
             .width(158.dp)
             .fillMaxHeight()
-            .shadow(6.dp, RoundedCornerShape(16.dp))
-            .clip(RoundedCornerShape(16.dp))
-            .background(Brush.verticalGradient(listOf(Color(0xFF2B3242), Color(0xFF1B2130))))
-            .border(1.dp, Color(0x1FFFFFFF), RoundedCornerShape(16.dp))
+            .clip(shape)
+            // Carved: inverted gradient (top dark -> bottom lighter) and no drop shadow.
+            .background(Brush.verticalGradient(listOf(Color(0xFF141924), Color(0xFF232A38))))
+            .border(1.dp, Color(0x14000000), shape)
             .clickable(onClick = onClick)
             .padding(10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -271,11 +306,20 @@ private fun AddSlotCard(onClick: () -> Unit) {
             modifier = Modifier
                 .size(46.dp)
                 .clip(CircleShape)
-                .background(Brush.verticalGradient(listOf(Color(0x24FFFFFF), Color(0x0AFFFFFF))))
-                .border(1.dp, Color(0x26FFFFFF), CircleShape),
+                // Concave disc: darker at the top so it looks pressed in.
+                .background(Brush.verticalGradient(listOf(Color(0x33000000), Color(0x0AFFFFFF))))
+                .border(1.dp, Color(0x22000000), CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Text("+", fontSize = 26.sp, fontFamily = FxFonts.ui, fontWeight = FontWeight.Bold, color = Color(0xFFE6EAF3))
+            // The `+` is drawn, not typed: a text glyph sits off-centre inside its
+            // line box, which is why the plus looked low in the circle.
+            androidx.compose.foundation.Canvas(Modifier.size(20.dp)) {
+                val c = size.width / 2f
+                val arm = size.width * 0.36f
+                val stroke = 2.4f * density
+                drawLine(Color(0xFFC7CFDD), Offset(c - arm, c), Offset(c + arm, c), stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                drawLine(Color(0xFFC7CFDD), Offset(c, c - arm), Offset(c, c + arm), stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            }
         }
         Spacer(Modifier.height(10.dp))
         Text("ADD EFFECT", fontSize = 10.sp, fontFamily = FxFonts.ui, fontWeight = FontWeight.Bold,

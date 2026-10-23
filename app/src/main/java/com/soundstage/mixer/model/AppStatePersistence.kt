@@ -253,7 +253,7 @@ class AppStatePersistence(context: Context) {
         headroom: Float = 1.00f,
         audioEngine: String = "oboe",
         fluidSynthGain: Float = 1.20f,
-        antiJitter: Boolean = true,
+        antiJitter: Boolean = false,
         jitterWindowMs: Int = 15,
         useFlats: Boolean = false,
         hapticsEnabled: Boolean = true,
@@ -1021,7 +1021,7 @@ class AppStatePersistence(context: Context) {
             val headroom = if (prefs.contains(KEY_HEADROOM)) prefs.getFloat(KEY_HEADROOM, 1.00f) else null
             val audioEngine = prefs.getString(KEY_AUDIO_ENGINE, null)
             val fluidSynthGain = if (prefs.contains(KEY_FLUID_GAIN)) prefs.getFloat(KEY_FLUID_GAIN, 1.20f) else null
-            val antiJitter = if (prefs.contains(KEY_ANTI_JITTER)) prefs.getBoolean(KEY_ANTI_JITTER, true) else null
+            val antiJitter = if (prefs.contains(KEY_ANTI_JITTER)) prefs.getBoolean(KEY_ANTI_JITTER, false) else null
             val jitterWindowMs = if (prefs.contains(KEY_JITTER_WINDOW_MS)) prefs.getInt(KEY_JITTER_WINDOW_MS, 15) else null
             val useFlats = if (prefs.contains(KEY_USE_FLATS)) prefs.getBoolean(KEY_USE_FLATS, false) else null
             val hapticsEnabled = if (prefs.contains(KEY_HAPTICS_ENABLED)) prefs.getBoolean(KEY_HAPTICS_ENABLED, true) else null

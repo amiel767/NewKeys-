@@ -102,6 +102,17 @@ class TransportClock {
 
     fun barAnchor(): Long = barAnchorNs
 
+    /**
+     * Position de transport exprimee en MESURES (Double), fractionnaire a l'interieur de
+     * la mesure. Le LiveLooper raisonne en bars (jamais en ms) pour qu'un changement de
+     * tempo ne casse pas une boucle. Compte depuis l'ancrage courant.
+     */
+    fun currentBarPosition(): Double {
+        val barDur = barDurationNs().coerceAtLeast(1L)
+        val elapsed = (System.nanoTime() - barAnchorNs).coerceAtLeast(0L)
+        return elapsed.toDouble() / barDur.toDouble()
+    }
+
     fun currentPosition(): BeatPosition = positionAt(System.nanoTime())
 
     fun positionAt(nowNs: Long): BeatPosition {

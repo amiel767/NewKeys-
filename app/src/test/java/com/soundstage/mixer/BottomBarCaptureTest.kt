@@ -54,4 +54,30 @@ class BottomBarCaptureTest {
         }
         composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/bottom_bar.png")
     }
+
+    /** 5 snapshot cases: the master must give up room so the cases stay readable. */
+    @Test
+    fun bottom_bar_capture_5_snapshots() {
+        composeTestRule.setContent {
+            Box(Modifier.fillMaxWidth().background(Color(0xFF0B0F17)).padding(8.dp)) {
+                MixerBottomBarV2(
+                    masterTrack = TrackChannel(id = 0, name = "Master", isMaster = true, volume = 0.75f),
+                    onMasterVolumeChange = {},
+                    onMasterFxClick = {},
+                    bpm = 120, onBpmStep = {},
+                    isSnapshotArmMode = false, onToggleSnapshotArm = {},
+                    activeSnapshotSlot = "slot_default",
+                    snapshots = emptyMap(),
+                    configuredSnapshotSlots = listOf("slot_default", "slot_1", "slot_2", "slot_3", "slot_4"),
+                    onSnapshotSlotClick = {},
+                    onAddSnapshot = { null },
+                    onDeleteSnapshot = {},
+                    snapshotCustomNames = emptyMap(),
+                    onRenameSnapshotSlot = { _, _ -> },
+                    isKeyboardActive = false, onToggleKeyboard = {}
+                )
+            }
+        }
+        composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/bottom_bar_5.png")
+    }
 }

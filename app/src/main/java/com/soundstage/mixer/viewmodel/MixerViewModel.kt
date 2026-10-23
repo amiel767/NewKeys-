@@ -221,7 +221,7 @@ data class MixerUiState(
     val keepScreenOn: Boolean = true,
     val selectedScaleMode: String = "Majeur",
     val headroom: Float = 1.00f,
-    val antiJitter: Boolean = true,
+    val antiJitter: Boolean = false,
     val jitterWindowMs: Int = 15,
     
     // Live Notes & Chords / Sheets Library
@@ -290,6 +290,9 @@ data class MixerUiState(
     // Looper (miroir de LooperEngine, expose pour l'UI et la persistance)
     val looper: com.soundstage.mixer.audio.LooperEngine.UiState = com.soundstage.mixer.audio.LooperEngine.UiState(),
 
+    // LiveLooper (nouvelle version) : etat complet du LooperController.
+    val liveLooperState: com.soundstage.mixer.looper.LooperUiState = com.soundstage.mixer.looper.LooperUiState(),
+
     // DrumPad v5
     val padCount: Int = 8,
     val kits: List<com.soundstage.mixer.model.DrumKitData> = com.soundstage.mixer.model.DrumKitData.defaults(),
@@ -318,6 +321,26 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     // Looper event-only, 8 cases, 4 couches
     private val looperEngine = com.soundstage.mixer.audio.LooperEngine(transportClock)
+
+    // LiveLooper (nouvelle version) : modele + logique pure + controleur.
+    // Alimente en horloge par le TransportClock (en bars) et rejoue via l'AudioEngine.
+    private val liveLooper = com.soundstage.mixer.looper.LooperController(
+        clock = { transportClock.currentBarPosition() },
+        initialPatches = com.soundstage.mixer.looper.LoopPatchJson.fromJson(
+            appStatePersistence.getString("live_looper_patches", "")
+        ).first,
+        initialActiveId = com.soundstage.mixer.looper.LoopPatchJson.fromJson(
+            appStatePersistence.getString("live_looper_patches", "")
+        ).second,
+        setlistName = appStatePersistence.getString("active_project_name", ""),
+        onReplay = { _, event, volume -> replayLoopEvent(event, volume) },
+        onPatchesChanged = { patches, activeId ->
+            appStatePersistence.saveString(
+                "live_looper_patches",
+                com.soundstage.mixer.looper.LoopPatchJson.toJson(patches, activeId)
+            )
+        }
+    )
 
     private val _uiState = MutableStateFlow(createInitialState())
     val uiState: StateFlow<MixerUiState> = _uiState.asStateFlow()
@@ -369,6 +392,19 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         metronomeEngine.currentSound = com.soundstage.mixer.audio.MetronomeEngine.Sound.parse(_uiState.value.metronomeSound)
 
         looperEngine.start()
+
+        // LiveLooper : miroir du controleur vers l'UiState + horloge de tick (~8 ms).
+        viewModelScope.launch {
+            liveLooper.state.collect { st ->
+                _uiState.update { it.copy(liveLooperState = st) }
+            }
+        }
+        viewModelScope.launch(Dispatchers.Default) {
+            while (isActive) {
+                runCatching { liveLooper.tick() }
+                delay(8L)
+            }
+        }
 
         // B5a: wire LooperEngine callbacks → audio playback
         looperEngine.onPlayPadEvent = playPad@{ idx ->
@@ -2410,10 +2446,55 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }.coerceIn(0.05f, 1.0f)
     }
 
+    // ═══════════ LiveLooper (nouvelle version) ═══════════
+
+    /** Actions de l'UI LiveLooper (toutes cablees sur le controleur). */
+    fun liveLooperActions(): com.soundstage.mixer.looper.LooperActions = liveLooper.actions()
+
+    /** Horloge en mesures, pour l'anneau de progression de l'UI (animé par frame). */
+    fun liveLooperNowBar(): Double = transportClock.currentBarPosition()
+
+    /** Signale une note ou un pad joue en direct, pour que les cases en REC l'enregistrent. */
+    private fun feedLiveLooper(source: com.soundstage.mixer.looper.RecordSource, code: Int, velocity: Int, on: Boolean) {
+        runCatching { liveLooper.onPlayed(source, code, velocity, on) }
+    }
+
+    /**
+     * Rejoue un evenement enregistre : pad (banque de samples) ou note MIDI (synth).
+     * Le volume de la case module la velocite / le gain.
+     */
+    private fun replayLoopEvent(event: com.soundstage.mixer.looper.LoopEvent, volume: Float) {
+        when (event.source) {
+            com.soundstage.mixer.looper.RecordSource.Pads -> {
+                val pad = _uiState.value.drumPads.getOrNull(event.code) ?: return
+                if (pad.sampleFileName.isEmpty()) return
+                audioEngine.playDrumPadSound(pad, pad.volume * _uiState.value.drumVolume * volume.coerceIn(0f, 1f))
+            }
+            com.soundstage.mixer.looper.RecordSource.Tonic -> {
+                val key = com.soundstage.mixer.ui.components.KeyPositionMapper.midiToNoteName(event.code)
+                if (event.on) audioEngine.noteOn(key, (event.velocity / 127f) * volume.coerceIn(0f, 1f), 9)
+                else audioEngine.noteOff(key, 9)
+            }
+            com.soundstage.mixer.looper.RecordSource.Keys -> {
+                val key = com.soundstage.mixer.ui.components.KeyPositionMapper.midiToNoteName(event.code)
+                val channels = getActivePerformanceChannels(event.code)
+                if (event.on) {
+                    channels.forEach { ch -> audioEngine.noteOn(key, (event.velocity / 127f) * volume.coerceIn(0f, 1f), ch) }
+                } else {
+                    channels.forEach { ch -> audioEngine.noteOff(key, ch) }
+                }
+            }
+        }
+    }
+
     fun onKeyDown(key: String, velocity: Float = 0.85f) {
         val midiNote = noteNameToMidi(key)
         val channels = getActivePerformanceChannels(midiNote)
         val state = _uiState.value
+
+        // Bring the engine up on the very first key, not only when a Setlist is opened.
+        // Without this the user had to nudge a snapshot before any sound came out.
+        ensureEngineStarted()
 
         // Update the UI state first: the key press and the chord readout must not
         // depend on the audio engine being available.
@@ -2428,6 +2509,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         // Capture the onset for the looper. Playback goes straight to audioEngine,
         // so this never re-records what it replays.
         looperEngine.record("note", midiNote, "#8FB2E8")
+        feedLiveLooper(com.soundstage.mixer.looper.RecordSource.Keys, midiNote, (velocity.coerceIn(0f, 1f) * 127f).toInt(), on = true)
     }
 
     fun onKeyUp(key: String) {
@@ -2436,6 +2518,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         channels.forEach { channel ->
             audioEngine.noteOff(key, channel)
         }
+        feedLiveLooper(com.soundstage.mixer.looper.RecordSource.Keys, midiNote, 0, on = false)
         _uiState.update { state ->
             state.copy(pressedKeys = state.pressedKeys - key)
         }
@@ -2785,6 +2868,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 padId - 1,
                 "#" + Integer.toHexString(DpPalette.at(padId - 1).toArgb())
             )
+            // LiveLooper : capture le hit pour les cases en REC.
+            feedLiveLooper(com.soundstage.mixer.looper.RecordSource.Pads, padId - 1, 110, on = true)
 
         }
 
@@ -3090,6 +3175,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 if (state.activeTonicNotes.contains(note)) emptySet() else setOf(note)
             }
             audioEngine.setTonicDrone(newSet, state.tonicOctaveRange, state.tonicBrightness, state.tonicShimmer)
+            // LiveLooper : capture le drone (note on / off) pour les cases en REC.
+            val midi = noteNameToMidi(note)
+            feedLiveLooper(com.soundstage.mixer.looper.RecordSource.Tonic, midi, 100, on = newSet.contains(note))
             state.copy(activeTonicNotes = newSet)
         }
     }
@@ -4893,6 +4981,17 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         audioEngine.allNotesOff()
         NativeAudioBridge.safeAllNotesOff()
 
+        // 2b. Reset the FX queues and close the FX window on a patch change.
+        // Switching patch loads a different set of effects on every strip, so any
+        // delay/reverb tail still ringing belongs to the previous patch and must be
+        // flushed, otherwise it bleeds into the new one. fxPanic() clears the FX
+        // delay/reverb buffers; the EFFECTS popup is closed so the window never
+        // keeps showing the previous patch's rack after the swap.
+        NativeAudioBridge.safeFxPanic()
+        if (state.activePopup == ActivePopup.EFFECTS) {
+            _uiState.update { it.copy(activePopup = ActivePopup.NONE) }
+        }
+
         // 3. Prepare target patch snapshots and ensure slot_default always exists for this patch
         val targetSnapshots = targetPatch.snapshots.toMutableMap()
         if (!targetSnapshots.containsKey("slot_default")) {
@@ -6231,9 +6330,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
         val learningType = _uiState.value.learningActionType
         if (learningType != null) {
-            // When learning, require a positive press (ignore release/NoteOff, but allow Program Change which has value=0)
-            if (midiType != MidiControlType.PROGRAM_CHANGE &&
-                midiType != MidiControlType.AFTERTOUCH && value <= 0) return
+            // Arm on ANY signal. A worn/at-rest controller can send value 0 (a CC whose
+            // fader sits at the bottom, a Note Off); rejecting those made learn look dead.
+            // Only ignore an explicit release we can identify as such.
+            if (statusCmd == 0x80) return
             _uiState.update { state ->
                 val updated = state.midiMappings.map { m ->
                     if (m.actionType == learningType) {

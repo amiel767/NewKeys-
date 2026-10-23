@@ -96,7 +96,7 @@ fun FxOverlay(
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
     ) {
         Box(Modifier.fillMaxSize().padding(12.dp)) {
-            FxWindowHost(store = store, modifier = Modifier.fillMaxSize())
+            FxWindowHost(store = store, modifier = Modifier.fillMaxSize(), onClose = onClose)
         }
 
         if (warnId >= 0) {

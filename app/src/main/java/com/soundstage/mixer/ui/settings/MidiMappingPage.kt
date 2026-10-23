@@ -1,7 +1,9 @@
 package com.soundstage.mixer.ui.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -88,6 +91,40 @@ fun MidiMappingPage(
             }
         )
 
+        // Live feedback: the last signal the app actually received. Without this the
+        // learn flow looks dead when nothing is plugged in — the user sees the binding
+        // land here the instant a control moves.
+        if (learningActionType != null || lastMidiSummary.isNotEmpty()) {
+            val listening = learningActionType != null
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp, vertical = 2.dp)
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(if (listening) SetColors.Warn.copy(alpha = 0.14f) else white(0.05f))
+                    .border(
+                        1.dp,
+                        if (listening) SetColors.Warn.copy(alpha = 0.4f) else white(0.08f),
+                        RoundedCornerShape(11.dp)
+                    )
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    Modifier.size(7.dp).clip(CircleShape)
+                        .background(if (listening) SetColors.Warn else SetColors.Ok)
+                )
+                Text(
+                    if (listening) "Waiting for a signal… move a control on your device."
+                    else lastMidiSummary,
+                    style = setText(11.5.sp, FontWeight.SemiBold,
+                        if (listening) SetColors.Warn else SetColors.Dim),
+                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
         LazyColumn(
             Modifier.fillMaxSize(),
             contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 28.dp)
@@ -109,59 +146,13 @@ fun MidiMappingPage(
                     category = category!!,
                     itemOf = ::itemOf,
                     learningActionType = learningActionType,
-                    onOpen = { editing = it }
+                    onOpen = { editing = it },
+                    onLearn = { a ->
+                        if (learningActionType == a) onCancelLearn() else onStartLearn(a)
+                    }
                 )
 
                 else -> {
-                    item("input_label") { SectionLabel("Input") }
-                    item("anti_jitter") {
-                        SettingRow(
-                            title = "Anti-jitter filter",
-                            hint = "Ignores repeat signals from worn buttons and encoders."
-                        ) {
-                            SetSwitch(antiJitter, onAntiJitterChange)
-                        }
-                    }
-                    item("jitter_div") { SetDivider() }
-                    item("jitter_window") {
-                        SliderRow(
-                            title = "Filter sensitivity window",
-                            hint = null,
-                            value = jitterWindowMs.toFloat(),
-                            min = SettingsRanges.JITTER_MIN.toFloat(),
-                            max = SettingsRanges.JITTER_MAX.toFloat(),
-                            step = 1f,
-                            defaultValue = SettingsDefaults.JITTER_WINDOW_MS.toFloat(),
-                            format = { "${it.toInt()} ms" },
-                            onChange = { onJitterWindowChange(it.toInt()) },
-                            enabled = antiJitter
-                        )
-                    }
-
-                    item("devices_label") { SectionLabel("Connected devices") }
-                    if (midiDevices.isEmpty()) {
-                        item("devices_empty") {
-                            SettingRow(
-                                title = "No USB MIDI device",
-                                hint = "Plug a controller to route notes, faders and pads."
-                            )
-                        }
-                    } else {
-                        items(midiDevices, key = { it.id }) { dev ->
-                            SettingRow(
-                                title = dev.name,
-                                hint = if (dev.isConnected) "Connected" else "Disconnected"
-                            ) {
-                                SetSwitch(
-                                    on = dev.isEnabled,
-                                    onChange = { onToggleDevice(dev.id) },
-                                    enabled = dev.isConnected
-                                )
-                            }
-                            SetDivider()
-                        }
-                    }
-
                     item("cat_label") { SectionLabel("Mapping") }
                     val categories = listOf(
                         MidiActionCategory.SNAPSHOTS,
@@ -252,27 +243,55 @@ private fun androidx.compose.foundation.lazy.LazyListScope.categoryActions(
     category: MidiActionCategory,
     itemOf: (MidiActionType) -> MidiMappingItem?,
     learningActionType: MidiActionType?,
-    onOpen: (MidiActionType) -> Unit
+    onOpen: (MidiActionType) -> Unit,
+    onLearn: (MidiActionType) -> Unit
 ) {
     val actions = MidiActionType.values().filter { it.category == category }
     items(actions, key = { it.name }) { action ->
         val item = itemOf(action)
         val assigned = item?.isAssigned == true
-        val binding = if (assigned) item!!.formatDescription() else "Unassigned"
+        val learning = learningActionType == action
+        val binding = when {
+            learning -> "Listening… move a control on your device"
+            assigned -> item!!.formatDescription()
+            else -> "Unassigned"
+        }
         SettingRow(
             title = action.title,
             hint = binding,
             onClick = { onOpen(action) }
         ) {
-            if (learningActionType == action) {
-                Text("Learn…", style = setText(11.5.sp, FontWeight.Bold, SetColors.Accent))
-            } else if (assigned) {
-                Text("Mapped", style = setText(11.5.sp, FontWeight.Bold, SetColors.Ok))
-            } else {
-                SetIcon(SetIconKind.Chevron, SetColors.Mute, Modifier.size(16.dp))
-            }
+            // One-tap learn: listens to ANY incoming signal (CC, note, PC, aftertouch,
+            // pitch bend). The chevron to its right still opens the manual editor.
+            LearnButton(learning = learning, onClick = { onLearn(action) })
+            SetIcon(SetIconKind.Chevron, SetColors.Mute, Modifier.size(16.dp))
         }
         SetDivider()
+    }
+}
+
+/**
+ * The quick-learn affordance shown on every action row, left of the chevron.
+ * Tapping it arms learn for that action; the next signal from any controller binds it.
+ */
+@Composable
+private fun LearnButton(learning: Boolean, onClick: () -> Unit) {
+    val tone = if (learning) SetColors.Warn else SetColors.Accent
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(9.dp))
+            .background(tone.copy(alpha = if (learning) 0.20f else 0.12f))
+            .border(1.dp, tone.copy(alpha = if (learning) 0.55f else 0.32f), RoundedCornerShape(9.dp))
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Box(Modifier.size(7.dp).clip(CircleShape).background(tone))
+        Text(
+            if (learning) "LISTENING" else "LEARN",
+            style = setText(10.5.sp, FontWeight.ExtraBold, tone)
+        )
     }
 }
 

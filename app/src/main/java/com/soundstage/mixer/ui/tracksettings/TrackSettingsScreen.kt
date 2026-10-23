@@ -463,13 +463,13 @@ private fun MiniKeys(low: Int, high: Int, color: Color) {
 
 @Composable
 private fun SwitchRow(title: String, hint: String, on: Boolean, color: Color, onChange: (Boolean) -> Unit) {
-    // 40dp was too tight for a 13sp title plus a 10.5sp hint: the second line was
-    // clipped mid-glyph. Smaller hint, no extra top padding and a 44dp row keep the
-    // full subtitle visible without changing the section's rhythm.
-    Row(Modifier.fillMaxWidth().height(44.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    // PLAYBACK subtitle was still clipping on the second line: 44dp forced the two
+    // lines against the switch. The hint drops to 9.5sp with an 11sp line height and
+    // the row gains 2dp, so the whole subtitle reads without touching the rhythm.
+    Row(Modifier.fillMaxWidth().heightIn(min = 46.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Column(Modifier.weight(1f)) {
-            Text(title, color = Ink, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
-            Text(hint, color = Dim, fontSize = 10.sp, lineHeight = 12.sp)
+            Text(title, color = Ink, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, lineHeight = 15.sp)
+            Text(hint, color = Dim, fontSize = 9.5.sp, lineHeight = 11.sp)
         }
         TsSwitch(on, color, onChange)
     }
