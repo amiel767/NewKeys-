@@ -127,13 +127,24 @@ fun FxKnob(
     // readout below. Kept out of the flow here: a real column would push the body
     // down by the label's height and break the `AB()` centre the geometry relies on.
     Box(modifier = modifier.size(diameter)) {
+        // The gesture key must NOT be `value`: every drag sample calls onChange(),
+        // which changes the key and restarts pointerInput, so detectDragGestures is
+        // cancelled on the first move and the knob looks dead to the touch. The drag
+        // instead captures the value it started from and applies the total delta.
+        // rememberUpdatedState so the gesture reads the latest value without being
+        // keyed on it (a changing key would cancel the drag mid-gesture).
+        val latest = androidx.compose.runtime.rememberUpdatedState(value)
         Canvas(
             modifier = Modifier
                 .matchParentSize()
-                .pointerInput(value) {
-                    detectDragGestures { change, drag ->
+                .pointerInput(effectId, label) {
+                    var start = 0f
+                    detectDragGestures(
+                        onDragStart = { start = latest.value },
+                    ) { change, drag ->
                         change.consume()
-                        onChange((value - drag.y / 110f).coerceIn(0f, 1f))
+                        start = (start - drag.y / 110f).coerceIn(0f, 1f)
+                        onChange(start)
                     }
                 },
         ) {

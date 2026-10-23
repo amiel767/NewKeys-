@@ -71,6 +71,9 @@ fun DrumPadScreen(
     viewModel: MixerViewModel,
     uiState: MixerUiState,
     onImportFiles: (tab: String) -> Unit = {},
+    // Screenshot tests only: start on the LiveLooper page instead of the DrumPad
+    // one. Production always starts on DrumPad (the top-bar selector switches).
+    startOnLiveLooper: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     // ─── Overlay visibility ───
@@ -84,7 +87,7 @@ fun DrumPadScreen(
     var managerTarget by remember { mutableStateOf<Int?>(1) }
 
     // ─── LiveLooper page (top-bar selector DrumPad / LiveLooper) ───
-    var liveLooperPage by remember { mutableStateOf(false) }
+    var liveLooperPage by remember { mutableStateOf(startOnLiveLooper) }
     val liveLooperActions = remember { viewModel.liveLooperActions() }
 
     // ─── Grid modes ───
@@ -197,21 +200,60 @@ fun DrumPadScreen(
                     onSelect = { liveLooperPage = it == com.soundstage.mixer.looper.DrumPadPage.LiveLooper },
                 )
             },
+            patchSelector = if (liveLooperPage) {
+                {
+                    com.soundstage.mixer.looper.LoopPatchChip(
+                        uiState.liveLooperState,
+                        liveLooperActions,
+                    )
+                }
+            } else null,
         )
 
         if (liveLooperPage) {
             // ═══════════ LiveLooper page ═══════════
+            // The reference keeps the *same* left column as the DrumPad page on the
+            // LiveLooper page: the TonicPad grid, the octave row, the loops summary
+            // and the Pad/Kit pickers. Only the right area swaps to the loop lanes.
+            // The previous port dropped the whole column and put the patch chip where
+            // the TonicPad used to be, which is why the TonicPad "disappeared".
             Row(
                 Modifier.weight(1f).fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Column(Modifier.width(168.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    com.soundstage.mixer.looper.LoopPatchChip(uiState.liveLooperState, liveLooperActions)
-                    Spacer(Modifier.weight(1f))
-                    com.soundstage.mixer.looper.LoopsSummaryCard(
-                        uiState.liveLooperState,
-                        Modifier.fillMaxWidth().height(56.dp),
+                Column(Modifier.width(196.dp).fillMaxHeight().padding(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TonicPadColumn(
+                        uiState = uiState,
+                        onNote = { viewModel.onTonicNoteClick(it) },
+                        onOctMinus = { viewModel.onTonicOctaveMinus() },
+                        onOctPlus = { viewModel.onTonicOctavePlus() },
+                        onMulti = { viewModel.toggleMultiPad() },
+                        onClear = { viewModel.onTonicNoteClick("") },
+                        modifier = Modifier.weight(1f),
                     )
+                    // Row 56dp: TonicPad volume knob + Loops summary (reference: the
+                    // knob keeps the same 56 px footprint as on the DrumPad page).
+                    Row(Modifier.fillMaxWidth().height(56.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Box(Modifier.width(56.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                            DpVolumeKnob(value = (tonicVolume * 100f), onChange = { viewModel.setTonicVolume(it / 100f) }, modifier = Modifier.fillMaxSize(), showLabel = false)
+                        }
+                        com.soundstage.mixer.looper.LoopsSummaryCard(
+                            uiState.liveLooperState,
+                            Modifier.weight(1f).fillMaxHeight(),
+                        )
+                    }
+                    Row(Modifier.fillMaxWidth().height(28.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(10.dp)).background(Brush.verticalGradient(listOf(Color(0xFF2A3347), Color(0xFF1F2739)))).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { viewModel.openSoundfontForSlot(9) }.padding(horizontal = 9.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            DpIcon("wave", 12.dp, DpColors.ACCENT)
+                            Text("Pad", color = Color(0xFF7B859A), fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                            Text(uiState.audioSlots.firstOrNull { it.slotId == 9 }?.soundFontPath?.substringAfterLast("/") ?: "None", color = Color(0xFFE3E8F2), fontSize = 10.5.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        }
+                        Row(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(10.dp)).background(Brush.verticalGradient(listOf(Color(0xFF2A3347), Color(0xFF1F2739)))).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { managerTab = "Kits"; managerOpen = true }.padding(horizontal = 9.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            DpIcon("folder", 12.dp, DpColors.ACCENT)
+                            Text("Kit", color = Color(0xFF7B859A), fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                            Text(activeKitName.ifEmpty { "None" }, color = Color(0xFFE3E8F2), fontSize = 10.5.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        }
+                    }
                 }
                 com.soundstage.mixer.looper.LiveLooperContent(
                     state = uiState.liveLooperState,
@@ -226,52 +268,17 @@ fun DrumPadScreen(
 
             // ─── Colonne gauche (196dp) ───
             Column(Modifier.width(196.dp).fillMaxHeight().padding(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                // TonicPad grid 3×4
-                Column(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TONIC_NOTES.chunked(3).forEachIndexed { rowIdx, rowNotes ->
-                        Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            rowNotes.forEachIndexed { colIdx, note ->
-                                val idx = rowIdx * 3 + colIdx
-                                DpNoteKey(
-                                    label = note, oct = 0, idx = idx,
-                                    on = uiState.activeTonicNotes.contains(note),
-                                    ghost = false,
-                                    onToggle = { viewModel.onTonicNoteClick(note) },
-                                    modifier = Modifier.weight(1f).fillMaxHeight()
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Row [Oct-] [Oct 3] [Oct+] [Multi] [Clear]
-                Row(Modifier.fillMaxWidth().height(26.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    // Bouton Oct -
-                    Box(Modifier.size(24.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF243047)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { viewModel.onTonicOctaveMinus() }, contentAlignment = Alignment.Center) {
-                        Text("−", color = Color(0xFFE3E8F2), fontSize = 13.sp)
-                    }
-                    // Texte Oct + chiffre
-                    Row(Modifier.width(48.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                        Text("Oct", color = Color(0xFF7B859A), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.width(4.dp))
-                        Text(parseOctave(uiState.tonicOctaveRange).toString(), color = Color(0xFFF1F4FA), fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
-                    }
-                    // Bouton Oct +
-                    Box(Modifier.size(24.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF243047)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { viewModel.onTonicOctavePlus() }, contentAlignment = Alignment.Center) {
-                        Text("+", color = Color(0xFFE3E8F2), fontSize = 13.sp)
-                    }
-        
-                    Spacer(Modifier.weight(1f))
-        
-                    // Multi
-                    Box(Modifier.height(24.dp).clip(RoundedCornerShape(8.dp)).background(if (uiState.isMultiPadEnabled) Color(0x248FB2E8) else Color.Transparent).border(1.dp, if (uiState.isMultiPadEnabled) Color(0x8C8FB2E8) else Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { viewModel.toggleMultiPad() }.padding(horizontal = 8.dp), contentAlignment = Alignment.Center) {
-                        Text("Multi", color = if (uiState.isMultiPadEnabled) DpColors.ACCENT else Color(0xFF8690A4), fontSize = 10.5.sp, fontWeight = FontWeight.ExtraBold)
-                    }
-                    // Clear
-                    Box(Modifier.height(24.dp).clip(RoundedCornerShape(8.dp)).border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { viewModel.onTonicNoteClick("") }.padding(horizontal = 8.dp), contentAlignment = Alignment.Center) {
-                        Text("Clear", color = Color(0xFFC7CFDD), fontSize = 10.5.sp, fontWeight = FontWeight.ExtraBold)
-                    }
-                }
+                // TonicPad grid 3x4 + octave/Multi/Clear row, shared with the
+                // LiveLooper page so the two cannot drift apart.
+                TonicPadColumn(
+                    uiState = uiState,
+                    onNote = { viewModel.onTonicNoteClick(it) },
+                    onOctMinus = { viewModel.onTonicOctaveMinus() },
+                    onOctPlus = { viewModel.onTonicOctavePlus() },
+                    onMulti = { viewModel.toggleMultiPad() },
+                    onClear = { viewModel.onTonicNoteClick("") },
+                    modifier = Modifier.weight(1f),
+                )
 
                 // Row 62dp: knob + tonic FX
                 Row(Modifier.fillMaxWidth().height(62.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -559,9 +566,69 @@ fun DrumPadScreen(
     }
 }
 
+/**
+ * Left column shared by the DrumPad and LiveLooper pages: the 3x4 TonicPad grid
+ * plus the octave / Multi / Clear row. Extracted so the LiveLooper page can keep
+ * the TonicPad visible next to the loop lanes, exactly like the reference, without
+ * duplicating the note-key wiring.
+ */
+@Composable
+private fun TonicPadColumn(
+    uiState: MixerUiState,
+    onNote: (String) -> Unit,
+    onOctMinus: () -> Unit,
+    onOctPlus: () -> Unit,
+    onMulti: () -> Unit,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            TONIC_NOTES.chunked(3).forEachIndexed { rowIdx, rowNotes ->
+                Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    rowNotes.forEachIndexed { colIdx, note ->
+                        val idx = rowIdx * 3 + colIdx
+                        DpNoteKey(
+                            label = note, oct = 0, idx = idx,
+                            on = uiState.activeTonicNotes.contains(note),
+                            ghost = false,
+                            onToggle = { onNote(note) },
+                            modifier = Modifier.weight(1f).fillMaxHeight()
+                        )
+                    }
+                }
+            }
+        }
+
+        Row(Modifier.fillMaxWidth().height(26.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(24.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF243047)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onOctMinus() }, contentAlignment = Alignment.Center) {
+                Text("−", color = Color(0xFFE3E8F2), fontSize = 13.sp)
+            }
+            Row(Modifier.width(48.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                Text("Oct", color = Color(0xFF7B859A), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(4.dp))
+                Text(parseOctave(uiState.tonicOctaveRange).toString(), color = Color(0xFFF1F4FA), fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
+            }
+            Box(Modifier.size(24.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF243047)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onOctPlus() }, contentAlignment = Alignment.Center) {
+                Text("+", color = Color(0xFFE3E8F2), fontSize = 13.sp)
+            }
+
+            Spacer(Modifier.weight(1f))
+
+            Box(Modifier.height(24.dp).clip(RoundedCornerShape(8.dp)).background(if (uiState.isMultiPadEnabled) Color(0x248FB2E8) else Color.Transparent).border(1.dp, if (uiState.isMultiPadEnabled) Color(0x8C8FB2E8) else Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onMulti() }.padding(horizontal = 8.dp), contentAlignment = Alignment.Center) {
+                Text("Multi", color = if (uiState.isMultiPadEnabled) DpColors.ACCENT else Color(0xFF8690A4), fontSize = 10.5.sp, fontWeight = FontWeight.ExtraBold)
+            }
+            Box(Modifier.height(24.dp).clip(RoundedCornerShape(8.dp)).border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClear() }.padding(horizontal = 8.dp), contentAlignment = Alignment.Center) {
+                Text("Clear", color = Color(0xFFC7CFDD), fontSize = 10.5.sp, fontWeight = FontWeight.ExtraBold)
+            }
+        }
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Grilles
 // ═══════════════════════════════════════════════════════════════════════════
+
 @Composable
 private fun PadsGrid(
     uiState: MixerUiState,

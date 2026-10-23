@@ -583,6 +583,12 @@ bool AudioEngine::routeEventToSource(int channel, int type, int note, int veloci
 // not ready, so the caller falls back to the legacy mix unchanged.
 bool AudioEngine::renderFxPath(float *outputBuffer, int32_t numFrames) {
     if (!mFxEnabled.load(std::memory_order_relaxed)) return false;
+    // Dormant until an effect or an instrument is actually placed. The FX path is a
+    // 16-output-group render plus 11 strip chains; running it with nothing loaded
+    // costs several times the legacy mix for no audible benefit and was the source
+    // of the continuous stutter. It also bypasses applySurfaceFx(), so staying on
+    // the legacy path keeps the Tonic/DrumPad FX sheets working.
+    if (!mFx.hasActiveWork()) return false;
     if (numFrames <= 0 || mFxChannelBuffer.empty() || mFxStripBuffer.empty() || mFxMixBuffer.empty()) return false;
 
     const int channelCount = 10;  // 0..7 tracks, 8 Drum, 9 TonicPad

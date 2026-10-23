@@ -140,7 +140,25 @@ fun FxWindowHost(store: FxShellStore, modifier: Modifier = Modifier, onClose: ((
             }
             // `#ad` and the notice are window chrome, not canvas content: they stay
             // unscaled so hit targets do not shrink with the canvas.
-            if (store.addOpen) {
+            // The reference slides the sheet from translateY(102%) to 0 over 500 ms.
+            // It used to appear in a single frame, which read as a hard cut; the scrim
+            // fades while the sheet rises, and both are keyed on `addOpen` so closing
+            // plays the reverse instead of tearing the overlay down instantly.
+            androidx.compose.animation.AnimatedVisibility(
+                visible = store.addOpen,
+                enter = androidx.compose.animation.fadeIn(
+                    androidx.compose.animation.core.tween(500)
+                ) + androidx.compose.animation.slideInVertically(
+                    initialOffsetY = { it },
+                    animationSpec = androidx.compose.animation.core.tween(500),
+                ),
+                exit = androidx.compose.animation.fadeOut(
+                    androidx.compose.animation.core.tween(220)
+                ) + androidx.compose.animation.slideOutVertically(
+                    targetOffsetY = { it },
+                    animationSpec = androidx.compose.animation.core.tween(220),
+                ),
+            ) {
                 Box(Modifier.fillMaxSize().background(Color(0xE60A0E16))) {
                     FxAddOverlay(
                         modules = store.modules.values.sortedBy { it.id },

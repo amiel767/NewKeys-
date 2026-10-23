@@ -102,8 +102,13 @@ fun MixerBottomBarV2(
             // 4 dp between cases instead of the preview's 6 dp: the user reads the
             // 6 dp gutters as a large gap, and the tighter spacing gives every case a
             // little more length.
-            val gapTotal = 4.dp * (count - 1).coerceAtLeast(0)
-            val share = if (count > 0) (maxWidth - gapTotal) / count else 0.dp
+            // The width is frozen to the size a case has with 4 cases, as asked:
+            // adding or removing a snapshot no longer resizes the others, the row
+            // simply gains or loses a case. Only past 4 cases does the divisor grow,
+            // so a 5th case shrinks the row instead of overflowing it.
+            val divisor = maxOf(count, 4)
+            val gapTotal = 4.dp * (divisor - 1).coerceAtLeast(0)
+            val share = if (divisor > 0) (maxWidth - gapTotal) / divisor else 0.dp
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 configuredSnapshotSlots.forEachIndexed { idx, key ->
@@ -121,7 +126,7 @@ fun MixerBottomBarV2(
                         fallbackNumber = if (key == "slot_default") null else idx,
                         isActive = isActive,
                         isDeletable = key != "slot_default",
-                        width = minOf(cap, share),
+                        width = width,
                         onClick = { onSnapshotSlotClick(key) },
                         onLongPress = { manageSlotKey = key },
                         onDelete = { onDeleteSnapshot(key) }
@@ -431,10 +436,13 @@ private fun MasterSliderV2(
                 // strips' portrait FaderThumb, rotated 90° so it lies horizontally,
                 // then reduced 25%. swapAxes() gives it a horizontal footprint
                 // (capLong x capShort) before the rotation so nothing is clipped.
+                // The offset keeps the cap's *whole* width inside the rail: centring it
+                // on the position pushed half the cap past the right end and under the
+                // FX case. Sliding from 0 to (travel - capLong) makes it stop flush.
                 Box(
                     Modifier
                         .align(Alignment.CenterStart)
-                        .offset(x = (travel * shown).coerceIn(0.dp, travel) - (capLong / 2))
+                        .offset(x = ((travel - capLong) * shown).coerceIn(0.dp, travel - capLong))
                         .size(capLong, capShort),
                     contentAlignment = Alignment.Center,
                 ) {

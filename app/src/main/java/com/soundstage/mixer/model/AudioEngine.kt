@@ -59,7 +59,17 @@ class SynthChannelParams {
  */
 class AudioEngine(private val context: Context) {
 
-    private val coroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    // Every UI listener below is app code (the ViewModel's mapping handler, the
+    // note/chord readout, ...). They are invoked from `launch(Dispatchers.Main)`
+    // because they touch Compose state. A throwable escaping one of them is not
+    // caught by the framework: with a bare SupervisorJob it reaches the thread's
+    // default handler and crashes the process — the "callback problem" where the
+    // MIDI device keeps sending but the app stops reacting. Installing a handler
+    // on the scope turns any such failure into a log line instead of a crash.
+    private val scopeExceptionHandler = CoroutineExceptionHandler { _, t ->
+        Log.e(TAG, "Unhandled exception in audio engine scope: ${t.message}", t)
+    }
+    private val coroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob() + scopeExceptionHandler)
     private val TAG = "AudioEngine"
 
     // DJ-Style Gapless Looping Engine (sample-accurate 0ms restart)

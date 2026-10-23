@@ -19,12 +19,28 @@ class FxMixer {
   bool setInstrument(int strip, int id) {
     if (!instrumentAllowed(strip)) return false;
     if (id >= 0 && kindOf(id) == Kind::Effect) return false;
-    return tracks_[strip].setInstrument(id);
+    const bool ok = tracks_[strip].setInstrument(id);
+    if (ok) recount();
+    return ok;
   }
   bool setEffect(int strip, int slot, int id) {
     if (id >= 0 && kindOf(id) != Kind::Effect) return false;
-    return chain(strip) ? chain(strip)->setEffect(slot, id) : false;
+    FxChain* c = chain(strip);
+    if (!c) return false;
+    const bool ok = c->setEffect(slot, id);
+    if (ok) recount();
+    return ok;
   }
+
+  /**
+   * True as soon as one strip carries an instrument or an effect. The engine uses
+   * it to keep the (much heavier) multi-channel FX render dormant until the user
+   * actually places something: until then the legacy stereo mix is audibly
+   * equivalent and far cheaper, and the FX path also skips the surface FX chains.
+   * Without this gate every note paid for 16 output groups and 11 strip chains,
+   * which is what made the audio stutter continuously once the engine started.
+   */
+  bool hasActiveWork() const { return active_.load(std::memory_order_relaxed) > 0; }
   void setParam(int strip, int slot, int param, float norm) { if (FxChain* c = chain(strip)) c->setParam(slot, param, norm); }
   void setBypass(int strip, int slot, bool b) { if (FxChain* c = chain(strip)) c->setBypass(slot, b); }
   bool applyPreset(int strip, int slot, int preset) { FxChain* c = chain(strip); return c ? c->applyPreset(slot, preset) : false; }
@@ -77,8 +93,19 @@ class FxMixer {
   const FxChain* chainC(int s) const { return s == kMaster ? &master_.chain : (s >= 0 && s < kStrips ? &tracks_[s].strip.chain : nullptr); }
   FxStrip* fxStrip(int s) { return s == kMaster ? &master_ : (s >= 0 && s < kStrips ? &tracks_[s].strip : nullptr); }
   const FxStrip* fxStripC(int s) const { return s == kMaster ? &master_ : (s >= 0 && s < kStrips ? &tracks_[s].strip : nullptr); }
+  /** Recounts every occupied slot after a placement. Control thread only, cheap. */
+  void recount() {
+    int n = 0;
+    for (auto& t : tracks_) {
+      if (t.instrumentId() >= 0) n++;
+      for (int s = 0; s < t.strip.chain.slots(); ++s) if (t.strip.chain.effectId(s) >= 0) n++;
+    }
+    for (int s = 0; s < master_.chain.slots(); ++s) if (master_.chain.effectId(s) >= 0) n++;
+    active_.store(n, std::memory_order_relaxed);
+  }
   TrackStrip tracks_[kStrips];
   FxStrip master_{8, true};
+  std::atomic<int> active_{0};
 };
 
 }  // namespace aetherfx

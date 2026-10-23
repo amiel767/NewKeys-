@@ -100,6 +100,9 @@ fun DpTopBar(
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
     pageSelector: (@Composable () -> Unit)? = null,
+    // Loop-patch chip, only on the LiveLooper page: the reference puts it in the
+    // top bar right after the page selector, not in the left column.
+    patchSelector: (@Composable () -> Unit)? = null,
 ) {
     Row(
         modifier = modifier
@@ -118,6 +121,9 @@ fun DpTopBar(
         if (pageSelector != null) pageSelector() else DpPill(onClick = null) {
             Text("DrumPad", color = DpColors.SOFT, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
         }
+
+        // Loop-patch chip, only on the LiveLooper page.
+        if (patchSelector != null) patchSelector()
 
         Spacer(Modifier.weight(1f))
 

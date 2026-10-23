@@ -1,10 +1,15 @@
 package com.aetherkeys.fx.ui
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
@@ -456,23 +462,100 @@ private fun ChipGroupRow(group: ChipGroup, params: FloatArray, onSet: (Pair<Int,
 @Composable
 private fun PresetChip(current: String, presets: List<String>, onPick: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
-    Box(
-        Modifier
-            .width(176.dp)
-            .height(28.dp)
-            .raised(10.dp, 4.dp, Brush.verticalGradient(listOf(Color(0x18FFFFFF), Color(0x0AFFFFFF))))
-            .background(Color(0xFF0D1119), RoundedCornerShape(10.dp))
-            .clip(RoundedCornerShape(10.dp))
-            .clickable { open = true }
-            .padding(horizontal = 11.dp),
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        Text("$current ▾", fontSize = 10.sp, fontFamily = FxFonts.ui,
-            fontWeight = FontWeight.Bold, letterSpacing = (10 * 0.06f).sp,
-            color = Color(0xFFE6EAF3), maxLines = 1)
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            presets.forEach { p ->
-                DropdownMenuItem(text = { Text(p) }, onClick = { open = false; onPick(p) })
+    // `#pm` is a fixed-height header (36 px) whose box grows to `max-height: 300px`
+    // over 400 ms with cubic-bezier(.2,.9,.2,1); the list is clipped by the box and
+    // the rows fade/translate in. Rendering it as a Material DropdownMenu made it
+    // pop in a single frame (the "ugly" case the user flagged) and drew it in the
+    // wrong place, outside the window chrome. The box below is the real animation:
+    // only its height changes, so the header stays put and the rows are revealed.
+    val rowH = 34.dp
+    val headerH = 34.dp
+    // Cap the visible list at 6 presets: `.pi` rows are 11px + 12px text (~34 px),
+    // and `#pml` is clamped to `max-height: 236px`, so about six fit before the list
+    // scrolls. The `+ Save preset` row is always the last entry.
+    val listH = (rowH * (presets.size.coerceAtMost(6) + 1))
+    val targetH = if (open) headerH + listH else headerH
+    val height by androidx.compose.animation.core.animateDpAsState(
+        targetValue = targetH,
+        animationSpec = tween(400, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0.9f, 0.2f, 1f)),
+        label = "presetHeight",
+    )
+    val scrim by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (open) 1f else 0f,
+        animationSpec = tween(300),
+        label = "presetScrim",
+    )
+    Box(Modifier.width(176.dp)) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .height(height)
+                // `#pm.o{box-shadow:0 14px 28px #000a}`: the shadow only appears while
+                // the menu is open, which is what makes it read as a raised surface
+                // instead of a flat bar.
+                .shadow(if (open) 14.dp else 0.dp, RoundedCornerShape(10.dp), clip = false)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFF0D1119))
+                .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(10.dp))
+                .clickable { open = !open },
+        ) {
+            // `.ph0`: the 34 px header, always visible; the current preset is the label.
+            Row(
+                Modifier.fillMaxWidth().height(headerH).padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(current, Modifier.weight(1f), fontSize = 12.sp, fontFamily = FxFonts.ui,
+                    fontWeight = FontWeight.Bold, letterSpacing = (12 * 0.06f).sp,
+                    color = Color(0xFFE6EAF3), maxLines = 1)
+                Text("▾", fontSize = 12.sp, color = Color(0xFFE6EAF3))
+            }
+            if (scrim > 0f) {
+                // `.pi` rows: revealed as the box grows, each fading in on the same
+                // 300 ms curve. The scroll keeps a long list inside `max-height`.
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    presets.forEach { p ->
+                        val selected = p == current
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(rowH)
+                                // `.pi{border-top:1px solid #ffffff0d}`: the hairline
+                                // between rows is what separates them, not a gap.
+                                .drawBehind {
+                                    drawLine(Color(0x0DFFFFFF), Offset(0f, 0f), Offset(size.width, 0f), 1.dp.toPx())
+                                }
+                                .clickable { open = false; onPick(p) }
+                                .padding(horizontal = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(p, Modifier.weight(1f), fontSize = 12.sp, fontFamily = FxFonts.ui,
+                                fontWeight = FontWeight.SemiBold,
+                                // `.pi.c{color:#f2d58a}`: the selected preset is brass,
+                                // not the shell's blue accent.
+                                color = if (selected) Color(0xFFF2D58A) else Color(0xFFE6EAF3),
+                                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        }
+                    }
+                    // `.pi sv`: the reference's "Save preset" row, dimmed to 60 %.
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(rowH)
+                            .drawBehind {
+                                drawLine(Color(0x0DFFFFFF), Offset(0f, 0f), Offset(size.width, 0f), 1.dp.toPx())
+                            }
+                            .padding(horizontal = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("＋ Save preset", fontSize = 12.sp, fontFamily = FxFonts.ui,
+                            color = Color(0xFF6F7A90), maxLines = 1)
+                    }
+                }
             }
         }
     }

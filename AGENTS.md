@@ -1657,3 +1657,112 @@ curl -s -X POST \
 Ne jamais réécrire un token en clair dans un fichier du dépôt : passer par la
 variable d'environnement. Vérifier le run avec l'endpoint
 `.../actions/workflows/release.yml/runs?per_page=3`.
+
+## Session 5 — crashs sandbox, « callback » MIDI, saccade audio, page LiveLooper
+
+### L'environnement est effacé à chaque crash → scripts idempotents
+
+La sandbox est réinitialisée (JDK, Android SDK, pip) après chaque crash. Ne pas
+réinstaller à la main : `/workspace/restore_env.sh` remet tout d'aplomb
+(`JAVA_HOME=/workspace/jdk/jdk-21.0.13+9`, SDK components, Pillow/numpy/scipy) et
+est **idempotent**. `build.sh` exporte les bonnes variables avant Gradle.
+
+### « Les messages ne partent plus » = exception qui tue le thread MIDI
+
+`AudioEngine.handleIncomingMidi` tourne dans `MidiReceiver.onSend` (thread MIDI IO).
+Une exception qui s'en échappe n'est **pas** rattrapée par le framework : elle tue le
+thread de réception, et ensuite le device continue d'envoyer mais rien n'est livré.
+Correctif : corps public enveloppé dans `try/catch(Throwable)` + log, logique
+déplacée dans `handleIncomingMidiUnsafe`. Même règle dans `onSend` (parsing des
+paquets) et dans le callback `openDevice`. Côté Kotlin coroutines, le scope de
+`AudioEngine` a un `CoroutineExceptionHandler` (un `launch(Dispatchers.Main)` dont le
+listener lève atteindrait sinon le handler par défaut du thread et tuerait le process).
+
+### Saccade audio = chemin FX natif qui tournait à vide
+
+`AudioEngine::renderFxPath()` (audio_engine.cpp) rendait **toujours** 16 groupes de
+sortie + 11 chaînes de strip dès que `mFxEnabled` était vrai, même sans aucun effet ni
+instrument chargé → plusieurs fois le coût du mix legacy, en continu. Correctif :
+`FxMixer::hasActiveWork()` (compteur atomique `active_`, recalculé dans `setInstrument`
+/ `setEffect` via `recount()`) et early-return dans `renderFxPath` quand il vaut 0 →
+retombe sur le chemin legacy (qui applique aussi `applySurfaceFx`, donc les feuilles FX
+Tonic/DrumPad restent fonctionnelles).
+
+### Volume forcé en bas = volume non restauré après un échec SF2
+
+`MixerViewModel.loadSoundFontForSlot` mettait le volume à `0f` (anti-pop) puis le
+restaurait ; si le chargement levait (SF2 corrompu, bridge natif), le volume restait à
+zéro. Correctif : `try { … } catch (t: Throwable) { Log.e } finally { restauration }`.
+
+### Page LiveLooper : garder la colonne gauche du DrumPad
+
+La référence `app/assets/LoopsPreview.jsx` montre, sur la page LiveLooper, **la même
+colonne gauche** que le DrumPad (TonicPad 3×4, ligne Oct/Multi/Clear, knobs + Loops,
+Pad/Kit) ; seul le panneau droit change. Le port avait supprimé la colonne → le
+TonicPad « disparaissait ». `DrumPadScreen.kt` extrait désormais `TonicPadColumn`
+(réutilisée par les deux pages) et le chip Loop Patch vit dans la topbar via le
+paramètre `patchSelector` de `DpTopBar` (`DrumPadOverlays.kt`).
+
+### `#pm` (PresetChip FX) — valeurs de la référence
+
+`app/assets/aether-fx-package/fx-window-preview.html` : `#pm{width:176px;top:11px;
+max-height:36px}`, `.ph0{height:34px;padding:0 14px}`, `.pi{padding:11px 14px;
+border-top:1px solid #ffffff0d}`, `.pi.c{color:#f2d58a}` (sélection **dorée**, pas le
+bleu du shell), `.pi.sv{opacity:.6}`, ombre **uniquement ouverte** (`0 14px 28px #000a`).
+La liste défile au-delà de ~6 entrées (`#pml{max-height:236px}`).
+
+### Reprise session 5 (2) — durcissement des gardes et dédup
+
+* **Colonne gauche unifiée** : la branche DrumPad de `DrumPadScreen.kt` appelle
+  désormais le même `TonicPadColumn(...)` que la page LiveLooper. Les deux pages ne
+  peuvent plus diverger (avant : le DrumPad avait la grille inline, le LiveLooper
+  appelait `TonicPadColumn`). Vérifié par capture : `DrumPadLiveLooperCaptureTest`
+  (page LiveLooper réelle, chip Loop Patch dans la topbar, 5930 px saturés dans la
+  colonne gauche = TonicPad présent).
+* **`DrumPadScreen(startOnLiveLooper = false)`** : paramètre réservé aux tests de
+  capture (production démarre toujours sur DrumPad ; le sélecteur de topbar bascule).
+* **Règle de volume unique** : dans `loadSoundFontForSlot`, le volume appliqué en
+  cours de chargement et celui du `finally` suivent maintenant la même règle
+  (`!isEnabled || isMuted -> 0`, sinon `volume`) ; auparavant le corps ignorait
+  `isEnabled` et les deux pouvaient diverger.
+* **Gardes callbacks confirmées** : `CoroutineExceptionHandler` sur le scope de
+  `AudioEngine`, `try/catch` dans `handleIncomingMidi`, `MidiReceiver.onSend`,
+  callback `openDevice`, `onDeviceListChanged`, `audioDeviceCallback` et
+  `headsetPlugReceiver`.
+
+### Banc d'essai audio hôte (`/workspace/audit`) — ce que la mesure dit vraiment
+
+`aetherfx` est **header-only et portable** (les gardes SSE de `fx_core.h` couvrent
+x86 et ARM) : le mixeur FX se compile sur l'hôte avec un simple `g++ -O3 -std=c++17`,
+sans Android. Le banc reproduit le corps de `AudioEngine::renderFxPath()` et mesure
+le coût réel par bloc de 256 échantillons @ 48 kHz (budget **5333 µs**). Rejouable :
+`/workspace/audit/run_all.sh` (rapport dans `report.txt`).
+
+| Scénario | moyenne/bloc | % budget | overruns |
+|---|---|---|---|
+| vide, gate actif (code actuel) | ~0 µs | 0 % | 0 |
+| vide, **sans** gate (avant correctif) | ~13 µs | 0,3 % | 0 |
+| 4 effets pistes + limiteur master | ~78 µs | 1,5 % | 0 |
+| **pire cas** (74 instances d'effets) | ~1780 µs | 33 % | 0 |
+
+**Correction de l'hypothèse de la session précédente.** La note « saccade = chemin FX
+qui tournait à vide » est **inexacte** : à vide le mixeur FX ne coûte que ~13 µs, soit
+**0,3 %** du budget — même sans le gate, il n'aurait pas pu provoquer une saccade.
+Le gate `hasActiveWork()` reste utile (il supprime ce coût et évite `applySurfaceFx`),
+mais ce n'est **pas** la cause racine. Le vrai poste de dépense est **FluidSynth en
+multi-canal** : `SoundfontEngine::renderChannels()` rend `2 * 10` canaux planaires via
+`fluid_synth_process` (les groupes audio sont fixés à l'init, `setMultiChannelEnabled`
+est vrai en permanence) puis les entrelace en boucle — c'est ça qui coûte, et le gate
+ne l'économise **pas** (le chemin legacy appelle aussi FluidSynth). `libglib2.0-dev`
+n'étant pas installable (pas de root), FluidSynth n'a pas pu être mesuré sur l'hôte.
+
+**Validation audio (pas seulement du CPU).** `/workspace/audit/fx_render.cpp` joue un
+accord à travers les instruments source header-only (`SynthEngine`), passe les chaînes
+strip + master et écrit `render.wav`. `analyze.py` le vérifie : peak 0,20, RMS 0,03,
+0 échantillon écrêté, **0 discontinuité**, aucun trou, et le rapport des sauts aux
+frontières de blocs vaut **0,98** (donc pas de joint de bloc) → signal **propre**.
+
+**Ce qui reste non testable ici** : pas de `/dev/kvm` (donc pas d'émulateur) et pas de
+device audio, on ne peut donc pas mesurer les underruns Oboe ni FluidSynth. La
+simulation valide le DSP et élimine le mixeur FX comme cause ; pour trancher sur la
+saccade en usage réel il faut un device et les stats `AudioTrack`/Oboe.

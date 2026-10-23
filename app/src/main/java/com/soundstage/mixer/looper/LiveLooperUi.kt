@@ -931,10 +931,17 @@ fun LiveLooperOverlays(state: LooperUiState, actions: LooperActions, modifier: M
 enum class DrumPadPage { DrumPad, LiveLooper }
 
 @Composable
-private fun TopPill(modifier: Modifier = Modifier, borderColor: Color = white(0.07f), content: @Composable RowScope.() -> Unit) {
-    val shape = RoundedCornerShape(14.dp)
+private fun TopPill(
+    modifier: Modifier = Modifier,
+    borderColor: Color = white(0.07f),
+    height: Dp = 44.dp,
+    cornerRadius: Dp = 14.dp,
+    shadow: Dp = 5.dp,
+    content: @Composable RowScope.() -> Unit
+) {
+    val shape = RoundedCornerShape(cornerRadius)
     Row(
-        modifier.height(44.dp).shadow(5.dp, shape, ambientColor = Color.Black, spotColor = Color.Black).clip(shape)
+        modifier.height(height).shadow(shadow, shape, ambientColor = Color.Black, spotColor = Color.Black).clip(shape)
             .background(Brush.verticalGradient(listOf(Color(0xFF2A3347), Color(0xFF202839)))).border(1.dp, borderColor, shape),
         verticalAlignment = Alignment.CenterVertically, content = content
     )
@@ -946,15 +953,27 @@ fun LooperPageSelector(current: DrumPadPage, onSelect: (DrumPadPage) -> Unit, mo
     var open by remember { mutableStateOf(false) }
     val rot by animateFloatAsState(if (open) 180f else 0f, tween(250), label = "arrow")
     val density = LocalDensity.current
+    // 40 dp / r13 matches the Metro and BPM pills it sits next to: the selector is on
+    // every page of this bar, so it must read as one of the bar's pills, not a taller
+    // island. The old 44 dp / r14 / drop-shadow made it stand out from its neighbours.
+    val pillHeight = 40.dp
+    // Fixed width, not `widthIn(min = …)`: the inner `Text` carries `weight(1f)`, so
+    // with only a minimum the pill is measured against the whole remaining top-bar
+    // width and swallows it (the DrumPad case stretched across the entire bar). A
+    // hard width keeps it the same size as the Metro/BPM pills next to it.
+    val pillWidth = 150.dp
     Box(modifier) {
         TopPill(
-            Modifier.widthIn(min = 150.dp).pressable { open = !open },
-            if (open) LL.Accent.a(0.5f) else white(0.07f)
+            Modifier.width(pillWidth).pressable { open = !open },
+            if (open) LL.Accent.a(0.5f) else white(0.08f),
+            height = pillHeight,
+            cornerRadius = 13.dp,
+            shadow = 0.dp,
         ) {
             Text(if (current == DrumPadPage.LiveLooper) "LiveLooper" else "DrumPad", Modifier.padding(start = 14.dp).weight(1f), color = Color(0xFFE3E8F2), fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
             Box(Modifier.padding(end = 12.dp).rotate(rot)) { LoopIconView(LoopIcon.Down, LL.Accent, 16.dp, 2.4f) }
         }
-        if (open) Popup(alignment = Alignment.TopStart, offset = IntOffset(0, with(density) { 50.dp.roundToPx() }), onDismissRequest = { open = false }) {
+        if (open) Popup(alignment = Alignment.TopStart, offset = IntOffset(0, with(density) { (pillHeight + 6.dp).roundToPx() }), onDismissRequest = { open = false }) {
             val e = remember { Animatable(0.85f) }
             LaunchedEffect(Unit) { e.animateTo(1f, tween(180)) }
             val shape = RoundedCornerShape(14.dp)

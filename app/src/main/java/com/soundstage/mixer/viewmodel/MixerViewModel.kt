@@ -400,9 +400,20 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         viewModelScope.launch(Dispatchers.Default) {
+            // Adaptive tick: the looper only needs sub-frame resolution while a case is
+            // recording, playing or waiting for a boundary. Idle it backs off to 120 ms,
+            // so an unused LiveLooper no longer wakes the CPU ~125 times a second (which
+            // showed up as the device heating up and the UI losing frames).
             while (isActive) {
+                val st = liveLooper.state.value
+                val busy = st.cases.any {
+                    it.mode == com.soundstage.mixer.looper.CaseMode.Rec ||
+                        it.mode == com.soundstage.mixer.looper.CaseMode.Play ||
+                        it.mode == com.soundstage.mixer.looper.CaseMode.Overdub ||
+                        it.queued != null
+                }
                 runCatching { liveLooper.tick() }
-                delay(8L)
+                delay(if (busy) 8L else 120L)
             }
         }
 
@@ -3238,6 +3249,14 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 NativeAudioBridge.safeAllNotesOff(targetChannel)
                 NativeAudioBridge.safeSetTrackVolume(targetChannel, 0f)
 
+                // The channel is silenced above and only restored at the end of the
+                // load. If anything throws in between (an unreadable SF2, a native
+                // bridge error), the old code left the track at 0 and the user saw
+                // the fader pinned to the bottom with no way to hear it. The body is
+                // wrapped so the volume is always re-applied from state on the way
+                // out, success or not.
+                try {
+
                 Log.d("SoundFontLoad", "[DIAGNOSTIC] Requested load for slot=$slotId, raw sf2Path=$sf2Path")
 
                 // Ensure file path is accessible by native C++ fopen (bridge external storage files if needed)
@@ -3315,9 +3334,16 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
 
-                // Sync channel volume immediately so fader movement is not required to hear sound
-                val targetVol = _uiState.value.tracks.getOrNull(slotId)?.volume ?: 0.8f
-                val effectiveVol = if (_uiState.value.tracks.getOrNull(slotId)?.isMuted == true) 0f else targetVol
+                // Sync channel volume immediately so fader movement is not required to
+                // hear sound. Same rule as the finally block below (disabled and muted
+                // both mean silence) so the two cannot disagree.
+                val targetTrackNow = _uiState.value.tracks.getOrNull(slotId)
+                val effectiveVol = when {
+                    targetTrackNow == null -> 0.8f
+                    !targetTrackNow.isEnabled -> 0f
+                    targetTrackNow.isMuted -> 0f
+                    else -> targetTrackNow.volume
+                }
                 audioEngine.setChannelVolume(targetChannel, effectiveVol)
                 NativeAudioBridge.safeSetTrackVolume(targetChannel, effectiveVol)
 
@@ -3382,6 +3408,22 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 if (saveAfterLoad) {
                     persistCurrentStateDebounced()
+                }
+                } catch (t: Throwable) {
+                    Log.e("SoundFontLoad", "Load failed for slot=$slotId: ${t.message}", t)
+                } finally {
+                    // Always re-apply the live fader volume: the channel was forced to
+                    // 0 before the swap, and a failure must not leave it there. Read
+                    // the current state so a load that happened while the user was
+                    // already fading still lands on the right level. Slot 9 (TonicPad)
+                    // has no TrackChannel, so its level comes from the audio slot.
+                    val track = _uiState.value.tracks.getOrNull(slotId)
+                    val vol = when {
+                        track != null -> if (!track.isEnabled || track.isMuted) 0f else track.volume
+                        else -> _uiState.value.audioSlots.getOrNull(slotId)?.volume ?: 0.8f
+                    }
+                    audioEngine.setChannelVolume(targetChannel, vol)
+                    NativeAudioBridge.safeSetTrackVolume(targetChannel, vol)
                 }
             }
         }
