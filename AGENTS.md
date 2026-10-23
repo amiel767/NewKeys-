@@ -1632,3 +1632,28 @@ régression du code testé.
 Deux `testDebugUnitTest` simultanés (deux daemons, ~1 Go chacun) sont exactement la
 pression qui tue la sandbox. Vérifier `pgrep -f "Gradle Test Executor"` avant de
 lancer, et tuer l'ancien run (`kill <pid>`) plutôt que d'en démarrer un second.
+
+### Push GitHub et déclenchement du workflow : utiliser `$GITHUB_TOKEN`
+
+Le token en dur dans l'URL du remote (`x-access-token:ghu_…`) est **expiré**
+(HTTP 401, « Invalid username or token »). Le jeton valide est injecté dans
+l'environnement sous `GITHUB_TOKEN` (40 caractères) ; il est masqué dans les
+sorties mais utilisable dans les commandes :
+
+```bash
+# push
+git remote set-url origin "https://${GITHUB_TOKEN}@github.com/amiel767/NewKeys-.git"
+git fetch origin main && git rebase origin/main   # le remote avance parfois (uploads manuels)
+git push origin main
+
+# déclencher le workflow manuel (release.yml est en workflow_dispatch uniquement)
+curl -s -X POST \
+  -H "Authorization: token ${GITHUB_TOKEN}" \
+  -H "Accept: application/vnd.github+json" \
+  https://api.github.com/repos/amiel767/NewKeys-/actions/workflows/release.yml/dispatches \
+  -d '{"ref":"main","inputs":{"release":"true"}}'   # -> HTTP 204
+```
+
+Ne jamais réécrire un token en clair dans un fichier du dépôt : passer par la
+variable d'environnement. Vérifier le run avec l'endpoint
+`.../actions/workflows/release.yml/runs?per_page=3`.
