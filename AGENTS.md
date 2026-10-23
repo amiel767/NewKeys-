@@ -1441,3 +1441,112 @@ Build with ANDROID_HOME/JAVA_HOME exported; `:app:assembleDebug` takes ~4 min.
   `FxChain::requestPanic()` -> `FxMixer` -> `AudioEngine::fxPanic()` -> JNI `fxPanic`.
 - `AudioEngine::renderFxPath` must still run the legacy master chain
   (`processMaster`) or the limiter is skipped and the output clips (the "crackle").
+
+---
+
+## Session 2026-10-23 (4e passage) — reprise sandbox + LiveLooper (analyse seule)
+
+Contexte : 3e crash sandbox (env efface). JDK/SDK/Pillow absents au demarrage.
+Mode de cette session : **DISCUSSION uniquement, aucune modification de code produit.**
+
+### Environnement sandbox restaure (a refaire a chaque crash)
+
+- **JDK 21** : `/workspace/jdk/jdk-21.0.13+9` (Temurin 21.0.13+9, telecharge via
+  `api.adoptium.net/v3/binary/latest/21/ga/...`). Un second JDK existe :
+  `/workspace/jdk/jdk21` (21.0.5). Export dans `~/.bashrc` :
+  `JAVA_HOME`, `ANDROID_HOME=/workspace/android-sdk`, `ANDROID_SDK_ROOT`, `PATH`.
+- **Android SDK** : `/workspace/android-sdk` (build-tools, cmake, cmdline-tools,
+  ndk, platform-tools, platforms). `local.properties` = `sdk.dir=/workspace/android-sdk`.
+- **Python** : `/usr/local/bin/python` (3.13.15) + Pillow 13.0.0 deja presents.
+- **Build verifie OK** : `./gradlew :app:compileDebugKotlin --console=plain --no-daemon`
+  -> BUILD SUCCESSFUL en 18s (cache chaud). Gradle 9.3.1, AGP 9.1.1, Kotlin 2.2.10,
+  compileSdk 36, minSdk 26, Java target 11.
+- Script de prechauffage : `/workspace/warmup.sh` (export env + compile).
+
+### Le git remote est INACCESSIBLE depuis le sandbox
+
+- `git fetch` / `git ls-remote` echouent : *"Invalid username or token. Password
+  authentication is not supported"* meme avec `GITHUB_TOKEN` (prefixe `ghu_`, invalide).
+- **MAIS l'API GitHub fonctionne** avec `$GITHUB_TOKEN` :
+  `https://api.github.com/repos/amiel767/NewKeys-/contents/app/assets/<f>`.
+  Telecharger un fichier brut :
+  `curl -s -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github.raw" <url> -o <f>`.
+- Le remote contient des fichiers que le local n'avait pas (l'utilisateur les a
+  pousses via l'app) : `LiveLooperModel.kt`, `LiveLooperUi.kt`, `LoopsPreview.jsx`.
+
+### LiveLooper — sources de reference (recuperees, non integrees)
+
+Trois fichiers de reference, **copies dans `app/assets/`** mais **NON branches au
+code** (ce sont des specs, comme les autres `*Preview.jsx`) :
+
+| Fichier | Taille | Role |
+|---|---|---|
+| `app/assets/LoopsPreview.jsx` | 66 Ko | Source de verite visuelle (preview JSX approuve) |
+| `app/assets/LiveLooperModel.kt` | 33 Ko | Modele + logique pure + `LooperController` (sans UI) |
+| `app/assets/LiveLooperUi.kt` | 70 Ko | UI Compose stateless (rend `LooperUiState`, reporte via `LooperActions`) |
+
+- Package declare dans les deux .kt : `com.soundstage.mixer.looper // <- adapt to the
+  real package`. **Ce dossier n'existe pas encore** dans `app/src/main/java/`.
+- `LoopsPreview.jsx` = preview **891x411 dp**, selecteur de page en haut
+  (`DrumPad` / `LiveLooper`), 8 cases (`L1..L8`), patchs de loop sauves avec la
+  setlist, FocusView, ActionSheet, PatchWindow, toasts, dialogs de confirmation.
+- `LiveLooperModel.kt` fournit : enums (`CaseMode`, `LoopAction`, `Quantize`,
+  `StopAt`, `AfterRecording`, `RecordSource`, `PendingLoadChoice`), data classes
+  (`LoopEvent`, `LoopCase`, `LooperSettings`, `LoopPatch`, `LooperUiState`,
+  `LoopPosition`, `RemovedLayer`, `RecordSources`), `LooperActions`, `LooperLogic`
+  (pur), `LooperController` (`StateFlow<LooperUiState>`, `tick()`, `onPlayed()`,
+  `actions()`), `LoopPatchJson` (persistance JSON, `fromJson` ne crash jamais).
+- `LiveLooperUi.kt` fournit : `LiveLooperContent`, `LiveLooperOverlays`,
+  `LooperPageSelector`, `LoopPatchChip`, `LoopsSummaryCard`, `loopCaseColor`, tokens
+  `LL` (Accent `#8FB2E8`, Rose `#C2587A`, Amber `#D8A24A`, ...), `enum DrumPadPage`.
+  Utilise `Popup`, `graphicsLayer`, `shadow`, `LocalHapticFeedback` — tout dispo
+  dans Compose BOM 2024.09.00.
+
+### Point cle de la demande : selecteur de section en haut
+
+Le JSX `LoopsPreview.jsx` remplace la pilule figee "DrumPad" par un **selecteur
+deroulant `DrumPad` / `LiveLooper`** place dans la TopBar (titre). Le Kotlin actuel
+`DpTopBar` (`DrumPadOverlays.kt`) affiche une pilule `DrumPad` non cliquable, et le
+`DpSeg` "Pads/Loops" est dans la rangee d'en-tete de la colonne droite
+(`DrumPadScreen.kt` ~l.272). C'est **cette migration** que la demande vise :
+`LooperPageSelector` remplace la pilule du titre ; plus de bouton "DrumPad - Looper".
+
+### Etat actuel a remplacer (sur `main`, commit 58baec2)
+
+- `audio/LooperEngine.kt` (311 l.) : moteur actuel, event-only, 8 cases x 4 couches,
+  swing, `CaseState` (`Empty/Queued/Recording/Playing/Overdubbing/Stopped`),
+  `UiState`, scheduler interne (`start()/stop()/release()`), callbacks
+  `onPlayPadEvent` / `onPlayNoteEvent`.
+- UI actuelle : `ui/pages/DrumPadScreen.kt` (padMode "pads"/"loops", `LoopsGrid`,
+  `DpSeg`, `Swing` pill, `$used/8 used`, Play/Stop all), `ui/components/drumpad/`
+  (`DrumPadPad.kt` -> `DpLoopCase`, `DrumPadOverlays.kt` -> `DpTopBar`).
+- Wiring VM : `MixerViewModel.kt` — `looperEngine` (l.320), miroir `looper` dans
+  `MixerUiState` (l.291), callbacks de rejeu (l.374-397), `tapCase`/`playAll`/
+  `stopAll`/`record` (l.2065-2088), `record("note", ...)` (l.2430), hits pads (l.2783).
+- Navigation : `AppScreenPage.DRUMPAD` -> `DrumPadScreen` (appel l.805 de
+  `MixerScreen.kt`). Enum dans `model/MixerState.kt` l.23.
+- Tests : `app/src/test/java/com/soundstage/mixer/audio/LooperEngineTest.kt`
+  (JVM pur, pas de Robolectric). Infra Roborazzi/Robolectric dispo pour l'UI.
+
+### Restes a faire (session longue, PAS cette session)
+
+1. Integrer `LiveLooperModel.kt` + `LiveLooperUi.kt` dans
+   `app/src/main/java/com/soundstage/mixer/looper/` (corriger le package).
+2. Cabler `LooperController` au `TransportClock` reel (tick ~8-10 ms) et remplacer
+   `LooperEngine` dans `MixerViewModel` (rejeu via `onReplay`, enregistrement via
+   `onPlayed`) — **sans toucher a Echo** ni au reste valide.
+3. Migrer l'UI : `LooperPageSelector` en TopBar, `LiveLooperContent` +
+   `LiveLooperOverlays` a la place de `LoopsGrid`/`DpLoopCase` ; retirer le
+   `DpSeg` Pads/Loops et le bouton DrumPad/Looper.
+4. Persistance : brancher `LoopPatchJson` sur la sauvegarde setlist
+   (`onPatchesChanged`).
+5. Tests : porter/etendre `LooperEngineTest` vers `LooperLogic` (logique pure).
+
+### Propositions a discuter (faille reelle + manques)
+
+- **Panic** : la chaine master "legacy" n'est jamais remise a zero par
+  `triggerPanic()` (`reset()` des blocs master legacy = vide). Faille reelle.
+- **Pas de son au demarrage** : `noteOn` du clavier n'appelle pas
+  `ensureEngineStarted()` (seul `selectScene` l.3491 et l.4471 le font).
+- `LooperController.midiLearn()` est un stub (`/* hook to ... */`).
+- `LooperController` n'a pas encore de hook "demarrage sans son" / count-in audible.
