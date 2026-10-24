@@ -30,3 +30,4 @@ tools/__pycache__/
 
 # Per-machine watermark for tools/conv_sync.py (parallel conversation watcher)
 tools/.conv_sync_state.json
+tools/fxcompare/report.png
