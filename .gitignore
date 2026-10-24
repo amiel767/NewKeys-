@@ -23,3 +23,7 @@ debug.keystore
 
 # Generated reference renders (tools/refcheck/render_ref.mjs output)
 tools/refcheck/out/
+
+# Python bytecode from the repo tooling scripts
+tools/__pycache__/
+*.pyc
