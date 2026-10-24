@@ -230,7 +230,7 @@ private fun <T> Segmented(
                 Box(
                     Modifier.width(segW).height(height).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onChange(k) },
                     contentAlignment = Alignment.Center
-                ) { Text(label, color = if (k == value) Color(0xFFF1F4FA) else Color(0xFF8690A4), fontSize = fontSize, fontWeight = FontWeight.ExtraBold, maxLines = 1) }
+                ) { Text(label, color = if (k == value) Color(0xFFF1F4FA) else Color(0xFF8690A4), fontSize = fontSize, lineHeight = fontSize, fontWeight = FontWeight.ExtraBold, maxLines = 1) }
             }
         }
     }
@@ -239,7 +239,7 @@ private fun <T> Segmented(
 @Composable
 private fun Group(label: String, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Text(label, Modifier.padding(start = 3.dp), color = LL.Dim, fontSize = 8.5.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp)
+        Text(label, Modifier.padding(start = 3.dp), color = LL.Dim, fontSize = 8.5.sp, lineHeight = 8.5.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp)
         content()
     }
 }
@@ -249,14 +249,14 @@ private fun LoopTextField(value: String, placeholder: String, onChange: (String)
     var text by remember { mutableStateOf(value) }
     BasicTextField(
         value = text, onValueChange = { if (it.length <= 22) { text = it; onChange(it) } }, singleLine = true,
-        textStyle = TextStyle(color = Color(0xFFF1F4FA), fontSize = 13.sp, fontWeight = FontWeight.Bold),
+        textStyle = TextStyle(color = Color(0xFFF1F4FA), fontSize = 13.sp, lineHeight = 13.sp, fontWeight = FontWeight.Bold),
         cursorBrush = SolidColor(LL.Accent),
         modifier = modifier.height(30.dp),
         decorationBox = { inner ->
             Box(
                 Modifier.fillMaxSize().clip(RoundedCornerShape(10.dp)).background(Color(0xFF0E131C)).border(1.dp, white(0.12f), RoundedCornerShape(10.dp)).padding(horizontal = 10.dp),
                 contentAlignment = Alignment.CenterStart
-            ) { if (text.isEmpty()) Text(placeholder, color = LL.Faint, fontSize = 13.sp, fontWeight = FontWeight.Bold); inner() }
+            ) { if (text.isEmpty()) Text(placeholder, color = LL.Faint, fontSize = 13.sp, lineHeight = 13.sp, fontWeight = FontWeight.Bold); inner() }
         }
     )
 }
@@ -331,7 +331,7 @@ private fun StateBadge(info: StateInfo, size: TextUnit = 11.sp) {
     val low = when (info.anim) { BadgeAnim.Blink -> 0.35f; BadgeAnim.Pulse -> 0.6f; BadgeAnim.Breathe -> 0.82f; else -> 1f }
     val ms = when (info.anim) { BadgeAnim.Blink -> 450; BadgeAnim.Pulse -> 500; BadgeAnim.Breathe -> 1200; else -> 1000 }
     val a by t.animateFloat(1f, low, infiniteRepeatable(tween(ms, easing = LinearEasing), RepeatMode.Reverse), label = "a")
-    Text(info.label, Modifier.alpha(if (info.anim == BadgeAnim.None) 1f else a), color = info.color, fontSize = size, fontWeight = FontWeight.Black, letterSpacing = 0.6.sp, maxLines = 1)
+    Text(info.label, Modifier.alpha(if (info.anim == BadgeAnim.None) 1f else a), color = info.color, fontSize = size, lineHeight = size, fontWeight = FontWeight.Black, letterSpacing = 0.6.sp, maxLines = 1)
 }
 
 /* ═══════════════════════════ RING AND LAYERS ═══════════════════════════ */
@@ -371,7 +371,7 @@ private fun LoopRing(c: LoopCase, color: Color, size: Dp, info: StateInfo, pos: 
             c.queued != null -> "…"
             else -> (pos?.bar ?: 1).toString()
         }
-        val style = TextStyle(color = if (c.mode == CaseMode.Empty) LL.Faint else Color(0xFFF1F4FA), fontSize = ((if (centre.length > 1) 15f else 22f) * s).toSp(), fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
+        val style = TextStyle(color = if (c.mode == CaseMode.Empty) LL.Faint else Color(0xFFF1F4FA), fontSize = ((if (centre.length > 1) 15f else 22f) * s).toSp(), lineHeight = ((if (centre.length > 1) 15f else 22f) * s).toSp(), fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
         val l = measurer.measure(centre, style)
         drawText(l, topLeft = Offset(center.x - l.size.width / 2f, center.y - l.size.height / 2f))
     }
@@ -434,7 +434,7 @@ private fun ActionRow(c: LoopCase, color: Color, height: Dp, labels: Boolean, ac
             ) {
                 val tint = if (!b.enabled) Color(0xFF434C61) else if (b.on) b.tint else LL.Soft
                 LoopIconView(b.icon, if (b.on && b.key == "rec") b.tint else tint, if (labels) 15.dp else 13.dp)
-                if (labels) { Spacer(Modifier.width(6.dp)); Text(b.text, color = tint, fontSize = 12.5.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1) }
+                if (labels) { Spacer(Modifier.width(6.dp)); Text(b.text, color = tint, fontSize = 12.5.sp, lineHeight = 12.5.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1) }
             }
         }
     }
@@ -471,11 +471,11 @@ private fun CaseCard(c: LoopCase, nowBar: Double, beatsPerBar: Int, actions: Loo
     CaseSurface(c, color, modifier.padding(0.dp)) {
         Column(Modifier.fillMaxSize().padding(horizontal = 9.dp, vertical = 7.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth().height(18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("L${c.id + 1}", Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { actions.onFocus(c.id) }, color = LL.Soft, fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
+                Text("L${c.id + 1}", Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { actions.onFocus(c.id) }, color = LL.Soft, fontSize = 11.5.sp, lineHeight = 11.5.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
                 StateBadge(info)
-                if (c.mute && c.layers > 0) Text("MUTE", Modifier.border(1.dp, LL.Amber.a(0.5f), RoundedCornerShape(5.dp)).padding(horizontal = 4.dp), color = LL.Amber, fontSize = 8.5.sp, fontWeight = FontWeight.Black, letterSpacing = 0.6.sp)
+                if (c.mute && c.layers > 0) Text("MUTE", Modifier.border(1.dp, LL.Amber.a(0.5f), RoundedCornerShape(5.dp)).padding(horizontal = 4.dp), color = LL.Amber, fontSize = 8.5.sp, lineHeight = 8.5.sp, fontWeight = FontWeight.Black, letterSpacing = 0.6.sp)
                 Spacer(Modifier.weight(1f))
-                if (c.hasLoop) Text("${c.bars} bar${if (c.bars > 1) "s" else ""}", color = LL.Mute, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
+                if (c.hasLoop) Text("${c.bars} bar${if (c.bars > 1) "s" else ""}", color = LL.Mute, fontSize = 10.sp, lineHeight = 10.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
             }
             BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
                 // The reference draws the ring at 68 dp inside a 168 dp card (~40% of the
@@ -485,7 +485,7 @@ private fun CaseCard(c: LoopCase, nowBar: Double, beatsPerBar: Int, actions: Loo
                 Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                     LoopRing(c, color, ring, info, pos)
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically)) {
-                        Text(posText(c, pos, info), color = if (c.mode == CaseMode.Empty) LL.Faint else LL.Soft, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(posText(c, pos, info), color = if (c.mode == CaseMode.Empty) LL.Faint else LL.Soft, fontSize = 11.sp, lineHeight = 11.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         LayerBars(c, color, 4.dp, 6.dp)
                     }
                 }
@@ -507,10 +507,10 @@ private fun CaseChip(c: LoopCase, nowBar: Double, active: Boolean, onSelect: () 
             .pressable(onClick = onSelect).padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text("L${c.id + 1}", color = LL.Soft, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
+        Text("L${c.id + 1}", color = LL.Soft, fontSize = 11.sp, lineHeight = 11.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
         Box(Modifier.size(7.dp).drawBehind { if (c.mode != CaseMode.Empty) drawCircle(info.color.a(0.35f), 6.dp.toPx()) }.background(info.color, CircleShape))
         Spacer(Modifier.weight(1f))
-        Text(if (c.layers > 0) "${c.bars}b·${c.layers}" else "", color = Color(0xFF7B859A), fontSize = 9.5.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
+        Text(if (c.layers > 0) "${c.bars}b·${c.layers}" else "", color = Color(0xFF7B859A), fontSize = 9.5.sp, lineHeight = 9.5.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
     }
 }
 
@@ -552,17 +552,17 @@ private fun FocusView(c: LoopCase, state: LooperUiState, nowBar: Double, actions
                         Modifier.height(28.dp).clip(RoundedCornerShape(9.dp)).background(white(0.05f)).border(1.dp, white(0.1f), RoundedCornerShape(9.dp))
                             .pressable { actions.onFocus(null) }.padding(horizontal = 11.dp),
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) { LoopIconView(LoopIcon.Back, LL.Soft, 12.dp); Text("All cases", color = LL.Soft, fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold) }
-                    Text("L${c.id + 1}", color = LL.Ink, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
-                    if (c.name.isNotEmpty()) Text(c.name, color = LL.Soft, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 120.dp))
+                    ) { LoopIconView(LoopIcon.Back, LL.Soft, 12.dp); Text("All cases", color = LL.Soft, fontSize = 11.5.sp, lineHeight = 11.5.sp, fontWeight = FontWeight.ExtraBold) }
+                    Text("L${c.id + 1}", color = LL.Ink, fontSize = 14.sp, lineHeight = 14.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
+                    if (c.name.isNotEmpty()) Text(c.name, color = LL.Soft, fontSize = 13.sp, lineHeight = 13.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 120.dp))
                     StateBadge(info, 13.sp)
                     Spacer(Modifier.weight(1f))
-                    if (c.layers > 0) Text("${c.bars} bar${if (c.bars > 1) "s" else ""} · ${c.layers} layer${if (c.layers > 1) "s" else ""}", color = LL.Mute, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
+                    if (c.layers > 0) Text("${c.bars} bar${if (c.bars > 1) "s" else ""} · ${c.layers} layer${if (c.layers > 1) "s" else ""}", color = LL.Mute, fontSize = 12.sp, lineHeight = 12.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
                 }
                 Row(Modifier.fillMaxWidth().weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                     LoopRing(c, color, 158.dp, info, pos)
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterVertically)) {
-                        Text("LAYERS", color = LL.Dim, fontSize = 9.5.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.3.sp)
+                        Text("LAYERS", color = LL.Dim, fontSize = 9.5.sp, lineHeight = 9.5.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.3.sp)
                         for (i in 0 until 4) {
                             if (i < c.layers) {
                                 val muted = c.layerMute[i]
@@ -573,27 +573,27 @@ private fun FocusView(c: LoopCase, state: LooperUiState, nowBar: Double, actions
                                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Box(Modifier.size(6.dp, 15.dp).then(if (muted) Modifier.border(1.dp, color, RoundedCornerShape(3.dp)) else Modifier.background(color, RoundedCornerShape(3.dp))))
-                                    Text("Layer ${i + 1}", Modifier.weight(1f), color = LL.Ink, fontSize = 12.5.sp, fontWeight = FontWeight.ExtraBold)
-                                    Text("${c.events.count { it.layer == i && it.on }} hits", color = LL.Mute, fontSize = 10.5.sp, fontFamily = LL.Mono)
+                                    Text("Layer ${i + 1}", Modifier.weight(1f), color = LL.Ink, fontSize = 12.5.sp, lineHeight = 12.5.sp, fontWeight = FontWeight.ExtraBold)
+                                    Text("${c.events.count { it.layer == i && it.on }} hits", color = LL.Mute, fontSize = 10.5.sp, lineHeight = 10.5.sp, fontFamily = LL.Mono)
                                     SmallSquareButton(if (muted) LoopIcon.Mute else LoopIcon.Speaker, if (muted) LL.Amber else LL.Soft, if (muted) LL.Amber.a(0.25f) else white(0.08f)) { actions.onToggleLayerMute(c.id, i) }
                                     SmallSquareButton(LoopIcon.X, LL.Soft, white(0.08f)) { actions.onRemoveLayer(c.id, i) }
                                 }
                             } else {
                                 Box(Modifier.fillMaxWidth().height(30.dp).dashedBorder(white(0.1f), 10.dp).padding(horizontal = 12.dp), contentAlignment = Alignment.CenterStart) {
-                                    Text("Layer ${i + 1}", color = Color(0xFF4F596E), fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                                    Text("Layer ${i + 1}", color = Color(0xFF4F596E), fontSize = 12.5.sp, lineHeight = 12.5.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
                         Row(Modifier.fillMaxWidth().height(28.dp).padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             LoopIconView(LoopIcon.Speaker, LL.Mute, 14.dp)
                             VolumeSlider(c.volume, color, { actions.onVolume(c.id, it) }, Modifier.weight(1f))
-                            Text("${c.volume}%", Modifier.width(34.dp), color = LL.Ink, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono, textAlign = TextAlign.End)
+                            Text("${c.volume}%", Modifier.width(34.dp), color = LL.Ink, fontSize = 11.sp, lineHeight = 11.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono, textAlign = TextAlign.End)
                             val shape = RoundedCornerShape(9.dp)
                             Box(
                                 Modifier.height(26.dp).clip(shape).background(if (c.mute) LL.Amber.a(0.2f) else white(0.05f)).border(1.dp, if (c.mute) LL.Amber.a(0.6f) else white(0.1f), shape)
                                     .pressable { actions.onToggleMute(c.id) }.padding(horizontal = 10.dp),
                                 contentAlignment = Alignment.Center
-                            ) { Text("Mute", color = if (c.mute) LL.Amber else LL.Soft, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold) }
+                            ) { Text("Mute", color = if (c.mute) LL.Amber else LL.Soft, fontSize = 11.sp, lineHeight = 11.sp, fontWeight = FontWeight.ExtraBold) }
                         }
                     }
                 }
@@ -630,7 +630,7 @@ private fun CaseSheet(c: LoopCase, actions: LooperActions, modifier: Modifier) {
                 Box(Modifier.size(8.dp).drawBehind { drawCircle(color.a(0.4f), 6.dp.toPx()) }.background(color, CircleShape))
                 Text(
                     "L${c.id + 1}${if (c.name.isNotEmpty()) " · ${c.name}" else ""} · " + if (c.layers > 0) "${c.bars} bar${if (c.bars > 1) "s" else ""} · ${c.layers} layer${if (c.layers > 1) "s" else ""}" else "empty",
-                    Modifier.weight(1f), color = Color(0xFFF1F4FA), fontSize = 14.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis
+                    Modifier.weight(1f), color = Color(0xFFF1F4FA), fontSize = 14.sp, lineHeight = 14.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
                 Box(Modifier.size(28.dp).clip(CircleShape).background(white(0.07f)).pressable { actions.onSheet(null) }, contentAlignment = Alignment.Center) { LoopIconView(LoopIcon.X, Color(0xFF9AA5BA), 12.dp, 2.2f) }
             }
@@ -649,8 +649,8 @@ private fun CaseSheet(c: LoopCase, actions: LooperActions, modifier: Modifier) {
                             .border(1.dp, white(0.06f), sh).pressable(enabled = ok, onClick = fn),
                         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)
                     ) {
-                        Text(glyph, color = if (!ok) Color(0xFF4F596E) else if (label == "Clear") Color(0xFFE3A0B4) else LL.Accent, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
-                        Text(label, color = if (ok) LL.Ink else Color(0xFF4F596E), fontSize = 10.5.sp, fontWeight = FontWeight.ExtraBold)
+                        Text(glyph, color = if (!ok) Color(0xFF4F596E) else if (label == "Clear") Color(0xFFE3A0B4) else LL.Accent, fontSize = 15.sp, lineHeight = 15.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
+                        Text(label, color = if (ok) LL.Ink else Color(0xFF4F596E), fontSize = 10.5.sp, lineHeight = 10.5.sp, fontWeight = FontWeight.ExtraBold)
                     }
                 }
             }
@@ -664,7 +664,7 @@ private fun CaseSheet(c: LoopCase, actions: LooperActions, modifier: Modifier) {
                                 Modifier.height(24.dp).clip(sh).background(if (on) LL.Accent.a(0.16f) else Color.Transparent).border(1.dp, if (on) LL.Accent.a(0.55f) else white(0.1f), sh)
                                     .pressable { actions.onToggleSource(c.id, s) }.padding(horizontal = 11.dp),
                                 contentAlignment = Alignment.Center
-                            ) { Text(label, color = if (on) Color(0xFFD5E3FA) else Color(0xFF7B859A), fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold) }
+                            ) { Text(label, color = if (on) Color(0xFFD5E3FA) else Color(0xFF7B859A), fontSize = 11.5.sp, lineHeight = 11.5.sp, fontWeight = FontWeight.ExtraBold) }
                         }
                     }
                 }
@@ -673,7 +673,7 @@ private fun CaseSheet(c: LoopCase, actions: LooperActions, modifier: Modifier) {
                 Group("MODE") { Segmented(listOf(false to "Loop", true to "One-shot"), c.oneShot, { actions.onOneShot(c.id, it) }, 118.dp, 22.dp, 10.5.sp) }
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("NAME", color = LL.Dim, fontSize = 8.5.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp, modifier = Modifier.padding(start = 3.dp))
+                Text("NAME", color = LL.Dim, fontSize = 8.5.sp, lineHeight = 8.5.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp, modifier = Modifier.padding(start = 3.dp))
                 key(c.id) { LoopTextField(c.name, "L${c.id + 1}", { actions.onRename(c.id, it) }, Modifier.weight(1f)) }
             }
         }
@@ -692,7 +692,7 @@ private fun PillButton(text: String, icon: LoopIcon?, enabled: Boolean, rose: Bo
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         if (icon != null) LoopIconView(icon, LL.Soft, 11.dp)
-        Text(text, color = if (rose) Color(0xFFE3A0B4) else LL.Soft, fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+        Text(text, color = if (rose) Color(0xFFE3A0B4) else LL.Soft, fontSize = 11.5.sp, lineHeight = 11.5.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
     }
 }
 
@@ -794,7 +794,7 @@ private fun DialogCard(width: Dp, title: String, text: String, content: @Composa
         Modifier.width(width).shadow(24.dp, shape, ambientColor = Color.Black, spotColor = Color.Black).clip(shape).background(PanelBrush).border(1.dp, white(0.12f), shape)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}.padding(18.dp)
     ) {
-        Text(title, color = Color(0xFFF1F4FA), fontSize = 16.sp, fontWeight = FontWeight.Black)
+        Text(title, color = Color(0xFFF1F4FA), fontSize = 16.sp, lineHeight = 16.sp, fontWeight = FontWeight.Black)
         Text(text, Modifier.padding(top = 6.dp), color = LL.Mute, fontSize = 12.5.sp, lineHeight = 18.sp)
         Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), content = content)
     }
@@ -809,7 +809,7 @@ private fun DialogButton(text: String, kind: Int, onClick: () -> Unit) {   // 0 
         Modifier.height(36.dp).clip(shape).background(bg).then(if (kind == 0 || kind == 1) Modifier.border(1.dp, if (kind == 1) LL.Rose.a(0.4f) else white(0.12f), shape) else Modifier)
             .pressable(onClick = onClick).padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center
-    ) { Text(text, color = fg, fontSize = 13.sp, fontWeight = if (kind >= 2) FontWeight.Black else FontWeight.ExtraBold) }
+    ) { Text(text, color = fg, fontSize = 13.sp, lineHeight = 13.sp, fontWeight = if (kind >= 2) FontWeight.Black else FontWeight.ExtraBold) }
 }
 
 @Composable
@@ -826,7 +826,7 @@ private fun SmallChip(text: String, danger: Boolean, enabled: Boolean, onClick: 
         Modifier.height(26.dp).clip(shape).background(if (danger) LL.Rose.a(0.1f) else white(0.05f)).border(1.dp, if (danger) LL.Rose.a(0.4f) else white(0.1f), shape)
             .pressable(enabled = enabled, onClick = onClick).padding(horizontal = 10.dp),
         contentAlignment = Alignment.Center
-    ) { Text(text, color = if (!enabled) Color(0xFF4F596E) else if (danger) Color(0xFFE3A0B4) else LL.Soft, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold) }
+    ) { Text(text, color = if (!enabled) Color(0xFF4F596E) else if (danger) Color(0xFFE3A0B4) else LL.Soft, fontSize = 11.sp, lineHeight = 11.sp, fontWeight = FontWeight.ExtraBold) }
 }
 
 @Composable
@@ -877,8 +877,8 @@ private fun PatchWindowColumn(
         ) {
             Box(Modifier.size(4.dp, 32.dp).drawBehind { drawRoundRect(LL.Accent.a(0.35f), Offset(-3.dp.toPx(), 0f), Size(size.width + 6.dp.toPx(), size.height), CornerRadius(4.dp.toPx())) }.background(LL.Accent, RoundedCornerShape(2.dp)))
             Column(Modifier.weight(1f)) {
-                Text("Loop patches", color = Color(0xFFF4F6FB), fontSize = 17.sp, fontWeight = FontWeight.Black)
-                Text("Setlist · ${state.setlistName} · saved with the setlist", color = Color(0xFF7B859A), fontSize = 11.5.sp, modifier = Modifier.padding(top = 2.dp))
+                Text("Loop patches", color = Color(0xFFF4F6FB), fontSize = 17.sp, lineHeight = 17.sp, fontWeight = FontWeight.Black)
+                Text("Setlist · ${state.setlistName} · saved with the setlist", color = Color(0xFF7B859A), fontSize = 11.5.sp, lineHeight = 11.5.sp, modifier = Modifier.padding(top = 2.dp))
             }
             RoundButton(LoopIcon.X, 34.dp, actions.onClosePatches)
         }
@@ -901,13 +901,13 @@ private fun PatchWindowColumn(
                                 verticalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterVertically)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                                    Text(p.name, color = Color(0xFFF1F4FA), fontSize = 13.5.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 170.dp))
-                                    if (on) Text("ACTIVE", Modifier.border(1.dp, LL.Accent.a(0.5f), RoundedCornerShape(5.dp)).padding(horizontal = 5.dp, vertical = 1.dp), color = LL.Accent, fontSize = 8.5.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                                    Text(p.name, color = Color(0xFFF1F4FA), fontSize = 13.5.sp, lineHeight = 13.5.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 170.dp))
+                                    if (on) Text("ACTIVE", Modifier.border(1.dp, LL.Accent.a(0.5f), RoundedCornerShape(5.dp)).padding(horizontal = 5.dp, vertical = 1.dp), color = LL.Accent, fontSize = 8.5.sp, lineHeight = 8.5.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
                                     if (on && state.isDirty) Box(Modifier.size(7.dp).drawBehind { drawCircle(LL.Amber.a(0.4f), 6.dp.toPx()) }.background(LL.Amber, CircleShape))
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                     PatchMiniBar(p.cases)
-                                    Text(if (used > 0) "$used case${if (used > 1) "s" else ""} · $maxBars bar${if (maxBars > 1) "s" else ""} max" else "empty", color = Color(0xFF7B859A), fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = LL.Mono)
+                                    Text(if (used > 0) "$used case${if (used > 1) "s" else ""} · $maxBars bar${if (maxBars > 1) "s" else ""} max" else "empty", color = Color(0xFF7B859A), fontSize = 10.sp, lineHeight = 10.sp, fontWeight = FontWeight.Bold, fontFamily = LL.Mono)
                                 }
                             }
                             Box(Modifier.size(30.dp).clip(RoundedCornerShape(10.dp)).background(if (exp) white(0.1f) else Color.Transparent).pressable { setOpen(if (exp) null else p.id) }, contentAlignment = Alignment.Center) {
@@ -929,14 +929,14 @@ private fun PatchWindowColumn(
                 }
             }
             Column(Modifier.width(196.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("CURRENT", color = LL.Dim, fontSize = 9.5.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.3.sp)
+                Text("CURRENT", color = LL.Dim, fontSize = 9.5.sp, lineHeight = 9.5.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.3.sp)
                 val sh = RoundedCornerShape(13.dp)
                 Column(Modifier.fillMaxWidth().clip(sh).background(RowBrush).border(1.dp, white(0.06f), sh).padding(11.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(state.activePatch?.name ?: "Unsaved loops", color = Color(0xFFF1F4FA), fontSize = 14.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(state.activePatch?.name ?: "Unsaved loops", color = Color(0xFFF1F4FA), fontSize = 14.sp, lineHeight = 14.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     val c = if (state.isDirty) LL.Amber else LL.Sage
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                         Box(Modifier.size(7.dp).drawBehind { drawCircle(c.a(0.4f), 6.dp.toPx()) }.background(c, CircleShape))
-                        Text(if (state.isDirty) "Unsaved changes" else "Saved", color = c, fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold)
+                        Text(if (state.isDirty) "Unsaved changes" else "Saved", color = c, fontSize = 11.5.sp, lineHeight = 11.5.sp, fontWeight = FontWeight.ExtraBold)
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                         state.cases.forEach { x -> Box(Modifier.weight(1f).height(6.dp).background(if (x.layers > 0) loopCaseColor(x.id) else white(0.1f), RoundedCornerShape(3.dp))) }
@@ -948,12 +948,12 @@ private fun PatchWindowColumn(
                         .background(if (dirty) Brush.verticalGradient(listOf(Color(0xFF9DBDEB), Color(0xFF7FA3DD))) else SolidColor(white(0.06f)))
                         .pressable(enabled = dirty && state.activePatchId != null, onClick = actions.onSavePatch),
                     contentAlignment = Alignment.Center
-                ) { Text("Save", color = if (dirty) Color(0xFF0F1726) else LL.Faint, fontSize = 13.sp, fontWeight = FontWeight.Black) }
+                ) { Text("Save", color = if (dirty) Color(0xFF0F1726) else LL.Faint, fontSize = 13.sp, lineHeight = 13.sp, fontWeight = FontWeight.Black) }
                 Box(Modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(12.dp)).background(white(0.05f)).border(1.dp, white(0.12f), RoundedCornerShape(12.dp)).pressable(onClick = actions.onSaveNewPatch), contentAlignment = Alignment.Center) {
-                    Text("Save as new patch", color = Color(0xFFE3E8F2), fontSize = 12.5.sp, fontWeight = FontWeight.ExtraBold)
+                    Text("Save as new patch", color = Color(0xFFE3E8F2), fontSize = 12.5.sp, lineHeight = 12.5.sp, fontWeight = FontWeight.ExtraBold)
                 }
                 Box(Modifier.fillMaxWidth().height(32.dp).clip(RoundedCornerShape(11.dp)).border(1.dp, white(0.1f), RoundedCornerShape(11.dp)).pressable(enabled = dirty && state.activePatch != null, onClick = actions.onRevertPatch), contentAlignment = Alignment.Center) {
-                    Text("Revert to saved", color = if (dirty) LL.Soft else Color(0xFF4F596E), fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+                    Text("Revert to saved", color = if (dirty) LL.Soft else Color(0xFF4F596E), fontSize = 12.sp, lineHeight = 12.sp, fontWeight = FontWeight.ExtraBold)
                 }
                 Spacer(Modifier.weight(1f))
                 Text("Patches belong to the setlist. They are stored with it and travel with it.", color = Color(0xFF59647A), fontSize = 10.5.sp, lineHeight = 15.sp)
@@ -998,8 +998,8 @@ fun LiveLooperOverlays(state: LooperUiState, actions: LooperActions, modifier: M
                     .clip(shape).background(Color(0xFF222C40)).border(1.dp, white(0.1f), shape).padding(horizontal = 14.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Text(t.text, color = LL.Ink, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                if (t.undoable) Text("UNDO", Modifier.pressable(onClick = actions.onToastUndo), color = LL.Accent, fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                Text(t.text, color = LL.Ink, fontSize = 13.sp, lineHeight = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                if (t.undoable) Text("UNDO", Modifier.pressable(onClick = actions.onToastUndo), color = LL.Accent, fontSize = 12.sp, lineHeight = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
             }
         }
     }
@@ -1049,7 +1049,7 @@ fun LooperPageSelector(current: DrumPadPage, onSelect: (DrumPadPage) -> Unit, mo
             cornerRadius = 13.dp,
             shadow = 0.dp,
         ) {
-            Text(if (current == DrumPadPage.LiveLooper) "LiveLooper" else "DrumPad", Modifier.padding(start = 14.dp).weight(1f), color = Color(0xFFE3E8F2), fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+            Text(if (current == DrumPadPage.LiveLooper) "LiveLooper" else "DrumPad", Modifier.padding(start = 14.dp).weight(1f), color = Color(0xFFE3E8F2), fontSize = 14.sp, lineHeight = 14.sp, fontWeight = FontWeight.ExtraBold)
             Box(Modifier.padding(end = 12.dp).rotate(rot)) { LoopIconView(LoopIcon.Down, LL.Accent, 16.dp, 2.4f) }
         }
         if (open) Popup(alignment = Alignment.TopStart, offset = IntOffset(0, with(density) { (pillHeight + 6.dp).roundToPx() }), onDismissRequest = { open = false }) {
@@ -1067,7 +1067,7 @@ fun LooperPageSelector(current: DrumPadPage, onSelect: (DrumPadPage) -> Unit, mo
                             .pressable { open = false; onSelect(p) }.padding(horizontal = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(label, Modifier.weight(1f), color = if (sel) Color(0xFFF1F4FA) else Color(0xFFB5BFD3), fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+                        Text(label, Modifier.weight(1f), color = if (sel) Color(0xFFF1F4FA) else Color(0xFFB5BFD3), fontSize = 14.sp, lineHeight = 14.sp, fontWeight = FontWeight.ExtraBold)
                         if (sel) LoopIconView(LoopIcon.Check, LL.Accent, 15.dp, 2.6f)
                     }
                 }
@@ -1089,8 +1089,8 @@ fun LoopPatchChip(state: LooperUiState, actions: LooperActions, modifier: Modifi
         ) {
             LoopIconView(LoopIcon.Layers, LL.Accent, 15.dp, 2f)
             Column(Modifier.weight(1f, fill = false)) {
-                Text("LOOP PATCH", color = LL.Dim, fontSize = 8.5.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.1.sp)
-                Text(state.activePatch?.name ?: "Unsaved", Modifier.widthIn(max = 112.dp), color = Color(0xFFE3E8F2), fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("LOOP PATCH", color = LL.Dim, fontSize = 8.5.sp, lineHeight = 8.5.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.1.sp)
+                Text(state.activePatch?.name ?: "Unsaved", Modifier.widthIn(max = 112.dp), color = Color(0xFFE3E8F2), fontSize = 13.sp, lineHeight = 13.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (state.isDirty) Box(Modifier.size(7.dp).drawBehind { drawCircle(LL.Amber.a(0.4f), 6.dp.toPx()) }.background(LL.Amber, CircleShape))
         }
@@ -1104,8 +1104,8 @@ fun LoopsSummaryCard(state: LooperUiState, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(14.dp)
     Column(modifier.clip(shape).background(Color(0xFF1B2336)).padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.SpaceBetween) {
         Row {
-            Text("Loops ", color = LL.Soft, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
-            Text("${state.usedCount}/8", color = LL.Amber, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+            Text("Loops ", color = LL.Soft, fontSize = 12.sp, lineHeight = 12.sp, fontWeight = FontWeight.ExtraBold)
+            Text("${state.usedCount}/8", color = LL.Amber, fontSize = 12.sp, lineHeight = 12.sp, fontWeight = FontWeight.ExtraBold)
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
             state.cases.forEach { c -> Box(Modifier.weight(1f).height(5.dp).background(if (c.layers == 0) white(0.1f) else loopCaseColor(c.id), RoundedCornerShape(2.dp))) }
