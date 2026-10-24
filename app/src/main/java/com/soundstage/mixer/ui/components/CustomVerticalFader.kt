@@ -71,14 +71,16 @@ fun CustomVerticalFader(
 
     // Snapshot changes assign a new value in one frame: snapping `localValue` there
     // made the thumb jump. Animating towards it keeps the glide continuous, and
-    // while the user drags we follow the finger directly.
+    // while the user drags we follow the finger directly. `animate`'s block receives
+    // (value, velocity) — take the value; assigning the velocity left the thumb
+    // parked at the bottom of its travel.
     LaunchedEffect(value) {
         if (!isDragging) {
             animate(
                 initialValue = localValue,
                 targetValue = value.coerceIn(0f, 1f),
                 animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
-            ) { _, v -> localValue = v }
+            ) { animValue, _ -> localValue = animValue }
         }
     }
 
