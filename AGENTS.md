@@ -2049,3 +2049,69 @@ n'entendait rien jusqu'a une autre action.
 - Captures : `live_looper_page.png`, `live_looper_patch.png`, `ll_phone.png`,
   `drumpad_live_looper_page.png`. Mesures ci-dessus faites sur ces PNG (2,75 px/dp).
 - Commit `4bb75f6` (**non pousse**, regle AGENTS.md).
+
+## Session 2026-10-24 — saccade, desaccord piste 1, libelles FX
+
+### « Ajouter un effet desaccorde la piste 1 » — cause racine trouvee (verifie)
+
+Deux defauts distincts, tous deux dans le pont Kotlin <-> moteur :
+
+1. **`FxController.setInstrument(-1)` ne parlait pas au moteur.** Elle faisait
+   `if (id < 0) { instrumentId = -1; return true }` — un retour anticipe. Or un
+   instrument shaper (Piano/Sax/Strings/Guitar/Brass) pousse des offsets de
+   generateurs SoundFont sur le canal (`fx_shaper.h: computeGens`), dont
+   **`GEN_VIBLFOTOPITCH` jusqu'a 60 cents** plus le filtre et les enveloppes.
+   Ces offsets restent appliques sur le canal FluidSynth tant que le natif n'est pas
+   prevenu (`AudioEngine::setTrackInstrument` -> `refreshTrackGens` les remet a 0).
+   Le retour anticipe ne vidait que l'etat Kotlin : retirer un instrument laissait
+   donc son vibrato et son filtre **pour toujours**, et cette piste jouait
+   **desaccordee** par rapport aux autres. C'est exactement le symptome rapporte.
+   Correctif : `setInstrument(-1)` traverse desormais le pont.
+
+2. **`FxController.restore()` ecrivait `params[slot][i] = v`** au lieu d'appeler
+   `setEffectParam(...)`. Les positions sauvegardees restaient donc dans la liste
+   Kotlin sans jamais atteindre l'effet natif, qui restait sur ses defauts du
+   registre : apres un redemarrage l'UI montrait les bons potards mais l'audio
+   jouait autre chose jusqu'a ce que l'utilisateur touche chaque potard.
+
+**Piege a retenir** : toute valeur qui doit atteindre le moteur passe par un setter
+du pont. Ecrire directement dans les listes d'etat (Kotlin) est invisible pour le
+natif ET pour Compose. Regle deja connue pour Compose (`mutableStateMapOf` +
+copie-sur-ecriture), elle vaut aussi pour le moteur.
+
+### Saccade — etat du chemin FX (mesure, pas intuition)
+
+Le port FX est **deja** gate : `FxMixer::hasActiveWork()` (compteur atomique
+`active_`, recalcule dans `setInstrument`/`setEffect` via `recount()`) et
+`stripActive()` replient un strip sans instrument ni effet directement dans le mix
+au lieu du cycle copie/chaine vide/somme. `renderFxPath()` sort tot quand il n'y a
+rien a faire, et le chemin legacy applique toujours `applySurfaceFx()` (feuilles
+Tonic/DrumPad). Le cout suit donc le **travail place**, pas le nombre de canaux.
+
+### Potards FX : etiquettes et valeurs
+
+`FxKnob` : `labelGap = 18.dp` / `valueGap = 14.dp` (avant 13 et 10). L'etiquette
+reste centree sur le corps du potard (le corps ne bouge pas, seule la texte s'ecarte)
+et `wrapContentWidth(unbounded = true)` la laisse se mesurer a sa largeur naturelle :
+c'est ce qui empeche le `E` final de `PRESENCE` (Orbitron 9 sp, plus large que les
+46 dp de la boite) d'etre rogne.
+
+### Horloges FX
+
+`rememberFxClock(fullRate, miniFps = 15, fullFps = 30)` : une seule source de temps
+pour la fenetre ; le panneau ouvert est plafonne a **30 im/s** (une scene 825x343
+entiere redessinee a chaque vsync etait le poste de chauffe sur les dalles 90/120 Hz),
+les cartes du rack a 15 im/s **via une horloge partagee** (`Rack` passe `t` a chaque
+`RackCard` ; avant, chaque carte avait la sienne et reveillait sa coroutine a chaque
+vsync). Le temps ecoule vient des deltas reels, la vitesse du mouvement est donc
+inchangee quel que soit le plafond.
+
+### Environnement (rappel)
+
+Sandbox efface entre sessions. `/workspace/restore_env.sh` (idempotent) puis
+`/workspace/run.sh <tache>`. `pillow`/`numpy` disparaissent aussi :
+`pip install pillow numpy`. Captures : **toujours** `:app:recordRoborazziDebug
+--tests "..."` (le simple `testDebugUnitTest` n'ecrit aucun PNG).
+Comparaison fenetre a fenetre : `python3 tools/fxcompare/compare_window.py
+<capture> <ref>` (reference a extraire de `app/assets/fx-screens-spec.zip` dans
+`references/`).

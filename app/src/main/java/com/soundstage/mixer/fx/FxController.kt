@@ -62,7 +62,12 @@ class FxController(private val strip: Int, private val context: Context? = null)
 
     fun setInstrument(id: Int): Boolean {
         val b = bridge() ?: return false
-        if (id < 0) { instrumentId = -1; return true }
+        // `id < 0` MUST still reach the engine. A shaper instrument pushes SoundFont
+        // generator offsets on its channel (`vibLfoToPitch` alone is up to 60 cents,
+        // plus filter/volenv), and those persist on the FluidSynth channel until the
+        // native side is told to release them. Returning early here cleared only the
+        // Kotlin state, so removing an instrument left its vibrato and filter offsets
+        // applied for good: that track played detuned against every other one.
         if (!safe(false, "setInstrument") { b.setTrackInstrument(strip, id) }) return false
         instrumentId = id
         return true
@@ -187,7 +192,14 @@ class FxController(private val strip: Int, private val context: Context? = null)
         }
         saved.effects.forEachIndexed { slot, entry ->
             if (entry != null && setEffect(slot, entry.id)) {
-                entry.params.forEachIndexed { i, v -> if (i < params[slot].size) params[slot][i] = v }
+                // The saved values must reach the engine, not just the Kotlin list.
+                // Writing `params[slot][i]` alone left the native effect on its
+                // registry defaults, so after a restart the UI showed the stored
+                // knob positions while the audio played something else until the
+                // user touched every knob.
+                entry.params.forEachIndexed { i, v ->
+                    if (i < params[slot].size) setEffectParam(slot, i, v)
+                }
                 if (entry.bypass) setBypass(slot, true)
             }
         }

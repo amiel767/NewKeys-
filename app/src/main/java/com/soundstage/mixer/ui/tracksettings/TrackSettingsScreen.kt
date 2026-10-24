@@ -177,8 +177,11 @@ object VelocityLogic {
 
     private fun fn(p: VelocityPreset): ((Float) -> Float)? = when (p) {
         VelocityPreset.Linear -> { x -> x }
-        VelocityPreset.Soft -> { x -> x.pow(0.6f) }
-        VelocityPreset.Hard -> { x -> x.pow(1.7f) }
+        // Soft and Hard were inverted: the gentler curve was on Hard and the
+        // demanding one on Soft, so the two presets played the opposite of their
+        // names.
+        VelocityPreset.Soft -> { x -> x.pow(1.7f) }
+        VelocityPreset.Hard -> { x -> x.pow(0.6f) }
         VelocityPreset.SCurve -> { x -> if (x < 0.5f) 2f * x * x else 1f - (-2f * x + 2f).pow(2) / 2f }
         VelocityPreset.Compress -> { x -> 0.5f + (x - 0.5f) * 0.5f }
         VelocityPreset.Custom -> null

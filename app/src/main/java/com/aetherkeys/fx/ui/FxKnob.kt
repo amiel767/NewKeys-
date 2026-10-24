@@ -156,6 +156,12 @@ fun FxKnob(
         // `.xN` sets the text colour per effect; the readouts inherited a hard-coded
         // light grey, which is invisible on the light panels (solar `.x4`).
         val ink = fxPanelText(effectId)
+        // The label and the readout hug the body in the reference, which reads as
+        // cramped once the knob sits on a busy scene. A few dp of breathing room on
+        // each side separates the text from the dial without moving the body itself:
+        // the body stays on its `AB()` centre, only the text steps away.
+        val labelGap = 18.dp
+        val valueGap = 14.dp
         // The box is the knob diameter (46 dp on the amp), but a label like
         // `PRESENCE` in Orbitron 9 sp is wider than that. A plain Text is clipped to
         // the parent's width, which cut the final `E` off; `unbounded` lets the text
@@ -164,11 +170,11 @@ fun FxKnob(
         Text(label.uppercase(), fontSize = lf.size.sp, fontFamily = lf.family,
             fontWeight = lf.weight, color = ink.copy(alpha = 0.65f),
             softWrap = false, maxLines = 1,
-            modifier = Modifier.align(Alignment.TopCenter).offset(y = (-13).dp)
+            modifier = Modifier.align(Alignment.TopCenter).offset(y = -labelGap)
                 .wrapContentWidth(unbounded = true))
         Text(valueText, fontSize = vf.size.sp, fontFamily = vf.family, fontWeight = vf.weight,
             color = ink, softWrap = false, maxLines = 1,
-            modifier = Modifier.align(Alignment.BottomCenter).offset(y = 10.dp)
+            modifier = Modifier.align(Alignment.BottomCenter).offset(y = valueGap)
                 .wrapContentWidth(unbounded = true))
     }
 }

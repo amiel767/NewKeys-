@@ -308,6 +308,11 @@ private fun Rack(store: FxShellStore, tm: androidx.compose.ui.text.TextMeasurer)
     LaunchedEffect(undo) {
         if (undo != null) { delay(5_200); undo = null }
     }
+    // One clock for every card in the rack. Each card used to own a clock, so a
+    // rack of seven woke seven coroutines on every vsync to paint at 15 im/s. A
+    // single state read by all of them costs one wake per tick and repaints the
+    // row together, which is also what the reference does.
+    val clock = rememberFxClock(fullRate = false)
 
     Box(Modifier.fillMaxSize()) {
         LazyRow(
@@ -320,6 +325,7 @@ private fun Rack(store: FxShellStore, tm: androidx.compose.ui.text.TextMeasurer)
                     m = m,
                     params = store.valuesOf(id),
                     tm = tm,
+                    t = clock.value,
                     lifted = lifted == id,
                     dragY = if (lifted == id) dragY else 0f,
                     onOpen = { store.openId = id },
@@ -449,6 +455,7 @@ internal fun RackCard(
     m: EffectModule,
     params: FloatArray,
     tm: androidx.compose.ui.text.TextMeasurer,
+    t: Float,
     lifted: Boolean = false,
     dragY: Float = 0f,
     onOpen: () -> Unit = {},
@@ -456,7 +463,6 @@ internal fun RackCard(
     onDrag: (Float) -> Unit = {},
     onDragEnd: () -> Unit = {},
 ) {
-    val clock = rememberFxClock(fullRate = false)
     val shape = RoundedCornerShape(16.dp)
     Column(
         modifier = Modifier
@@ -506,7 +512,7 @@ internal fun RackCard(
                     translate(3f * d, 46f * d)
                     scale(0.165f * d, 0.165f * d, pivot = Offset.Zero)
                 }) {
-                    with(m) { drawScene(params, clock.value, mini = true, tm = tm) }
+                    with(m) { drawScene(params, t, mini = true, tm = tm) }
                 }
             }
         }
