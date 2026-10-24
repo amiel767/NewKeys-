@@ -108,6 +108,7 @@ Point d'entree : `MainActivity` -> `ui/MixerScreen.kt` (composeur central).
 | FX Aether (UI) | `com/aetherkeys/fx/ui/*` + `com/soundstage/mixer/ui/fx/*` |
 | Clavier virtuel | `ui/components/VirtualKeyboard.kt` |
 | DrumPad / Looper | `ui/pages/DrumPadScreen.kt`, `ui/components/drumpad/*`, `audio/LooperEngine.kt` |
+| LiveLooper (nouvelle version) | `looper/LiveLooperModel.kt`, `looper/LiveLooperUi.kt` (source de verite visuelle : `app/assets/LoopsPreview.jsx`) |
 | Track Settings | `ui/tracksettings/TrackSettingsScreen.kt` |
 | Settings | `ui/settings/SettingsScreen.kt`, `ui/settings/MidiMappingPage.kt` |
 | Setlists | `com/aetherkeys/setlists/*` |
@@ -147,6 +148,20 @@ sont des **pixels de canvas**, pas des dp. Aucun facteur d'echelle officiel.
 - **Panic** : `triggerPanic()` doit vider **et** les queues d'effets Aether
   (`safeFxPanic()`) **et** les voix FluidSynth + la chaine master legacy, sinon
   ca continue de sonner.
+- **Une surface de reference se porte par "canvas logique fixe + un seul scale"** :
+  les previews JSX sont dessinees dans un cadre fixe (LiveLooper : 891x411). Un
+  `weight(1f)` ou un `fillMaxSize()` etire les colonnes et **ecrase les textes**
+  (c'etait le bug de la grille LiveLooper). Mesurer une seule fois
+  `scale = min(maxW/W, maxH/H)` et l'appliquer a un enfant en taille logique.
+  Pour une **fenetre flottante**, borner `scale` a `1f` : elle ne doit jamais
+  grandir au-dela de sa taille de reference, seulement retrecir.
+- **`widthIn(max = ...)` sur un bandeau** : un `Spacer(Modifier.weight(1f))` dans
+  un `Box` aux contraintes maximales etire le fond sur tout l'ecran (bandeaux Undo
+  pleine largeur). Borner la largeur (`widthIn(max = 420.dp)`) et centrer.
+- **Horloge d'animation** : ne jamais lire un etat qui s'actualise a 60 Hz dans un
+  composeur de page entiere (il recompose la top bar, le TonicPad, etc.). Isoler
+  dans un petit composable (`LiveLooperHost`) et passer un drapeau `active` pour
+  tomber au repos (~4 Hz au lieu de 30 Hz).
 
 ---
 

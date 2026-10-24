@@ -1985,3 +1985,67 @@ nohup /workspace/restore_env.sh >/dev/null 2>&1 &   # idempotent
 build-tools 36.0.0, ndk 27.0.12077973, cmake 3.22.1) et ecrit `local.properties`.
 `debug.keystore` et `local.properties` sont gitignores : les regenerer apres un
 reset (voir « Securite anti-crash » plus haut pour la commande keytool).
+
+---
+
+## Session 2026-10-24 (parallele) — LiveLooper : grille, fenetre de patchs, persistance, bandeaux
+
+Conversation parallele a `dde6dffb48c5475a931918c2e3ff38f9` (voir GUIDE §7). Le
+travail ci-dessous est **independant** de l'autre fil (FX natif, TrackSettings,
+fader de volume) : aucun fichier partage au moment du commit `4bb75f6`.
+
+### Le vrai bug de la grille : un canvas logique qui n'etait pas logique
+
+`LiveLooperContent` placait les 8 cases dans une `Row` avec `weight(1f)` : la
+largeur disponible decalait l'anneau de chaque case (mesure : **151,8 dp** contre
+**168,8 dp** dans `LoopsPreview.jsx`) et reduisait la colonne de texte a ~4 dp.
+La reference dessine dans un cadre **fixe 891x411**, zone droite de 693 dp a x=188.
+
+Correction (idiome deja correct dans `FxWindowHost`) : un `BoxWithConstraints`
+mesure **une fois** `scale = min(maxW/LL_CONTENT_W, maxH/LL_CONTENT_H)`, puis un
+enfant en **taille logique fixe** est mis a l'echelle. Resultat verifie par capture
+(640 dp) : la grille remplit toute la zone droite (424 dp), 4x2 uniforme, textes
+larges. La geometrie retenue est 693x343 (zone droite seule), pas 891x411 (le
+TonicPad est un vrai composable a gauche, pas une image).
+
+### Fenetre de patchs : `scale` borne a 1
+
+Meme idiome pour `PatchWindow` (reference : `left:120 right:120 top:58 bottom:12`
+-> **651x341**). Piege : sans `coerceAtMost(1f)`, la fenetre **grandissait**
+(784x411 mesures) au lieu de rester a sa taille. Une fenetre flottante ne doit que
+retrecir. Mesure apres correction : **650,9 x 341,1 dp** (au pixel).
+
+### Persistance : `Loops/LiveLooper/`
+
+`FileManager.liveLooperDir` + `liveLooperPatchesFile` : les patchs de loop vivent
+desormais sous `Loops/LiveLooper/patches.json` (et non a la racine). Le ViewModel
+ecrit le fichier, avec `SharedPreferences` en secours et migration au premier
+lancement (voir `readLiveLooperPatches`/`writeLiveLooperPatches`).
+
+### Bandeaux Undo bornes
+
+`SoundfontWindow.SfUndoSnackbar`, `PatchesOverlay.UndoSnack`,
+`SetlistsScreen.SlSnackbar` : un `Spacer(weight(1f))` dans un `Box` aux
+contraintes maximales etirait le fond sur **toute la largeur**. Corrige par
+`widthIn(max = 420.dp)` + centrage ; `SoundfontWindow` remplace le spacer
+`weight(1f)` par un spacer fixe de 16 dp.
+
+### Ticker adaptatif (perf)
+
+`rememberNowBar` prend un drapeau `active` : 30 Hz en mouvement, ~4 Hz au repos.
+Nouveau composable `LiveLooperHost` : il **scope** la lecture de l'horloge pour
+que la page (top bar, TonicPad, resume Loops) ne recompose plus a chaque frame.
+
+### Demarrage moteur paresseux
+
+`onDrumPadPressed` et `onTonicNoteClick` appellent maintenant `ensureEngineStarted()`
+(comme `onKeyDown`). Sans ca, un utilisateur qui ouvre d'abord le DrumPad
+n'entendait rien jusqu'a une autre action.
+
+### Verification
+
+- `LooperLogicTest` : **7/7 PASS** (JVM pur).
+- `:app:compileDebugKotlin` + `recordRoborazziDebug` : BUILD SUCCESSFUL.
+- Captures : `live_looper_page.png`, `live_looper_patch.png`, `ll_phone.png`,
+  `drumpad_live_looper_page.png`. Mesures ci-dessus faites sur ces PNG (2,75 px/dp).
+- Commit `4bb75f6` (**non pousse**, regle AGENTS.md).
