@@ -2165,3 +2165,75 @@ laisser FluidSynth tenir la note.
 
 `tools/fxcompare/report.png` (planche reference/capture des 15 effets, triee par
 ecart) et `tools/fxcompare/app_sheets.png` (planche des 14 captures d'app).
+---
+## Session 2026-10-24 — LiveLooper : taille des cases, cablage, BPM, metronome
+
+Reprise apres que l'autre conversation a **arrete** son travail (l'utilisateur a
+redirige les 4 problemes vers cette session). `origin/main` = `769024c`, pas
+d'avance au moment des modifications. Travailler en parallele :
+`python3 tools/conv_sync.py` **avant et apres** chaque changement.
+
+### 1. Taille des cases — la cause est un scale, pas le binding
+
+`LiveLooperContent` (commit `4bb75f6`) avait ete converti en **canvas logique fixe
+693x343 + `graphicsLayer(scale = min(w/W, h/H))`** (idiome `FxWindowHost`). C'est
+valable pour une *fenetre* flottante, faux pour une grille.
+
+- Le JSX (`LoopsPreview.jsx`) pose le panneau droit en **grille fluide** :
+  `grid-template-columns: repeat(4,minmax(0,1fr))`, `rows: repeat(2,minmax(0,1fr))`.
+- Mesure des bandes de cartes : **45,5 dp** casse contre **120,4 dp** correct
+  (640 dp), 136,7 dp en 851 dp, reference 146 dp en 891 dp.
+- Correctif : retour au `Column`/`Row` avec `weight(1f)` (l'ancien code, restaure).
+- **Le piege de la « ligne »** : une case de 45,5 dp ne peut pas contenir
+  `18 (en-tete) + 6 + 28 (ActionRow) + 6 = 58 dp` → la rangee de boutons
+  Record/Play/Undo/More etait **rognee hors de la case**. D'ou « on touche les
+  cases, rien ne fonctionne » : le binding etait bon, la geometrie non. Toujours
+  mesurer les BORDS avant de suspecter le cablage.
+- Le **patch window** reste, lui, une fenetre flottante : taille dessinee
+  651x341, `coerceAtMost(1f)` (ne grandit jamais). Ne pas le convertir.
+
+### 2. Cablage LiveLooper — verifie, plus une garantie de son
+
+Chaine confirmee : `LooperPageSelector` -> `DrumPadScreen` -> `LiveLooperHost`
+-> `LooperActions` -> `LooperController` -> `onReplay` -> `replayLoopEvent` ->
+`audioEngine`. Le tick est pilote par un `viewModelScope.launch(Dispatchers.Default)`
+adaptatif (8 ms en mouvement, 120 ms au repos).
+
+- **Ajout** : `replayLoopEvent()` appelle `ensureEngineStarted()`. Un utilisateur
+  qui ouvrait la page LiveLooper **en premier** (sans toucher clavier/pad/Tonic)
+  n'avait pas de moteur -> les premiers events rejoues etaient muets.
+- Regle de reference a ne pas « corriger » : `LooperController.toggleMute` ne fait
+  rien sur une case vide (`if (c.layers == 0) return`), comme le JSX `mutePress`.
+- Tests : `LiveLooperWiringTest` (5) + `LooperLogicTest` (7).
+
+### 3. BPM topbar bloque a 120/119 — capture obsolete
+
+`BpmStepButton` (`DrumPadOverlays.kt`) : le handler `awaitEachGesture` etait dans
+`pointerInput(delta)`. Or `delta` ne change jamais (+1/-1 fixes), donc le
+`pointerInput` **n'est jamais relance** et la lambda `onBpmChange` restait figee
+sur la premiere composition : la rampe recalculait `snapshot + 1` a l'infini.
+
+- Correctif 1 : `rememberUpdatedState(onBpmChange)` -> toujours la derniere lambda.
+- Correctif 2 : `MixerViewModel.adjustTransportBpm(delta)` lit `_uiState.value`
+  **dans** le VM (jamais un snapshot UI). `DrumPadScreen` l'appelle directement.
+- Tests : `TransportBpmTest` (4) — montee, descente, bornes 40..240.
+
+### 4. Fenetre Metronome — responsive + scroll
+
+`DpSideSheet` (`DrumPadOverlays.kt`) etait une colonne **320 dp fixe sans scroll** :
+sur un ecran paysage elle debordait en bas et les controles bas (volume, toggles,
+count-in, tap tempo) etaient inatteignables.
+
+- Correctif (conforme a la reference B6-3) : `fillMaxWidth(0.9f)` +
+  `widthIn(max = width)` + `heightIn(max = 720.dp)` + `verticalScroll` + un
+  `clickable {}` qui absorbe le tap (sinon il traverse vers le scrim). Meme
+  contrat pour `DpCenterSheet`.
+
+### Environnement / methode
+
+- `/workspace/build.sh <tache>` (JDK detecte, `--no-daemon --max-workers=2`).
+  Toujours en arriere-plan + redirection log, puis lecture du log.
+- Captures : `:app:recordRoborazziDebug --tests "..."` (sinon aucun PNG).
+- **Ne pas lancer deux builds Gradle en parallele** (pression memoire = crash).
+- `tools/conv_sync.py` est rate-limite (100 req/min) : `--json` peut echouer en
+  429, relancer plus tard ; `git fetch origin main` donne l'etat des commits.

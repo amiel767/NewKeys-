@@ -182,10 +182,10 @@ fun DrumPadScreen(
         // ═══════════ TopBar ═══════════
         DpTopBar(
             bpm = uiState.transportBpm,
-            onBpmChange = { delta ->
-                val next = (uiState.transportBpm + delta).coerceIn(30, 300)
-                viewModel.setTransportBpm(next)
-            },
+            // Step by delta in the ViewModel so the value is read from the live state,
+            // never from a UI snapshot that may be a frame behind (the ramp used to
+            // keep re-deriving `snapshot + 1` and the readout froze at 120/119).
+            onBpmChange = { delta -> viewModel.adjustTransportBpm(delta) },
             onBackToMixer = { viewModel.navigateBackToMixer() },
             metroOn = metroOn,
             onOpenMetro = { metroOpen = true },

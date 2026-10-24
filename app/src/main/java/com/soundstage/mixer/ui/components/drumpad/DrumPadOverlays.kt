@@ -37,6 +37,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -249,6 +250,12 @@ private fun BpmPill(bpm: Int, onBpmChange: (Int) -> Unit) {
 private fun BpmStepButton(symbol: String, delta: Int, onBpmChange: (Int) -> Unit) {
     val scope = rememberCoroutineScope()
     var rampJob by remember { mutableStateOf<Job?>(null) }
+    // The press handler runs for as long as the finger is down, so it must call the
+    // *current* callback. `pointerInput(delta)` only restarts when `delta` changes
+    // (never, for a fixed +1/-1), so a captured `onBpmChange` froze on the first
+    // composition: the ramp kept computing the same `bpm + 1` and the pill stuck at
+    // 120/119. `rememberUpdatedState` keeps the latest lambda reachable.
+    val change by rememberUpdatedState(onBpmChange)
     Box(
         modifier = Modifier
             .size(28.dp)
@@ -257,12 +264,12 @@ private fun BpmStepButton(symbol: String, delta: Int, onBpmChange: (Int) -> Unit
             .pointerInput(delta) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
-                    onBpmChange(delta)
+                    change(delta)
                     rampJob = scope.launch {
                         delay(420L)
                         var step = 260L
                         while (isActive) {
-                            onBpmChange(delta)
+                            change(delta)
                             delay(step)
                             step = (step * 0.85f).toLong().coerceAtLeast(28L)
                         }
@@ -301,15 +308,31 @@ private fun DpSideSheet(
 ) {
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClose() })
-        Box(Modifier.align(Alignment.TopEnd).padding(top = 58.dp, end = 12.dp).width(width).clip(RoundedCornerShape(18.dp)).background(Brush.verticalGradient(listOf(Color(0xFF232C3E), Color(0xFF1A2230)))).border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(18.dp)).padding(14.dp)) {
-            Column(Modifier.fillMaxWidth()) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(title, color = Color(0xFFF1F4FA), fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
-                    Box(Modifier.size(30.dp).clip(RoundedCornerShape(15.dp)).background(Color.White.copy(alpha = 0.07f)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClose() }, contentAlignment = Alignment.Center) { DpIcon("x", 14.dp, Color(0xFF9AA5BA)) }
-                }
-                Spacer(Modifier.height(10.dp))
-                content()
+        // Responsive width + scroll: on a phone the panel is 90% of the width and the
+        // content scrolls inside a capped height. A fixed 320 dp column with no scroll
+        // ran off the bottom of the landscape screen and the lower controls (volume,
+        // toggles, count-in, tap tempo) were unreachable — the "broken metronome".
+        Column(
+            Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 58.dp, end = 12.dp)
+                .fillMaxWidth(0.9f)
+                .widthIn(max = width)
+                .heightIn(max = 720.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(Brush.verticalGradient(listOf(Color(0xFF232C3E), Color(0xFF1A2230))))
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(18.dp))
+                // Consume taps so a click inside the panel never reaches the scrim behind it.
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
+                .padding(14.dp)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(title, Modifier.weight(1f), color = Color(0xFFF1F4FA), fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+                DpCloseBtn(onClose = onClose)
             }
+            Spacer(Modifier.height(10.dp))
+            content()
         }
     }
 }
@@ -324,15 +347,28 @@ private fun DpCenterSheet(
 ) {
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClose() })
-        Box(Modifier.align(Alignment.TopCenter).padding(top = topPadding).width(width).clip(RoundedCornerShape(20.dp)).background(Brush.verticalGradient(listOf(Color(0xFF2A3447), Color(0xFF1E2736)))).border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(20.dp)).padding(14.dp)) {
-            Column(Modifier.fillMaxWidth()) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(title, color = Color(0xFFF1F4FA), fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
-                    Box(Modifier.size(28.dp).clip(RoundedCornerShape(14.dp)).background(Color.White.copy(alpha = 0.07f)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClose() }, contentAlignment = Alignment.Center) { DpIcon("x", 13.dp, Color(0xFF9AA5BA)) }
-                }
-                Spacer(Modifier.height(10.dp))
-                content()
+        // Same responsive + scroll contract as DpSideSheet: never wider than 90% of the
+        // screen, never taller than the viewport, content scrolls inside.
+        Column(
+            Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = topPadding)
+                .fillMaxWidth(0.9f)
+                .widthIn(max = width)
+                .heightIn(max = 720.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(Brush.verticalGradient(listOf(Color(0xFF2A3447), Color(0xFF1E2736))))
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(20.dp))
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
+                .padding(14.dp)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(title, Modifier.weight(1f), color = Color(0xFFF1F4FA), fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                DpCloseBtn(onClose = onClose)
             }
+            Spacer(Modifier.height(10.dp))
+            content()
         }
     }
 }

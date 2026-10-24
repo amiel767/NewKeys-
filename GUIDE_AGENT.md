@@ -228,3 +228,52 @@ Co-authored-by: openhands <openhands@all-hands.dev>
 | Banc de rendu LiveUI | `tools/liveui/` |
 | Extraire le JSX de reference | `tools/jsxref/` |
 | Environnement / build | `/workspace/restore_env.sh`, `/workspace/build.sh` |
+
+---
+
+## 10. Page LiveLooper (DrumPad + LiveLooper)
+
+Le DrumPad et le LiveLooper sont **la meme page** (`DrumPadScreen`) : seul le
+panneau droit change. Un selecteur dans la top bar bascule (`LooperPageSelector`).
+
+- **Colonne gauche partagee** : `TonicPadColumn` (grille 3x4, octave, Multi,
+  Clear) est utilisee par les deux pages. Ne pas la dupliquer — c'est ce qui a
+  fait « disparaitre » le TonicPad lors d'un port precedent.
+- **Panneau droit** : `LiveLooperContent` / `LiveLooperHost`
+  (`com/soundstage/mixer/looper/LiveLooperUi.kt`). Il contient la rangee
+  Transport puis la grille 2x4 des cases.
+- **Modele/logique** : `com/soundstage/mixer/looper/LiveLooperModel.kt`
+  (`LooperController`, `LooperLogic` pur). Le VM l'instancie (`liveLooper`),
+  alimente l'horloge (`transportClock.currentBarPosition()` en mesures) et
+  rejoue via `replayLoopEvent`.
+
+### Regle de layout : la grille est FLUIDE, pas mise a l'echelle
+
+Le JSX (`LoopsPreview.jsx`, panneau droit `left:188 right:10 top:60 bottom:8`)
+pose une grille `repeat(4, minmax(0,1fr))` x `repeat(2, minmax(0,1fr))` : les
+cases se partagent la place disponible.
+
+**Ne pas** remplacer par un canvas logique fixe + `graphicsLayer(scale=min(...))`
+(idiome de `FxWindowHost`). Sur un telephone ce scale ecrase les deux rangees en
+bandes fines — les cases passent de ~120 dp a ~45 dp et les numeros se lisent
+comme « une ligne ». Mesure : 45,5 dp (casse) contre 120,4 dp (correct) en 640dp.
+
+**Consequence sur les taps** : une case de 45,5 dp ne peut pas contenir son
+contenu (en-tete 18 + gap 6 + `ActionRow` 28 + gap 6 = 58 dp). La rangee de
+boutons Record/Play/Undo/More etait **rognee hors de la case** : on ne pouvait
+plus rien declencher. Un probleme de « cablage » peut n'etre qu'un probleme de
+taille — verifier la geometrie avant de suspecter le binding.
+
+Le patch window, lui, **est** une fenetre flottante : elle garde sa taille
+dessinee (651x341) et ne fait que retrecir (`coerceAtMost(1f)`).
+
+### Verifier une capture sans emulateur
+
+```bash
+/workspace/build.sh :app:recordRoborazziDebug \
+  --tests "com.soundstage.mixer.DrumPadLiveLooperCaptureTest" \
+  --tests "com.soundstage.mixer.LLPhoneCaptureTest"
+```
+
+Puis mesurer les bandes de cartes (Pillow) : deux rangees d'environ 120 dp en
+640dp, 137 dp en 851dp, pour une reference a 146 dp en 891dp.

@@ -2088,6 +2088,16 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         persistCurrentStateDebounced()
     }
 
+    /**
+     * Step the transport BPM by [delta]. The current value is read here, inside the
+     * update, so a press-and-hold ramp cannot lose increments to a stale UI snapshot
+     * (the pill's callback used to capture one `transportBpm` and keep re-deriving
+     * the same value, which is why the readout stuck at 120/119).
+     */
+    fun adjustTransportBpm(delta: Int) {
+        setTransportBpm(_uiState.value.transportBpm + delta)
+    }
+
     fun setTransportSubdivision(sub: String) {
         transportClock.subdivision = com.soundstage.mixer.audio.TransportClock.Subdivision.parse(sub)
         _uiState.update { it.copy(transportSubdivision = sub) }
@@ -2493,6 +2503,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
      * Le volume de la case module la velocite / le gain.
      */
     private fun replayLoopEvent(event: com.soundstage.mixer.looper.LoopEvent, volume: Float) {
+        // Replay goes through the same audio engine as live playing. A user who opens
+        // the LiveLooper page first (without touching a key, pad or Tonic note) had no
+        // engine yet, so the first replayed events were silent. Bring it up here.
+        ensureEngineStarted()
         when (event.source) {
             com.soundstage.mixer.looper.RecordSource.Pads -> {
                 val pad = _uiState.value.drumPads.getOrNull(event.code) ?: return

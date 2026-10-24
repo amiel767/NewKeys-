@@ -138,14 +138,9 @@ private fun white(a: Float) = Color.White.copy(alpha = a)
 private fun Color.a(x: Float) = copy(alpha = x)
 fun loopCaseColor(id: Int): Color = LL.Pal[id % LL.Pal.size]
 
-// Right-area canvas of the reference: 891-188-10 = 693 wide, 411-60-8 = 343 tall.
-// Every card, ring and gap in the grid is sized against these numbers, so the whole
-// area is laid out at this size and scaled once (see `LiveLooperContent`).
-private const val LL_CONTENT_W = 693f
-private const val LL_CONTENT_H = 343f
-
 // Patch window of the reference: `left:120, right:120, top:58, bottom:12` on the
-// 891 x 411 frame -> 651 x 341 dp.
+// 891 x 411 frame -> 651 x 341 dp. Unlike the grid this is a floating window, so it
+// keeps its designed size and only ever shrinks (see `PatchWindow`).
 private const val LL_PATCH_W = 651f
 private const val LL_PATCH_H = 341f
 
@@ -482,11 +477,17 @@ private fun CaseCard(c: LoopCase, nowBar: Double, beatsPerBar: Int, actions: Loo
                 Spacer(Modifier.weight(1f))
                 if (c.hasLoop) Text("${c.bars} bar${if (c.bars > 1) "s" else ""}", color = LL.Mute, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
             }
-            Row(Modifier.fillMaxWidth().weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                LoopRing(c, color, 68.dp, info, pos)
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically)) {
-                    Text(posText(c, pos, info), color = if (c.mode == CaseMode.Empty) LL.Faint else LL.Soft, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    LayerBars(c, color, 4.dp, 6.dp)
+            BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+                // The reference draws the ring at 68 dp inside a 168 dp card (~40% of the
+                // width). Keeping that ratio instead of a hard 68 dp is what lets the text
+                // column survive on a 640 dp phone, where a card is only ~98 dp wide.
+                val ring = if (maxWidth * 0.42f < 68.dp) maxWidth * 0.42f else 68.dp
+                Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                    LoopRing(c, color, ring, info, pos)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically)) {
+                        Text(posText(c, pos, info), color = if (c.mode == CaseMode.Empty) LL.Faint else LL.Soft, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        LayerBars(c, color, 4.dp, 6.dp)
+                    }
                 }
             }
             ActionRow(c, color, 28.dp, false, actions)
@@ -725,51 +726,37 @@ private fun Transport(state: LooperUiState, nowBar: Double, actions: LooperActio
 /**
  * Right area of the LiveLooper page: transport row + the 2x4 case grid (or the focused case).
  *
- * The reference (LoopsPreview.jsx) lays this area out on a **fixed** 693 x 343 dp canvas
- * (`left:188, right:10, top:60, bottom:8` on the 891 x 411 device frame). Each case is a
- * 168.8 x 146.5 dp box holding a **fixed** 68 dp ring, a 9 dp gap and the text column.
+ * The area is laid out **responsively**, filling whatever box the page gives it: the
+ * transport row is fixed height and the 2x4 grid shares the remainder with `weight(1f)`,
+ * exactly like `LoopsPreview.jsx` (`grid-template-rows: repeat(2, minmax(0,1fr))`).
  *
- * Stretching the cards into whatever width the phone gives them squeezes that text column
- * between the ring and the card edge — on a 640 dp phone it collapsed to ~4 dp and the
- * whole grid read as squashed. Laying the cards out on the reference canvas and scaling
- * the canvas once (the idiom `FxWindowHost` already uses) shrinks every card uniformly
- * instead, so the proportions survive any screen size.
+ * A previous revision laid the cards out on a fixed 693 x 343 dp canvas and scaled the
+ * whole thing with `min(w/W, h/H)`. On a phone that shrinks every card at once — the two
+ * rows collapse into thin strips and the card numbers read as a squeezed line. The
+ * reference grid is fluid, so the port must be too.
  */
 @Composable
 fun LiveLooperContent(state: LooperUiState, nowBar: Double, actions: LooperActions, modifier: Modifier = Modifier) {
     val focus = state.focusId?.let { state.cases.getOrNull(it) }
     val sheet = state.sheetCaseId?.let { state.cases.getOrNull(it) }
-    BoxWithConstraints(modifier, contentAlignment = Alignment.TopStart) {
-        val scale = min(maxWidth.value / LL_CONTENT_W, maxHeight.value / LL_CONTENT_H)
-        Box(
-            Modifier.width((LL_CONTENT_W * scale).dp).height((LL_CONTENT_H * scale).dp),
-            contentAlignment = Alignment.TopStart,
-        ) {
-            Box(
-                Modifier.width(LL_CONTENT_W.dp).height(LL_CONTENT_H.dp)
-                    .graphicsLayer(scaleX = scale, scaleY = scale, transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)),
-            ) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Transport(state, nowBar, actions)
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            if (focus != null) {
+                FocusView(focus, state, nowBar, actions, Modifier.fillMaxSize())
+            } else {
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Transport(state, nowBar, actions)
-                    Box(Modifier.weight(1f).fillMaxWidth()) {
-                        if (focus != null) {
-                            FocusView(focus, state, nowBar, actions, Modifier.fillMaxSize())
-                        } else {
-                            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                for (r in 0 until 2) Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    for (col in 0 until 4) {
-                                        val i = r * 4 + col
-                                        val a = remember { Animatable(0f) }
-                                        LaunchedEffect(Unit) { delay(i * 25L); a.animateTo(1f, tween(300)) }
-                                        CaseCard(state.cases[i], nowBar, state.settings.beatsPerBar, actions, Modifier.weight(1f).fillMaxHeight().alpha(a.value))
-                                    }
-                                }
-                            }
+                    for (r in 0 until 2) Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for (col in 0 until 4) {
+                            val i = r * 4 + col
+                            val a = remember { Animatable(0f) }
+                            LaunchedEffect(Unit) { delay(i * 25L); a.animateTo(1f, tween(300)) }
+                            CaseCard(state.cases[i], nowBar, state.settings.beatsPerBar, actions, Modifier.weight(1f).fillMaxHeight().alpha(a.value))
                         }
-                        if (sheet != null) CaseSheet(sheet, actions, Modifier.fillMaxSize())
                     }
                 }
             }
+            if (sheet != null) CaseSheet(sheet, actions, Modifier.fillMaxSize())
         }
     }
 }
