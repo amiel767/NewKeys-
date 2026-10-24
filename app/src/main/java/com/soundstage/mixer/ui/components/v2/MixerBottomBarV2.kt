@@ -26,6 +26,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
@@ -48,6 +49,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import com.soundstage.mixer.model.SubSceneSnapshot
 import com.soundstage.mixer.model.TrackChannel
 import com.soundstage.mixer.ui.components.FaderRail
@@ -476,27 +479,30 @@ private fun MasterSliderV2(
             }
         }
 
-        // dB pop-up: only while touched. The bar is 46 dp and the cap already fills
-        // it, so the value is shown as a centred chip over the fader instead of above
-        // it — above would be clipped by the bar.
-        androidx.compose.animation.AnimatedVisibility(
-            visible = showValue,
-            enter = fadeIn(tween(120)) + androidx.compose.animation.slideInVertically(initialOffsetY = { it / 2 }),
-            exit = fadeOut(tween(220)),
-            modifier = Modifier.align(Alignment.Center).offset(y = (-16).dp),
-        ) {
-            Box(
-                Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xE60A0E16))
-                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(8.dp))
-                    .padding(horizontal = 8.dp, vertical = 3.dp),
+        // dB pop-up: only while touched. It must escape the fader case — the case is
+        // 46 dp tall and clipped, so a chip *inside* it was trapped under the cap.
+        // A real Popup draws in its own window above everything, so the value sits
+        // over the case instead of being cropped by it.
+        if (showValue) {
+            val popupOffsetPx = with(LocalDensity.current) { 26.dp.roundToPx() }
+            Popup(
+                alignment = Alignment.TopCenter,
+                offset = IntOffset(0, -popupOffsetPx),
+                properties = PopupProperties(focusable = false, clippingEnabled = false),
             ) {
-                Text(
-                    "${dbText(value)} dB",
-                    color = if (value > 0.75f) Color(0xFFD8A24A) else Color(0xFFF1F4FA),
-                    fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace,
-                )
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xE60A0E16))
+                        .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                ) {
+                    Text(
+                        "${dbText(value)} dB",
+                        color = if (value > 0.75f) Color(0xFFD8A24A) else Color(0xFFF1F4FA),
+                        fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace,
+                    )
+                }
             }
         }
     }

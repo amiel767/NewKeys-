@@ -263,7 +263,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.categoryActions(
         ) {
             // One-tap learn: listens to ANY incoming signal (CC, note, PC, aftertouch,
             // pitch bend). The chevron to its right still opens the manual editor.
-            LearnButton(learning = learning, onClick = { onLearn(action) })
+            LearnButton(learning = learning, assigned = assigned, onClick = { onLearn(action) })
             SetIcon(SetIconKind.Chevron, SetColors.Mute, Modifier.size(16.dp))
         }
         SetDivider()
@@ -273,10 +273,23 @@ private fun androidx.compose.foundation.lazy.LazyListScope.categoryActions(
 /**
  * The quick-learn affordance shown on every action row, left of the chevron.
  * Tapping it arms learn for that action; the next signal from any controller binds it.
+ *
+ * Three states, because the user could not tell a bound action from a free one: the
+ * chip used to read LEARN whatever the state, so a successful mapping looked
+ * identical to an untouched row. It now reads LEARNED (green) once a binding exists.
  */
 @Composable
-private fun LearnButton(learning: Boolean, onClick: () -> Unit) {
-    val tone = if (learning) SetColors.Warn else SetColors.Accent
+private fun LearnButton(learning: Boolean, assigned: Boolean, onClick: () -> Unit) {
+    val tone = when {
+        learning -> SetColors.Warn
+        assigned -> SetColors.Ok
+        else -> SetColors.Accent
+    }
+    val label = when {
+        learning -> "LISTENING"
+        assigned -> "LEARNED"
+        else -> "LEARN"
+    }
     Row(
         Modifier
             .clip(RoundedCornerShape(9.dp))
@@ -288,10 +301,7 @@ private fun LearnButton(learning: Boolean, onClick: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Box(Modifier.size(7.dp).clip(CircleShape).background(tone))
-        Text(
-            if (learning) "LISTENING" else "LEARN",
-            style = setText(10.5.sp, FontWeight.ExtraBold, tone)
-        )
+        Text(label, style = setText(10.5.sp, FontWeight.ExtraBold, tone))
     }
 }
 
@@ -314,12 +324,21 @@ private fun androidx.compose.foundation.lazy.LazyListScope.manualEditor(
     item("learn") {
         SettingRow(
             title = if (learning) "Waiting for a signal…" else "Learn",
-            hint = if (learning) "Move the control on your device." else "Press a control to bind it.",
+            hint = when {
+                learning -> "Move the control on your device."
+                assigned -> "Bound. Press a control again to re-learn it."
+                else -> "Press a control to bind it."
+            },
             onClick = { if (learning) onCancelLearn() else onStartLearn() }
         ) {
             Text(
-                if (learning) "Cancel" else "Start",
-                style = setText(12.sp, FontWeight.Bold, if (learning) SetColors.Warn else SetColors.Accent)
+                if (learning) "Cancel" else if (assigned) "Learned" else "Start",
+                style = setText(12.sp, FontWeight.Bold,
+                    when {
+                        learning -> SetColors.Warn
+                        assigned -> SetColors.Ok
+                        else -> SetColors.Accent
+                    })
             )
         }
     }

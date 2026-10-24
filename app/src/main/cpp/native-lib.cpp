@@ -730,6 +730,11 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_fxPanic(
         JNIEnv *env,
         jobject /* this */) {
     gAudioEngine.fxPanic();
+    // The legacy master chain lives outside the Æther mixer and keeps ringing after
+    // the notes stop, so the panic button has to reset it too. The synth's own
+    // reverb/chorus tail is a third one: stop the voices and flush it as well.
+    gAudioEngine.synthPanic();
+    gAudioEngine.resetMasterBus();
 }
 
 // Compatibility check between a shaper and the soundfont preset loaded on the

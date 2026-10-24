@@ -1766,3 +1766,124 @@ frontières de blocs vaut **0,98** (donc pas de joint de bloc) → signal **prop
 device audio, on ne peut donc pas mesurer les underruns Oboe ni FluidSynth. La
 simulation valide le DSP et élimine le mixeur FX comme cause ; pour trancher sur la
 saccade en usage réel il faut un device et les stats `AudioTrack`/Oboe.
+
+## Session 2026-10-23 (6e passage) — les 13 problemes signales (lot A/B/C/D/E)
+
+Conversation source : `ea0e3456-328d-48e2-891a-561dd048654b`. Le travail d'une
+session precedente avait ete **perdu au reset sandbox** : tout a ete refait et
+verifie ici. La liste exacte des 13 points vient du dernier `task_list` du plan
+(recupere via l'API Cloud, `page_id` croissant) :
+
+| # | Point | Etat |
+|---|---|---|
+| A1 | Saccade audio a l'ajout d'un FX (rendu multi-canal) | corrige |
+| A2 | Panic ne coupait pas les queues d'effets | corrige |
+| A3 | Seule la piste 1 sonnait | corrige (deja : `isEnabled = true` partout) |
+| B1 | Thumbs de volume « tombes en bas » | corrige |
+| B2 | Pop-up du slider master emprisonne dans la case | corrige (`Popup`) |
+| C1/C2 | Knobs figes / bypass inerte (HashMap non observable) | corrige |
+| C3 | Presets recouverts par les knobs | corrige (`zIndex`) |
+| C4 | Page d'ajout FX ≠ preview | corrige (`FxAddOverlay`) |
+| C5 | Animation de suppression FX absente | corrige (drag vers poubelle + Undo) |
+| C6 | Ouverture de la feuille FX (scrim/pointeurs) | corrige |
+| D1 | Case « Learn » ne passe pas a « Learned » | corrige |
+| E1 | Reglages « Playback » de TrackSettings inertes | corrige |
+| — | Label `PRESENCE` sans le « E » | corrige |
+
+### A1 — la saccade : le vrai poste etait le chemin FX par bloc
+
+`renderFxPath()` copiait **chaque** canal dans un tampon de strip, faisait tourner
+une chaine **vide**, puis re-additionnait. Le cout croissait donc avec le nombre de
+canaux et non avec le travail reellement place : des qu'**un** effet existait
+quelque part, les 10 canaux payaient le detour.
+
+- `FxMixer::stripActive(strip)` (nouveau, `fx_mixer.h`) : vrai si la piste porte un
+  instrument ou au moins un effet ; master et strips hors plage = toujours traites.
+- `renderFxPath` replie un strip inactif **directement** dans le mix
+  (`mFxMixBuffer[i] += src[i]`) au lieu du cycle copie/chaine/somme.
+- Le rendu est desormais **channel-major** (`perChannel = numFrames * 2`) : la copie
+  et la somme parcourent la memoire dans l'ordre au lieu de strides de `2*canaux`.
+- Le sampler DrumPad (strip 10) n'execute sa chaine que si `stripActive(10)`.
+
+**Piege** : `stripActive` lit `tracks_[strip].strip.chain.effectId(s)`, qui est
+atomique — lisible depuis le thread audio sans verrou. Ne pas y mettre de `ctl_`.
+
+### A2 — panic : queues FluidSynth + file d'evenements
+
+`triggerPanic()` (VM) appelle `safeFxPanic()` + `safeStopAllDrumSamples()`. Cote
+natif : `EngineMidiEvent::PANIC` (`soundfont_engine.h`) traite dans `drainEvents`
+(`fluid_synth_all_notes_off`, CC 123/120, `fluid_synth_reset_reverb`,
+`fluid_synth_reset_chorus`) ; `FxMixer::requestPanic()` remet a zero **toutes** les
+chaines de piste + le master ; `AudioEngine::fxPanic()` est expose via JNI
+(`native-lib.cpp`). `setAllNotesOffHook` + `allNotesOffTrampoline` relient le moteur
+synth a l'engine.
+
+### B1 — le thumb qui « tombe en bas »
+
+`ChannelStripV2.kt` : le fader etait gate sur `!isDimmed`. Or `isDimmed` est vrai
+pour une piste **mute**, **solo-dimmee** *ou* **eteinte** : dans ces cas le
+`pointerInput` etait retire entierement, le thumb ne pouvait plus bouger et sa LED
+restait eteinte au repos. Seule une piste **eteinte** est vraiment non-reglable →
+gate sur `track.isEnabled`.
+
+### C1/C2 — knobs figes / bypass inerte
+
+`FxShellStore` : `values`, `bypass`, `abSnap`, `activePreset`, `abActive` etaient des
+`HashMap` **non observables**. Une ecriture en place dans un `FloatArray` est
+invisible pour Compose → aucun recompose. Corrige par `mutableStateMapOf` +
+`edit(...)` (copy-on-write : on remplace l'entree, on ne mute jamais en place).
+`toggleAB` fait aussi `values[k] = target.copyOf()`.
+
+### C3 — presets recouverts
+
+`FxOpenPanel.kt` : `#pm` est declare avant les knobs dans le meme `Box`, donc peint
+**sous** eux. `zIndex(1f)` sur la boite du `PresetChip` (la reference a `#pm` sur sa
+propre couche).
+
+### C4 — page d'ajout
+
+`FxAddOverlay.kt` reecrit d'apres `renderAdd()` / `listAdd()` : en-tete 48 dp, deux
+pilules d'onglet avec compteurs, chips de famille + recherche, grille 3 colonnes avec
+icone de l'effet, nom dans **sa** police et ligne `famille · description` (table
+`CAT2` du preview). L'ancienne version etait une liste nom/type sans icone.
+
+### C5 — suppression d'un FX
+
+`FxWindowHost.kt` : appui long + **drag vertical** ; la carte se souleve
+(`scale 1.04`, ombre 18 dp, `zIndex 20`), une poubelle apparait en bas, relacher
+au-dessus (`dragY < -BIN_DROP = -110`) supprime et ouvre un bandeau **Undo 5,2 s**
+qui re-ajoute l'effet. Avant : suppression immediate, sans animation ni retour.
+
+### C6 — ouverture de la feuille FX
+
+Le fond de `FxAddOverlay` est desormais cliquable (`indication = null`) et ferme la
+feuille (`store.addOpen = false`) : le tap ne traversait plus vers le rack.
+
+### D1 — Learn / Learned
+
+`MidiMappingPage.kt` : `LearnButton` prend `assigned` et affiche trois etats —
+`LEARN` (accent) / `LISTENING` (warn) / `LEARNED` (**vert** `SetColors.Ok`). Le
+sous-titre et le bouton de l'editeur manuel suivent le meme etat. Avant, une ligne
+mappee et une ligne vierge affichaient toutes deux `LEARN`.
+
+### E1 — switches « Playback »
+
+`MixerViewModel.kt` : couper `setTrackSustain(false)` envoie maintenant CC64=0 +
+CC123=0 (le switch ne bloquait que la *prochaine* note, les voix tenues continuaient
+de sonner) ; couper `setTrackAftertouch(false)` pousse `safeChannelPressure(ch, 0)`.
+Et `AudioEngine.kt` gere enfin **0xD0** (Channel Aftertouch) : ce `case` n'existait
+pas, donc un controleur en aftertouch produisait un silence total. Le message
+mono-octet lit sa valeur dans `data1`, jamais `data2`.
+
+### « PRESENCE » sans le E
+
+`FxKnob.kt` : le `Text` du label est mesure a la largeur du **diametre du knob**
+(46 dp sur l'ampli), or `PRESENCE` en Orbitron 9 sp est plus large → le `E` etait
+rogne. `wrapContentWidth(unbounded = true)` laisse le texte se mesurer a sa largeur
+naturelle, puis il est centre sur le knob — c'est le `translate(-50%,-50%)` de la
+reference. Meme correctif sur la ligne de valeur.
+
+### Verification
+
+`assembleDebug` (Kotlin + NDK, 4 ABI) et `recordRoborazziDebug --tests "...FxWindowCaptureTest"`
+passent. Captures dans `app/src/test/screenshots/`.

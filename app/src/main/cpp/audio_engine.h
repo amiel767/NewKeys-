@@ -598,6 +598,11 @@ public:
         mSlowEnvL = mSlowEnvR = 0.0f;
     }
 
+    void clear() {
+        mFastEnvL = mFastEnvR = 0.0f;
+        mSlowEnvL = mSlowEnvR = 0.0f;
+    }
+
     void setAmount(float amount) {
         mAmount = std::clamp(amount, 0.0f, 1.0f);
     }
@@ -661,6 +666,10 @@ public:
         if (!enabled) {
             mEnvelope = 0.0f;
         }
+    }
+
+    void clear() {
+        mEnvelope = 0.0f;
     }
 
     void process(float *buffer, int32_t numFrames) {
@@ -887,6 +896,42 @@ private:
     void fxCollectGarbage() { mFx.collectGarbage(); }
     /** Panic: clears every Æther effect tail so a runaway loop stops ringing. */
     void fxPanic() { mFx.requestPanic(); }
+
+    /**
+     * Panic on the synth: stops every voice and flushes the FluidSynth reverb and
+     * chorus tails. The Æther path resets its own chains and the legacy master bus is
+     * reset separately, but the synth's own reverb is a third tail that kept ringing
+     * after the panic button.
+     */
+    void synthPanic() { mSynthEngine.panic(); }
+
+    /**
+     * Panic on the legacy master bus. The Æther path resets its own chains, but the
+     * always-on master chain (delay, reverb, widener, EQ, compressor) keeps its
+     * internal state between blocks: after a panic those tails kept ringing, so the
+     * panic button appeared not to cut the sound. Reset them here, on the control
+     * thread, before the stream's next callback. mRenderMutex serialises this
+     * against the audio thread, which is the only other caller of these objects.
+     */
+    void resetMasterBus() {
+        std::lock_guard<std::mutex> lock(mRenderMutex);
+        mMasterDelay.clear();
+        mMasterChorus.clear();
+        mMasterReverb.clear();
+        mTonicFxDelay.clear();
+        mPadsFxDelay.clear();
+        mTonicFxReverb.clear();
+        mPadsFxReverb.clear();
+        mEqLow.reset();
+        mEqMid.reset();
+        mEqHigh.reset();
+        mPadFilter.reset();
+        mTonicFxFilter.reset();
+        mPadsFxFilter.reset();
+        mPadsFxBrightness.reset();
+        mMasterCompressor.clear();
+        mMasterPunch.clear();
+    }
 
  private:
     bool openAndStartStream();

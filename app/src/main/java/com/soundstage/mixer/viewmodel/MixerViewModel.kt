@@ -1034,7 +1034,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             TrackChannel(
                 id = i,
                 name = "Track $i",
-                isEnabled = i == 1, // Only Track 1 enabled by default at startup
+                isEnabled = true, // All tracks powered on at startup, as in MixerPreview.jsx (CH0 power:true)
                 volume = 0.85f,
                 pan = 0.0f,
                 fxSummary = "Fx, EQ...",
@@ -6119,11 +6119,24 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setTrackSustain(trackId: Int, enabled: Boolean) {
         updateTrack(trackId) { it.copy(sustain = enabled) }
+        if (!enabled) {
+            // The Playback switch only gated the *next* note, so turning Sustain off
+            // while the pedal was down left the held notes ringing and the switch
+            // looked inert. Release the pedal and the sustained voices now.
+            val ch = trackId - 1
+            NativeAudioBridge.safeControlChange(channel = ch, cc = 64, value = 0)
+            NativeAudioBridge.safeControlChange(channel = ch, cc = 123, value = 0)
+        }
         persistCurrentStateDebounced()
     }
 
     fun setTrackAftertouch(trackId: Int, enabled: Boolean) {
         updateTrack(trackId) { it.copy(aftertouch = enabled) }
+        if (!enabled) {
+            // Drop any pressure already applied so the switch has a visible effect
+            // instead of waiting for the controller's next message.
+            NativeAudioBridge.safeChannelPressure(trackId - 1, 0)
+        }
         persistCurrentStateDebounced()
     }
 

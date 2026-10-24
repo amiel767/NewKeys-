@@ -73,7 +73,12 @@ struct EngineMidiEvent {
         // synth is not thread-safe, so they travel through this same queue.
         SET_GEN,
         PITCH_SENS,
-        CHANNEL_PRESSURE
+        CHANNEL_PRESSURE,
+        // Hard panic. Runs on the audio thread like the rest of the queue, so it is
+        // ordered after every note event already queued: the notes stop first, then
+        // the reverb tail is flushed. A control-thread reset would have raced the
+        // events still in the queue and left the tail ringing.
+        PANIC
     } type;
     int channel;
     int note;
@@ -167,6 +172,13 @@ struct NoteOffAuditRecord {
 class SoundfontEngine {
 public:
     static constexpr int kMaxChannels = 16;
+    // Stereo output groups the synth actually renders. FluidSynth always renders
+    // every group declared at init, whether or not anything is routed to it, and
+    // this number cannot be changed without recreating the synth. The app only
+    // addresses MIDI channels 0..9 (8 tracks, Drum, TonicPad), so declaring 16
+    // groups made every block pay for six silent ones. This is the app's cost
+    // ceiling: it must stay >= the highest MIDI channel used.
+    static constexpr int kAudioGroups = 10;
     // Per-channel scratch capacity in frames. 4096 covers every Oboe burst the
     // engine requests with a wide margin and keeps the multi-channel buffers out
     // of the audio callback's allocation path.
@@ -188,6 +200,14 @@ public:
     void noteOff(int channel, int midiNote);
     void allNotesOff(int channel);
     void sendCC(int channel, int cc, int value);
+
+    /**
+     * Hard panic: silences every voice *and* flushes the FluidSynth reverb/chorus
+     * tail. `allNotesOff` only stops the notes, so with the synth reverb engaged a
+     * note kept ringing for seconds after the panic button. Queued like every other
+     * event, so it is applied after the notes already in flight.
+     */
+    void panic();
 
     // Shaper generator offsets and pitch-bend sensitivity. The synth is not
     // thread-safe, so these are queued and applied by drainEvents() on the audio
@@ -232,11 +252,23 @@ public:
 
     void renderStereo(float *outputBuffer, int32_t numFrames, bool accumulate = false);
 
-    // Per-channel output for the FX mixer. `out` is channel-interleaved
-    // (L0,R0,L1,R1,...) and must hold 2 * channelCount floats per frame.
+    // Per-channel output for the FX mixer. `out` is channel-major: the stereo
+    // pair of channel c occupies [c * 2 * numFrames, (c + 1) * 2 * numFrames),
+    // left/right interleaved inside it. Channel-major (rather than sample-major)
+    // keeps both this interleave and the consumer's copy to the strip buffer
+    // contiguous: the sample-major layout made both passes stride by 2 *
+    // channelCount, which is what the FX path paid for on every block.
     // Returns false when multi-channel output is not enabled, so the caller can
     // fall back to renderStereo. Never allocates: buffers are sized in init().
     bool renderChannels(float *out, int32_t numFrames, int channelCount);
+    /**
+     * Renders every audio group into the internal planar scratch (mChannelPtrs)
+     * instead of an interleaved buffer. renderStereo() folds them there, which
+     * avoids the planar -> interleaved -> fold round trip. Returns false when
+     * multi-channel mode is off, the synth is missing or the frame count exceeds
+     * the pre-sized scratch.
+     */
+    bool renderPlanar(int32_t numFrames, int channelCount);
 
     // Multi-channel mode is opt-in: the per-channel path has to be validated on
     // a device (sum of channels must equal the mono mix) before it is trusted.
@@ -274,6 +306,10 @@ private:
     // resize. mChannelPtrs aliases into mChannelBuffer for fluid_synth_process.
     std::vector<float> mChannelBuffer;
     std::array<float *, 2 * kMaxChannels> mChannelPtrs{};
+    // renderStereo() folds every audio group into one stereo pair. Sized once in
+    // init() (2 * kChannelFrameCapacity) so the fold never allocates on the audio
+    // thread, where renderChannels() hands it numFrames <= kChannelFrameCapacity.
+    std::vector<float> mStereoFold;
     bool mMultiChannelEnabled = false;
     // Note routing hooks (set from the control thread before the stream opens).
     SourceRouterFn mSourceRouter = nullptr;

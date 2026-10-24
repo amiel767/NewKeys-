@@ -114,9 +114,15 @@ fun ChannelStripV2(
             Spacer(Modifier.height(4.dp))
             
             // Fader INCHANGÉ
+            // The fader used to be gated on `!isDimmed`, which is true for a muted,
+            // solo-dimmed *or* powered-off strip. On those strips the pointer input
+            // was dropped entirely, so the thumb could not be moved and its LED sat
+            // dark at rest — the "volume thumb falls to the bottom and will not stay"
+            // report. Only a powered-off strip is truly un-fadable; a dimmed one is
+            // still adjustable, so gate on the power state instead.
             FaderSliderWithVuMeter(
                 value = track.volume, peakMeterL = track.peakMeterL, peakMeterR = track.peakMeterR,
-                onValueChange = onVolumeChange, isMaster = false, isEnabled = !isDimmed,
+                onValueChange = onVolumeChange, isMaster = false, isEnabled = track.isEnabled,
                 ledColor = accentColor, showTicks = true,
                 modifier = Modifier.weight(1f).fillMaxWidth()
             )

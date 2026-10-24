@@ -46,6 +46,7 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.soundstage.mixer.ui.fx.FxFonts
 import com.soundstage.mixer.ui.fx.fxPanelText
 import com.soundstage.mixer.ui.fx.FxStyle
@@ -117,8 +118,10 @@ fun FxOpenPanel(
             SmallChip("⌄", onClose)
         }
 
-        // `#pm`: preset menu pinned top-right (176 wide, top 11).
-        Box(Modifier.align(Alignment.TopEnd).offset(x = (-16).dp, y = 11.dp)) {
+        // `#pm`: preset menu pinned top-right (176 wide, top 11). `zIndex` lifts the
+        // open list above the knobs, which are declared later in this Box and would
+        // otherwise paint over it (the reference has `#pm` on its own layer).
+        Box(Modifier.align(Alignment.TopEnd).offset(x = (-16).dp, y = 11.dp).zIndex(1f)) {
             PresetChip(activePreset ?: presets.firstOrNull() ?: "", presets, onPreset)
         }
 

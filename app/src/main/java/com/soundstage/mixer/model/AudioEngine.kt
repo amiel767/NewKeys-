@@ -324,6 +324,7 @@ class AudioEngine(private val context: Context) {
     var onMidiNoteOffListener: ((noteName: String) -> Unit)? = null
     var onMidiPitchBendListener: ((bendValue: Float) -> Unit)? = null
     var onMidiSustainListener: ((isPressed: Boolean) -> Unit)? = null
+    var onMidiAftertouchListener: ((pressure: Int) -> Unit)? = null
     var onMidiCcListener: ((channel: Int, cc: Int, value: Int) -> Unit)? = null
     var onMidiProgramChangeListener: ((channel: Int, program: Int) -> Unit)? = null
     var onMidiRawEventListener: ((channel: Int, command: Int, data1: Int, data2: Int) -> Unit)? = null
@@ -704,6 +705,22 @@ class AudioEngine(private val context: Context) {
                 val normalized = (bendVal - 8192) / 8192f
                 coroutineScope.launch(Dispatchers.Main) {
                     onMidiPitchBendListener?.invoke(normalized)
+                }
+            }
+
+            0xD0 -> { // Channel Aftertouch (channel pressure, one data byte)
+                // There was no case for 0xD0 at all: a controller sending aftertouch
+                // produced silence, and the Track Settings "Aftertouch" switch had
+                // nothing to gate. Honour the per-track opt-in, then push the pressure
+                // to every target channel that asked for it.
+                val pressure = data1.coerceIn(0, 127)
+                targetChannels.forEach { ch ->
+                    if (trackAftertouchProvider?.invoke(ch) ?: false) {
+                        NativeAudioBridge.safeChannelPressure(ch, pressure)
+                    }
+                }
+                coroutineScope.launch(Dispatchers.Main) {
+                    onMidiAftertouchListener?.invoke(pressure)
                 }
             }
 

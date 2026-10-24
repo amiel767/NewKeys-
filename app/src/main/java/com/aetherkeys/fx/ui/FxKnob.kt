@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -155,13 +156,20 @@ fun FxKnob(
         // `.xN` sets the text colour per effect; the readouts inherited a hard-coded
         // light grey, which is invisible on the light panels (solar `.x4`).
         val ink = fxPanelText(effectId)
+        // The box is the knob diameter (46 dp on the amp), but a label like
+        // `PRESENCE` in Orbitron 9 sp is wider than that. A plain Text is clipped to
+        // the parent's width, which cut the final `E` off; `unbounded` lets the text
+        // measure at its natural width and then be centred on the knob, which is the
+        // `translate(-50%,-50%)` the reference does.
         Text(label.uppercase(), fontSize = lf.size.sp, fontFamily = lf.family,
             fontWeight = lf.weight, color = ink.copy(alpha = 0.65f),
             softWrap = false, maxLines = 1,
-            modifier = Modifier.align(Alignment.TopCenter).offset(y = (-13).dp))
+            modifier = Modifier.align(Alignment.TopCenter).offset(y = (-13).dp)
+                .wrapContentWidth(unbounded = true))
         Text(valueText, fontSize = vf.size.sp, fontFamily = vf.family, fontWeight = vf.weight,
             color = ink, softWrap = false, maxLines = 1,
-            modifier = Modifier.align(Alignment.BottomCenter).offset(y = 10.dp))
+            modifier = Modifier.align(Alignment.BottomCenter).offset(y = 10.dp)
+                .wrapContentWidth(unbounded = true))
     }
 }
 

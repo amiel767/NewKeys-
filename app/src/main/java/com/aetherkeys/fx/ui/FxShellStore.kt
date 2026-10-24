@@ -39,11 +39,26 @@ class FxShellStore(
     // every read of the rack recompose when a slot or the instrument changes.
     private val slots = mutableStateMapOf<Int, SnapshotStateList<Int?>>()
     private val instrument = mutableStateMapOf<Int, Int?>()
-    private val values = HashMap<Long, FloatArray>()
-    private val bypass = HashMap<Long, Boolean>()
-    private val abSnap = HashMap<Long, Pair<FloatArray, FloatArray>>()
+    // Parameter arrays are mutated in place by the UI, and an in-place FloatArray
+    // write is invisible to Compose. Every mutation therefore goes through [edit],
+    // which stores a fresh array so the readers of [valuesOf] recompose. The same
+    // applies to the A/B snapshots, whose arrays are copied on write too.
+    private val values = mutableStateMapOf<Long, FloatArray>()
+    private val bypass = mutableStateMapOf<Long, Boolean>()
+    private val abSnap = mutableStateMapOf<Long, Pair<FloatArray, FloatArray>>()
 
     private fun key(strip: Int, id: Int) = (strip.toLong() shl 32) or id.toLong()
+
+    /**
+     * Copy-on-write mutation of the parameter array of [id] on [s]. Compose only
+     * sees a change when the map entry is replaced, so the block works on a copy.
+     */
+    private inline fun edit(s: Int, id: Int, block: (FloatArray) -> Unit) {
+        val k = key(s, id)
+        val next = (values[k] ?: FxRegistry.info(id).params.map { it.default }.toFloatArray()).copyOf()
+        block(next)
+        values[k] = next
+    }
 
     fun slotsOf(strip: Int): SnapshotStateList<Int?> = slots.getOrPut(strip) {
         mutableStateListOf<Int?>().apply { repeat(if (strip == 15) 8 else 6) { add(null) } }
@@ -69,9 +84,11 @@ class FxShellStore(
         ids.forEachIndexed { i, id -> if (i < list.size) list[i] = id.takeIf { it >= 0 } }
         ids.forEachIndexed { i, id ->
             if (id >= 0) {
-                val v = valuesOf(s, id)
+                val k = key(s, id)
+                val v = (values[k] ?: FxRegistry.info(id).params.map { it.default }.toFloatArray()).copyOf()
                 params.getOrNull(i)?.forEachIndexed { j, x -> if (j < v.size) v[j] = x }
-                bypass[key(s, id)] = byp.getOrNull(i) ?: false
+                values[k] = v
+                bypass[k] = byp.getOrNull(i) ?: false
             }
         }
         instrument[s] = inst
@@ -115,7 +132,7 @@ class FxShellStore(
     fun setParam(id: Int, index: Int, value: Float) {
         val v = valuesOf(id)
         if (index !in v.indices) return
-        v[index] = value.coerceIn(0f, 1f)
+        edit(strip, id) { it[index] = value.coerceIn(0f, 1f) }
         pushParam(id, index)
     }
 
@@ -131,7 +148,7 @@ class FxShellStore(
         val preset = FxRegistry.info(id).presets.getOrNull(index) ?: return false
         val v = valuesOf(id)
         if (preset.values.size != v.size) return refuse("Preset size mismatch")
-        preset.values.forEachIndexed { i, x -> v[i] = x }
+        edit(strip, id) { arr -> preset.values.forEachIndexed { i, x -> arr[i] = x } }
         activePreset[key(strip, id)] = index
         val slot = slotsOf(strip).indexOf(id)
         if (slot >= 0) guard("preset") { engine.applyPreset(strip, slot, index) }
@@ -143,7 +160,7 @@ class FxShellStore(
     fun activePresetOf(id: Int): String? =
         activePreset[key(strip, id)]?.let { FxRegistry.info(id).presets.getOrNull(it)?.name }
 
-    private val activePreset = HashMap<Long, Int>()
+    private val activePreset = mutableStateMapOf<Long, Int>()
 
     /** A/B: first press stores the current state as A and copies it to B. Next presses swap. */
     fun toggleAB(id: Int) {
@@ -155,11 +172,12 @@ class FxShellStore(
         val activeIsA = abActive[k] ?: true
         if (activeIsA) { cur.copyInto(a) } else { cur.copyInto(b) }
         val target = if (activeIsA) b else a
-        target.copyInto(cur)
+        // Copy-on-write so the readers of `valuesOf` recompose on the A/B switch.
+        values[k] = target.copyOf()
         abActive[k] = !activeIsA
         pushAll(id)
     }
-    private val abActive = HashMap<Long, Boolean>()
+    private val abActive = mutableStateMapOf<Long, Boolean>()
     fun abLabel(id: Int): String = if (abActive[key(strip, id)] == false) "B" else "A"
 
     /**
@@ -169,9 +187,11 @@ class FxShellStore(
     fun surprise(id: Int, locked: Set<Int> = emptySet()) {
         val v = valuesOf(id)
         val last = v.size - 1
-        for (i in v.indices) {
-            if (i == last || i in locked) continue
-            v[i] = kotlin.random.Random.nextFloat()
+        edit(strip, id) { arr ->
+            for (i in arr.indices) {
+                if (i == last || i in locked) continue
+                arr[i] = kotlin.random.Random.nextFloat()
+            }
         }
         pushAll(id)
     }

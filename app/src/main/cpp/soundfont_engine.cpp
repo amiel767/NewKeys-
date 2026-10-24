@@ -5,6 +5,13 @@
 #include <thread>
 #include <malloc.h>
 
+// FluidSynth's reverb/chorus reset entry points are declared in the internal
+// fluid_synth.h, which cannot be included here (it re-declares the public API).
+// The symbols live in the static libfluidsynth linked into this same library, so a
+// local declaration is enough. Used by panic() to flush the effect tails.
+extern "C" int fluid_synth_reset_reverb(fluid_synth_t *synth);
+extern "C" int fluid_synth_reset_chorus(fluid_synth_t *synth);
+
 #if __has_include(<fluidsynth/voice.h>)
 #include <fluidsynth/voice.h>
 #endif
@@ -36,8 +43,11 @@ bool SoundfontEngine::init(int sampleRate, int polyphony, const char* instanceNa
     // renders into group i. When the flag is off we keep the historical mono mix
     // (and its chorus) untouched, so the audible result cannot change.
     if (mMultiChannelEnabled) {
-        fluid_settings_setint(mSettings, "synth.audio-channels", kMaxChannels);
-        fluid_settings_setint(mSettings, "synth.audio-groups", kMaxChannels);
+        // One stereo output per MIDI channel the app addresses (0..9). FluidSynth
+        // renders every declared group on every block, so this is a direct cost
+        // ceiling; kAudioGroups is the highest channel used + 1.
+        fluid_settings_setint(mSettings, "synth.audio-channels", kAudioGroups);
+        fluid_settings_setint(mSettings, "synth.audio-groups", kAudioGroups);
         fluid_settings_setint(mSettings, "synth.chorus.active", 0);
     } else {
         fluid_settings_setint(mSettings, "synth.chorus.active", 1);
@@ -65,6 +75,8 @@ bool SoundfontEngine::init(int sampleRate, int polyphony, const char* instanceNa
         mChannelPtrs[2 * ch] = mChannelBuffer.data() + static_cast<size_t>(2 * ch) * kChannelFrameCapacity;
         mChannelPtrs[2 * ch + 1] = mChannelPtrs[2 * ch] + kChannelFrameCapacity;
     }
+    // renderStereo()'s group fold, pre-sized so it never allocates in the callback.
+    mStereoFold.assign(static_cast<size_t>(2) * kChannelFrameCapacity, 0.0f);
 
     for (int ch = 0; ch < kMaxChannels; ++ch) {
         fluid_synth_set_channel_type(mSynth, ch, CHANNEL_TYPE_MELODIC);
@@ -83,8 +95,8 @@ bool SoundfontEngine::init(int sampleRate, int polyphony, const char* instanceNa
 
 bool SoundfontEngine::renderChannels(float *out, int32_t numFrames, int channelCount) {
     if (!mMultiChannelEnabled || !out) return false;
-    if (channelCount <= 0) channelCount = kMaxChannels;
-    if (channelCount > kMaxChannels) channelCount = kMaxChannels;
+    if (channelCount <= 0) channelCount = kAudioGroups;
+    if (channelCount > kAudioGroups) channelCount = kAudioGroups;
     if (numFrames <= 0) return true;
     if (numFrames > kChannelFrameCapacity) return false;
 
@@ -95,21 +107,51 @@ bool SoundfontEngine::renderChannels(float *out, int32_t numFrames, int channelC
     }
 
     drainEvents();
-// `out` is interleaved (L0,R0,L1,R1,...) but fluid_synth_process wants one
-    // planar pointer per channel, so each channel is rendered into the planar
-    // scratch and then interleaved. The planar buffers alias mChannelBuffer,
-    // which init() sized once.
+
+    // fluid_synth_process() *adds* into the buffers it is given, and the planar
+    // scratch is reused every block, so it has to be cleared here or each block
+    // piles onto the previous one and the strip input grows without bound.
+    for (int ch = 0; ch < 2 * channelCount; ++ch) {
+        std::fill(mChannelPtrs[ch], mChannelPtrs[ch] + numFrames, 0.0f);
+    }
+
+    // `out` is channel-major (L0,R0,L0,R0,... then L1,R1,...) while
+    // fluid_synth_process wants one planar pointer per channel, so each channel
+    // is rendered into the planar scratch and then copied out. Both sides are
+    // contiguous, so this is a straight copy per channel rather than the two
+    // stride-2 * channelCount passes the old sample-major layout needed.
     fluid_synth_process(mSynth, numFrames, 0, nullptr, 2 * channelCount, mChannelPtrs.data());
     for (int ch = 0; ch < channelCount; ++ch) {
+        float *dst = out + static_cast<size_t>(2 * ch) * numFrames;
         const float *srcL = mChannelPtrs[2 * ch];
         const float *srcR = mChannelPtrs[2 * ch + 1];
-        float *dst = out + static_cast<size_t>(2 * ch);
         for (int i = 0; i < numFrames; ++i) {
-            dst[0] = srcL[i];
-            dst[1] = srcR[i];
-            dst += 2 * channelCount;
+            dst[2 * i] = srcL[i];
+            dst[2 * i + 1] = srcR[i];
         }
     }
+
+    int activeCount = fluid_synth_get_active_voice_count(mSynth);
+    mAuditTotalVoices.store(activeCount, std::memory_order_relaxed);
+    mAuditAudibleVoices.store(activeCount, std::memory_order_relaxed);
+    return true;
+}
+
+bool SoundfontEngine::renderPlanar(int32_t numFrames, int channelCount) {
+    if (!mMultiChannelEnabled || !mSynth) return false;
+    if (channelCount <= 0) channelCount = kAudioGroups;
+    if (channelCount > kAudioGroups) channelCount = kAudioGroups;
+    if (numFrames <= 0) return true;
+    if (numFrames > kChannelFrameCapacity) return false;
+
+    std::unique_lock<std::recursive_mutex> lock(mMutex, std::try_to_lock);
+    if (!lock.owns_lock()) return false;
+
+    drainEvents();
+    for (int ch = 0; ch < 2 * channelCount; ++ch) {
+        std::fill(mChannelPtrs[ch], mChannelPtrs[ch] + numFrames, 0.0f);
+    }
+    fluid_synth_process(mSynth, numFrames, 0, nullptr, 2 * channelCount, mChannelPtrs.data());
 
     int activeCount = fluid_synth_get_active_voice_count(mSynth);
     mAuditTotalVoices.store(activeCount, std::memory_order_relaxed);
@@ -416,6 +458,17 @@ void SoundfontEngine::allNotesOff(int channel) {
     mEventQueue.push(ev);
 }
 
+void SoundfontEngine::panic() {
+    EngineMidiEvent ev{};
+    ev.type = EngineMidiEvent::PANIC;
+    ev.channel = -1;
+    ev.note = 0;
+    ev.velocity = 0;
+    ev.param1 = 0;
+    ev.param2 = 0;
+    mEventQueue.push(ev);
+}
+
 void SoundfontEngine::sendCC(int channel, int cc, int value) {
     EngineMidiEvent ev;
     ev.type = EngineMidiEvent::CC;
@@ -615,6 +668,20 @@ void SoundfontEngine::drainEvents() {
             case EngineMidiEvent::CHANNEL_PRESSURE:
                 fluid_synth_channel_pressure(mSynth, ev.channel, ev.param1);
                 break;
+            case EngineMidiEvent::PANIC:
+                // Notes first, then the reverb/chorus tail. fluid_synth_all_notes_off
+                // only releases the voices, so the synth reverb kept ringing for
+                // seconds after a panic; resetting the reverb engine flushes it. Done
+                // on the audio thread, after every note event already queued.
+                if (mAllNotesOffHook) mAllNotesOffHook(mAllNotesOffHookCtx, -1);
+                for (int ch = 0; ch < kMaxChannels; ++ch) {
+                    fluid_synth_all_notes_off(mSynth, ch);
+                    fluid_synth_cc(mSynth, ch, 123, 0);
+                    fluid_synth_cc(mSynth, ch, 120, 0);
+                }
+                fluid_synth_reset_reverb(mSynth);
+                fluid_synth_reset_chorus(mSynth);
+                break;
         }
     }
 }
@@ -639,7 +706,34 @@ void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool 
     auto tStart = std::chrono::steady_clock::now();
 
     drainEvents();
-if (!accumulate) {
+
+    // In multi-channel mode FluidSynth sends each MIDI channel to its own audio
+    // group (`group = channel % audio_groups`, see fluid_voice.c). But
+    // fluid_synth_write_float() is a *stereo* writer: it copies group 0 only. Used
+    // here it emitted MIDI channel 0 and nothing else, so with the FX path idle
+    // every other track, the Drum channel and the TonicPad were silent — the
+    // "only track 1 makes sound" report. Render every group and fold them into one
+    // stereo pair instead. The fold reads the planar scratch directly, so it costs
+    // one pass per sample and never re-enters the interleaving the FX path needs.
+    if (mMultiChannelEnabled && renderPlanar(numFrames, kAudioGroups)) {
+        const size_t totalSamples = static_cast<size_t>(numFrames) * 2;
+        if (mStereoFold.size() < totalSamples) mStereoFold.resize(totalSamples, 0.0f);
+        float *fold = mStereoFold.data();
+        std::fill(fold, fold + totalSamples, 0.0f);
+        for (int ch = 0; ch < kAudioGroups; ++ch) {
+            const float *srcL = mChannelPtrs[2 * ch];
+            const float *srcR = mChannelPtrs[2 * ch + 1];
+            for (int i = 0; i < numFrames; ++i) {
+                fold[2 * i] += srcL[i];
+                fold[2 * i + 1] += srcR[i];
+            }
+        }
+        if (accumulate) {
+            for (size_t i = 0; i < totalSamples; ++i) outputBuffer[i] += fold[i];
+        } else {
+            std::copy(fold, fold + totalSamples, outputBuffer);
+        }
+    } else if (!accumulate) {
         fluid_synth_write_float(mSynth, numFrames, outputBuffer, 0, 2, outputBuffer, 1, 2);
     } else {
         size_t totalSamples = static_cast<size_t>(numFrames * 2);

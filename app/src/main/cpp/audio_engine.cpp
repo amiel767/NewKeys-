@@ -608,24 +608,36 @@ bool AudioEngine::renderFxPath(float *outputBuffer, int32_t numFrames) {
 
     // 2. Each synth channel is a strip: a Source replaces the soundfont, every
     //    strip then runs its own effect chain before being summed into the mix.
+    //    The render is channel-major, so both the copy and the sum walk memory
+    //    in order instead of striding by 2 * channelCount.
+    const size_t perChannel = static_cast<size_t>(numFrames) * 2;
+    float *strip = mFxStripBuffer.data();
     for (int s = 0; s < channelCount; ++s) {
-        const float *src = mFxChannelBuffer.data() + static_cast<size_t>(s) * 2;
-        float *strip = mFxStripBuffer.data();
+        const float *src = mFxChannelBuffer.data() + static_cast<size_t>(s) * perChannel;
+        // A source strip replaces the soundfont, so its channel input is dropped and
+        // the source effect fills the strip itself.
         if (mFx.soundfontPaused(s)) {
             std::fill(strip, strip + stripSamples, 0.0f);
-        } else {
-            for (int i = 0; i < numFrames; ++i) {
-                strip[2 * i] = src[static_cast<size_t>(i) * 2 * channelCount];
-                strip[2 * i + 1] = src[static_cast<size_t>(i) * 2 * channelCount + 1];
-            }
+            mFx.processStrip(s, strip, numFrames);
+            for (size_t i = 0; i < stripSamples; ++i) mFxMixBuffer[i] += strip[i];
+            continue;
         }
+        // A strip with no instrument and no effect is a pass-through: fold its
+        // channel straight into the mix. Copying it into the strip buffer, running
+        // an empty chain and adding it back was pure overhead on every block, so the
+        // FX path cost grew with the channel count instead of with the work placed.
+        if (!mFx.stripActive(s)) {
+            for (size_t i = 0; i < stripSamples; ++i) mFxMixBuffer[i] += src[i];
+            continue;
+        }
+        std::copy(src, src + stripSamples, strip);
         mFx.processStrip(s, strip, numFrames);
         for (size_t i = 0; i < stripSamples; ++i) mFxMixBuffer[i] += strip[i];
     }
 
     // 3. DrumPad sampler is strip 10.
     mDrumSampler.renderStereo(mFxStripBuffer.data(), numFrames, false);
-    mFx.processStrip(10, mFxStripBuffer.data(), numFrames);
+    if (mFx.stripActive(10)) mFx.processStrip(10, mFxStripBuffer.data(), numFrames);
     for (size_t i = 0; i < stripSamples; ++i) mFxMixBuffer[i] += mFxStripBuffer[i];
 
     // 4. Master chain, then the single conversion to the stream format.

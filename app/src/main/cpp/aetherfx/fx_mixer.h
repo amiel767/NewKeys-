@@ -41,6 +41,25 @@ class FxMixer {
    * which is what made the audio stutter continuously once the engine started.
    */
   bool hasActiveWork() const { return active_.load(std::memory_order_relaxed) > 0; }
+
+  /**
+   * True when the strip carries an instrument or at least one effect. A strip with
+   * neither is a straight pass-through: the render folds its input directly into
+   * the mix instead of copying it into a strip buffer, running an empty chain and
+   * adding it back. That extra round trip per channel was what made the FX path
+   * cost scale with the channel count rather than with the work actually placed,
+   * so the audio got heavier as soon as one effect existed anywhere.
+   */
+  bool stripActive(int strip) const {
+    if (strip >= 0 && strip < 8) {
+      if (tracks_[strip].instrumentId() >= 0) return true;
+    } else if (!(strip >= 8 && strip < kStrips)) {
+      return true;  // master and out-of-range strips are always processed
+    }
+    const FxChain& c = tracks_[strip].strip.chain;
+    for (int s = 0; s < c.slots(); ++s) if (c.effectId(s) >= 0) return true;
+    return false;
+  }
   void setParam(int strip, int slot, int param, float norm) { if (FxChain* c = chain(strip)) c->setParam(slot, param, norm); }
   void setBypass(int strip, int slot, bool b) { if (FxChain* c = chain(strip)) c->setBypass(slot, b); }
   bool applyPreset(int strip, int slot, int preset) { FxChain* c = chain(strip); return c ? c->applyPreset(slot, preset) : false; }

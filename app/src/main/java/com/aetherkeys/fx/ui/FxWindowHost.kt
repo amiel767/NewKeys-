@@ -3,6 +3,7 @@ package com.aetherkeys.fx.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -23,6 +25,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,10 +40,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.soundstage.mixer.ui.fx.FxFonts
 import com.soundstage.mixer.ui.fx.fxPanelBrush
 import kotlinx.coroutines.delay
@@ -159,7 +168,10 @@ fun FxWindowHost(store: FxShellStore, modifier: Modifier = Modifier, onClose: ((
                     animationSpec = androidx.compose.animation.core.tween(220),
                 ),
             ) {
-                Box(Modifier.fillMaxSize().background(Color(0xE60A0E16))) {
+                Box(Modifier.fillMaxSize().background(Color(0xE60A0E16)).clickable(
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null,
+                ) { store.addOpen = false }) {
                     FxAddOverlay(
                         modules = store.modules.values.sortedBy { it.id },
                         tab = store.addTab,
@@ -284,19 +296,102 @@ private fun Rack(store: FxShellStore, tm: androidx.compose.ui.text.TextMeasurer)
     // sheet, and the reference shows it as a card of the same size. It used to be
     // missing entirely, so adding an effect had no visible entry point.
     val hasRoom = slots.any { it == null }
-    LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier.fillMaxSize().padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 14.dp),
-    ) {
-        items(ids) { id ->
-            val m = store.modules[id] ?: return@items
-            RackCard(m, store.valuesOf(id), tm) { store.openId = id }
+
+    // Drag-to-delete: press and hold a card, lift it, and drop it on the bin. The
+    // reference plays this as a real lift (the card rises and casts a bigger shadow)
+    // and offers an Undo bandeau for a few seconds. Long-press alone used to delete
+    // the card with no animation and no way back, which read as a glitch.
+    var lifted by remember { mutableStateOf<Int?>(null) }
+    var dragY by remember { mutableFloatStateOf(0f) }
+    var undo by remember { mutableStateOf<Int?>(null) }
+    val overBin = lifted != null && dragY < -BIN_DROP
+    LaunchedEffect(undo) {
+        if (undo != null) { delay(5_200); undo = null }
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxSize().padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 14.dp),
+        ) {
+            items(ids) { id ->
+                val m = store.modules[id] ?: return@items
+                RackCard(
+                    m = m,
+                    params = store.valuesOf(id),
+                    tm = tm,
+                    lifted = lifted == id,
+                    dragY = if (lifted == id) dragY else 0f,
+                    onOpen = { store.openId = id },
+                    onDragStart = { lifted = id; dragY = 0f },
+                    onDrag = { dy -> dragY = dy },
+                    onDragEnd = {
+                        val drop = dragY < -BIN_DROP
+                        lifted = null
+                        dragY = 0f
+                        if (drop) { store.removeEffect(id); undo = id }
+                    },
+                )
+            }
+            if (hasRoom) {
+                item { AddSlotCard { store.addTab = FxAddTab.EFFECTS; store.addOpen = true } }
+            }
         }
-        if (hasRoom) {
-            item { AddSlotCard { store.addTab = FxAddTab.EFFECTS; store.addOpen = true } }
+
+        // The bin appears only while a card is lifted, so the rack keeps its clean
+        // look the rest of the time.
+        if (lifted != null) {
+            val armed = overBin
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 10.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(if (armed) Color(0xF27A2216) else Color(0xCC1A2030))
+                    .border(1.5.dp, if (armed) Color(0xFFFF7A5A) else Color(0x24FFFFFF), RoundedCornerShape(14.dp))
+                    .padding(horizontal = 18.dp, vertical = 9.dp),
+            ) {
+                Text(
+                    if (armed) "Release to delete" else "Drag up to delete",
+                    fontSize = 11.sp, fontFamily = FxFonts.ui, fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFFFFE9E0),
+                )
+            }
+        }
+
+        undo?.let { id ->
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 10.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xE62A3042))
+                    .border(1.dp, Color(0x1CFFFFFF), RoundedCornerShape(14.dp))
+                    .padding(start = 16.dp, end = 8.dp, top = 7.dp, bottom = 7.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        "${store.modules[id]?.name ?: "Effect"} removed",
+                        fontSize = 11.sp, fontFamily = FxFonts.ui, fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFFE6EAF3),
+                    )
+                    Text(
+                        "UNDO",
+                        fontSize = 11.sp, fontFamily = FxFonts.ui, fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = (11 * 0.12f).sp, color = Color(0xFF8FB2E8),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(9.dp))
+                            .clickable { store.addEffect(id); undo = null }
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                    )
+                }
+            }
         }
     }
 }
+
+/** Vertical travel (logical px) that arms the bin. */
+private const val BIN_DROP = 110f
 
 /**
  * The trailing empty slot: same footprint as a card, but carved *into* the window
@@ -350,17 +445,44 @@ private fun AddSlotCard(onClick: () -> Unit) {
  * Canvas 136x160 (`.cd canvas`), scene drawn at mini scale (m = 1).
  */
 @Composable
-internal fun RackCard(m: EffectModule, params: FloatArray, tm: androidx.compose.ui.text.TextMeasurer, onClick: () -> Unit) {
+internal fun RackCard(
+    m: EffectModule,
+    params: FloatArray,
+    tm: androidx.compose.ui.text.TextMeasurer,
+    lifted: Boolean = false,
+    dragY: Float = 0f,
+    onOpen: () -> Unit = {},
+    onDragStart: () -> Unit = {},
+    onDrag: (Float) -> Unit = {},
+    onDragEnd: () -> Unit = {},
+) {
     val clock = rememberFxClock(fullRate = false)
+    val shape = RoundedCornerShape(16.dp)
     Column(
         modifier = Modifier
             .width(158.dp)
             .fillMaxHeight()
-            .shadow(8.dp, RoundedCornerShape(16.dp), clip = false)
-            .clip(RoundedCornerShape(16.dp))
+            // While lifted the card rises with the finger, sits above its neighbours
+            // and casts a deeper shadow, which is what makes the drag read as a lift
+            // rather than a jump.
+            .zIndex(if (lifted) 20f else 0f)
+            .offset(y = dragY.dp)
+            .graphicsLayer { scaleX = if (lifted) 1.04f else 1f; scaleY = if (lifted) 1.04f else 1f }
+            .shadow(if (lifted) 18.dp else 8.dp, shape, clip = false)
+            .clip(shape)
             .background(Brush.verticalGradient(listOf(Color(0xFF323845), Color(0xFF222733))))
-            .border(1.dp, Color(0x12FFFFFF), RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick)
+            .border(1.dp, Color(0x12FFFFFF), shape)
+            .clickable(onClick = onOpen)
+            .pointerInput(m.id) {
+                detectVerticalDragGestures(
+                    onDragStart = { onDragStart() },
+                    onDragEnd = { onDragEnd() },
+                    onDragCancel = { onDragEnd() },
+                ) { change, amount ->
+                    change.consume()
+                    onDrag(dragY + amount)
+                }
+            }
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
