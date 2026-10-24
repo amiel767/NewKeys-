@@ -294,3 +294,41 @@ mesurent 6,5 = un ancetre contraint.
 
 Puis mesurer les bandes de cartes (Pillow) : deux rangees d'environ 120 dp en
 640dp, 137 dp en 851dp, pour une reference a 146 dp en 891dp.
+
+---
+
+## 11. Track colors (Settings > Interface)
+
+Sous-page de reglage des couleurs de pistes, cablee au mixer.
+
+| Element | Chemin |
+|---|---|
+| Mode, palettes, logique pure | `ui/components/TrackColors.kt` |
+| Sous-page UI | `ui/settings/TrackColorsPage.kt` |
+| Carte d'entree (Interface) | `SettingsScreen.kt` -> `TrackColorsCard` |
+| Resolution par piste | `TrackChannel.resolvedColor(scheme)` (`VerticalFader.kt`) |
+| Scheme + CompositionLocal | `MixerScreen.kt` (`effectiveScheme`, `LocalTrackColors`) |
+
+**Principe** : `MixerScreen` resout le scheme **une fois** (avec la derive) et le
+publie par `CompositionLocalProvider(LocalTrackColors provides ...)`. Les strips
+lisent `LocalTrackColors.current` ; ils ne resolvent **jamais** une couleur
+eux-memes. Un override par piste (`TrackChannel.customColorArgb`) gagne toujours
+sur le scheme. Le **master** garde sa couleur propre, il ne suit pas les modes.
+
+**Modes** : `Palette` (5 palettes nommees), `Random` (8 tirages figes), `Single`
+(une seule couleur). Changer de mode **efface** les overrides par piste, sinon le
+scheme ne se verrait pas.
+
+**Derive « Dynamic »** : +-14 degres de teinte sur 90 s, imperceptible frame a
+frame. `TrackColorsLogic.driftColor` est du **Kotlin pur** (pas
+d'`android.graphics`) pour tourner en test JVM et en preview.
+
+**Persistance** : prefs **plates** (hors blob d'etat) : `track_color_mode`,
+`track_color_palette`, `track_color_random`, `track_color_single`,
+`track_color_dynamic`. Restaurees par `restoreTrackColorSettings()`, appelee
+**toujours** — ne pas les remettre dans le `if (saved != null)`.
+
+**Piege de test** : capturer un element hors ecran d'une `Column` scrollable par
+`performScrollTo()` -> `OutOfMemoryError` (ShadowTrace). Utiliser un viewport
+haut (`@Config(qualifiers = "w851dp-h1600dp-440dpi")`). Un screenshot ne prouve
+pas un cablage : cliquer l'element et verifier que le callback a ete appele.

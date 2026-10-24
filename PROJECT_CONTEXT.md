@@ -10,7 +10,7 @@ listed in the appendix — nothing is hidden, but nothing dead wastes context.
 
 | | |
 |---|---|
-| Active Kotlin files | 117 (53,928 lines) |
+| Active Kotlin files | 119 (55,082 lines) |
 | Active native files | 25 |
 | Excluded dead Kotlin files | 12 |
 | Vendored FluidSynth files (summarised, not inlined) | 269 |
@@ -839,7 +839,7 @@ object FxBottomBar {
 }
 ```
 
-#### `FxClock.kt` — 32 lines
+#### `FxClock.kt` — 38 lines
 
 ```kotlin
 package com.aetherkeys.fx.ui
@@ -854,12 +854,18 @@ import kotlinx.coroutines.delay
 /**
  * One time source for the FX window, in seconds since the first frame.
  * It measures real frame deltas (vsync), so a slow frame never speeds up or freezes the motion.
- * [fullRate] = open panel (every display frame). Otherwise rack cards are refreshed at [miniFps].
+ * [fullRate] = open panel, capped at [fullFps]. Otherwise rack cards are refreshed at [miniFps].
  * Changing a preset does not restart or recreate this clock.
+ *
+ * The cap matters on 90/120 Hz panels: the scene is a full 825x343 redraw (gradients,
+ * shadows, knobs), and repainting it at every vsync for no visible gain is what made
+ * the window hot. 30 im/s reads as smooth for a knob or a slow particle field while
+ * costing half to a quarter of the frames. Elapsed time comes from the real deltas, so
+ * the motion keeps its true speed whatever the cap is.
  */
 @Composable
-fun rememberFxClock(fullRate: Boolean, miniFps: Int = 15): State<Float> =
-    produceState(initialValue = 0f, fullRate, miniFps) {
+fun rememberFxClock(fullRate: Boolean, miniFps: Int = 15, fullFps: Int = 30): State<Float> =
+    produceState(initialValue = 0f, fullRate, miniFps, fullFps) {
         var last = -1L
         var elapsed = 0f
         while (true) {
@@ -867,7 +873,7 @@ fun rememberFxClock(fullRate: Boolean, miniFps: Int = 15): State<Float> =
             if (last >= 0L) elapsed += (nowNs - last) / 1_000_000_000f
             last = nowNs
             value = elapsed
-            if (!fullRate) delay(1000L / miniFps.coerceIn(5, 60))
+            delay(1000L / (if (fullRate) fullFps else miniFps).coerceIn(5, 60))
         }
     }
 
@@ -1158,7 +1164,7 @@ object FxChipGroups {
 }
 ```
 
-#### `FxKnob.kt` — 331 lines
+#### `FxKnob.kt` — 337 lines
 
 ```kotlin
 package com.aetherkeys.fx.ui
@@ -1319,6 +1325,12 @@ fun FxKnob(
         // `.xN` sets the text colour per effect; the readouts inherited a hard-coded
         // light grey, which is invisible on the light panels (solar `.x4`).
         val ink = fxPanelText(effectId)
+        // The label and the readout hug the body in the reference, which reads as
+        // cramped once the knob sits on a busy scene. A few dp of breathing room on
+        // each side separates the text from the dial without moving the body itself:
+        // the body stays on its `AB()` centre, only the text steps away.
+        val labelGap = 18.dp
+        val valueGap = 14.dp
         // The box is the knob diameter (46 dp on the amp), but a label like
         // `PRESENCE` in Orbitron 9 sp is wider than that. A plain Text is clipped to
         // the parent's width, which cut the final `E` off; `unbounded` lets the text
@@ -1327,11 +1339,11 @@ fun FxKnob(
         Text(label.uppercase(), fontSize = lf.size.sp, fontFamily = lf.family,
             fontWeight = lf.weight, color = ink.copy(alpha = 0.65f),
             softWrap = false, maxLines = 1,
-            modifier = Modifier.align(Alignment.TopCenter).offset(y = (-13).dp)
+            modifier = Modifier.align(Alignment.TopCenter).offset(y = -labelGap)
                 .wrapContentWidth(unbounded = true))
         Text(valueText, fontSize = vf.size.sp, fontFamily = vf.family, fontWeight = vf.weight,
             color = ink, softWrap = false, maxLines = 1,
-            modifier = Modifier.align(Alignment.BottomCenter).offset(y = 10.dp)
+            modifier = Modifier.align(Alignment.BottomCenter).offset(y = valueGap)
                 .wrapContentWidth(unbounded = true))
     }
 }
@@ -2368,7 +2380,7 @@ class FxShellStore(
 }
 ```
 
-#### `FxWindowHost.kt` — 521 lines
+#### `FxWindowHost.kt` — 540 lines
 
 ```kotlin
 package com.aetherkeys.fx.ui
@@ -2602,7 +2614,11 @@ private fun Header(store: FxShellStore, onClose: (() -> Unit)? = null) {
         )
         // Not yet wired to the mixer's soundfont window: say so instead of a silent no-op.
         Chip("Soundfont · Grand Piano ▾") { store.notice = "Soundfont: open it from the mixer track" }
-        Chip("+ Instrument") { store.addTab = FxAddTab.INSTRUMENT; store.addOpen = true }
+        // Master carries no instrument: offering the button only produced a refusal
+        // when pressed. The rack is effects-only there, so the chip is hidden.
+        if (store.strip != com.aetherkeys.fx.FxRegistry.STRIP_MASTER) {
+            Chip("+ Instrument") { store.addTab = FxAddTab.INSTRUMENT; store.addOpen = true }
+        }
         Chip("+ Effect") { store.addTab = FxAddTab.EFFECTS; store.addOpen = true }
         if (onClose != null) CloseChip(onClose)
     }
@@ -2681,6 +2697,11 @@ private fun Rack(store: FxShellStore, tm: androidx.compose.ui.text.TextMeasurer)
     LaunchedEffect(undo) {
         if (undo != null) { delay(5_200); undo = null }
     }
+    // One clock for every card in the rack. Each card used to own a clock, so a
+    // rack of seven woke seven coroutines on every vsync to paint at 15 im/s. A
+    // single state read by all of them costs one wake per tick and repaints the
+    // row together, which is also what the reference does.
+    val clock = rememberFxClock(fullRate = false)
 
     Box(Modifier.fillMaxSize()) {
         LazyRow(
@@ -2693,8 +2714,10 @@ private fun Rack(store: FxShellStore, tm: androidx.compose.ui.text.TextMeasurer)
                     m = m,
                     params = store.valuesOf(id),
                     tm = tm,
+                    t = clock.value,
                     lifted = lifted == id,
                     dragY = if (lifted == id) dragY else 0f,
+                    bypassed = store.isBypassed(id),
                     onOpen = { store.openId = id },
                     onDragStart = { lifted = id; dragY = 0f },
                     onDrag = { dy -> dragY = dy },
@@ -2822,14 +2845,15 @@ internal fun RackCard(
     m: EffectModule,
     params: FloatArray,
     tm: androidx.compose.ui.text.TextMeasurer,
+    t: Float,
     lifted: Boolean = false,
     dragY: Float = 0f,
+    bypassed: Boolean = false,
     onOpen: () -> Unit = {},
     onDragStart: () -> Unit = {},
     onDrag: (Float) -> Unit = {},
     onDragEnd: () -> Unit = {},
 ) {
-    val clock = rememberFxClock(fullRate = false)
     val shape = RoundedCornerShape(16.dp)
     Column(
         modifier = Modifier
@@ -2840,7 +2864,14 @@ internal fun RackCard(
             // rather than a jump.
             .zIndex(if (lifted) 20f else 0f)
             .offset(y = dragY.dp)
-            .graphicsLayer { scaleX = if (lifted) 1.04f else 1f; scaleY = if (lifted) 1.04f else 1f }
+            .graphicsLayer {
+                scaleX = if (lifted) 1.04f else 1f
+                scaleY = if (lifted) 1.04f else 1f
+                // `.pn.by{filter:saturate(.2) brightness(.7)}`: a bypassed effect greys
+                // out on its card too, otherwise the rack looked unchanged while the
+                // sound was dry.
+                alpha = if (bypassed) 0.7f else 1f
+            }
             .shadow(if (lifted) 18.dp else 8.dp, shape, clip = false)
             .clip(shape)
             .background(Brush.verticalGradient(listOf(Color(0xFF323845), Color(0xFF222733))))
@@ -2879,7 +2910,7 @@ internal fun RackCard(
                     translate(3f * d, 46f * d)
                     scale(0.165f * d, 0.165f * d, pivot = Offset.Zero)
                 }) {
-                    with(m) { drawScene(params, clock.value, mini = true, tm = tm) }
+                    with(m) { drawScene(params, t, mini = true, tm = tm) }
                 }
             }
         }
@@ -10561,7 +10592,7 @@ class TransportClock {
 
 ### `com/soundstage/mixer/fx`
 
-#### `FxController.kt` — 199 lines
+#### `FxController.kt` — 211 lines
 
 ```kotlin
 package com.soundstage.mixer.fx
@@ -10628,7 +10659,12 @@ class FxController(private val strip: Int, private val context: Context? = null)
 
     fun setInstrument(id: Int): Boolean {
         val b = bridge() ?: return false
-        if (id < 0) { instrumentId = -1; return true }
+        // `id < 0` MUST still reach the engine. A shaper instrument pushes SoundFont
+        // generator offsets on its channel (`vibLfoToPitch` alone is up to 60 cents,
+        // plus filter/volenv), and those persist on the FluidSynth channel until the
+        // native side is told to release them. Returning early here cleared only the
+        // Kotlin state, so removing an instrument left its vibrato and filter offsets
+        // applied for good: that track played detuned against every other one.
         if (!safe(false, "setInstrument") { b.setTrackInstrument(strip, id) }) return false
         instrumentId = id
         return true
@@ -10753,7 +10789,14 @@ class FxController(private val strip: Int, private val context: Context? = null)
         }
         saved.effects.forEachIndexed { slot, entry ->
             if (entry != null && setEffect(slot, entry.id)) {
-                entry.params.forEachIndexed { i, v -> if (i < params[slot].size) params[slot][i] = v }
+                // The saved values must reach the engine, not just the Kotlin list.
+                // Writing `params[slot][i]` alone left the native effect on its
+                // registry defaults, so after a restart the UI showed the stored
+                // knob positions while the audio played something else until the
+                // user touched every knob.
+                entry.params.forEachIndexed { i, v ->
+                    if (i < params[slot].size) setEffectParam(slot, i, v)
+                }
                 if (entry.bypass) setBypass(slot, true)
             }
         }
@@ -11920,7 +11963,7 @@ object LoopPatchJson {
 }
 ```
 
-#### `LiveLooperUi.kt` — 1067 lines
+#### `LiveLooperUi.kt` — 1146 lines
 
 ```kotlin
 package com.soundstage.mixer.looper // ← adapt to the real package
@@ -12063,6 +12106,12 @@ private fun white(a: Float) = Color.White.copy(alpha = a)
 private fun Color.a(x: Float) = copy(alpha = x)
 fun loopCaseColor(id: Int): Color = LL.Pal[id % LL.Pal.size]
 
+// Patch window of the reference: `left:120, right:120, top:58, bottom:12` on the
+// 891 x 411 frame -> 651 x 341 dp. Unlike the grid this is a floating window, so it
+// keeps its designed size and only ever shrinks (see `PatchWindow`).
+private const val LL_PATCH_W = 651f
+private const val LL_PATCH_H = 341f
+
 private val PanelBrush = Brush.verticalGradient(listOf(Color(0xFF2A3447), Color(0xFF1E2736)))
 private val WindowBrush = Brush.verticalGradient(listOf(Color(0xFF232C3E), Color(0xFF1A2230)))
 private val ButtonBrush = Brush.verticalGradient(listOf(Color(0xFF2F3850), Color(0xFF252D40)))
@@ -12149,7 +12198,7 @@ private fun <T> Segmented(
                 Box(
                     Modifier.width(segW).height(height).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onChange(k) },
                     contentAlignment = Alignment.Center
-                ) { Text(label, color = if (k == value) Color(0xFFF1F4FA) else Color(0xFF8690A4), fontSize = fontSize, fontWeight = FontWeight.ExtraBold, maxLines = 1) }
+                ) { Text(label, color = if (k == value) Color(0xFFF1F4FA) else Color(0xFF8690A4), fontSize = fontSize, lineHeight = fontSize, fontWeight = FontWeight.ExtraBold, maxLines = 1) }
             }
         }
     }
@@ -12158,7 +12207,7 @@ private fun <T> Segmented(
 @Composable
 private fun Group(label: String, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Text(label, Modifier.padding(start = 3.dp), color = LL.Dim, fontSize = 8.5.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp)
+        Text(label, Modifier.padding(start = 3.dp), color = LL.Dim, fontSize = 8.5.sp, lineHeight = 8.5.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp)
         content()
     }
 }
@@ -12168,14 +12217,14 @@ private fun LoopTextField(value: String, placeholder: String, onChange: (String)
     var text by remember { mutableStateOf(value) }
     BasicTextField(
         value = text, onValueChange = { if (it.length <= 22) { text = it; onChange(it) } }, singleLine = true,
-        textStyle = TextStyle(color = Color(0xFFF1F4FA), fontSize = 13.sp, fontWeight = FontWeight.Bold),
+        textStyle = TextStyle(color = Color(0xFFF1F4FA), fontSize = 13.sp, lineHeight = 13.sp, fontWeight = FontWeight.Bold),
         cursorBrush = SolidColor(LL.Accent),
         modifier = modifier.height(30.dp),
         decorationBox = { inner ->
             Box(
                 Modifier.fillMaxSize().clip(RoundedCornerShape(10.dp)).background(Color(0xFF0E131C)).border(1.dp, white(0.12f), RoundedCornerShape(10.dp)).padding(horizontal = 10.dp),
                 contentAlignment = Alignment.CenterStart
-            ) { if (text.isEmpty()) Text(placeholder, color = LL.Faint, fontSize = 13.sp, fontWeight = FontWeight.Bold); inner() }
+            ) { if (text.isEmpty()) Text(placeholder, color = LL.Faint, fontSize = 13.sp, lineHeight = 13.sp, fontWeight = FontWeight.Bold); inner() }
         }
     )
 }
@@ -12192,15 +12241,23 @@ private fun RoundButton(icon: LoopIcon, size: Dp, onClick: () -> Unit) {
     ) { LoopIconView(icon, Color(0xFFE3E8F2), 14.dp, 2.2f) }
 }
 
-/** Current bar position (bars since the transport origin), refreshed about 30 times a second. Visual only. */
+/**
+ * Current bar position (bars since the transport origin). Visual only.
+ *
+ * [active] lets the caller drop the refresh rate when nothing is moving: at 30 Hz while a
+ * case records, plays or waits for a boundary, and at ~4 Hz when the page is idle, so an
+ * open-but-silent LiveLooper page does not keep the compositor busy 30 times a second.
+ */
 @Composable
-fun rememberNowBar(clock: () -> Double): Double {
+fun rememberNowBar(clock: () -> Double, active: Boolean = true): Double {
     var now by remember { mutableStateOf(clock()) }
     val c by rememberUpdatedState(clock)
+    val a by rememberUpdatedState(active)
     LaunchedEffect(Unit) {
         var last = 0L
         while (true) {
-            androidx.compose.runtime.withFrameNanos { t -> if (t - last >= 30_000_000L) { last = t; now = c() } }
+            val interval = if (a) 30_000_000L else 250_000_000L
+            androidx.compose.runtime.withFrameNanos { t -> if (t - last >= interval) { last = t; now = c() } }
         }
     }
     return now
@@ -12242,7 +12299,7 @@ private fun StateBadge(info: StateInfo, size: TextUnit = 11.sp) {
     val low = when (info.anim) { BadgeAnim.Blink -> 0.35f; BadgeAnim.Pulse -> 0.6f; BadgeAnim.Breathe -> 0.82f; else -> 1f }
     val ms = when (info.anim) { BadgeAnim.Blink -> 450; BadgeAnim.Pulse -> 500; BadgeAnim.Breathe -> 1200; else -> 1000 }
     val a by t.animateFloat(1f, low, infiniteRepeatable(tween(ms, easing = LinearEasing), RepeatMode.Reverse), label = "a")
-    Text(info.label, Modifier.alpha(if (info.anim == BadgeAnim.None) 1f else a), color = info.color, fontSize = size, fontWeight = FontWeight.Black, letterSpacing = 0.6.sp, maxLines = 1)
+    Text(info.label, Modifier.alpha(if (info.anim == BadgeAnim.None) 1f else a), color = info.color, fontSize = size, lineHeight = size, fontWeight = FontWeight.Black, letterSpacing = 0.6.sp, maxLines = 1)
 }
 
 /* ═══════════════════════════ RING AND LAYERS ═══════════════════════════ */
@@ -12282,7 +12339,7 @@ private fun LoopRing(c: LoopCase, color: Color, size: Dp, info: StateInfo, pos: 
             c.queued != null -> "…"
             else -> (pos?.bar ?: 1).toString()
         }
-        val style = TextStyle(color = if (c.mode == CaseMode.Empty) LL.Faint else Color(0xFFF1F4FA), fontSize = ((if (centre.length > 1) 15f else 22f) * s).toSp(), fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
+        val style = TextStyle(color = if (c.mode == CaseMode.Empty) LL.Faint else Color(0xFFF1F4FA), fontSize = ((if (centre.length > 1) 15f else 22f) * s).toSp(), lineHeight = ((if (centre.length > 1) 15f else 22f) * s).toSp(), fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
         val l = measurer.measure(centre, style)
         drawText(l, topLeft = Offset(center.x - l.size.width / 2f, center.y - l.size.height / 2f))
     }
@@ -12345,7 +12402,7 @@ private fun ActionRow(c: LoopCase, color: Color, height: Dp, labels: Boolean, ac
             ) {
                 val tint = if (!b.enabled) Color(0xFF434C61) else if (b.on) b.tint else LL.Soft
                 LoopIconView(b.icon, if (b.on && b.key == "rec") b.tint else tint, if (labels) 15.dp else 13.dp)
-                if (labels) { Spacer(Modifier.width(6.dp)); Text(b.text, color = tint, fontSize = 12.5.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1) }
+                if (labels) { Spacer(Modifier.width(6.dp)); Text(b.text, color = tint, fontSize = 12.5.sp, lineHeight = 12.5.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1) }
             }
         }
     }
@@ -12382,17 +12439,23 @@ private fun CaseCard(c: LoopCase, nowBar: Double, beatsPerBar: Int, actions: Loo
     CaseSurface(c, color, modifier.padding(0.dp)) {
         Column(Modifier.fillMaxSize().padding(horizontal = 9.dp, vertical = 7.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth().height(18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("L${c.id + 1}", Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { actions.onFocus(c.id) }, color = LL.Soft, fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
+                Text("L${c.id + 1}", Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { actions.onFocus(c.id) }, color = LL.Soft, fontSize = 11.5.sp, lineHeight = 11.5.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
                 StateBadge(info)
-                if (c.mute && c.layers > 0) Text("MUTE", Modifier.border(1.dp, LL.Amber.a(0.5f), RoundedCornerShape(5.dp)).padding(horizontal = 4.dp), color = LL.Amber, fontSize = 8.5.sp, fontWeight = FontWeight.Black, letterSpacing = 0.6.sp)
+                if (c.mute && c.layers > 0) Text("MUTE", Modifier.border(1.dp, LL.Amber.a(0.5f), RoundedCornerShape(5.dp)).padding(horizontal = 4.dp), color = LL.Amber, fontSize = 8.5.sp, lineHeight = 8.5.sp, fontWeight = FontWeight.Black, letterSpacing = 0.6.sp)
                 Spacer(Modifier.weight(1f))
-                if (c.hasLoop) Text("${c.bars} bar${if (c.bars > 1) "s" else ""}", color = LL.Mute, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
+                if (c.hasLoop) Text("${c.bars} bar${if (c.bars > 1) "s" else ""}", color = LL.Mute, fontSize = 10.sp, lineHeight = 10.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
             }
-            Row(Modifier.fillMaxWidth().weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                LoopRing(c, color, 68.dp, info, pos)
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically)) {
-                    Text(posText(c, pos, info), color = if (c.mode == CaseMode.Empty) LL.Faint else LL.Soft, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    LayerBars(c, color, 4.dp, 6.dp)
+            BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+                // The reference draws the ring at 68 dp inside a 168 dp card (~40% of the
+                // width). Keeping that ratio instead of a hard 68 dp is what lets the text
+                // column survive on a 640 dp phone, where a card is only ~98 dp wide.
+                val ring = if (maxWidth * 0.42f < 68.dp) maxWidth * 0.42f else 68.dp
+                Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                    LoopRing(c, color, ring, info, pos)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically)) {
+                        Text(posText(c, pos, info), color = if (c.mode == CaseMode.Empty) LL.Faint else LL.Soft, fontSize = 11.sp, lineHeight = 11.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        LayerBars(c, color, 4.dp, 6.dp)
+                    }
                 }
             }
             ActionRow(c, color, 28.dp, false, actions)
@@ -12412,10 +12475,10 @@ private fun CaseChip(c: LoopCase, nowBar: Double, active: Boolean, onSelect: () 
             .pressable(onClick = onSelect).padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text("L${c.id + 1}", color = LL.Soft, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
+        Text("L${c.id + 1}", color = LL.Soft, fontSize = 11.sp, lineHeight = 11.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
         Box(Modifier.size(7.dp).drawBehind { if (c.mode != CaseMode.Empty) drawCircle(info.color.a(0.35f), 6.dp.toPx()) }.background(info.color, CircleShape))
         Spacer(Modifier.weight(1f))
-        Text(if (c.layers > 0) "${c.bars}b·${c.layers}" else "", color = Color(0xFF7B859A), fontSize = 9.5.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
+        Text(if (c.layers > 0) "${c.bars}b·${c.layers}" else "", color = Color(0xFF7B859A), fontSize = 9.5.sp, lineHeight = 9.5.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
     }
 }
 
@@ -12457,17 +12520,17 @@ private fun FocusView(c: LoopCase, state: LooperUiState, nowBar: Double, actions
                         Modifier.height(28.dp).clip(RoundedCornerShape(9.dp)).background(white(0.05f)).border(1.dp, white(0.1f), RoundedCornerShape(9.dp))
                             .pressable { actions.onFocus(null) }.padding(horizontal = 11.dp),
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) { LoopIconView(LoopIcon.Back, LL.Soft, 12.dp); Text("All cases", color = LL.Soft, fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold) }
-                    Text("L${c.id + 1}", color = LL.Ink, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
-                    if (c.name.isNotEmpty()) Text(c.name, color = LL.Soft, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 120.dp))
+                    ) { LoopIconView(LoopIcon.Back, LL.Soft, 12.dp); Text("All cases", color = LL.Soft, fontSize = 11.5.sp, lineHeight = 11.5.sp, fontWeight = FontWeight.ExtraBold) }
+                    Text("L${c.id + 1}", color = LL.Ink, fontSize = 14.sp, lineHeight = 14.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
+                    if (c.name.isNotEmpty()) Text(c.name, color = LL.Soft, fontSize = 13.sp, lineHeight = 13.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 120.dp))
                     StateBadge(info, 13.sp)
                     Spacer(Modifier.weight(1f))
-                    if (c.layers > 0) Text("${c.bars} bar${if (c.bars > 1) "s" else ""} · ${c.layers} layer${if (c.layers > 1) "s" else ""}", color = LL.Mute, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
+                    if (c.layers > 0) Text("${c.bars} bar${if (c.bars > 1) "s" else ""} · ${c.layers} layer${if (c.layers > 1) "s" else ""}", color = LL.Mute, fontSize = 12.sp, lineHeight = 12.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
                 }
                 Row(Modifier.fillMaxWidth().weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                     LoopRing(c, color, 158.dp, info, pos)
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterVertically)) {
-                        Text("LAYERS", color = LL.Dim, fontSize = 9.5.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.3.sp)
+                        Text("LAYERS", color = LL.Dim, fontSize = 9.5.sp, lineHeight = 9.5.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.3.sp)
                         for (i in 0 until 4) {
                             if (i < c.layers) {
                                 val muted = c.layerMute[i]
@@ -12478,27 +12541,27 @@ private fun FocusView(c: LoopCase, state: LooperUiState, nowBar: Double, actions
                                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Box(Modifier.size(6.dp, 15.dp).then(if (muted) Modifier.border(1.dp, color, RoundedCornerShape(3.dp)) else Modifier.background(color, RoundedCornerShape(3.dp))))
-                                    Text("Layer ${i + 1}", Modifier.weight(1f), color = LL.Ink, fontSize = 12.5.sp, fontWeight = FontWeight.ExtraBold)
-                                    Text("${c.events.count { it.layer == i && it.on }} hits", color = LL.Mute, fontSize = 10.5.sp, fontFamily = LL.Mono)
+                                    Text("Layer ${i + 1}", Modifier.weight(1f), color = LL.Ink, fontSize = 12.5.sp, lineHeight = 12.5.sp, fontWeight = FontWeight.ExtraBold)
+                                    Text("${c.events.count { it.layer == i && it.on }} hits", color = LL.Mute, fontSize = 10.5.sp, lineHeight = 10.5.sp, fontFamily = LL.Mono)
                                     SmallSquareButton(if (muted) LoopIcon.Mute else LoopIcon.Speaker, if (muted) LL.Amber else LL.Soft, if (muted) LL.Amber.a(0.25f) else white(0.08f)) { actions.onToggleLayerMute(c.id, i) }
                                     SmallSquareButton(LoopIcon.X, LL.Soft, white(0.08f)) { actions.onRemoveLayer(c.id, i) }
                                 }
                             } else {
                                 Box(Modifier.fillMaxWidth().height(30.dp).dashedBorder(white(0.1f), 10.dp).padding(horizontal = 12.dp), contentAlignment = Alignment.CenterStart) {
-                                    Text("Layer ${i + 1}", color = Color(0xFF4F596E), fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                                    Text("Layer ${i + 1}", color = Color(0xFF4F596E), fontSize = 12.5.sp, lineHeight = 12.5.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
                         Row(Modifier.fillMaxWidth().height(28.dp).padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             LoopIconView(LoopIcon.Speaker, LL.Mute, 14.dp)
                             VolumeSlider(c.volume, color, { actions.onVolume(c.id, it) }, Modifier.weight(1f))
-                            Text("${c.volume}%", Modifier.width(34.dp), color = LL.Ink, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono, textAlign = TextAlign.End)
+                            Text("${c.volume}%", Modifier.width(34.dp), color = LL.Ink, fontSize = 11.sp, lineHeight = 11.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono, textAlign = TextAlign.End)
                             val shape = RoundedCornerShape(9.dp)
                             Box(
                                 Modifier.height(26.dp).clip(shape).background(if (c.mute) LL.Amber.a(0.2f) else white(0.05f)).border(1.dp, if (c.mute) LL.Amber.a(0.6f) else white(0.1f), shape)
                                     .pressable { actions.onToggleMute(c.id) }.padding(horizontal = 10.dp),
                                 contentAlignment = Alignment.Center
-                            ) { Text("Mute", color = if (c.mute) LL.Amber else LL.Soft, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold) }
+                            ) { Text("Mute", color = if (c.mute) LL.Amber else LL.Soft, fontSize = 11.sp, lineHeight = 11.sp, fontWeight = FontWeight.ExtraBold) }
                         }
                     }
                 }
@@ -12535,7 +12598,7 @@ private fun CaseSheet(c: LoopCase, actions: LooperActions, modifier: Modifier) {
                 Box(Modifier.size(8.dp).drawBehind { drawCircle(color.a(0.4f), 6.dp.toPx()) }.background(color, CircleShape))
                 Text(
                     "L${c.id + 1}${if (c.name.isNotEmpty()) " · ${c.name}" else ""} · " + if (c.layers > 0) "${c.bars} bar${if (c.bars > 1) "s" else ""} · ${c.layers} layer${if (c.layers > 1) "s" else ""}" else "empty",
-                    Modifier.weight(1f), color = Color(0xFFF1F4FA), fontSize = 14.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis
+                    Modifier.weight(1f), color = Color(0xFFF1F4FA), fontSize = 14.sp, lineHeight = 14.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
                 Box(Modifier.size(28.dp).clip(CircleShape).background(white(0.07f)).pressable { actions.onSheet(null) }, contentAlignment = Alignment.Center) { LoopIconView(LoopIcon.X, Color(0xFF9AA5BA), 12.dp, 2.2f) }
             }
@@ -12554,8 +12617,8 @@ private fun CaseSheet(c: LoopCase, actions: LooperActions, modifier: Modifier) {
                             .border(1.dp, white(0.06f), sh).pressable(enabled = ok, onClick = fn),
                         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)
                     ) {
-                        Text(glyph, color = if (!ok) Color(0xFF4F596E) else if (label == "Clear") Color(0xFFE3A0B4) else LL.Accent, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
-                        Text(label, color = if (ok) LL.Ink else Color(0xFF4F596E), fontSize = 10.5.sp, fontWeight = FontWeight.ExtraBold)
+                        Text(glyph, color = if (!ok) Color(0xFF4F596E) else if (label == "Clear") Color(0xFFE3A0B4) else LL.Accent, fontSize = 15.sp, lineHeight = 15.sp, fontWeight = FontWeight.ExtraBold, fontFamily = LL.Mono)
+                        Text(label, color = if (ok) LL.Ink else Color(0xFF4F596E), fontSize = 10.5.sp, lineHeight = 10.5.sp, fontWeight = FontWeight.ExtraBold)
                     }
                 }
             }
@@ -12569,7 +12632,7 @@ private fun CaseSheet(c: LoopCase, actions: LooperActions, modifier: Modifier) {
                                 Modifier.height(24.dp).clip(sh).background(if (on) LL.Accent.a(0.16f) else Color.Transparent).border(1.dp, if (on) LL.Accent.a(0.55f) else white(0.1f), sh)
                                     .pressable { actions.onToggleSource(c.id, s) }.padding(horizontal = 11.dp),
                                 contentAlignment = Alignment.Center
-                            ) { Text(label, color = if (on) Color(0xFFD5E3FA) else Color(0xFF7B859A), fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold) }
+                            ) { Text(label, color = if (on) Color(0xFFD5E3FA) else Color(0xFF7B859A), fontSize = 11.5.sp, lineHeight = 11.5.sp, fontWeight = FontWeight.ExtraBold) }
                         }
                     }
                 }
@@ -12578,7 +12641,7 @@ private fun CaseSheet(c: LoopCase, actions: LooperActions, modifier: Modifier) {
                 Group("MODE") { Segmented(listOf(false to "Loop", true to "One-shot"), c.oneShot, { actions.onOneShot(c.id, it) }, 118.dp, 22.dp, 10.5.sp) }
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("NAME", color = LL.Dim, fontSize = 8.5.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp, modifier = Modifier.padding(start = 3.dp))
+                Text("NAME", color = LL.Dim, fontSize = 8.5.sp, lineHeight = 8.5.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp, modifier = Modifier.padding(start = 3.dp))
                 key(c.id) { LoopTextField(c.name, "L${c.id + 1}", { actions.onRename(c.id, it) }, Modifier.weight(1f)) }
             }
         }
@@ -12597,7 +12660,7 @@ private fun PillButton(text: String, icon: LoopIcon?, enabled: Boolean, rose: Bo
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         if (icon != null) LoopIconView(icon, LL.Soft, 11.dp)
-        Text(text, color = if (rose) Color(0xFFE3A0B4) else LL.Soft, fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+        Text(text, color = if (rose) Color(0xFFE3A0B4) else LL.Soft, fontSize = 11.5.sp, lineHeight = 11.5.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
     }
 }
 
@@ -12628,7 +12691,18 @@ private fun Transport(state: LooperUiState, nowBar: Double, actions: LooperActio
 
 /* ═══════════════════════════ PAGE CONTENT ═══════════════════════════ */
 
-/** Right area of the LiveLooper page: transport + the 8 cases (or the focused case). Give it the page's right area. */
+/**
+ * Right area of the LiveLooper page: transport row + the 2x4 case grid (or the focused case).
+ *
+ * The area is laid out **responsively**, filling whatever box the page gives it: the
+ * transport row is fixed height and the 2x4 grid shares the remainder with `weight(1f)`,
+ * exactly like `LoopsPreview.jsx` (`grid-template-rows: repeat(2, minmax(0,1fr))`).
+ *
+ * A previous revision laid the cards out on a fixed 693 x 343 dp canvas and scaled the
+ * whole thing with `min(w/W, h/H)`. On a phone that shrinks every card at once — the two
+ * rows collapse into thin strips and the card numbers read as a squeezed line. The
+ * reference grid is fluid, so the port must be too.
+ */
 @Composable
 fun LiveLooperContent(state: LooperUiState, nowBar: Double, actions: LooperActions, modifier: Modifier = Modifier) {
     val focus = state.focusId?.let { state.cases.getOrNull(it) }
@@ -12655,6 +12729,25 @@ fun LiveLooperContent(state: LooperUiState, nowBar: Double, actions: LooperActio
     }
 }
 
+/**
+ * Convenience host: drives [LiveLooperContent]'s clock itself.
+ *
+ * Keeping the clock inside this small composable is the point: the position state it reads
+ * every frame only invalidates this subtree, not the page that hosts it (top bar, TonicPad,
+ * page selectors). Pass [active] = false when no case is moving so the idle page is cheap.
+ */
+@Composable
+fun LiveLooperHost(
+    state: LooperUiState,
+    clock: () -> Double,
+    active: Boolean,
+    actions: LooperActions,
+    modifier: Modifier = Modifier,
+) {
+    val now = rememberNowBar(clock, active)
+    LiveLooperContent(state, now, actions, modifier)
+}
+
 /* ═══════════════════════════ OVERLAYS (page root) ═══════════════════════════ */
 
 @Composable
@@ -12669,7 +12762,7 @@ private fun DialogCard(width: Dp, title: String, text: String, content: @Composa
         Modifier.width(width).shadow(24.dp, shape, ambientColor = Color.Black, spotColor = Color.Black).clip(shape).background(PanelBrush).border(1.dp, white(0.12f), shape)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}.padding(18.dp)
     ) {
-        Text(title, color = Color(0xFFF1F4FA), fontSize = 16.sp, fontWeight = FontWeight.Black)
+        Text(title, color = Color(0xFFF1F4FA), fontSize = 16.sp, lineHeight = 16.sp, fontWeight = FontWeight.Black)
         Text(text, Modifier.padding(top = 6.dp), color = LL.Mute, fontSize = 12.5.sp, lineHeight = 18.sp)
         Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), content = content)
     }
@@ -12684,7 +12777,7 @@ private fun DialogButton(text: String, kind: Int, onClick: () -> Unit) {   // 0 
         Modifier.height(36.dp).clip(shape).background(bg).then(if (kind == 0 || kind == 1) Modifier.border(1.dp, if (kind == 1) LL.Rose.a(0.4f) else white(0.12f), shape) else Modifier)
             .pressable(onClick = onClick).padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center
-    ) { Text(text, color = fg, fontSize = 13.sp, fontWeight = if (kind >= 2) FontWeight.Black else FontWeight.ExtraBold) }
+    ) { Text(text, color = fg, fontSize = 13.sp, lineHeight = 13.sp, fontWeight = if (kind >= 2) FontWeight.Black else FontWeight.ExtraBold) }
 }
 
 @Composable
@@ -12701,7 +12794,7 @@ private fun SmallChip(text: String, danger: Boolean, enabled: Boolean, onClick: 
         Modifier.height(26.dp).clip(shape).background(if (danger) LL.Rose.a(0.1f) else white(0.05f)).border(1.dp, if (danger) LL.Rose.a(0.4f) else white(0.1f), shape)
             .pressable(enabled = enabled, onClick = onClick).padding(horizontal = 10.dp),
         contentAlignment = Alignment.Center
-    ) { Text(text, color = if (!enabled) Color(0xFF4F596E) else if (danger) Color(0xFFE3A0B4) else LL.Soft, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold) }
+    ) { Text(text, color = if (!enabled) Color(0xFF4F596E) else if (danger) Color(0xFFE3A0B4) else LL.Soft, fontSize = 11.sp, lineHeight = 11.sp, fontWeight = FontWeight.ExtraBold) }
 }
 
 @Composable
@@ -12711,9 +12804,38 @@ private fun PatchWindow(state: LooperUiState, actions: LooperActions, modifier: 
     val enter = remember { Animatable(0f) }
     LaunchedEffect(Unit) { enter.animateTo(1f, tween(320)) }
     val shape = RoundedCornerShape(22.dp)
+    // The reference draws this window at a fixed `left:120, right:120, top:58, bottom:12`
+    // on the 891 x 411 frame: a 651 x 341 dp box whose patch list and 196 dp right column
+    // are sized against that width. Filling a phone's padded area stretched those columns
+    // and squashed their text, so the window is laid out at 651 x 341 and scaled as a
+    // whole — it only gets smaller on a small screen, never distorted.
+    BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
+        // Only ever shrink: a floating window keeps its designed 651 x 341 size on a large
+        // screen (the reference draws it at scale 1 inside the 891 x 411 frame).
+        val scale = min(maxWidth.value / LL_PATCH_W, maxHeight.value / LL_PATCH_H).coerceAtMost(1f)
+        Box(Modifier.width((LL_PATCH_W * scale).dp).height((LL_PATCH_H * scale).dp)) {
+            PatchWindowColumn(state, actions, open, { open = it }, renaming, { renaming = it }, enter, scale, shape)
+        }
+    }
+}
+
+@Composable
+private fun PatchWindowColumn(
+    state: LooperUiState, actions: LooperActions,
+    open: String?, setOpen: (String?) -> Unit,
+    renaming: String?, setRenaming: (String?) -> Unit,
+    enter: Animatable<Float, androidx.compose.animation.core.AnimationVector1D>, scale: Float,
+    shape: androidx.compose.ui.graphics.Shape,
+) {
     Column(
-        modifier
-            .graphicsLayer { val e = enter.value; scaleX = 0.94f + 0.06f * e; scaleY = 0.94f + 0.06f * e; translationY = (1f - e) * 8.dp.toPx(); alpha = e }
+        Modifier
+            .width(LL_PATCH_W.dp).height(LL_PATCH_H.dp)
+            .graphicsLayer {
+                val e = enter.value
+                scaleX = scale * (0.94f + 0.06f * e); scaleY = scale * (0.94f + 0.06f * e)
+                translationY = (1f - e) * 8.dp.toPx(); alpha = e
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+            }
             .shadow(26.dp, shape, ambientColor = Color.Black, spotColor = Color.Black).clip(shape).background(WindowBrush).border(1.dp, white(0.1f), shape)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
     ) {
@@ -12723,8 +12845,8 @@ private fun PatchWindow(state: LooperUiState, actions: LooperActions, modifier: 
         ) {
             Box(Modifier.size(4.dp, 32.dp).drawBehind { drawRoundRect(LL.Accent.a(0.35f), Offset(-3.dp.toPx(), 0f), Size(size.width + 6.dp.toPx(), size.height), CornerRadius(4.dp.toPx())) }.background(LL.Accent, RoundedCornerShape(2.dp)))
             Column(Modifier.weight(1f)) {
-                Text("Loop patches", color = Color(0xFFF4F6FB), fontSize = 17.sp, fontWeight = FontWeight.Black)
-                Text("Setlist · ${state.setlistName} · saved with the setlist", color = Color(0xFF7B859A), fontSize = 11.5.sp, modifier = Modifier.padding(top = 2.dp))
+                Text("Loop patches", color = Color(0xFFF4F6FB), fontSize = 17.sp, lineHeight = 17.sp, fontWeight = FontWeight.Black)
+                Text("Setlist · ${state.setlistName} · saved with the setlist", color = Color(0xFF7B859A), fontSize = 11.5.sp, lineHeight = 11.5.sp, modifier = Modifier.padding(top = 2.dp))
             }
             RoundButton(LoopIcon.X, 34.dp, actions.onClosePatches)
         }
@@ -12747,25 +12869,25 @@ private fun PatchWindow(state: LooperUiState, actions: LooperActions, modifier: 
                                 verticalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterVertically)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                                    Text(p.name, color = Color(0xFFF1F4FA), fontSize = 13.5.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 170.dp))
-                                    if (on) Text("ACTIVE", Modifier.border(1.dp, LL.Accent.a(0.5f), RoundedCornerShape(5.dp)).padding(horizontal = 5.dp, vertical = 1.dp), color = LL.Accent, fontSize = 8.5.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                                    Text(p.name, color = Color(0xFFF1F4FA), fontSize = 13.5.sp, lineHeight = 13.5.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 170.dp))
+                                    if (on) Text("ACTIVE", Modifier.border(1.dp, LL.Accent.a(0.5f), RoundedCornerShape(5.dp)).padding(horizontal = 5.dp, vertical = 1.dp), color = LL.Accent, fontSize = 8.5.sp, lineHeight = 8.5.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
                                     if (on && state.isDirty) Box(Modifier.size(7.dp).drawBehind { drawCircle(LL.Amber.a(0.4f), 6.dp.toPx()) }.background(LL.Amber, CircleShape))
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                     PatchMiniBar(p.cases)
-                                    Text(if (used > 0) "$used case${if (used > 1) "s" else ""} · $maxBars bar${if (maxBars > 1) "s" else ""} max" else "empty", color = Color(0xFF7B859A), fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = LL.Mono)
+                                    Text(if (used > 0) "$used case${if (used > 1) "s" else ""} · $maxBars bar${if (maxBars > 1) "s" else ""} max" else "empty", color = Color(0xFF7B859A), fontSize = 10.sp, lineHeight = 10.sp, fontWeight = FontWeight.Bold, fontFamily = LL.Mono)
                                 }
                             }
-                            Box(Modifier.size(30.dp).clip(RoundedCornerShape(10.dp)).background(if (exp) white(0.1f) else Color.Transparent).pressable { open = if (exp) null else p.id }, contentAlignment = Alignment.Center) {
+                            Box(Modifier.size(30.dp).clip(RoundedCornerShape(10.dp)).background(if (exp) white(0.1f) else Color.Transparent).pressable { setOpen(if (exp) null else p.id) }, contentAlignment = Alignment.Center) {
                                 LoopIconView(LoopIcon.More, Color(0xFF9AA5BA), 15.dp)
                             }
                         }
                         if (exp) Row(Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                             if (renaming == p.id) {
                                 LoopTextField(p.name, "Name", { actions.onRenamePatch(p.id, it) }, Modifier.weight(1f))
-                                SmallChip("Done", false, true) { renaming = null }
+                                SmallChip("Done", false, true) { setRenaming(null) }
                             } else {
-                                SmallChip("Rename", false, true) { renaming = p.id }
+                                SmallChip("Rename", false, true) { setRenaming(p.id) }
                                 SmallChip("Duplicate", false, true) { actions.onDuplicatePatch(p.id) }
                                 SmallChip("Overwrite with current", false, !on) { actions.onOverwritePatch(p.id) }
                                 SmallChip("Delete", true, !on && state.patches.size > 1) { actions.onDeletePatch(p.id) }
@@ -12775,14 +12897,14 @@ private fun PatchWindow(state: LooperUiState, actions: LooperActions, modifier: 
                 }
             }
             Column(Modifier.width(196.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("CURRENT", color = LL.Dim, fontSize = 9.5.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.3.sp)
+                Text("CURRENT", color = LL.Dim, fontSize = 9.5.sp, lineHeight = 9.5.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.3.sp)
                 val sh = RoundedCornerShape(13.dp)
                 Column(Modifier.fillMaxWidth().clip(sh).background(RowBrush).border(1.dp, white(0.06f), sh).padding(11.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(state.activePatch?.name ?: "Unsaved loops", color = Color(0xFFF1F4FA), fontSize = 14.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(state.activePatch?.name ?: "Unsaved loops", color = Color(0xFFF1F4FA), fontSize = 14.sp, lineHeight = 14.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     val c = if (state.isDirty) LL.Amber else LL.Sage
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                         Box(Modifier.size(7.dp).drawBehind { drawCircle(c.a(0.4f), 6.dp.toPx()) }.background(c, CircleShape))
-                        Text(if (state.isDirty) "Unsaved changes" else "Saved", color = c, fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold)
+                        Text(if (state.isDirty) "Unsaved changes" else "Saved", color = c, fontSize = 11.5.sp, lineHeight = 11.5.sp, fontWeight = FontWeight.ExtraBold)
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                         state.cases.forEach { x -> Box(Modifier.weight(1f).height(6.dp).background(if (x.layers > 0) loopCaseColor(x.id) else white(0.1f), RoundedCornerShape(3.dp))) }
@@ -12794,12 +12916,12 @@ private fun PatchWindow(state: LooperUiState, actions: LooperActions, modifier: 
                         .background(if (dirty) Brush.verticalGradient(listOf(Color(0xFF9DBDEB), Color(0xFF7FA3DD))) else SolidColor(white(0.06f)))
                         .pressable(enabled = dirty && state.activePatchId != null, onClick = actions.onSavePatch),
                     contentAlignment = Alignment.Center
-                ) { Text("Save", color = if (dirty) Color(0xFF0F1726) else LL.Faint, fontSize = 13.sp, fontWeight = FontWeight.Black) }
+                ) { Text("Save", color = if (dirty) Color(0xFF0F1726) else LL.Faint, fontSize = 13.sp, lineHeight = 13.sp, fontWeight = FontWeight.Black) }
                 Box(Modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(12.dp)).background(white(0.05f)).border(1.dp, white(0.12f), RoundedCornerShape(12.dp)).pressable(onClick = actions.onSaveNewPatch), contentAlignment = Alignment.Center) {
-                    Text("Save as new patch", color = Color(0xFFE3E8F2), fontSize = 12.5.sp, fontWeight = FontWeight.ExtraBold)
+                    Text("Save as new patch", color = Color(0xFFE3E8F2), fontSize = 12.5.sp, lineHeight = 12.5.sp, fontWeight = FontWeight.ExtraBold)
                 }
                 Box(Modifier.fillMaxWidth().height(32.dp).clip(RoundedCornerShape(11.dp)).border(1.dp, white(0.1f), RoundedCornerShape(11.dp)).pressable(enabled = dirty && state.activePatch != null, onClick = actions.onRevertPatch), contentAlignment = Alignment.Center) {
-                    Text("Revert to saved", color = if (dirty) LL.Soft else Color(0xFF4F596E), fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+                    Text("Revert to saved", color = if (dirty) LL.Soft else Color(0xFF4F596E), fontSize = 12.sp, lineHeight = 12.sp, fontWeight = FontWeight.ExtraBold)
                 }
                 Spacer(Modifier.weight(1f))
                 Text("Patches belong to the setlist. They are stored with it and travel with it.", color = Color(0xFF59647A), fontSize = 10.5.sp, lineHeight = 15.sp)
@@ -12814,7 +12936,7 @@ fun LiveLooperOverlays(state: LooperUiState, actions: LooperActions, modifier: M
     Box(modifier) {
         if (state.patchWindowOpen) {
             Scrim(0.62f, actions.onClosePatches)
-            PatchWindow(state, actions, Modifier.fillMaxSize().padding(start = 120.dp, end = 120.dp, top = 58.dp, bottom = 12.dp))
+            PatchWindow(state, actions, Modifier.fillMaxSize())
         }
         val target = state.patches.firstOrNull { it.id == state.pendingLoadId }
         if (target != null) {
@@ -12844,8 +12966,8 @@ fun LiveLooperOverlays(state: LooperUiState, actions: LooperActions, modifier: M
                     .clip(shape).background(Color(0xFF222C40)).border(1.dp, white(0.1f), shape).padding(horizontal = 14.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Text(t.text, color = LL.Ink, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                if (t.undoable) Text("UNDO", Modifier.pressable(onClick = actions.onToastUndo), color = LL.Accent, fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                Text(t.text, color = LL.Ink, fontSize = 13.sp, lineHeight = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                if (t.undoable) Text("UNDO", Modifier.pressable(onClick = actions.onToastUndo), color = LL.Accent, fontSize = 12.sp, lineHeight = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
             }
         }
     }
@@ -12895,7 +13017,7 @@ fun LooperPageSelector(current: DrumPadPage, onSelect: (DrumPadPage) -> Unit, mo
             cornerRadius = 13.dp,
             shadow = 0.dp,
         ) {
-            Text(if (current == DrumPadPage.LiveLooper) "LiveLooper" else "DrumPad", Modifier.padding(start = 14.dp).weight(1f), color = Color(0xFFE3E8F2), fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+            Text(if (current == DrumPadPage.LiveLooper) "LiveLooper" else "DrumPad", Modifier.padding(start = 14.dp).weight(1f), color = Color(0xFFE3E8F2), fontSize = 14.sp, lineHeight = 14.sp, fontWeight = FontWeight.ExtraBold)
             Box(Modifier.padding(end = 12.dp).rotate(rot)) { LoopIconView(LoopIcon.Down, LL.Accent, 16.dp, 2.4f) }
         }
         if (open) Popup(alignment = Alignment.TopStart, offset = IntOffset(0, with(density) { (pillHeight + 6.dp).roundToPx() }), onDismissRequest = { open = false }) {
@@ -12913,7 +13035,7 @@ fun LooperPageSelector(current: DrumPadPage, onSelect: (DrumPadPage) -> Unit, mo
                             .pressable { open = false; onSelect(p) }.padding(horizontal = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(label, Modifier.weight(1f), color = if (sel) Color(0xFFF1F4FA) else Color(0xFFB5BFD3), fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+                        Text(label, Modifier.weight(1f), color = if (sel) Color(0xFFF1F4FA) else Color(0xFFB5BFD3), fontSize = 14.sp, lineHeight = 14.sp, fontWeight = FontWeight.ExtraBold)
                         if (sel) LoopIconView(LoopIcon.Check, LL.Accent, 15.dp, 2.6f)
                     }
                 }
@@ -12935,8 +13057,8 @@ fun LoopPatchChip(state: LooperUiState, actions: LooperActions, modifier: Modifi
         ) {
             LoopIconView(LoopIcon.Layers, LL.Accent, 15.dp, 2f)
             Column(Modifier.weight(1f, fill = false)) {
-                Text("LOOP PATCH", color = LL.Dim, fontSize = 8.5.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.1.sp)
-                Text(state.activePatch?.name ?: "Unsaved", Modifier.widthIn(max = 112.dp), color = Color(0xFFE3E8F2), fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("LOOP PATCH", color = LL.Dim, fontSize = 8.5.sp, lineHeight = 8.5.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.1.sp)
+                Text(state.activePatch?.name ?: "Unsaved", Modifier.widthIn(max = 112.dp), color = Color(0xFFE3E8F2), fontSize = 13.sp, lineHeight = 13.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (state.isDirty) Box(Modifier.size(7.dp).drawBehind { drawCircle(LL.Amber.a(0.4f), 6.dp.toPx()) }.background(LL.Amber, CircleShape))
         }
@@ -12950,8 +13072,8 @@ fun LoopsSummaryCard(state: LooperUiState, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(14.dp)
     Column(modifier.clip(shape).background(Color(0xFF1B2336)).padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.SpaceBetween) {
         Row {
-            Text("Loops ", color = LL.Soft, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
-            Text("${state.usedCount}/8", color = LL.Amber, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+            Text("Loops ", color = LL.Soft, fontSize = 12.sp, lineHeight = 12.sp, fontWeight = FontWeight.ExtraBold)
+            Text("${state.usedCount}/8", color = LL.Amber, fontSize = 12.sp, lineHeight = 12.sp, fontWeight = FontWeight.ExtraBold)
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
             state.cases.forEach { c -> Box(Modifier.weight(1f).height(5.dp).background(if (c.layers == 0) white(0.1f) else loopCaseColor(c.id), RoundedCornerShape(2.dp))) }
@@ -14227,7 +14349,7 @@ class AppStatePersistence(context: Context) {
 }
 ```
 
-#### `AudioEngine.kt` — 1572 lines
+#### `AudioEngine.kt` — 1578 lines
 
 ```kotlin
 package com.soundstage.mixer.model
@@ -14977,6 +15099,12 @@ class AudioEngine(private val context: Context) {
                     }
                     else -> {
                         targetChannels.forEach { ch ->
+                            // CC#64 is per-track: a track with the sustain switch off must
+                            // not engage FluidSynth's hold. The Kotlin side already refuses
+                            // to remember the note, but forwarding the CC made the synth
+                            // hold it anyway, so the switch looked inert as soon as the
+                            // pedal was used.
+                            if (data1 == 64 && !sustainEnabledFor(ch)) return@forEach
                             NativeAudioBridge.safeControlChange(channel = ch, cc = data1, value = data2)
                         }
                     }
@@ -16537,7 +16665,7 @@ class FallbackSynth {
 }
 ```
 
-#### `FileManager.kt` — 1126 lines
+#### `FileManager.kt` — 1134 lines
 
 ```kotlin
 package com.soundstage.mixer.model
@@ -16630,6 +16758,13 @@ class FileManager(private val context: Context) {
         }
     val drumPadDir: File get() = File(baseDir, "DrumPad")
     val drumPadLoopDir: File get() = File(drumPadDir, "DrumPad loop")
+    /**
+     * LiveLooper patches and their captured loops live beside the loops they play, under
+     * `Loops/LiveLooper/` (per the product request). The patch JSON is written there by
+     * `MixerViewModel` so a show's loops travel with the folder that holds them.
+     */
+    val liveLooperDir: File get() = File(loopsDir, "LiveLooper")
+    val liveLooperPatchesFile: File get() = File(liveLooperDir, "patches.json")
     val setlistsDir: File get() = File(baseDir, "Setlists")
     val projectsDir: File get() = setlistsDir
     val scenesDir: File get() = setlistsDir
@@ -16668,6 +16803,7 @@ class FileManager(private val context: Context) {
             if (!baseDir.exists()) baseDir.mkdirs()
             if (!soundfontsDir.exists()) soundfontsDir.mkdirs()
             if (!loopsDir.exists()) loopsDir.mkdirs()
+            if (!liveLooperDir.exists()) liveLooperDir.mkdirs()
             if (!drumPadDir.exists()) drumPadDir.mkdirs()
             if (!drumPadLoopDir.exists()) drumPadLoopDir.mkdirs()
             if (!setlistsDir.exists()) setlistsDir.mkdirs()
@@ -18455,7 +18591,7 @@ data class SheetItem(
 
 ### `com/soundstage/mixer/ui`
 
-#### `MixerScreen.kt` — 1299 lines
+#### `MixerScreen.kt` — 1350 lines
 
 ```kotlin
 package com.soundstage.mixer.ui
@@ -18494,6 +18630,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -18565,6 +18702,7 @@ private fun MixerMainPageContent(
     trackScrollState: ScrollState,
     onImportDrumPadAudio: () -> Unit = {}
 ) {
+    val trackColors = LocalTrackColors.current
 // Full-screen Studio Layout (No enclosing bento box, edge-to-edge layout)
 // Fond V2 (degrade + vignettes) : remplace MaterialTheme.colorScheme.background.
                 // Real height of the keyboard overlay at rest, published by onSizeChanged below.
@@ -18670,7 +18808,7 @@ private fun MixerMainPageContent(
                                     }
 
                                     val isDimmed = !track.isEnabled || track.isMuted || (isAnySolo && !track.isSolo)
-                                    val accentColor = track.resolvedColor()
+                                    val accentColor = track.resolvedColor(trackColors)
 
                                     ChannelStripV2(
                                         track = track,
@@ -19028,7 +19166,7 @@ private fun MixerMainPageContent(
                         KeyboardLine(
                             id = t.id.toString(),
                             name = t.patchName.ifBlank { t.soundfontName.ifBlank { t.name } },
-                            color = t.resolvedColor(),
+                            color = t.resolvedColor(trackColors),
                             low = t.splitNoteMin,
                             high = t.splitNoteMax
                         )
@@ -19113,6 +19251,40 @@ fun MixerScreen(
     var tsPage by remember { mutableStateOf(TsPage.Track) }
     LaunchedEffect(uiState.activeTrackSettingsId) { tsPage = TsPage.Track }
 
+    // Track colours: resolved once here and shared with every strip through the
+    // CompositionLocal below, so no strip reads a colour on its own.
+    val trackColorScheme = remember(
+        uiState.trackColorMode, uiState.trackColorPaletteId,
+        uiState.trackSingleColorArgb, uiState.trackRandomColorArgb
+    ) {
+        TrackColorsLogic.scheme(
+            uiState.trackColorMode,
+            uiState.trackColorPaletteId,
+            uiState.trackRandomColorArgb.map { Color(it) },
+            Color(uiState.trackSingleColorArgb)
+        )
+    }
+    // The dynamic drift is a very slow hue oscillation (±14° over 90 s, about
+    // 0.3°/s): visible over minutes, imperceptible frame to frame. Static when off.
+    val driftPhase: Float = if (uiState.trackColorDynamic) {
+        val transition = rememberInfiniteTransition(label = "trackColorDrift")
+        val t by transition.animateFloat(
+            initialValue = 0f, targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(90_000, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "drift"
+        )
+        (t * 28f) - 14f
+    } else 0f
+    val effectiveScheme = remember(trackColorScheme, driftPhase) {
+        if (driftPhase == 0f) trackColorScheme
+        else trackColorScheme.copy(
+            lanes = trackColorScheme.lanes.map { TrackColorsLogic.driftColor(it, driftPhase) }
+        )
+    }
+
     val sf2PickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
@@ -19192,6 +19364,7 @@ fun MixerScreen(
 
     // Fullscreen Stage Container (Unpadded for 100% full-bleed overlays like SplashScreen)
     CompositionLocalProvider(LocalHapticsEnabled provides uiState.hapticsEnabled) {
+    CompositionLocalProvider(LocalTrackColors provides effectiveScheme) {
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -19302,6 +19475,12 @@ fun MixerScreen(
                     backgroundLightness = uiState.themeBgLightness,
                     vkbTheme = uiState.vkbTheme,
                     vkbPressStyle = uiState.vkbPressStyle,
+                    trackColorMode = uiState.trackColorMode,
+                    trackColorPaletteId = uiState.trackColorPaletteId,
+                    trackSingleColor = Color(uiState.trackSingleColorArgb),
+                    trackRandomLanes = uiState.trackRandomColorArgb.map { Color(it) },
+                    trackColorDynamic = uiState.trackColorDynamic,
+                    trackColorsOpen = uiState.trackColorsOpen,
                     audioEngine = uiState.audioEngine,
                     fluidSynthGain = uiState.fluidSynthGain,
                     hapticsEnabled = uiState.hapticsEnabled,
@@ -19335,6 +19514,13 @@ fun MixerScreen(
                     }
                     override fun onVkbThemeChange(themeId: String) { viewModel.setVkbTheme(themeId) }
                     override fun onVkbPressStyleChange(style: String) { viewModel.setVkbPressStyle(style) }
+                    override fun onOpenTrackColors() { viewModel.openTrackColorsPage() }
+                    override fun onCloseTrackColors() { viewModel.closeTrackColorsPage() }
+                    override fun onTrackColorModeChange(mode: TrackColorMode) { viewModel.setTrackColorMode(mode) }
+                    override fun onTrackColorPaletteChange(paletteId: String) { viewModel.setTrackColorPalette(paletteId) }
+                    override fun onTrackSingleColorChange(color: Color) { viewModel.setTrackSingleColor(color.toArgb()) }
+                    override fun onTrackColorsRandomize() { viewModel.randomizeTrackColors() }
+                    override fun onTrackColorDynamicChange(enabled: Boolean) { viewModel.setTrackColorDynamic(enabled) }
                     override fun onAntiJitterChange(enabled: Boolean) { viewModel.setAntiJitter(enabled) }
                     override fun onJitterWindowChange(ms: Int) { viewModel.setJitterWindowMs(ms) }
                     override fun onStartMidiLearn(action: MidiActionType) { viewModel.startMidiLearn(action) }
@@ -19532,7 +19718,7 @@ fun MixerScreen(
                         state = TrackSettingsState(
                             trackName = "Track ${targetTrack.id}",
                             soundName = if (targetTrack.patchName.isNotBlank()) targetTrack.patchName else if (targetTrack.soundfontName.isNotBlank()) targetTrack.soundfontName else "Default GM",
-                            color = targetTrack.resolvedColor(),
+                            color = targetTrack.resolvedColor(effectiveScheme),
                             velocity = TsVelocity.toUi(targetTrack.velocityConfig),
                             devices = uiState.midiDevices.map { TsDeviceItem(id = it.id, name = it.name, subtitle = if (it.isConnected) "Connected" else "Offline") },
                             midiDeviceId = targetTrack.selectedMidiDeviceId ?: "all",
@@ -19573,7 +19759,7 @@ fun MixerScreen(
                     VelocitySettingsDialog(
                         trackNumber = targetTrack.id,
                         soundName = if (targetTrack.patchName.isNotBlank()) targetTrack.patchName else if (targetTrack.soundfontName.isNotBlank()) targetTrack.soundfontName else "Default GM",
-                        trackColor = targetTrack.resolvedColor(),
+                        trackColor = targetTrack.resolvedColor(effectiveScheme),
                         config = targetTrack.velocityConfig,
                         onConfigChange = { newConfig ->
                             viewModel.updateTrackVelocityConfig(targetTrack.id, newConfig)
@@ -19741,6 +19927,7 @@ fun MixerScreen(
             )
         }
     }
+    } // LocalTrackColors
     }
 }
 
@@ -23852,7 +24039,7 @@ fun NotesDialog(
 }
 ```
 
-#### `SoundfontWindow.kt` — 1931 lines
+#### `SoundfontWindow.kt` — 1933 lines
 
 ```kotlin
 @file:Suppress("unused")
@@ -25532,6 +25719,8 @@ private fun SfUndoSnackbar(
     val shape = RoundedCornerShape(14.dp)
     Column(
         Modifier
+            // A short confirmation, not a full-width bar: bounded and centred at the bottom.
+            .widthIn(max = 420.dp)
             .shadow(12.dp, shape, ambientColor = Color.Black, spotColor = Color(0xAA000000))
             .clip(shape)
             .background(Color(0xF2222C40))
@@ -25542,8 +25731,8 @@ private fun SfUndoSnackbar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(text, style = sfText(13.5.sp, FontWeight.SemiBold, SfColors.Ink))
-            Spacer(Modifier.weight(1f))
+            Text(text, style = sfText(13.5.sp, FontWeight.SemiBold, SfColors.Ink), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.width(16.dp))
             Box(
                 Modifier
                     .sfTap(0.9f, onUndo)
@@ -27010,6 +27199,208 @@ private fun Modifier.rowClick(onClick: () -> Unit): Modifier {
 }
 ```
 
+#### `TrackColors.kt` — 198 lines
+
+```kotlin
+package com.soundstage.mixer.ui.components
+
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Color
+
+/**
+ * Track colouring: mode, palettes, and the resolution of the 8 lane colours.
+ *
+ * The mixer strips never read a colour directly: they read it from the
+ * [LocalTrackColors] CompositionLocal, which the mixer screen provides from the
+ * persisted settings. That keeps the resolution in one place and lets the
+ * "dynamic" mode animate without touching any strip code.
+ */
+
+/** How the 8 lane colours are chosen. */
+enum class TrackColorMode { Palette, Random, Single }
+
+/**
+ * A named set of 8 lane colours. `id` is persisted; the colours are code so a
+ * palette stays stable across versions.
+ */
+data class TrackPalette(
+    val id: String,
+    val name: String,
+    val colors: List<Color>
+) {
+    /** Lane colour for a 1-based track id, wrapping after 8. */
+    fun colorFor(trackId: Int): Color =
+        colors[((trackId - 1) % colors.size + colors.size) % colors.size]
+}
+
+object TrackPalettes {
+    val Default = TrackPalette(
+        "default", "Default",
+        listOf(
+            Color(0xFFE58929), Color(0xFF36B37E), Color(0xFF3B82F6), Color(0xFF9333EA),
+            Color(0xFFEC4899), Color(0xFF14B8A6), Color(0xFFF59E0B), Color(0xFF6366F1)
+        )
+    )
+
+    /** Mirrors the reference "Rainbow" ramp: a full hue sweep, evenly spaced. */
+    val Rainbow = TrackPalette(
+        "rainbow", "Rainbow",
+        listOf(
+            Color(0xFFEF4444), Color(0xFFF97316), Color(0xFFEAB308), Color(0xFF22C55E),
+            Color(0xFF14B8A6), Color(0xFF3B82F6), Color(0xFF8B5CF6), Color(0xFFEC4899)
+        )
+    )
+
+    /** Cool analogue console: teals and blues. */
+    val Ocean = TrackPalette(
+        "ocean", "Ocean",
+        listOf(
+            Color(0xFF0EA5E9), Color(0xFF06B6D4), Color(0xFF14B8A6), Color(0xFF0D9488),
+            Color(0xFF3B82F6), Color(0xFF2563EB), Color(0xFF22D3EE), Color(0xFF2DD4BF)
+        )
+    )
+
+    /** Warm analogue console: ambers and reds. */
+    val Sunset = TrackPalette(
+        "sunset", "Sunset",
+        listOf(
+            Color(0xFFF59E0B), Color(0xFFEA580C), Color(0xFFEF4444), Color(0xFFDC2626),
+            Color(0xFFF97316), Color(0xFFFB923C), Color(0xFFE11D48), Color(0xFFFBBF24)
+        )
+    )
+
+    /** Low-saturation studio grey: neutral, lets the meters carry the eye. */
+    val Mono = TrackPalette(
+        "mono", "Mono",
+        listOf(
+            Color(0xFFCBD5E1), Color(0xFF94A3B8), Color(0xFFB0BEC5), Color(0xFF8FA0B5),
+            Color(0xFFD5DEE9), Color(0xFF7E8CA0), Color(0xFFC0CBD8), Color(0xFF9AA7B8)
+        )
+    )
+
+    /** All selectable palettes, in display order. */
+    val all: List<TrackPalette> = listOf(Default, Rainbow, Ocean, Sunset, Mono)
+
+    fun byId(id: String): TrackPalette = all.firstOrNull { it.id == id } ?: Default
+}
+
+/**
+ * The colours the mixer should paint, already resolved for the current settings.
+ * [master] is the master strip; [lanes] is indexed by (trackId - 1).
+ */
+data class TrackColorScheme(
+    val lanes: List<Color>,
+    val master: Color
+) {
+    fun lane(trackId: Int): Color {
+        if (lanes.isEmpty()) return Color(0xFF3B82F6)
+        val i = ((trackId - 1) % lanes.size + lanes.size) % lanes.size
+        return lanes[i]
+    }
+}
+
+object TrackColorsLogic {
+    /** The 8 default lane colours (the app's built-in palette). */
+    val defaultLanes: List<Color> = TrackPalettes.Default.colors
+
+    /**
+     * Builds the effective scheme.
+     *
+     * @param mode       Palette / Random / Single
+     * @param paletteId  palette used when [mode] is Palette
+     * @param randomLanes  the frozen random assignment (used when [mode] is Random)
+     * @param singleColor the one colour used for every lane when [mode] is Single
+     */
+    fun scheme(
+        mode: TrackColorMode,
+        paletteId: String,
+        randomLanes: List<Color>,
+        singleColor: Color
+    ): TrackColorScheme = when (mode) {
+        TrackColorMode.Palette -> {
+            val p = TrackPalettes.byId(paletteId)
+            TrackColorScheme(List(8) { p.colorFor(it + 1) }, MasterColor)
+        }
+        TrackColorMode.Random -> {
+            val base = if (randomLanes.size == 8) randomLanes else defaultLanes
+            TrackColorScheme(base, MasterColor)
+        }
+        TrackColorMode.Single -> TrackColorScheme(List(8) { singleColor }, MasterColor)
+    }
+
+    /**
+     * Draws 8 distinct colours from [pool] for the random mode. Distinct by
+     * construction so two lanes never look identical; falls back to repeats only
+     * if the pool is smaller than 8.
+     */
+    fun randomLanes(pool: List<Color>, random: kotlin.random.Random): List<Color> {
+        if (pool.isEmpty()) return defaultLanes
+        val picked = pool.shuffled(random)
+        return List(8) { picked[it % picked.size] }
+    }
+
+    /** A pleasant spread of hues, used as the random pool when no palette fits. */
+    fun huePool(): List<Color> = List(12) { i -> hueColor(i * 30f) }
+
+    /** HSV -> RGB with S/V fixed for a readable, saturated lane colour. */
+    fun hueColor(hueDeg: Float, sat: Float = 0.72f, value: Float = 0.92f): Color {
+        val h = ((hueDeg % 360f) + 360f) % 360f / 60f
+        val c = value * sat
+        val x = c * (1f - kotlin.math.abs((h % 2f) - 1f))
+        val m = value - c
+        val (r, g, b) = when (h.toInt()) {
+            0 -> Triple(c, x, 0f)
+            1 -> Triple(x, c, 0f)
+            2 -> Triple(0f, c, x)
+            3 -> Triple(0f, x, c)
+            4 -> Triple(x, 0f, c)
+            else -> Triple(c, 0f, x)
+        }
+        return Color(r + m, g + m, b + m)
+    }
+
+    /**
+     * One step of the very slow "dynamic" drift. The phase is a small angle added
+     * to the lane's hue; the caller drives it from a low-frequency clock, so the
+     * change is imperceptible from frame to frame.
+     *
+     * Pure Kotlin on purpose: this runs in previews and JVM tests, so it must not
+     * touch android.graphics.
+     */
+    fun driftColor(base: Color, phaseDeg: Float): Color {
+        if (phaseDeg == 0f) return base
+        val (h, s, v) = rgbToHsv(base.red, base.green, base.blue)
+        return hueColor(h + phaseDeg, s, v).copy(alpha = base.alpha)
+    }
+
+    /** RGB (0..1) -> HSV with h in degrees, s and v in 0..1. */
+    private fun rgbToHsv(r: Float, g: Float, b: Float): Triple<Float, Float, Float> {
+        val max = maxOf(r, g, b)
+        val min = minOf(r, g, b)
+        val d = max - min
+        val h = when {
+            d == 0f -> 0f
+            max == r -> 60f * (((g - b) / d) % 6f)
+            max == g -> 60f * (((b - r) / d) + 2f)
+            else -> 60f * (((r - g) / d) + 4f)
+        }
+        val s = if (max == 0f) 0f else d / max
+        return Triple((h + 360f) % 360f, s, max)
+    }
+
+    /** The master strip colour, unchanged by track modes. */
+    val MasterColor: Color = Color(0xFF22D3EE)
+}
+
+/**
+ * Current track colours, provided by the mixer screen. Defaults to the built-in
+ * palette so any preview or test renders without the app.
+ */
+val LocalTrackColors = staticCompositionLocalOf {
+    TrackColorScheme(TrackColorsLogic.defaultLanes, TrackColorsLogic.MasterColor)
+}
+```
+
 #### `VelocitySettingsPage.kt` — 895 lines
 
 ```kotlin
@@ -27909,7 +28300,7 @@ private fun Modifier.velClick(onClick: () -> Unit): Modifier {
 }
 ```
 
-#### `VerticalFader.kt` — 524 lines
+#### `VerticalFader.kt` — 532 lines
 
 ```kotlin
 package com.soundstage.mixer.ui.components
@@ -28013,6 +28404,14 @@ fun getTrackThemeColor(trackId: Int, isMaster: Boolean = false): Color {
 /** Resolves a track's colour, honouring a user override when set. */
 fun TrackChannel.resolvedColor(): Color =
     customColorArgb?.let { Color(it) } ?: getTrackThemeColor(id, isMaster)
+
+/**
+ * Resolves a track's colour against the active [scheme]: a per-track override wins,
+ * otherwise the scheme lane (or the master colour). This is what the mixer uses, so
+ * the Settings > Track colors scheme is honoured everywhere.
+ */
+fun TrackChannel.resolvedColor(scheme: TrackColorScheme): Color =
+    customColorArgb?.let { Color(it) } ?: if (isMaster) scheme.master else scheme.lane(id)
 
 /** The 8 built-in track colours, offered as presets in the colour picker. */
 val TrackColorPresets: List<Color> = (1..8).map { getTrackThemeColor(it) }
@@ -30154,7 +30553,7 @@ private fun AssignBar(
 }
 ```
 
-#### `DrumPadOverlays.kt` — 1125 lines
+#### `DrumPadOverlays.kt` — 1161 lines
 
 ```kotlin
 package com.soundstage.mixer.ui.components.drumpad
@@ -30196,6 +30595,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30408,6 +30808,12 @@ private fun BpmPill(bpm: Int, onBpmChange: (Int) -> Unit) {
 private fun BpmStepButton(symbol: String, delta: Int, onBpmChange: (Int) -> Unit) {
     val scope = rememberCoroutineScope()
     var rampJob by remember { mutableStateOf<Job?>(null) }
+    // The press handler runs for as long as the finger is down, so it must call the
+    // *current* callback. `pointerInput(delta)` only restarts when `delta` changes
+    // (never, for a fixed +1/-1), so a captured `onBpmChange` froze on the first
+    // composition: the ramp kept computing the same `bpm + 1` and the pill stuck at
+    // 120/119. `rememberUpdatedState` keeps the latest lambda reachable.
+    val change by rememberUpdatedState(onBpmChange)
     Box(
         modifier = Modifier
             .size(28.dp)
@@ -30416,12 +30822,12 @@ private fun BpmStepButton(symbol: String, delta: Int, onBpmChange: (Int) -> Unit
             .pointerInput(delta) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
-                    onBpmChange(delta)
+                    change(delta)
                     rampJob = scope.launch {
                         delay(420L)
                         var step = 260L
                         while (isActive) {
-                            onBpmChange(delta)
+                            change(delta)
                             delay(step)
                             step = (step * 0.85f).toLong().coerceAtLeast(28L)
                         }
@@ -30460,15 +30866,31 @@ private fun DpSideSheet(
 ) {
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClose() })
-        Box(Modifier.align(Alignment.TopEnd).padding(top = 58.dp, end = 12.dp).width(width).clip(RoundedCornerShape(18.dp)).background(Brush.verticalGradient(listOf(Color(0xFF232C3E), Color(0xFF1A2230)))).border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(18.dp)).padding(14.dp)) {
-            Column(Modifier.fillMaxWidth()) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(title, color = Color(0xFFF1F4FA), fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
-                    Box(Modifier.size(30.dp).clip(RoundedCornerShape(15.dp)).background(Color.White.copy(alpha = 0.07f)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClose() }, contentAlignment = Alignment.Center) { DpIcon("x", 14.dp, Color(0xFF9AA5BA)) }
-                }
-                Spacer(Modifier.height(10.dp))
-                content()
+        // Responsive width + scroll: on a phone the panel is 90% of the width and the
+        // content scrolls inside a capped height. A fixed 320 dp column with no scroll
+        // ran off the bottom of the landscape screen and the lower controls (volume,
+        // toggles, count-in, tap tempo) were unreachable — the "broken metronome".
+        Column(
+            Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 58.dp, end = 12.dp)
+                .fillMaxWidth(0.9f)
+                .widthIn(max = width)
+                .heightIn(max = 720.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(Brush.verticalGradient(listOf(Color(0xFF232C3E), Color(0xFF1A2230))))
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(18.dp))
+                // Consume taps so a click inside the panel never reaches the scrim behind it.
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
+                .padding(14.dp)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(title, Modifier.weight(1f), color = Color(0xFFF1F4FA), fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+                DpCloseBtn(onClose = onClose)
             }
+            Spacer(Modifier.height(10.dp))
+            content()
         }
     }
 }
@@ -30483,15 +30905,28 @@ private fun DpCenterSheet(
 ) {
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClose() })
-        Box(Modifier.align(Alignment.TopCenter).padding(top = topPadding).width(width).clip(RoundedCornerShape(20.dp)).background(Brush.verticalGradient(listOf(Color(0xFF2A3447), Color(0xFF1E2736)))).border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(20.dp)).padding(14.dp)) {
-            Column(Modifier.fillMaxWidth()) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(title, color = Color(0xFFF1F4FA), fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
-                    Box(Modifier.size(28.dp).clip(RoundedCornerShape(14.dp)).background(Color.White.copy(alpha = 0.07f)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClose() }, contentAlignment = Alignment.Center) { DpIcon("x", 13.dp, Color(0xFF9AA5BA)) }
-                }
-                Spacer(Modifier.height(10.dp))
-                content()
+        // Same responsive + scroll contract as DpSideSheet: never wider than 90% of the
+        // screen, never taller than the viewport, content scrolls inside.
+        Column(
+            Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = topPadding)
+                .fillMaxWidth(0.9f)
+                .widthIn(max = width)
+                .heightIn(max = 720.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(Brush.verticalGradient(listOf(Color(0xFF2A3447), Color(0xFF1E2736))))
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(20.dp))
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
+                .padding(14.dp)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(title, Modifier.weight(1f), color = Color(0xFFF1F4FA), fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                DpCloseBtn(onClose = onClose)
             }
+            Spacer(Modifier.height(10.dp))
+            content()
         }
     }
 }
@@ -35735,7 +36170,7 @@ fun DrawScope.sceneSynth(v: FloatArray, a: Color, t: Float, tm: TextMeasurer, st
 }
 ```
 
-#### `FxOverlay.kt` — 143 lines
+#### `FxOverlay.kt` — 148 lines
 
 ```kotlin
 package com.soundstage.mixer.ui.fx
@@ -35816,8 +36251,13 @@ fun FxOverlay(
             controller.bypassed.toList(), controller.instrumentId.takeIf { it >= 0 })
     }
     androidx.compose.runtime.LaunchedEffect(strip) {
-        snapshotFlow { controller.effectIds.toList() to controller.bypassed.toList() }
-            .collect { controller.save() }
+        // The instrument id is part of the strip: without it in the watched flow,
+        // choosing an instrument (or clearing it) never triggered a save, so the
+        // window forgot the instrument as soon as it was closed and reopened while
+        // the effect it came with stayed active.
+        snapshotFlow {
+            Triple(controller.effectIds.toList(), controller.bypassed.toList(), controller.instrumentId)
+        }.collect { controller.save() }
     }
     // Knob drags fire many changes; save once the user stops for 500 ms.
     androidx.compose.runtime.LaunchedEffect(strip) {
@@ -37360,7 +37800,7 @@ fun Modifier.raised(
 
 ### `com/soundstage/mixer/ui/pages`
 
-#### `DrumPadScreen.kt` — 863 lines
+#### `DrumPadScreen.kt` — 861 lines
 
 ```kotlin
 package com.soundstage.mixer.ui.pages
@@ -37516,20 +37956,17 @@ fun DrumPadScreen(
     }
 
     // ─── Frame clock for the LiveLooper rings (bars position) ───
-    var liveLooperNowBar by remember { mutableStateOf(0.0) }
-    LaunchedEffect(liveLooperPage) {
-        if (!liveLooperPage) return@LaunchedEffect
-        while (isActive) {
-            liveLooperNowBar = viewModel.liveLooperNowBar()
-            delay(16L)
-        }
-    }
-
+    // Scoped into `LiveLooperTicker` below: a screen-level state read here would
+    // invalidate this whole composable (top bar, TonicPad, grid) 60 times a second.
     // Long-press on a loop case opens the action menu (Undo / Double / Play / Clear).
     var loopMenuIndex by remember { mutableStateOf<Int?>(null) }
 
     // ─── Derived ───
     val beatsPerBar = parseBeatsPerBar(uiState.transportSignature)
+    // A case is moving (or waiting for a boundary): only then does the ring need 30 Hz.
+    val liveLooperBusy = uiState.liveLooperState.cases.any {
+        it.mode != com.soundstage.mixer.looper.CaseMode.Empty && it.mode != com.soundstage.mixer.looper.CaseMode.Stopped
+    } || uiState.liveLooperState.cases.any { it.queued != null }
     val barDurationNs = (beatsPerBar.toLong() * (60_000_000_000L / uiState.transportBpm.coerceAtLeast(30)))
     val anyRec = uiState.looper.cases.firstOrNull {
         it.state == LooperEngine.CaseState.Recording || it.state == LooperEngine.CaseState.Overdubbing
@@ -37550,10 +37987,10 @@ fun DrumPadScreen(
         // ═══════════ TopBar ═══════════
         DpTopBar(
             bpm = uiState.transportBpm,
-            onBpmChange = { delta ->
-                val next = (uiState.transportBpm + delta).coerceIn(30, 300)
-                viewModel.setTransportBpm(next)
-            },
+            // Step by delta in the ViewModel so the value is read from the live state,
+            // never from a UI snapshot that may be a frame behind (the ramp used to
+            // keep re-deriving `snapshot + 1` and the readout froze at 120/119).
+            onBpmChange = { delta -> viewModel.adjustTransportBpm(delta) },
             onBackToMixer = { viewModel.navigateBackToMixer() },
             metroOn = metroOn,
             onOpenMetro = { metroOpen = true },
@@ -37620,9 +38057,10 @@ fun DrumPadScreen(
                         }
                     }
                 }
-                com.soundstage.mixer.looper.LiveLooperContent(
+                com.soundstage.mixer.looper.LiveLooperHost(
                     state = uiState.liveLooperState,
-                    nowBar = liveLooperNowBar,
+                    clock = { viewModel.liveLooperNowBar() },
+                    active = liveLooperBusy,
                     actions = liveLooperActions,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
@@ -40789,7 +41227,7 @@ private fun SvgSheetsEditor(
 
 ### `com/soundstage/mixer/ui/patches`
 
-#### `PatchesOverlay.kt` — 1260 lines
+#### `PatchesOverlay.kt` — 1262 lines
 
 ```kotlin
 @file:Suppress("unused")
@@ -40833,6 +41271,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -41824,7 +42263,8 @@ private fun UndoSnack(name: String, onUndo: () -> Unit) {
     }
     Box(
         Modifier
-            .fillMaxWidth()
+            // Bounded, not full width: a short confirmation centred at the bottom.
+            .widthIn(max = 420.dp)
             .padding(horizontal = 18.dp, vertical = 18.dp),
     ) {
         val shape = RoundedCornerShape(14.dp)
@@ -43837,7 +44277,7 @@ private fun SlSnackbar(snack: SlSnack, onUndo: () -> Unit, modifier: Modifier) {
     Box(modifier.slAppear()) {
         Box(
             Modifier
-                .widthIn(min = 260.dp)
+                .widthIn(min = 260.dp, max = 420.dp)
                 .shadow(12.dp, shape, ambientColor = Color.Black, spotColor = Color.Black)
                 .clip(shape)
                 .background(Color(0xFF222C40))
@@ -44555,7 +44995,7 @@ private fun ConfirmDialog(
 private val Color_White = androidx.compose.ui.graphics.Color.White
 ```
 
-#### `SettingsScreen.kt` — 1383 lines
+#### `SettingsScreen.kt` — 1481 lines
 
 ```kotlin
 @file:Suppress("unused")
@@ -44671,6 +45111,7 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -44678,6 +45119,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import com.soundstage.mixer.ui.components.TrackColorMode
+import com.soundstage.mixer.ui.components.TrackColorsLogic
+import com.soundstage.mixer.ui.components.TrackPalettes
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.TextUnit
@@ -44762,6 +45206,14 @@ data class SettingsState(
     /** Virtual keyboard theme id (KeyboardThemes) and pressed-key style ("color"/"led"). Persisted. */
     val vkbTheme: String = "classic",
     val vkbPressStyle: String = "color",
+    // Track colors (Settings > Interface > Track colors). Persisted.
+    val trackColorMode: TrackColorMode = TrackColorMode.Palette,
+    val trackColorPaletteId: String = TrackPalettes.Default.id,
+    val trackSingleColor: Color = Color(0xFF8FB2E8),
+    val trackRandomLanes: List<Color> = emptyList(),
+    val trackColorDynamic: Boolean = false,
+    /** The Track colors page replaces the Interface tab body, like the MIDI mapping page. */
+    val trackColorsOpen: Boolean = false,
     // MIDI input (persisted)
     val antiJitter: Boolean = false,
     val jitterWindowMs: Int = 15,
@@ -44836,6 +45288,13 @@ interface SettingsActions {
     fun onResetColors() {}
     fun onVkbThemeChange(themeId: String) {}
     fun onVkbPressStyleChange(style: String) {}
+    fun onOpenTrackColors() {}
+    fun onCloseTrackColors() {}
+    fun onTrackColorModeChange(mode: TrackColorMode) {}
+    fun onTrackColorPaletteChange(paletteId: String) {}
+    fun onTrackSingleColorChange(color: Color) {}
+    fun onTrackColorsRandomize() {}
+    fun onTrackColorDynamicChange(enabled: Boolean) {}
     fun onAntiJitterChange(enabled: Boolean) {}
     fun onJitterWindowChange(ms: Int) {}
     fun onStartMidiLearn(action: MidiActionType) {}
@@ -44984,7 +45443,7 @@ private fun Modifier.setSunk(shape: androidx.compose.ui.graphics.Shape): Modifie
 
 /** Light spring press. Apply it before the visual modifiers. */
 @Composable
-private fun Modifier.tapScale(scaleDown: Float = 0.96f, onTap: () -> Unit): Modifier {
+internal fun Modifier.tapScale(scaleDown: Float = 0.96f, onTap: () -> Unit): Modifier {
     var pressed by remember { mutableStateOf(false) }
     val s by animateFloatAsState(
         if (pressed) scaleDown else 1f, spring(dampingRatio = 0.6f, stiffness = 500f), label = "tap"
@@ -45056,6 +45515,20 @@ fun SettingsScreen(
                     onAntiJitterChange = { actions.onAntiJitterChange(it) },
                     onJitterWindowChange = { actions.onJitterWindowChange(it) },
                     onBack = { actions.onCloseMidiMapping() }
+                )
+            } else if (state.trackColorsOpen) {
+                TrackColorsPage(
+                    mode = state.trackColorMode,
+                    paletteId = state.trackColorPaletteId,
+                    singleColor = state.trackSingleColor,
+                    randomLanes = state.trackRandomLanes,
+                    dynamic = state.trackColorDynamic,
+                    onModeChange = { actions.onTrackColorModeChange(it) },
+                    onPaletteChange = { actions.onTrackColorPaletteChange(it) },
+                    onSingleColorChange = { actions.onTrackSingleColorChange(it) },
+                    onRandomize = { actions.onTrackColorsRandomize() },
+                    onDynamicChange = { actions.onTrackColorDynamicChange(it) },
+                    onBack = { actions.onCloseTrackColors() }
                 )
             } else if (state.query.isNotBlank()) {
                 SearchResults(state, actions)
@@ -45435,6 +45908,71 @@ private fun InterfaceSection(state: SettingsState, actions: SettingsActions) {
             selected = state.vkbPressStyle,
             onSelect = actions::onVkbPressStyleChange
         )
+    }
+
+    SectionLabel("Track colors")
+    TrackColorsCard(
+        mode = state.trackColorMode,
+        paletteId = state.trackColorPaletteId,
+        singleColor = state.trackSingleColor,
+        randomLanes = state.trackRandomLanes,
+        dynamic = state.trackColorDynamic,
+        onClick = { actions.onOpenTrackColors() }
+    )
+}
+
+/**
+ * The entry point to the Track colors page. A tappable card showing the live
+ * scheme (8 lanes + master) so the user sees the effect before opening the page.
+ */
+@Composable
+private fun TrackColorsCard(
+    mode: TrackColorMode,
+    paletteId: String,
+    singleColor: Color,
+    randomLanes: List<Color>,
+    dynamic: Boolean,
+    onClick: () -> Unit
+) {
+    val scheme = remember(mode, paletteId, singleColor, randomLanes) {
+        TrackColorsLogic.scheme(mode, paletteId, randomLanes, singleColor)
+    }
+    val modeLabel = when (mode) {
+        TrackColorMode.Palette -> TrackPalettes.byId(paletteId).name
+        TrackColorMode.Random -> "Random"
+        TrackColorMode.Single -> "Single color"
+    }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .testTag("track_colors_card")
+            .tapScale(0.99f, onClick)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Brush.verticalGradient(listOf(Color(0xFF1B2331), Color(0xFF151B26))))
+            .border(1.dp, white(0.07f), RoundedCornerShape(14.dp))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Track colors", style = setText(14.5.sp, FontWeight.Bold, SetColors.Ink), maxLines = 1)
+                Text(
+                    "$modeLabel${if (dynamic) " · Dynamic" else ""}",
+                    style = setText(11.5.sp, color = SetColors.Dim),
+                    maxLines = 1
+                )
+            }
+            SetIcon(SetIconKind.Chevron, SetColors.Mute, Modifier.size(16.dp))
+        }
+        // The 8 lanes plus the master, as a compact colour strip.
+        Row(
+            Modifier.fillMaxWidth().height(16.dp).clip(RoundedCornerShape(6.dp)),
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            scheme.lanes.forEach { c -> Box(Modifier.weight(1f).fillMaxHeight().background(c)) }
+            Box(Modifier.width(3.dp).fillMaxHeight().background(white(0.10f)))
+            Box(Modifier.weight(1f).fillMaxHeight().background(scheme.master))
+        }
     }
 }
 
@@ -46033,6 +46571,477 @@ private fun ImageVector.Builder.dots(d: String) = addPath(
 )
 ```
 
+#### `TrackColorsPage.kt` — 467 lines
+
+```kotlin
+package com.soundstage.mixer.ui.settings
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.soundstage.mixer.ui.components.TrackColorMode
+import com.soundstage.mixer.ui.components.TrackColorScheme
+import com.soundstage.mixer.ui.components.TrackColorsLogic
+import com.soundstage.mixer.ui.components.TrackPalette
+import com.soundstage.mixer.ui.components.TrackPalettes
+
+/**
+ * Track colors, as a page inside Settings — reached from a tappable card in the
+ * Interface tab, never a floating window. Every row uses the Settings components
+ * (`SectionLabel`, `SettingRow`, `SetSwitch`, `SetDivider`) so the page is
+ * indistinguishable from the rest of the screen.
+ *
+ * The live preview is a miniature of the mixer: 8 lane strips plus the master.
+ * It renders the *effective* scheme, so what the user picks is what the mixer
+ * will paint.
+ */
+@Composable
+fun TrackColorsPage(
+    mode: TrackColorMode,
+    paletteId: String,
+    singleColor: Color,
+    randomLanes: List<Color>,
+    dynamic: Boolean,
+    onModeChange: (TrackColorMode) -> Unit,
+    onPaletteChange: (String) -> Unit,
+    onSingleColorChange: (Color) -> Unit,
+    onRandomize: () -> Unit,
+    onDynamicChange: (Boolean) -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val scheme = remember(mode, paletteId, singleColor, randomLanes) {
+        TrackColorsLogic.scheme(mode, paletteId, randomLanes, singleColor)
+    }
+
+    Column(modifier.fillMaxSize()) {
+        TrackColorsHeader(onBack)
+
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 28.dp)
+        ) {
+            item(key = "preview") {
+                SectionLabel("Preview")
+                MixerMiniPreview(scheme)
+            }
+
+            item(key = "mode") {
+                SectionLabel("Color mode")
+                ModeChoice(
+                    title = "Palette",
+                    hint = "A named set of eight lane colors.",
+                    selected = mode == TrackColorMode.Palette,
+                    accent = scheme.lane(1),
+                    onClick = { onModeChange(TrackColorMode.Palette) }
+                )
+                SetDivider()
+                ModeChoice(
+                    title = "Random",
+                    hint = "Eight colors drawn at random from the selected palette.",
+                    selected = mode == TrackColorMode.Random,
+                    accent = scheme.lane(1),
+                    onClick = { onModeChange(TrackColorMode.Random) }
+                )
+                SetDivider()
+                ModeChoice(
+                    title = "Single color",
+                    hint = "One color for every track.",
+                    selected = mode == TrackColorMode.Single,
+                    accent = scheme.lane(1),
+                    onClick = { onModeChange(TrackColorMode.Single) }
+                )
+            }
+
+            item(key = "palette") {
+                SectionLabel("Palette")
+                PaletteGrid(
+                    selectedId = paletteId,
+                    active = mode != TrackColorMode.Single,
+                    onSelect = onPaletteChange
+                )
+                SetDivider()
+                SettingRow(
+                    title = "Surprise me",
+                    hint = "Re-draws the random colors from the selected palette.",
+                    onClick = onRandomize
+                ) {
+                    SetIcon(SetIconKind.Reset, SetColors.Soft, Modifier.size(17.dp))
+                }
+            }
+
+            if (mode == TrackColorMode.Single) {
+                item(key = "single") {
+                    SectionLabel("Track color")
+                    SingleColorPicker(
+                        selected = singleColor,
+                        onSelect = onSingleColorChange
+                    )
+                }
+            }
+
+            item(key = "dynamic") {
+                SectionLabel("Animation")
+                SettingRow(
+                    title = "Dynamic colors",
+                    hint = "Lets the lane colors drift through the spectrum, very slowly. " +
+                        "The movement is imperceptible; turn it off to keep them fixed."
+                ) {
+                    SetSwitch(dynamic, onDynamicChange)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrackColorsHeader(onBack: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(start = 14.dp, end = 18.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Box(
+            Modifier
+                .size(34.dp)
+                .clip(RoundedCornerShape(11.dp))
+                .background(white(0.06f))
+                .clickable(onClick = onBack),
+            contentAlignment = Alignment.Center
+        ) { SetIcon(SetIconKind.Back, SetColors.Soft, Modifier.size(18.dp)) }
+        Column(Modifier.weight(1f)) {
+            Text("Track colors", style = setText(17.sp, FontWeight.Bold, SetColors.Ink), maxLines = 1)
+            Text("Per-lane color scheme", style = setText(11.sp, color = SetColors.Dim), maxLines = 1)
+        }
+    }
+}
+
+/**
+ * A miniature of the mixer: 8 lane strips with a name plate, a fader slot and a
+ * meter, plus the master strip on the right. It is drawn from the resolved
+ * scheme, so it always matches the real mixer.
+ */
+@Composable
+private fun MixerMiniPreview(scheme: TrackColorScheme) {
+    val lanes = scheme.lanes
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Brush.verticalGradient(listOf(Color(0xFF1B2331), Color(0xFF141A24))))
+            .border(1.dp, white(0.06f), RoundedCornerShape(14.dp))
+            .padding(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        lanes.forEachIndexed { i, color ->
+            MiniStrip(
+                index = i + 1,
+                color = color,
+                isMaster = false,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        MiniStrip(index = 0, color = scheme.master, isMaster = true, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun MiniStrip(index: Int, color: Color, isMaster: Boolean, modifier: Modifier) {
+    // The fader cap sits at a fixed spot: the preview shows colour, not level.
+    val capFraction = if (isMaster) 0.42f else 0.30f + (index % 4) * 0.10f
+    Column(
+        modifier
+            .fillMaxHeight()
+            .height(96.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFF20283A))
+            .drawBehind {
+                // Aura at the foot, like the real strip.
+                drawRect(
+                    Brush.radialGradient(
+                        colors = listOf(color.copy(alpha = 0.30f), Color.Transparent),
+                        center = Offset(size.width / 2f, size.height * 1.05f),
+                        radius = size.height * 0.7f
+                    )
+                )
+            }
+            .padding(horizontal = 3.dp, vertical = 5.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        // Name plate: a small bar of the lane colour.
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(9.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(color)
+        )
+        // Fader slot with the cap.
+        Box(
+            Modifier
+                .width(4.dp)
+                .weight(1f)
+                .clip(RoundedCornerShape(2.dp))
+                .background(Color(0xFF0E141E))
+        ) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(12.dp)
+                    .align(Alignment.TopCenter)
+                    .padding(top = 0.dp)
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(12.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(Color(0xFFE6EAF3))
+                )
+            }
+        }
+        // Meter: a short bar of the lane colour at the foot.
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(16.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(Color(0xFF0E141E))
+        ) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.55f + (index % 5) * 0.09f)
+                    .align(Alignment.BottomCenter)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(color)
+            )
+        }
+    }
+}
+
+/** One selectable mode: a leading colour dot, the label, the hint, and a check. */
+@Composable
+private fun ModeChoice(
+    title: String,
+    hint: String,
+    selected: Boolean,
+    accent: Color,
+    onClick: () -> Unit
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .tapScale(0.99f, onClick)
+            .padding(vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Box(
+            Modifier
+                .size(26.dp)
+                .clip(CircleShape)
+                .background(accent)
+                .border(1.dp, white(0.18f), CircleShape)
+        )
+        Column(Modifier.weight(1f)) {
+            Text(title, style = setText(14.5.sp, FontWeight.Bold, SetColors.Ink), maxLines = 1)
+            Text(hint, style = setText(11.5.sp, color = SetColors.Dim), maxLines = 2)
+        }
+        RadioMark(selected)
+    }
+}
+
+/** The Settings radio: an outlined circle, filled when selected. */
+@Composable
+private fun RadioMark(selected: Boolean) {
+    Box(
+        Modifier
+            .size(20.dp)
+            .clip(CircleShape)
+            .background(if (selected) SetColors.Accent else Color.Transparent)
+            .border(1.5.dp, if (selected) SetColors.Accent else white(0.20f), CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        if (selected) {
+            Box(Modifier.size(7.dp).clip(CircleShape).background(SetColors.AccentText))
+        }
+    }
+}
+
+/**
+ * Palette cards, 2 per row. Each shows the eight colours as a strip. The selected
+ * card gets an accent border; when the mode is Single the grid dims but stays
+ * tappable, and a tap switches back to the Palette mode.
+ */
+@Composable
+private fun PaletteGrid(
+    selectedId: String,
+    active: Boolean,
+    onSelect: (String) -> Unit
+) {
+    Column(
+        Modifier.fillMaxWidth().padding(top = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        TrackPalettes.all.chunked(2).forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                row.forEach { p ->
+                    PaletteCard(
+                        palette = p,
+                        selected = active && p.id == selectedId,
+                        onClick = { onSelect(p.id) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                repeat(2 - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PaletteCard(
+    palette: TrackPalette,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier
+            .tapScale(0.97f, onClick)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF1A2230))
+            .border(
+                if (selected) 1.5.dp else 1.dp,
+                if (selected) SetColors.Accent else white(0.07f),
+                RoundedCornerShape(12.dp)
+            )
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().height(18.dp).clip(RoundedCornerShape(5.dp)),
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            palette.colors.forEach { c ->
+                Box(Modifier.weight(1f).fillMaxHeight().background(c))
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                palette.name,
+                style = setText(12.5.sp, FontWeight.Bold, if (selected) SetColors.Ink else SetColors.Soft),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            if (selected) SetIcon(SetIconKind.Chevron, SetColors.Accent, Modifier.size(14.dp))
+        }
+    }
+}
+
+/** A row of swatches for the single-colour mode, plus the current value. */
+@Composable
+private fun SingleColorPicker(selected: Color, onSelect: (Color) -> Unit) {
+    val swatches = remember { SINGLE_COLORS }
+    Column(Modifier.fillMaxWidth().padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF1A2230))
+                .border(1.dp, white(0.07f), RoundedCornerShape(12.dp))
+                .padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                Modifier
+                    .size(30.dp)
+                    .clip(CircleShape)
+                    .background(selected)
+                    .border(1.dp, white(0.18f), CircleShape)
+            )
+            Text("Every track uses this color.", style = setText(12.sp, color = SetColors.Dim))
+        }
+        // 8 swatches per row, two rows.
+        swatches.chunked(8).forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                row.forEach { c ->
+                    val isSel = c.toArgb() == selected.toArgb()
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .height(38.dp)
+                            .tapScale(0.92f, { onSelect(c) })
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(c)
+                            .border(
+                                if (isSel) 2.dp else 1.dp,
+                                if (isSel) SetColors.Ink else white(0.10f),
+                                RoundedCornerShape(9.dp)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (isSel) {
+                            Box(
+                                Modifier.size(10.dp).clip(CircleShape)
+                                    .background(SetColors.AccentText)
+                            )
+                        }
+                    }
+                }
+                repeat(8 - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+/** 16 readable single colours: the 8 lane defaults, the 8 hue anchors. */
+private val SINGLE_COLORS: List<Color> = listOf(
+    Color(0xFFE58929), Color(0xFF36B37E), Color(0xFF3B82F6), Color(0xFF9333EA),
+    Color(0xFFEC4899), Color(0xFF14B8A6), Color(0xFFF59E0B), Color(0xFF6366F1),
+    Color(0xFFEF4444), Color(0xFFF97316), Color(0xFFEAB308), Color(0xFF22C55E),
+    Color(0xFF0EA5E9), Color(0xFF8FB2E8), Color(0xFFCBD5E1), Color(0xFF22D3EE)
+)
+```
+
 ### `com/soundstage/mixer/ui/theme`
 
 #### `AppColors.kt` — 26 lines
@@ -46368,7 +47377,7 @@ val Typography =
 
 ### `com/soundstage/mixer/ui/tracksettings`
 
-#### `TrackSettingsScreen.kt` — 1071 lines
+#### `TrackSettingsScreen.kt` — 1074 lines
 
 ```kotlin
 package com.soundstage.mixer.ui.tracksettings
@@ -46550,8 +47559,11 @@ object VelocityLogic {
 
     private fun fn(p: VelocityPreset): ((Float) -> Float)? = when (p) {
         VelocityPreset.Linear -> { x -> x }
-        VelocityPreset.Soft -> { x -> x.pow(0.6f) }
-        VelocityPreset.Hard -> { x -> x.pow(1.7f) }
+        // Soft and Hard were inverted: the gentler curve was on Hard and the
+        // demanding one on Soft, so the two presets played the opposite of their
+        // names.
+        VelocityPreset.Soft -> { x -> x.pow(1.7f) }
+        VelocityPreset.Hard -> { x -> x.pow(0.6f) }
         VelocityPreset.SCurve -> { x -> if (x < 0.5f) 2f * x * x else 1f - (-2f * x + 2f).pow(2) / 2f }
         VelocityPreset.Compress -> { x -> 0.5f + (x - 0.5f) * 0.5f }
         VelocityPreset.Custom -> null
@@ -47801,7 +48813,7 @@ object ChordNotationConverter {
 
 ### `com/soundstage/mixer/viewmodel`
 
-#### `MixerViewModel.kt` — 6702 lines
+#### `MixerViewModel.kt` — 6852 lines
 
 ```kotlin
 package com.soundstage.mixer.viewmodel
@@ -47816,6 +48828,9 @@ import com.soundstage.mixer.audio.NativeAudioBridge
 import com.soundstage.mixer.model.*
 import com.soundstage.mixer.ui.components.VelocityConfig
 import com.soundstage.mixer.ui.components.VelocityProcessor
+import com.soundstage.mixer.ui.components.TrackColorMode
+import com.soundstage.mixer.ui.components.TrackColorsLogic
+import com.soundstage.mixer.ui.components.TrackPalettes
 import com.soundstage.mixer.ui.theme.*
 import com.soundstage.mixer.ui.setlists.*
 import com.soundstage.mixer.ui.setlists.SetlistColor
@@ -48064,6 +49079,18 @@ data class MixerUiState(
     val themePaletteName: String = "Midnight Slate (Default)",
     val trackColorSaturation: Float = 1.0f,
 
+    // Track colours (Settings > Interface > Track colors). Persisted.
+    val trackColorMode: TrackColorMode = TrackColorMode.Palette,
+    val trackColorPaletteId: String = TrackPalettes.Default.id,
+    /** Frozen random assignment (8 ARGB), used when the mode is Random. */
+    val trackRandomColorArgb: List<Int> = emptyList(),
+    /** The one colour used for every lane when the mode is Single. */
+    val trackSingleColorArgb: Int = 0xFF8FB2E8.toInt(),
+    /** Very slow automatic hue drift of every lane. */
+    val trackColorDynamic: Boolean = false,
+    /** Sub-page flag: the Track colors page replaces the Interface tab body. */
+    val trackColorsOpen: Boolean = false,
+
     // Loop Player & AOSP Internal Storage Browser Module
     val sfFavorites: Set<String> = emptySet(),
     val sfCategoryOverrides: Map<String, String> = emptyMap(),
@@ -48133,20 +49160,38 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     private val liveLooper = com.soundstage.mixer.looper.LooperController(
         clock = { transportClock.currentBarPosition() },
         initialPatches = com.soundstage.mixer.looper.LoopPatchJson.fromJson(
-            appStatePersistence.getString("live_looper_patches", "")
+            readLiveLooperPatchesJson()
         ).first,
         initialActiveId = com.soundstage.mixer.looper.LoopPatchJson.fromJson(
-            appStatePersistence.getString("live_looper_patches", "")
+            readLiveLooperPatchesJson()
         ).second,
         setlistName = appStatePersistence.getString("active_project_name", ""),
         onReplay = { _, event, volume -> replayLoopEvent(event, volume) },
         onPatchesChanged = { patches, activeId ->
-            appStatePersistence.saveString(
-                "live_looper_patches",
-                com.soundstage.mixer.looper.LoopPatchJson.toJson(patches, activeId)
-            )
+            // Patches belong with their loops: written to Loops/LiveLooper/patches.json,
+            // with SharedPreferences kept in sync as a fallback for older builds and for
+            // the case where external storage is unavailable.
+            val json = com.soundstage.mixer.looper.LoopPatchJson.toJson(patches, activeId)
+            runCatching {
+                if (!fileManager.liveLooperDir.exists()) fileManager.liveLooperDir.mkdirs()
+                fileManager.liveLooperPatchesFile.writeText(json)
+            }
+            appStatePersistence.saveString("live_looper_patches", json)
         }
     )
+
+    /**
+     * Reads the LiveLooper patches from `Loops/LiveLooper/patches.json`, migrating the
+     * older SharedPreferences copy on first run and never throwing on a bad file.
+     */
+    private fun readLiveLooperPatchesJson(): String {
+        val file = fileManager.liveLooperPatchesFile
+        if (file.exists()) {
+            val text = runCatching { file.readText() }.getOrNull()
+            if (!text.isNullOrBlank()) return text
+        }
+        return appStatePersistence.getString("live_looper_patches", "")
+    }
 
     private val _uiState = MutableStateFlow(createInitialState())
     val uiState: StateFlow<MixerUiState> = _uiState.asStateFlow()
@@ -48579,8 +49624,28 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 _uiState.update { it.copy(currentPage = AppScreenPage.SETLISTS, activeProjectName = "", activeSceneId = "") }
             }
+            // Track colours live in their own flat prefs (independent of the app-state
+            // blob), so they must be restored whether or not a full state was found.
+            restoreTrackColorSettings()
         } catch (e: Exception) {
             Log.e("MixerViewModel", "Error restoring saved app state: ${e.message}", e)
+        }
+    }
+
+    private fun restoreTrackColorSettings() {
+        _uiState.update {
+            it.copy(
+                trackColorMode = runCatching {
+                    TrackColorMode.valueOf(appStatePersistence.getString(KEY_TRACK_COLOR_MODE, TrackColorMode.Palette.name))
+                }.getOrDefault(TrackColorMode.Palette),
+                trackColorPaletteId = TrackPalettes.byId(
+                    appStatePersistence.getString(KEY_TRACK_COLOR_PALETTE, TrackPalettes.Default.id)
+                ).id,
+                trackRandomColorArgb = appStatePersistence.getString(KEY_TRACK_COLOR_RANDOM, "")
+                    .split(",").mapNotNull { v -> v.trim().toIntOrNull() },
+                trackSingleColorArgb = appStatePersistence.getInt(KEY_TRACK_COLOR_SINGLE, 0xFF8FB2E8.toInt()),
+                trackColorDynamic = appStatePersistence.getBoolean(KEY_TRACK_COLOR_DYNAMIC, false)
+            )
         }
     }
 
@@ -49876,6 +50941,16 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         persistCurrentStateDebounced()
     }
 
+    /**
+     * Step the transport BPM by [delta]. The current value is read here, inside the
+     * update, so a press-and-hold ramp cannot lose increments to a stale UI snapshot
+     * (the pill's callback used to capture one `transportBpm` and keep re-deriving
+     * the same value, which is why the readout stuck at 120/119).
+     */
+    fun adjustTransportBpm(delta: Int) {
+        setTransportBpm(_uiState.value.transportBpm + delta)
+    }
+
     fun setTransportSubdivision(sub: String) {
         transportClock.subdivision = com.soundstage.mixer.audio.TransportClock.Subdivision.parse(sub)
         _uiState.update { it.copy(transportSubdivision = sub) }
@@ -50142,6 +51217,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     // ================= VIRTUAL KEYBOARD & MULTI-TOUCH =================
     companion object {
         const val FIXED_DEPLOYED_KEYBOARD_FRACTION = 0.21f
+
+        // Track colours (Settings > Interface > Track colors), stored as flat prefs.
+        const val KEY_TRACK_COLOR_MODE = "track_color_mode"
+        const val KEY_TRACK_COLOR_PALETTE = "track_color_palette"
+        const val KEY_TRACK_COLOR_RANDOM = "track_color_random"
+        const val KEY_TRACK_COLOR_SINGLE = "track_color_single"
+        const val KEY_TRACK_COLOR_DYNAMIC = "track_color_dynamic"
     }
 
     fun cycleKeyboardExpansion() {
@@ -50281,6 +51363,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
      * Le volume de la case module la velocite / le gain.
      */
     private fun replayLoopEvent(event: com.soundstage.mixer.looper.LoopEvent, volume: Float) {
+        // Replay goes through the same audio engine as live playing. A user who opens
+        // the LiveLooper page first (without touching a key, pad or Tonic note) had no
+        // engine yet, so the first replayed events were silent. Bring it up here.
+        ensureEngineStarted()
         when (event.source) {
             com.soundstage.mixer.looper.RecordSource.Pads -> {
                 val pad = _uiState.value.drumPads.getOrNull(event.code) ?: return
@@ -50633,6 +51719,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onDrumPadPressed(padId: Int) {
+        // DrumPad samples are played by the native engine, which is only brought up
+        // lazily. Without this a user landing on the DrumPad page first hears nothing.
+        ensureEngineStarted()
         val pad = _uiState.value.drumPads.find { it.id == padId }
         if (pad != null) {
             if (pad.isLoopMode) {
@@ -50980,6 +52069,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onTonicNoteClick(note: String) {
+        // The TonicPad plays through the native engine, which is only brought up lazily.
+        // A user who opens the DrumPad page first and taps a pad or a Tonic key would
+        // otherwise get no sound at all.
+        ensureEngineStarted()
         if (note.isEmpty()) {
             audioEngine.setTonicDrone(emptySet(), _uiState.value.tonicOctaveRange, _uiState.value.tonicBrightness, _uiState.value.tonicShimmer)
             _uiState.update { it.copy(activeTonicNotes = emptySet()) }
@@ -53956,6 +55049,75 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         updateTrack(trackId) { it.copy(customColorArgb = argb) }
         persistCurrentStateDebounced()
     }
+
+    // ================= TRACK COLORS (Settings > Interface) =================
+    // The lane colours come from the persisted mode; the per-track override above
+    // still wins for a single track. `clearTrackColorOverrides` is what the modes
+    // call so the scheme is actually visible after the user picks one.
+
+    fun openTrackColorsPage() { _uiState.update { it.copy(trackColorsOpen = true) } }
+
+    fun closeTrackColorsPage() { _uiState.update { it.copy(trackColorsOpen = false) } }
+
+    /** Clears every per-track override so the scheme's colours show through. */
+    private fun clearTrackColorOverrides() {
+        _uiState.update { state ->
+            state.copy(tracks = state.tracks.map { if (it.isMaster) it else it.copy(customColorArgb = null) })
+        }
+    }
+
+    fun setTrackColorMode(mode: TrackColorMode) {
+        _uiState.update { it.copy(trackColorMode = mode) }
+        appStatePersistence.saveString(KEY_TRACK_COLOR_MODE, mode.name)
+        clearTrackColorOverrides()
+        if (mode == TrackColorMode.Random) randomizeTrackColors()
+        persistCurrentStateDebounced()
+    }
+
+    fun setTrackColorPalette(paletteId: String) {
+        val id = TrackPalettes.byId(paletteId).id
+        _uiState.update {
+            it.copy(trackColorPaletteId = id, trackColorMode = TrackColorMode.Palette)
+        }
+        appStatePersistence.saveString(KEY_TRACK_COLOR_PALETTE, id)
+        appStatePersistence.saveString(KEY_TRACK_COLOR_MODE, TrackColorMode.Palette.name)
+        clearTrackColorOverrides()
+        persistCurrentStateDebounced()
+    }
+
+    fun setTrackSingleColor(argb: Int) {
+        _uiState.update { it.copy(trackSingleColorArgb = argb, trackColorMode = TrackColorMode.Single) }
+        appStatePersistence.saveInt(KEY_TRACK_COLOR_SINGLE, argb)
+        appStatePersistence.saveString(KEY_TRACK_COLOR_MODE, TrackColorMode.Single.name)
+        clearTrackColorOverrides()
+        persistCurrentStateDebounced()
+    }
+
+    /** Re-rolls the random assignment; also selects the Random mode. */
+    fun randomizeTrackColors() {
+        val state = _uiState.value
+        val pool = TrackPalettes.byId(state.trackColorPaletteId).colors
+        val lanes = TrackColorsLogic.randomLanes(pool, kotlin.random.Random(System.nanoTime()))
+        val argbs = lanes.map { c -> c.toArgbInt() }
+        _uiState.update {
+            it.copy(trackColorMode = TrackColorMode.Random, trackRandomColorArgb = argbs)
+        }
+        appStatePersistence.saveString(KEY_TRACK_COLOR_RANDOM, argbs.joinToString(","))
+        appStatePersistence.saveString(KEY_TRACK_COLOR_MODE, TrackColorMode.Random.name)
+        clearTrackColorOverrides()
+        persistCurrentStateDebounced()
+    }
+
+    fun setTrackColorDynamic(enabled: Boolean) {
+        _uiState.update { it.copy(trackColorDynamic = enabled) }
+        appStatePersistence.saveBoolean(KEY_TRACK_COLOR_DYNAMIC, enabled)
+        persistCurrentStateDebounced()
+    }
+
+    private fun androidx.compose.ui.graphics.Color.toArgbInt(): Int =
+        android.graphics.Color.argb(
+            (alpha * 255).toInt(), (red * 255).toInt(), (green * 255).toInt(), (blue * 255).toInt()
+        )
 
     private inline fun updateTrack(trackId: Int, transform: (TrackChannel) -> TrackChannel) {
         _uiState.update { state ->

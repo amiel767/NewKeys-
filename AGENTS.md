@@ -2288,3 +2288,81 @@ Le rebase a conflicte sur `AGENTS.md` (les deux sessions ajoutent une section en
 fin de fichier) et sur 2 PNG de capture — resolution : garder **les deux**
 sections, prendre la capture locale. Toujours `git fetch` + rebase avant de
 committer quand `tools/conv_sync.py` signale de l'activite.
+
+## Session 2026-10-24 (9e passage) — integration conversation parallele + Track colors
+
+Conversation source : `dde6dffb48c5475a931918c2e3ff38f9`. Son travail est
+**deja dans mon historique** : son commit final `49be9db` (FX instrument
+persiste, carte grisee au bypass, + Instrument masque sur le master) est mon
+`HEAD~3`. Les 3 commits au-dessus (`8d3e6f5`, `9630cf9`, `e1b30c8` : LiveLooper
+taille des cases, BPM topbar, metronome responsive, `lineHeight = fontSize`) sont
+le travail qui a suivi. **Rien a importer** : la conversation est idle depuis
+19:57 et n'a produit aucun commit que je n'aie pas.
+
+### Synchroniser avec la conversation parallele (outil verifie)
+
+`tools/conv_sync.py` interroge l'API Cloud, diffe les evenements depuis un
+watermark (`tools/.conv_sync_state.json`, gitignore) et imprime ce qui a bouge
+(instructions utilisateur, rapports, editions de fichiers, commandes git).
+
+```bash
+python3 tools/conv_sync.py           # incremental
+python3 tools/conv_sync.py --full    # tout
+```
+
+**A lancer AVANT et APRES chaque modification** : les deux agents poussent sur
+`main`, donc `git fetch origin main` + rebase est obligatoire avant de committer
+quand le sync signale de l'activite. L'API renvoie parfois `429 Too Many
+Requests` : le script (et tout script maison) doit retenter avec backoff ; le
+`page_id` est un entier croissant, pas un nombre d'items.
+
+### Track colors (Settings > Interface) — fait et commite (`c96cebf`)
+
+| Element | Emplacement reel |
+|---|---|
+| Mode + palettes + logique | `ui/components/TrackColors.kt` |
+| `TrackColorMode` | `enum { Palette, Random, Single }` |
+| Palettes | `TrackPalettes` : `Default`, `Rainbow`, `Ocean`, `Sunset`, `Mono` |
+| Scheme resolu | `data class TrackColorScheme(lanes: List<Color>, master: Color)` |
+| CompositionLocal | `LocalTrackColors` (`staticCompositionLocalOf`, defaut = palette integree) |
+| Sous-page UI | `ui/settings/TrackColorsPage.kt` |
+| Carte d'entree | `SettingsScreen.kt` -> `TrackColorsCard` (testTag `track_colors_card`) |
+| Override par piste | `TrackChannel.resolvedColor(scheme)` (`VerticalFader.kt`) |
+
+**Une seule resolution, un seul partage.** `MixerScreen` calcule `effectiveScheme`
+(avec la derive) et le publie par `CompositionLocalProvider(LocalTrackColors
+provides ...)`. Les strips lisent `LocalTrackColors.current` — ils ne resolvent
+jamais une couleur eux-memes. Le master garde toujours `MasterColor`
+(`0xFF22D3EE`) : il ne suit **pas** les modes.
+
+**Derive « Dynamic »** : oscillation de teinte de +-14 degres sur 90 s
+(`infiniteRepeatable(tween(90_000), Reverse)`), imperceptible frame a frame.
+`TrackColorsLogic.driftColor` est du **Kotlin pur** (pas d'`android.graphics`) :
+il doit tourner en test JVM et en preview.
+
+**Persistance** : prefs **plates**, hors du blob d'etat applicatif — cles
+`track_color_mode`, `track_color_palette`, `track_color_random` (ARGB joints par
+virgule), `track_color_single`, `track_color_dynamic`.
+
+**Piege corrige (trouve par les tests)** : la restauration etait ecrite dans le
+bloc `if (saved != null)` de `restoreSavedAppState()`. Sans etat applicatif
+complet, elle n'etait donc **jamais** jouee. Extraite dans
+`restoreTrackColorSettings()`, appelee **toujours** (apres le if/else). Regle :
+une pref plate se restaure independamment du blob.
+
+**Piege de test Robolectric (couteux)** : `performScrollTo()` sur une `Column`
+`verticalScroll` haute leve `OutOfMemoryError: Java heap space` (pile dans
+`ShadowTrace.endSection`). Pour capturer un element hors ecran, utiliser un
+`@Config(qualifiers = "w851dp-h1600dp-440dpi")` (viewport haut, tout tient sans
+defiler) — pas le scroll. Corollaire : un test de capture multi-tests partage le
+meme JVM et peut OOM si plusieurs captures tournent ensemble ; lancer par petits
+lots.
+
+**Preuve de cablage** : un screenshot ne prouve pas qu'un bouton agit. Le test
+`interface_tab_has_the_track_colors_card` clique la carte et verifie que
+`onOpenTrackColors()` a bien ete appele.
+
+**Mesure de non-ecrasement** : profil vertical de bandes sur la capture (fraction
+de pixels non-fond par ligne). La carte Track colors mesure ses 8 voies
+distinctes (verifie par echantillonnage de la bande : 8 couleurs saturees +
+master).
