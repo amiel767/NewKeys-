@@ -2237,3 +2237,54 @@ count-in, tap tempo) etaient inatteignables.
 - **Ne pas lancer deux builds Gradle en parallele** (pression memoire = crash).
 - `tools/conv_sync.py` est rate-limite (100 req/min) : `--json` peut echouer en
   429, relancer plus tard ; `git fetch origin main` donne l'etat des commits.
+
+---
+
+## Session 2026-10-24 (8e passage) — lineHeight Material3 : la vraie cause des « lignes ecrasees »
+
+Retour utilisateur : « Quantize, Length etc. les elements sur la ligne sont
+ecrases, ils deviennent de simples lignes » + « la case loop patch est bizarre,
+les lettres/labels mal places ». Les deux avaient la **meme cause racine**, que
+je n'avais pas identifiee aux passes precedentes.
+
+### `lineHeight` Material3 = 24 sp, meme pour un texte de 8,5 sp
+
+`ui/theme/Type.kt` definit `bodyLarge.lineHeight = 24.sp`. Un `Text(...)` sans
+`lineHeight` explicite qui **herite** de ce style prend donc **24 dp de haut**
+quelle que soit sa `fontSize`. Sur une ligne a hauteur fixe, cela mange tout :
+
+| Composant | Hauteur declaree | Ce que le label consomme | Reste | Mesure avant -> apres |
+|---|---|---|---|---|
+| `Transport` (`height(38.dp)`) | 38 dp | libelle `Group` 8,5 sp = **24 dp** + gap 3 | ~11 dp | segments **6,5 dp -> 19,6 dp** |
+| `LoopPatchChip` (`height(44.dp)`) | 44 dp | 2 libelles (8,5 + 13 sp) empiles = **48 dp** | — | rogne -> **entier** |
+
+Le symptome n'est pas « texte decale » (ce que disait la note existante l.501)
+mais « **le controle sous le texte est ecrase a une ligne** » — bien plus grave,
+et invisible dans le code (les tailles declarees sont bonnes).
+
+### Correctif
+
+`lineHeight = <meme valeur que fontSize>` sur **tous** les `Text` a hauteur fixe
+de `LiveLooperUi.kt` (51 sites). Regle generale : des qu'un `Text` vit dans une
+ligne/box de hauteur contrainte, poser `lineHeight = fontSize` (le
+`translate(-50%,-50%)` du JSX suppose une ligne = la police, pas 24 sp).
+
+### Methode de detection (reutilisable)
+
+Mesurer les **bandes de contenu** par profil vertical, pas l'oeil :
+```python
+lum = sub.mean(axis=2); bg = np.percentile(lum, 20)
+on = (np.abs(lum - bg) > 10).mean(axis=1)   # fraction de pixels non-fond par ligne
+```
+Un segmented de 20 dp doit mesurer ~20 dp ; s'il mesure 6,5 dp, un ancetre le
+contraint. Comparer la hauteur mesuree a la hauteur **declaree** dans le code
+est le test le plus rapide.
+
+### Rappel : rebaser avant de committer (l'autre conversation pousse)
+
+L'agent parallele a **pousse** `49be9db` (FX : instrument persiste, carte grisee
+au bypass) pendant mes modifications. `git fetch origin main` a montre 1 avance.
+Le rebase a conflicte sur `AGENTS.md` (les deux sessions ajoutent une section en
+fin de fichier) et sur 2 PNG de capture — resolution : garder **les deux**
+sections, prendre la capture locale. Toujours `git fetch` + rebase avant de
+committer quand `tools/conv_sync.py` signale de l'activite.

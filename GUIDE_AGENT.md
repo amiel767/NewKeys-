@@ -267,6 +267,23 @@ taille — verifier la geometrie avant de suspecter le binding.
 Le patch window, lui, **est** une fenetre flottante : elle garde sa taille
 dessinee (651x341) et ne fait que retrecir (`coerceAtMost(1f)`).
 
+### Piege n1 : `lineHeight` Material3 ecrase les controles
+
+`ui/theme/Type.kt` fixe `lineHeight = 24.sp`. Un `Text` qui herite de ce style
+mesure **24 dp de haut meme a 8,5 sp**. Dans une ligne de hauteur fixe il ne
+laisse presque rien au controle du dessous :
+
+- `Transport` (`height(38.dp)`) : le libelle de groupe prend 24 dp -> le
+  segmented Quantize/Length/Count-in tombe a **6,5 dp** (une simple ligne).
+- `LoopPatchChip` (`height(44.dp)`) : deux libelles empiles = 48 dp -> rognes.
+
+**Regle** : tout `Text` dans une hauteur contrainte prend `lineHeight = fontSize`.
+Symptome typique : « le controle est ecrase », pas « le texte est decale ».
+
+**Mesure** : profil vertical de bandes (fraction de pixels non-fond par ligne).
+Comparez la hauteur mesuree a la hauteur **declaree** : 20 dp attendus qui en
+mesurent 6,5 = un ancetre contraint.
+
 ### Verifier une capture sans emulateur
 
 ```bash
