@@ -1887,3 +1887,14 @@ reference. Meme correctif sur la ligne de valeur.
 
 `assembleDebug` (Kotlin + NDK, 4 ABI) et `recordRoborazziDebug --tests "...FxWindowCaptureTest"`
 passent. Captures dans `app/src/test/screenshots/`.
+
+## PROJECT_CONTEXT.md — mise en contexte d'un agent (nouveau)
+
+`PROJECT_CONTEXT.md` (2,7 Mo) inline le **source complet de chaque fichier actif** :
+117 Kotlin (53 926 l.) + 25 natifs. Le code mort est exclu du corps et liste en annexe
+(12 fichiers verifies par scan d'atteignabilite) ; FluidSynth vendore (269 fichiers)
+est resume. Regenere avec `python3 tools/gen_project_context.py`.
+
+**A lire en premier** quand on reprend le depot sans contexte : il remplace une
+exploration de l'arbre. `AGENTS.md` (ce fichier) reste la memoire des pieges et des
+decisions ; `PROJECT_CONTEXT.md` est la carte du code.
