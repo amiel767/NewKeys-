@@ -111,6 +111,7 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -118,6 +119,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import com.soundstage.mixer.ui.components.TrackColorMode
+import com.soundstage.mixer.ui.components.TrackColorsLogic
+import com.soundstage.mixer.ui.components.TrackPalettes
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.TextUnit
@@ -202,6 +206,14 @@ data class SettingsState(
     /** Virtual keyboard theme id (KeyboardThemes) and pressed-key style ("color"/"led"). Persisted. */
     val vkbTheme: String = "classic",
     val vkbPressStyle: String = "color",
+    // Track colors (Settings > Interface > Track colors). Persisted.
+    val trackColorMode: TrackColorMode = TrackColorMode.Palette,
+    val trackColorPaletteId: String = TrackPalettes.Default.id,
+    val trackSingleColor: Color = Color(0xFF8FB2E8),
+    val trackRandomLanes: List<Color> = emptyList(),
+    val trackColorDynamic: Boolean = false,
+    /** The Track colors page replaces the Interface tab body, like the MIDI mapping page. */
+    val trackColorsOpen: Boolean = false,
     // MIDI input (persisted)
     val antiJitter: Boolean = false,
     val jitterWindowMs: Int = 15,
@@ -276,6 +288,13 @@ interface SettingsActions {
     fun onResetColors() {}
     fun onVkbThemeChange(themeId: String) {}
     fun onVkbPressStyleChange(style: String) {}
+    fun onOpenTrackColors() {}
+    fun onCloseTrackColors() {}
+    fun onTrackColorModeChange(mode: TrackColorMode) {}
+    fun onTrackColorPaletteChange(paletteId: String) {}
+    fun onTrackSingleColorChange(color: Color) {}
+    fun onTrackColorsRandomize() {}
+    fun onTrackColorDynamicChange(enabled: Boolean) {}
     fun onAntiJitterChange(enabled: Boolean) {}
     fun onJitterWindowChange(ms: Int) {}
     fun onStartMidiLearn(action: MidiActionType) {}
@@ -424,7 +443,7 @@ private fun Modifier.setSunk(shape: androidx.compose.ui.graphics.Shape): Modifie
 
 /** Light spring press. Apply it before the visual modifiers. */
 @Composable
-private fun Modifier.tapScale(scaleDown: Float = 0.96f, onTap: () -> Unit): Modifier {
+internal fun Modifier.tapScale(scaleDown: Float = 0.96f, onTap: () -> Unit): Modifier {
     var pressed by remember { mutableStateOf(false) }
     val s by animateFloatAsState(
         if (pressed) scaleDown else 1f, spring(dampingRatio = 0.6f, stiffness = 500f), label = "tap"
@@ -496,6 +515,20 @@ fun SettingsScreen(
                     onAntiJitterChange = { actions.onAntiJitterChange(it) },
                     onJitterWindowChange = { actions.onJitterWindowChange(it) },
                     onBack = { actions.onCloseMidiMapping() }
+                )
+            } else if (state.trackColorsOpen) {
+                TrackColorsPage(
+                    mode = state.trackColorMode,
+                    paletteId = state.trackColorPaletteId,
+                    singleColor = state.trackSingleColor,
+                    randomLanes = state.trackRandomLanes,
+                    dynamic = state.trackColorDynamic,
+                    onModeChange = { actions.onTrackColorModeChange(it) },
+                    onPaletteChange = { actions.onTrackColorPaletteChange(it) },
+                    onSingleColorChange = { actions.onTrackSingleColorChange(it) },
+                    onRandomize = { actions.onTrackColorsRandomize() },
+                    onDynamicChange = { actions.onTrackColorDynamicChange(it) },
+                    onBack = { actions.onCloseTrackColors() }
                 )
             } else if (state.query.isNotBlank()) {
                 SearchResults(state, actions)
@@ -875,6 +908,71 @@ private fun InterfaceSection(state: SettingsState, actions: SettingsActions) {
             selected = state.vkbPressStyle,
             onSelect = actions::onVkbPressStyleChange
         )
+    }
+
+    SectionLabel("Track colors")
+    TrackColorsCard(
+        mode = state.trackColorMode,
+        paletteId = state.trackColorPaletteId,
+        singleColor = state.trackSingleColor,
+        randomLanes = state.trackRandomLanes,
+        dynamic = state.trackColorDynamic,
+        onClick = { actions.onOpenTrackColors() }
+    )
+}
+
+/**
+ * The entry point to the Track colors page. A tappable card showing the live
+ * scheme (8 lanes + master) so the user sees the effect before opening the page.
+ */
+@Composable
+private fun TrackColorsCard(
+    mode: TrackColorMode,
+    paletteId: String,
+    singleColor: Color,
+    randomLanes: List<Color>,
+    dynamic: Boolean,
+    onClick: () -> Unit
+) {
+    val scheme = remember(mode, paletteId, singleColor, randomLanes) {
+        TrackColorsLogic.scheme(mode, paletteId, randomLanes, singleColor)
+    }
+    val modeLabel = when (mode) {
+        TrackColorMode.Palette -> TrackPalettes.byId(paletteId).name
+        TrackColorMode.Random -> "Random"
+        TrackColorMode.Single -> "Single color"
+    }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .testTag("track_colors_card")
+            .tapScale(0.99f, onClick)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Brush.verticalGradient(listOf(Color(0xFF1B2331), Color(0xFF151B26))))
+            .border(1.dp, white(0.07f), RoundedCornerShape(14.dp))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Track colors", style = setText(14.5.sp, FontWeight.Bold, SetColors.Ink), maxLines = 1)
+                Text(
+                    "$modeLabel${if (dynamic) " · Dynamic" else ""}",
+                    style = setText(11.5.sp, color = SetColors.Dim),
+                    maxLines = 1
+                )
+            }
+            SetIcon(SetIconKind.Chevron, SetColors.Mute, Modifier.size(16.dp))
+        }
+        // The 8 lanes plus the master, as a compact colour strip.
+        Row(
+            Modifier.fillMaxWidth().height(16.dp).clip(RoundedCornerShape(6.dp)),
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            scheme.lanes.forEach { c -> Box(Modifier.weight(1f).fillMaxHeight().background(c)) }
+            Box(Modifier.width(3.dp).fillMaxHeight().background(white(0.10f)))
+            Box(Modifier.weight(1f).fillMaxHeight().background(scheme.master))
+        }
     }
 }
 

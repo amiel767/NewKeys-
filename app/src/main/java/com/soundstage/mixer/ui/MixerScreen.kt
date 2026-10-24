@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -105,6 +106,7 @@ private fun MixerMainPageContent(
     trackScrollState: ScrollState,
     onImportDrumPadAudio: () -> Unit = {}
 ) {
+    val trackColors = LocalTrackColors.current
 // Full-screen Studio Layout (No enclosing bento box, edge-to-edge layout)
 // Fond V2 (degrade + vignettes) : remplace MaterialTheme.colorScheme.background.
                 // Real height of the keyboard overlay at rest, published by onSizeChanged below.
@@ -210,7 +212,7 @@ private fun MixerMainPageContent(
                                     }
 
                                     val isDimmed = !track.isEnabled || track.isMuted || (isAnySolo && !track.isSolo)
-                                    val accentColor = track.resolvedColor()
+                                    val accentColor = track.resolvedColor(trackColors)
 
                                     ChannelStripV2(
                                         track = track,
@@ -568,7 +570,7 @@ private fun MixerMainPageContent(
                         KeyboardLine(
                             id = t.id.toString(),
                             name = t.patchName.ifBlank { t.soundfontName.ifBlank { t.name } },
-                            color = t.resolvedColor(),
+                            color = t.resolvedColor(trackColors),
                             low = t.splitNoteMin,
                             high = t.splitNoteMax
                         )
@@ -653,6 +655,40 @@ fun MixerScreen(
     var tsPage by remember { mutableStateOf(TsPage.Track) }
     LaunchedEffect(uiState.activeTrackSettingsId) { tsPage = TsPage.Track }
 
+    // Track colours: resolved once here and shared with every strip through the
+    // CompositionLocal below, so no strip reads a colour on its own.
+    val trackColorScheme = remember(
+        uiState.trackColorMode, uiState.trackColorPaletteId,
+        uiState.trackSingleColorArgb, uiState.trackRandomColorArgb
+    ) {
+        TrackColorsLogic.scheme(
+            uiState.trackColorMode,
+            uiState.trackColorPaletteId,
+            uiState.trackRandomColorArgb.map { Color(it) },
+            Color(uiState.trackSingleColorArgb)
+        )
+    }
+    // The dynamic drift is a very slow hue oscillation (±14° over 90 s, about
+    // 0.3°/s): visible over minutes, imperceptible frame to frame. Static when off.
+    val driftPhase: Float = if (uiState.trackColorDynamic) {
+        val transition = rememberInfiniteTransition(label = "trackColorDrift")
+        val t by transition.animateFloat(
+            initialValue = 0f, targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(90_000, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "drift"
+        )
+        (t * 28f) - 14f
+    } else 0f
+    val effectiveScheme = remember(trackColorScheme, driftPhase) {
+        if (driftPhase == 0f) trackColorScheme
+        else trackColorScheme.copy(
+            lanes = trackColorScheme.lanes.map { TrackColorsLogic.driftColor(it, driftPhase) }
+        )
+    }
+
     val sf2PickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
@@ -732,6 +768,7 @@ fun MixerScreen(
 
     // Fullscreen Stage Container (Unpadded for 100% full-bleed overlays like SplashScreen)
     CompositionLocalProvider(LocalHapticsEnabled provides uiState.hapticsEnabled) {
+    CompositionLocalProvider(LocalTrackColors provides effectiveScheme) {
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -842,6 +879,12 @@ fun MixerScreen(
                     backgroundLightness = uiState.themeBgLightness,
                     vkbTheme = uiState.vkbTheme,
                     vkbPressStyle = uiState.vkbPressStyle,
+                    trackColorMode = uiState.trackColorMode,
+                    trackColorPaletteId = uiState.trackColorPaletteId,
+                    trackSingleColor = Color(uiState.trackSingleColorArgb),
+                    trackRandomLanes = uiState.trackRandomColorArgb.map { Color(it) },
+                    trackColorDynamic = uiState.trackColorDynamic,
+                    trackColorsOpen = uiState.trackColorsOpen,
                     audioEngine = uiState.audioEngine,
                     fluidSynthGain = uiState.fluidSynthGain,
                     hapticsEnabled = uiState.hapticsEnabled,
@@ -875,6 +918,13 @@ fun MixerScreen(
                     }
                     override fun onVkbThemeChange(themeId: String) { viewModel.setVkbTheme(themeId) }
                     override fun onVkbPressStyleChange(style: String) { viewModel.setVkbPressStyle(style) }
+                    override fun onOpenTrackColors() { viewModel.openTrackColorsPage() }
+                    override fun onCloseTrackColors() { viewModel.closeTrackColorsPage() }
+                    override fun onTrackColorModeChange(mode: TrackColorMode) { viewModel.setTrackColorMode(mode) }
+                    override fun onTrackColorPaletteChange(paletteId: String) { viewModel.setTrackColorPalette(paletteId) }
+                    override fun onTrackSingleColorChange(color: Color) { viewModel.setTrackSingleColor(color.toArgb()) }
+                    override fun onTrackColorsRandomize() { viewModel.randomizeTrackColors() }
+                    override fun onTrackColorDynamicChange(enabled: Boolean) { viewModel.setTrackColorDynamic(enabled) }
                     override fun onAntiJitterChange(enabled: Boolean) { viewModel.setAntiJitter(enabled) }
                     override fun onJitterWindowChange(ms: Int) { viewModel.setJitterWindowMs(ms) }
                     override fun onStartMidiLearn(action: MidiActionType) { viewModel.startMidiLearn(action) }
@@ -1072,7 +1122,7 @@ fun MixerScreen(
                         state = TrackSettingsState(
                             trackName = "Track ${targetTrack.id}",
                             soundName = if (targetTrack.patchName.isNotBlank()) targetTrack.patchName else if (targetTrack.soundfontName.isNotBlank()) targetTrack.soundfontName else "Default GM",
-                            color = targetTrack.resolvedColor(),
+                            color = targetTrack.resolvedColor(effectiveScheme),
                             velocity = TsVelocity.toUi(targetTrack.velocityConfig),
                             devices = uiState.midiDevices.map { TsDeviceItem(id = it.id, name = it.name, subtitle = if (it.isConnected) "Connected" else "Offline") },
                             midiDeviceId = targetTrack.selectedMidiDeviceId ?: "all",
@@ -1113,7 +1163,7 @@ fun MixerScreen(
                     VelocitySettingsDialog(
                         trackNumber = targetTrack.id,
                         soundName = if (targetTrack.patchName.isNotBlank()) targetTrack.patchName else if (targetTrack.soundfontName.isNotBlank()) targetTrack.soundfontName else "Default GM",
-                        trackColor = targetTrack.resolvedColor(),
+                        trackColor = targetTrack.resolvedColor(effectiveScheme),
                         config = targetTrack.velocityConfig,
                         onConfigChange = { newConfig ->
                             viewModel.updateTrackVelocityConfig(targetTrack.id, newConfig)
@@ -1281,6 +1331,7 @@ fun MixerScreen(
             )
         }
     }
+    } // LocalTrackColors
     }
 }
 

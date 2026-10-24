@@ -100,6 +100,14 @@ fun getTrackThemeColor(trackId: Int, isMaster: Boolean = false): Color {
 fun TrackChannel.resolvedColor(): Color =
     customColorArgb?.let { Color(it) } ?: getTrackThemeColor(id, isMaster)
 
+/**
+ * Resolves a track's colour against the active [scheme]: a per-track override wins,
+ * otherwise the scheme lane (or the master colour). This is what the mixer uses, so
+ * the Settings > Track colors scheme is honoured everywhere.
+ */
+fun TrackChannel.resolvedColor(scheme: TrackColorScheme): Color =
+    customColorArgb?.let { Color(it) } ?: if (isMaster) scheme.master else scheme.lane(id)
+
 /** The 8 built-in track colours, offered as presets in the colour picker. */
 val TrackColorPresets: List<Color> = (1..8).map { getTrackThemeColor(it) }
 

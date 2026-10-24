@@ -10,6 +10,9 @@ import com.soundstage.mixer.audio.NativeAudioBridge
 import com.soundstage.mixer.model.*
 import com.soundstage.mixer.ui.components.VelocityConfig
 import com.soundstage.mixer.ui.components.VelocityProcessor
+import com.soundstage.mixer.ui.components.TrackColorMode
+import com.soundstage.mixer.ui.components.TrackColorsLogic
+import com.soundstage.mixer.ui.components.TrackPalettes
 import com.soundstage.mixer.ui.theme.*
 import com.soundstage.mixer.ui.setlists.*
 import com.soundstage.mixer.ui.setlists.SetlistColor
@@ -257,6 +260,18 @@ data class MixerUiState(
     val themeModulesLightness: Float = 1.0f,
     val themePaletteName: String = "Midnight Slate (Default)",
     val trackColorSaturation: Float = 1.0f,
+
+    // Track colours (Settings > Interface > Track colors). Persisted.
+    val trackColorMode: TrackColorMode = TrackColorMode.Palette,
+    val trackColorPaletteId: String = TrackPalettes.Default.id,
+    /** Frozen random assignment (8 ARGB), used when the mode is Random. */
+    val trackRandomColorArgb: List<Int> = emptyList(),
+    /** The one colour used for every lane when the mode is Single. */
+    val trackSingleColorArgb: Int = 0xFF8FB2E8.toInt(),
+    /** Very slow automatic hue drift of every lane. */
+    val trackColorDynamic: Boolean = false,
+    /** Sub-page flag: the Track colors page replaces the Interface tab body. */
+    val trackColorsOpen: Boolean = false,
 
     // Loop Player & AOSP Internal Storage Browser Module
     val sfFavorites: Set<String> = emptySet(),
@@ -791,8 +806,28 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 _uiState.update { it.copy(currentPage = AppScreenPage.SETLISTS, activeProjectName = "", activeSceneId = "") }
             }
+            // Track colours live in their own flat prefs (independent of the app-state
+            // blob), so they must be restored whether or not a full state was found.
+            restoreTrackColorSettings()
         } catch (e: Exception) {
             Log.e("MixerViewModel", "Error restoring saved app state: ${e.message}", e)
+        }
+    }
+
+    private fun restoreTrackColorSettings() {
+        _uiState.update {
+            it.copy(
+                trackColorMode = runCatching {
+                    TrackColorMode.valueOf(appStatePersistence.getString(KEY_TRACK_COLOR_MODE, TrackColorMode.Palette.name))
+                }.getOrDefault(TrackColorMode.Palette),
+                trackColorPaletteId = TrackPalettes.byId(
+                    appStatePersistence.getString(KEY_TRACK_COLOR_PALETTE, TrackPalettes.Default.id)
+                ).id,
+                trackRandomColorArgb = appStatePersistence.getString(KEY_TRACK_COLOR_RANDOM, "")
+                    .split(",").mapNotNull { v -> v.trim().toIntOrNull() },
+                trackSingleColorArgb = appStatePersistence.getInt(KEY_TRACK_COLOR_SINGLE, 0xFF8FB2E8.toInt()),
+                trackColorDynamic = appStatePersistence.getBoolean(KEY_TRACK_COLOR_DYNAMIC, false)
+            )
         }
     }
 
@@ -2364,6 +2399,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     // ================= VIRTUAL KEYBOARD & MULTI-TOUCH =================
     companion object {
         const val FIXED_DEPLOYED_KEYBOARD_FRACTION = 0.21f
+
+        // Track colours (Settings > Interface > Track colors), stored as flat prefs.
+        const val KEY_TRACK_COLOR_MODE = "track_color_mode"
+        const val KEY_TRACK_COLOR_PALETTE = "track_color_palette"
+        const val KEY_TRACK_COLOR_RANDOM = "track_color_random"
+        const val KEY_TRACK_COLOR_SINGLE = "track_color_single"
+        const val KEY_TRACK_COLOR_DYNAMIC = "track_color_dynamic"
     }
 
     fun cycleKeyboardExpansion() {
@@ -6189,6 +6231,75 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         updateTrack(trackId) { it.copy(customColorArgb = argb) }
         persistCurrentStateDebounced()
     }
+
+    // ================= TRACK COLORS (Settings > Interface) =================
+    // The lane colours come from the persisted mode; the per-track override above
+    // still wins for a single track. `clearTrackColorOverrides` is what the modes
+    // call so the scheme is actually visible after the user picks one.
+
+    fun openTrackColorsPage() { _uiState.update { it.copy(trackColorsOpen = true) } }
+
+    fun closeTrackColorsPage() { _uiState.update { it.copy(trackColorsOpen = false) } }
+
+    /** Clears every per-track override so the scheme's colours show through. */
+    private fun clearTrackColorOverrides() {
+        _uiState.update { state ->
+            state.copy(tracks = state.tracks.map { if (it.isMaster) it else it.copy(customColorArgb = null) })
+        }
+    }
+
+    fun setTrackColorMode(mode: TrackColorMode) {
+        _uiState.update { it.copy(trackColorMode = mode) }
+        appStatePersistence.saveString(KEY_TRACK_COLOR_MODE, mode.name)
+        clearTrackColorOverrides()
+        if (mode == TrackColorMode.Random) randomizeTrackColors()
+        persistCurrentStateDebounced()
+    }
+
+    fun setTrackColorPalette(paletteId: String) {
+        val id = TrackPalettes.byId(paletteId).id
+        _uiState.update {
+            it.copy(trackColorPaletteId = id, trackColorMode = TrackColorMode.Palette)
+        }
+        appStatePersistence.saveString(KEY_TRACK_COLOR_PALETTE, id)
+        appStatePersistence.saveString(KEY_TRACK_COLOR_MODE, TrackColorMode.Palette.name)
+        clearTrackColorOverrides()
+        persistCurrentStateDebounced()
+    }
+
+    fun setTrackSingleColor(argb: Int) {
+        _uiState.update { it.copy(trackSingleColorArgb = argb, trackColorMode = TrackColorMode.Single) }
+        appStatePersistence.saveInt(KEY_TRACK_COLOR_SINGLE, argb)
+        appStatePersistence.saveString(KEY_TRACK_COLOR_MODE, TrackColorMode.Single.name)
+        clearTrackColorOverrides()
+        persistCurrentStateDebounced()
+    }
+
+    /** Re-rolls the random assignment; also selects the Random mode. */
+    fun randomizeTrackColors() {
+        val state = _uiState.value
+        val pool = TrackPalettes.byId(state.trackColorPaletteId).colors
+        val lanes = TrackColorsLogic.randomLanes(pool, kotlin.random.Random(System.nanoTime()))
+        val argbs = lanes.map { c -> c.toArgbInt() }
+        _uiState.update {
+            it.copy(trackColorMode = TrackColorMode.Random, trackRandomColorArgb = argbs)
+        }
+        appStatePersistence.saveString(KEY_TRACK_COLOR_RANDOM, argbs.joinToString(","))
+        appStatePersistence.saveString(KEY_TRACK_COLOR_MODE, TrackColorMode.Random.name)
+        clearTrackColorOverrides()
+        persistCurrentStateDebounced()
+    }
+
+    fun setTrackColorDynamic(enabled: Boolean) {
+        _uiState.update { it.copy(trackColorDynamic = enabled) }
+        appStatePersistence.saveBoolean(KEY_TRACK_COLOR_DYNAMIC, enabled)
+        persistCurrentStateDebounced()
+    }
+
+    private fun androidx.compose.ui.graphics.Color.toArgbInt(): Int =
+        android.graphics.Color.argb(
+            (alpha * 255).toInt(), (red * 255).toInt(), (green * 255).toInt(), (blue * 255).toInt()
+        )
 
     private inline fun updateTrack(trackId: Int, transform: (TrackChannel) -> TrackChannel) {
         _uiState.update { state ->
