@@ -1777,7 +1777,7 @@ private fun SlSnackbar(snack: SlSnack, onUndo: () -> Unit, modifier: Modifier) {
     Box(modifier.slAppear()) {
         Box(
             Modifier
-                .widthIn(min = 260.dp)
+                .widthIn(min = 260.dp, max = 420.dp)
                 .shadow(12.dp, shape, ambientColor = Color.Black, spotColor = Color.Black)
                 .clip(shape)
                 .background(Color(0xFF222C40))

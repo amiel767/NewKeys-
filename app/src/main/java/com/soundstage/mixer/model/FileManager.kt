@@ -88,6 +88,13 @@ class FileManager(private val context: Context) {
         }
     val drumPadDir: File get() = File(baseDir, "DrumPad")
     val drumPadLoopDir: File get() = File(drumPadDir, "DrumPad loop")
+    /**
+     * LiveLooper patches and their captured loops live beside the loops they play, under
+     * `Loops/LiveLooper/` (per the product request). The patch JSON is written there by
+     * `MixerViewModel` so a show's loops travel with the folder that holds them.
+     */
+    val liveLooperDir: File get() = File(loopsDir, "LiveLooper")
+    val liveLooperPatchesFile: File get() = File(liveLooperDir, "patches.json")
     val setlistsDir: File get() = File(baseDir, "Setlists")
     val projectsDir: File get() = setlistsDir
     val scenesDir: File get() = setlistsDir
@@ -126,6 +133,7 @@ class FileManager(private val context: Context) {
             if (!baseDir.exists()) baseDir.mkdirs()
             if (!soundfontsDir.exists()) soundfontsDir.mkdirs()
             if (!loopsDir.exists()) loopsDir.mkdirs()
+            if (!liveLooperDir.exists()) liveLooperDir.mkdirs()
             if (!drumPadDir.exists()) drumPadDir.mkdirs()
             if (!drumPadLoopDir.exists()) drumPadLoopDir.mkdirs()
             if (!setlistsDir.exists()) setlistsDir.mkdirs()

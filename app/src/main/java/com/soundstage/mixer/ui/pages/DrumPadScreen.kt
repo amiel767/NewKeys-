@@ -151,20 +151,17 @@ fun DrumPadScreen(
     }
 
     // ─── Frame clock for the LiveLooper rings (bars position) ───
-    var liveLooperNowBar by remember { mutableStateOf(0.0) }
-    LaunchedEffect(liveLooperPage) {
-        if (!liveLooperPage) return@LaunchedEffect
-        while (isActive) {
-            liveLooperNowBar = viewModel.liveLooperNowBar()
-            delay(16L)
-        }
-    }
-
+    // Scoped into `LiveLooperTicker` below: a screen-level state read here would
+    // invalidate this whole composable (top bar, TonicPad, grid) 60 times a second.
     // Long-press on a loop case opens the action menu (Undo / Double / Play / Clear).
     var loopMenuIndex by remember { mutableStateOf<Int?>(null) }
 
     // ─── Derived ───
     val beatsPerBar = parseBeatsPerBar(uiState.transportSignature)
+    // A case is moving (or waiting for a boundary): only then does the ring need 30 Hz.
+    val liveLooperBusy = uiState.liveLooperState.cases.any {
+        it.mode != com.soundstage.mixer.looper.CaseMode.Empty && it.mode != com.soundstage.mixer.looper.CaseMode.Stopped
+    } || uiState.liveLooperState.cases.any { it.queued != null }
     val barDurationNs = (beatsPerBar.toLong() * (60_000_000_000L / uiState.transportBpm.coerceAtLeast(30)))
     val anyRec = uiState.looper.cases.firstOrNull {
         it.state == LooperEngine.CaseState.Recording || it.state == LooperEngine.CaseState.Overdubbing
@@ -255,9 +252,10 @@ fun DrumPadScreen(
                         }
                     }
                 }
-                com.soundstage.mixer.looper.LiveLooperContent(
+                com.soundstage.mixer.looper.LiveLooperHost(
                     state = uiState.liveLooperState,
-                    nowBar = liveLooperNowBar,
+                    clock = { viewModel.liveLooperNowBar() },
+                    active = liveLooperBusy,
                     actions = liveLooperActions,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )

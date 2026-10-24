@@ -59,6 +59,26 @@ class LiveLooperCaptureTest {
     }
 
     @Test
+    fun live_looper_patch() = capture("live_looper_patch") {
+        val patches = listOf(
+            LoopPatch("p1", "Verse groove", List(8) { LoopCase(it) }),
+            LoopPatch("p2", "Chorus stack", List(8) { LoopCase(it) })
+        )
+        val ctrl = remember {
+            LooperController(clock = { 0.35 }, setlistName = "Sunday Show", initialActiveId = "p1", initialPatches = patches)
+        }
+        val state by ctrl.state.collectAsState()
+        val actions = remember { ctrl.actions() }
+        // The patch window is a store-owned flag: drive it through the controller's actions.
+        LaunchedEffect(Unit) { actions.onOpenPatches() }
+        val now = remember { 0.35 }
+        Box(Modifier.fillMaxSize().background(Color(0xFF0F141D))) {
+            LiveLooperContent(state, now, actions, Modifier.fillMaxSize().padding(start = 10.dp, end = 10.dp, top = 60.dp, bottom = 8.dp))
+            LiveLooperOverlays(state, actions, Modifier.fillMaxSize())
+        }
+    }
+
+    @Test
     fun live_looper_page() = capture("live_looper_page") {
         val t0 = remember { System.nanoTime() }
         val barMs = 4 * 60000.0 / 119.0

@@ -1675,6 +1675,8 @@ private fun SfUndoSnackbar(
     val shape = RoundedCornerShape(14.dp)
     Column(
         Modifier
+            // A short confirmation, not a full-width bar: bounded and centred at the bottom.
+            .widthIn(max = 420.dp)
             .shadow(12.dp, shape, ambientColor = Color.Black, spotColor = Color(0xAA000000))
             .clip(shape)
             .background(Color(0xF2222C40))
@@ -1685,8 +1687,8 @@ private fun SfUndoSnackbar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(text, style = sfText(13.5.sp, FontWeight.SemiBold, SfColors.Ink))
-            Spacer(Modifier.weight(1f))
+            Text(text, style = sfText(13.5.sp, FontWeight.SemiBold, SfColors.Ink), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.width(16.dp))
             Box(
                 Modifier
                     .sfTap(0.9f, onUndo)

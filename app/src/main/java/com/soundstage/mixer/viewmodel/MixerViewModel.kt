@@ -327,20 +327,38 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     private val liveLooper = com.soundstage.mixer.looper.LooperController(
         clock = { transportClock.currentBarPosition() },
         initialPatches = com.soundstage.mixer.looper.LoopPatchJson.fromJson(
-            appStatePersistence.getString("live_looper_patches", "")
+            readLiveLooperPatchesJson()
         ).first,
         initialActiveId = com.soundstage.mixer.looper.LoopPatchJson.fromJson(
-            appStatePersistence.getString("live_looper_patches", "")
+            readLiveLooperPatchesJson()
         ).second,
         setlistName = appStatePersistence.getString("active_project_name", ""),
         onReplay = { _, event, volume -> replayLoopEvent(event, volume) },
         onPatchesChanged = { patches, activeId ->
-            appStatePersistence.saveString(
-                "live_looper_patches",
-                com.soundstage.mixer.looper.LoopPatchJson.toJson(patches, activeId)
-            )
+            // Patches belong with their loops: written to Loops/LiveLooper/patches.json,
+            // with SharedPreferences kept in sync as a fallback for older builds and for
+            // the case where external storage is unavailable.
+            val json = com.soundstage.mixer.looper.LoopPatchJson.toJson(patches, activeId)
+            runCatching {
+                if (!fileManager.liveLooperDir.exists()) fileManager.liveLooperDir.mkdirs()
+                fileManager.liveLooperPatchesFile.writeText(json)
+            }
+            appStatePersistence.saveString("live_looper_patches", json)
         }
     )
+
+    /**
+     * Reads the LiveLooper patches from `Loops/LiveLooper/patches.json`, migrating the
+     * older SharedPreferences copy on first run and never throwing on a bad file.
+     */
+    private fun readLiveLooperPatchesJson(): String {
+        val file = fileManager.liveLooperPatchesFile
+        if (file.exists()) {
+            val text = runCatching { file.readText() }.getOrNull()
+            if (!text.isNullOrBlank()) return text
+        }
+        return appStatePersistence.getString("live_looper_patches", "")
+    }
 
     private val _uiState = MutableStateFlow(createInitialState())
     val uiState: StateFlow<MixerUiState> = _uiState.asStateFlow()
@@ -2827,6 +2845,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onDrumPadPressed(padId: Int) {
+        // DrumPad samples are played by the native engine, which is only brought up
+        // lazily. Without this a user landing on the DrumPad page first hears nothing.
+        ensureEngineStarted()
         val pad = _uiState.value.drumPads.find { it.id == padId }
         if (pad != null) {
             if (pad.isLoopMode) {
@@ -3174,6 +3195,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onTonicNoteClick(note: String) {
+        // The TonicPad plays through the native engine, which is only brought up lazily.
+        // A user who opens the DrumPad page first and taps a pad or a Tonic key would
+        // otherwise get no sound at all.
+        ensureEngineStarted()
         if (note.isEmpty()) {
             audioEngine.setTonicDrone(emptySet(), _uiState.value.tonicOctaveRange, _uiState.value.tonicBrightness, _uiState.value.tonicShimmer)
             _uiState.update { it.copy(activeTonicNotes = emptySet()) }

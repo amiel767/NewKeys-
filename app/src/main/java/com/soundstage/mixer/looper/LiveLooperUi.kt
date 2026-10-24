@@ -138,6 +138,17 @@ private fun white(a: Float) = Color.White.copy(alpha = a)
 private fun Color.a(x: Float) = copy(alpha = x)
 fun loopCaseColor(id: Int): Color = LL.Pal[id % LL.Pal.size]
 
+// Right-area canvas of the reference: 891-188-10 = 693 wide, 411-60-8 = 343 tall.
+// Every card, ring and gap in the grid is sized against these numbers, so the whole
+// area is laid out at this size and scaled once (see `LiveLooperContent`).
+private const val LL_CONTENT_W = 693f
+private const val LL_CONTENT_H = 343f
+
+// Patch window of the reference: `left:120, right:120, top:58, bottom:12` on the
+// 891 x 411 frame -> 651 x 341 dp.
+private const val LL_PATCH_W = 651f
+private const val LL_PATCH_H = 341f
+
 private val PanelBrush = Brush.verticalGradient(listOf(Color(0xFF2A3447), Color(0xFF1E2736)))
 private val WindowBrush = Brush.verticalGradient(listOf(Color(0xFF232C3E), Color(0xFF1A2230)))
 private val ButtonBrush = Brush.verticalGradient(listOf(Color(0xFF2F3850), Color(0xFF252D40)))
@@ -267,15 +278,23 @@ private fun RoundButton(icon: LoopIcon, size: Dp, onClick: () -> Unit) {
     ) { LoopIconView(icon, Color(0xFFE3E8F2), 14.dp, 2.2f) }
 }
 
-/** Current bar position (bars since the transport origin), refreshed about 30 times a second. Visual only. */
+/**
+ * Current bar position (bars since the transport origin). Visual only.
+ *
+ * [active] lets the caller drop the refresh rate when nothing is moving: at 30 Hz while a
+ * case records, plays or waits for a boundary, and at ~4 Hz when the page is idle, so an
+ * open-but-silent LiveLooper page does not keep the compositor busy 30 times a second.
+ */
 @Composable
-fun rememberNowBar(clock: () -> Double): Double {
+fun rememberNowBar(clock: () -> Double, active: Boolean = true): Double {
     var now by remember { mutableStateOf(clock()) }
     val c by rememberUpdatedState(clock)
+    val a by rememberUpdatedState(active)
     LaunchedEffect(Unit) {
         var last = 0L
         while (true) {
-            androidx.compose.runtime.withFrameNanos { t -> if (t - last >= 30_000_000L) { last = t; now = c() } }
+            val interval = if (a) 30_000_000L else 250_000_000L
+            androidx.compose.runtime.withFrameNanos { t -> if (t - last >= interval) { last = t; now = c() } }
         }
     }
     return now
@@ -703,31 +722,75 @@ private fun Transport(state: LooperUiState, nowBar: Double, actions: LooperActio
 
 /* ═══════════════════════════ PAGE CONTENT ═══════════════════════════ */
 
-/** Right area of the LiveLooper page: transport + the 8 cases (or the focused case). Give it the page's right area. */
+/**
+ * Right area of the LiveLooper page: transport row + the 2x4 case grid (or the focused case).
+ *
+ * The reference (LoopsPreview.jsx) lays this area out on a **fixed** 693 x 343 dp canvas
+ * (`left:188, right:10, top:60, bottom:8` on the 891 x 411 device frame). Each case is a
+ * 168.8 x 146.5 dp box holding a **fixed** 68 dp ring, a 9 dp gap and the text column.
+ *
+ * Stretching the cards into whatever width the phone gives them squeezes that text column
+ * between the ring and the card edge — on a 640 dp phone it collapsed to ~4 dp and the
+ * whole grid read as squashed. Laying the cards out on the reference canvas and scaling
+ * the canvas once (the idiom `FxWindowHost` already uses) shrinks every card uniformly
+ * instead, so the proportions survive any screen size.
+ */
 @Composable
 fun LiveLooperContent(state: LooperUiState, nowBar: Double, actions: LooperActions, modifier: Modifier = Modifier) {
     val focus = state.focusId?.let { state.cases.getOrNull(it) }
     val sheet = state.sheetCaseId?.let { state.cases.getOrNull(it) }
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Transport(state, nowBar, actions)
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (focus != null) {
-                FocusView(focus, state, nowBar, actions, Modifier.fillMaxSize())
-            } else {
+    BoxWithConstraints(modifier, contentAlignment = Alignment.TopStart) {
+        val scale = min(maxWidth.value / LL_CONTENT_W, maxHeight.value / LL_CONTENT_H)
+        Box(
+            Modifier.width((LL_CONTENT_W * scale).dp).height((LL_CONTENT_H * scale).dp),
+            contentAlignment = Alignment.TopStart,
+        ) {
+            Box(
+                Modifier.width(LL_CONTENT_W.dp).height(LL_CONTENT_H.dp)
+                    .graphicsLayer(scaleX = scale, scaleY = scale, transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)),
+            ) {
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    for (r in 0 until 2) Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        for (col in 0 until 4) {
-                            val i = r * 4 + col
-                            val a = remember { Animatable(0f) }
-                            LaunchedEffect(Unit) { delay(i * 25L); a.animateTo(1f, tween(300)) }
-                            CaseCard(state.cases[i], nowBar, state.settings.beatsPerBar, actions, Modifier.weight(1f).fillMaxHeight().alpha(a.value))
+                    Transport(state, nowBar, actions)
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        if (focus != null) {
+                            FocusView(focus, state, nowBar, actions, Modifier.fillMaxSize())
+                        } else {
+                            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                for (r in 0 until 2) Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    for (col in 0 until 4) {
+                                        val i = r * 4 + col
+                                        val a = remember { Animatable(0f) }
+                                        LaunchedEffect(Unit) { delay(i * 25L); a.animateTo(1f, tween(300)) }
+                                        CaseCard(state.cases[i], nowBar, state.settings.beatsPerBar, actions, Modifier.weight(1f).fillMaxHeight().alpha(a.value))
+                                    }
+                                }
+                            }
                         }
+                        if (sheet != null) CaseSheet(sheet, actions, Modifier.fillMaxSize())
                     }
                 }
             }
-            if (sheet != null) CaseSheet(sheet, actions, Modifier.fillMaxSize())
         }
     }
+}
+
+/**
+ * Convenience host: drives [LiveLooperContent]'s clock itself.
+ *
+ * Keeping the clock inside this small composable is the point: the position state it reads
+ * every frame only invalidates this subtree, not the page that hosts it (top bar, TonicPad,
+ * page selectors). Pass [active] = false when no case is moving so the idle page is cheap.
+ */
+@Composable
+fun LiveLooperHost(
+    state: LooperUiState,
+    clock: () -> Double,
+    active: Boolean,
+    actions: LooperActions,
+    modifier: Modifier = Modifier,
+) {
+    val now = rememberNowBar(clock, active)
+    LiveLooperContent(state, now, actions, modifier)
 }
 
 /* ═══════════════════════════ OVERLAYS (page root) ═══════════════════════════ */
@@ -786,9 +849,38 @@ private fun PatchWindow(state: LooperUiState, actions: LooperActions, modifier: 
     val enter = remember { Animatable(0f) }
     LaunchedEffect(Unit) { enter.animateTo(1f, tween(320)) }
     val shape = RoundedCornerShape(22.dp)
+    // The reference draws this window at a fixed `left:120, right:120, top:58, bottom:12`
+    // on the 891 x 411 frame: a 651 x 341 dp box whose patch list and 196 dp right column
+    // are sized against that width. Filling a phone's padded area stretched those columns
+    // and squashed their text, so the window is laid out at 651 x 341 and scaled as a
+    // whole — it only gets smaller on a small screen, never distorted.
+    BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
+        // Only ever shrink: a floating window keeps its designed 651 x 341 size on a large
+        // screen (the reference draws it at scale 1 inside the 891 x 411 frame).
+        val scale = min(maxWidth.value / LL_PATCH_W, maxHeight.value / LL_PATCH_H).coerceAtMost(1f)
+        Box(Modifier.width((LL_PATCH_W * scale).dp).height((LL_PATCH_H * scale).dp)) {
+            PatchWindowColumn(state, actions, open, { open = it }, renaming, { renaming = it }, enter, scale, shape)
+        }
+    }
+}
+
+@Composable
+private fun PatchWindowColumn(
+    state: LooperUiState, actions: LooperActions,
+    open: String?, setOpen: (String?) -> Unit,
+    renaming: String?, setRenaming: (String?) -> Unit,
+    enter: Animatable<Float, androidx.compose.animation.core.AnimationVector1D>, scale: Float,
+    shape: androidx.compose.ui.graphics.Shape,
+) {
     Column(
-        modifier
-            .graphicsLayer { val e = enter.value; scaleX = 0.94f + 0.06f * e; scaleY = 0.94f + 0.06f * e; translationY = (1f - e) * 8.dp.toPx(); alpha = e }
+        Modifier
+            .width(LL_PATCH_W.dp).height(LL_PATCH_H.dp)
+            .graphicsLayer {
+                val e = enter.value
+                scaleX = scale * (0.94f + 0.06f * e); scaleY = scale * (0.94f + 0.06f * e)
+                translationY = (1f - e) * 8.dp.toPx(); alpha = e
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+            }
             .shadow(26.dp, shape, ambientColor = Color.Black, spotColor = Color.Black).clip(shape).background(WindowBrush).border(1.dp, white(0.1f), shape)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
     ) {
@@ -831,16 +923,16 @@ private fun PatchWindow(state: LooperUiState, actions: LooperActions, modifier: 
                                     Text(if (used > 0) "$used case${if (used > 1) "s" else ""} · $maxBars bar${if (maxBars > 1) "s" else ""} max" else "empty", color = Color(0xFF7B859A), fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = LL.Mono)
                                 }
                             }
-                            Box(Modifier.size(30.dp).clip(RoundedCornerShape(10.dp)).background(if (exp) white(0.1f) else Color.Transparent).pressable { open = if (exp) null else p.id }, contentAlignment = Alignment.Center) {
+                            Box(Modifier.size(30.dp).clip(RoundedCornerShape(10.dp)).background(if (exp) white(0.1f) else Color.Transparent).pressable { setOpen(if (exp) null else p.id) }, contentAlignment = Alignment.Center) {
                                 LoopIconView(LoopIcon.More, Color(0xFF9AA5BA), 15.dp)
                             }
                         }
                         if (exp) Row(Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                             if (renaming == p.id) {
                                 LoopTextField(p.name, "Name", { actions.onRenamePatch(p.id, it) }, Modifier.weight(1f))
-                                SmallChip("Done", false, true) { renaming = null }
+                                SmallChip("Done", false, true) { setRenaming(null) }
                             } else {
-                                SmallChip("Rename", false, true) { renaming = p.id }
+                                SmallChip("Rename", false, true) { setRenaming(p.id) }
                                 SmallChip("Duplicate", false, true) { actions.onDuplicatePatch(p.id) }
                                 SmallChip("Overwrite with current", false, !on) { actions.onOverwritePatch(p.id) }
                                 SmallChip("Delete", true, !on && state.patches.size > 1) { actions.onDeletePatch(p.id) }
@@ -889,7 +981,7 @@ fun LiveLooperOverlays(state: LooperUiState, actions: LooperActions, modifier: M
     Box(modifier) {
         if (state.patchWindowOpen) {
             Scrim(0.62f, actions.onClosePatches)
-            PatchWindow(state, actions, Modifier.fillMaxSize().padding(start = 120.dp, end = 120.dp, top = 58.dp, bottom = 12.dp))
+            PatchWindow(state, actions, Modifier.fillMaxSize())
         }
         val target = state.patches.firstOrNull { it.id == state.pendingLoadId }
         if (target != null) {

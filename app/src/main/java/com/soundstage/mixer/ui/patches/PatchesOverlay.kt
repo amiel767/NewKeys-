@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -1030,7 +1031,8 @@ private fun UndoSnack(name: String, onUndo: () -> Unit) {
     }
     Box(
         Modifier
-            .fillMaxWidth()
+            // Bounded, not full width: a short confirmation centred at the bottom.
+            .widthIn(max = 420.dp)
             .padding(horizontal = 18.dp, vertical = 18.dp),
     ) {
         val shape = RoundedCornerShape(14.dp)
