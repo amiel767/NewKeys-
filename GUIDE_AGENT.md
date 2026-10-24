@@ -162,6 +162,17 @@ sont des **pixels de canvas**, pas des dp. Aucun facteur d'echelle officiel.
   composeur de page entiere (il recompose la top bar, le TonicPad, etc.). Isoler
   dans un petit composable (`LiveLooperHost`) et passer un drapeau `active` pour
   tomber au repos (~4 Hz au lieu de 30 Hz).
+- **Deux `FxRegistry` coexistent** : `com.aetherkeys.fx.FxRegistry` et
+  `com.soundstage.mixer.fx.FxRegistry`. Dans `com.aetherkeys.fx.ui` (sans import),
+  `FxRegistry.STRIP_MASTER` ne resout pas : utiliser le chemin complet.
+- **Un `snapshotFlow` de sauvegarde doit observer *tout* ce qui se persiste.**
+  Le veilleur de `FxOverlay.kt` ne regardait que `effectIds` + `bypassed` ;
+  `controller.instrumentId` en etait absent, donc choisir un instrument ne
+  declenchait aucun `save()`. Regle : la liste des cles observees = la liste des
+  champs du blob sauvegarde.
+- **Un bypass doit se voir sur la carte, pas seulement sur la bande.** La
+  reference applique `filter:saturate(.2) brightness(.7)` aux **deux**. Un rendu
+  qui ne grise que la bande ouverte laisse le rack paraitre inchange.
 
 ---
 

@@ -229,7 +229,11 @@ private fun Header(store: FxShellStore, onClose: (() -> Unit)? = null) {
         )
         // Not yet wired to the mixer's soundfont window: say so instead of a silent no-op.
         Chip("Soundfont · Grand Piano ▾") { store.notice = "Soundfont: open it from the mixer track" }
-        Chip("+ Instrument") { store.addTab = FxAddTab.INSTRUMENT; store.addOpen = true }
+        // Master carries no instrument: offering the button only produced a refusal
+        // when pressed. The rack is effects-only there, so the chip is hidden.
+        if (store.strip != com.aetherkeys.fx.FxRegistry.STRIP_MASTER) {
+            Chip("+ Instrument") { store.addTab = FxAddTab.INSTRUMENT; store.addOpen = true }
+        }
         Chip("+ Effect") { store.addTab = FxAddTab.EFFECTS; store.addOpen = true }
         if (onClose != null) CloseChip(onClose)
     }
@@ -328,6 +332,7 @@ private fun Rack(store: FxShellStore, tm: androidx.compose.ui.text.TextMeasurer)
                     t = clock.value,
                     lifted = lifted == id,
                     dragY = if (lifted == id) dragY else 0f,
+                    bypassed = store.isBypassed(id),
                     onOpen = { store.openId = id },
                     onDragStart = { lifted = id; dragY = 0f },
                     onDrag = { dy -> dragY = dy },
@@ -458,6 +463,7 @@ internal fun RackCard(
     t: Float,
     lifted: Boolean = false,
     dragY: Float = 0f,
+    bypassed: Boolean = false,
     onOpen: () -> Unit = {},
     onDragStart: () -> Unit = {},
     onDrag: (Float) -> Unit = {},
@@ -473,7 +479,14 @@ internal fun RackCard(
             // rather than a jump.
             .zIndex(if (lifted) 20f else 0f)
             .offset(y = dragY.dp)
-            .graphicsLayer { scaleX = if (lifted) 1.04f else 1f; scaleY = if (lifted) 1.04f else 1f }
+            .graphicsLayer {
+                scaleX = if (lifted) 1.04f else 1f
+                scaleY = if (lifted) 1.04f else 1f
+                // `.pn.by{filter:saturate(.2) brightness(.7)}`: a bypassed effect greys
+                // out on its card too, otherwise the rack looked unchanged while the
+                // sound was dry.
+                alpha = if (bypassed) 0.7f else 1f
+            }
             .shadow(if (lifted) 18.dp else 8.dp, shape, clip = false)
             .clip(shape)
             .background(Brush.verticalGradient(listOf(Color(0xFF323845), Color(0xFF222733))))

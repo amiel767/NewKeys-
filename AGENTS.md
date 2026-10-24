@@ -2115,3 +2115,53 @@ Sandbox efface entre sessions. `/workspace/restore_env.sh` (idempotent) puis
 Comparaison fenetre a fenetre : `python3 tools/fxcompare/compare_window.py
 <capture> <ref>` (reference a extraire de `app/assets/fx-screens-spec.zip` dans
 `references/`).
+
+---
+
+## Session 2026-10-24 (7e passage) — continuation et cloture des 13 problemes
+
+Reprise de la conversation `ea0e3456328d48e2891a561dd048654b` (elle-meme reprise
+de `23255f8abab04b489d05d2e6b5c0ee18`). Verification : les 13 correctifs du lot
+A/B/C/D/E sont bien presents dans `main` (commit `54ecc65`).
+
+### Trois defauts residuels trouves et corriges ici
+
+1. **Instrument FX non persiste** (`ui/fx/FxOverlay.kt`). Le `snapshotFlow` du
+   veilleur de sauvegarde observait `effectIds` + `bypassed` seulement :
+   `controller.instrumentId` n'y figurait pas, donc choisir (ou retirer) un
+   instrument ne declenchait **aucun** `save()`. A la reouverture l'instrument
+   etait oublie alors que ses effets restaient actifs. Corrige par un `Triple`
+   qui inclut `instrumentId`.
+
+2. **Carte de rack non grisee au bypass** (`ui/FxWindowHost.kt`). La reference
+   applique `.pn.by{filter:saturate(.2) brightness(.7)}` a la bande **et** la carte
+   du rack (`c.classList.toggle('on',!B[i])`). Le port ne changeait que la bande :
+   `RackCard` recoit maintenant `bypassed` et pose `alpha = 0.7f` dans son
+   `graphicsLayer`.
+
+3. **`+ Instrument` propose sur le master** (`ui/FxWindowHost.kt`). Le master n'a
+   pas de strip d'instrument : le bouton ne produisait qu'un refus. Il est masque
+   quand `store.strip == FxRegistry.STRIP_MASTER` (attention : **deux**
+   `FxRegistry` existent, `com.aetherkeys.fx` et `com.soundstage.mixer.fx` — sans
+   import, il faut le chemin complet).
+
+Egalement non commite en debut de session : `AudioEngine.kt`, garde CC#64 par
+piste (`sustainEnabledFor(ch)`) — un switch « Sustain pedal » coupe ne doit pas
+laisser FluidSynth tenir la note.
+
+### Verification
+
+- `:app:testDebugUnitTest` (cible) : `LooperLogicTest` 7/7, `LooperEngineTest`
+  4/4, `FxShellStoreResilienceTest` 5/5, `FaderThumbPositionTest` 1/1 — **17/17**.
+- `:app:recordRoborazziDebug --tests "...*CaptureTest"` : 29 tests, **0 echec**,
+  15 fenetres FX + 14 captures d'app regenerees.
+- Ecart FX fenetre a fenetre (`tools/fxcompare/report.py`) : moyenne **13,4 %**
+  (etait 24,6 % avant le lot A/B/C/D/E). Meilleurs : bass 5,8 / amp 6,9 /
+  iron-grip 7,9. Pires : echo 33,5 / solar-ceiling 27,2 — ce sont les deux effets
+  les **plus animes** ; le seuil 1,5 % de `compare_refs.py` compare deux rendus du
+  meme moteur et ne juge pas un portage navigateur -> Compose/Skia.
+
+### Livrables
+
+`tools/fxcompare/report.png` (planche reference/capture des 15 effets, triee par
+ecart) et `tools/fxcompare/app_sheets.png` (planche des 14 captures d'app).

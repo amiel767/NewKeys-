@@ -76,8 +76,13 @@ fun FxOverlay(
             controller.bypassed.toList(), controller.instrumentId.takeIf { it >= 0 })
     }
     androidx.compose.runtime.LaunchedEffect(strip) {
-        snapshotFlow { controller.effectIds.toList() to controller.bypassed.toList() }
-            .collect { controller.save() }
+        // The instrument id is part of the strip: without it in the watched flow,
+        // choosing an instrument (or clearing it) never triggered a save, so the
+        // window forgot the instrument as soon as it was closed and reopened while
+        // the effect it came with stayed active.
+        snapshotFlow {
+            Triple(controller.effectIds.toList(), controller.bypassed.toList(), controller.instrumentId)
+        }.collect { controller.save() }
     }
     // Knob drags fire many changes; save once the user stops for 500 ms.
     androidx.compose.runtime.LaunchedEffect(strip) {

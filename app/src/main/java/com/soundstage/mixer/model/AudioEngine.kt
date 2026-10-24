@@ -745,6 +745,12 @@ class AudioEngine(private val context: Context) {
                     }
                     else -> {
                         targetChannels.forEach { ch ->
+                            // CC#64 is per-track: a track with the sustain switch off must
+                            // not engage FluidSynth's hold. The Kotlin side already refuses
+                            // to remember the note, but forwarding the CC made the synth
+                            // hold it anyway, so the switch looked inert as soon as the
+                            // pedal was used.
+                            if (data1 == 64 && !sustainEnabledFor(ch)) return@forEach
                             NativeAudioBridge.safeControlChange(channel = ch, cc = data1, value = data2)
                         }
                     }
