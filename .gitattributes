@@ -1,0 +1,5 @@
+# PROJECT_CONTEXT.md is generated but committed, so an agent can be dropped into the
+# repo already in context without running the generator. It is UTF-8 text; diffing is
+# disabled only to avoid 2.7 MB diffs on every regeneration, and it is marked
+# linguist-generated so it is not counted as project code.
+PROJECT_CONTEXT.md text linguist-generated=true -diff
