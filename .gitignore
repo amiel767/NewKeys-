@@ -27,3 +27,6 @@ tools/refcheck/out/
 # Python bytecode from the repo tooling scripts
 tools/__pycache__/
 *.pyc
+
+# Per-machine watermark for tools/conv_sync.py (parallel conversation watcher)
+tools/.conv_sync_state.json

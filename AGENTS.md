@@ -4,6 +4,10 @@ Mémoire persistante du dépôt. **Toujours vérifier un nom ici avant de l'util
 plusieurs briefs ont référencé des symboles inexistants, ce qui a causé des
 malentendus coûteux.
 
+> **Pour un agent qui arrive :** lire `GUIDE_AGENT.md` d'abord (mise en route,
+> build, captures, carte du code, travail en parallèle), puis ce fichier pour les
+> pièges et décisions, et `PROJECT_CONTEXT.md` pour le code actif inline.
+
 ## Captures d'écran sans émulateur (Roborazzi — vérifié)
 
 Pas d'AVD/émulateur dans cet environnement. La capture passe par **Roborazzi +
@@ -1898,3 +1902,86 @@ est resume. Regenere avec `python3 tools/gen_project_context.py`.
 **A lire en premier** quand on reprend le depot sans contexte : il remplace une
 exploration de l'arbre. `AGENTS.md` (ce fichier) reste la memoire des pieges et des
 decisions ; `PROJECT_CONTEXT.md` est la carte du code.
+
+## Session 2026-10-24 — travail en parallele + integration de la conversation `dde6dffb`
+
+Cette session ne modifie pas la fonctionnalite : elle **integre** le travail d'une
+autre conversation et met en place le protocole pour travailler en parallele sans
+se marcher dessus.
+
+### Conversation source : `dde6dffb48c5475a931918c2e3ff38f9`
+
+- Elle a pousse `433ed0b -> aa81806` sur `main` (les 13 problemes signales, lot
+  A/B/C/D/E, `54ecc65`), puis `PROJECT_CONTEXT.md` + le pointeur `AGENTS.md`
+  (`8170d4a`, `9a983c7`, `aa81806`). Release **v180** publiee par le workflow.
+- A la fin, elle a **laisse une correction NON COMMITEE** : le fader de piste.
+  C'est la seule divergence a integrer ici.
+
+### Le bug du fader — cause racine (verifiee)
+
+`CustomVerticalFader.kt`, bloc `animate(...)` de la « Phase 5 – fluidite thumb » :
+le callback recoit `(value, velocity)` et le code prenait **la vitesse** :
+
+```kotlin
+) { _, v -> localValue = v }              // v = VITESSE, pas la valeur
+```
+
+La vitesse decroit vers ~0, donc `offsetY = (1 - 0) * usableH` = collé en bas.
+Le **son** restait juste (`onValueChange` part par un autre chemin) : seul le thumb
+lisait l'etat casse. Symptome exact signale par l'utilisateur : « le niveau change
+normalement, le thumb tombe ».
+
+Corrige par `{ animValue, _ -> localValue = animValue }`. Verifie dans la
+conversation source par instrumentation (`value=0.95 -> offsetY=46`, etc.) ;
+verifie ici par `:app:compileDebugKotlin` -> **BUILD SUCCESSFUL**.
+
+### CPU (fenetre TrackSettings + rendu FX) — pistes identifiees, NON corrigees
+
+L'utilisateur a demande d'optimiser, puis a dit **stop** pour discuter. Rien n'a
+ete modifie. Ce qui a ete mesure/releve (a confirmer avant toute action) :
+
+1. `FxOpenPanel` appelle `rememberFxClock(fullRate = true)` -> la scene 825x343
+   complete est repeinte **a chaque frame** tant que la fenetre est ouverte.
+2. `RackCard` a **sa propre** horloge (`rememberFxClock(fullRate = false)`) : N
+   cartes = N boucles `withFrameNanos`, et `withFrameNanos` reveille a **chaque
+   vsync** meme si la cible est 15 im/s.
+3. `FxAnimPrefs` (`reducedMotion`) est declare dans `aetherkeys/fx/ui/FxClock.kt`
+   et **jamais consomme** : le reglage « reduire les animations » n'agit pas sur FX.
+4. Le `blur()` de fond tourne sous la fenetre FX (`EFFECTS` est dans
+   `isFloatingWindow()`), en plus de la scene animee.
+5. `com/soundstage/mixer/ui/fx/FxRack.kt` est du **code mort** (aucun appelant
+   hors de lui-meme) et embarque sa propre horloge.
+
+### Protocole de travail en parallele (a respecter)
+
+Deux agents ecrivent dans le meme depot. Regles :
+
+- **Avant et apres chaque modification**, lancer
+  `python3 tools/conv_sync.py` : il liste ce que l'autre conversation a fait
+  depuis le dernier appel (instructions, rapports, editions, commandes git).
+  `--full` rejoue tout ; `--json <f>` exporte. Watermark dans
+  `tools/.conv_sync_state.json` (gitignore).
+- **`git fetch origin main && git rebase origin/main` avant de commiter** : le
+  remote peut avancer (uploads manuels, autre agent). Le remote est joignable avec
+  `https://${GITHUB_TOKEN}@github.com/amiel767/NewKeys-.git` (le token en dur dans
+  l'URL d'origine expire).
+- **Ne jamais pousser sans demande explicite.** Commiter localement, et pousser
+  seulement si l'utilisateur le demande.
+- Une modification = un fichier = un agent a la fois. Si `conv_sync` montre que
+  l'autre conversation touche le meme fichier, **s'arreter et demander**.
+- La branche de reference est **`main`** : le paquet `com.aetherkeys.fx` y est
+  present, `recovery/fx-window-shell` est fusionnee (les mentions plus haut sont
+  historiques).
+
+### Environnement (rappeler apres chaque reset sandbox)
+
+```bash
+nohup /workspace/restore_env.sh >/dev/null 2>&1 &   # idempotent
+/workspace/build.sh :app:compileDebugKotlin          # JDK+SDK exports, memoire bornee
+```
+
+`restore_env.sh` detecte le JDK reellement present (ne code plus en dur
+`/workspace/jdk/jdk21`), installe les composants SDK manquants (android-36,
+build-tools 36.0.0, ndk 27.0.12077973, cmake 3.22.1) et ecrit `local.properties`.
+`debug.keystore` et `local.properties` sont gitignores : les regenerer apres un
+reset (voir « Securite anti-crash » plus haut pour la commande keytool).
