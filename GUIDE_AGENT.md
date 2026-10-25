@@ -173,6 +173,30 @@ sont des **pixels de canvas**, pas des dp. Aucun facteur d'echelle officiel.
 - **Un bypass doit se voir sur la carte, pas seulement sur la bande.** La
   reference applique `filter:saturate(.2) brightness(.7)` aux **deux**. Un rendu
   qui ne grise que la bande ouverte laisse le rack paraitre inchange.
+- **Un test qui passe ne prouve rien tant qu'on ne l'a pas fait echouer.**
+  Retirer le correctif et relancer : s'il passe encore, le test n'exerce pas le
+  chemin. Deux faux positifs ont ete payes sur ce depot :
+  - `Thread.sleep` ne remplace pas l'idling du looper. Robolectric met le looper
+    principal **en pause** : une affectation faite depuis `Dispatchers.Main`
+    n'est jamais jouee, et l'assertion lit la valeur par defaut du demarrage.
+    Utiliser `shadowOf(Looper.getMainLooper()).idle()` dans une boucle d'attente.
+  - `openProject()` ecrit `activeProjectName` de facon **synchrone**, avant que
+    `selectScene` ait fini. Attendre `activeSceneId`, pose seulement dans le bloc
+    Main de `selectScene`.
+- **Une capture de page doit etre prise apres la restauration asynchrone.**
+  `MixerViewModel` restaure son etat (et sa page) en differe : creer une setlist
+  **avant** `setContent` la fait ecraser. La creer **apres** (dans `runOnIdle`,
+  avec une attente idlee sur `activeSceneId`).
+- **`SectionLabel` met son texte en majuscules** (`text.uppercase()`). Un
+  `onNodeWithText("Virtual keyboard")` echoue : chercher `"VIRTUAL KEYBOARD"`.
+- **`visibleTracksCount` est la source du nombre de faders** :
+  `MixerScreen` rend `tracks.take(visibleTracksCount.coerceIn(1, 8))`. Une
+  setlist qui ne l'ecrit pas retombe sur `tracks.count { it.isEnabled }` = 8,
+  puisque toutes les pistes sont livrees actives.
+- **Un meter a 20 Hz derriere un blur plein ecran provoque la saccade.** Chaque
+  mise a jour d'etat recompose le sous-arbre et force la passe hors ecran du
+  RenderEffect. Ralentir la boucle tant qu'une fenetre flottante est ouverte
+  (`activePopup.isFloatingWindow()`).
 
 ---
 
