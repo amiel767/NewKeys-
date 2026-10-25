@@ -74,8 +74,65 @@ object TrackPalettes {
         )
     )
 
+    /** Deep greens: natural, easy to tell apart from the warm palettes. */
+    val Forest = TrackPalette(
+        "forest", "Forest",
+        listOf(
+            Color(0xFF22C55E), Color(0xFF16A34A), Color(0xFF4ADE80), Color(0xFF15803D),
+            Color(0xFF34D399), Color(0xFF059669), Color(0xFF84CC16), Color(0xFF10B981)
+        )
+    )
+
+    /** High-voltage neon: maximum separation on a dark panel. */
+    val Neon = TrackPalette(
+        "neon", "Neon",
+        listOf(
+            Color(0xFFFF2D95), Color(0xFF00E5FF), Color(0xFF39FF14), Color(0xFFFFD300),
+            Color(0xFFB026FF), Color(0xFFFF6EC7), Color(0xFF00FFA3), Color(0xFFFF3131)
+        )
+    )
+
+    /** Soft pastels: gentle lanes for long sessions. */
+    val Candy = TrackPalette(
+        "candy", "Candy",
+        listOf(
+            Color(0xFFFFB3BA), Color(0xFFFFDFBA), Color(0xFFFDFD96), Color(0xFFBAFFC9),
+            Color(0xFFBAE1FF), Color(0xFFE0BBE4), Color(0xFFFFC8DD), Color(0xFFC7F9CC)
+        )
+    )
+
+    /** Cool arctic blues and cyans. */
+    val Ice = TrackPalette(
+        "ice", "Ice",
+        listOf(
+            Color(0xFFE0F2FE), Color(0xFFBAE6FD), Color(0xFF7DD3FC), Color(0xFF38BDF8),
+            Color(0xFF0EA5E9), Color(0xFF0284C7), Color(0xFF67E8F9), Color(0xFFA5F3FC)
+        )
+    )
+
+    /** Deep fire: dark reds up to bright amber. */
+    val Ember = TrackPalette(
+        "ember", "Ember",
+        listOf(
+            Color(0xFF7F1D1D), Color(0xFFB91C1C), Color(0xFFDC2626), Color(0xFFEA580C),
+            Color(0xFFF59E0B), Color(0xFFB45309), Color(0xFFF97316), Color(0xFFFBBF24)
+        )
+    )
+
+    /** Retro sepia: muted, warm, analogue tape feel. */
+    val Vintage = TrackPalette(
+        "vintage", "Vintage",
+        listOf(
+            Color(0xFFD9A066), Color(0xFF8C6B4F), Color(0xFFBFA58A), Color(0xFFA67C52),
+            Color(0xFFC9A227), Color(0xFF6B705C), Color(0xFFA5A58D), Color(0xFFCB997E)
+        )
+    )
+
     /** All selectable palettes, in display order. */
-    val all: List<TrackPalette> = listOf(Default, Rainbow, Ocean, Sunset, Mono)
+    val all: List<TrackPalette> = listOf(
+        Default, Rainbow, Ocean, Sunset, Mono,
+        Forest, Neon, Candy, Ice, Ember, Vintage
+    )
 
     fun byId(id: String): TrackPalette = all.firstOrNull { it.id == id } ?: Default
 }

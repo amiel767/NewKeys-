@@ -105,4 +105,42 @@ class TrackColorsLogicTest {
         val base = Color(0xFF3B82F6)
         assertEquals(base.toArgb(), TrackColorsLogic.driftColor(base, 0f).toArgb())
     }
+
+    @Test
+    fun everyPaletteHasEightDistinctColors() {
+        TrackPalettes.all.forEach { p ->
+            assertEquals("${p.id}: lane count", 8, p.colors.size)
+            assertEquals("${p.id}: lanes must be distinct", 8, p.colors.map { it.toArgb() }.toSet().size)
+        }
+    }
+
+    @Test
+    fun paletteIdsAndNamesAreUnique() {
+        assertEquals(TrackPalettes.all.size, TrackPalettes.all.map { it.id }.toSet().size)
+        assertEquals(TrackPalettes.all.size, TrackPalettes.all.map { it.name }.toSet().size)
+    }
+
+    @Test
+    fun atLeastTenPalettesAreOffered() {
+        // Sunset and Ocean plus at least eight more.
+        assertTrue("expected a rich palette set, got ${TrackPalettes.all.size}", TrackPalettes.all.size >= 10)
+    }
+
+    @Test
+    fun everyPaletteResolvesThroughTheScheme() {
+        TrackPalettes.all.forEach { p ->
+            val scheme = TrackColorsLogic.scheme(TrackColorMode.Palette, p.id, emptyList(), single)
+            assertEquals("${p.id} must resolve to its own colours", p.colors, scheme.lanes)
+        }
+    }
+
+    @Test
+    fun everyPaletteIsAValidRandomPool() {
+        TrackPalettes.all.forEach { p ->
+            val lanes = TrackColorsLogic.randomLanes(p.colors, kotlin.random.Random(p.id.hashCode()))
+            assertEquals(8, lanes.size)
+            assertEquals("${p.id}: random draw must stay distinct", 8, lanes.map { it.toArgb() }.toSet().size)
+            assertTrue("${p.id}: draw must come from the palette", lanes.all { it in p.colors })
+        }
+    }
 }

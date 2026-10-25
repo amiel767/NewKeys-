@@ -92,6 +92,21 @@ class TrackColorsCaptureTest {
 
     @Test
     @Config(qualifiers = "w851dp-h1600dp-440dpi", sdk = [36])
+    fun track_colors_page_all_palettes() {
+        // Tall viewport: every palette card is in frame at once, so the capture
+        // proves the full set renders without scrolling.
+        render(
+            SettingsState(
+                tab = SettingsTab.Interface,
+                trackColorsOpen = true,
+                trackColorMode = TrackColorMode.Palette,
+                trackColorPaletteId = TrackPalettes.Vintage.id
+            ),
+            "settings_track_colors_all_palettes"
+        )
+    }
+    @Test
+    @Config(qualifiers = "w851dp-h1600dp-440dpi", sdk = [36])
     fun interface_tab_has_the_track_colors_card() {
         // The entry point is a tappable card in the Interface tab. A tall viewport
         // puts the whole tab in frame, so the card is reachable without scrolling
