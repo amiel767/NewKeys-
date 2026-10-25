@@ -17,7 +17,6 @@ import com.soundstage.mixer.ui.theme.*
 import com.soundstage.mixer.ui.setlists.*
 import com.soundstage.mixer.ui.setlists.SetlistColor
 import com.soundstage.mixer.ui.settings.*
-import com.soundstage.mixer.ui.components.drumpad.DpPalette
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -302,9 +301,6 @@ data class MixerUiState(
     // FX chains
     val fxChains: com.soundstage.mixer.model.FxChainsState = com.soundstage.mixer.model.FxChainsState.DEFAULT,
 
-    // Looper (miroir de LooperEngine, expose pour l'UI et la persistance)
-    val looper: com.soundstage.mixer.audio.LooperEngine.UiState = com.soundstage.mixer.audio.LooperEngine.UiState(),
-
     // LiveLooper (nouvelle version) : etat complet du LooperController.
     val liveLooperState: com.soundstage.mixer.looper.LooperUiState = com.soundstage.mixer.looper.LooperUiState(),
 
@@ -333,9 +329,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     // Moteur metronome (synthese 6 sons, scheduler precis)
     private val metronomeEngine = com.soundstage.mixer.audio.MetronomeEngine(transportClock)
-
-    // Looper event-only, 8 cases, 4 couches
-    private val looperEngine = com.soundstage.mixer.audio.LooperEngine(transportClock)
 
     // LiveLooper (nouvelle version) : modele + logique pure + controleur.
     // Alimente en horloge par le TransportClock (en bars) et rejoue via l'AudioEngine.
@@ -410,21 +403,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         transportClock.signature = com.soundstage.mixer.audio.TransportClock.Signature.parse(_uiState.value.transportSignature)
         transportClock.subdivision = com.soundstage.mixer.audio.TransportClock.Subdivision.parse(_uiState.value.transportSubdivision)
 
-        // Miroir LooperEngine -> UiState
-        viewModelScope.launch {
-            looperEngine.state.collect { st ->
-                _uiState.update { it.copy(looper = st) }
-            }
-        }
-
         // Metronome : demarre arrete, sera active via toggleMetronome()
         metronomeEngine.volume = _uiState.value.metronomeVolume
         metronomeEngine.accent1 = _uiState.value.metronomeAccent1
         metronomeEngine.accent13 = _uiState.value.metronomeAccent13
         metronomeEngine.visualFlash = _uiState.value.metronomeVisualFlash
         metronomeEngine.currentSound = com.soundstage.mixer.audio.MetronomeEngine.Sound.parse(_uiState.value.metronomeSound)
-
-        looperEngine.start()
 
         // LiveLooper : miroir du controleur vers l'UiState + horloge de tick (~8 ms).
         viewModelScope.launch {
@@ -447,34 +431,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 runCatching { liveLooper.tick() }
                 delay(if (busy) 8L else 120L)
-            }
-        }
-
-        // B5a: wire LooperEngine callbacks → audio playback
-        looperEngine.onPlayPadEvent = playPad@{ idx ->
-            val pad = _uiState.value.drumPads.getOrNull(idx)
-                ?: return@playPad
-            if (pad.sampleFileName.isNotEmpty()) {
-                audioEngine.playDrumPadSound(
-                    pad, pad.volume * _uiState.value.drumVolume
-                )
-            }
-        }
-        // Replays a recorded note on every channel the track performs on, so a
-        // layered/split setup sounds the same live and on playback.
-        looperEngine.onPlayNoteEvent = playNote@{ midi ->
-            val key = com.soundstage.mixer.ui.components.KeyPositionMapper.midiToNoteName(midi)
-            val channels = getActivePerformanceChannels(midi)
-            if (channels.isEmpty()) return@playNote
-            channels.forEach { channel ->
-                val track = _uiState.value.tracks.getOrNull(channel)
-                val vel = track?.let { applyVelocityCurve(0.85f, it.velocityCurve) } ?: 0.85f
-                audioEngine.noteOn(key, vel, channel)
-            }
-            // Release shortly after: the looper stores onsets, not durations.
-            viewModelScope.launch(Dispatchers.Default) {
-                kotlinx.coroutines.delay(220)
-                channels.forEach { channel -> audioEngine.noteOff(key, channel) }
             }
         }
 
@@ -1100,7 +1056,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         metronomeEngine.release()
-        looperEngine.release()
         super.onCleared()
         NativeAudioBridge.safeStopEngine()
         audioEngine.release()
@@ -2211,33 +2166,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(metronomeTapBpm = bpm) }
     }
 
-    fun tapLooperCase(caseIndex: Int) {
-        looperEngine.tapCase(caseIndex)
-    }
-
-    fun longPressLooperCaseAction(caseIndex: Int, action: String) {
-        looperEngine.longPressCaseAction(caseIndex, action)
-    }
-
-    fun setLooperQuantize(q: Boolean) {
-        looperEngine.setQuantize(q)
-    }
-
-    fun setLooperSwing(s: Int) {
-        looperEngine.setSwing(s)
-    }
-
-    fun setLooperLengthMode(m: String) {
-        looperEngine.setLengthMode(m)
-    }
-
-    fun stopAllLoops() { looperEngine.stopAll() }
-    fun playAllLoops() { looperEngine.playAll() }
-
-    fun recordLooperEvent(kind: String, idx: Int, color: String) {
-        looperEngine.record(kind, idx, color)
-    }
-
     fun setTonicFxChain(chain: com.soundstage.mixer.model.SurfaceFxChain) {
         _uiState.update { it.copy(fxChains = it.fxChains.copy(tonic = chain)) }
         com.soundstage.mixer.audio.NativeAudioBridge.safeSetTonicFxChain(
@@ -2633,7 +2561,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
         // Capture the onset for the looper. Playback goes straight to audioEngine,
         // so this never re-records what it replays.
-        looperEngine.record("note", midiNote, "#8FB2E8")
         feedLiveLooper(com.soundstage.mixer.looper.RecordSource.Keys, midiNote, (velocity.coerceIn(0f, 1f) * 127f).toInt(), on = true)
     }
 
@@ -2990,12 +2917,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             // High precision low-latency live drum hit
             audioEngine.playDrumPadSound(pad, pad.volume * _uiState.value.drumVolume)
 
-            // B5a: enregistre le hit dans le looper (kind/idx/couleur)
-            looperEngine.record(
-                "pad",
-                padId - 1,
-                "#" + Integer.toHexString(DpPalette.at(padId - 1).toArgb())
-            )
             // LiveLooper : capture le hit pour les cases en REC.
             feedLiveLooper(com.soundstage.mixer.looper.RecordSource.Pads, padId - 1, 110, on = true)
 

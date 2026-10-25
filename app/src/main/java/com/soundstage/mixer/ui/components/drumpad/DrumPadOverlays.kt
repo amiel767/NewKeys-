@@ -388,73 +388,6 @@ private fun DpCloseBtn(onClose: () -> Unit) {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// DpMetronomeOverlay
-// ═══════════════════════════════════════════════════════════════════════════
-@Composable
-fun DpLoopMenu(
-    index: Int,
-    canUndo: Boolean,
-    canDouble: Boolean,
-    canToggle: Boolean,
-    canClear: Boolean,
-    canClearAll: Boolean,
-    isStopped: Boolean,
-    onAction: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    Box(Modifier.fillMaxSize()) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Color(0x5906090E))
-                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onDismiss() }
-        )
-        Column(
-            Modifier
-                .width(190.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(Brush.verticalGradient(listOf(Color(0xFF2A3447), Color(0xFF1E2736))))
-                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
-                .padding(6.dp)
-        ) {
-            Text(
-                "LOOP ${index + 1}",
-                color = Color(0xFF7B859A),
-                fontSize = 10.5.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.3.sp,
-                modifier = Modifier.padding(start = 10.dp, top = 6.dp, bottom = 6.dp)
-            )
-            LoopMenuItem("Undo last layer", canUndo) { onAction("undo") }
-            LoopMenuItem("Double length", canDouble) { onAction("double") }
-            LoopMenuItem(if (isStopped) "Play" else "Stop", canToggle) { onAction(if (isStopped) "play" else "stop") }
-            LoopMenuItem("Clear", canClear) { onAction("clear") }
-            LoopMenuItem("Clear all", canClearAll) { onAction("clearAll") }
-        }
-    }
-}
-
-@Composable
-private fun LoopMenuItem(label: String, enabled: Boolean, onClick: () -> Unit) {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(34.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .clickable(enabled = enabled, interactionSource = remember { MutableInteractionSource() }, indication = null) { onClick() }
-            .padding(horizontal = 10.dp),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        Text(
-            label,
-            color = if (enabled) Color(0xFFDCE2EE) else Color(0xFF566075),
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold
-        )
-    }
-}
-
 @Composable
 fun DpMetronomeOverlay(
     state: MetroState,
@@ -657,8 +590,6 @@ fun DpDrumPadSettings(
     onHapticPadsChange: (Boolean) -> Unit,
     hapticLoops: Boolean,
     onHapticLoopsChange: (Boolean) -> Unit,
-    quantize: String,
-    onQuantizeChange: (String) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -692,30 +623,6 @@ fun DpDrumPadSettings(
             DpToggleRow("Preload samples", preload, onPreloadChange)
             DpToggleRow("Haptics on pads", hapticPads, onHapticPadsChange)
             DpToggleRow("Haptics on loops", hapticLoops, onHapticLoopsChange)
-
-            Spacer(Modifier.height(8.dp))
-
-            DpSectionLabel("DEFAULT LOOP")
-            Row(
-                Modifier.fillMaxWidth().height(30.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    "Quantize",
-                    color = Color(0xFFDCE2EE),
-                    fontSize = 12.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f)
-                )
-                DpSeg(
-                    options = listOf("1/16" to "1/16", "free" to "Free"),
-                    selected = quantize,
-                    onChange = onQuantizeChange,
-                    modifier = Modifier.width(110.dp),
-                    height = 20.dp,
-                )
-            }
         }
     }
 }

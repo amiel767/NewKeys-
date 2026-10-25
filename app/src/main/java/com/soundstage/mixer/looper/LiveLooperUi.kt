@@ -136,7 +136,11 @@ private object LL {
 
 private fun white(a: Float) = Color.White.copy(alpha = a)
 private fun Color.a(x: Float) = copy(alpha = x)
-fun loopCaseColor(id: Int): Color = LL.Pal[id % LL.Pal.size]
+// Bounded both ways: Kotlin's `%` keeps the sign of the dividend, so a negative case id
+// (a legacy or hand-edited patches.json can carry any integer) indexed Pal[-1] and crashed
+// the whole LiveLooper page with an IndexOutOfBoundsException. Same defensive form as
+// DpPalette.at().
+fun loopCaseColor(id: Int): Color = LL.Pal[((id % LL.Pal.size) + LL.Pal.size) % LL.Pal.size]
 
 // Patch window of the reference: `left:120, right:120, top:58, bottom:12` on the
 // 891 x 411 frame -> 651 x 341 dp. Unlike the grid this is a floating window, so it
@@ -749,9 +753,16 @@ fun LiveLooperContent(state: LooperUiState, nowBar: Double, actions: LooperActio
                     for (r in 0 until 2) Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         for (col in 0 until 4) {
                             val i = r * 4 + col
-                            val a = remember { Animatable(0f) }
-                            LaunchedEffect(Unit) { delay(i * 25L); a.animateTo(1f, tween(300)) }
-                            CaseCard(state.cases[i], nowBar, state.settings.beatsPerBar, actions, Modifier.weight(1f).fillMaxHeight().alpha(a.value))
+                            // getOrNull, not [i]: a loaded patch may hold fewer than 8 cases and
+                            // the grid must not index past the end while it renders.
+                            val c = state.cases.getOrNull(i)
+                            if (c == null) {
+                                Box(Modifier.weight(1f).fillMaxHeight())
+                            } else {
+                                val a = remember { Animatable(0f) }
+                                LaunchedEffect(Unit) { delay(i * 25L); a.animateTo(1f, tween(300)) }
+                                CaseCard(c, nowBar, state.settings.beatsPerBar, actions, Modifier.weight(1f).fillMaxHeight().alpha(a.value))
+                            }
                         }
                     }
                 }

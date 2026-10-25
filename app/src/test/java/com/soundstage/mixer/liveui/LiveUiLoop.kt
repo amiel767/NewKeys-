@@ -154,11 +154,11 @@ class LiveUiLoop {
                                 throw IllegalStateException("missing text: $want")
                             }
                         }
-                        // DrumPad page: Pads / Loops is local Compose state, so it can
-                        // only be driven through the segmented control itself.
+                        // DrumPad page: the DrumPad / LiveLooper switch is local Compose
+                        // state, so it can only be driven through the page selector itself.
                         o.optString("drumpadMode").takeIf { it.isNotBlank() }?.let { m ->
                             runCatching {
-                                val label = if (m == "loops") "Loops" else "Pads"
+                                val label = if (m == "loops") "LiveLooper" else "DrumPad"
                                 composeTestRule.onAllNodesWithText(label)[0].performClick()
                             }
                         }

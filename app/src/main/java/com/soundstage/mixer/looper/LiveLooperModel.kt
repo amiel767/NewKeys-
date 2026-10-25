@@ -279,20 +279,27 @@ object LooperLogic {
     fun undo(c: LoopCase): LoopCase {
         if (c.layers == 0 || c.mode == CaseMode.Rec || c.mode == CaseMode.Overdub) return c
         val i = c.layers - 1
-        val removed = RemovedLayer(c.events.filter { it.layer == i }, c.layerMute[i], c.bars)
+        val removed = RemovedLayer(c.events.filter { it.layer == i }, c.layerMute.getOrElse(i) { false }, c.bars)
+        val mutes = c.layerMute.toMutableList().also { if (i < it.size) it[i] = false }
         val x = c.copy(
             redo = c.redo + removed, events = c.events.filter { it.layer != i },
-            layerMute = c.layerMute.toMutableList().also { it[i] = false }, layers = c.layers - 1
+            layerMute = mutes, layers = c.layers - 1
         )
         return if (x.layers == 0) x.copy(mode = CaseMode.Empty, queued = null) else x
     }
 
     fun redo(c: LoopCase, nowBar: Double): LoopCase {
-        if (c.redo.isEmpty()) return c
+        // Redo is reachable when the case is already full (undo one layer, overdub a new
+        // one back to 4, then redo): writing layerMute[4] on a 4-slot list threw
+        // IndexOutOfBoundsException. Cap at MAX_LAYERS and grow the mute list as needed.
+        if (c.redo.isEmpty() || c.layers >= MAX_LAYERS) return c
         val r = c.redo.last()
+        val mutes = c.layerMute.toMutableList()
+        while (mutes.size <= c.layers) mutes.add(false)
+        mutes[c.layers] = r.muted
         val x = c.copy(
             redo = c.redo.dropLast(1), bars = r.bars, events = c.events + r.events.map { it.copy(layer = c.layers) },
-            layerMute = c.layerMute.toMutableList().also { it[c.layers] = r.muted }, layers = c.layers + 1
+            layerMute = mutes, layers = c.layers + 1
         )
         return if (c.mode == CaseMode.Empty) x.copy(mode = CaseMode.Stopped, startBar = nextBoundary(nowBar, Quantize.Bar, 4)) else x
     }
@@ -301,13 +308,14 @@ object LooperLogic {
     fun removeLayer(c: LoopCase, i: Int): LoopCase {
         if (i !in 0 until c.layers) return c
         val ev = c.events.filter { it.layer != i }.map { if (it.layer > i) it.copy(layer = it.layer - 1) else it }
-        val mutes = c.layerMute.toMutableList().also { it.removeAt(i); it.add(false) }
+        val mutes = c.layerMute.toMutableList()
+        if (i < mutes.size) { mutes.removeAt(i); mutes.add(false) }
         val x = c.copy(events = ev, layerMute = mutes, layers = c.layers - 1)
         return if (x.layers == 0) LoopCase(c.id) else x
     }
 
     fun toggleLayerMute(c: LoopCase, i: Int) =
-        if (i in 0 until c.layers) c.copy(layerMute = c.layerMute.toMutableList().also { it[i] = !it[i] }) else c
+        if (i in 0 until c.layers && i < c.layerMute.size) c.copy(layerMute = c.layerMute.toMutableList().also { it[i] = !it[i] }) else c
 
     fun doubled(c: LoopCase): LoopCase {
         if (!c.hasLoop || c.bars * 2 > MAX_BARS || c.mode == CaseMode.Rec || c.mode == CaseMode.Overdub) return c
@@ -351,6 +359,13 @@ class LooperController(
 
     private fun now() = clock()
     private fun cur() = _state.value
+    /**
+     * The action entry points are called from Compose event handlers with an id that came
+     * from the UI (or a restored `focusId`/`sheetCaseId`). Indexing `cases[id]` directly
+     * would throw straight out of the callback and take the page down, so every read goes
+     * through this bounded accessor.
+     */
+    private fun caseOrNull(id: Int): LoopCase? = cur().cases.getOrNull(id)
     private fun updateCase(id: Int, f: (LoopCase) -> LoopCase) = _state.update { s -> s.copy(cases = s.cases.map { if (it.id == id) f(it) else it }) }
     private fun toast(text: String, undo: (() -> Unit)? = null) {
         undoToast = undo
@@ -376,7 +391,7 @@ class LooperController(
 
     /* ── case actions ── */
     fun pressRec(id: Int) {
-        val s = cur(); val c = s.cases[id]; val nb = now()
+        val s = cur(); val c = caseOrNull(id) ?: return; val nb = now()
         when {
             c.queued != null && c.mode == CaseMode.Empty -> updateCase(id) { it.copy(queued = null) }
             c.mode == CaseMode.Empty -> {
@@ -393,7 +408,7 @@ class LooperController(
     }
 
     fun pressPlay(id: Int) {
-        val s = cur(); val c = s.cases[id]; val nb = now()
+        val s = cur(); val c = caseOrNull(id) ?: return; val nb = now()
         val action = when (c.mode) {
             CaseMode.Rec -> LoopAction.Finish
             CaseMode.Play, CaseMode.Overdub -> LoopAction.Stop
@@ -404,21 +419,22 @@ class LooperController(
     }
 
     fun toggleMute(id: Int) {
-        val c = cur().cases[id]
+        val c = caseOrNull(id) ?: return
         if (c.layers == 0) return
         updateCase(id) { it.copy(mute = !it.mute) }
         toast("L${id + 1} ${if (!c.mute) "muted" else "unmuted"}")
     }
 
     fun undo(id: Int) {
-        val before = cur().cases[id]
+        val before = caseOrNull(id) ?: return
         if (before.layers == 0 || before.mode == CaseMode.Rec || before.mode == CaseMode.Overdub) return
         updateCase(id) { LooperLogic.undo(it) }
         toast("L${id + 1} · last layer removed")
     }
 
     fun redo(id: Int) {
-        if (cur().cases[id].redo.isEmpty()) { toast("Nothing to redo"); return }
+        val before = caseOrNull(id) ?: return
+        if (before.redo.isEmpty()) { toast("Nothing to redo"); return }
         val nb = now()
         updateCase(id) { LooperLogic.redo(it, nb) }
         toast("L${id + 1} · layer restored")
@@ -427,11 +443,11 @@ class LooperController(
     fun removeLayer(id: Int, i: Int) = updateCase(id) { LooperLogic.removeLayer(it, i) }
     fun toggleLayerMute(id: Int, i: Int) = updateCase(id) { LooperLogic.toggleLayerMute(it, i) }
     fun setVolume(id: Int, v: Int) = updateCase(id) { it.copy(volume = v.coerceIn(0, 100)) }
-    fun double(id: Int) { updateCase(id) { LooperLogic.doubled(it) }; _state.update { it.copy(sheetCaseId = null) }; toast("L${id + 1} · ${cur().cases[id].bars} bars") }
-    fun half(id: Int) { updateCase(id) { LooperLogic.halved(it) }; _state.update { it.copy(sheetCaseId = null) }; toast("L${id + 1} · ${cur().cases[id].bars} bar${if (cur().cases[id].bars > 1) "s" else ""}") }
+    fun double(id: Int) { updateCase(id) { LooperLogic.doubled(it) }; _state.update { it.copy(sheetCaseId = null) }; toast("L${id + 1} · ${caseOrNull(id)?.bars ?: 1} bars") }
+    fun half(id: Int) { updateCase(id) { LooperLogic.halved(it) }; _state.update { it.copy(sheetCaseId = null) }; toast("L${id + 1} · ${caseOrNull(id)?.bars ?: 1} bar${if ((caseOrNull(id)?.bars ?: 1) > 1) "s" else ""}") }
 
     fun duplicate(id: Int) {
-        val s = cur(); val src = s.cases[id]
+        val s = cur(); val src = caseOrNull(id) ?: return
         val target = s.cases.firstOrNull { it.id != id && it.mode == CaseMode.Empty && it.layers == 0 } ?: run { toast("No empty case"); return }
         updateCase(target.id) { LooperLogic.duplicateInto(src, it) }
         _state.update { it.copy(sheetCaseId = null) }
@@ -439,7 +455,7 @@ class LooperController(
     }
 
     fun clear(id: Int) {
-        val saved = cur().cases[id]
+        val saved = caseOrNull(id) ?: return
         updateCase(id) { LoopCase(id) }
         _state.update { it.copy(sheetCaseId = null) }
         toast("L${id + 1} cleared") { updateCase(id) { saved } }   // no confirmation: UNDO for a few seconds
@@ -604,9 +620,13 @@ object LoopPatchJson {
         val ev = o.optJSONArray("events") ?: JSONArray()
         val src = o.optJSONObject("src")
         val srcs = RecordSource.values()
-        val layers = o.optInt("layers", 0)
+        val layers = o.optInt("layers", 0).coerceIn(0, LooperLogic.MAX_LAYERS)
         return LoopCase(
-            id = o.optInt("id", 0), name = o.optString("name", ""), bars = o.optInt("bars", 0), layers = layers,
+            // Normalise at the boundary: a legacy or hand-edited patches.json may carry any
+            // integer as a case id, and every consumer (loopCaseColor, the grid, the sheet)
+            // indexes from it. Clamping here keeps a bad file from crashing the page.
+            id = o.optInt("id", 0).coerceIn(0, 7), name = o.optString("name", ""),
+            bars = o.optInt("bars", 0).coerceIn(0, LooperLogic.MAX_BARS), layers = layers,
             mode = if (layers > 0) CaseMode.Stopped else CaseMode.Empty,
             mute = o.optBoolean("mute", false), volume = o.optInt("volume", 100), oneShot = o.optBoolean("oneShot", false),
             stopAt = runCatching { StopAt.valueOf(o.optString("stopAt")) }.getOrDefault(StopAt.EndOfLoop),

@@ -34,15 +34,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.soundstage.mixer.audio.LooperEngine
 import com.soundstage.mixer.ui.components.windowBackdropBlur
 import com.soundstage.mixer.ui.components.drumpad.DpColors
 import com.soundstage.mixer.ui.components.drumpad.DpDrumPadSettings
 import com.soundstage.mixer.ui.components.drumpad.DpFxCase
 import com.soundstage.mixer.ui.components.drumpad.DpIcon
 import com.soundstage.mixer.ui.components.drumpad.DpFxSheet
-import com.soundstage.mixer.ui.components.drumpad.DpLoopCase
-import com.soundstage.mixer.ui.components.drumpad.DpLoopMenu
 import com.soundstage.mixer.ui.components.drumpad.DpManager
 import com.soundstage.mixer.ui.components.drumpad.DpMetronomeOverlay
 import com.soundstage.mixer.ui.components.drumpad.DpNoteKey
@@ -91,10 +88,7 @@ fun DrumPadScreen(
     val liveLooperActions = remember { viewModel.liveLooperActions() }
 
     // ─── Grid modes ───
-    var padMode by remember { mutableStateOf("pads") }       // "pads" | "loops"
     var playEditMode by remember { mutableStateOf("play") }  // "play" | "edit"
-    var loopQuantize by remember { mutableStateOf(if (uiState.looper.quantize) "1/16" else "Free") }
-    var loopLengthMode by remember { mutableStateOf(uiState.looper.lengthMode) }
     // Derived from the VM (persisted under KEY_PAD_COUNT) so the chip and the
     // grid can never disagree; a local copy captured only the first value and
     // drifted from the restored state.
@@ -126,10 +120,17 @@ fun DrumPadScreen(
         )
     }
 
+    // ─── Derived ───
+    val beatsPerBar = parseBeatsPerBar(uiState.transportSignature)
+    // A case is moving (or waiting for a boundary): only then does the ring need 30 Hz.
+    val liveLooperBusy = uiState.liveLooperState.cases.any {
+        it.mode != com.soundstage.mixer.looper.CaseMode.Empty && it.mode != com.soundstage.mixer.looper.CaseMode.Stopped
+    } || uiState.liveLooperState.cases.any { it.queued != null }
+
     // ─── Beat indicator (only while the metro/transport actually runs) ───
     var beatIdx by remember { mutableStateOf(0) }
-    LaunchedEffect(uiState.transportBpm, uiState.transportSignature, metroOn, uiState.looper.isPlayingAny) {
-        if (!metroOn && !uiState.looper.isPlayingAny) { beatIdx = 0; return@LaunchedEffect }
+    LaunchedEffect(uiState.transportBpm, uiState.transportSignature, metroOn, liveLooperBusy) {
+        if (!metroOn && !liveLooperBusy) { beatIdx = 0; return@LaunchedEffect }
         val bpm = uiState.transportBpm.coerceAtLeast(30)
         val beats = parseBeatsPerBar(uiState.transportSignature).coerceAtLeast(1)
         val beatMs = (60_000L / bpm).coerceAtLeast(1L)
@@ -139,33 +140,6 @@ fun DrumPadScreen(
         }
     }
 
-    // ─── Frame clock for DpLoopCase, only when the Loops surface is shown ───
-    var nowNs by remember { mutableStateOf(System.nanoTime()) }
-    val needsFrameClock = padMode == "loops"
-    LaunchedEffect(needsFrameClock) {
-        if (!needsFrameClock) return@LaunchedEffect
-        while (isActive) {
-            nowNs = System.nanoTime()
-            delay(16L)
-        }
-    }
-
-    // ─── Frame clock for the LiveLooper rings (bars position) ───
-    // Scoped into `LiveLooperTicker` below: a screen-level state read here would
-    // invalidate this whole composable (top bar, TonicPad, grid) 60 times a second.
-    // Long-press on a loop case opens the action menu (Undo / Double / Play / Clear).
-    var loopMenuIndex by remember { mutableStateOf<Int?>(null) }
-
-    // ─── Derived ───
-    val beatsPerBar = parseBeatsPerBar(uiState.transportSignature)
-    // A case is moving (or waiting for a boundary): only then does the ring need 30 Hz.
-    val liveLooperBusy = uiState.liveLooperState.cases.any {
-        it.mode != com.soundstage.mixer.looper.CaseMode.Empty && it.mode != com.soundstage.mixer.looper.CaseMode.Stopped
-    } || uiState.liveLooperState.cases.any { it.queued != null }
-    val barDurationNs = (beatsPerBar.toLong() * (60_000_000_000L / uiState.transportBpm.coerceAtLeast(30)))
-    val anyRec = uiState.looper.cases.firstOrNull {
-        it.state == LooperEngine.CaseState.Recording || it.state == LooperEngine.CaseState.Overdubbing
-    }
     val tonicVolume = uiState.audioSlots.firstOrNull { it.slotId == 9 }?.volume ?: 0.8f
     val activeKitName = uiState.activeDrumKitName.ifEmpty {
         uiState.kits.firstOrNull()?.name ?: ""
@@ -318,99 +292,33 @@ fun DrumPadScreen(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     DpSeg(
-                        options = listOf("pads" to "Pads", "loops" to "Loops"),
-                        selected = padMode,
-                        onChange = { padMode = it },
+                        options = listOf("play" to "Play", "edit" to "Edit"),
+                        selected = playEditMode,
+                        onChange = { playEditMode = it },
                         height = 24.dp,
-                        modifier = Modifier.width(120.dp)
+                        warn = true,
+                        modifier = Modifier.width(100.dp)
                     )
-                    if (padMode == "pads") {
-                        DpSeg(
-                            options = listOf("play" to "Play", "edit" to "Edit"),
-                            selected = playEditMode,
-                            onChange = { playEditMode = it },
-                            height = 24.dp,
-                            warn = true,
-                            modifier = Modifier.width(100.dp)
-                        )
-                        SmallChip("${padCount}p", Modifier.height(24.dp)) {
-                            viewModel.setPadCount(if (padCount == 8) 16 else 8)
-                        }
-                        SmallChip("Pads FX", Modifier.height(24.dp)) { padsFxOpen = true }
-                    } else {
-                        DpSeg(
-                            options = listOf(
-                                "auto" to "Auto",
-                                "1" to "1", "2" to "2",
-                                "4" to "4", "8" to "8"
-                            ),
-                            selected = loopLengthMode,
-                            onChange = { loopLengthMode = it; viewModel.setLooperLengthMode(it) },
-                            height = 24.dp,
-                            modifier = Modifier.width(170.dp)
-                        )
-                        DpSeg(
-                            options = listOf("1/16" to "1/16", "Free" to "Free"),
-                            selected = loopQuantize,
-                            onChange = {
-                                loopQuantize = it
-                                viewModel.setLooperQuantize(it == "1/16")
-                            },
-                            height = 24.dp,
-                            modifier = Modifier.width(90.dp)
-                        )
+                    SmallChip("${padCount}p", Modifier.height(24.dp)) {
+                        viewModel.setPadCount(if (padCount == 8) 16 else 8)
                     }
+                    SmallChip("Pads FX", Modifier.height(24.dp)) { padsFxOpen = true }
                     Spacer(Modifier.weight(1f))
-                    if (padMode == "loops") {
-                        // JSX TopBar shows a "Swing 54%" pill; tap cycles the presets.
-                        val presets = listOf(50, 54, 58, 62, 66)
-                        SmallChip("Swing ${uiState.looper.swing}%", Modifier.height(24.dp)) {
-                            viewModel.setLooperSwing(
-                                presets.firstOrNull { it > uiState.looper.swing } ?: presets.first()
-                            )
-                        }
-                    }
                     BeatDots(beats = beatsPerBar, active = beatIdx)
-                    if (anyRec != null && padMode == "pads") {
-                        RecBadge()
-                    }
-                    if (padMode == "loops") {
-                        val used = uiState.looper.cases.count { it.state != LooperEngine.CaseState.Empty }
-                        val anyStopped = uiState.looper.cases.any { it.state == LooperEngine.CaseState.Stopped }
-                        Text("$used/8 used", color = Color(0xFF7B859A), fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
-                        SmallChip(
-                            label = if (anyStopped) "▶ Play all" else "■ Stop all",
-                            modifier = Modifier.height(24.dp)
-                        ) {
-                            if (anyStopped) viewModel.playAllLoops() else viewModel.stopAllLoops()
-                        }
-                    }
                 }
 
                 // Grid
                 Box(Modifier.weight(1f).fillMaxWidth()) {
-                    if (padMode == "pads") {
-                        PadsGrid(
-                            uiState = uiState,
-                            padCount = padCount,
-                            playEditMode = playEditMode,
-                            onDown = { viewModel.onDrumPadPressed(it) },
-                            onUp = { viewModel.onDrumPadReleased(it) },
-                            onVolumeChange = { padId, vol -> viewModel.setDrumPadVolumeDirect(padId, vol / 100f) },
-                            onOpenEditor = { editorPadId = it },
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else {
-                        LoopsGrid(
-                            cases = uiState.looper.cases,
-                            nowNs = nowNs,
-                            beatsPerBar = beatsPerBar,
-                            barDurationNs = barDurationNs,
-                            onTap = { viewModel.tapLooperCase(it) },
-                            onLongPress = { loopMenuIndex = it },
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
+                    PadsGrid(
+                        uiState = uiState,
+                        padCount = padCount,
+                        playEditMode = playEditMode,
+                        onDown = { viewModel.onDrumPadPressed(it) },
+                        onUp = { viewModel.onDrumPadReleased(it) },
+                        onVolumeChange = { padId, vol -> viewModel.setDrumPadVolumeDirect(padId, vol / 100f) },
+                        onOpenEditor = { editorPadId = it },
+                        modifier = Modifier.fillMaxSize()
+                    )
                 }
             }
         }
@@ -450,11 +358,6 @@ fun DrumPadScreen(
             onHapticPadsChange = { localHapticPads = it },
             hapticLoops = localHapticLoops,
             onHapticLoopsChange = { localHapticLoops = it },
-            quantize = loopQuantize,
-            onQuantizeChange = {
-                loopQuantize = it
-                viewModel.setLooperQuantize(it == "1/16")
-            },
             onClose = { settingsOpen = false }
         )
     }
@@ -476,26 +379,6 @@ fun DrumPadScreen(
             label = "Pad",
             onChange = { viewModel.setPadsFxChain(it) },
             onClose = { padsFxOpen = false }
-        )
-    }
-
-    // Loop action menu (JSX: menu on long press). Undo last layer / Double length / Play-Stop / Clear.
-    loopMenuIndex?.let { mi ->
-        val case = uiState.looper.cases.getOrNull(mi)
-        val can = case != null && case.state != LooperEngine.CaseState.Empty
-        DpLoopMenu(
-            index = mi,
-            canUndo = can && case!!.layers.isNotEmpty(),
-            canDouble = can && case!!.bars < 8 && case.layers.isNotEmpty(),
-            canToggle = can,
-            canClear = can,
-            canClearAll = uiState.looper.cases.any { it.state != LooperEngine.CaseState.Empty },
-            isStopped = case?.state == LooperEngine.CaseState.Stopped,
-            onAction = { action ->
-                viewModel.longPressLooperCaseAction(mi, action)
-                loopMenuIndex = null
-            },
-            onDismiss = { loopMenuIndex = null }
         )
     }
 
@@ -699,50 +582,6 @@ private fun PadsGrid(
     }
 }
 
-@Composable
-private fun LoopsGrid(
-    cases: List<LooperEngine.Case>,
-    nowNs: Long,
-    beatsPerBar: Int,
-    barDurationNs: Long,
-    onTap: (Int) -> Unit,
-    onLongPress: (Int) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val cols = 4
-    val rows = (cases.size + cols - 1) / cols
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        for (r in 0 until rows) {
-            Row(
-                Modifier.fillMaxWidth().weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                for (c in 0 until cols) {
-                    val idx = r * cols + c
-                    val case = cases.getOrNull(idx)
-                    if (case == null) {
-                        Box(Modifier.weight(1f).fillMaxHeight())
-                    } else {
-                        DpLoopCase(
-                            index = idx,
-                            case = case,
-                            nowNs = nowNs,
-                            beatsPerBar = beatsPerBar,
-                            barDurationNs = barDurationNs,
-                            onTap = { onTap(idx) },
-                            onLongPress = { onLongPress(idx) },
-                            modifier = Modifier.weight(1f).fillMaxHeight()
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // Small widgets
 // ═══════════════════════════════════════════════════════════════════════════
@@ -798,23 +637,6 @@ private fun BeatDots(beats: Int, active: Int) {
     }
 }
 
-@Composable
-private fun RecBadge() {
-    Box(
-        Modifier
-            .height(24.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(DpColors.ROSE.copy(alpha = 0.14f))
-            .border(1.dp, DpColors.ROSE.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
-            .padding(horizontal = 10.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Box(Modifier.size(7.dp).clip(CircleShape).background(DpColors.ROSE))
-            Text("REC", color = DpColors.ROSE, fontSize = 10.5.sp, fontWeight = FontWeight.ExtraBold)
-        }
-    }
-}
 
 @Composable
 private fun MiniCard(
