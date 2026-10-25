@@ -2503,3 +2503,60 @@ bottom bar (testTag `mixer_bottom_bar`) ne remonte jamais. Preuve d'efficacite :
 sur l'ancien code, echec avec **71 dp** de poussee ; avec le correctif, 0. Un
 test de regression qui n'echoue pas sans le correctif ne vaut rien — le
 verifier en remettant temporairement le bug.
+## Session 2026-10-25 (2e) — themes clavier virtuel + LED neon + noir pur
+
+Demande : « ajouter d'autres themes VirtualKeyboard ; le LED doit vraiment etre du
+neon brillant ; quand noir on a vraiment du noir pur du theme ».
+
+### La cause racine du LED terne : le halo etait peint SOUS les touches
+
+`KeyboardKeys` dessinait le glow **avant** la boucle des touches, donc le
+remplissage des touches le recouvrait entierement. Le seul LED visible etait un
+lisere de 2 px autour de la touche. C'est pour ca que « LED » ne ressemblait
+qu'a une variante de « Color ».
+
+**Correctif** : le halo est dessine **en dernier** (donc au-dessus) et en
+`BlendMode.Plus`. Sur une face de touche quasi noire, l'addition est ce qui donne
+une impression de tube lumineux. `neonBloom()` empile des `drawRoundRect`
+concentriques dont l'alpha croit vers la touche (6 couches pour les themes neon,
+3 pour les autres).
+
+Mesure : **x5,45** de pixels lumineux sur une touche appuyee (35 928 contre
+6 594 au repos). Le test `ledAddsLightAroundPressedKeys` encode ce seuil
+(> 1,5x), donc une regression vers un simple remplissage echouera.
+
+### 5 nouveaux themes (9 -> 14)
+
+`NeonCyan`, `NeonMagenta`, `NeonLime`, `NeonAmber` et `Oled`. Les quatre premiers
+ont des faces de touches descendues a `#000`/`#0B0B0F` pour que la couleur
+appuyee se lise comme un tube et non comme un capuchon teinte.
+
+**`Oled` = le theme « noir pur »** : ses faces de touches sont **litteralement
+`#000000`** (les 3 arrets du degrade). C'est le seul theme ou `blackTop/Mid/Bottom`
+valent zero. Verifie par `oledDarkFacesArePureBlack` et par la mesure du rendu :
+**49 319 pixels `#000000` pur** (2,0 % de la capture) contre **14** pour Neon Cyan.
+
+Nouveau champ `KeyboardTheme.neon: Boolean = false` : il commande a la fois la
+largeur du bloom et la suppression de la bande sombre du haut de touche (qui
+ternit un tube). Les 9 themes d'origine sont inchanges (defaut `false`).
+
+### Pieges de test (couteux, tous verifies)
+
+- **`setContent` ne peut etre appele qu'une fois par test**
+  (`IllegalStateException: Cannot call setContent twice per test!`). Pour deux
+  captures dans un test, muter un etat.
+- **Un `mutableStateOf` declare dans le corps de `setContent` est reinitialise a
+  chaque recomposition** : la mutation ne tient pas et les deux captures sortent
+  **identiques au byte pres**. L'etat doit vivre hors composition (petite classe
+  porteuse).
+- **Avec `mainClock.autoAdvance = false`, `runOnIdle` ne rejoue pas la
+  recomposition** : utiliser `waitForIdle()` entre les deux captures. Symptome
+  exact : deux PNG au meme md5.
+- **Comparer une face de touche a son `edge` est faux** : les themes sombres
+  (OLED, Dark) ont un `edge` plus CLAIR que la face. L'invariant correct est
+  `whiteMid` plus clair que `blackMid`.
+
+### Captures produites
+
+`vkb_theme_neon_led.png`, `vkb_theme_neon_color.png`, `vkb_theme_neon_led_off.png`,
+`vkb_theme_oled.png`, `settings_vkb_themes.png`.

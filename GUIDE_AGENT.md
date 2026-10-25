@@ -197,6 +197,17 @@ sont des **pixels de canvas**, pas des dp. Aucun facteur d'echelle officiel.
   mise a jour d'etat recompose le sous-arbre et force la passe hors ecran du
   RenderEffect. Ralentir la boucle tant qu'une fenetre flottante est ouverte
   (`activePopup.isFloatingWindow()`).
+- **Clavier virtuel — le halo LED doit etre peint EN DERNIER.** Il etait dessine
+  avant la boucle des touches, donc recouvert par leur remplissage : « LED » ne
+  se distinguait pas de « Color ». Le dessiner apres, en `BlendMode.Plus`, sur
+  une face de touche quasi noire — c'est l'addition qui fait le neon.
+  `KeyboardTheme.neon` commande la largeur du bloom. Themes : 14 au total,
+  dont `oled` (faces de touches litteralement `#000000`).
+- **`setContent` ne peut etre appele qu'une fois par test.** Pour deux captures,
+  muter un etat detenu **hors** composition (un `mutableStateOf` cree dans
+  `setContent` est reinitialise a chaque recomposition, et les deux PNG sortent
+  au meme md5). Et entre les deux : `waitForIdle()`, pas `runOnIdle` sous
+  horloge manuelle.
 
 ---
 

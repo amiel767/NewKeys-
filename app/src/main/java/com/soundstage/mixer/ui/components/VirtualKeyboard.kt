@@ -67,8 +67,10 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerId
@@ -116,7 +118,13 @@ data class KeyboardTheme(
     val press: Color,
     val pressBlack: Color,
     /** Opacity of the thin highlight on top of the white keys (dark themes need it much lower). */
-    val highlight: Float = 0.8f
+    val highlight: Float = 0.8f,
+    /**
+     * Neon rendering: the pressed key is filled with the solid [press] colour and an additive
+     * bloom halo is drawn behind it, instead of the subtle two-rectangle tint. Only the neon
+     * family sets this.
+     */
+    val neon: Boolean = false
 )
 
 /** Fixed colors of the container. They do NOT depend on the theme; taken from the app palette. */
@@ -158,8 +166,37 @@ object KeyboardThemes {
         c(0xEEF0F4), c(0xCDD2DA), c(0xB2B8C3), c(0x3C414C), c(0x1F2229), c(0x0C0E12),
         edge = c(0x8C93A1), label = c(0x707888), press = c(0x7DD3FC), pressBlack = c(0x38BDF8), highlight = 0.6f)
 
+    // ── Neon family ──────────────────────────────────────────────────────────
+    // The dark key faces are pushed down to #000/#0B0B0F so the pressed colour reads as a
+    // glowing tube rather than a tinted plastic cap. `neon` switches the key fill to a solid
+    // additive fill plus a bloom halo (see KeyboardKeys), which is what makes it luminous.
+    val NeonCyan = KeyboardTheme("neon_cyan", "Neon Cyan",
+        c(0x0A1A1E), c(0x061215), c(0x020809), c(0x07161A), c(0x03090C), c(0x000102),
+        edge = c(0x1E7A8C), label = c(0x3FBFD4), press = c(0x2AF5FF), pressBlack = c(0x0BE0F0),
+        highlight = 0.1f, neon = true)
+    val NeonMagenta = KeyboardTheme("neon_magenta", "Neon Magenta",
+        c(0x1C0A1E), c(0x120615), c(0x080209), c(0x1A071C), c(0x0C0310), c(0x010002),
+        edge = c(0x8C2E9C), label = c(0xD45FE8), press = c(0xFF2BD4), pressBlack = c(0xF00BB8),
+        highlight = 0.1f, neon = true)
+    val NeonLime = KeyboardTheme("neon_lime", "Neon Lime",
+        c(0x0C1A0A), c(0x071205), c(0x030802), c(0x081806), c(0x040C03), c(0x000200),
+        edge = c(0x4E9C2E), label = c(0x8CE85F), press = c(0x7CFF2B), pressBlack = c(0x54F00B),
+        highlight = 0.1f, neon = true)
+    val NeonAmber = KeyboardTheme("neon_amber", "Neon Amber",
+        c(0x1A1206), c(0x120C04), c(0x080501), c(0x180F04), c(0x0C0702), c(0x020100),
+        edge = c(0x9C742E), label = c(0xE8B45F), press = c(0xFFB020), pressBlack = c(0xF09000),
+        highlight = 0.1f, neon = true)
+    /** True-black keys (OLED) — the only theme whose dark faces are literally #000000. */
+    val Oled = KeyboardTheme("oled", "OLED Black",
+        c(0x121212), c(0x080808), c(0x000000), c(0x000000), c(0x000000), c(0x000000),
+        edge = c(0x2A2A2A), label = c(0x6E6E6E), press = c(0xFFFFFF), pressBlack = c(0xC8C8C8),
+        highlight = 0.06f, neon = true)
+
     /** Display order. Classic is the default. */
-    val all: List<KeyboardTheme> = listOf(Classic, Blue, Cream, Red, Dark, Violet, Emerald, Sunset, Graphite)
+    val all: List<KeyboardTheme> = listOf(
+        Classic, Blue, Cream, Red, Dark, Violet, Emerald, Sunset, Graphite,
+        NeonCyan, NeonMagenta, NeonLime, NeonAmber, Oled
+    )
     fun byId(id: String?): KeyboardTheme = all.firstOrNull { it.id == id } ?: Classic
 }
 
@@ -715,21 +752,6 @@ fun KeyboardKeys(
             val bh = BlackHeight.toPx()
             val px = 1.dp.toPx()
 
-            // LED style: a short glow behind every pressed key
-            if (led) {
-                pressedNotes.forEach { m ->
-                    if (KeyboardLogic.isBlack(m)) {
-                        val l = KeyboardLogic.whitesBeforeOf(m) * ww - bw / 2f
-                        drawRoundRect(theme.pressBlack.copy(alpha = 0.28f), Offset(l - 2 * px, -2 * px), Size(bw + 4 * px, bh + 4 * px), CornerRadius(4 * px))
-                        drawRoundRect(theme.pressBlack.copy(alpha = 0.14f), Offset(l - 4 * px, -4 * px), Size(bw + 8 * px, bh + 8 * px), CornerRadius(6 * px))
-                    } else {
-                        val x = KeyboardLogic.whiteIndexOf(m) * ww
-                        drawRoundRect(theme.press.copy(alpha = 0.28f), Offset(x - 2 * px, -2 * px), Size(ww + 4 * px, kh + 4 * px), CornerRadius(5 * px))
-                        drawRoundRect(theme.press.copy(alpha = 0.14f), Offset(x - 4 * px, -4 * px), Size(ww + 8 * px, kh + 8 * px), CornerRadius(7 * px))
-                    }
-                }
-            }
-
             // white keys
             geo.whites.forEachIndexed { idx, g ->
                 val m = g.note
@@ -741,7 +763,8 @@ fun KeyboardKeys(
                 drawRoundRect(Color.Black.copy(alpha = 0.3f), Offset(x, dy + px), Size(kw, kh), r)
                 if (on) {
                     drawRoundRect(theme.press, Offset(x, dy), Size(kw, kh), r)
-                    drawRoundRect(Color.Black.copy(alpha = 0.14f), Offset(x, dy), Size(kw, 7 * px), r)
+                    // The dark top band is a plastic-cap cue; it dulls a neon tube, so skip it there.
+                    if (!theme.neon) drawRoundRect(Color.Black.copy(alpha = 0.14f), Offset(x, dy), Size(kw, 7 * px), r)
                 } else {
                     drawRoundRect(brushes.white, Offset(x, 0f), Size(kw, kh), r)
                 }
@@ -784,10 +807,52 @@ fun KeyboardKeys(
                 )
                 drawLine(Color.White.copy(alpha = 0.12f), Offset(l + 0.9f * px, dy + 3 * px), Offset(l + 0.9f * px, dy + bh - 4 * px), 0.8f * px)
             }
+
+            // LED/neon halo — drawn LAST so it sits on top of the key faces. The old code drew
+            // it first and the key fill covered it, which is why "LED" never looked luminous.
+            // Additive blending over the near-black key face is what reads as a glowing tube.
+            if (led) {
+                val wide = theme.neon
+                pressedNotes.forEach { m ->
+                    if (KeyboardLogic.isBlack(m)) {
+                        val l = KeyboardLogic.whitesBeforeOf(m) * ww - bw / 2f
+                        neonBloom(theme.pressBlack, Offset(l, 0f), Size(bw, bh), 4f * px, wide, px)
+                    } else {
+                        val x = KeyboardLogic.whiteIndexOf(m) * ww
+                        neonBloom(theme.press, Offset(x, 0f), Size(ww, kh), 5f * px, wide, px)
+                    }
+                }
+            }
                 }
             }
     ) { }
 }
+
+/**
+ * Bloom around a pressed key. [radius] is the halo thickness in px beyond the key face; the
+ * neon themes get a wider, brighter one. Layers shrink and brighten towards the key so the
+ * falloff looks like a real light source rather than a flat outline.
+ */
+private fun DrawScope.neonBloom(
+    color: Color, topLeft: Offset, size: Size, radius: Float, bright: Boolean, px: Float
+) {
+    val layers = if (bright) 6 else 3
+    val spread = if (bright) 2.4f else 1.6f
+    val peak = if (bright) 0.30f else 0.16f
+    for (i in layers downTo 0) {
+        val t = i / layers.toFloat()          // 1 = outermost
+        val grow = radius * spread * t
+        val alpha = peak * (1f - t) + 0.06f
+        drawRoundRect(
+            color = color.copy(alpha = alpha.coerceIn(0f, 1f)),
+            topLeft = Offset(topLeft.x - grow, topLeft.y - grow),
+            size = Size(size.width + 2 * grow, size.height + 2 * grow),
+            cornerRadius = CornerRadius(radius + grow),
+            blendMode = BlendMode.Plus
+        )
+    }
+}
+
 /* Key geometry + gradients are built once per size/theme change, inside drawWithCache. */
 private data class VkbKeyGeo(val note: Int, val x: Float)
 private data class VkbGeometry(val whites: List<VkbKeyGeo>, val blacks: List<VkbKeyGeo>)

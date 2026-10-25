@@ -166,4 +166,21 @@ class TrackColorsCaptureTest {
         composeTestRule.onNodeWithText("VIRTUAL KEYBOARD").assertExists()
         composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/settings_interface_no_sliders.png")
     }
+
+    /**
+     * The added keyboard themes must be reachable in Settings > Interface, not merely present in
+     * `KeyboardThemes.all`. A tall viewport keeps the whole tab in frame — scrolling this column
+     * exhausts the Robolectric heap (documented pitfall).
+     */
+    @Test
+    @Config(qualifiers = "w851dp-h1600dp-440dpi", sdk = [36])
+    fun theKeyboardThemeGridOffersTheNewThemes() {
+        render(
+            SettingsState(tab = SettingsTab.Interface, vkbTheme = "neon_cyan"),
+            "settings_vkb_themes"
+        )
+        listOf("Neon Cyan", "Neon Magenta", "Neon Lime", "Neon Amber", "OLED Black").forEach {
+            composeTestRule.onNodeWithText(it).assertExists()
+        }
+    }
 }
