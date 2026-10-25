@@ -298,6 +298,34 @@ panneau droit change. Un selecteur dans la top bar bascule (`LooperPageSelector`
   alimente l'horloge (`transportClock.currentBarPosition()` en mesures) et
   rejoue via `replayLoopEvent`.
 
+### Il n'y a qu'UN looper : ne pas ressusciter l'ancien
+
+L'ancien moteur evenementiel a ete **supprime** (`audio/LooperEngine.kt`,
+`audio/DrumLooperEngine.kt`, `LoopsGrid`, `DpLoopCase`, `DpLoopMenu`, le segment
+Pads/Loops). Ne pas le chercher, ne pas le recreer. Tout le looper vit dans
+`com/soundstage/mixer/looper/`.
+
+**Ne pas confondre** avec deux fonctionnalites voisines qui, elles, restent :
+`SeamlessLoopTrimmer` (utilise par `model/DjLoopEngine.kt`) et
+`DrumPadLooperEngine` (enregistre une boucle de batterie vers un WAV, branchee
+dans `MixerScreen`). Ce ne sont pas l'interface LiveLooper.
+
+### Robustesse : borner a la frontiere, pas au point d'usage
+
+Le LiveLooper plantait sur l'appareil a cause d'acces `cases[id]` non bornes.
+Regle appliquee (et a conserver) :
+
+- `LoopPatchJson.caseFromJson` borne **tout** entier lu du JSON : `id` (0..7),
+  `layers` (0..MAX_LAYERS), `bars` (0..MAX_BARS). Un `patches.json` ancien ou
+  edite a la main ne doit jamais produire un etat hors bornes.
+- Les actions du controleur (`onRec`, `onPlay`, `onUndo`, `onRemoveLayer`,
+  `onVolume`…) passent par `caseOrNull(id)` / `updateCase`, jamais `cases[id]` :
+  un `focusId`/`sheetCaseId` perime atteint le controleur comme argument, et une
+  exception levee depuis un callback Compose demonte la page sans retour.
+- `loopCaseColor(id)` borne **des deux cotes** (le `%` de Kotlin garde le signe).
+- Regression : `LooperStressTest.everyActionWithAnOutOfRangeIdIsIgnoredInsteadOfThrowing`
+  passe -1, 8, 99, Int.MIN/MAX a chaque action.
+
 ### Regle de layout : la grille est FLUIDE, pas mise a l'echelle
 
 Le JSX (`LoopsPreview.jsx`, panneau droit `left:188 right:10 top:60 bottom:8`)

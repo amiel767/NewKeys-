@@ -2734,3 +2734,60 @@ pures restent en JVM pur, sans runtime.
 
 Captures : `bottom_bar.png`, `bottom_bar_5.png`, `bottom_bar_armed.png`,
 `bottom_bar_active.png`.
+
+## Session 2026-10-25 (parallele) — un seul looper, nouveau blinde (commit 1d2a394)
+
+Conversation parallele : `dde6dffb48c5475a931918c2e3ff38f9`. Celle-ci a traite deux
+taches en parallele du travail snapshots/clavier de l'autre agent (deja sur `main`).
+
+### Tache 1 — l'ancien LiveLooper est retire, il n'en reste qu'un
+
+**Supprime** (ne pas les chercher, ne pas les recreer) :
+- `audio/LooperEngine.kt` (moteur evenementiel de l'ancien looper) ;
+- `audio/DrumLooperEngine.kt` (jamais reference) ;
+- `audio/LooperEngineTest.kt`, `OldLoopsSurfaceTest.kt` (tests de l'interface retiree) ;
+- cote UI : `LoopsGrid`, `DpLoopCase`, `DpLoopMenu`, le segment Pads/Loops, le
+  parametre `quantize` de `DpDrumPadSettings` ;
+- cote VM : le champ `looperEngine`, le miroir `looper` de `MixerUiState`, son
+  collecteur, `looperEngine.start()`, le bloc de callbacks de rejeu, le bloc de
+  setters, `looperEngine.release()` (dans `onCleared`) et les deux `record(...)`.
+
+Tout le looper vit desormais dans `com/soundstage/mixer/looper/` : `LooperController`
+(`LiveLooperModel.kt`) + `LiveLooperUi.kt`. Le VM l'instancie (`liveLooper`), alimente
+l'horloge (`transportClock.currentBarPosition()`) et rejoue via `replayLoopEvent`,
+nourri par `feedLiveLooper(...)` depuis le clavier, les pads et le TonicPad.
+
+**Ne pas confondre avec deux fonctionnalites voisines CONSERVEES** (elles ne font pas
+partie de l'interface LiveLooper) :
+- `audio/SeamlessLoopTrimmer.kt` — utilise par `model/DjLoopEngine.kt` ;
+- `audio/DrumPadLooperEngine.kt` — enregistre une boucle de batterie vers un WAV
+  (`startDrumLoopRecording` / `stopAndRenderDrumLoop`, branchee dans `MixerScreen`).
+
+### Tache 2 — le nouveau LiveLooper ne doit plus planter
+
+Le plantage etait **specifique a l'appareil** (pas d'emulateur ici, et le pont audio
+natif ne tourne pas en test). Cause racine : des acces indexes non bornes — la classe
+de bug deja connue sur ce depot (`FxRegistry.all[-1]`, `loopCaseColor(-1)`).
+- `cases[id]` dans les actions du controleur : un `focusId`/`sheetCaseId` perime
+  (restaure d'un ancien patch) atteint le controleur comme argument. Deja corrige par
+  `caseOrNull(id)`/`updateCase` ; **desormais couvert par un test**.
+- `LoopPatchJson.caseFromJson` ne bornait que `id`. Ajoute `layers` 0..`MAX_LAYERS`
+  et `bars` 0..`MAX_BARS` : un `patches.json` ancien ou edite a la main ne peut plus
+  produire un etat hors bornes.
+- Regression ajoutee : `LooperStressTest.everyActionWithAnOutOfRangeIdIsIgnoredInsteadOfThrowing`
+  (-1, 8, 99, Int.MIN/MAX sur chaque action).
+
+**Tests** : `looper.LooperLogicTest` 7, `looper.LooperStressTest` 4,
+`LoopColorBoundsTest` 2, `LiveLooperWiringTest` 5, `LiveLooperOpenTest` 1 -> **17 verts,
+0 echec**. `assembleDebug` OK (APK 42 861 154 o).
+
+**Piege de commande (re-confirme)** : `--tests "com.soundstage.mixer.LooperLogicTest"`
+ne trouve rien — la classe est dans `com.soundstage.mixer.looper`. Toujours le chemin
+complet du package. Et ne jamais lancer `liveui.*` dans un filtre large : `LiveUiLoop`
+est une boucle infinie pilotee par `cmd.json`, le run ne se termine jamais.
+
+**Reste a confirmer** : validation sur appareil (ouvrir LiveLooper, enregistrer une
+case, la rejouer, changer de patch). Le correctif est une cause reelle mais l'appareil
+est le seul juge pour un plantage qui n'apparait que la.
+
+**Rapport HTML** : `/workspace/dl/live-looper/index.html` (style impose).
