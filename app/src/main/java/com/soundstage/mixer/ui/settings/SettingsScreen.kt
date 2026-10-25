@@ -346,10 +346,6 @@ object SettingsLogic {
         Entry("Synth output headroom", SettingsTab.Audio, "gain clipping safety"),
         Entry("FluidSynth gain", SettingsTab.Audio, "fluidsynth output gain"),
         Entry("Auto-fit faders", SettingsTab.Interface, "layout scroll mixer"),
-        Entry("Primary interface hue", SettingsTab.Interface, "color theme"),
-        Entry("Accent color saturation", SettingsTab.Interface, "color"),
-        Entry("Background tone saturation", SettingsTab.Interface, "color"),
-        Entry("Background lightness", SettingsTab.Interface, "color brightness"),
         Entry("MIDI mapping", SettingsTab.Midi, "learn controller pads faders"),
         Entry("Anti-jitter filter", SettingsTab.Midi, "debounce burst"),
         Entry("Filter sensitivity window", SettingsTab.Midi, "debounce ms"),
@@ -823,74 +819,18 @@ private fun InterfaceSection(state: SettingsState, actions: SettingsActions) {
         SetSwitch(state.autoFit, actions::onAutoFitChange)
     }
 
-    val colorsChanged =
-        kotlin.math.abs(state.hue - SettingsDefaults.HUE) > 0.5f ||
-        kotlin.math.abs(state.accentSaturation - SettingsDefaults.ACCENT_SATURATION) > 0.001f ||
-        kotlin.math.abs(state.backgroundTone - SettingsDefaults.BACKGROUND_TONE) > 0.001f ||
-        kotlin.math.abs(state.backgroundLightness - SettingsDefaults.BACKGROUND_LIGHTNESS) > 0.001f
-
     SectionLabel(
         text = "Colors",
         trailing = {
-            if (colorsChanged) {
-                Text(
-                    "Reset colors",
-                    style = setText(12.sp, FontWeight.Bold, Color(0xFF9AA5BA)),
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { actions.onResetColors() }
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                )
-            }
+            Text(
+                "Reset colors",
+                style = setText(12.sp, FontWeight.Bold, Color(0xFF9AA5BA)),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { actions.onResetColors() }
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            )
         }
-    )
-
-    SliderRow(
-        title = "Primary interface hue",
-        hint = null,
-        value = state.hue,
-        min = 0f,
-        max = SettingsRanges.HUE_MAX,
-        step = 1f,
-        defaultValue = SettingsDefaults.HUE,
-        format = { "${it.toInt()}°" },
-        onChange = actions::onHueChange
-    )
-    SetDivider()
-    SliderRow(
-        title = "Accent color saturation",
-        hint = null,
-        value = state.accentSaturation,
-        min = 0f,
-        max = SettingsRanges.SAT_MAX,
-        step = 0.05f,
-        defaultValue = SettingsDefaults.ACCENT_SATURATION,
-        format = { String.format(java.util.Locale.US, "%.2fx", it) },
-        onChange = actions::onAccentSaturationChange
-    )
-    SetDivider()
-    SliderRow(
-        title = "Background tone saturation",
-        hint = null,
-        value = state.backgroundTone,
-        min = 0f,
-        max = SettingsRanges.TONE_MAX,
-        step = 0.05f,
-        defaultValue = SettingsDefaults.BACKGROUND_TONE,
-        format = { String.format(java.util.Locale.US, "%.2fx", it) },
-        onChange = actions::onBackgroundToneChange
-    )
-    SetDivider()
-    SliderRow(
-        title = "Background lightness",
-        hint = null,
-        value = state.backgroundLightness,
-        min = SettingsRanges.LIGHT_MIN,
-        max = SettingsRanges.LIGHT_MAX,
-        step = 0.05f,
-        defaultValue = SettingsDefaults.BACKGROUND_LIGHTNESS,
-        format = { String.format(java.util.Locale.US, "%.2fx", it) },
-        onChange = actions::onBackgroundLightnessChange
     )
 
     SectionLabel("Virtual keyboard")

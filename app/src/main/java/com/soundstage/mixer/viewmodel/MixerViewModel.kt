@@ -1891,7 +1891,16 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         continue
                     }
 
-                    delay(50)
+                    // While a floating window (Track Settings, Patches, FX, soundfonts) is up, the
+                    // mixer sits behind a full-screen blur. Every meter update recomposes that
+                    // subtree and forces the blur to re-render its offscreen pass, which is the
+                    // stutter felt in those windows. The meters are not readable through the blur,
+                    // so keep them alive at a low rate instead of the 20 Hz they need when visible.
+                    if (curr.activePopup.isFloatingWindow()) {
+                        delay(200)
+                    } else {
+                        delay(50)
+                    }
                     val anySolo = curr.tracks.any { it.isSolo }
 
                     _uiState.update { state ->
@@ -4833,11 +4842,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     put("drumVolume", current.drumVolume)
                     put("drumReverb", current.drumReverb)
                     put("masterVolume", current.masterTrack.volume)
+                    put("visibleTracksCount", current.visibleTracksCount)
                     put("patches", org.json.JSONArray().apply {
                         current.patches.ifEmpty { listOf(initialPatch) }.forEach { p ->
                             put(org.json.JSONObject().apply {
                                 put("id", p.id)
                                 put("name", p.name)
+                                put("visibleTracksCount", p.visibleTracksCount)
                             })
                         }
                     })
@@ -4868,10 +4879,15 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     put("drumVolume", 0.75)
                     put("drumReverb", 0.24)
                     put("masterVolume", 0.85)
+                    // A brand new setlist starts on a single track. Without this key the
+                    // loader falls back to `count { it.isEnabled }`, which is 8, and the
+                    // setlist opened on eight faders.
+                    put("visibleTracksCount", 1)
                     put("patches", org.json.JSONArray().apply {
                         put(org.json.JSONObject().apply {
                             put("id", initialPatch.id)
                             put("name", initialPatch.name)
+                            put("visibleTracksCount", 1)
                         })
                     })
                 }.toString()

@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -116,5 +117,38 @@ class TrackColorsCaptureTest {
         composeTestRule.mainClock.advanceTimeBy(200)
         assertTrue(opened)
         composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/settings_interface_card.png")
+    }
+
+    @Test
+    @Config(qualifiers = "w851dp-h1600dp-440dpi", sdk = [36])
+    fun theColourSlidersAreGoneFromTheInterfaceTab() {
+        // Hue / accent saturation / background tone / background lightness were removed on
+        // request. "Reset colors" stays. The track colours card is the only colour control
+        // left in this tab, so assert both halves of that.
+        composeTestRule.setContent {
+            SoundfontLiveMixerTheme {
+                Surface(modifier = Modifier.fillMaxSize(), color = DarkBg) {
+                    SettingsScreen(
+                        state = SettingsState(tab = SettingsTab.Interface),
+                        actions = object : SettingsActions {},
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+        }
+        composeTestRule.mainClock.autoAdvance = false
+        composeTestRule.mainClock.advanceTimeBy(1_500)
+
+        for (gone in listOf(
+            "Primary interface hue",
+            "Accent color saturation",
+            "Background tone saturation",
+            "Background lightness"
+        )) {
+            composeTestRule.onNodeWithText(gone).assertDoesNotExist()
+        }
+        composeTestRule.onNodeWithText("Reset colors").assertExists()
+        composeTestRule.onNodeWithText("VIRTUAL KEYBOARD").assertExists()
+        composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/settings_interface_no_sliders.png")
     }
 }

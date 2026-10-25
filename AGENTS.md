@@ -2366,3 +2366,97 @@ lots.
 de pixels non-fond par ligne). La carte Track colors mesure ses 8 voies
 distinctes (verifie par echantillonnage de la bande : 8 couleurs saturees +
 master).
+
+## Session 2026-10-25 — 4 bugs signales par l'utilisateur (corriges + prouves)
+
+Les quatre sont des correctifs de cause racine, chacun verifie par un test ou une
+capture. Aucun n'a touche le moteur audio ni Echo.
+
+### Bug 1 — une setlist neuve s'ouvrait sur 8 pistes au lieu de 1
+
+**Cause racine (confirmee par test).** L'ecriture de la setlist
+(`createSetlistFromScreen`, `MixerViewModel.kt`) n'ecrivait **pas** la cle
+`visibleTracksCount`. A la lecture (`selectScene`), `obj.has("visibleTracksCount")`
+etait donc faux et le code tombait sur
+`updatedTracks.count { it.isEnabled }` = **8**, car toutes les pistes sont livrees
+actives. Ce n'etait pas un probleme d'affichage : la donnee n'etait jamais
+persistee.
+
+**Correctif** : le bloc d'ecriture de la nouvelle setlist emet
+`visibleTracksCount = 1` (et un tableau `tracks` d'une seule piste). `saveCurrentScene`
+et les patchs/snapshots ecrivaient deja la cle — verifie, rien a changer la-bas.
+
+**Preuve** : `SetlistTrackCountTest` fait l'aller-retour reel
+`createSetlistFromScreen` -> `openProject` -> lecture de `visibleTracksCount`.
+Avec le correctif retire il echoue `expected:<1> but was:<8>` ; avec le correctif
+il passe. C'est la reproduction exacte du rapport.
+
+**Piege de test (couteux, a retenir).** Trois versions du test ont passe **a tort**
+avant celle-ci :
+1. `Thread.sleep` ne suffit pas : l'ecriture et la lecture passent par
+   `Dispatchers.IO` **et** reviennent sur `Dispatchers.Main`, dont le looper
+   Robolectric est **en pause**. Sans `shadowOf(Looper.getMainLooper()).idle()`,
+   l'affectation finale n'est jamais jouee et l'assertion lit la valeur par defaut
+   du demarrage (1) — elle passe donc quel que soit le chargeur.
+2. Attendre `activeProjectName` ne prouve rien : `openProject` l'ecrit **de facon
+   synchrone**, avant que `selectScene` ait fini. Il faut attendre
+   **`activeSceneId`**, qui n'est pose que dans le bloc Main de `selectScene`.
+
+Regle : un test qui passe doit etre **verifie en le faisant echouer** (retirer le
+correctif et relancer). Un test qui ne peut pas echouer ne prouve rien.
+
+### Bug 2 — le pouce des faders sautait au changement de snapshot
+
+**Cause racine.** `CustomVerticalFader` : `LaunchedEffect(value)` lancait un
+`animate(...)` de 220 ms **a chaque** changement de valeur. Or une transition de
+snapshot pousse une nouvelle valeur toutes les ~25 ms (48 etapes sur 1200 ms) :
+chaque tween etait annule avant d'aboutir, le pouce courait apres une cible
+mouvante — d'ou l'impression de « coince puis saute ».
+
+**Correctif** : si une nouvelle valeur arrive **moins de 60 ms** apres la
+precedente, on suit la valeur directement (l'interpolation amont est deja
+adoucie) ; sinon on anime sur 220 ms (`FastOutSlowInEasing`). Le drag suit
+toujours le doigt. L'horodatage est dans un `remember`, pas dans la cle du
+`LaunchedEffect`.
+
+### Bug 3 — saccade a l'ouverture des fenetres floutees (TrackSettings/FX)
+
+**Cause racine.** La boucle peak-meter (`startPeakMeterSimulation`) met a jour
+tout `_uiState` a **20 Hz**. Pendant qu'une fenetre flottante est ouverte, le
+mixer est derriere un blur plein ecran (RenderEffect) : chaque mise a jour
+recompose le sous-arbre et force le blur a refaire sa passe hors ecran — c'est la
+saccade. Les meters ne sont de toute facon pas lisibles a travers le flou.
+
+**Correctif** : pendant qu'un `activePopup.isFloatingWindow()` est vrai, la
+boucle passe a **200 ms** (5 Hz) au lieu de 50 ms. Le blur reste lisse, les
+meters reprennent leur cadence des la fermeture.
+
+### Bug 4 — retirer les sliders de l'onglet Interface
+
+Retires : « Primary interface hue », « Accent color saturation », « Background
+tone saturation », « Background lightness ». « Reset colors » **reste** (il agit
+sur le theme et le clavier). Les quatre entrees ont aussi ete retirees du
+catalogue de recherche (`SettingsCatalog`), sinon une recherche pointerait vers
+une cible inexistante.
+
+Les callbacks `onHueChange` / `onAccentSaturationChange` / `onBackgroundToneChange`
+/ `onBackgroundLightnessChange` restent dans `SettingsActions` et cables dans
+`MixerScreen` : les setters du VM existent toujours et les retirer serait une
+suppression de fonctionnalite non demandee.
+
+**Preuve** : `theColourSlidersAreGoneFromTheInterfaceTab` (dans
+`TrackColorsCaptureTest`) asserte les 4 libelles **absents**, « Reset colors »
+et « VIRTUAL KEYBOARD » **presents**, et capture
+`settings_interface_no_sliders.png`.
+
+**Piege** : `SectionLabel` passe son texte en `.uppercase()`. Un
+`onNodeWithText("Virtual keyboard")` echoue ; il faut « VIRTUAL KEYBOARD ».
+
+### Etat
+
+- `:app:compileDebugKotlin`, `:app:assembleDebug` (APK 43 Mo) : OK.
+- `SetlistTrackCountTest` + `FaderThumbPositionTest` + `LiveLooperWiringTest` +
+  `TrackColorsLogicTest` + `TrackColorsCaptureTest` + `TransportBpmTest` : verts.
+- Captures regenerees sous `app/src/test/screenshots/`.
+- Les 4 correctifs touchent : `MixerViewModel.kt`, `CustomVerticalFader.kt`,
+  `SettingsScreen.kt`, `TrackColorsCaptureTest.kt`, `SetlistTrackCountTest.kt`.

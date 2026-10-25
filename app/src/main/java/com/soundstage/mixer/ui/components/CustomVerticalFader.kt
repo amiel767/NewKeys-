@@ -68,14 +68,26 @@ fun CustomVerticalFader(
 
     var isDragging by remember { mutableStateOf(false) }
     var localValue by remember { mutableFloatStateOf(value) }
+    var lastValueChangeNs by remember { mutableLongStateOf(0L) }
 
     // Snapshot changes assign a new value in one frame: snapping `localValue` there
     // made the thumb jump. Animating towards it keeps the glide continuous, and
     // while the user drags we follow the finger directly. `animate`'s block receives
     // (value, velocity) — take the value; assigning the velocity left the thumb
     // parked at the bottom of its travel.
+    //
+    // A snapshot transition pushes a new value every ~25 ms (48 steps over 1200 ms).
+    // Restarting a 220 ms tween on each of them cancelled it before it settled, so the
+    // thumb chased a moving target and the glide read as stuck. When values arrive that
+    // fast the upstream interpolation is already eased, so follow it directly.
     LaunchedEffect(value) {
-        if (!isDragging) {
+        if (isDragging) return@LaunchedEffect
+        val nowNs = System.nanoTime()
+        val isTransitionFrame = lastValueChangeNs != 0L && nowNs - lastValueChangeNs < 60_000_000L
+        lastValueChangeNs = nowNs
+        if (isTransitionFrame) {
+            localValue = value.coerceIn(0f, 1f)
+        } else {
             animate(
                 initialValue = localValue,
                 targetValue = value.coerceIn(0f, 1f),
