@@ -2601,3 +2601,50 @@ faite, l'ecrire comme « a confirmer », pas comme un resultat.
 par `cd /workspace/dl && (nohup python3 -m http.server 12000 --bind 0.0.0.0 &)`
 (ajouter 12001 pour la seconde URL `work-2`, sinon 502). Le `http.server` ne
 survit pas a un redemarrage du sandbox : le relancer avant d'annoncer un lien.
+
+## Session 2026-10-25 — rappel de snapshot pousse au moteur (commit 4ac5f58)
+
+Contexte : la liste **A1 → E1** (13 bugs signales) etait deja couverte par le
+commit `54ecc65`. Cette session a ferme le seul point restant, puis pousse et
+declare la release.
+
+### Cause racine — le rappel de snapshot n'atteignait pas le moteur
+Le rappel ecrivait `transpose`, `octave` et `reverbSend` dans l'etat Compose mais
+**jamais** dans le moteur natif : apres un rappel la hauteur et la reverb
+restaient celles du snapshot precedent. Le snapshot « ne prenait pas ».
+
+Deux defauts structurels dans le meme geste :
+- le mapping piste -> snapshot etait recopie **six fois** en ligne dans
+  `MixerViewModel` ; un champ ajoute a `TrackSnapshot` en oubliait cinq ;
+- la regle de liberation des soundfonts au changement de patch existait en **deux
+  versions** qui ne donnaient pas la meme reponse.
+
+### Correctif — `model/SnapshotLogic.kt` (logique pure, testable sans Android)
+`captureTrack` / `applyToTrack` / `slotsToRelease` / `retainedSoundfontPaths`.
+`pushSnapshotTrackToEngine` / `pushSnapshotTracksToEngine` poussent
+`transpose + octave*12` et la reverb, appeles **une seule fois** apres que la
+transition est posee (hors des boucles d'interpolation ~25x/frame).
+
+`SnapshotLogic.LAST_TRACK_SLOT = 7` : les slots **Drum (8)** et **Pad (9)** ne sont
+jamais liberes — ils appartiennent aux surfaces d'instruments, pas au patch.
+
+### Tests
+`SnapshotLogicTest` 11 PASS. Suite filtree **66 tests, 0 echec**
+(`SnapshotLogicTest` 11, `TrackColorsLogicTest` 17, `TrackColorsWiringTest` 7,
+`looper/LooperLogicTest` 7, `VirtualKeyboardThemeTest` 6,
+`FxShellStoreResilienceTest` 5, `LiveLooperWiringTest` 5, `TransportBpmTest` 4,
+`audio/LooperEngineTest` 4).
+
+### Piege de commande (re-confirme)
+`./gradlew :app:testDebugUnitTest --tests "com.soundstage.mixer.LooperLogicTest"`
+ne trouve **rien** : la classe est dans le sous-package
+`com.soundstage.mixer.looper`. Toujours donner le chemin complet du package.
+
+### Livraison
+- commit `4ac5f58` sur `main`, **pousse** ;
+- `release.yml` (workflow_dispatch) run **186** sur `4ac5f58` :
+  **completed success** ;
+- release **v186** publiee, `app-debug.apk` 42 678 855 o ;
+- APK local : 44 479 604 o.
+- Rapport HTML de session : `/workspace/dl/session-2026-10-25/index.html`
+  (style impose par la section « Style de rapport HTML » ci-dessus).
