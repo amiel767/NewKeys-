@@ -102,6 +102,7 @@ Point d'entree : `MainActivity` -> `ui/MixerScreen.kt` (composeur central).
 |---|---|
 | Mixer V2 | `ui/MixerScreen.kt`, `ui/components/v2/*` |
 | Etat / logique | `viewmodel/MixerViewModel.kt` (gros), `model/MixerState.kt` |
+| Snapshots / patches | `model/SnapshotLogic.kt` (decisions pures), `model/SnapshotJson.kt` (codec JSON unique), `ui/components/v2/MixerBottomBarV2.kt` (cases + disquette) |
 | Audio Kotlin | `model/AudioEngine.kt`, `audio/NativeAudioBridge.kt` |
 | Audio natif | `cpp/audio_engine.{h,cpp}`, `cpp/soundfont_engine.{h,cpp}`, `cpp/native-lib.cpp` |
 | FX Aether (moteur) | `cpp/aetherfx/*.h` (header-only, portable) |
@@ -210,6 +211,21 @@ sont des **pixels de canvas**, pas des dp. Aucun facteur d'echelle officiel.
   horloge manuelle.
 
 ---
+
+- **Snapshot : un seul codec, un seul point de synchro.**
+  `SnapshotJson` est le **seul** codec de `TrackSnapshot`/`SubSceneSnapshot` : la
+  forme etait ecrite a la main **six fois** (3 lecteurs, 3 writers), donc tout champ
+  oublie disparaissait en silence. Ne pas re-inliner un lecteur.
+  `syncActiveSnapshot()` rafraichit le snapshot actif depuis
+  `persistCurrentStateDebounced()` (point d'etranglement unique de toute mutation) :
+  un snapshot est une copie **vivante**, pas one-shot. Gardes : pas de synchro
+  pendant un rappel (`isRecallingSnapshot`) ni en armement.
+- **`customColorArgb` absent != 0.** `null` = pas de surcharge, `0` = noir opaque.
+  Toujours tester `has()` avant `optInt`, sinon une piste devient noire au rappel.
+- **`org.json` est stubé en test JVM pur** (tout leve « not mocked »). Les tests de
+  round-trip JSON passent par Robolectric ; les decisions pures restent JVM pur.
+- **Drum/Pad (slots 8/9) ne sont jamais liberes** par un changement de patch : ils
+  appartiennent aux surfaces, pas au patch.
 
 ## 7. Travailler en parallele (plusieurs agents sur le meme depot)
 

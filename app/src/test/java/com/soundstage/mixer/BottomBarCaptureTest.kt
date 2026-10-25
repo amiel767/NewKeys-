@@ -78,4 +78,57 @@ class BottomBarCaptureTest {
         }
         composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/bottom_bar_5.png")
     }
+
+    /**
+     * Armed: the floppy LED is lit and every snapshot case carries the red halo.
+     * This is the state that says "tap a case to save the live mixer into it".
+     */
+    @Test
+    fun bottom_bar_capture_armed() {
+        composeTestRule.setContent {
+            Box(Modifier.fillMaxWidth().background(Color(0xFF0B0F17)).padding(8.dp)) {
+                MixerBottomBarV2(
+                    masterTrack = TrackChannel(id = 0, name = "Master", isMaster = true, volume = 0.75f),
+                    onMasterVolumeChange = {},
+                    onMasterFxClick = {},
+                    isSnapshotArmMode = true, onToggleSnapshotArm = {},
+                    activeSnapshotSlot = "slot_default",
+                    snapshots = emptyMap(),
+                    configuredSnapshotSlots = listOf("slot_default", "slot_1", "slot_2"),
+                    onSnapshotSlotClick = {},
+                    onAddSnapshot = { null },
+                    onDeleteSnapshot = {},
+                    snapshotCustomNames = emptyMap(),
+                    onRenameSnapshotSlot = { _, _ -> },
+                    isKeyboardActive = false, onToggleKeyboard = {}
+                )
+            }
+        }
+        composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/bottom_bar_armed.png")
+    }
+
+    /** A recalled slot: the active case is lit, the floppy is idle. */
+    @Test
+    fun bottom_bar_capture_active_slot() {
+        composeTestRule.setContent {
+            Box(Modifier.fillMaxWidth().background(Color(0xFF0B0F17)).padding(8.dp)) {
+                MixerBottomBarV2(
+                    masterTrack = TrackChannel(id = 0, name = "Master", isMaster = true, volume = 0.75f),
+                    onMasterVolumeChange = {},
+                    onMasterFxClick = {},
+                    isSnapshotArmMode = false, onToggleSnapshotArm = {},
+                    activeSnapshotSlot = "slot_1",
+                    snapshots = emptyMap(),
+                    configuredSnapshotSlots = listOf("slot_default", "slot_1", "slot_2"),
+                    onSnapshotSlotClick = {},
+                    onAddSnapshot = { null },
+                    onDeleteSnapshot = {},
+                    snapshotCustomNames = emptyMap(),
+                    onRenameSnapshotSlot = { _, _ -> },
+                    isKeyboardActive = false, onToggleKeyboard = {}
+                )
+            }
+        }
+        composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/bottom_bar_active.png")
+    }
 }

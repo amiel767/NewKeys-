@@ -31,7 +31,13 @@ object SnapshotLogic {
         splitNoteMax = track.splitNoteMax,
         velocityCurve = track.velocityCurve,
         transpose = track.transpose,
-        octave = track.octave
+        octave = track.octave,
+        sustain = track.sustain,
+        aftertouch = track.aftertouch,
+        programChange = track.programChange,
+        pitchBendRange = track.pitchBendRange,
+        midiChannel = track.midiChannel,
+        customColorArgb = track.customColorArgb
     )
 
     /**
@@ -68,7 +74,13 @@ object SnapshotLogic {
             velocityCurve = snap.velocityCurve,
             transpose = snap.transpose,
             octave = snap.octave,
-            reverbMix = snap.reverbSend
+            reverbMix = snap.reverbSend,
+            sustain = snap.sustain,
+            aftertouch = snap.aftertouch,
+            programChange = snap.programChange,
+            pitchBendRange = snap.pitchBendRange,
+            midiChannel = snap.midiChannel,
+            customColorArgb = snap.customColorArgb
         )
     }
 

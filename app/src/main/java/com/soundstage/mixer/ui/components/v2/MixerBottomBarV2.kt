@@ -57,6 +57,7 @@ import com.soundstage.mixer.ui.components.FaderRail
 import com.soundstage.mixer.ui.components.FaderThumb
 import com.soundstage.mixer.ui.components.FloppyDiskIcon
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private val PanelTop = Color(0xFF2B3348)
@@ -129,6 +130,7 @@ fun MixerBottomBarV2(
                         fallbackNumber = if (key == "slot_default") null else idx,
                         isActive = isActive,
                         isDeletable = key != "slot_default",
+                        isArming = isSnapshotArmMode,
                         width = width,
                         onClick = { onSnapshotSlotClick(key) },
                         onLongPress = { manageSlotKey = key },
@@ -167,17 +169,17 @@ fun MixerBottomBarV2(
                         contentAlignment = Alignment.Center) {
                     Text("+", color = Color(0xFF8E99AD), fontSize = 14.4.sp, fontWeight = FontWeight.ExtraBold)
                 }
+
+                // The floppy sits right after the last case, inside the weighted row:
+                // it reads as "save into a snapshot" and no longer ends up glued to the
+                // master slider. The free space of the row is left after it.
+                FloppyCaseV2(
+                    isArmed = isSnapshotArmMode,
+                    onToggleArm = onToggleSnapshotArm
+                )
             }
         }
     }
-
-        MixerModuleV2(modifier = Modifier.width(46.dp).fillMaxHeight()) {
-            Box(Modifier.fillMaxSize()
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onToggleSnapshotArm() },
-                contentAlignment = Alignment.Center) {
-                FloppyDiskIcon(isArmed = isSnapshotArmMode, modifier = Modifier.size(18.dp))
-            }
-        }
 
         // With the BPM case gone the bar has room again, so the master is back to
         // its full 178 dp and the snapshot cases keep the rest.
@@ -247,6 +249,8 @@ fun MixerBottomBarV2(
 private fun SnapshotCaseV2(
     key: String, displayName: String, fallbackNumber: Int?,
     isActive: Boolean, isDeletable: Boolean,
+    /** Armed: a tap writes the live mixer into this case instead of recalling it. */
+    isArming: Boolean = false,
     width: androidx.compose.ui.unit.Dp,
     onClick: () -> Unit, onLongPress: () -> Unit, onDelete: () -> Unit
 ) {
@@ -254,6 +258,7 @@ private fun SnapshotCaseV2(
     val animatedY by animateFloatAsState(dragY,
         animationSpec = if (dragY > 0f) tween(0) else spring(0.6f, 500f), label = "snapY")
     val isSwiping = dragY > 30f
+    val (bounce, pulse) = rememberPressBounce()
 
     // Default is the app's own slot: it shows only its name, never the
     // SNAPSHOT/number stack (the stack is for the user's numbered snapshots).
@@ -265,7 +270,15 @@ private fun SnapshotCaseV2(
         modifier = Modifier
             .width(width)
             .fillMaxHeight()
+            .graphicsLayer { scaleX = bounce; scaleY = bounce }
             .offset { IntOffset(0, animatedY.roundToInt()) }
+            // Armed: a soft halo bleeds out of the case so the row reads as "tap a
+            // case to record into it". Same falloff family as the strip aura.
+            .recordingHalo(
+                color = if (isArming) Color(0xFFFF2A55) else Color.Transparent,
+                cornerRadius = 14.dp,
+                intensity = if (isArming) 1f else 0f
+            )
             .pointerInput(key) {
                 detectVerticalDragGestures(
                     onVerticalDrag = { change, delta ->
@@ -276,7 +289,7 @@ private fun SnapshotCaseV2(
                     onDragCancel = { dragY = 0f })
             }
             .pointerInput(key) {
-                detectTapGestures(onTap = { if (!isSwiping) onClick() }, onLongPress = { onLongPress() })
+                detectTapGestures(onTap = { if (!isSwiping) { pulse(); onClick() } }, onLongPress = { onLongPress() })
             },
         shape = shape,
         panelTop = if (isActive) Color(0xFFA6C5F1) else PanelTop,
@@ -310,6 +323,121 @@ private fun SnapshotCaseV2(
             }
         }
     }
+}
+
+/**
+ * Floppy save case, sitting right after the last snapshot case.
+ *
+ * It used to live after the master slider, where it read as an appendage of the
+ * master module. It is the arm/disarm control for snapshot recording: while armed
+ * the disk turns red, a LED lights up and a soft halo bleeds out of the case, and
+ * every snapshot case lights its own halo so the row reads as "tap a case to save".
+ */
+@Composable
+private fun FloppyCaseV2(
+    isArmed: Boolean,
+    onToggleArm: () -> Unit
+) {
+    val (bounce, pulse) = rememberPressBounce()
+    // Slow breathing LED while armed, so the state reads at a glance without
+    // flashing. `infiniteRepeatable` on a plain float keeps it to one animation.
+    val breathe by animateFloatAsState(
+        targetValue = if (isArmed) 1f else 0f,
+        animationSpec = tween(260, easing = FastOutSlowInEasing),
+        label = "floppyArm"
+    )
+
+    MixerModuleV2(
+        modifier = Modifier
+            .width(46.dp)
+            .fillMaxHeight()
+            .graphicsLayer { scaleX = bounce; scaleY = bounce }
+            .recordingHalo(
+                color = if (isArmed) Color(0xFFFF2A55) else Color.Transparent,
+                cornerRadius = 14.dp,
+                intensity = breathe
+            )
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                pulse(); onToggleArm()
+            },
+        panelTop = if (isArmed) Color(0xFF5A2334) else PanelTop,
+        panelBottom = if (isArmed) Color(0xFF3A1622) else PanelBottom,
+        highlightAlpha = if (isArmed) 0.24f else 0.09f
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            // LED: a small lit dot above the disk while armed. Drawn rather than
+            // shadowed, because the offscreen capture does not render platform shadows.
+            Canvas(Modifier.fillMaxSize()) {
+                if (breathe <= 0.01f) return@Canvas
+                val cx = size.width / 2f
+                val cy = size.height * 0.17f
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFFFF6B84).copy(alpha = 0.85f * breathe),
+                            Color(0xFFFF2A55).copy(alpha = 0.35f * breathe),
+                            Color.Transparent
+                        ),
+                        center = Offset(cx, cy),
+                        radius = size.minDimension * 0.30f
+                    ),
+                    radius = size.minDimension * 0.30f,
+                    center = Offset(cx, cy)
+                )
+                drawCircle(Color(0xFFFF8FA3).copy(alpha = breathe), radius = 2.2.dp.toPx(), center = Offset(cx, cy))
+            }
+            FloppyDiskIcon(isArmed = isArmed, modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+/**
+ * Soft halo painted behind a case, matching the strip aura rather than a platform
+ * shadow: a wide radial falloff plus a low vertical wash. `Modifier.shadow` cannot
+ * be used here — it is painted over translucent fills and does not render in the
+ * offscreen capture, so it cannot be verified.
+ */
+fun Modifier.recordingHalo(
+    color: Color,
+    cornerRadius: androidx.compose.ui.unit.Dp = 14.dp,
+    intensity: Float = 1f
+): Modifier = this.drawBehind {
+    if (intensity <= 0.01f) return@drawBehind
+    val r = cornerRadius.toPx()
+    val a = intensity.coerceIn(0f, 1f)
+    // Wide bloom that spills past the case, like the strip aura spills past the fader.
+    drawRoundRect(
+        brush = Brush.radialGradient(
+            colors = listOf(color.copy(alpha = 0.30f * a), color.copy(alpha = 0.10f * a), Color.Transparent),
+            center = Offset(size.width / 2f, size.height / 2f),
+            radius = size.maxDimension * 0.78f
+        ),
+        topLeft = Offset(-size.width * 0.12f, -size.height * 0.12f),
+        size = Size(size.width * 1.24f, size.height * 1.24f),
+        cornerRadius = CornerRadius(r * 1.2f, r * 1.2f)
+    )
+}
+
+/**
+ * Press bounce shared by the snapshot cases and the floppy case: the surface dips
+ * then springs back, so a tap reads as a physical press.
+ */
+@Composable
+fun rememberPressBounce(): Pair<Float, () -> Unit> {
+    var pressed by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.92f else 1f,
+        animationSpec = spring(dampingRatio = 0.38f, stiffness = 1100f),
+        label = "pressBounce"
+    )
+    // The case dips, then the spring overshoots back past 1f. Releasing shortly after
+    // keeps the bounce visible without leaving the case shrunk.
+    val pulse: () -> Unit = {
+        pressed = true
+        scope.launch { delay(80); pressed = false }
+    }
+    return scale to pulse
 }
 
 /**

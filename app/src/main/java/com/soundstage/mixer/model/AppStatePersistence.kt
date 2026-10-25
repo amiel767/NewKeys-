@@ -355,38 +355,7 @@ class AppStatePersistence(context: Context) {
                 fxObject.put(trackId.toString(), o)
             }
 
-            val snapshotsObject = JSONObject()
-            snapshots.forEach { (slotKey, snap) ->
-                val sObj = JSONObject().apply {
-                    put("slotName", snap.slotName)
-                    put("globalTranspose", snap.globalTranspose)
-                    put("globalOctaveShift", snap.globalOctaveShift)
-                    put("masterVolume", snap.masterVolume.toDouble())
-                    put("visibleTracksCount", snap.visibleTracksCount)
-                    put("timestamp", snap.timestamp)
-                    val tArray = JSONArray()
-                    snap.tracks.forEach { t ->
-                        val to = JSONObject().apply {
-                            put("id", t.id)
-                            put("volume", t.volume.toDouble())
-                            put("pan", t.pan.toDouble())
-                            put("isMuted", t.isMuted)
-                            put("isSolo", t.isSolo)
-                            put("isEnabled", t.isEnabled)
-                            put("soundfontName", t.soundfontName)
-                            put("patchName", t.patchName)
-                            put("bank", t.bank)
-                            put("program", t.program)
-                            put("transpose", t.transpose)
-                            put("octave", t.octave)
-                            put("reverbSend", t.reverbSend.toDouble())
-                        }
-                        tArray.put(to)
-                    }
-                    put("tracks", tArray)
-                }
-                snapshotsObject.put(slotKey, sObj)
-            }
+            val snapshotsObject = SnapshotJson.mapToJson(snapshots)
 
             val slotsArray = JSONArray()
             audioSlots.forEach { s ->
@@ -442,39 +411,7 @@ class AppStatePersistence(context: Context) {
                     p.snapshotCustomNames.forEach { (k, v) -> pCustomNames.put(k, v) }
                     put("snapshotCustomNames", pCustomNames)
 
-                    val pSnapshotsObj = JSONObject()
-                    p.snapshots.forEach { (slotKey, snap) ->
-                        val sObj = JSONObject().apply {
-                            put("slotName", snap.slotName)
-                            put("globalTranspose", snap.globalTranspose)
-                            put("globalOctaveShift", snap.globalOctaveShift)
-                            put("masterVolume", snap.masterVolume.toDouble())
-                            put("visibleTracksCount", snap.visibleTracksCount)
-                            put("timestamp", snap.timestamp)
-                            val tArray = JSONArray()
-                            snap.tracks.forEach { t ->
-                                val to = JSONObject().apply {
-                                    put("id", t.id)
-                                    put("volume", t.volume.toDouble())
-                                    put("pan", t.pan.toDouble())
-                                    put("isMuted", t.isMuted)
-                                    put("isSolo", t.isSolo)
-                                    put("isEnabled", t.isEnabled)
-                                    put("soundfontName", t.soundfontName)
-                                    put("patchName", t.patchName)
-                                    put("bank", t.bank)
-                                    put("program", t.program)
-                                    put("transpose", t.transpose)
-                                    put("octave", t.octave)
-                                    put("reverbSend", t.reverbSend.toDouble())
-                                }
-                                tArray.put(to)
-                            }
-                            put("tracks", tArray)
-                        }
-                        pSnapshotsObj.put(slotKey, sObj)
-                    }
-                    put("snapshots", pSnapshotsObj)
+                    put("snapshots", SnapshotJson.mapToJson(p.snapshots))
 
                     val pTracksArr = JSONArray()
                     p.tracks.forEach { t ->
@@ -739,61 +676,11 @@ class AppStatePersistence(context: Context) {
                 }
             }
 
-            val snapshotsMap = mutableMapOf<String, SubSceneSnapshot>()
             val snapshotsJsonStr = prefs.getString(KEY_SNAPSHOTS_JSON, null)
+            val snapshotsMap = SnapshotJson.mapFromJson(
+                snapshotsJsonStr?.let { runCatching { JSONObject(it) }.getOrNull() }
+            )
             val activeSnapshotSlot = prefs.getString(KEY_ACTIVE_SNAPSHOT_SLOT, null)
-            if (snapshotsJsonStr != null) {
-                try {
-                    val sObj = JSONObject(snapshotsJsonStr)
-                    val sKeys = sObj.keys()
-                    while (sKeys.hasNext()) {
-                        val slotKey = sKeys.next()
-                        val snapJson = sObj.getJSONObject(slotKey)
-                        val slotName = snapJson.optString("slotName", slotKey)
-                        val globalTranspose = snapJson.optInt("globalTranspose", 0)
-                        val globalOctaveShift = snapJson.optInt("globalOctaveShift", 0)
-                        val masterVol = snapJson.optDouble("masterVolume", 0.85).toFloat()
-                        val timestamp = snapJson.optLong("timestamp", System.currentTimeMillis())
-
-                        val trackSnapList = mutableListOf<TrackSnapshot>()
-                        val tArray = snapJson.optJSONArray("tracks")
-                        if (tArray != null) {
-                            for (ti in 0 until tArray.length()) {
-                                val to = tArray.getJSONObject(ti)
-                                trackSnapList.add(
-                                    TrackSnapshot(
-                                        id = to.optInt("id", ti + 1),
-                                        volume = to.optDouble("volume", 0.65).toFloat(),
-                                        pan = to.optDouble("pan", 0.0).toFloat(),
-                                        isMuted = to.optBoolean("isMuted", false),
-                                        isSolo = to.optBoolean("isSolo", false),
-                                        isEnabled = to.optBoolean("isEnabled", true),
-                                        soundfontName = to.optString("soundfontName", ""),
-                                        patchName = to.optString("patchName", ""),
-                                        bank = to.optInt("bank", 0),
-                                        program = to.optInt("program", 0),
-                                        transpose = to.optInt("transpose", 0),
-                                        octave = to.optInt("octave", 0),
-                                        reverbSend = to.optDouble("reverbSend", 0.0).toFloat()
-                                    )
-                                )
-                            }
-                        }
-                        val visibleTracksCount = snapJson.optInt("visibleTracksCount", -1)
-                        snapshotsMap[slotKey] = SubSceneSnapshot(
-                            slotName = slotName,
-                            tracks = trackSnapList,
-                            globalTranspose = globalTranspose,
-                            globalOctaveShift = globalOctaveShift,
-                            masterVolume = masterVol,
-                            visibleTracksCount = if (visibleTracksCount in 1..8) visibleTracksCount else 1,
-                            timestamp = timestamp
-                        )
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error parsing saved snapshots: ${e.message}")
-                }
-            }
 
             val configuredSlotsList = mutableListOf<String>()
             val configuredSlotsJsonStr = prefs.getString(KEY_CONFIGURED_SNAPSHOT_SLOTS, null)
@@ -897,48 +784,7 @@ class AppStatePersistence(context: Context) {
                             }
                         }
 
-                        val pSnapshots = mutableMapOf<String, SubSceneSnapshot>()
-                        val snapsObj = pObj.optJSONObject("snapshots")
-                        if (snapsObj != null) {
-                            val sKeys = snapsObj.keys()
-                            while (sKeys.hasNext()) {
-                                val sk = sKeys.next()
-                                val sItem = snapsObj.getJSONObject(sk)
-                                val snapTracks = mutableListOf<TrackSnapshot>()
-                                val tArr = sItem.optJSONArray("tracks")
-                                if (tArr != null) {
-                                    for (ti in 0 until tArr.length()) {
-                                        val to = tArr.getJSONObject(ti)
-                                        snapTracks.add(
-                                            TrackSnapshot(
-                                                id = to.optInt("id", ti + 1),
-                                                volume = to.optDouble("volume", 0.65).toFloat(),
-                                                pan = to.optDouble("pan", 0.0).toFloat(),
-                                                isMuted = to.optBoolean("isMuted", false),
-                                                isSolo = to.optBoolean("isSolo", false),
-                                                isEnabled = to.optBoolean("isEnabled", true),
-                                                soundfontName = to.optString("soundfontName", ""),
-                                                patchName = to.optString("patchName", "-"),
-                                                bank = to.optInt("bank", 0),
-                                                program = to.optInt("program", 0),
-                                                reverbSend = to.optDouble("reverbSend", 0.20).toFloat(),
-                                                transpose = to.optInt("transpose", 0),
-                                                octave = to.optInt("octave", 0)
-                                            )
-                                        )
-                                    }
-                                }
-                                pSnapshots[sk] = SubSceneSnapshot(
-                                    slotName = sItem.optString("slotName", sk),
-                                    tracks = snapTracks,
-                                    globalTranspose = sItem.optInt("globalTranspose", 0),
-                                    globalOctaveShift = sItem.optInt("globalOctaveShift", 0),
-                                    masterVolume = sItem.optDouble("masterVolume", 0.85).toFloat(),
-                                    visibleTracksCount = sItem.optInt("visibleTracksCount", 1),
-                                    timestamp = sItem.optLong("timestamp", System.currentTimeMillis())
-                                )
-                            }
-                        }
+                        val pSnapshots = SnapshotJson.mapFromJson(pObj.optJSONObject("snapshots"))
 
                         val pTracks = mutableListOf<TrackChannel>()
                         val trArr = pObj.optJSONArray("tracks")

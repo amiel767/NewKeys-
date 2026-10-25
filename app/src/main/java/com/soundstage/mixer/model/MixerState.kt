@@ -221,7 +221,17 @@ data class TrackSnapshot(
     val reverbSend: Float = 0f,
     val splitNoteMin: Int = 24,
     val splitNoteMax: Int = 108,
-    val velocityCurve: Float = 0.5f
+    val velocityCurve: Float = 0.5f,
+    // Playback / performance settings (Track Settings window). A snapshot used to
+    // carry only the mixer strip, so recalling it left the previous snapshot's
+    // sustain, aftertouch, bend range and MIDI channel in place.
+    val sustain: Boolean = true,
+    val aftertouch: Boolean = false,
+    val programChange: Boolean = true,
+    val pitchBendRange: Int = 2,
+    val midiChannel: Int = 1,
+    /** Per-track colour override, so a recalled snapshot restores the strip colour too. */
+    val customColorArgb: Int? = null
 )
 
 data class SubSceneSnapshot(
@@ -232,6 +242,14 @@ data class SubSceneSnapshot(
     val masterVolume: Float = 0.85f,
     val visibleTracksCount: Int = 1,
     val fxParameters: FxParameters? = null,
+    /** Tempo is part of the mixer state a snapshot restores. */
+    val bpm: Int = 120,
+    /**
+     * FX settings keyed by track index (0 = master, 1..8 = tracks), the same key
+     * [MixerUiState.fxParameters] uses. Without this a recall restored the master
+     * strip only and every track kept the previous snapshot's EQ/reverb/delay.
+     */
+    val trackFx: Map<Int, FxParameters> = emptyMap(),
     val timestamp: Long = System.currentTimeMillis(),
     val recallMode: String = "crossfade"
 )

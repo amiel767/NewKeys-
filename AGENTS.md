@@ -2648,3 +2648,89 @@ ne trouve **rien** : la classe est dans le sous-package
 - APK local : 44 479 604 o.
 - Rapport HTML de session : `/workspace/dl/session-2026-10-25/index.html`
   (style impose par la section « Style de rapport HTML » ci-dessus).
+
+## Session 2026-10-25 — snapshots : précision, synchro, déchargement des patches
+
+Trois zones traitées d'un coup, chacune avec **une** cause racine.
+
+### 1. Précision du snapshot : il ne portait que la moitié de la piste
+
+`TrackSnapshot` ne conservait que le strip (volume, pan, mute, solo, power,
+soundfont, banque, programme, transpose, octave, reverbSend, split, vélocité).
+`TrackChannel` en porte bien plus : `sustain`, `aftertouch`, `programChange`,
+`pitchBendRange`, `midiChannel`, `customColorArgb`. **Rappeler un snapshot
+laissait donc le sustain, l'aftertouch, la plage de bend, le canal MIDI et la
+couleur de piste du snapshot précédent.** Ce n'est pas un détail cosmétique : le
+canal MIDI et la plage de bend changent le jeu.
+
+- `SnapshotLogic.captureTrack` / `applyToTrack` couvrent maintenant **tous** les
+  champs, et `SubSceneSnapshot` gagne `bpm` et `trackFx: Map<Int, FxParameters>`.
+- `applySnapshotFxToEngine` pousse les racks FX par piste (0 = master, 1..8 =
+  pistes) et le tempo. Avant, un rappel ne restaurait que le strip master et
+  **chaque piste gardait l'EQ/réverb/delay du snapshot précédent**.
+
+### 2. Un seul codec JSON au lieu de six copies
+
+`SnapshotJson.kt` (nouveau, `model/`) est le codec unique de `TrackSnapshot` /
+`SubSceneSnapshot`. La forme était écrite **à la main six fois** (3 lecteurs,
+3 writers) : ajouter un champ obligeait à le poser six fois, et tout oubli le
+faisait disparaître **en silence**. Les six sites passent par ce codec.
+
+- Chaque champ est lu avec un défaut : un blob écrit par une build antérieure se
+  charge toujours (les nouvelles clés retombent sur les défauts du modèle).
+- **Piège** : `customColorArgb` absent ≠ `0`. `null` = « pas de surcharge »,
+  `0` = noir opaque. Le lecteur teste `has()` avant `optInt`.
+
+### 3. « Toujours à jour » : le snapshot actif suit les éditions
+
+Un snapshot était une copie **one-shot** : bouger un fader après l'avoir rappelé
+laissait la copie à son ancienne valeur, et le rappel suivant **sautait en arrière**
+sur un mix périmé. `syncActiveSnapshot()` rafraîchit la copie depuis
+`persistCurrentStateDebounced()` — le point d'étranglement unique par lequel passe
+**déjà** toute mutation. Un seul endroit à maintenir, et le debounce de 500 ms
+évite de réécrire le blob à chaque frame de drag.
+
+- Garde `isRecallingSnapshot` : un rappel écrit les valeurs du snapshot dans
+  l'état live, syncer pendant reviendrait à se battre contre l'interpolation.
+- Garde `isSnapshotArmMode` : en armement le prochain tap écrit la case, on ne
+  veut pas que la synchro écrase ce que l'utilisateur s'apprête à sauver.
+
+### 4. Déchargement du patch sortant (option a)
+
+Le patch sortant était sauvegardé **avant** la libération, donc il conservait les
+`soundFontId` que l'étape suivante venait de libérer. `patches` vit en mémoire
+toute la session : les ids morts survivaient à chaque changement. Revenir sur ce
+patch poussait un id libéré au mixer natif → piste muette, ou abort sur
+`selectProgram`.
+
+- Après libération, les slots relâchés sont **retirés du patch sortant**
+  (`patchesAfterRelease`) : plus aucun buffer audio ni aucun id d'un buffer
+  libéré n'est retenu. Le patch se recharge depuis le disque au retour.
+- `slotsToRelease` ne touche jamais les slots 8/9 (Drum/Pad) : ils appartiennent
+  aux surfaces, pas au patch.
+
+### 5. UI de la barre du bas
+
+- **Disquette déplacée** : elle était après le slider master, où elle se lisait
+  comme un appendice du master. Elle est maintenant **juste après la dernière
+  case**, dans la rangée pondérée.
+- **État armé lisible** : `FloppyCaseV2` (nouveau) — la disquette vire au rouge,
+  une **LED** s'allume au-dessus du disque, et un **halo** rouge déborde de la
+  case. Chaque case de snapshot prend le même halo, donc la rangée se lit
+  « tape une case pour y enregistrer ».
+- **Rebond d'appui** (`rememberPressBounce`) : la case plonge puis le ressort
+  repasse au-dessus de 1f. Un tap se sent.
+- `recordingHalo` est peint en `drawBehind` (radial + arrondi), **pas**
+  `Modifier.shadow` : la capture Roborazzi ne rend pas l'ombre de plateforme, elle
+  serait donc invérifiable (même leçon que `FxSurface.kt`).
+
+### Tests
+
+`SnapshotLogicTest` (5, JVM pur) + `SnapshotJsonTest` (5, Robolectric) = **10/10**.
+**Piège** : le runtime JVM de test embarque un `org.json` **stubé** (tout lève
+« not mocked »). Les tests de round-trip JSON doivent tourner sous Robolectric
+(`@RunWith(RobolectricTestRunner::class)`, `@Config(sdk = [36])`) ; les décisions
+pures restent en JVM pur, sans runtime.
+
+Captures : `bottom_bar.png`, `bottom_bar_5.png`, `bottom_bar_armed.png`,
+`bottom_bar_active.png`.
