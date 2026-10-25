@@ -356,3 +356,31 @@ d'`android.graphics`) pour tourner en test JVM et en preview.
 `performScrollTo()` -> `OutOfMemoryError` (ShadowTrace). Utiliser un viewport
 haut (`@Config(qualifiers = "w851dp-h1600dp-440dpi")`). Un screenshot ne prouve
 pas un cablage : cliquer l'element et verifier que le callback a ete appele.
+
+---
+
+## 12. Ajouter une palette de pistes
+
+Dans `ui/components/TrackColors.kt`, declarer un `TrackPalette` puis l'ajouter a
+`TrackPalettes.all` (l'ordre est l'ordre d'affichage). Contrainte : **8 couleurs
+distinctes**, sinon Random tire des voies identiques et Palette donne deux pistes
+de la meme couleur. `TrackColorsLogicTest` le verifie pour chaque palette, donc
+une palette non conforme casse le build de test — c'est voulu.
+
+---
+
+## 13. Piege : mesurer une taille pendant une animation
+
+`onSizeChanged` livre la taille **courante**, pas la taille au repos. Lire une
+hauteur dedans pour reserver une fente la fige sur la valeur du **milieu** de
+l'animation. Regle : latch seulement une fois l'animation posee (`delay` >= la
+duree) et seulement dans l'etat de repos ; poser la toute premiere mesure tout de
+suite pour ne pas sauter au premier affichage.
+
+Symptome typique : « l'interface d'arriere bouge » un instant quand on replie.
+Cas reel : `MixerScreen.kt`, la fente du clavier virtuel
+(`keyboardRestHeight` / `keyboardMeasuredPx`), corrige le 2026-10-25.
+
+Garde-fou : `KeyboardFoldStabilityTest` mesure la bottom bar (`testTag
+mixer_bottom_bar`) pendant toute l'animation de repli. Toujours verifier qu'un
+test de regression **echoue** sans le correctif (ici : 71 dp de poussee).

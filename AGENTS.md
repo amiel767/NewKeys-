@@ -2460,3 +2460,46 @@ et « VIRTUAL KEYBOARD » **presents**, et capture
 - Captures regenerees sous `app/src/test/screenshots/`.
 - Les 4 correctifs touchent : `MixerViewModel.kt`, `CustomVerticalFader.kt`,
   `SettingsScreen.kt`, `TrackColorsCaptureTest.kt`, `SetlistTrackCountTest.kt`.
+
+## Session 2026-10-25 — palettes (11) + repli des lignes layers sans poussee
+
+### Palettes de pistes : 11 au total
+
+`TrackPalettes.all` = **Default, Rainbow, Ocean, Sunset, Mono, Forest, Neon,
+Candy, Ice, Ember, Vintage**. Ajouter une palette = un `TrackPalette` de **8
+couleurs distinctes** + l'entree dans `all` (l'ordre est l'ordre d'affichage).
+La grille de `TrackColorsPage` fait `chunked(2)`, donc un nombre impair laisse la
+derniere carte seule : normal, deja gere par le `repeat(2 - row.size)`.
+
+Regle de validite (tenue par les tests) : **8 couleurs distinctes** — sinon le
+mode Random tirerait des voies identiques, et le mode Palette aurait deux pistes
+de la meme couleur. `everyPaletteHasEightDistinctColors` le verifie pour chaque
+palette, donc une nouvelle palette non conforme echoue le build de test.
+
+### Repli des lignes layers : ne plus pousser le mixer (corrige)
+
+Symptome : replier les lignes layers (deployees, c'est normal) faisait bouger
+l'interface d'arriere un instant — le mixer/topbar/bottombar remontaient puis
+redescendaient.
+
+Cause : la hauteur de la fente reservee au clavier (`keyboardRestHeight`) etait
+**latchee directement dans `onSizeChanged`**. Or pendant l'animation de repli le
+conteneur est encore haut ; `!isKeyboardLayerExpanded` etait deja vrai, donc la
+mesure du **milieu** de l'animation etait latchée. La fente grandissait et
+poussait la colonne vers le haut, puis la mesure suivante (au repos) la
+remettait. Le `AnimatedVisibility` du clavier ne participe **pas** a la mise en
+page (overlay `align(BottomCenter)` + `zIndex`), donc seul l'espaceur de la
+colonne bougeait.
+
+Correctif : ne plus latch dans `onSizeChanged`. On stocke la **mesure brute**
+(`keyboardMeasuredPx`) et une `LaunchedEffect(keyboardMeasuredPx,
+isKeyboardLayerExpanded)` la latch. Regle : la **premiere** mesure (clavier
+replie au repos) est posee tout de suite (pas de saut a la premiere ouverture),
+les suivantes apres `delay(450)` — le temps que le repli se pose.
+
+**Test de non-regression** : `KeyboardFoldStabilityTest` ouvre puis replie les
+lignes en echantillonnant **toute** l'animation (25 x 100 ms) et exige que la
+bottom bar (testTag `mixer_bottom_bar`) ne remonte jamais. Preuve d'efficacite :
+sur l'ancien code, echec avec **71 dp** de poussee ; avec le correctif, 0. Un
+test de regression qui n'echoue pas sans le correctif ne vaut rien — le
+verifier en remettant temporairement le bug.
