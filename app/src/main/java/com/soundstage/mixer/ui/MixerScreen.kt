@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -113,7 +114,26 @@ private fun MixerMainPageContent(
                 // Only the resting height is latched so the expanded state keeps floating
                 // over the bottom bar exactly as before.
                 var keyboardRestHeight by remember { mutableStateOf(0.dp) }
+                // Raw measured height of the overlay. It is tall while the layer lines are
+                // open, so it cannot be latched directly: see the debounce below.
+                var keyboardMeasuredPx by remember { mutableStateOf(0) }
                 val density = LocalDensity.current
+                // Latch the resting height only once the overlay has settled, and only
+                // while folded. The first measurement is taken while folded at rest, so
+                // it is seeded at once (no visible jump when the keyboard first opens);
+                // later measurements are debounced. Without the debounce the fold
+                // animation re-latches the tall mid-fold height, which grows the reserved
+                // slot and pushes the whole mixer up for a moment — the "background
+                // moves" the user sees when the layer lines fold back.
+                LaunchedEffect(keyboardMeasuredPx, uiState.isKeyboardLayerExpanded) {
+                    if (uiState.isKeyboardLayerExpanded || keyboardMeasuredPx <= 0) return@LaunchedEffect
+                    if (keyboardRestHeight <= 0.dp) {
+                        keyboardRestHeight = with(density) { keyboardMeasuredPx.toDp() }
+                    } else {
+                        delay(450)
+                        keyboardRestHeight = with(density) { keyboardMeasuredPx.toDp() }
+                    }
+                }
                 MixerBackgroundV2 {
                     Box(
                         modifier = Modifier
@@ -495,7 +515,7 @@ private fun MixerMainPageContent(
                     onToggleKeyboard = { viewModel.cycleKeyboardExpansion() },
                     isLayerExpanded = uiState.isKeyboardLayerExpanded,
                     onToggleLayer = { viewModel.toggleKeyboardLayer() },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().testTag("mixer_bottom_bar")
                 )
 
                 // 4. FIXED LAYOUT SLOT FOR RETRACTABLE PIANO
@@ -555,12 +575,9 @@ private fun MixerMainPageContent(
                     .fillMaxWidth()
                     .padding(top = 5.dp)
                     .onSizeChanged { size ->
-                        // Latch the resting height only: while the layer lines are folded
-                        // the overlay is at its lowest, which is the height the bottom bar
-                        // must sit above.
-                        if (!uiState.isKeyboardLayerExpanded && size.height > 0) {
-                            keyboardRestHeight = with(density) { size.height.toDp() }
-                        }
+                        // Record the raw height only; the debounced latch above decides
+                        // when it is a *resting* height worth reserving.
+                        if (size.height > 0) keyboardMeasuredPx = size.height
                     }
                     .zIndex(100f)
             ) {
