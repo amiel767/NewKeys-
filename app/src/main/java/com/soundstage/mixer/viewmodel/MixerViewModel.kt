@@ -4601,6 +4601,46 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         persistCurrentStateDebounced()
     }
 
+    /**
+     * Captures the whole live mixer into a snapshot: every track, the global
+     * transpose/octave, the master level and the master FX.
+     *
+     * [tracks] and the scalar overrides exist so a patch's own stored values can be
+     * captured while it is not the live state yet — a patch is loaded by building
+     * its default slot before its tracks reach `_uiState`.
+     */
+    private fun captureSnapshot(
+        slotName: String,
+        state: MixerUiState,
+        tracks: List<TrackChannel> = state.tracks,
+        globalTranspose: Int = state.transpose,
+        globalOctaveShift: Int = state.octave,
+        masterVolume: Float = state.masterTrack.volume,
+        visibleTracksCount: Int = state.visibleTracksCount,
+        fxParameters: FxParameters? = state.fxParameters[0]
+    ) = SubSceneSnapshot(
+        slotName = slotName,
+        tracks = tracks.map { SnapshotLogic.captureTrack(it) },
+        globalTranspose = globalTranspose,
+        globalOctaveShift = globalOctaveShift,
+        masterVolume = masterVolume,
+        visibleTracksCount = visibleTracksCount,
+        fxParameters = fxParameters
+    )
+
+    /** Absolute path of a soundfont named [soundfontName] inside the app's SoundFonts dir, or null. */
+    private fun resolveSoundfontPath(soundfontName: String): String? {
+        if (soundfontName.isEmpty()) return null
+        val f = File(fileManager.soundfontsDir, soundfontName)
+        return if (f.exists()) f.absolutePath else null
+    }
+
+    /**
+     * Applies a snapshot entry back onto a live track. See [SnapshotLogic.applyToTrack].
+     */
+    private fun applySnapshotToTrack(track: TrackChannel, snap: TrackSnapshot?): TrackChannel =
+        SnapshotLogic.applyToTrack(track, snap)
+
     fun addSnapshotSlot(name: String): String? {
         val cleanName = name.trim().ifEmpty { "Snapshot ${_uiState.value.configuredSnapshotSlots.size}" }
         var createdKey: String? = null
@@ -4610,31 +4650,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 createdKey = newSlotKey
                 val updatedSlots = current.configuredSnapshotSlots + newSlotKey
                 val updatedNames = current.snapshotCustomNames + (newSlotKey to cleanName)
-                val currentSnapshot = SubSceneSnapshot(
-                    slotName = cleanName,
-                    tracks = current.tracks.map { t ->
-                        TrackSnapshot(
-                            id = t.id,
-                            volume = t.volume,
-                            pan = t.pan,
-                            isMuted = t.isMuted,
-                            isSolo = t.isSolo,
-                            isEnabled = t.isEnabled,
-                            soundfontName = t.soundfontName,
-                            patchName = t.patchName,
-                            bank = t.bank,
-                            program = t.program,
-                            reverbSend = t.reverbMix,
-                            splitNoteMin = t.splitNoteMin,
-                            splitNoteMax = t.splitNoteMax,
-                            velocityCurve = t.velocityCurve
-                        )
-                    },
-                    globalTranspose = current.transpose,
-                    globalOctaveShift = current.octave,
-                    masterVolume = current.masterTrack.volume,
-                    visibleTracksCount = current.visibleTracksCount
-                )
+                val currentSnapshot = captureSnapshot(cleanName, current)
                 val updatedSnapshots = current.snapshots + (newSlotKey to currentSnapshot)
                 val updatedPatches = current.patches.map { p ->
                     if (p.id == current.activePatchId) {
@@ -5134,50 +5150,50 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         // 3. Prepare target patch snapshots and ensure slot_default always exists for this patch
         val targetSnapshots = targetPatch.snapshots.toMutableMap()
         if (!targetSnapshots.containsKey("slot_default")) {
-            targetSnapshots["slot_default"] = SubSceneSnapshot(
+            // Built from the patch's own stored values, not from the live state: the
+            // patch has not been loaded yet at this point.
+            targetSnapshots["slot_default"] = captureSnapshot(
                 slotName = "Default",
-                tracks = targetPatch.tracks.map { t ->
-                    TrackSnapshot(
-                        id = t.id,
-                        volume = t.volume,
-                        pan = t.pan,
-                        isMuted = t.isMuted,
-                        isSolo = t.isSolo,
-                        isEnabled = t.isEnabled,
-                        soundfontName = t.soundfontName,
-                        patchName = t.patchName,
-                        bank = t.bank,
-                        program = t.program,
-                        reverbSend = t.reverbMix,
-                        splitNoteMin = t.splitNoteMin,
-                        splitNoteMax = t.splitNoteMax,
-                        velocityCurve = t.velocityCurve
-                    )
-                },
+                state = state,
+                tracks = targetPatch.tracks,
                 globalTranspose = targetPatch.transpose,
                 globalOctaveShift = targetPatch.octave,
                 masterVolume = targetPatch.masterVolume,
-                visibleTracksCount = targetPatch.visibleTracksCount
+                visibleTracksCount = targetPatch.visibleTracksCount,
+                // A patch stores no FX of its own, so its default slot carries none.
+                // Capturing the live master strip here would write the outgoing
+                // patch's EQ into the incoming patch.
+                fxParameters = null
             )
         }
         val targetConfiguredSlots = if (targetPatch.configuredSnapshotSlots.isNotEmpty()) targetPatch.configuredSnapshotSlots else listOf("slot_default")
         val targetCustomNames = targetPatch.snapshotCustomNames
         val targetActiveSlot = targetPatch.activeSnapshotSlot ?: "slot_default"
 
-        // 4. Memory management: identify and unload soundfonts no longer in use by target patch
-        val targetSoundfontPaths = targetPatch.tracks.mapNotNull { tr ->
-            if (tr.soundfontName.isNotEmpty()) {
-                val f = File(fileManager.soundfontsDir, tr.soundfontName)
-                if (f.exists()) f.absolutePath else null
-            } else null
-        }.toSet()
+        // 4. Memory management: free every soundfont the outgoing patch loaded and the
+        // incoming patch does not need.
+        //
+        // The previous version unloaded the native buffers but left `audioSlots`
+        // untouched, so each slot kept a `soundFontId` pointing at freed memory. The
+        // next load either reused a stale id (a silent track) or pushed a freed id to
+        // `selectProgram` (a native abort). It also keyed the "still needed" set on
+        // `targetPatch.tracks` alone, ignoring the slots the patch carries and the
+        // Drum/Pad surfaces, so an empty-track patch unloaded everything.
+        val targetSoundfontPaths = SnapshotLogic.retainedSoundfontPaths(
+            targetTracks = targetPatch.tracks.ifEmpty { state.tracks },
+            targetSlots = targetPatch.audioSlots,
+            currentSlots = state.audioSlots,
+            resolvePath = ::resolveSoundfontPath,
+        )
 
-        state.audioSlots.forEach { slot ->
-            if (slot.soundFontId > 0 && !slot.soundFontPath.isNullOrEmpty()) {
-                if (!targetSoundfontPaths.contains(slot.soundFontPath)) {
-                    NativeAudioBridge.safeUnloadSoundFont(NativeAudioBridge.ENGINE_FADER, slot.soundFontId)
-                }
-            }
+        val releasedSlotIds = SnapshotLogic.slotsToRelease(state.audioSlots, targetSoundfontPaths)
+        val releasedSlots = releasedSlotIds.mapNotNull { slotId ->
+            val slot = state.audioSlots.firstOrNull { it.slotId == slotId } ?: return@mapNotNull null
+            NativeAudioBridge.safeUnloadSoundFont(NativeAudioBridge.ENGINE_FADER, slot.soundFontId)
+            Log.d("SoundFontUnload", "Released slot $slotId (id=${slot.soundFontId}) on patch change")
+            // The id must be cleared in the state too: keeping a freed id would make
+            // the next load reuse it (silent track) or hand it to selectProgram (abort).
+            slot.copy(soundFontId = -1, soundFontPath = null, patchName = null, presets = emptyList())
         }
         NativeAudioBridge.safeTrimMemory()
 
@@ -5195,23 +5211,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val restoredTracks = if (snapshotToApply != null && snapshotToApply.tracks.isNotEmpty()) {
             val baseTracks = if (targetPatch.tracks.isNotEmpty()) targetPatch.tracks else state.tracks
             baseTracks.map { tr ->
+                // Unlike a snapshot recall, a patch's own track list is authoritative:
+                // a track missing from the snapshot is left as the patch stored it.
                 val snap = snapshotToApply.tracks.find { it.id == tr.id }
-                if (snap != null) {
-                    tr.copy(
-                        volume = snap.volume,
-                        pan = snap.pan,
-                        isMuted = snap.isMuted,
-                        isSolo = snap.isSolo,
-                        isEnabled = snap.isEnabled,
-                        soundfontName = if (snap.soundfontName.isNotEmpty()) snap.soundfontName else tr.soundfontName,
-                        patchName = if (snap.soundfontName.isNotEmpty()) snap.patchName else tr.patchName,
-                        bank = snap.bank,
-                        program = snap.program,
-                        splitNoteMin = snap.splitNoteMin,
-                        splitNoteMax = snap.splitNoteMax,
-                        velocityCurve = snap.velocityCurve
-                    )
-                } else tr
+                if (snap != null) applySnapshotToTrack(tr, snap) else tr
             }
         } else if (targetPatch.tracks.isNotEmpty()) {
             targetPatch.tracks
@@ -5224,7 +5227,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 patches = patchesWithSavedCurrent,
                 activePatchId = targetPatch.id,
                 tracks = restoredTracks,
-                audioSlots = if (targetPatch.audioSlots.isNotEmpty()) targetPatch.audioSlots else current.audioSlots,
+                audioSlots = releasedSlots.fold(
+                    if (targetPatch.audioSlots.isNotEmpty()) targetPatch.audioSlots else current.audioSlots
+                ) { acc, released -> acc.map { if (it.slotId == released.slotId) released else it } },
                 visibleTracksCount = snapshotToApply?.visibleTracksCount ?: targetPatch.visibleTracksCount,
                 transpose = snapshotToApply?.globalTranspose ?: targetPatch.transpose,
                 octave = snapshotToApply?.globalOctaveShift ?: targetPatch.octave,
@@ -5354,33 +5359,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     fun onSnapshotSlotClick(slotName: String) {
         val currentState = _uiState.value
         if (currentState.isSnapshotArmMode) {
-            val trackSnapshots = currentState.tracks.map { t ->
-                TrackSnapshot(
-                    id = t.id,
-                    volume = t.volume,
-                    pan = t.pan,
-                    isMuted = t.isMuted,
-                    isSolo = t.isSolo,
-                    isEnabled = t.isEnabled,
-                    soundfontName = t.soundfontName,
-                    patchName = t.patchName,
-                    bank = t.bank,
-                    program = t.program,
-                    reverbSend = t.reverbMix,
-                    splitNoteMin = t.splitNoteMin,
-                    splitNoteMax = t.splitNoteMax,
-                    velocityCurve = t.velocityCurve
-                )
-            }
-            val newSubScene = SubSceneSnapshot(
-                slotName = slotName,
-                tracks = trackSnapshots,
-                globalTranspose = currentState.transpose,
-                globalOctaveShift = currentState.octave,
-                masterVolume = currentState.tracks.find { it.isMaster }?.volume ?: 0.85f,
-                visibleTracksCount = currentState.visibleTracksCount,
-                fxParameters = currentState.fxParameters[0]
-            )
+            val newSubScene = captureSnapshot(slotName, currentState)
             val updatedSnapshots = currentState.snapshots + (slotName to newSubScene)
             val updatedPatches = currentState.patches.map { p ->
                 if (p.id == currentState.activePatchId) {
@@ -5456,62 +5435,21 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 // 1st tap (or switching slot)
                 val targetSnapshot = currentState.snapshots[slotName] ?: if (slotName == "slot_default") {
                     val activePatch = currentState.patches.find { it.id == currentState.activePatchId }
-                    activePatch?.snapshots?.get("slot_default") ?: SubSceneSnapshot(
+                    activePatch?.snapshots?.get("slot_default") ?: captureSnapshot(
                         slotName = "Default",
-                        tracks = (activePatch?.tracks ?: currentState.tracks).map { t ->
-                            TrackSnapshot(
-                                id = t.id,
-                                volume = t.volume,
-                                pan = t.pan,
-                                isMuted = t.isMuted,
-                                isSolo = t.isSolo,
-                                isEnabled = t.isEnabled,
-                                soundfontName = t.soundfontName,
-                                patchName = t.patchName,
-                                bank = t.bank,
-                                program = t.program,
-                                reverbSend = t.reverbMix,
-                                splitNoteMin = t.splitNoteMin,
-                                splitNoteMax = t.splitNoteMax,
-                                velocityCurve = t.velocityCurve
-                            )
-                        },
+                        state = currentState,
+                        tracks = activePatch?.tracks ?: currentState.tracks,
                         globalTranspose = activePatch?.transpose ?: currentState.transpose,
                         globalOctaveShift = activePatch?.octave ?: currentState.octave,
                         masterVolume = activePatch?.masterVolume ?: currentState.masterTrack.volume,
-                        visibleTracksCount = activePatch?.visibleTracksCount ?: currentState.visibleTracksCount
+                        visibleTracksCount = activePatch?.visibleTracksCount ?: currentState.visibleTracksCount,
                     )
                 } else null
 
                 if (targetSnapshot != null) {
                     val savedCustomTracks = currentState.customLibreTracks ?: currentState.tracks
                     val targetTracks = currentState.tracks.map { tr ->
-                        val snap = targetSnapshot.tracks.find { it.id == tr.id }
-                        if (snap != null) {
-                            val sfName = if (snap.soundfontName.isNotEmpty()) snap.soundfontName else tr.soundfontName
-                            val patchName = if (snap.soundfontName.isNotEmpty()) snap.patchName else tr.patchName
-                            tr.copy(
-                                volume = snap.volume,
-                                pan = snap.pan,
-                                isMuted = snap.isMuted,
-                                isSolo = snap.isSolo,
-                                isEnabled = snap.isEnabled,
-                                soundfontName = sfName,
-                                patchName = patchName,
-                                bank = snap.bank,
-                                program = snap.program,
-                                splitNoteMin = snap.splitNoteMin,
-                                splitNoteMax = snap.splitNoteMax,
-                                velocityCurve = snap.velocityCurve
-                            )
-                        } else {
-                            // Track was added AFTER this snapshot was saved:
-                            // Keep soundfont and settings, but deactivate/mute it to protect the snapshot mix
-                            tr.copy(
-                                isEnabled = false,
-                                isMuted = true
-                            )
-                        }
+                        applySnapshotToTrack(tr, targetSnapshot.tracks.find { it.id == tr.id })
                     }
 
                     // Cut off notes immediately on tracks that are turning off or muting to avoid hanging voices
@@ -5606,6 +5544,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                             it.copy(tracks = targetTracks, snapshotTransitionProgress = 1.0f)
                         }
                         applyTrackVolumes(_uiState.value)
+                        pushSnapshotTracksToEngine(targetTracks)
                         persistCurrentStateDebounced()
                     }
                 } else {
@@ -6176,6 +6115,23 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         NativeAudioBridge.safeSetPitchBendRange(ch, track.pitchBendRange)
     }
 
+    /**
+     * Pushes the settings a snapshot recall changes on a track that the plain
+     * volume/pan pair does not cover: pitch (transpose folded with octave) and the
+     * reverb send. Kept next to [applyTrackPlaybackSettings] so the two engine
+     * pushes cannot drift apart.
+     */
+    private fun pushSnapshotTrackToEngine(channel: Int, track: TrackChannel) {
+        if (channel !in 0..7) return
+        NativeAudioBridge.safeSetTrackTranspose(channel, track.transpose + track.octave * 12)
+        audioEngine.setChannelReverb(channel, if (track.reverbMix > 0.005f) track.reverbMix else 0f)
+    }
+
+    /** [pushSnapshotTrackToEngine] over the whole track list. Called once a recall has settled. */
+    private fun pushSnapshotTracksToEngine(tracks: List<TrackChannel>) {
+        tracks.forEachIndexed { idx, track -> pushSnapshotTrackToEngine(idx, track) }
+    }
+
     fun setTrackTranspose(trackId: Int, semitones: Int) {
         val v = semitones.coerceIn(-12, 12)
         updateTrack(trackId) { it.copy(transpose = v) }
@@ -6636,56 +6592,20 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val targetSnapshot = currentState.snapshots[slotName]
             ?: activePatch?.snapshots?.get(slotName)
             ?: if (slotName == "slot_default") {
-                activePatch?.snapshots?.get("slot_default") ?: SubSceneSnapshot(
+                activePatch?.snapshots?.get("slot_default") ?: captureSnapshot(
                     slotName = "Default",
-                    tracks = (activePatch?.tracks ?: currentState.tracks).map { t ->
-                        TrackSnapshot(
-                            id = t.id,
-                            volume = t.volume,
-                            pan = t.pan,
-                            isMuted = t.isMuted,
-                            isSolo = t.isSolo,
-                            isEnabled = t.isEnabled,
-                            soundfontName = t.soundfontName,
-                            patchName = t.patchName,
-                            bank = t.bank,
-                            program = t.program,
-                            reverbSend = t.reverbMix,
-                            splitNoteMin = t.splitNoteMin,
-                            splitNoteMax = t.splitNoteMax,
-                            velocityCurve = t.velocityCurve
-                        )
-                    },
+                    state = currentState,
+                    tracks = activePatch?.tracks ?: currentState.tracks,
                     globalTranspose = activePatch?.transpose ?: currentState.transpose,
                     globalOctaveShift = activePatch?.octave ?: currentState.octave,
                     masterVolume = activePatch?.masterVolume ?: currentState.masterTrack.volume,
-                    visibleTracksCount = activePatch?.visibleTracksCount ?: currentState.visibleTracksCount
+                    visibleTracksCount = activePatch?.visibleTracksCount ?: currentState.visibleTracksCount,
                 )
             } else null
 
         if (targetSnapshot != null) {
             val targetTracks = currentState.tracks.map { tr ->
-                val snap = targetSnapshot.tracks.find { it.id == tr.id }
-                if (snap != null) {
-                    val sfName = if (snap.soundfontName.isNotEmpty()) snap.soundfontName else tr.soundfontName
-                    val patchName = if (snap.soundfontName.isNotEmpty()) snap.patchName else tr.patchName
-                    tr.copy(
-                        volume = snap.volume,
-                        pan = snap.pan,
-                        isMuted = snap.isMuted,
-                        isSolo = snap.isSolo,
-                        isEnabled = snap.isEnabled,
-                        soundfontName = sfName,
-                        patchName = patchName,
-                        bank = snap.bank,
-                        program = snap.program,
-                        splitNoteMin = snap.splitNoteMin,
-                        splitNoteMax = snap.splitNoteMax,
-                        velocityCurve = snap.velocityCurve
-                    )
-                } else {
-                    tr.copy(isEnabled = false, isMuted = true)
-                }
+                applySnapshotToTrack(tr, targetSnapshot.tracks.find { it.id == tr.id })
             }
 
             targetTracks.forEachIndexed { idx, track ->
@@ -6725,6 +6645,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 NativeAudioBridge.safeSetTrackVolume(idx, effectiveVol)
                 NativeAudioBridge.safeSetTrackPan(idx, track.pan)
             }
+            pushSnapshotTracksToEngine(targetTracks)
 
             _uiState.update { state ->
                 state.copy(

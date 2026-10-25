@@ -2560,3 +2560,44 @@ ternit un tube). Les 9 themes d'origine sont inchanges (defaut `false`).
 
 `vkb_theme_neon_led.png`, `vkb_theme_neon_color.png`, `vkb_theme_neon_led_off.png`,
 `vkb_theme_oled.png`, `settings_vkb_themes.png`.
+
+## Style de rapport HTML (demande utilisateur, 2026-10-25)
+
+L'utilisateur valide le style de rapport utilise pour les lots de correctifs et veut
+**le meme desormais** (« l'interface cool »). Ne pas reinventer : reprendre la
+feuille de style existante.
+
+**Modele de reference** : `/workspace/dl/kb/index.html` (rapport clavier) et
+`/workspace/dl/fixes/index.html` (rapport 4 correctifs). Recopier le bloc `<style>`
+et la structure, pas seulement l'esprit.
+
+Caracteristiques a conserver :
+
+- theme sombre : `--bg:#0B0F17`, panneaux `--panel:#131A26`, bordures `--line:#222C3C`,
+  texte `--ink:#E6EAF3`, secondaire `--dim:#8E99AD`, accent `--accent:#8FB2E8`,
+  succes `--ok:#5BD08A`, alerte `--warn:#D8A24A` ;
+- `.wrap` centre a 1180 px, `h1` 30 px, `h2` 20 px souligne d'une bordure basse ;
+- blocs `.card` (fond panneau, bordure, radius 12) pour chaque figure et tableau ;
+- `.grid` en `auto-fit/minmax(320px,1fr)` pour les captures cote a cote ;
+- `.cap` sous chaque image : legende courte, avec `<b>` sur le point cle ;
+- `.note` : encadre a filet gauche accent, pour les avertissements et les pieges ;
+- `.kv` : liste « libelle valeur » a deux colonnes (libelle en `--dim`, 190 px) ;
+- `.bar`/`<i>` : barre de progression CSS pour les mesures chiffrees ;
+- `.swatches`/`.sw` : pastilles de couleur avec libelle dessous ;
+- tableaux : `th` en majuscules `--dim` 13 px, `td.num` en chiffres tabulaires
+  alignes a droite ;
+- `.ok` vert et `.warn` ambre pour les verdicts.
+
+**Toujours** : un encadre `.note` en tete qui resserre les demandes traitees avec
+leur resultat mesure, une section par demande, une section « Verifications »
+(chaque test avec ce qu'il prouve et son etat), et une section « Livrables »
+(APK, commit, workflow).
+
+**Regle de fond** : chaque affirmation chiffree du rapport doit venir d'une mesure
+ou d'un test reellement execute, jamais d'une estimation. Si la mesure n'a pas ete
+faite, l'ecrire comme « a confirmer », pas comme un resultat.
+
+**Servir le rapport** : ecrire les fichiers sous `/workspace/dl/<sujet>/` et servir
+par `cd /workspace/dl && (nohup python3 -m http.server 12000 --bind 0.0.0.0 &)`
+(ajouter 12001 pour la seconde URL `work-2`, sinon 502). Le `http.server` ne
+survit pas a un redemarrage du sandbox : le relancer avant d'annoncer un lien.
