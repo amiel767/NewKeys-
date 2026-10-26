@@ -26,6 +26,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlin.math.min
+import kotlin.math.roundToInt
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 
 /**
  * The instrument window. Fill the soundfont window's bounds (or a dialog) with it; the stage letterboxes itself.
@@ -50,8 +56,13 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
     AeStage(modifier) {
         val shape = RoundedCornerShape(24.su())
         Box(Modifier.fillMaxSize().clip(shape).border(1.su(), Color(0x22FFFFFF), shape)) {
-            if (s.instrument == AeInstrument.ORGAN) AeOrganUi(c, a) else AeSynthUi(c, a)
-            if (s.instrument == AeInstrument.SYNTH) AeT("ÆTHER SYNTH", 13, Color.White, Modifier.at(24, 15, 200, 18), AeFonts.display, spacing = 0.18f)
+            when (s.instrument) { AeInstrument.ORGAN -> AeOrganUi(c, a); AeInstrument.SYNTH -> AeSynthUi(c, a); AeInstrument.LEADS -> AeLeadsUi(c, a); AeInstrument.SAX -> AeSaxUi(c, a) }
+            when (s.instrument) {
+                AeInstrument.SYNTH -> AeT("ÆTHER SYNTH", 13, Color.White, Modifier.at(24, 15, 200, 18), AeFonts.display, spacing = 0.18f)
+                AeInstrument.LEADS -> AeT("ÆTHER LEADS", 13, Color(0xFF6FE9FF), Modifier.at(24, 15, 200, 18), AeFonts.display, spacing = 0.18f)
+                AeInstrument.SAX -> AeT("ÆTHER SAX", 13, AeC.gold, Modifier.at(24, 15, 200, 18), AeFonts.plate, FontWeight.ExtraBold, 0.2f)
+                else -> Unit
+            }
             val presets = manager.presets(s.instrument)
             HeaderBtn("◀", 650, 8, 30, 30) { manager.loadPreset(strip, s.preset - 1) }
             val ns = RoundedCornerShape(10.su())
@@ -60,9 +71,9 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
                 AeT(presets[s.preset].name, 12, AeC.tx); AeT(presets[s.preset].category, 10, AeC.mute, weight = FontWeight.SemiBold)
             }
             HeaderBtn("▶", 902, 8, 30, 30) { manager.loadPreset(strip, s.preset + 1) }
-            Box(Modifier.at(950, 6, 34, 34).clip(CircleShape).background(if (s.instrument == AeInstrument.ORGAN) Color(0xAA000000) else Color(0x1AFFFFFF))
-                .border(1.su(), if (s.instrument == AeInstrument.ORGAN) Color(0x66D9B36A) else Color(0x26FFFFFF), CircleShape)
-                .clickable(remember { MutableInteractionSource() }, null) { onClose() }, contentAlignment = Alignment.Center) { AeT("✕", 15, if (s.instrument == AeInstrument.ORGAN) AeC.gold else Color.White) }
+            Box(Modifier.at(950, 6, 34, 34).clip(CircleShape).background(if ((s.instrument == AeInstrument.ORGAN || s.instrument == AeInstrument.SAX)) Color(0xAA000000) else Color(0x1AFFFFFF))
+                .border(1.su(), if ((s.instrument == AeInstrument.ORGAN || s.instrument == AeInstrument.SAX)) Color(0x66D9B36A) else Color(0x26FFFFFF), CircleShape)
+                .clickable(remember { MutableInteractionSource() }, null) { onClose() }, contentAlignment = Alignment.Center) { AeT("✕", 15, if ((s.instrument == AeInstrument.ORGAN || s.instrument == AeInstrument.SAX)) AeC.gold else Color.White) }
             if (list) PresetList(manager, strip, s, onPick = { manager.loadPreset(strip, it); list = false }, onUnload = { list = false; onClose(); manager.unload(strip) })
         }
     }
@@ -109,21 +120,22 @@ fun AeInstrumentsTabItem(selected: Boolean, onClick: () -> Unit, modifier: Modif
             .clickable(remember { MutableInteractionSource() }, null, onClick = onClick).padding(horizontal = 14.dp, vertical = 11.dp),
     ) {
         Text("Æther Instruments", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = AeFonts.ui, maxLines = 1)
-        Text("Organ · Synth · Leads soon", color = Color(0xD9FFFFFF), fontSize = 9.sp, fontWeight = FontWeight.SemiBold, fontFamily = AeFonts.ui, maxLines = 1)
+        Text("Organ · Synth · Leads · Sax", color = Color(0xD9FFFFFF), fontSize = 9.sp, fontWeight = FontWeight.SemiBold, fontFamily = AeFonts.ui, maxLines = 1)
     }
 }
 
-/** Right-hand content of the tab: three cards. Tapping Organ/Synth loads it NOW (audio live) then calls [onOpen]. */
+/** Right-hand content of the tab: four cards (2 x 2). Tapping one loads it NOW (audio live) then calls [onOpen]. */
 @Composable
 fun AeInstrumentsTabContent(manager: AeManager, strip: Int, onOpen: () -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        listOf(AeInstrument.ORGAN, AeInstrument.SYNTH).forEach { inst ->
-            val loaded = manager.sessions[strip]?.instrument == inst
-            AeTile(inst, loaded, Modifier.weight(1f).fillMaxHeight(),
-                onClick = { if (manager.load(strip, inst) != null) onOpen() }, onUnload = { manager.unload(strip) })
-        }
-        Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(20.dp)).background(Color(0x0CFFFFFF)).border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(20.dp)).padding(14.dp)) {
-            Chip("SOON"); Column(Modifier.align(Alignment.BottomStart)) { Text("Æther Leads", color = Color.White.copy(alpha = 0.55f), fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, fontFamily = AeFonts.ui); Text("Five lead types, ready-made styles", color = Color.White.copy(alpha = 0.45f), fontSize = 11.sp, fontFamily = AeFonts.ui) }
+    val all = listOf(AeInstrument.ORGAN, AeInstrument.SYNTH, AeInstrument.LEADS, AeInstrument.SAX)
+    Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        all.chunked(2).forEach { row ->
+            Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                row.forEach { inst ->
+                    val loaded = manager.sessions[strip]?.instrument == inst
+                    AeTile(inst, loaded, Modifier.weight(1f).fillMaxHeight(), onClick = { if (manager.load(strip, inst) != null) onOpen() }, onUnload = { manager.unload(strip) })
+                }
+            }
         }
     }
 }
@@ -133,25 +145,47 @@ private fun Chip(t: String, modifier: Modifier = Modifier) = Box(modifier.clip(R
     Text(t, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.3.sp, fontFamily = AeFonts.ui)
 }
 
+private class TileStyle(val c0: Color, val c1: Color, val border: Color, val tag: String, val sub: String)
+
+/** Mini preview of the sax card: the alto cut-out, centred. */
+@Composable
+private fun AeSaxMini(modifier: Modifier) {
+    val ctx = LocalContext.current
+    val bmp = remember { AeSaxBitmaps.get(ctx, 1, 1) }
+    Canvas(modifier) {
+        bmp?.let {
+            val w = min(size.width, size.height * it.width / it.height); val h = w * it.height / it.width
+            drawImage(it, dstOffset = IntOffset(((size.width - w) / 2f).roundToInt(), ((size.height - h) / 2f).roundToInt()), dstSize = IntSize(w.roundToInt(), h.roundToInt()), filterQuality = FilterQuality.High)
+        }
+    }
+}
+
 @Composable
 private fun AeTile(inst: AeInstrument, loaded: Boolean, modifier: Modifier, onClick: () -> Unit, onUnload: () -> Unit) {
-    val organ = inst == AeInstrument.ORGAN
+    val st = when (inst) {
+        AeInstrument.ORGAN -> TileStyle(Color(0xFF4B2A17), Color(0xFF1B0E07), Color(0x55D9B36A), "TONEWHEEL", "Drawbars · Rotary · Percussion")
+        AeInstrument.SYNTH -> TileStyle(Color(0xFF2B1A5E), Color(0xFF0C0A22), Color(0x668A7AFF), "POLYSYNTH", "Morph oscillators · Filter · Macros")
+        AeInstrument.LEADS -> TileStyle(Color(0xFF08283A), Color(0xFF050912), Color(0x5519E3FF), "LED MONO LEAD", "Sine · Square · Saw · Super · Soft")
+        AeInstrument.SAX -> TileStyle(Color(0xFF4A2A10), Color(0xFF120905), Color(0x66F2B84A), "BREATH SAXOPHONE", "Soprano · Alto · Tenor · Baritone")
+    }
     val sh = RoundedCornerShape(20.dp)
     Box(
-        modifier.clip(sh)
-            .background(Brush.linearGradient(if (organ) listOf(Color(0xFF4B2A17), Color(0xFF1B0E07)) else listOf(Color(0xFF2B1A5E), Color(0xFF0C0A22)), end = androidx.compose.ui.geometry.Offset(300f, 900f)))
-            .border(1.dp, if (organ) Color(0x55D9B36A) else Color(0x668A7AFF), sh)
-            .clickable(remember { MutableInteractionSource() }, null, onClick = onClick).padding(14.dp),
+        modifier.clip(sh).background(Brush.linearGradient(listOf(st.c0, st.c1), end = androidx.compose.ui.geometry.Offset(300f, 900f)))
+            .border(1.dp, st.border, sh).clickable(remember { MutableInteractionSource() }, null, onClick = onClick).padding(12.dp),
     ) {
-        Row(Modifier.align(Alignment.TopStart), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Chip(if (organ) "TONEWHEEL" else "POLYSYNTH")
-            if (loaded) Chip("● LOADED")
-        }
+        Row(Modifier.align(Alignment.TopStart), horizontalArrangement = Arrangement.spacedBy(6.dp)) { Chip(st.tag); if (loaded) Chip("● LOADED") }
         // mini preview, centred in the card (not at the edges)
-        Box(Modifier.align(Alignment.Center).size(150.dp, 100.dp).aeSvg(if (organ) AeSvgs.MINI_ORGAN else AeSvgs.MINI_SYNTH))
+        Box(Modifier.align(Alignment.Center)) {
+            when (inst) {
+                AeInstrument.ORGAN -> Box(Modifier.size(110.dp, 73.dp).aeSvg(AeSvgs.MINI_ORGAN))
+                AeInstrument.SYNTH -> Box(Modifier.size(110.dp, 73.dp).aeSvg(AeSvgs.MINI_SYNTH))
+                AeInstrument.LEADS -> Box(Modifier.size(110.dp, 59.dp).aeSvg(AeSvgs.MINI_LEADS))
+                AeInstrument.SAX -> AeSaxMini(Modifier.size(54.dp, 96.dp))
+            }
+        }
         Column(Modifier.align(Alignment.BottomStart)) {
-            Text(inst.title, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, fontFamily = AeFonts.ui)
-            Text(if (organ) "Drawbars · Rotary · Percussion" else "Morph oscillators · Filter · Macros", color = Color(0xCCFFFFFF), fontSize = 11.sp, fontFamily = AeFonts.ui)
+            Text(inst.title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, fontFamily = AeFonts.ui)
+            Text(st.sub, color = Color(0xCCFFFFFF), fontSize = 10.sp, fontFamily = AeFonts.ui, maxLines = 1)
         }
         if (loaded) Box(Modifier.align(Alignment.BottomEnd).clip(RoundedCornerShape(50)).background(Color(0x33FF5C7A)).clickable(remember { MutableInteractionSource() }, null, onClick = onUnload).padding(horizontal = 10.dp, vertical = 5.dp)) {
             Text("Unload", color = Color(0xFFFFB3C0), fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = AeFonts.ui)

@@ -1,6 +1,6 @@
 package com.soundstage.mixer.instruments
 
-/** Generated from presets-organ-synth.json. Values are normalised 0..1, registry order (organ 31, synth 32). */
+/** Generated from presets-organ-synth.json and presets-leads-sax.json. Values normalised 0..1, registry order (organ 31, synth 32, leads 32, sax 21). */
 object AePresets {
     val organ: List<AePreset> = listOf(
         AePreset("Smith 888", "Jazz", floatArrayOf(1f, 1f, 1f, 0f, 0f, 0f, 0f, 0f, 0f, 0.5f, 0f, 1f, 0f, 0f, 0f, 0f, 0f, 0f, 1f, 0f, 1f, 1f, 1f, 1f, 0f, 0.5f, 0.3f, 0.55f, 0.25f, 0.3f, 0.75f)),
@@ -55,5 +55,62 @@ object AePresets {
         AePreset("Clav Stab", "Keys", floatArrayOf(1f, 0.67f, 0.05f, 0f, 0f, 0f, 0.3f, 0.6f, 0.4f, 0f, 0.5f, 0f, 0.001f, 0.22f, 0f, 0.1f, 0.3f, 0f, 0f, 0f, 0.2f, 0f, 0.5f, 0.5f, 0.5f, 0.5f, 0f, 0f, 1f, 0.17f, 0.5f, 0.75f)),
         AePreset("Brass Hit", "Pop / EDM", floatArrayOf(0.67f, 0.67f, 0.22f, 0f, 0f, 0.5f, 0.3f, 0.35f, 0.15f, 0.15f, 0.6f, 0f, 0.05f, 0.35f, 0.7f, 0.2f, 0.3f, 0f, 0f, 0f, 0.2f, 0f, 0.5f, 0.5f, 0.5f, 0.5f, 0f, 0f, 1f, 0.17f, 0.5f, 0.75f)),
         AePreset("Warm Analog Lead", "Lead", floatArrayOf(0.67f, 1f, 0.3f, 0f, 0f, 0f, 0.3f, 0.58f, 0.3f, 0f, 0.35f, 0f, 0.02f, 0.35f, 0.8f, 0.3f, 0.3f, 0f, 0f, 0f, 0.4f, 0.2f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.15f, 1f, 0.17f, 0.5f, 0.75f)),
+    )
+    val leads: List<AePreset> = listOf(
+        AePreset("Pure Sine", "R&B / Neo-Soul", floatArrayOf(0.8f, 0f, 0f, 0f, 0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0f, 0.3f, 0.8f, 0.25f, 0f, 0.8f, 0.1f, 0.2f, 0.4f, 0.3f, 0f, 0.5f, 0.15f, 0f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f)),
+        AePreset("Warm Sine Lead", "R&B / Neo-Soul", floatArrayOf(0.8f, 0f, 0f, 0f, 0.45f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0f, 0.3f, 0.8f, 0.25f, 0f, 0.7f, 0.1f, 0.2f, 0.4f, 0.3f, 0f, 0.5f, 0.22f, 0f, 0.5f, 0.5f, 0.12f, 0.15f, 0.75f)),
+        AePreset("Silk Glide", "R&B / Neo-Soul", floatArrayOf(0.8f, 0f, 0f, 0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0f, 0.3f, 0.8f, 0.25f, 0f, 0.8f, 0.1f, 0.2f, 0.45f, 0.3f, 0.15f, 0.5f, 0.28f, 0f, 0.5f, 1f, 0.38f, 0.3f, 0.75f)),
+        AePreset("Velvet Triangle", "R&B / Neo-Soul", floatArrayOf(0f, 0f, 0f, 0f, 0.9f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0f, 0.3f, 0.8f, 0.25f, 0f, 0.65f, 0.1f, 0.2f, 0.4f, 0.3f, 0f, 0.5f, 0.3f, 0.4f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f)),
+        AePreset("Neo-Soul Whistle", "R&B / Neo-Soul", floatArrayOf(0.8f, 0f, 0f, 0f, 0.25f, 0.5f, 0.5f, 0.5f, 0.5f, 1f, 0.5f, 0.3f, 0.08f, 0f, 0.3f, 0.8f, 0.25f, 0f, 0.8f, 0.1f, 0.2f, 0.4f, 0.3f, 0.18f, 0.5f, 0.3f, 0f, 0.5f, 0.5f, 0.1f, 0.38f, 0.75f)),
+        AePreset("Slow Jam Lead", "R&B / Neo-Soul", floatArrayOf(0.8f, 0f, 0f, 0f, 0.55f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.12f, 0f, 0.3f, 0.8f, 0.45f, 0f, 0.8f, 0.1f, 0.2f, 0.5f, 0.38f, 0.22f, 0.5f, 0.4f, 0.2f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f)),
+        AePreset("Praise Lead", "Gospel", floatArrayOf(0.3f, 0.3f, 0.55f, 0f, 0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0f, 0.3f, 0.8f, 0.25f, 0f, 0.78f, 0.15f, 0.2f, 0.4f, 0.3f, 0f, 0.5f, 0.28f, 0f, 0.5f, 1f, 0.1f, 0.25f, 0.75f)),
+        AePreset("Worship Sine", "Gospel", floatArrayOf(0.8f, 0f, 0f, 0f, 0.3f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.18f, 0f, 0.3f, 0.8f, 0.5f, 0f, 0.8f, 0.1f, 0.2f, 0.4f, 0.3f, 0.2f, 0.5f, 0.45f, 0f, 0.5f, 0.5f, 0.1f, 0.22f, 0.75f)),
+        AePreset("Choir Lead", "Gospel", floatArrayOf(0.2f, 0f, 0f, 0.3f, 0.6f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.35f, 0.15f, 0f, 0.3f, 0.8f, 0.4f, 0f, 0.62f, 0.1f, 0.2f, 0.4f, 0.3f, 0f, 0.5f, 0.4f, 0.45f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f)),
+        AePreset("Shout Brass Lead", "Gospel", floatArrayOf(0f, 0f, 0.6f, 0.5f, 0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.04f, 0f, 0.3f, 0.8f, 0.25f, 0f, 0.6f, 0.2f, 0.45f, 0.4f, 0.3f, 0f, 0.5f, 0.2f, 0f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f)),
+        AePreset("Smooth Jazz Lead", "Jazz", floatArrayOf(0.8f, 0.25f, 0f, 0f, 0.4f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0f, 0.3f, 0.8f, 0.25f, 0f, 0.7f, 0.1f, 0.2f, 0.4f, 0.3f, 0.12f, 0.5f, 0.3f, 0f, 0.5f, 2f, 0.18f, 0.3f, 0.75f)),
+        AePreset("Fusion Mono", "Jazz", floatArrayOf(0f, 0f, 0.7f, 0f, 0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0f, 0.4f, 0.6f, 0.25f, 0f, 0.55f, 0.3f, 0.4f, 0.4f, 0.3f, 0f, 0.5f, 0.15f, 0f, 0.5f, 1f, 0.22f, 0.15f, 0.75f)),
+        AePreset("Muted Lead", "Jazz", floatArrayOf(0.2f, 0.6f, 0f, 0f, 0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.18f, 0.3f, 0.02f, 0f, 0.3f, 0.8f, 0.25f, 0f, 0.42f, 0.25f, 0.15f, 0.4f, 0.3f, 0f, 0.5f, 0.18f, 0f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f)),
+        AePreset("Cool Sine", "Jazz", floatArrayOf(0.8f, 0f, 0f, 0f, 0.35f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.05f, 0f, 0.3f, 0.8f, 0.25f, 0f, 0.8f, 0.1f, 0.2f, 0.4f, 0.3f, 0.14f, 0.5f, 0.35f, 0f, 0.4f, 0.5f, 0.1f, 0.2f, 0.75f)),
+        AePreset("Super Saw Lead", "Pop / EDM", floatArrayOf(0f, 0f, 0.2f, 0.85f, 0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.55f, 0.02f, 0f, 0.3f, 0.8f, 0.25f, 0f, 0.75f, 0.1f, 0.3f, 0.4f, 0.3f, 0.2f, 0.5f, 0.25f, 0.15f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f)),
+        AePreset("Pluck Lead", "Pop / EDM", floatArrayOf(0.2f, 0f, 0.7f, 0f, 0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0f, 0.22f, 0f, 0.2f, 0f, 0.55f, 0.25f, 0.5f, 0.4f, 0.3f, 0.25f, 0.5f, 0.15f, 0f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f)),
+        AePreset("Anthem Lead", "Pop / EDM", floatArrayOf(0f, 0.4f, 0f, 0.6f, 0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.45f, 0.03f, 0f, 0.3f, 0.8f, 0.25f, 0f, 0.8f, 0.1f, 0.2f, 0.5f, 0.3f, 0.22f, 0.5f, 0.3f, 0f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f)),
+        AePreset("Future Whistle", "Pop / EDM", floatArrayOf(0.8f, 0f, 0f, 0f, 0.3f, 1f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0f, 0.3f, 0.8f, 0.25f, 0f, 0.8f, 0.1f, 0.2f, 0.4f, 0.3f, 0.25f, 0.5f, 0.3f, 0f, 0.5f, 0.5f, 0.2f, 0.4f, 0.75f)),
+        AePreset("Dark Sine Lead", "Hip-Hop / Trap", floatArrayOf(0.8f, 0f, 0f, 0f, 0.2f, 0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0f, 0.3f, 0.8f, 0.25f, 0f, 0.5f, 0.1f, 0.2f, 0.4f, 0.3f, 0f, 0.5f, 0.18f, 0f, 0.5f, 1f, 0.25f, 0.15f, 0.75f)),
+        AePreset("Trap Flute", "Hip-Hop / Trap", floatArrayOf(0.8f, 0f, 0f, 0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.1f, 0f, 0.3f, 0.8f, 0.25f, 0f, 0.8f, 0.1f, 0.2f, 0.4f, 0.3f, 0.2f, 0.5f, 0.32f, 0f, 0.55f, 0.5f, 0.1f, 0.5f, 0.75f)),
+        AePreset("Bell Lead", "Hip-Hop / Trap", floatArrayOf(0.8f, 0f, 0f, 0f, 0.3f, 1f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0f, 0.5f, 0.05f, 0.5f, 0f, 0.8f, 0.1f, 0.2f, 0.4f, 0.3f, 0.28f, 0.5f, 0.45f, 0f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f)),
+        AePreset("Afro Pluck Lead", "Afro / Kompa", floatArrayOf(0.3f, 0f, 0.5f, 0f, 0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0f, 0.25f, 0.05f, 0.2f, 0f, 0.5f, 0.2f, 0.5f, 0.4f, 0.3f, 0.2f, 0.5f, 0.15f, 0f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f)),
+        AePreset("Kompa Lead", "Afro / Kompa", floatArrayOf(0.2f, 0.3f, 0.45f, 0f, 0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0f, 0.3f, 0.8f, 0.25f, 0f, 0.68f, 0.1f, 0.3f, 0.4f, 0.3f, 0.15f, 0.5f, 0.25f, 0f, 0.5f, 2f, 0.12f, 0.28f, 0.75f)),
+        AePreset("Amapiano Whistle", "Afro / Kompa", floatArrayOf(0.8f, 0f, 0f, 0f, 0.2f, 1f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.04f, 0f, 0.3f, 0.8f, 0.25f, 0f, 0.8f, 0.1f, 0.2f, 0.4f, 0.3f, 0.2f, 0.5f, 0.3f, 0f, 0.5f, 0.5f, 0.1f, 0.3f, 0.75f)),
+        AePreset("Mono Saw", "Classic", floatArrayOf(0f, 0f, 0.8f, 0f, 0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0f, 0.3f, 0.8f, 0.25f, 0f, 0.6f, 0.25f, 0.35f, 0.4f, 0.3f, 0f, 0.5f, 0.15f, 0f, 0.5f, 1f, 0.1f, 0.15f, 0.75f)),
+        AePreset("Hollow Pulse", "Classic", floatArrayOf(0f, 0.8f, 0f, 0f, 0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.3f, 0.02f, 0f, 0.3f, 0.8f, 0.25f, 0f, 0.62f, 0.2f, 0.2f, 0.4f, 0.3f, 0f, 0.5f, 0.15f, 0f, 0.5f, 1f, 0.1f, 0.15f, 0.75f)),
+        AePreset("Vintage Poly-Lead", "Classic", floatArrayOf(0f, 0.4f, 0.5f, 0f, 0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0f, 0.3f, 0.8f, 0.25f, 0f, 0.55f, 0.1f, 0.4f, 0.4f, 0.3f, 0f, 0.5f, 0.2f, 0.3f, 0.5f, 0f, 0.1f, 0.15f, 0.75f)),
+        AePreset("Glass Lead", "Ambient", floatArrayOf(0.8f, 0f, 0f, 0f, 0.4f, 1f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.25f, 0f, 0.3f, 0.8f, 0.7f, 0f, 0.8f, 0.1f, 0.2f, 0.55f, 0.45f, 0.3f, 0.5f, 0.55f, 0.3f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f)),
+        AePreset("Dream Lead", "Ambient", floatArrayOf(0.8f, 0f, 0f, 0.25f, 0.7f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.4f, 0.3f, 0f, 0.3f, 0.8f, 0.8f, 0f, 0.55f, 0.1f, 0.2f, 0.4f, 0.3f, 0.3f, 0.5f, 0.6f, 0.45f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f)),
+        AePreset("Air Sine", "Ambient", floatArrayOf(0.8f, 0f, 0f, 0f, 0.2f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.35f, 0f, 0.3f, 0.8f, 0.6f, 0f, 0.8f, 0.1f, 0.2f, 0.4f, 0.3f, 0.2f, 0.5f, 0.5f, 0f, 0.6f, 0.5f, 0.1f, 0.25f, 0.75f)),
+    )
+    val sax: List<AePreset> = listOf(
+        AePreset("Jazz Ballad Alto", "Jazz", floatArrayOf(0.33f, 0f, 0.5f, 0.5f, 0.38f, 0f, 0f, 0.1f, 0.45f, 0.3f, 0.32f, 0.3f, 0.28f, 0.5f, 0.6f, 0.5f, 0.4f, 0.5f, 0.62f, 0.5f, 0.75f)),
+        AePreset("Cool Jazz Alto", "Jazz", floatArrayOf(0.33f, 0.67f, 0.5f, 0.5f, 0.3f, 0f, 0f, 0.1f, 0.45f, 0.3f, 0.25f, 0.25f, 0.22f, 0.5f, 0.5f, 0.5f, 0.45f, 0.6f, 0.6f, 0.42f, 0.75f)),
+        AePreset("Bebop Alto", "Jazz", floatArrayOf(0.33f, 0f, 0f, 1f, 0.3f, 0f, 0f, 0.2f, 0.8f, 0.3f, 0.1f, 0.15f, 0.12f, 0.5f, 0.5f, 0.5f, 0.2f, 0.5f, 0.5f, 0.75f, 0.75f)),
+        AePreset("Smooth Soprano", "Smooth Jazz", floatArrayOf(0f, 0.67f, 0.5f, 0.5f, 0.3f, 0f, 0f, 0.1f, 0.45f, 0.3f, 0.25f, 0.25f, 0.3f, 0.5f, 0.4f, 0.5f, 0.45f, 0.5f, 0.45f, 0.55f, 0.75f)),
+        AePreset("Smooth R&B Soprano", "Smooth Jazz", floatArrayOf(0f, 0f, 0.5f, 0.5f, 0.4f, 0f, 0f, 0.1f, 0.45f, 0.3f, 0.35f, 0.25f, 0.35f, 0.5f, 0.5f, 0.5f, 0.5f, 0.65f, 0.5f, 0.5f, 0.75f)),
+        AePreset("Slow Jam Alto", "R&B / Neo-Soul", floatArrayOf(0.33f, 0f, 0.5f, 0.5f, 0.45f, 0f, 0.12f, 0.1f, 0.45f, 0.3f, 0.38f, 0.32f, 0.3f, 0.5f, 0.55f, 0.5f, 0.5f, 0.6f, 0.65f, 0.5f, 0.75f)),
+        AePreset("Neo-Soul Tenor", "R&B / Neo-Soul", floatArrayOf(0.67f, 0.33f, 1f, 0.5f, 0.4f, 0f, 0.35f, 0.1f, 0.45f, 0.3f, 0.3f, 0.25f, 0.3f, 0.5f, 0.5f, 0.5f, 0.45f, 0.5f, 0.72f, 0.4f, 0.75f)),
+        AePreset("Late Night Tenor", "R&B / Neo-Soul", floatArrayOf(0.67f, 1f, 0.5f, 0.5f, 0.55f, 0f, 0.45f, 0.1f, 0.45f, 0.3f, 0.25f, 0.4f, 0.3f, 0.5f, 0.5f, 0.5f, 0.55f, 0.7f, 0.7f, 0.35f, 0.75f)),
+        AePreset("Gospel Praise Tenor", "Gospel", floatArrayOf(0.67f, 0.33f, 0f, 0.5f, 0.3f, 0f, 0f, 0.25f, 0.7f, 0.3f, 0.2f, 0.25f, 0.38f, 0.6f, 0.5f, 0.5f, 0.4f, 0.5f, 0.5f, 0.62f, 0.75f)),
+        AePreset("Church Alto", "Gospel", floatArrayOf(0.33f, 0f, 0.5f, 0.5f, 0.25f, 0f, 0f, 0.1f, 0.55f, 0.3f, 0.25f, 0.25f, 0.32f, 0.5f, 0.5f, 0.5f, 0.62f, 0.85f, 0.55f, 0.5f, 0.75f)),
+        AePreset("Worship Soprano", "Gospel", floatArrayOf(0f, 0.67f, 0.5f, 0.5f, 0.35f, 0f, 0f, 0.1f, 0.4f, 0.3f, 0.25f, 0.25f, 0.3f, 0.5f, 0.5f, 0.5f, 0.7f, 0.9f, 0.5f, 0.5f, 0.75f)),
+        AePreset("Kompa Alto Line", "Kompa / Afro", floatArrayOf(0.33f, 0f, 0f, 0.5f, 0.3f, 0f, 0f, 0.18f, 0.75f, 0.3f, 0.15f, 0.2f, 0.2f, 0.5f, 0.5f, 0.5f, 0.28f, 0.5f, 0.5f, 0.66f, 0.75f)),
+        AePreset("Highlife Alto", "Kompa / Afro", floatArrayOf(0.33f, 0f, 0f, 0.5f, 0.3f, 0f, 0f, 0.1f, 0.8f, 0.4f, 0.18f, 0.25f, 0.18f, 0.5f, 0.5f, 0.5f, 0.25f, 0.5f, 0.5f, 0.6f, 0.75f)),
+        AePreset("Afro Sax Riff", "Kompa / Afro", floatArrayOf(0.67f, 0f, 0f, 0.5f, 0.3f, 0.15f, 0f, 0.25f, 0.85f, 0.45f, 0.25f, 0.25f, 0.3f, 0.5f, 0.5f, 0.5f, 0.22f, 0.5f, 0.5f, 0.58f, 0.75f)),
+        AePreset("Funk Honk Tenor", "Funk / Rock", floatArrayOf(0.67f, 0.33f, 0f, 1f, 0.3f, 0.6f, 0f, 0.4f, 0.9f, 0.5f, 0.25f, 0.25f, 0.3f, 0.5f, 0.5f, 0.5f, 0.18f, 0.5f, 0.5f, 0.7f, 0.75f)),
+        AePreset("Growl Rock Tenor", "Funk / Rock", floatArrayOf(0.67f, 0.33f, 0.5f, 1f, 0.3f, 0.9f, 0f, 0.6f, 0.85f, 0.3f, 0.25f, 0.25f, 0.3f, 0.5f, 0.5f, 0.5f, 0.25f, 0.5f, 0.5f, 0.68f, 0.75f)),
+        AePreset("Bari Groove", "Funk / Rock", floatArrayOf(1f, 0.33f, 0.5f, 0.5f, 0.3f, 0.3f, 0f, 0.3f, 0.8f, 0.3f, 0.25f, 0.25f, 0.3f, 0.5f, 0.5f, 0.5f, 0.2f, 0.5f, 0.6f, 0.5f, 0.75f)),
+        AePreset("Quartet Bari", "Jazz", floatArrayOf(1f, 0f, 0.5f, 0.5f, 0.35f, 0f, 0.2f, 0.1f, 0.45f, 0.3f, 0.2f, 0.25f, 0.2f, 0.5f, 0.5f, 0.5f, 0.4f, 0.5f, 0.7f, 0.5f, 0.75f)),
+        AePreset("Ballad Tenor Subtone", "Jazz", floatArrayOf(0.67f, 0f, 0.5f, 0.5f, 0.55f, 0f, 0.85f, 0.1f, 0.25f, 0.3f, 0.25f, 0.4f, 0.2f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.78f, 0.3f, 0.75f)),
+        AePreset("Breathy Intimate", "Smooth Jazz", floatArrayOf(0.33f, 0f, 0.5f, 0.5f, 0.88f, 0f, 0f, 0.1f, 0.2f, 0.3f, 0.3f, 0.25f, 0.2f, 0.5f, 0.5f, 0.5f, 0.55f, 0.5f, 0.7f, 0.35f, 0.75f)),
+        AePreset("Lounge Alto", "Smooth Jazz", floatArrayOf(0.33f, 0.67f, 0.5f, 0.5f, 0.35f, 0f, 0f, 0.1f, 0.45f, 0.3f, 0.25f, 0.25f, 0.28f, 0.5f, 0.5f, 0.5f, 0.55f, 0.7f, 0.58f, 0.5f, 0.75f)),
+        AePreset("Soprano Pop", "Pop", floatArrayOf(0f, 0f, 0f, 0.5f, 0.3f, 0f, 0f, 0.12f, 0.7f, 0.3f, 0.25f, 0.25f, 0.25f, 0.5f, 0.5f, 0.5f, 0.35f, 0.5f, 0.5f, 0.68f, 0.75f)),
+        AePreset("Latin Alto", "Pop", floatArrayOf(0.33f, 0f, 0f, 0.5f, 0.3f, 0f, 0f, 0.1f, 0.7f, 0.4f, 0.2f, 0.25f, 0.22f, 0.5f, 0.5f, 0.5f, 0.3f, 0.5f, 0.5f, 0.62f, 0.75f)),
     )
 }

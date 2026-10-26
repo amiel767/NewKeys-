@@ -32,7 +32,7 @@ private fun Card(x: Number, y: Number, w: Number, h: Number, title: String) {
 }
 
 /** Draggable canvas (filter puck / ADSR nodes): reports a 0..1 position inside the canvas. */
-private fun Modifier.drag01(onPos: (Float, Float) -> Unit) = pointerInput(Unit) {
+internal fun Modifier.drag01(onPos: (Float, Float) -> Unit) = pointerInput(Unit) {
     awaitEachGesture {
         val d = awaitFirstDown(requireUnconsumed = false)
         onPos((d.position.x / size.width).coerceIn(0f, 1f), (d.position.y / size.height).coerceIn(0f, 1f)); d.consume()

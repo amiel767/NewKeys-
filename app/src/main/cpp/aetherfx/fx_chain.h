@@ -10,8 +10,10 @@
 #include "fx_core.h"
 #include "fx_echo.h"
 #include "fx_grip.h"
+#include "fx_leads.h"
 #include "fx_organ.h"
 #include "fx_registry.h"
+#include "fx_sax.h"
 #include "fx_shaper.h"
 #include "fx_synth.h"
 #include "fx_voices.h"
@@ -40,6 +42,8 @@ inline std::unique_ptr<Effect> makeInstrument(int id, bool = false) {
     case FX_PIANO: case FX_SAX: case FX_STRINGS: case FX_GUITAR: case FX_BRASS: return std::make_unique<ShaperFx>(id);
     case FX_ORGAN: return std::make_unique<OrganEngine>();
     case FX_SYNTH: return std::make_unique<SynthEngine>();
+    case FX_LEADS: return std::make_unique<LeadsEngine>();
+    case FX_SAX_AE: return std::make_unique<SaxEngine>();
     default: return nullptr;
   }
 }

@@ -19,6 +19,8 @@ import kotlin.math.*
 class AeAnim {
     var t = 0f; var rot = 0f; var hornA = 0f; var drumA = 0f; var hornS = 0f; var drumS = 0f; var fcm = 0f; var lv = 0f; var seen = 0
     val gear = FloatArray(24); val gAct = FloatArray(24)
+    /** Leads LED meters (per layer) and sax breath particles [x, y, vx, vy, life, r] in image-normalised coordinates. */
+    val la = FloatArray(5); val parts = ArrayList<FloatArray>()
     val pulses = ArrayList<FloatArray>()
     val frame = mutableIntStateOf(0)
 
@@ -34,11 +36,19 @@ class AeAnim {
             drumS += (floatArrayOf(0f, 0.67f, 5.7f)[m] - drumS) * (1f - exp(-dt / 2.4f))
             hornA += hornS * dt * 6.283f; drumA += drumS * dt * 6.283f
             for (k in 0 until 24) gear[k] += gAct[k] * dt * (6f + k * 0.9f)
-        } else {
+        } else if (s.instrument == AeInstrument.SYNTH) {
             val l = orbLevel()
             rot += dt * (0.15f + l * 1.2f)
             if (s.noteEvents != seen) { seen = s.noteEvents; pulses.add(floatArrayOf(0f)) }
             val it = pulses.iterator(); while (it.hasNext()) { val p = it.next(); p[0] += dt; if (p[0] > 1.2f) it.remove() }
+        }
+        if (s.instrument == AeInstrument.LEADS) for (i in 0 until 5) la[i] += ((if (held) s.values[i] * (0.55f + 0.45f * min(1f, lv * 5f)) else 0f) - la[i]) * 0.3f
+        if (s.instrument == AeInstrument.SAX) {
+            val g = AeSaxGeo.of((s.values[0] * 3).roundToInt().coerceIn(0, 3)); val l = orbLevel()
+            val n = (l * 18f).toInt() + (if (Math.random() < l * 10f) 1 else 0)
+            repeat(n) { parts.add(floatArrayOf(g.bell.first + (Math.random().toFloat() - 0.5f) * 0.02f, g.bell.second, 0.05f + Math.random().toFloat() * 0.1f, -0.06f - Math.random().toFloat() * 0.12f, 1f, 0.006f + Math.random().toFloat() * 0.014f)) }
+            val it2 = parts.iterator()
+            while (it2.hasNext()) { val p = it2.next(); p[4] -= dt * 0.9f; p[0] += p[2] * dt; p[1] += p[3] * dt; p[3] -= dt * 0.03f; if (p[4] <= 0f) it2.remove() }
         }
         frame.intValue++
     }

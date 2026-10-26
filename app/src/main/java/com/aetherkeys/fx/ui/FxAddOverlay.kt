@@ -249,11 +249,11 @@ private val FAMS_EFFECTS = listOf("All", "Dynamics", "EQ", "Space", "Amps", "Voi
 private val FAMS_INSTRUMENT = listOf("All", "Keys", "Guitar", "Winds", "Strings", "Synth")
 
 /**
- * Instruments that left the FX window. Organ (6) and Synth (14) are now real track
- * instruments loaded from the soundfont window's Æther Instruments tab, not FX entries.
- * They keep their ids in FxRegistry (note routing and persistence still resolve them).
+ * Instruments that left the FX window. Organ (6), Synth (14), Leads (15) and Sax (16) are now
+ * real track instruments loaded from the soundfont window's Æther Instruments tab, not FX
+ * entries. They keep their ids in FxRegistry (note routing and persistence still resolve them).
  */
-private val AE_RETIRED_INSTRUMENT_IDS = setOf(6, 14)
+private val AE_RETIRED_INSTRUMENT_IDS = setOf(6, 14, 15, 16)
 
 /**
  * `CAT2`, `ICK` and `INSTR` from the preview: per-effect family, description and icon.

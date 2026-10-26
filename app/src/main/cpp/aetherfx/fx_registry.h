@@ -6,10 +6,14 @@
 namespace aetherfx {
 
 enum FxId { FX_SPACE = 0, FX_ECHO = 1, FX_TONE = 2, FX_GRIP = 3, FX_CEILING = 4,
-  FX_PIANO = 5, FX_ORGAN = 6, FX_SAX = 7, FX_STRINGS = 8, FX_GUITAR = 9, FX_AMP = 10, FX_BASS = 11, FX_BRASS = 12, FX_VOICES = 13, FX_SYNTH = 14, FX_COUNT = 15 };
+  FX_PIANO = 5, FX_ORGAN = 6, FX_SAX = 7, FX_STRINGS = 8, FX_GUITAR = 9, FX_AMP = 10, FX_BASS = 11, FX_BRASS = 12, FX_VOICES = 13, FX_SYNTH = 14,
+  // Æther Instruments added in the final package: Leads and Sax are SOURCES (they replace the
+  // soundfont, exactly like the Organ and the Synth) but they are NOT listed in the FX rack any
+  // more: they load from the soundfont window's Æther tab, like the other two.
+  FX_LEADS = 15, FX_SAX_AE = 16, FX_COUNT = 17 };
 // Effects live in the 6 track slots (8 on the master). Shapers modify the track's soundfont. Sources replace the soundfont. One instrument (shaper or source) per track; none on the master.
 enum class Kind { Effect, Shaper, Source };
-inline Kind kindOf(int id) { return (id == FX_ORGAN || id == FX_SYNTH) ? Kind::Source : (id == FX_PIANO || id == FX_SAX || id == FX_STRINGS || id == FX_GUITAR || id == FX_BRASS) ? Kind::Shaper : Kind::Effect; }
+inline Kind kindOf(int id) { return (id == FX_ORGAN || id == FX_SYNTH || id == FX_LEADS || id == FX_SAX_AE) ? Kind::Source : (id == FX_PIANO || id == FX_SAX || id == FX_STRINGS || id == FX_GUITAR || id == FX_BRASS) ? Kind::Shaper : Kind::Effect; }
 enum class Curve { Linear, FreqLog, RatioStep };
 
 struct ParamDesc { const char* name; float min, max; const char* unit; int decimals; float def; Curve curve; bool ui = false; };  // ui = visual only, not sent to the audio engine
@@ -278,9 +282,125 @@ inline const EffectInfo& info(int id) {
        {"Pluck", {0.5f, 0.5f, 0.2f, 0.2f, 0.05f, 0.3f, 0.4f, 0.5f, 0.25f, 0.15f, 0.6f, 0.0f, 0.01f, 0.25f, 0.1f, 0.2f, 0.3f, 0.3f, 0.0f, 0.0f, 0.2f, 0.2f, 0.3f, 0.5f, 0.5f, 0.5f, 0.0f, 0.1f, 0.5f, 0.2f, 0.5f, 0.8f}},
        {"Keys", {0.1f, 0.2f, 0.15f, 0.2f, 0.05f, 0.3f, 0.4f, 0.45f, 0.25f, 0.15f, 0.35f, 0.0f, 0.03f, 0.5f, 0.5f, 0.4f, 0.3f, 0.3f, 0.0f, 0.0f, 0.2f, 0.2f, 0.3f, 0.5f, 0.5f, 0.5f, 0.0f, 0.1f, 0.5f, 0.2f, 0.5f, 0.8f}},
        {"FX", {1.0f, 0.4f, 0.8f, 0.2f, 0.5f, 0.3f, 0.4f, 0.5f, 0.7f, 0.15f, 0.35f, 0.0f, 0.1f, 0.4f, 0.7f, 0.35f, 0.7f, 0.8f, 0.5f, 0.0f, 0.2f, 0.2f, 0.3f, 0.5f, 0.5f, 0.5f, 0.0f, 0.1f, 0.5f, 0.2f, 0.5f, 0.8f}}}};
+    v[FX_LEADS] = {"Aether Leads", "Instrument",
+      {
+       {"Sine", 0.0f, 100.0f, " %", 0, 0.8f, C::Linear, false},
+       {"Square", 0.0f, 100.0f, " %", 0, 0.0f, C::Linear, false},
+       {"Saw", 0.0f, 100.0f, " %", 0, 0.0f, C::Linear, false},
+       {"Super", 0.0f, 100.0f, " %", 0, 0.0f, C::Linear, false},
+       {"Soft", 0.0f, 100.0f, " %", 0, 0.0f, C::Linear, false},
+       {"Oct Sine", 0.0f, 100.0f, " %", 0, 0.5f, C::Linear, false},
+       {"Oct Square", 0.0f, 100.0f, " %", 0, 0.5f, C::Linear, false},
+       {"Oct Saw", 0.0f, 100.0f, " %", 0, 0.5f, C::Linear, false},
+       {"Oct Super", 0.0f, 100.0f, " %", 0, 0.5f, C::Linear, false},
+       {"Oct Soft", 0.0f, 100.0f, " %", 0, 0.5f, C::Linear, false},
+       {"Pulse W", 0.0f, 100.0f, " %", 0, 0.5f, C::Linear, false},
+       {"Detune", 0.0f, 100.0f, " %", 0, 0.3f, C::Linear, false},
+       {"Attack", 0.0f, 100.0f, " %", 0, 0.02f, C::Linear, false},
+       {"Hold", 0.0f, 100.0f, " %", 0, 0.0f, C::Linear, false},
+       {"Decay", 0.0f, 100.0f, " %", 0, 0.3f, C::Linear, false},
+       {"Sustain", 0.0f, 100.0f, " %", 0, 0.8f, C::Linear, false},
+       {"Release", 0.0f, 100.0f, " %", 0, 0.25f, C::Linear, false},
+       {"Filter", 0.0f, 100.0f, " %", 0, 0.0f, C::Linear, false},
+       {"Cutoff", 0.0f, 100.0f, " %", 0, 0.8f, C::Linear, false},
+       {"Reso", 0.0f, 100.0f, " %", 0, 0.1f, C::Linear, false},
+       {"Env Amt", 0.0f, 100.0f, " %", 0, 0.2f, C::Linear, false},
+       {"Delay Time", 0.0f, 100.0f, " %", 0, 0.4f, C::Linear, false},
+       {"Feedback", 0.0f, 100.0f, " %", 0, 0.3f, C::Linear, false},
+       {"Delay Mix", 0.0f, 100.0f, " %", 0, 0.0f, C::Linear, false},
+       {"Reverb Size", 0.0f, 100.0f, " %", 0, 0.5f, C::Linear, false},
+       {"Reverb Mix", 0.0f, 100.0f, " %", 0, 0.15f, C::Linear, false},
+       {"Chorus", 0.0f, 100.0f, " %", 0, 0.0f, C::Linear, false},
+       {"Tone", 0.0f, 100.0f, " %", 0, 0.5f, C::Linear, false},
+       {"Mode", 0.0f, 100.0f, " %", 0, 0.5f, C::Linear, false},
+       {"Glide", 0.0f, 100.0f, " %", 0, 0.1f, C::Linear, false},
+       {"Vibrato", 0.0f, 100.0f, " %", 0, 0.15f, C::Linear, false},
+       {"Level", 0.0f, 100.0f, " %", 0, 0.75f, C::Linear, false},
+      },
+      {
+       {"Pure Sine", {0.8f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0.0f, 0.3f, 0.8f, 0.25f, 0.0f, 0.8f, 0.1f, 0.2f, 0.4f, 0.3f, 0.0f, 0.5f, 0.15f, 0.0f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f}},
+       {"Warm Sine Lead", {0.8f, 0.0f, 0.0f, 0.0f, 0.45f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0.0f, 0.3f, 0.8f, 0.25f, 0.0f, 0.7f, 0.1f, 0.2f, 0.4f, 0.3f, 0.0f, 0.5f, 0.22f, 0.0f, 0.5f, 0.5f, 0.12f, 0.15f, 0.75f}},
+       {"Silk Glide", {0.8f, 0.0f, 0.0f, 0.0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0.0f, 0.3f, 0.8f, 0.25f, 0.0f, 0.8f, 0.1f, 0.2f, 0.45f, 0.3f, 0.15f, 0.5f, 0.28f, 0.0f, 0.5f, 1.0f, 0.38f, 0.3f, 0.75f}},
+       {"Velvet Triangle", {0.0f, 0.0f, 0.0f, 0.0f, 0.9f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0.0f, 0.3f, 0.8f, 0.25f, 0.0f, 0.65f, 0.1f, 0.2f, 0.4f, 0.3f, 0.0f, 0.5f, 0.3f, 0.4f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f}},
+       {"Neo-Soul Whistle", {0.8f, 0.0f, 0.0f, 0.0f, 0.25f, 0.5f, 0.5f, 0.5f, 0.5f, 1.0f, 0.5f, 0.3f, 0.08f, 0.0f, 0.3f, 0.8f, 0.25f, 0.0f, 0.8f, 0.1f, 0.2f, 0.4f, 0.3f, 0.18f, 0.5f, 0.3f, 0.0f, 0.5f, 0.5f, 0.1f, 0.38f, 0.75f}},
+       {"Slow Jam Lead", {0.8f, 0.0f, 0.0f, 0.0f, 0.55f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.12f, 0.0f, 0.3f, 0.8f, 0.45f, 0.0f, 0.8f, 0.1f, 0.2f, 0.5f, 0.38f, 0.22f, 0.5f, 0.4f, 0.2f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f}},
+       {"Praise Lead", {0.3f, 0.3f, 0.55f, 0.0f, 0.0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0.0f, 0.3f, 0.8f, 0.25f, 0.0f, 0.78f, 0.15f, 0.2f, 0.4f, 0.3f, 0.0f, 0.5f, 0.28f, 0.0f, 0.5f, 1.0f, 0.1f, 0.25f, 0.75f}},
+       {"Worship Sine", {0.8f, 0.0f, 0.0f, 0.0f, 0.3f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.18f, 0.0f, 0.3f, 0.8f, 0.5f, 0.0f, 0.8f, 0.1f, 0.2f, 0.4f, 0.3f, 0.2f, 0.5f, 0.45f, 0.0f, 0.5f, 0.5f, 0.1f, 0.22f, 0.75f}},
+       {"Choir Lead", {0.2f, 0.0f, 0.0f, 0.3f, 0.6f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.35f, 0.15f, 0.0f, 0.3f, 0.8f, 0.4f, 0.0f, 0.62f, 0.1f, 0.2f, 0.4f, 0.3f, 0.0f, 0.5f, 0.4f, 0.45f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f}},
+       {"Shout Brass Lead", {0.0f, 0.0f, 0.6f, 0.5f, 0.0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.04f, 0.0f, 0.3f, 0.8f, 0.25f, 0.0f, 0.6f, 0.2f, 0.45f, 0.4f, 0.3f, 0.0f, 0.5f, 0.2f, 0.0f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f}},
+       {"Smooth Jazz Lead", {0.8f, 0.25f, 0.0f, 0.0f, 0.4f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0.0f, 0.3f, 0.8f, 0.25f, 0.0f, 0.7f, 0.1f, 0.2f, 0.4f, 0.3f, 0.12f, 0.5f, 0.3f, 0.0f, 0.5f, 2.0f, 0.18f, 0.3f, 0.75f}},
+       {"Fusion Mono", {0.0f, 0.0f, 0.7f, 0.0f, 0.0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0.0f, 0.4f, 0.6f, 0.25f, 0.0f, 0.55f, 0.3f, 0.4f, 0.4f, 0.3f, 0.0f, 0.5f, 0.15f, 0.0f, 0.5f, 1.0f, 0.22f, 0.15f, 0.75f}},
+       {"Muted Lead", {0.2f, 0.6f, 0.0f, 0.0f, 0.0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.18f, 0.3f, 0.02f, 0.0f, 0.3f, 0.8f, 0.25f, 0.0f, 0.42f, 0.25f, 0.15f, 0.4f, 0.3f, 0.0f, 0.5f, 0.18f, 0.0f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f}},
+       {"Cool Sine", {0.8f, 0.0f, 0.0f, 0.0f, 0.35f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.05f, 0.0f, 0.3f, 0.8f, 0.25f, 0.0f, 0.8f, 0.1f, 0.2f, 0.4f, 0.3f, 0.14f, 0.5f, 0.35f, 0.0f, 0.4f, 0.5f, 0.1f, 0.2f, 0.75f}},
+       {"Super Saw Lead", {0.0f, 0.0f, 0.2f, 0.85f, 0.0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.55f, 0.02f, 0.0f, 0.3f, 0.8f, 0.25f, 0.0f, 0.75f, 0.1f, 0.3f, 0.4f, 0.3f, 0.2f, 0.5f, 0.25f, 0.15f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f}},
+       {"Pluck Lead", {0.2f, 0.0f, 0.7f, 0.0f, 0.0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0.0f, 0.22f, 0.0f, 0.2f, 0.0f, 0.55f, 0.25f, 0.5f, 0.4f, 0.3f, 0.25f, 0.5f, 0.15f, 0.0f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f}},
+       {"Anthem Lead", {0.0f, 0.4f, 0.0f, 0.6f, 0.0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.45f, 0.03f, 0.0f, 0.3f, 0.8f, 0.25f, 0.0f, 0.8f, 0.1f, 0.2f, 0.5f, 0.3f, 0.22f, 0.5f, 0.3f, 0.0f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f}},
+       {"Future Whistle", {0.8f, 0.0f, 0.0f, 0.0f, 0.3f, 1.0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0.0f, 0.3f, 0.8f, 0.25f, 0.0f, 0.8f, 0.1f, 0.2f, 0.4f, 0.3f, 0.25f, 0.5f, 0.3f, 0.0f, 0.5f, 0.5f, 0.2f, 0.4f, 0.75f}},
+       {"Dark Sine Lead", {0.8f, 0.0f, 0.0f, 0.0f, 0.2f, 0.0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0.0f, 0.3f, 0.8f, 0.25f, 0.0f, 0.5f, 0.1f, 0.2f, 0.4f, 0.3f, 0.0f, 0.5f, 0.18f, 0.0f, 0.5f, 1.0f, 0.25f, 0.15f, 0.75f}},
+       {"Trap Flute", {0.8f, 0.0f, 0.0f, 0.0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.1f, 0.0f, 0.3f, 0.8f, 0.25f, 0.0f, 0.8f, 0.1f, 0.2f, 0.4f, 0.3f, 0.2f, 0.5f, 0.32f, 0.0f, 0.55f, 0.5f, 0.1f, 0.5f, 0.75f}},
+       {"Bell Lead", {0.8f, 0.0f, 0.0f, 0.0f, 0.3f, 1.0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0.0f, 0.5f, 0.05f, 0.5f, 0.0f, 0.8f, 0.1f, 0.2f, 0.4f, 0.3f, 0.28f, 0.5f, 0.45f, 0.0f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f}},
+       {"Afro Pluck Lead", {0.3f, 0.0f, 0.5f, 0.0f, 0.0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0.0f, 0.25f, 0.05f, 0.2f, 0.0f, 0.5f, 0.2f, 0.5f, 0.4f, 0.3f, 0.2f, 0.5f, 0.15f, 0.0f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f}},
+       {"Kompa Lead", {0.2f, 0.3f, 0.45f, 0.0f, 0.0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0.0f, 0.3f, 0.8f, 0.25f, 0.0f, 0.68f, 0.1f, 0.3f, 0.4f, 0.3f, 0.15f, 0.5f, 0.25f, 0.0f, 0.5f, 2.0f, 0.12f, 0.28f, 0.75f}},
+       {"Amapiano Whistle", {0.8f, 0.0f, 0.0f, 0.0f, 0.2f, 1.0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.04f, 0.0f, 0.3f, 0.8f, 0.25f, 0.0f, 0.8f, 0.1f, 0.2f, 0.4f, 0.3f, 0.2f, 0.5f, 0.3f, 0.0f, 0.5f, 0.5f, 0.1f, 0.3f, 0.75f}},
+       {"Mono Saw", {0.0f, 0.0f, 0.8f, 0.0f, 0.0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0.0f, 0.3f, 0.8f, 0.25f, 0.0f, 0.6f, 0.25f, 0.35f, 0.4f, 0.3f, 0.0f, 0.5f, 0.15f, 0.0f, 0.5f, 1.0f, 0.1f, 0.15f, 0.75f}},
+       {"Hollow Pulse", {0.0f, 0.8f, 0.0f, 0.0f, 0.0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.3f, 0.02f, 0.0f, 0.3f, 0.8f, 0.25f, 0.0f, 0.62f, 0.2f, 0.2f, 0.4f, 0.3f, 0.0f, 0.5f, 0.15f, 0.0f, 0.5f, 1.0f, 0.1f, 0.15f, 0.75f}},
+       {"Vintage Poly-Lead", {0.0f, 0.4f, 0.5f, 0.0f, 0.0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.02f, 0.0f, 0.3f, 0.8f, 0.25f, 0.0f, 0.55f, 0.1f, 0.4f, 0.4f, 0.3f, 0.0f, 0.5f, 0.2f, 0.3f, 0.5f, 0.0f, 0.1f, 0.15f, 0.75f}},
+       {"Glass Lead", {0.8f, 0.0f, 0.0f, 0.0f, 0.4f, 1.0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.25f, 0.0f, 0.3f, 0.8f, 0.7f, 0.0f, 0.8f, 0.1f, 0.2f, 0.55f, 0.45f, 0.3f, 0.5f, 0.55f, 0.3f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f}},
+       {"Dream Lead", {0.8f, 0.0f, 0.0f, 0.25f, 0.7f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.4f, 0.3f, 0.0f, 0.3f, 0.8f, 0.8f, 0.0f, 0.55f, 0.1f, 0.2f, 0.4f, 0.3f, 0.3f, 0.5f, 0.6f, 0.45f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f}},
+       {"Air Sine", {0.8f, 0.0f, 0.0f, 0.0f, 0.2f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.35f, 0.0f, 0.3f, 0.8f, 0.6f, 0.0f, 0.8f, 0.1f, 0.2f, 0.4f, 0.3f, 0.2f, 0.5f, 0.5f, 0.0f, 0.6f, 0.5f, 0.1f, 0.25f, 0.75f}},
+      }};
+    v[FX_SAX_AE] = {"Aether Sax", "Instrument",
+      {
+       {"Type", 0.0f, 100.0f, " %", 0, 0.33f, C::Linear, false},
+       {"Finish", 0.0f, 100.0f, " %", 0, 0.0f, C::Linear, false},
+       {"Mouthpiece", 0.0f, 100.0f, " %", 0, 0.5f, C::Linear, false},
+       {"Reed", 0.0f, 100.0f, " %", 0, 0.5f, C::Linear, false},
+       {"Breath", 0.0f, 100.0f, " %", 0, 0.38f, C::Linear, false},
+       {"Growl", 0.0f, 100.0f, " %", 0, 0.0f, C::Linear, false},
+       {"Subtone", 0.0f, 100.0f, " %", 0, 0.0f, C::Linear, false},
+       {"Grit", 0.0f, 100.0f, " %", 0, 0.1f, C::Linear, false},
+       {"Attack", 0.0f, 100.0f, " %", 0, 0.45f, C::Linear, false},
+       {"Click", 0.0f, 100.0f, " %", 0, 0.3f, C::Linear, false},
+       {"Scoop", 0.0f, 100.0f, " %", 0, 0.32f, C::Linear, false},
+       {"Fall", 0.0f, 100.0f, " %", 0, 0.3f, C::Linear, false},
+       {"V.Depth", 0.0f, 100.0f, " %", 0, 0.28f, C::Linear, false},
+       {"V.Rate", 0.0f, 100.0f, " %", 0, 0.5f, C::Linear, false},
+       {"V.Delay", 0.0f, 100.0f, " %", 0, 0.6f, C::Linear, false},
+       {"Legato", 0.0f, 100.0f, " %", 0, 0.5f, C::Linear, false},
+       {"Room", 0.0f, 100.0f, " %", 0, 0.4f, C::Linear, false},
+       {"Size", 0.0f, 100.0f, " %", 0, 0.5f, C::Linear, false},
+       {"Warm", 0.0f, 100.0f, " %", 0, 0.62f, C::Linear, false},
+       {"Bright", 0.0f, 100.0f, " %", 0, 0.5f, C::Linear, false},
+       {"Level", 0.0f, 100.0f, " %", 0, 0.75f, C::Linear, false},
+      },
+      {
+       {"Jazz Ballad Alto", {0.33f, 0.0f, 0.5f, 0.5f, 0.38f, 0.0f, 0.0f, 0.1f, 0.45f, 0.3f, 0.32f, 0.3f, 0.28f, 0.5f, 0.6f, 0.5f, 0.4f, 0.5f, 0.62f, 0.5f, 0.75f}},
+       {"Cool Jazz Alto", {0.33f, 0.67f, 0.5f, 0.5f, 0.3f, 0.0f, 0.0f, 0.1f, 0.45f, 0.3f, 0.25f, 0.25f, 0.22f, 0.5f, 0.5f, 0.5f, 0.45f, 0.6f, 0.6f, 0.42f, 0.75f}},
+       {"Bebop Alto", {0.33f, 0.0f, 0.0f, 1.0f, 0.3f, 0.0f, 0.0f, 0.2f, 0.8f, 0.3f, 0.1f, 0.15f, 0.12f, 0.5f, 0.5f, 0.5f, 0.2f, 0.5f, 0.5f, 0.75f, 0.75f}},
+       {"Smooth Soprano", {0.0f, 0.67f, 0.5f, 0.5f, 0.3f, 0.0f, 0.0f, 0.1f, 0.45f, 0.3f, 0.25f, 0.25f, 0.3f, 0.5f, 0.4f, 0.5f, 0.45f, 0.5f, 0.45f, 0.55f, 0.75f}},
+       {"Smooth R&B Soprano", {0.0f, 0.0f, 0.5f, 0.5f, 0.4f, 0.0f, 0.0f, 0.1f, 0.45f, 0.3f, 0.35f, 0.25f, 0.35f, 0.5f, 0.5f, 0.5f, 0.5f, 0.65f, 0.5f, 0.5f, 0.75f}},
+       {"Slow Jam Alto", {0.33f, 0.0f, 0.5f, 0.5f, 0.45f, 0.0f, 0.12f, 0.1f, 0.45f, 0.3f, 0.38f, 0.32f, 0.3f, 0.5f, 0.55f, 0.5f, 0.5f, 0.6f, 0.65f, 0.5f, 0.75f}},
+       {"Neo-Soul Tenor", {0.67f, 0.33f, 1.0f, 0.5f, 0.4f, 0.0f, 0.35f, 0.1f, 0.45f, 0.3f, 0.3f, 0.25f, 0.3f, 0.5f, 0.5f, 0.5f, 0.45f, 0.5f, 0.72f, 0.4f, 0.75f}},
+       {"Late Night Tenor", {0.67f, 1.0f, 0.5f, 0.5f, 0.55f, 0.0f, 0.45f, 0.1f, 0.45f, 0.3f, 0.25f, 0.4f, 0.3f, 0.5f, 0.5f, 0.5f, 0.55f, 0.7f, 0.7f, 0.35f, 0.75f}},
+       {"Gospel Praise Tenor", {0.67f, 0.33f, 0.0f, 0.5f, 0.3f, 0.0f, 0.0f, 0.25f, 0.7f, 0.3f, 0.2f, 0.25f, 0.38f, 0.6f, 0.5f, 0.5f, 0.4f, 0.5f, 0.5f, 0.62f, 0.75f}},
+       {"Church Alto", {0.33f, 0.0f, 0.5f, 0.5f, 0.25f, 0.0f, 0.0f, 0.1f, 0.55f, 0.3f, 0.25f, 0.25f, 0.32f, 0.5f, 0.5f, 0.5f, 0.62f, 0.85f, 0.55f, 0.5f, 0.75f}},
+       {"Worship Soprano", {0.0f, 0.67f, 0.5f, 0.5f, 0.35f, 0.0f, 0.0f, 0.1f, 0.4f, 0.3f, 0.25f, 0.25f, 0.3f, 0.5f, 0.5f, 0.5f, 0.7f, 0.9f, 0.5f, 0.5f, 0.75f}},
+       {"Kompa Alto Line", {0.33f, 0.0f, 0.0f, 0.5f, 0.3f, 0.0f, 0.0f, 0.18f, 0.75f, 0.3f, 0.15f, 0.2f, 0.2f, 0.5f, 0.5f, 0.5f, 0.28f, 0.5f, 0.5f, 0.66f, 0.75f}},
+       {"Highlife Alto", {0.33f, 0.0f, 0.0f, 0.5f, 0.3f, 0.0f, 0.0f, 0.1f, 0.8f, 0.4f, 0.18f, 0.25f, 0.18f, 0.5f, 0.5f, 0.5f, 0.25f, 0.5f, 0.5f, 0.6f, 0.75f}},
+       {"Afro Sax Riff", {0.67f, 0.0f, 0.0f, 0.5f, 0.3f, 0.15f, 0.0f, 0.25f, 0.85f, 0.45f, 0.25f, 0.25f, 0.3f, 0.5f, 0.5f, 0.5f, 0.22f, 0.5f, 0.5f, 0.58f, 0.75f}},
+       {"Funk Honk Tenor", {0.67f, 0.33f, 0.0f, 1.0f, 0.3f, 0.6f, 0.0f, 0.4f, 0.9f, 0.5f, 0.25f, 0.25f, 0.3f, 0.5f, 0.5f, 0.5f, 0.18f, 0.5f, 0.5f, 0.7f, 0.75f}},
+       {"Growl Rock Tenor", {0.67f, 0.33f, 0.5f, 1.0f, 0.3f, 0.9f, 0.0f, 0.6f, 0.85f, 0.3f, 0.25f, 0.25f, 0.3f, 0.5f, 0.5f, 0.5f, 0.25f, 0.5f, 0.5f, 0.68f, 0.75f}},
+       {"Bari Groove", {1.0f, 0.33f, 0.5f, 0.5f, 0.3f, 0.3f, 0.0f, 0.3f, 0.8f, 0.3f, 0.25f, 0.25f, 0.3f, 0.5f, 0.5f, 0.5f, 0.2f, 0.5f, 0.6f, 0.5f, 0.75f}},
+       {"Quartet Bari", {1.0f, 0.0f, 0.5f, 0.5f, 0.35f, 0.0f, 0.2f, 0.1f, 0.45f, 0.3f, 0.2f, 0.25f, 0.2f, 0.5f, 0.5f, 0.5f, 0.4f, 0.5f, 0.7f, 0.5f, 0.75f}},
+       {"Ballad Tenor Subtone", {0.67f, 0.0f, 0.5f, 0.5f, 0.55f, 0.0f, 0.85f, 0.1f, 0.25f, 0.3f, 0.25f, 0.4f, 0.2f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.78f, 0.3f, 0.75f}},
+       {"Breathy Intimate", {0.33f, 0.0f, 0.5f, 0.5f, 0.88f, 0.0f, 0.0f, 0.1f, 0.2f, 0.3f, 0.3f, 0.25f, 0.2f, 0.5f, 0.5f, 0.5f, 0.55f, 0.5f, 0.7f, 0.35f, 0.75f}},
+       {"Lounge Alto", {0.33f, 0.67f, 0.5f, 0.5f, 0.35f, 0.0f, 0.0f, 0.1f, 0.45f, 0.3f, 0.25f, 0.25f, 0.28f, 0.5f, 0.5f, 0.5f, 0.55f, 0.7f, 0.58f, 0.5f, 0.75f}},
+       {"Soprano Pop", {0.0f, 0.0f, 0.0f, 0.5f, 0.3f, 0.0f, 0.0f, 0.12f, 0.7f, 0.3f, 0.25f, 0.25f, 0.25f, 0.5f, 0.5f, 0.5f, 0.35f, 0.5f, 0.5f, 0.68f, 0.75f}},
+       {"Latin Alto", {0.33f, 0.0f, 0.0f, 0.5f, 0.3f, 0.0f, 0.0f, 0.1f, 0.7f, 0.4f, 0.2f, 0.25f, 0.22f, 0.5f, 0.5f, 0.5f, 0.3f, 0.5f, 0.5f, 0.62f, 0.75f}},
+      }};
     return v;
   }();
-  return all[id];
+  return all[id >= 0 && id < FX_COUNT ? id : FX_SPACE];
 }
 
 }  // namespace aetherfx

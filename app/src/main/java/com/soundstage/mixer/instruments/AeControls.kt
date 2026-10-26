@@ -45,6 +45,7 @@ private fun Modifier.noRipple(onClick: () -> Unit): Modifier = clickable(remembe
 /** Synth knob: glowing value ring + glass cap. Vertical drag, 130 stage units = full range (same as the preview). */
 @Composable
 fun AeGlassKnob(c: AeCtl, idx: Int, label: String, x: Number, y: Number, size: Number) {
+    val p = c.pal
     val sc = LocalAeScale.current
     val sz = size.toFloat()
     Column(
@@ -59,11 +60,11 @@ fun AeGlassKnob(c: AeCtl, idx: Int, label: String, x: Number, y: Number, size: N
                 val tl = Offset(30f * k - r, 30f * k - r); val sz2 = Size(2 * r, 2 * r)
                 drawArc(Color(0x1CFFFFFF), 135f, 270f, false, tl, sz2, style = Stroke(st, cap = StrokeCap.Round))
                 if (v > 0.001f) {
-                    drawArc(Color(0x55C06AFF), 135f, 270f * v, false, tl, sz2, style = Stroke(st * 2.6f, cap = StrokeCap.Round))
-                    drawArc(Brush.linearGradient(listOf(Color(0xFF5A3CFF), Color(0xFFE05CFF))), 135f, 270f * v, false, tl, sz2, style = Stroke(st, cap = StrokeCap.Round))
+                    drawArc(p.glow, 135f, 270f * v, false, tl, sz2, style = Stroke(st * 2.6f, cap = StrokeCap.Round))
+                    drawArc(Brush.linearGradient(listOf(p.ring0, p.ring1)), 135f, 270f * v, false, tl, sz2, style = Stroke(st, cap = StrokeCap.Round))
                 }
             }
-            Box(Modifier.fillMaxSize().aeSvg(AeSvgs.KNOB_GLASS))
+            Box(Modifier.fillMaxSize().aeSvg(p.knob))
             Canvas(Modifier.fillMaxSize()) {
                 val k = this.size.width / 60f
                 rotate(-135f + 270f * c.v(idx), Offset(30f * k, 30f * k)) {
@@ -72,7 +73,7 @@ fun AeGlassKnob(c: AeCtl, idx: Int, label: String, x: Number, y: Number, size: N
                 }
             }
         }
-        AeT(label.uppercase(), 9, AeC.knobLabel, spacing = 0.12f, align = TextAlign.Center)
+        AeT(label.uppercase(), 9, p.label, spacing = 0.12f, align = TextAlign.Center)
         AeT(c.fmt(idx), 10, AeC.tx, font = AeFonts.mono, weight = FontWeight.Normal, align = TextAlign.Center)
     }
 }
@@ -103,16 +104,17 @@ fun AeMetalKnob(c: AeCtl, idx: Int, label: String, x: Number, y: Number, size: N
 /** Synth chip group member: [i] of [n] sets the value i / (n - 1). */
 @Composable
 fun AeChip(c: AeCtl, idx: Int, i: Int, n: Int, label: String, x: Number, y: Number, w: Number) {
+    val p = c.pal
     val on = (c.v(idx) * (n - 1)).roundToInt() == i
     val shape = RoundedCornerShape(50)
     Box(
         Modifier.at(x, y, w, 21)
             .clip(shape)
-            .background(if (on) Brush.horizontalGradient(listOf(AeC.p1, AeC.p2)) else Brush.horizontalGradient(listOf(Color(0x10FFFFFF), Color(0x10FFFFFF))))
+            .background(if (on) Brush.horizontalGradient(listOf(p.chipOn0, p.chipOn1)) else Brush.horizontalGradient(listOf(Color(0x10FFFFFF), Color(0x10FFFFFF))))
             .border(1.su(), if (on) Color.Transparent else Color(0x1CFFFFFF), shape)
             .noRipple { c.set(idx, i.toFloat() / (n - 1)) },
         contentAlignment = Alignment.Center,
-    ) { AeT(label, 9, if (on) Color.White else AeC.tx, spacing = 0.08f) }
+    ) { AeT(label, 9, if (on) p.chipText else AeC.tx, spacing = 0.08f) }
 }
 
 /** Hammond drawbar: SVG slot + cap, chrome shaft drawn live, snap spring, drag anywhere on the bar. */
@@ -224,3 +226,12 @@ fun AeKeyboard(c: AeCtl, x: Number, y: Number, w: Number, h: Number) {
         }
     }
 }
+
+/** Colour language per instrument: synth violet, leads cyan LED, sax warm amber. */
+class AePal(val ring0: Color, val ring1: Color, val glow: Color, val label: Color, val chipOn0: Color, val chipOn1: Color, val chipText: Color, val knob: String)
+object AePals {
+    val SYNTH = AePal(Color(0xFF5A3CFF), Color(0xFFE05CFF), Color(0x55C06AFF), AeC.knobLabel, AeC.p1, AeC.p2, Color.White, AeSvgs.KNOB_GLASS)
+    val LEADS = AePal(Color(0xFF3A7BFF), Color(0xFF19E3FF), Color(0x5519E3FF), Color(0xFF79AEBD), Color(0xFF19E3FF), Color(0xFF3A7BFF), Color(0xFF02101A), AeSvgs.KNOB_GLASS_CYAN)
+    val SAX = AePal(Color(0xFFC8702A), Color(0xFFF2B84A), Color(0x55F2B84A), Color(0xFFC9A56A), Color(0xFFF2B84A), Color(0xFFC8702A), Color(0xFF1A0D04), AeSvgs.KNOB_GLASS_AMBER)
+}
+val AeCtl.pal: AePal get() = when (s.instrument) { AeInstrument.LEADS -> AePals.LEADS; AeInstrument.SAX -> AePals.SAX; else -> AePals.SYNTH }
