@@ -2991,3 +2991,88 @@ cases 1,0 → 0,62.
 (`BottomBarCaptureTest`) vérifie les **deux** régressions à la fois — > 400 px tièdes
 (sinon le liseré est invisible) et **0** px tiède dans les 700 px de droite (master +
 clavier, sinon il déborde). 5/5 PASS.
+
+## Session 2026-10-26 (parallele) — Æther : piste, fenetre, textes, perf
+
+Conversation parallele (celle-ci) menee en meme temps qu'une autre qui poussait
+`7f74d68` (snapshots) puis `2b4482e` (halo arme) sur `main`. **Aucun chevauchement
+de fichiers** : cette session ne touche que `instruments/`, `SoundfontWindow.kt`,
+`MixerScreen.kt`, `MixerViewModel.kt`, `NativeAudioBridge.kt`, `fx_mixer.h`.
+Rebaser sur `origin/main` avant de pousser (regle habituelle).
+
+### F — mute / solo / power n'avaient aucun effet sur une piste Æther
+
+**Cause racine.** Quand un instrument Æther occupe une piste, `FxMixer::soundfontPaused(strip)`
+est vrai : FluidSynth ne rend plus ce canal, c'est la **chaîne de strip** qui le rend.
+Or tout le controle de volume du mixer passait par CC7 (`setChannelVolume` /
+`safeSetTrackVolume`), donc dans le vide. Un mute ne coupait rien.
+
+**Correctif** : `pushFxStripMix(ch, volume, pan?)` (`MixerViewModel`) miroite le fader
+sur le strip **uniquement** quand `safeFxSoundfontPaused(ch)` est vrai — sur une piste
+soundfont le strip reste vierge (le gain y appartient a la fenetre FX).
+Appele depuis `applyTrackVolumes`, `setTrackVolume`, `setTrackPan`, et par le nouveau
+hook `AeInstruments.onLoaded` (sinon l'instrument demarrait a l'unite).
+`effectiveTrackVolume(track, anySolo)` factorise la regle off/mute/solo.
+
+**Symetrie** : `FxMixer::setInstrument(strip, -1)` remet gain=1, mute=false, pan=0
+(`fx_mixer.h`). Sans ca, le gain residuel attenuait le soundfont charge ensuite.
+
+### N1 — soundfont a 1 preset : ne plus atterrir sur Presets
+
+`SoundfontWindow.kt` : `tab = if (loadedFileId != null && loadedPresets.size >= 2) Presets else All`.
+Un banc a un seul preset n'a rien a choisir : la liste ferait une ligne.
+
+### A — les textes de scene (cause racine : `sp` + fontScale)
+
+`AeT` passe par `size.fs()` qui produit des **`sp`**. Or toute la geometrie de la scene
+est en `dp` (`su()`), et `AeStage` ne figeait pas le `fontScale`. Un utilisateur reglant
+la taille de police systeme a 1,3x obtenait des libelles **30 % plus gros que leur case**
+alors que la geometrie ne bougeait pas → textes ecrases, valeurs decalees. Les captures
+Roborazzi (fontScale = 1) ne le montraient jamais.
+- `AeStage` : `CompositionLocalProvider(LocalDensity provides Density(d.density, fontScale = 1f))`.
+- `AeT` : `lineHeight = fontSize` (sinon le cadre Material3 de 24 sp fait plonger un
+  libelle de 9 unites dans une case de 12), `wrapContentWidth(unbounded = true)` (le
+  preview ne tronque jamais), et centrage dans la case selon `align`.
+
+### E / D / B / C / G — fenetre d'instrument
+
+- **E** : rouvrir la fenetre soundfonts d'une piste qui porte deja un instrument ouvre
+  **directement** l'interface de l'instrument (`sessions.containsKey`), pas le choix des
+  4 cartes. La fleche retour ramene au choix.
+- **D** : le `✕` en haut a droite est remplace par une **fleche retour** sobre en haut a
+  gauche (`BackArrow`, chevron dessine en Canvas). Titre decale a x=58.
+- **B** : `AeTile` passe d'un empilement de `Box` absolues a une **`Column` a 3 bandes**
+  (chips / visuel `weight(1f)` / titres) : les collisions titre-artwork disparaissent.
+  Le bouton `Unload` monte dans la rangee du haut.
+- **C** : `AeInstrumentsTabItem` resserre (padding 14/11 → 10/9, 13/9 sp → 12/8 sp,
+  `lineHeight` pose).
+- **G** : ouverture/fermeture de la fenetre en `AnimatedVisibility` (fade 220 ms +
+  `scaleIn` 0.94 → 1).
+
+### H — drawbar : suivi direct du doigt
+
+`AeDrawbar` suivait le doigt **a travers** `animateFloatAsState` : le ressort amortissait
+chaque pas, d'ou la sensation de trainer. Le cap suit maintenant `target` pendant le drag
+(`dragging`), le ressort ne sert plus qu'aux changements externes (preset, undo).
+
+### N2 — lourdeur du blur / TrackSettings / Patches : la vraie cause
+
+Ce n'etait **pas** le flou lui-meme mais **ce qui bougeait derriere**.
+`startPeakMeterSimulation` (`MixerViewModel`) mettait a jour les VU-metres a 5 Hz meme
+quand une fenetre flottante couvrait le mixer : chaque `_uiState.update` recomposait tout
+le sous-arbre **et forcait le blur a refaire sa passe hors ecran**. La boucle fait
+desormais `delay(200); continue` (gel) tant que `activePopup.isFloatingWindow()`.
+Meme traitement pour la derive des couleurs de piste (`MixerScreen`) : figee sous une
+fenetre, elle ne coute plus de frames.
+
+### I — allocations de la scene Sax
+
+`AeAnim.parts` allouait un `FloatArray` par particule et par frame. Pool de recyclage
+(`spareParts`) + `spawnPart(...)`. Fps au repos de la fenetre : 80 ms → **125 ms**.
+`AeAnim` : les particules mortes retournent au pool au lieu d'etre jetees.
+
+### Verification
+
+`:app:compileDebugKotlin` et `:app:assembleDebug` → BUILD SUCCESSFUL.
+Point non teste ici : le rendu **appareil** (le mute sur piste Æther, le fontScale a
+1,3x). Les captures Roborazzi tournent en fontScale = 1 et ne peuvent pas voir le bug A.

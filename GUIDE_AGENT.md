@@ -500,3 +500,52 @@ Cas reel : `MixerScreen.kt`, la fente du clavier virtuel
 Garde-fou : `KeyboardFoldStabilityTest` mesure la bottom bar (`testTag
 mixer_bottom_bar`) pendant toute l'animation de repli. Toujours verifier qu'un
 test de regression **echoue** sans le correctif (ici : 71 dp de poussee).
+
+---
+
+## 14. Piege : une scene a geometrie fixe ne doit pas suivre le fontScale
+
+`AeT` (`instruments/AeStage.kt`) passe par `size.fs()` qui produit des **`sp`**.
+Toute la geometrie de la scene Æther est en `dp` (`su()`), et `AeStage` ne figeait
+pas le `fontScale`. Consequence : un utilisateur reglant la taille de police
+systeme a **1,3x** obtenait des libelles 30 % plus gros que leur case, alors que
+les cases, elles, ne bougeaient pas — textes ecrases, valeurs decalees.
+
+Regle : des qu'un ecran est une **surface a ratio fixe** (scene, canvas de preview,
+HUD dessine), figer le `fontScale` dans le `CompositionLocalProvider` :
+
+```kotlin
+CompositionLocalProvider(
+    LocalAeScale provides s,
+    LocalDensity provides Density(d.density, fontScale = 1f),
+) { /* ... */ }
+```
+
+**Pourquoi les captures ne le voyaient pas** : Roborazzi tourne en `fontScale = 1`.
+Un bug de fontScale est **invisible dans tous les tests de capture** — il ne se
+reproduit qu'a l'oeil, sur un appareil regle autrement. Ne pas conclure « les
+captures sont bonnes donc l'ecran est bon » pour ce genre de defaut.
+
+**Complements dans `AeT`** : `lineHeight = fontSize` (le cadre Material3 par defaut
+de 24 sp fait plonger un libelle de 9 unites dans une case de 12) et
+`wrapContentWidth(unbounded = true)` (la reference ne tronque jamais).
+
+---
+
+## 15. Piege : une fenetre flottante qui n'arrete pas ce qui tourne derriere
+
+Symptome : le blur et les fenetres (Track Settings, Patches, FX) paraissent lourds,
+saccades. Le reflexe est d'accuser le flou. C'etait faux.
+
+**Cause reelle** : `startPeakMeterSimulation` (`MixerViewModel`) mettait a jour les
+VU-metres a 5 Hz **meme quand une fenetre couvrait le mixer**. Chaque
+`_uiState.update` recomposait tout le sous-arbre, ce qui **forcait le blur a refaire
+sa passe hors ecran** a chaque tick. Le cout n'etait pas le flou, mais le nombre de
+recompositions qu'il devait suivre.
+
+Regle : quand une surface plein ecran couvre le mixer (`activePopup.isFloatingWindow()`),
+**geler** toute boucle d'animation qui n'est pas visible : VU-metres (`delay(200);
+continue`) et derive des couleurs de piste. Elles reprennent seules a la fermeture.
+
+Meme logique pour toute animation de fond : se demander « est-ce visible ? » avant
+« est-ce que ca coute cher ? ».
