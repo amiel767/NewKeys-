@@ -88,7 +88,11 @@ fun ChannelStripV2(
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onTrackNameClick() },
                 contentAlignment = Alignment.Center
             ) {
-                val name = track.patchName.ifBlank { track.soundfontName.ifBlank { "—" } }
+                // An Æther instrument occupies the strip like a soundfont, so its name
+                // takes the plate. AeInstruments.sessions is snapshot state, so the read
+                // recomposes the plate when an instrument loads or unloads.
+                val aetherName = if (!track.isMaster) com.soundstage.mixer.instruments.AeInstruments.nameOn(track.id - 1) else null
+                val name = aetherName ?: track.patchName.ifBlank { track.soundfontName.ifBlank { "—" } }
                 // JSX: textShadow "0 1px 0 rgba(0,0,0,.45)" - rendered by an offset ghost Text.
                 Box(contentAlignment = Alignment.Center) {
                     Text(name, color = Color(0x8C000000),

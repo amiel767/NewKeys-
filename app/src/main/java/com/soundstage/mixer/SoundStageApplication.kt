@@ -13,6 +13,7 @@ class SoundStageApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         setupGlobalExceptionHandler()
+        com.soundstage.mixer.instruments.initAetherInstruments(this)
     }
 
     private fun setupGlobalExceptionHandler() {

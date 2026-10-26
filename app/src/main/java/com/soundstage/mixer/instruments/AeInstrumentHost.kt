@@ -1,9 +1,21 @@
 package com.soundstage.mixer.instruments
 
+import android.content.Context
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import com.soundstage.mixer.R
 import com.soundstage.mixer.audio.NativeAudioBridge
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+
+/** Assigns the bundled fonts to the instrument UI once, at startup. */
+fun initAetherInstruments(context: Context) {
+    AeFonts.plate = FontFamily(Font(R.font.cinzel))
+    AeFonts.mono = FontFamily(Font(R.font.share_tech_mono))
+    AeFonts.ui = FontFamily(Font(R.font.plus_jakarta_sans))
+    AeFonts.display = FontFamily(Font(R.font.sora))
+}
 
 /**
  * Bridges [AeHost] onto the native FxMixer facade. An Æther instrument occupies a mixer

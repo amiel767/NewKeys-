@@ -582,11 +582,15 @@ private fun MixerMainPageContent(
                     .zIndex(100f)
             ) {
                 // Layer lines show the loaded soundfont, not the generic track name.
-                val vkbLines = remember(uiState.tracks, uiState.visibleTracksCount) {
+                // Reading the session map here subscribes the composition to it, and the
+                // resulting names join the remember key so a load/unload rebuilds the lines.
+                val aetherNames = activePianoTracks.map { com.soundstage.mixer.instruments.AeInstruments.nameOn(it.id - 1) }
+                val vkbLines = remember(uiState.tracks, uiState.visibleTracksCount, aetherNames) {
                     activePianoTracks.map { t ->
                         KeyboardLine(
                             id = t.id.toString(),
-                            name = t.patchName.ifBlank { t.soundfontName.ifBlank { t.name } },
+                            name = com.soundstage.mixer.instruments.AeInstruments.nameOn(t.id - 1)
+                                ?: t.patchName.ifBlank { t.soundfontName.ifBlank { t.name } },
                             color = t.resolvedColor(trackColors),
                             low = t.splitNoteMin,
                             high = t.splitNoteMax
