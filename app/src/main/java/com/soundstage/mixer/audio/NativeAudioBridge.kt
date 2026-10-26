@@ -188,6 +188,48 @@ object NativeAudioBridge {
         }
     }
 
+    // Æther Instruments: an instrument lives on a mixer strip exactly like a soundfont.
+    // All of these are fire-and-forget so a missing/refusing native library cannot
+    // throw out of a Compose event handler and tear the window down.
+    fun safeSetTrackInstrument(track: Int, fxId: Int): Boolean {
+        if (!isLibraryLoaded) return false
+        return try {
+            setTrackInstrument(track, fxId)
+        } catch (e: Throwable) {
+            Log.e("NativeAudioBridge", "Error invoking setTrackInstrument: ${e.message}")
+            false
+        }
+    }
+
+    fun safeSetTrackInstrumentParam(track: Int, param: Int, norm: Float) {
+        if (!isLibraryLoaded) return
+        try {
+            setTrackInstrumentParam(track, param, norm)
+        } catch (e: Throwable) {
+            Log.e("NativeAudioBridge", "Error invoking setTrackInstrumentParam: ${e.message}")
+        }
+    }
+
+    fun safeApplyInstrumentPreset(track: Int, preset: Int): Boolean {
+        if (!isLibraryLoaded) return false
+        return try {
+            fxApplyInstrumentPreset(track, preset)
+        } catch (e: Throwable) {
+            Log.e("NativeAudioBridge", "Error invoking fxApplyInstrumentPreset: ${e.message}")
+            false
+        }
+    }
+
+    /** Peak level of a strip, 0f..1f+. Used by the instrument window's level meter. */
+    fun safeFxStripPeak(strip: Int, channel: Int = 0): Float {
+        if (!isLibraryLoaded) return 0f
+        return try {
+            fxStripPeak(strip, channel)
+        } catch (e: Throwable) {
+            0f
+        }
+    }
+
     fun safeLoadSoundFont(engineIndex: Int = ENGINE_FADER, absolutePath: String): Int {
         if (!isLibraryLoaded) {
             Log.e("NativeAudioBridge", "Cannot load SoundFont: native library is not loaded!")

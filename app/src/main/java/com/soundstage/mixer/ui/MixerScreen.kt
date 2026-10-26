@@ -1058,6 +1058,8 @@ fun MixerScreen(
 
                 SoundfontWindow(
                     state = sfWindowState,
+                    aether = com.soundstage.mixer.instruments.AeInstruments.manager,
+                    aetherStrip = uiState.activeSoundfontSlotId,
                     actions = object : SfWindowActions {
                         override fun onClose() { viewModel.closePopup() }
 

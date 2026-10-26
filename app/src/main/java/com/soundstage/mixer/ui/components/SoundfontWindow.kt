@@ -48,6 +48,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -299,8 +300,12 @@ fun SoundfontWindow(
     state: SoundfontWindowState,
     actions: SfWindowActions = NoOpSfWindowActions,
     modifier: Modifier = Modifier,
+    aether: com.soundstage.mixer.instruments.AeManager? = null,
+    aetherStrip: Int = 0,
 ) {
     var tab by remember { mutableStateOf(if (state.loadedFileId != null) SfTab.Presets else SfTab.All) }
+    var aetherTab by remember { mutableStateOf(false) }
+    var aetherOpen by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf<SfCategory?>(null) }
     var selectedBank by remember { mutableIntStateOf(state.loadedBank) }
@@ -324,6 +329,8 @@ fun SoundfontWindow(
             }
             selectedBank = state.loadedBank
             hiddenFileKeys.value = emptySet()
+            aetherTab = false
+            aetherOpen = false
         }
     }
 
@@ -486,6 +493,7 @@ fun SoundfontWindow(
                         tab = tab,
                         onTabChange = { t ->
                             tab = t
+                            aetherTab = false
                             selectedCategory = when (state.variant) {
                                 SoundfontVariant.Pad -> SfCategory.Pads
                                 SoundfontVariant.Drum -> SfCategory.Drums
@@ -493,6 +501,8 @@ fun SoundfontWindow(
                             }
                             query = ""
                         },
+                        aetherOn = aetherTab,
+                        onAether = if (aether != null && state.variant == SoundfontVariant.Track) ({ aetherTab = true }) else null,
                         categories = visibleCats,
                         counts = countsByCategory,
                         selected = selectedCategory,
@@ -562,6 +572,14 @@ fun SoundfontWindow(
                                 .fillMaxWidth()
                                 .weight(1f)
                         ) {
+                            if (aetherTab && aether != null) {
+                                com.soundstage.mixer.instruments.AeInstrumentsTabContent(
+                                    manager = aether,
+                                    strip = aetherStrip,
+                                    onOpen = { aetherOpen = true },
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            } else {
                             SfList(
                                 rows = currentRows,
                                 tab = tab,
@@ -585,7 +603,33 @@ fun SoundfontWindow(
                                     pendingDeleteKey = System.nanoTime()
                                 },
                             )
+                            }
                         }
+                    }
+                }
+
+                if (aetherOpen && aether != null) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(Color(0xCC05070D))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                            ) { /* absorb taps behind the instrument window */ },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        com.soundstage.mixer.instruments.AeInstrumentWindow(
+                            manager = aether,
+                            strip = aetherStrip,
+                            onClose = { aetherOpen = false },
+                            modifier = Modifier
+                                .fillMaxWidth(0.97f)
+                                .aspectRatio(
+                                    com.soundstage.mixer.instruments.AE_W /
+                                        com.soundstage.mixer.instruments.AE_H
+                                ),
+                        )
                     }
                 }
             }
@@ -755,6 +799,8 @@ private fun SfHeader(
 private fun SfLeftColumn(
     tab: SfTab,
     onTabChange: (SfTab) -> Unit,
+    aetherOn: Boolean,
+    onAether: (() -> Unit)?,
     categories: List<SfCategory>,
     counts: Map<SfCategory, Int>,
     selected: SfCategory?,
@@ -771,6 +817,15 @@ private fun SfLeftColumn(
                 .height(32.dp)
         )
         Spacer(Modifier.height(10.dp))
+
+        if (onAether != null) {
+            com.soundstage.mixer.instruments.AeInstrumentsTabItem(
+                selected = aetherOn,
+                onClick = onAether,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(10.dp))
+        }
 
         Text(
             "Category",
