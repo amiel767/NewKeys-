@@ -484,6 +484,10 @@ merge **sans aucun conflit**.
 - Commits : `[Mixer V2] <résumé> — Compile: OK`, avec
   `Co-authored-by: openhands <openhands@all-hands.dev>`.
 - Ne pas pousser sans demande explicite.
+- **Ne JAMAIS déclencher de workflow GitHub (release.yml ou autre) sans l'accord
+  explicite de l'utilisateur.** Règle posée le 2026-10-26. Construire l'APK en
+  local et pousser le commit est acceptable ; lancer une release ne l'est pas.
+  Si une release est utile, la proposer et attendre le feu vert.
 - Avant toute modification : rebaser sur le remote (il arrive que l'utilisateur
   ajoute des assets via l'UI GitHub, ce qui crée une divergence sans conflit).
 - Le remote peut recevoir des commits « Add files via upload » qui ne touchent
