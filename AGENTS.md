@@ -2953,4 +2953,37 @@ lire via `curl -s https://r.jina.ai/<url>` — le proxy jina renvoie le markdown
 ### Reste
 - Validation **appareil** (le son reel des deux moteurs sur une piste).
 - Persistance du choix d'instrument Æther par piste (setlist) — toujours non branchee.
+
 - Captures Roborazzi de l'onglet Æther et des deux fenetres d'instrument.
+### Correction 2026-10-26 — le halo armé était un bloom, pas un liseré
+
+Retour utilisateur : « pas ce genre de halo moche agressif… très fine et subtile
+fondu propre à chaque case, pas ce truc qui remplit tout qui déborde ».
+
+**Deux bugs empilés, chacun expliquant un symptôme :**
+
+1. **Remplissait tout.** `recordingHalo` était un `Brush.radialGradient` étalé sur
+   124 % de la case. Un dégradé radial **ignore la forme arrondie** : il peint le
+   rectangle entier, coins compris, et les 12 % de débord se posaient sur les cases
+   voisines. Remplacé par des `drawRoundRect` concentriques en `Stroke`, strictement
+   à l'intérieur des bornes : le liseré suit les coins et rien ne sort.
+
+2. **Était invisible au repos… puis peint sous le fond.** `drawBehind` peint **avant**
+   le `.background()` de `MixerModuleV2` : le dégradé opaque de la case recouvrait le
+   liseré. C'est pourquoi seul le débord du bloom se voyait — le bloom lui-même
+   passait sous le fond, seules ses parties extérieures ressortaient. Corrigé en
+   `drawWithContent` (`drawContent()` puis les anneaux), comme l'aura des pistes qui
+   dessine dans la boîte déjà remplie.
+
+**Profil mesuré** (capture 2340 px, traversée du bord gauche d'une case) :
+`49 → 37 → 27 → 19 → 10 → 3 → 0` sur **6 px**, intérieur à 0. Profondeur 3,2 dp,
+7 anneaux, alpha quadratique.
+
+**Adoucis aussi** : LED resserrée (rayon 0,30 → 0,17 de la case, alpha 0,85 → 0,40),
+remplissage de la case armée passé de `#5A2334` à `#3E2430`, intensité du liseré des
+cases 1,0 → 0,62.
+
+**Test garde-fou** : `armed_rim_is_visible_and_stays_inside_the_cases`
+(`BottomBarCaptureTest`) vérifie les **deux** régressions à la fois — > 400 px tièdes
+(sinon le liseré est invisible) et **0** px tiède dans les 700 px de droite (master +
+clavier, sinon il déborde). 5/5 PASS.

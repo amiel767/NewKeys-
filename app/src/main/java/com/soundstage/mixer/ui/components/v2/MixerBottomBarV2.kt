@@ -277,7 +277,7 @@ private fun SnapshotCaseV2(
             .recordingHalo(
                 color = if (isArming) Color(0xFFFF2A55) else Color.Transparent,
                 cornerRadius = 14.dp,
-                intensity = if (isArming) 1f else 0f
+                intensity = if (isArming) 0.62f else 0f
             )
             .pointerInput(key) {
                 detectVerticalDragGestures(
@@ -360,9 +360,9 @@ private fun FloppyCaseV2(
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                 pulse(); onToggleArm()
             },
-        panelTop = if (isArmed) Color(0xFF5A2334) else PanelTop,
-        panelBottom = if (isArmed) Color(0xFF3A1622) else PanelBottom,
-        highlightAlpha = if (isArmed) 0.24f else 0.09f
+        panelTop = if (isArmed) Color(0xFF3E2430) else PanelTop,
+        panelBottom = if (isArmed) Color(0xFF28161E) else PanelBottom,
+        highlightAlpha = if (isArmed) 0.16f else 0.09f
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             // LED: a small lit dot above the disk while armed. Drawn rather than
@@ -371,20 +371,21 @@ private fun FloppyCaseV2(
                 if (breathe <= 0.01f) return@Canvas
                 val cx = size.width / 2f
                 val cy = size.height * 0.17f
+                // Tight glow: it must read as a small lit LED, not wash the case.
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            Color(0xFFFF6B84).copy(alpha = 0.85f * breathe),
-                            Color(0xFFFF2A55).copy(alpha = 0.35f * breathe),
+                            Color(0xFFFF6B84).copy(alpha = 0.40f * breathe),
+                            Color(0xFFFF2A55).copy(alpha = 0.14f * breathe),
                             Color.Transparent
                         ),
                         center = Offset(cx, cy),
-                        radius = size.minDimension * 0.30f
+                        radius = size.minDimension * 0.17f
                     ),
-                    radius = size.minDimension * 0.30f,
+                    radius = size.minDimension * 0.17f,
                     center = Offset(cx, cy)
                 )
-                drawCircle(Color(0xFFFF8FA3).copy(alpha = breathe), radius = 2.2.dp.toPx(), center = Offset(cx, cy))
+                drawCircle(Color(0xFFFF9AAC).copy(alpha = 0.92f * breathe), radius = 1.6.dp.toPx(), center = Offset(cx, cy))
             }
             FloppyDiskIcon(isArmed = isArmed, modifier = Modifier.size(18.dp))
         }
@@ -392,30 +393,46 @@ private fun FloppyCaseV2(
 }
 
 /**
- * Soft halo painted behind a case, matching the strip aura rather than a platform
- * shadow: a wide radial falloff plus a low vertical wash. `Modifier.shadow` cannot
- * be used here — it is painted over translucent fills and does not render in the
- * offscreen capture, so it cannot be verified.
+ * A fine lit rim inside a case, fading inward over a few dp.
+ *
+ * This used to be a wide radial bloom painted 12 % outside the case, so it spilled
+ * onto the neighbours and, because a radial gradient ignores the rounded shape, it
+ * filled the whole rectangle instead of tracing the border. It now draws concentric
+ * rounded-rect strokes strictly inside the bounds: the glow follows the corners and
+ * nothing escapes the case.
+ *
+ * Painted with `drawBehind` rather than `Modifier.shadow`, which is drawn over
+ * translucent fills and is not rendered by the offscreen capture.
  */
 fun Modifier.recordingHalo(
     color: Color,
     cornerRadius: androidx.compose.ui.unit.Dp = 14.dp,
     intensity: Float = 1f
-): Modifier = this.drawBehind {
-    if (intensity <= 0.01f) return@drawBehind
-    val r = cornerRadius.toPx()
+): Modifier = this.drawWithContent {
+    // `drawWithContent`, not `drawBehind`: the case paints an opaque panel gradient
+    // after this modifier, so a rim drawn behind it is completely hidden. The strip
+    // aura solves the same problem by drawing inside the already-filled box.
+    drawContent()
+    if (intensity <= 0.01f) return@drawWithContent
     val a = intensity.coerceIn(0f, 1f)
-    // Wide bloom that spills past the case, like the strip aura spills past the fader.
-    drawRoundRect(
-        brush = Brush.radialGradient(
-            colors = listOf(color.copy(alpha = 0.30f * a), color.copy(alpha = 0.10f * a), Color.Transparent),
-            center = Offset(size.width / 2f, size.height / 2f),
-            radius = size.maxDimension * 0.78f
-        ),
-        topLeft = Offset(-size.width * 0.12f, -size.height * 0.12f),
-        size = Size(size.width * 1.24f, size.height * 1.24f),
-        cornerRadius = CornerRadius(r * 1.2f, r * 1.2f)
-    )
+    val r = cornerRadius.toPx()
+    val depth = 3.2.dp.toPx()
+    val layers = 7
+    val step = depth / layers
+    // Each ring sits `step` further in and dimmer than the one outside it, so the
+    // falloff reads as a lit edge rather than a fill.
+    for (i in 0 until layers) {
+        val inset = step * (i + 0.5f)
+        val falloff = 1f - i / layers.toFloat()
+        val alpha = falloff * falloff * 0.42f * a
+        drawRoundRect(
+            color = color.copy(alpha = alpha),
+            topLeft = Offset(inset, inset),
+            size = Size(size.width - inset * 2f, size.height - inset * 2f),
+            cornerRadius = CornerRadius((r - inset).coerceAtLeast(0f)),
+            style = Stroke(width = step)
+        )
+    }
 }
 
 /**
