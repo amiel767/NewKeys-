@@ -2791,3 +2791,41 @@ case, la rejouer, changer de patch). Le correctif est une cause reelle mais l'ap
 est le seul juge pour un plantage qui n'apparait que la.
 
 **Rapport HTML** : `/workspace/dl/live-looper/index.html` (style impose).
+
+## Session 2026-10-24 — nettoyage assets + integration Æther Instruments (discussion)
+
+### Briefs obsoletes supprimes (commit `9ce221a`)
+19 fichiers retires de `app/assets/` : `B6-1..5.txt`, `B6-fix.txt`,
+`Brief B6 Fix 2.txt`, `Brief Mixer.txt`, `Brief Mixer 2..7.txt`,
+`BRIEF MIXER 8 — Polish V2.txt`, `B8-1-brief-coque-fx.txt`, `Reprise.txt`,
+`VirtualKeyboard_Agent_Brief.md`, `brief-integration-sustain-pedal.txt`.
+Aucun n'etait reference par le code ni les outils. **Conserves** : tous les
+`*Preview.jsx`, les `.kt` de reference, et tous les zips.
+Les mentions `VirtualKeyboard_Agent_Brief.md` (l.194) et
+`brief-integration-sustain-pedal.txt` (l.466) ci-dessus sont donc historiques.
+
+### `aether-instruments-kotlin-v2.zip` (recu, commit `0c7c6a9`)
+Portage Kotlin/Compose Organ + Synth pour la **fenetre soundfonts**, package
+`com.aetherkeys.instruments`, 22 fichiers. A lire avant integration :
+- `AeInstrument.ORGAN(6)`, `SYNTH(14)` — **mêmes ids que `FxRegistry`** ;
+- `AeHost` mappe 1:1 sur `NativeAudioBridge.setTrackInstrument/Param` + noteOn/off ;
+- dependance unique : `com.caverock:androidsvg-aar:1.4` (**absente** du build) ;
+- polices : Cinzel **absente** de `res/font/` (sora/jakarta/share_tech_mono presents) ;
+- `PATCH-SoundfontWindow.md` : les 5 ancres verifiees tombent juste sur le
+  `SoundfontWindow.kt` actuel (l.298/303/755/844/289/956).
+- `preview-aether-instruments.html` = 55 489 o, non vide (le « 0 octet » ne se
+  reproduit pas).
+
+### Piege de la note vers une SOURCE (verifie, compte pour les saccades)
+`routeEventToSource` (audio_engine.cpp:563) gate sur `mFx.soundfontPaused(channel)`,
+et `soundfontPaused` n'est vrai que si `kindOf(id) == Source` (fx_mixer.h:96).
+Donc **seuls Organ (6) et Synth (14) captent les notes** ; Piano/Sax/Strings/
+Guitar/Brass (SHAPER) ne les captent pas. Le routage passe par la file
+`EngineMidiEvent` drainee sur le thread audio (`drainEvents`) : le JNI `noteOn`
+n'appelle jamais `mFx` directement.
+
+### Cout a vide du chemin FX (pour la cible « pas de saccade »)
+`renderFxPath` sort tot si `!hasActiveWork()` ; mais des qu'un instrument existe
+quelque part, les **10 canaux** passent par `renderChannels` (`fluid_synth_process`
+planar + entrelacement), et une strip inactive est repliee directement. Le vrai
+poste de depense mesure reste FluidSynth multi-canal, pas le mixeur FX.
