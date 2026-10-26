@@ -18,6 +18,11 @@ class LeadsEngine : public SourceFx {
     bool on = false, gate = false;
     int note = -1, stage = 0;
     float vel = 0.f, pit = 60.f, target = 60.f, age = 0.f, envT = 0.f;
+    // Per-voice randomness (DeepSeek patch): slow drift LFO, fixed detune offset, envelope
+    // timing spread, filter-Q jitter and saturation drive. Seeded at note-on so a voice is
+    // stable for its whole life but no two voices are identical.
+    float driftPh = 0.f, driftPh2 = .5f, driftDepth = 2.5f, voiceOff = 0.f, varA = 1.f, varD = 1.f, qJit = 0.f, satDrive = 1.3f;
+    uint32_t rng = 1u;
     float ph[kOsc] = {0};
     float ic[2] = {0, 0};
   };
@@ -54,6 +59,7 @@ class LeadsEngine : public SourceFx {
       const float prev = v.on ? v.pit : static_cast<float>(note);
       v.on = true; v.gate = true; v.note = note; v.vel = vel / 127.f; v.stage = 1; v.envT = 0.f;
       v.pit = prev; v.target = static_cast<float>(note); v.age = ++age_;
+      seed(v);
       return;
     }
     // mono / legato: a single voice, gliding from the previous pitch
@@ -62,7 +68,7 @@ class LeadsEngine : public SourceFx {
     const bool wasOn = v.on;
     const float prev = v.on ? v.pit : static_cast<float>(note);
     v.note = note; v.vel = vel / 127.f; v.on = true; v.gate = true; v.target = static_cast<float>(note); v.age = ++age_;
-    if (mode == 1 || !wasOn) { v.stage = 1; v.envT = 0.f; }
+    if (mode == 1 || !wasOn) { v.stage = 1; v.envT = 0.f; seed(v); }
     v.pit = prev;
   }
   void noteOff(int note) override {
@@ -94,7 +100,7 @@ class LeadsEngine : public SourceFx {
     const float R = .01f + p(16) * p(16) * 4.f;
     const int ftype = static_cast<int>(std::lround(p(17) * 2.f));
     const float fc0 = 40.f * std::pow(500.f, p(18)), pk = std::min(18000.f, fc0 * std::pow(2.f, p(20) * 6.f));
-    const float kf = 1.f / (.5f + p(19) * p(19) * 14.f);
+    const float kfBase = .5f + p(19) * p(19) * 14.f;
     const int mode = static_cast<int>(std::lround(p(28) * 2.f));
     const float glTime = p(29) * p(29) * 1.2f / 3.f;
     const float gl = glTime < .002f ? 1.f : 1.f - std::exp(static_cast<float>(-1.0 / (glTime * sr_)));
@@ -117,21 +123,27 @@ class LeadsEngine : public SourceFx {
         const float tgt = v.target + bend_ * 2.f;
         v.pit += (tgt - v.pit) * (mode == 0 ? 1.f : gl);
         const float f = 440.f * std::pow(2.f, (v.pit - 69.f) / 12.f);
-        const float fc = fcAt(v, fc0, pk, S, A, D);
+        // Per-voice slow drift (DeepSeek patch): a 0.12..0.47 Hz LFO on the detune, so held
+        // voices never sit perfectly still. depth 1.5..4 cents.
+        v.driftPh += static_cast<float>(0.12f + v.driftPh2 * 0.35f) * invSr; if (v.driftPh >= 1.f) v.driftPh -= 1.f;
+        const float drift = sineTable().at(v.driftPh) * v.driftDepth;
+        const float detuneAll = vib + v.voiceOff + drift;
+        const float fc = fcAt(v, fc0, pk, S, A * v.varA, D * v.varD);
+        const float kf = 1.f / (kfBase + v.qJit);
         const float g = std::tan(static_cast<float>(kPi) * std::min(fc, .45f * static_cast<float>(sr_)) * invSr);
         const float a1 = 1.f / (1.f + g * (g + kf)), a2 = g * a1, a3 = g * a2;
         float sum = 0.f;
-        sum += osc(v, 0, f, oct(p(5)), 0.f, 0, lvl[0], pw, vib, invSr);
-        sum += osc(v, 1, f, oct(p(6)), 0.f, 1, lvl[1], pw, vib, invSr);
-        sum += osc(v, 2, f, oct(p(7)), 0.f, 2, lvl[2], pw, vib, invSr);
-        for (int k = 0; k < 5; ++k) sum += osc(v, 3 + k, f, oct(p(8)), (k - 2) * det, 2, lvl[3], pw, vib, invSr);
-        sum += osc(v, 8, f, oct(p(9)), -5.f, 3, lvl[4], pw, vib, invSr);
-        sum += osc(v, 9, f, oct(p(9)), 5.f, 3, lvl[4], pw, vib, invSr);
-        sum = fastTanh(sum * .55f * 1.3f);
+        sum += osc(v, 0, f, oct(p(5)), detuneAll, 0, lvl[0], pw, invSr);
+        sum += osc(v, 1, f, oct(p(6)), detuneAll, 1, lvl[1], pw, invSr);
+        sum += osc(v, 2, f, oct(p(7)), detuneAll, 2, lvl[2], pw, invSr);
+        for (int k = 0; k < 5; ++k) sum += osc(v, 3 + k, f, oct(p(8)), detuneAll + (k - 2) * det, 2, lvl[3], pw, invSr);
+        sum += osc(v, 8, f, oct(p(9)), detuneAll - 5.f, 3, lvl[4], pw, invSr);
+        sum += osc(v, 9, f, oct(p(9)), detuneAll + 5.f, 3, lvl[4], pw, invSr);
+        sum = fastTanh(sum * .55f * v.satDrive);
         const float v3 = sum - v.ic[1], v1 = a1 * v.ic[0] + a2 * v3, v2 = v.ic[1] + a2 * v.ic[0] + a3 * v3;
         v.ic[0] = 2.f * v1 - v.ic[0]; v.ic[1] = 2.f * v2 - v.ic[1];
         const float y = ftype == 0 ? v2 : ftype == 1 ? sum - kf * v1 - v2 : v1;
-        mono += y * ampAt(v, v.vel, A, D, S, R);
+        mono += y * ampAt(v, v.vel, A * v.varA, D * v.varD, S, R);
       }
       // ---- shared bus: chorus -> tone shelves -> delay -> (reverb below) ----
       float ch = mono;
@@ -175,13 +187,27 @@ class LeadsEngine : public SourceFx {
       default: return 4.f * std::fabs(ph - .5f) - 1.f;
     }
   }
-  float osc(Voice& v, int slot, float f, float octMul, float cents, int shape, float gain, float pw, float vib, float invSr) {
+  float osc(Voice& v, int slot, float f, float octMul, float cents, int shape, float gain, float pw, float invSr) {
     if (gain <= .02f) return 0.f;
-    const float inc = f * octMul * std::pow(2.f, (cents + vib) / 1200.f) * invSr;
+    const float inc = f * octMul * std::pow(2.f, cents / 1200.f) * invSr;
     float& ph = v.ph[slot];
     const float s = wave(shape, ph, inc, pw);
     ph += inc; if (ph >= 1.f) ph -= 1.f;
     return s * gain;
+  }
+  // Per-voice randomness seeded at note-on: drift LFO rate/depth, a fixed detune offset
+  // (voiceOff, +-3.5 cents), envelope timing spread (+-12%), filter-Q jitter and saturation
+  // drive. Mirrors the Math.random() calls of the reference mkLead().
+  static void seed(Voice& v) {
+    auto r = [&v]() { v.rng ^= v.rng << 13; v.rng ^= v.rng >> 17; v.rng ^= v.rng << 5; return static_cast<float>(static_cast<int32_t>(v.rng)) * (1.0f / 2147483648.0f); };
+    r();
+    v.driftPh2 = .5f + r() * .5f;
+    v.driftDepth = 1.5f + (.5f + r() * .5f) * 2.5f;
+    v.voiceOff = r() * 7.f;
+    v.varA = .88f + (.5f + r() * .5f) * .24f;
+    v.varD = .88f + (.5f + r() * .5f) * .24f;
+    v.qJit = r() * .5f;
+    v.satDrive = 1.1f + (.5f + r() * .5f) * .4f;
   }
   // One stage machine drives both the amplitude and the filter envelope (same A/H/D).
   static void stepEnv(Voice& v, float A, float H, float D, float R, float invSr) {
