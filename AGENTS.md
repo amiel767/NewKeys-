@@ -3128,3 +3128,11 @@ premiere rangee, et **0 difference** en dehors de la ligne (diff max 2/255).
 `git fetch` echoue avec le token en dur (`ghu_...` expire) : remettre l'URL avec
 `${GITHUB_TOKEN}`. `origin/main` avance par petits commits « Add files via upload »
 ou docs — verifier `git log HEAD..origin/main` avant de rebaser.
+
+**Rapport HTML de session** (style impose) :
+`/workspace/dl/session-ae-2026-10-26/index.html` — servi sur les deux ports.
+Verifie avec `python3 tools/conv_sync.py` : la conversation parallele
+`dde6dffb` n'a plus rien ecrit apres le 2026-10-26T18:41:48 (regle « pas de
+workflow sans accord »). Le travail de cette session ne recouvre aucun de ses
+fichiers (`MixerBottomBarV2.kt`, `SnapshotJson.kt`, `AppStatePersistence.kt`,
+`BottomBarCaptureTest.kt`).
