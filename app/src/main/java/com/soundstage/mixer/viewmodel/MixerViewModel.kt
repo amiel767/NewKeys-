@@ -496,6 +496,15 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         audioEngine.trackBendRangeProvider = { ch -> _uiState.value.tracks.getOrNull(ch)?.pitchBendRange ?: 2 }
+
+        // An Æther instrument and a soundfont are the same thing on a strip: the track's
+        // instrument. Loading one releases the other, so a strip never hides a soundfont
+        // behind a source the way it could while the instrument lived in the FX rack.
+        com.soundstage.mixer.instruments.AeInstruments.onBeforeLoad = { slot ->
+            if ((_uiState.value.audioSlots.getOrNull(slot)?.soundFontId ?: -1) >= 0) {
+                unloadSoundFontFromSlot(slot)
+            }
+        }
         _uiState.value.tracks.forEach { track ->
             audioEngine.setTrackVelocityProcessor(track.id - 1, VelocityProcessor(track.velocityConfig))
             applyTrackPlaybackSettings(track)
@@ -3281,6 +3290,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     fun loadSoundFontForSlot(slotId: Int, sf2Path: String, bank: Int = 0, preset: Int = 0, patchName: String? = null, saveAfterLoad: Boolean = true) {
         val slot = _uiState.value.audioSlots.getOrNull(slotId) ?: return
         val targetChannel = AudioSlot.midiChannelForSlot(slotId)
+
+        // A soundfont and an Æther instrument are exclusive on a strip: loading one
+        // releases the other, so the strip's instrument is never ambiguous.
+        com.soundstage.mixer.instruments.AeInstruments.unload(slotId)
 
         viewModelScope.launch(Dispatchers.IO) {
             soundFontLoadMutex.withLock {

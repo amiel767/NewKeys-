@@ -53,6 +53,17 @@ class SynthEngine : public SourceFx {
 
   void process(float* io, int n) override {
     NoDenormals nd;
+    // Silent early-out: no voice sounding (releases included) means the block is
+    // silence. Skips the oscillator/filter loop that otherwise ran on every block
+    // for a loaded-but-idle instrument.
+    bool any = false;
+    for (auto& v : v_) if (v.on) { any = true; break; }
+    if (!any) {
+      std::fill(io, io + 2 * n, 0.f);
+      setMeter(0, 0.f);
+      activeVoices_ = 0;
+      return;
+    }
     const float wA = p(0), wB = p(1), detune = p(2) * 30.f, sub = p(3), noiseA = p(4) * 0.5f, spread = p(6) * 40.f;
     const int maxV = 1 + static_cast<int>(std::lround(p(28) * 15.f));
     int nU = 1 + static_cast<int>(std::lround(p(5) * 7.f)); nU = std::max(1, std::min(nU, 48 / std::max(1, maxV)));

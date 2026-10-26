@@ -75,6 +75,10 @@ fun FxAddOverlay(
     val isInstrument = { m: EffectModule -> m.kind != FxScreenKind.EFFECT }
     val visible = modules
         .filter { if (tab == FxAddTab.EFFECTS) !isInstrument(it) else isInstrument(it) }
+        // Organ (6) and Synth (14) are no longer FX instruments: they are loaded per track
+        // from the soundfont window's Æther Instruments tab. They stay in the registry so a
+        // strip that already carries one still resolves, but they must not be offered here.
+        .filter { it.id !in AE_RETIRED_INSTRUMENT_IDS }
         .filter { family == "All" || AddMeta.familyOf(it.id) == family }
         .filter {
             query.isBlank() || (it.name + " " + it.type + " " + AddMeta.descOf(it.id) + " " + AddMeta.familyOf(it.id))
@@ -243,6 +247,13 @@ private fun AddTile(m: EffectModule, on: Boolean, disabled: Boolean, onClick: ()
 
 private val FAMS_EFFECTS = listOf("All", "Dynamics", "EQ", "Space", "Amps", "Voices")
 private val FAMS_INSTRUMENT = listOf("All", "Keys", "Guitar", "Winds", "Strings", "Synth")
+
+/**
+ * Instruments that left the FX window. Organ (6) and Synth (14) are now real track
+ * instruments loaded from the soundfont window's Æther Instruments tab, not FX entries.
+ * They keep their ids in FxRegistry (note routing and persistence still resolve them).
+ */
+private val AE_RETIRED_INSTRUMENT_IDS = setOf(6, 14)
 
 /**
  * `CAT2`, `ICK` and `INSTR` from the preview: per-effect family, description and icon.

@@ -39,6 +39,17 @@ class OrganEngine : public SourceFx {
 
   void process(float* io, int n) override {
     NoDenormals nd;
+    // Silent early-out: no key held, no percussion/click tail, no reverb tail and the
+    // Leslie stopped means the block is silence. Skips the per-sample chain (drawbars,
+    // vibrato delay, Leslie, crossover, reverb, tanh) that otherwise ran for a
+    // loaded-but-idle instrument. The rotary is excluded on purpose: it must keep
+    // turning while it is running, or the horn would spin up again on the next note.
+    const int rotNow = static_cast<int>(std::lround(p(25) * 2.f));
+    if (heldCount_ == 0 && percEnv_ < 1e-4f && clickEnv_ < 1e-4f && rotNow == 0 && rev_.meter(0) < 1e-4f) {
+      std::fill(io, io + 2 * n, 0.f);
+      setMeter(0, 0.f);
+      return;
+    }
     const float cf = smoothCoef(n, sr_, 0.02);
     const float click = sm_[0].step(p(26), cf), tone = sm_[1].step(p(27), cf), drive = sm_[2].step(p(28), cf), space = sm_[3].step(p(29), cf), lvl = sm_[4].step(p(30), cf);
     int dbU[9], dbL[9];

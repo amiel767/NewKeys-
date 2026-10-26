@@ -53,6 +53,13 @@ object AeInstruments {
 
     val manager: AeManager by lazy { AeManager(AeInstrumentHost, scope) }
 
+    /**
+     * Set by the ViewModel. Called before an instrument loads on a strip so the app can
+     * release whatever else occupies it — an Æther instrument replaces the soundfont,
+     * exactly like loading a soundfont replaces the Æther instrument.
+     */
+    var onBeforeLoad: ((Int) -> Unit)? = null
+
     fun session(strip: Int): AeSession? = manager.sessions[strip]
 
     fun isLoaded(strip: Int): Boolean = manager.sessions.containsKey(strip)
@@ -61,8 +68,11 @@ object AeInstruments {
     fun nameOn(strip: Int): String? = manager.sessions[strip]?.instrument?.title
 
     /** Loads an instrument on a strip and returns true when the engine accepted it. */
-    fun load(strip: Int, instrument: AeInstrument): Boolean =
-        manager.load(strip, instrument) != null
+    fun load(strip: Int, instrument: AeInstrument): Boolean {
+        if (manager.sessions[strip]?.instrument == instrument) return true
+        onBeforeLoad?.invoke(strip)
+        return manager.load(strip, instrument) != null
+    }
 
     fun unload(strip: Int) = manager.unload(strip)
 }
