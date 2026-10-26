@@ -2829,3 +2829,63 @@ n'appelle jamais `mFx` directement.
 quelque part, les **10 canaux** passent par `renderChannels` (`fluid_synth_process`
 planar + entrelacement), et une strip inactive est repliee directement. Le vrai
 poste de depense mesure reste FluidSynth multi-canal, pas le mixeur FX.
+
+## Session 2026-10-26 — Æther Instruments integres (faits, commits 6ae6d92 → 0f8ebbe)
+
+Directive validee : **retirer Organ et Synth des choix FX** et les charger
+**directement dans une piste**, ou ils se comportent **exactement comme un
+soundfont** (MIDI, volume, pan, mute, couleur) et comptent comme des
+**instruments reels, pas des effets**.
+
+### Ce qui a ete fait
+1. **Import** (commit `c2cd92e`) : 9 `Ae*.kt` dans
+   `app/src/main/java/com/soundstage/mixer/instruments/` (package renomme
+   `com.aetherkeys.instruments` → `com.soundstage.mixer.instruments`),
+   `cinzel.ttf` + `Cinzel-OFL.txt`, `androidsvg = "1.4"` dans `libs.versions.toml`.
+   **Piege corrige** : le KDoc de `AeSvgAssets.kt` contenait `svg/*.svg` → le `/*`
+   interne ouvrait un commentaire imbrique non ferme. Reformule.
+2. **Hote + gestionnaire** (commit `6ae6d92`) :
+   `AeInstrumentHost` (AeHost → `NativeAudioBridge`), `AeInstruments` (singleton
+   applicatif, survit a la fermeture de la fenetre), 4 wrappers `safe*` ajoutes a
+   `NativeAudioBridge`. `SoundfontWindow` recoit les **5 modifications** de
+   `PATCH-SoundfontWindow.md` (onglet Æther a gauche, contenu a droite, fenetre
+   1000x460 en surcouche). `MixerScreen` passe `aether` + `aetherStrip`.
+3. **Exclusivite + retrait des FX** (commit `5016704`) :
+   `FxAddOverlay` filtre `AE_RETIRED_INSTRUMENT_IDS = {6, 14}` (le registre les
+   garde : routage et persistance les resolvent encore). `AeInstruments.onBeforeLoad`
+   (pose par le VM) decharge le soundfont de la piste ; `loadSoundFontForSlot`
+   decharge l'instrument Æther. **Un instrument Æther et un soundfont sont la meme
+   chose sur une piste** : le dernier charge gagne.
+4. **Early-out silence** (meme commit) : `fx_organ.h` / `fx_synth.h` sortent tot
+   quand aucune voix ne sonne. L'orgue **exclut le Leslie en marche** (`rotNow != 0`)
+   et tient compte de la queue de reverb (`rev_.meter(0)`), sinon le horn
+   redemarrerait ou la queue serait coupee.
+5. **Polices + nom + tests** (commit `0f8ebbe`) :
+   `initAetherInstruments(context)` dans `SoundStageApplication.onCreate` assigne
+   Cinzel/Share Tech Mono/Plus Jakarta/Sora a `AeFonts` (sinon repli systeme).
+   `ChannelStripV2` et les lignes du clavier affichent le nom de l'instrument Æther
+   a la place du patch (lecture de `AeInstruments.sessions`, etat snapshot).
+   `AeManagerTest` (8 tests JVM purs, `FakeHost`) : 8/8 OK.
+
+### Pieges verifies de cette integration
+- **Le natif gagne, pas Kotlin.** `routeEventToSource` (audio_engine.cpp:563) route
+  deja les notes vers la source quand `soundfontPaused(strip)` est vrai. **Aucun
+  hook Kotlin n'est necessaire pour le son** ; Kotlin ne fait que load/params/UI.
+- **`aspectRatio`** n'etait pas importe dans `SoundfontWindow.kt` (compilation
+  echouee une fois).
+- **L'onglet Æther n'existe que pour `SoundfontVariant.Track`** (slots 0..7). Pad
+  (9) et Drum (8) gardent leur fenetre inchangee.
+- **`AeFonts` a des replis systeme** : sans `initAetherInstruments`, l'UI tourne
+  mais en SansSerif/Monospace. C'est silencieux — d'ou l'appel explicite.
+- **`AeSvgAssets.kt`** : le `/*` dans un KDoc **ouvre un commentaire imbrique en
+  Kotlin**. Ne jamais ecrire `svg/*.svg` dans une KDoc ; dire « le dossier svg ».
+- **Le manager pousse le preset 1 en entier** au chargement
+  (`AeManager.load` → `host.setParam` par index). Ne pas re-pousser cote VM.
+
+### Reste (cette session s'arrete ici, consignes a venir)
+- Validation **appareil** (pas d'emulateur ici) : son reel de l'orgue/synth sur une
+  piste, absence de saccade a l'ajout d'un FX.
+- Persistance du choix d'instrument Æther par piste (setlist) — non branchee.
+- Captures Roborazzi de l'onglet Æther (l'onglet et la fenetre ne sont pas encore
+  captures).
+

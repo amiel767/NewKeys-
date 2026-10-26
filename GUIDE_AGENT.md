@@ -107,6 +107,7 @@ Point d'entree : `MainActivity` -> `ui/MixerScreen.kt` (composeur central).
 | Audio natif | `cpp/audio_engine.{h,cpp}`, `cpp/soundfont_engine.{h,cpp}`, `cpp/native-lib.cpp` |
 | FX Aether (moteur) | `cpp/aetherfx/*.h` (header-only, portable) |
 | FX Aether (UI) | `com/aetherkeys/fx/ui/*` + `com/soundstage/mixer/ui/fx/*` |
+| Instruments Aether (Organ/Synth) | `instruments/Ae*.kt` (UI+logique), hote : `instruments/AeInstrumentHost.kt` |
 | Clavier virtuel | `ui/components/VirtualKeyboard.kt` |
 | DrumPad / Looper | `ui/pages/DrumPadScreen.kt`, `ui/components/drumpad/*`, `audio/LooperEngine.kt` |
 | LiveLooper (nouvelle version) | `looper/LiveLooperModel.kt`, `looper/LiveLooperUi.kt` (source de verite visuelle : `app/assets/LoopsPreview.jsx`) |
@@ -373,6 +374,53 @@ mesurent 6,5 = un ancetre contraint.
 
 Puis mesurer les bandes de cartes (Pillow) : deux rangees d'environ 120 dp en
 640dp, 137 dp en 851dp, pour une reference a 146 dp en 891dp.
+
+---
+
+## 10b. Instruments Aether (Organ / Synth) — sur une piste, comme un soundfont
+
+Organ et Synth ne sont **plus** des entrees du rack FX. Ils se chargent sur une
+piste depuis la **fenetre soundfonts** (onglet « Æther Instruments » a gauche),
+et se comportent exactement comme un soundfont : MIDI, volume, pan, mute, couleur,
+nom sur la plaque. Ce sont des **instruments reels**, pas des effets.
+
+| Element | Chemin |
+|---|---|
+| Hote moteur (AeHost -> JNI) | `instruments/AeInstrumentHost.kt` (`AeInstrumentHost`) |
+| Gestionnaire applicatif (singleton) | `instruments/AeInstrumentHost.kt` (`AeInstruments`) |
+| Logique + sessions | `instruments/AeCore.kt` (`AeManager`, `AeSession`, `AeHost`) |
+| Onglet + fenetre instrument | `instruments/AeWindow.kt` |
+| Rendu / polices / SVG | `instruments/AeStage.kt`, `AeDraw.kt`, `AeSvgAssets.kt` |
+| UI Organ / Synth | `instruments/AeOrganUi.kt`, `AeSynthUi.kt`, `AeControls.kt` |
+| Presets | `instruments/AePresets.kt` |
+| Point d'entree fenetre | `ui/components/SoundfontWindow.kt` (params `aether`, `aetherStrip`) |
+| Appelant | `ui/MixerScreen.kt` (`AeInstruments.manager`, `activeSoundfontSlotId`) |
+| Polices au demarrage | `SoundStageApplication.onCreate` -> `initAetherInstruments(this)` |
+| Tests | `app/src/test/.../AeManagerTest.kt` (8 tests, JVM pur, `FakeHost`) |
+
+### Regles a ne pas casser
+
+- **Le son ne passe pas par Kotlin.** `routeEventToSource` (natif) route deja les
+  notes vers la source des que la piste porte un instrument. Kotlin ne fait que
+  charger/regler/afficher. Ne pas ajouter de hook de notes cote VM.
+- **Un instrument Æther et un soundfont s'excluent** sur une piste :
+  `AeInstruments.onBeforeLoad` decharge le SF ; `loadSoundFontForSlot` decharge
+  l'instrument. Le dernier charge gagne.
+- **Le registre garde les ids 6 et 14.** Seul `FxAddOverlay` les filtre
+  (`AE_RETIRED_INSTRUMENT_IDS`). Le routage natif et la persistance en ont besoin.
+- **L'onglet n'existe que pour `SoundfontVariant.Track`** (slots 0..7).
+- **`AeFonts` a des replis systeme** : sans `initAetherInstruments`, l'UI tourne
+  en SansSerif/Monospace, en silence. Ne pas retirer l'appel.
+- **`AeSvgAssets.kt`** : ne jamais ecrire `svg/*.svg` dans une KDoc — le `/*`
+  ouvre un commentaire imbrique en Kotlin et la compilation casse.
+- **Le manager pousse le preset 1 en entier** au chargement. Ne pas re-pousser
+  les params cote VM.
+
+### Etat / reste a faire
+Fait : import, hote, gestionnaire, onglet + fenetre, exclusivite, retrait des FX,
+early-out silence (organ/synth), polices, nom sur la plaque, tests.
+Reste : **validation appareil** (pas d'emulateur ici), persistance du choix
+d'instrument par piste (setlist), captures Roborazzi de l'onglet.
 
 ---
 
