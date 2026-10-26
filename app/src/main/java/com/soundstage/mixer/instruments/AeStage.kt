@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.em
@@ -31,13 +32,23 @@ const val AE_W = 1000f
 const val AE_H = 460f
 val LocalAeScale = compositionLocalOf { 1f }
 
-/** Fits the 1000 x 460 stage into the available box (letterboxed, centred). Recommended window ratio = AE_W / AE_H. */
+/**
+ * Fits the 1000 x 460 stage into the available box (letterboxed, centred). Recommended window ratio = AE_W / AE_H.
+ *
+ * The stage is a fixed-ratio drawing surface, like the canvas of the JSX reference: its text must
+ * not follow the device font-scale setting. A user running the system at 1.3x got labels 30% larger
+ * than the boxes that hold them while the geometry stayed put, which is what made the values look
+ * off-centre and the labels squashed. Pinning fontScale to 1 keeps text and layout locked together.
+ */
 @Composable
 fun AeStage(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
     BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
         val s = min(constraints.maxWidth / AE_W, constraints.maxHeight / AE_H)
         val d = LocalDensity.current
-        CompositionLocalProvider(LocalAeScale provides s) {
+        CompositionLocalProvider(
+            LocalAeScale provides s,
+            LocalDensity provides Density(d.density, fontScale = 1f),
+        ) {
             Box(Modifier.size(with(d) { (AE_W * s).toDp() }, with(d) { (AE_H * s).toDp() })) { content() }
         }
     }
@@ -61,11 +72,46 @@ object AeFonts {
     var display: FontFamily = FontFamily.SansSerif
 }
 
+/**
+ * One line of stage text.
+ *
+ * Three rules keep it readable at every scale, all three learned from the squashed labels
+ * and off-centre numbers seen in the app:
+ *  - `lineHeight = fontSize` removes the Material3 default line box (24 sp), which made a
+ *    9-unit label sink inside a 12-unit box and look clipped;
+ *  - the text is measured unbounded, so a label wider than its declared box overflows
+ *    instead of being truncated (the preview never truncates);
+ *  - the text is centred inside the declared box, which is what the preview's absolute
+ *    placement effectively does for a short run of glyphs.
+ */
 @Composable
 fun AeT(
     text: String, size: Number, color: Color, modifier: Modifier = Modifier, font: FontFamily = AeFonts.ui,
     weight: FontWeight = FontWeight.Bold, spacing: Float = 0f, align: TextAlign = TextAlign.Start,
-) = Text(text, modifier, color, fontSize = size.fs(), fontFamily = font, fontWeight = weight, letterSpacing = spacing.em, textAlign = align, maxLines = 1, softWrap = false)
+) {
+    val textSize = size.fs()
+    Box(
+        modifier,
+        contentAlignment = when (align) {
+            TextAlign.Center -> Alignment.Center
+            TextAlign.End, TextAlign.Right -> Alignment.CenterEnd
+            else -> Alignment.CenterStart
+        },
+    ) {
+        Text(
+            text = text,
+            color = color,
+            fontSize = textSize,
+            lineHeight = textSize,
+            fontFamily = font,
+            fontWeight = weight,
+            letterSpacing = spacing.em,
+            maxLines = 1,
+            softWrap = false,
+            modifier = Modifier.wrapContentWidth(unbounded = true),
+        )
+    }
+}
 
 /** Renders an [AeSvgs] asset at the exact pixel size of the element (cached). Needs com.caverock:androidsvg-aar. */
 object AeSvgCache {

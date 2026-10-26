@@ -20,7 +20,13 @@ class FxMixer {
     if (!instrumentAllowed(strip)) return false;
     if (id >= 0 && kindOf(id) == Kind::Effect) return false;
     const bool ok = tracks_[strip].setInstrument(id);
-    if (ok) recount();
+    if (ok) {
+      // A source takes the channel over from FluidSynth, and the mixer mirrors its fader
+      // onto the strip. Releasing the instrument must hand the strip back neutral, or the
+      // leftover gain would keep attenuating a soundfont that is loaded afterwards.
+      if (id < 0) { tracks_[strip].strip.setGain(1.f); tracks_[strip].strip.setMute(false); tracks_[strip].strip.setPan(0.f); }
+      recount();
+    }
     return ok;
   }
   bool setEffect(int strip, int slot, int id) {

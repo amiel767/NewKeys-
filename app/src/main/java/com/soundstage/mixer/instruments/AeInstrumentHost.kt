@@ -72,6 +72,13 @@ object AeInstruments {
      */
     var onBeforeLoad: ((Int) -> Unit)? = null
 
+    /**
+     * Called after an instrument has been installed on a strip, so the app can push the
+     * track's own fader/pan onto the strip: a source renders outside FluidSynth, so from
+     * that moment the strip is the only place its volume lives.
+     */
+    var onLoaded: ((Int) -> Unit)? = null
+
     fun session(strip: Int): AeSession? = manager.sessions[strip]
 
     fun isLoaded(strip: Int): Boolean = manager.sessions.containsKey(strip)
@@ -83,7 +90,9 @@ object AeInstruments {
     fun load(strip: Int, instrument: AeInstrument): Boolean {
         if (manager.sessions[strip]?.instrument == instrument) return true
         onBeforeLoad?.invoke(strip)
-        return manager.load(strip, instrument) != null
+        val ok = manager.load(strip, instrument) != null
+        if (ok) onLoaded?.invoke(strip)
+        return ok
     }
 
     fun unload(strip: Int) = manager.unload(strip)

@@ -320,7 +320,9 @@ fun SoundfontWindow(
     LaunchedEffect(state.isOpen, state.variant, state.loadedFileId) {
         if (state.isOpen) {
             // JSX: on atterrit sur Presets uniquement si un soundfont est deja charge, sinon All
-            tab = if (state.loadedFileId != null) SfTab.Presets else SfTab.All
+            // A bank with a single preset has nothing to choose: the list would be one row, so
+            // land on All where the file itself is visible and selectable.
+            tab = if (state.loadedFileId != null && state.loadedPresets.size >= 2) SfTab.Presets else SfTab.All
             query = ""
             selectedCategory = when (state.variant) {
                 SoundfontVariant.Pad -> SfCategory.Pads
@@ -329,8 +331,12 @@ fun SoundfontWindow(
             }
             selectedBank = state.loadedBank
             hiddenFileKeys.value = emptySet()
-            aetherTab = false
-            aetherOpen = false
+            // A strip that already carries an Æther instrument reopens on that instrument, not on
+            // the soundfont list: it is what the track is playing. The back chevron leads to the
+            // four-card picker, and the picker's cards swap or unload it.
+            val hasInstrument = aether?.sessions?.containsKey(aetherStrip) == true
+            aetherTab = hasInstrument
+            aetherOpen = hasInstrument
         }
     }
 
@@ -502,7 +508,13 @@ fun SoundfontWindow(
                             query = ""
                         },
                         aetherOn = aetherTab,
-                        onAether = if (aether != null && state.variant == SoundfontVariant.Track) ({ aetherTab = true }) else null,
+                        onAether = if (aether != null && state.variant == SoundfontVariant.Track) ({
+                            aetherTab = true
+                            // A strip that already carries an instrument reopens straight into its
+                            // interface: the four-card picker is only for choosing one. The back
+                            // chevron inside the window returns to the picker to swap instruments.
+                            if (aether.sessions.containsKey(aetherStrip)) aetherOpen = true
+                        }) else null,
                         categories = visibleCats,
                         counts = countsByCategory,
                         selected = selectedCategory,
@@ -608,28 +620,35 @@ fun SoundfontWindow(
                     }
                 }
 
-                if (aetherOpen && aether != null) {
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .background(Color(0xCC05070D))
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                            ) { /* absorb taps behind the instrument window */ },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        com.soundstage.mixer.instruments.AeInstrumentWindow(
-                            manager = aether,
-                            strip = aetherStrip,
-                            onClose = { aetherOpen = false },
-                            modifier = Modifier
-                                .fillMaxWidth(0.97f)
-                                .aspectRatio(
-                                    com.soundstage.mixer.instruments.AE_W /
-                                        com.soundstage.mixer.instruments.AE_H
-                                ),
-                        )
+                AnimatedVisibility(
+                    visible = aetherOpen && aether != null,
+                    enter = fadeIn(tween(220)) + scaleIn(tween(260, easing = FastOutSlowInEasing), initialScale = 0.94f),
+                    exit = fadeOut(tween(160)) + scaleOut(tween(160), targetScale = 0.96f),
+                ) {
+                    val mgr = aether
+                    if (mgr != null) {
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(Color(0xCC05070D))
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                ) { /* absorb taps behind the instrument window */ },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            com.soundstage.mixer.instruments.AeInstrumentWindow(
+                                manager = mgr,
+                                strip = aetherStrip,
+                                onClose = { aetherOpen = false },
+                                modifier = Modifier
+                                    .fillMaxWidth(0.97f)
+                                    .aspectRatio(
+                                        com.soundstage.mixer.instruments.AE_W /
+                                            com.soundstage.mixer.instruments.AE_H
+                                    ),
+                            )
+                        }
                     }
                 }
             }

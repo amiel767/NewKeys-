@@ -505,6 +505,16 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 unloadSoundFontFromSlot(slot)
             }
         }
+        // Loading a source moves the track's volume off FluidSynth and onto the FX strip,
+        // so the current fader and pan have to follow it or the instrument would play at
+        // unity while the mixer still shows the user's setting.
+        com.soundstage.mixer.instruments.AeInstruments.onLoaded = { slot ->
+            val track = _uiState.value.tracks.getOrNull(slot)
+            if (track != null) {
+                val anySolo = _uiState.value.tracks.any { it.isSolo }
+                pushFxStripMix(slot, effectiveTrackVolume(track, anySolo), track.pan)
+            }
+        }
         _uiState.value.tracks.forEach { track ->
             audioEngine.setTrackVelocityProcessor(track.id - 1, VelocityProcessor(track.velocityConfig))
             applyTrackPlaybackSettings(track)
@@ -1887,15 +1897,15 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     }
 
                     // While a floating window (Track Settings, Patches, FX, soundfonts) is up, the
-                    // mixer sits behind a full-screen blur. Every meter update recomposes that
-                    // subtree and forces the blur to re-render its offscreen pass, which is the
-                    // stutter felt in those windows. The meters are not readable through the blur,
-                    // so keep them alive at a low rate instead of the 20 Hz they need when visible.
+                    // mixer sits behind a full-screen blur and a scrim: the meters are not visible,
+                    // but every state update still recomposes the whole subtree and forces the blur
+                    // to re-run its offscreen pass, which is the heaviness felt in those windows.
+                    // Freeze them until the window closes; they resume and decay on their own.
                     if (curr.activePopup.isFloatingWindow()) {
                         delay(200)
-                    } else {
-                        delay(50)
+                        continue
                     }
+                    delay(50)
                     val anySolo = curr.tracks.any { it.isSolo }
 
                     _uiState.update { state ->
@@ -2237,21 +2247,45 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // ================= TRACK MIXER CONTROLS =================
+    /**
+     * Pushes each track's effective volume to both engines.
+     *
+     * A track whose soundfont channel is paused (an Æther source replaced it) is rendered by
+     * the FX strip, not by FluidSynth, so CC7 never reaches the output: the strip's own
+     * gain/mute is the only control that can silence it. Without this second push, mute, solo
+     * and the power switch did nothing at all on such a track.
+     */
     private fun applyTrackVolumes(state: MixerUiState) {
         val anySolo = state.tracks.any { it.isSolo }
         state.tracks.forEach { track ->
             val ch = track.id - 1
             if (ch in 0..7) {
-                val effectiveVol = when {
-                    !track.isEnabled -> 0f
-                    anySolo && !track.isSolo -> 0f
-                    track.isMuted -> 0f
-                    else -> track.volume
-                }
+                val effectiveVol = effectiveTrackVolume(track, anySolo)
                 audioEngine.setChannelVolume(ch, effectiveVol)
                 NativeAudioBridge.safeSetTrackVolume(ch, effectiveVol)
+                pushFxStripMix(ch, effectiveVol, null)
             }
         }
+    }
+
+    /**
+     * Mirrors the mixer fader/pan onto the track's FX strip, but only while an Æther source
+     * has taken the channel over. On a soundfont track the strip is untouched: FluidSynth's
+     * CC7 already carries the volume and its gain stays where the FX window set it.
+     */
+    private fun pushFxStripMix(ch: Int, volume: Float, pan: Float?) {
+        if (!NativeAudioBridge.safeFxSoundfontPaused(ch)) return
+        NativeAudioBridge.safeFxStripGain(ch, volume)
+        NativeAudioBridge.safeFxStripMute(ch, volume <= 0f)
+        pan?.let { NativeAudioBridge.safeFxStripPan(ch, it) }
+    }
+
+    /** Volume a track actually outputs: zero when off, muted, or dimmed by another track's solo. */
+    private fun effectiveTrackVolume(track: TrackChannel, anySolo: Boolean): Float = when {
+        !track.isEnabled -> 0f
+        anySolo && !track.isSolo -> 0f
+        track.isMuted -> 0f
+        else -> track.volume
     }
 
     fun setTrackVolume(trackId: Int, volume: Float) {
@@ -2267,14 +2301,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             val currentState = _uiState.value
             val targetTrack = currentState.tracks.getOrNull(ch)
             val anySolo = currentState.tracks.any { it.isSolo }
-            val effectiveVol = when {
-                targetTrack == null || !targetTrack.isEnabled -> 0f
-                anySolo && !targetTrack.isSolo -> 0f
-                targetTrack.isMuted -> 0f
-                else -> clampedVol
-            }
+            val blocked = targetTrack == null || !targetTrack.isEnabled || targetTrack.isMuted ||
+                (anySolo && !targetTrack.isSolo)
+            val effectiveVol = if (blocked) 0f else clampedVol
             audioEngine.setChannelVolume(ch, effectiveVol)
             NativeAudioBridge.safeSetTrackVolume(ch, effectiveVol)
+            pushFxStripMix(ch, effectiveVol, null)
 
             _uiState.update { state ->
                 val updated = state.tracks.map { track ->
@@ -2292,6 +2324,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             val ch = trackId - 1
             audioEngine.setChannelPan(ch, clampedPan)
             NativeAudioBridge.safeSetTrackPan(ch, clampedPan)
+            pushFxStripMix(ch, _uiState.value.tracks.getOrNull(ch)?.let {
+                if (!it.isEnabled || it.isMuted) 0f else it.volume
+            } ?: 0f, clampedPan)
         }
         _uiState.update { state ->
             val updated = state.tracks.map { track ->

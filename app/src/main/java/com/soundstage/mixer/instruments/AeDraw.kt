@@ -21,8 +21,16 @@ class AeAnim {
     val gear = FloatArray(24); val gAct = FloatArray(24)
     /** Leads LED meters (per layer) and sax breath particles [x, y, vx, vy, life, r] in image-normalised coordinates. */
     val la = FloatArray(5); val parts = ArrayList<FloatArray>()
+    /** Retired particles, kept so the breath emitter does not allocate a new FloatArray every frame. */
+    private val spareParts = ArrayList<FloatArray>()
     val pulses = ArrayList<FloatArray>()
     val frame = mutableIntStateOf(0)
+
+    private fun spawnPart(x: Float, y: Float, vx: Float, vy: Float, life: Float, r: Float) {
+        val p = if (spareParts.isNotEmpty()) spareParts.removeAt(spareParts.size - 1) else FloatArray(6)
+        p[0] = x; p[1] = y; p[2] = vx; p[3] = vy; p[4] = life; p[5] = r
+        parts.add(p)
+    }
 
     fun step(dt: Float, s: AeSession) {
         t += dt; lv += (s.level - lv) * 0.4f
@@ -46,9 +54,9 @@ class AeAnim {
         if (s.instrument == AeInstrument.SAX) {
             val g = AeSaxGeo.of((s.values[0] * 3).roundToInt().coerceIn(0, 3)); val l = orbLevel()
             val n = (l * 18f).toInt() + (if (Math.random() < l * 10f) 1 else 0)
-            repeat(n) { parts.add(floatArrayOf(g.bell.first + (Math.random().toFloat() - 0.5f) * 0.02f, g.bell.second, 0.05f + Math.random().toFloat() * 0.1f, -0.06f - Math.random().toFloat() * 0.12f, 1f, 0.006f + Math.random().toFloat() * 0.014f)) }
+            repeat(n) { spawnPart(g.bell.first + (Math.random().toFloat() - 0.5f) * 0.02f, g.bell.second, 0.05f + Math.random().toFloat() * 0.1f, -0.06f - Math.random().toFloat() * 0.12f, 1f, 0.006f + Math.random().toFloat() * 0.014f) }
             val it2 = parts.iterator()
-            while (it2.hasNext()) { val p = it2.next(); p[4] -= dt * 0.9f; p[0] += p[2] * dt; p[1] += p[3] * dt; p[3] -= dt * 0.03f; if (p[4] <= 0f) it2.remove() }
+            while (it2.hasNext()) { val p = it2.next(); p[4] -= dt * 0.9f; p[0] += p[2] * dt; p[1] += p[3] * dt; p[3] -= dt * 0.03f; if (p[4] <= 0f) { it2.remove(); spareParts.add(p) } }
         }
         frame.intValue++
     }

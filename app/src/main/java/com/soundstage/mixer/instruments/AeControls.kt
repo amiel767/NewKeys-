@@ -122,14 +122,22 @@ fun AeChip(c: AeCtl, idx: Int, i: Int, n: Int, label: String, x: Number, y: Numb
 fun AeDrawbar(c: AeCtl, idx: Int, color: Int, foot: String, x: Number, y: Number) {
     val sc = LocalAeScale.current
     val n = (c.v(idx) * 8).roundToInt()
-    val capY by animateFloatAsState(12f + n * 17f, spring(0.7f, Spring.StiffnessMedium), label = "drawbar")
+    val target = 12f + n * 17f
+    // While the finger is down the cap tracks it with no spring, otherwise a drag feels like it
+    // has to push through the animation. The spring is only for outside changes (preset load,
+    // undo, keyboard), where a small settle reads as mechanical rather than abrupt.
+    var dragging by remember { mutableStateOf(false) }
+    val animated by animateFloatAsState(target, spring(0.7f, Spring.StiffnessMedium), label = "drawbar")
+    val capY = if (dragging) target else animated
     fun fromY(py: Float) = (((py / sc) - 12f - 16f) / 17f).roundToInt().coerceIn(0, 8) / 8f
     Box(
         Modifier.at(x, y, 34, 200).pointerInput(idx) {
             awaitEachGesture {
                 val d = awaitFirstDown(requireUnconsumed = false)
+                dragging = true
                 c.set(idx, fromY(d.position.y)); d.consume()
                 drag(d.id) { c.set(idx, fromY(it.position.y)); it.consume() }
+                dragging = false
             }
         },
     ) {

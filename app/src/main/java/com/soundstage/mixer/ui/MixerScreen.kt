@@ -690,8 +690,10 @@ fun MixerScreen(
         )
     }
     // The dynamic drift is a very slow hue oscillation (±14° over 90 s, about
-    // 0.3°/s): visible over minutes, imperceptible frame to frame. Static when off.
-    val driftPhase: Float = if (uiState.trackColorDynamic) {
+    // 0.3°/s): visible over minutes, imperceptible frame to frame. Static when off,
+    // and frozen while a floating window covers the mixer: the drifting colours sit
+    // behind a blur and a scrim there, so the animation would only cost frames.
+    val driftPhase: Float = if (uiState.trackColorDynamic && !uiState.activePopup.isFloatingWindow()) {
         val transition = rememberInfiniteTransition(label = "trackColorDrift")
         val t by transition.animateFloat(
             initialValue = 0f, targetValue = 1f,

@@ -220,6 +220,48 @@ object NativeAudioBridge {
         }
     }
 
+    /**
+     * True when the strip's soundfont channel is skipped because an Æther source replaced it.
+     * Such a track renders outside FluidSynth, so its CC7 volume never reaches the output and
+     * the strip's own gain/mute is the only thing that can silence it.
+     */
+    fun safeFxSoundfontPaused(strip: Int): Boolean {
+        if (!isLibraryLoaded) return false
+        return try {
+            fxSoundfontPaused(strip)
+        } catch (e: Throwable) {
+            Log.e("NativeAudioBridge", "Error invoking fxSoundfontPaused: ${e.message}")
+            false
+        }
+    }
+
+    fun safeFxStripGain(strip: Int, lin: Float) {
+        if (!isLibraryLoaded) return
+        try {
+            setFxStripGain(strip, lin)
+        } catch (e: Throwable) {
+            Log.e("NativeAudioBridge", "Error invoking setFxStripGain: ${e.message}")
+        }
+    }
+
+    fun safeFxStripMute(strip: Int, mute: Boolean) {
+        if (!isLibraryLoaded) return
+        try {
+            setFxStripMute(strip, mute)
+        } catch (e: Throwable) {
+            Log.e("NativeAudioBridge", "Error invoking setFxStripMute: ${e.message}")
+        }
+    }
+
+    fun safeFxStripPan(strip: Int, pan: Float) {
+        if (!isLibraryLoaded) return
+        try {
+            setFxStripPan(strip, pan)
+        } catch (e: Throwable) {
+            Log.e("NativeAudioBridge", "Error invoking setFxStripPan: ${e.message}")
+        }
+    }
+
     /** Peak level of a strip, 0f..1f+. Used by the instrument window's level meter. */
     fun safeFxStripPeak(strip: Int, channel: Int = 0): Float {
         if (!isLibraryLoaded) return 0f
