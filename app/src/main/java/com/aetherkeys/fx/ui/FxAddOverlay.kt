@@ -75,9 +75,10 @@ fun FxAddOverlay(
     val isInstrument = { m: EffectModule -> m.kind != FxScreenKind.EFFECT }
     val visible = modules
         .filter { if (tab == FxAddTab.EFFECTS) !isInstrument(it) else isInstrument(it) }
-        // Organ (6) and Synth (14) are no longer FX instruments: they are loaded per track
-        // from the soundfont window's Æther Instruments tab. They stay in the registry so a
-        // strip that already carries one still resolves, but they must not be offered here.
+        // Æther track instruments (organ 6, synth 14, leads 15, sax 16) are no longer FX
+        // entries: they load per track from the soundfont window's Æther Instruments tab.
+        // They stay in the registry so a strip that carries one still resolves, but they must
+        // not be offered here.
         .filter { it.id !in AE_RETIRED_INSTRUMENT_IDS }
         .filter { family == "All" || AddMeta.familyOf(it.id) == family }
         .filter {

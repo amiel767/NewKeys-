@@ -8,7 +8,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
-/** The two Æther Instruments. [fxId] = id of the native Source in FxRegistry (FX_ORGAN = 6, FX_SYNTH = 14). */
+/** The Æther Instruments. [fxId] = id of the native Source in FxRegistry (6 organ, 14 synth, 15 leads, 16 sax). */
 enum class AeInstrument(val fxId: Int, val title: String, val paramCount: Int) {
     ORGAN(6, "Æther Organ", 31), SYNTH(14, "Æther Synth", 32), LEADS(15, "Æther Leads", 32), SAX(16, "Æther Sax", 21);
     /** Parameters that switch instantly on a preset change (the others glide). */
