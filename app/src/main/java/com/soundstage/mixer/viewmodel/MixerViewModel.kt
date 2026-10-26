@@ -4750,13 +4750,25 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     // loader falls back to `count { it.isEnabled }`, which is 8, and the
                     // setlist opened on eight faders.
                     put("visibleTracksCount", 1)
+                    // `tracks` / `audioSlots` must be written even though they are blank.
+                    // `selectScene` treats a missing key as "keep whatever is in memory",
+                    // so omitting them made a fresh setlist inherit the previous
+                    // setlist's tracks — soundfont names included — and the loader then
+                    // pushed those soundfonts back into the native engine. The user saw
+                    // the last patch's soundfonts appear in a setlist they never filled.
+                    put("tracks", TrackJson.toJson(fresh.tracks))
+                    put("audioSlots", AudioSlotJson.toJson(fresh.audioSlots))
                     put("patches", org.json.JSONArray().apply {
                         put(org.json.JSONObject().apply {
                             put("id", initialPatch.id)
                             put("name", initialPatch.name)
                             put("visibleTracksCount", 1)
+                            // Same reason as above: the patch reader also falls back to the
+                            // in-memory tracks when its own `tracks` key is missing.
+                            put("tracks", TrackJson.toJson(fresh.tracks))
                         })
                     })
+                    put("activePatchId", initialPatch.id)
                 }.toString()
                 fileManager.saveSceneFile(cleanName, jsonToSave)
             }
@@ -4907,6 +4919,15 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val cleanName = patchName.trim().ifEmpty { "Patch ${state.patches.size + 1}" }
         val newPatchId = "patch_${System.currentTimeMillis()}"
         val freshState = createInitialState()
+
+        // A blank patch must not keep the outgoing patch's soundfonts loaded in the
+        // native engine. Without this the new patch showed the previous patch's
+        // soundfonts on its tracks even though the state carried none.
+        if (isBlank) {
+            NativeAudioBridge.safeAllNotesOff()
+            NativeAudioBridge.safeUnloadAllSoundFonts(NativeAudioBridge.ENGINE_FADER)
+            NativeAudioBridge.safeTrimMemory()
+        }
 
         // 1. Save current active patch first
         val patchesWithSavedCurrent = state.patches.map { p ->

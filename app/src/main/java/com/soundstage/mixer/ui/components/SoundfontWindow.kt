@@ -81,6 +81,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -247,6 +248,59 @@ private object SfColors {
 }
 
 private fun white(a: Float) = Color.White.copy(alpha = a)
+
+/**
+ * Frosted-glass treatment for a list row.
+ *
+ * The panel behind the list is a dark vertical gradient, so a plain translucent
+ * fill would just read as "washed out". The glass is built from three layers: a
+ * base veil, a hairline highlight along the top edge, and a soft accent bloom for
+ * the row the engine currently has loaded. The border is deliberately very weak
+ * (7 % white): the rows are separated by their lift and their sheen, not by an
+ * outline, which is what made the previous version look hard-edged.
+ *
+ * [active] marks the loaded row. It is only a slight brightening of the veil plus
+ * the accent bloom — enough to tell a running soundfont from the others at a
+ * glance, not enough to shout.
+ *
+ * [opaqueBase] is required for the file rows: their swipe-to-delete trash pill is
+ * painted underneath, and a translucent fill would let it show through at rest.
+ */
+private fun Modifier.glassRow(active: Boolean, opaqueBase: Boolean = false): Modifier = this
+    .shadow(
+        if (active) 7.dp else 3.dp,
+        RowShape,
+        spotColor = if (active) Color(0x668FB2E8) else Color(0x66000000),
+        ambientColor = Color(0x00000000)
+    )
+    .clip(RowShape)
+    .then(
+        if (opaqueBase) Modifier.background(if (active) Color(0xFF1F2836) else Color(0xFF19212E))
+        else Modifier
+    )
+    .background(
+        Brush.verticalGradient(
+            if (active) listOf(Color(0x33FFFFFF), Color(0x14FFFFFF))
+            else listOf(Color(0x16FFFFFF), Color(0x08FFFFFF))
+        )
+    )
+    .drawBehind {
+        if (active) drawRect(
+            Brush.horizontalGradient(
+                listOf(Color(0x2E8FB2E8), Color(0x0A8FB2E8), Color(0x008FB2E8))
+            )
+        )
+    }
+    .border(1.dp, white(if (active) 0.16f else 0.07f), RowShape)
+    .drawWithContent {
+        drawContent()
+        drawLine(
+            brush = Brush.horizontalGradient(
+                listOf(Color(0x00FFFFFF), Color(0x33FFFFFF), Color(0x00FFFFFF))
+            ),
+            start = Offset(0f, 0.5f), end = Offset(size.width, 0.5f), strokeWidth = 1f
+        )
+    }
 
 private fun sfText(
     size: TextUnit,
@@ -1192,10 +1246,7 @@ private fun SfPresetRow(
                 translationY = (1f - enter.value) * 6.dp.toPx()
             }
             .sfTap(0.985f, onTap)
-            .shadow(4.dp, RowShape, spotColor = Color(0x99000000), ambientColor = Color(0x00000000))
-            .clip(RowShape)
-            .background(if (active) Color(0xFF1F2836) else Color(0xFF19212E))
-            .border(1.dp, if (active) white(0.15f) else white(0.09f), RowShape)
+            .glassRow(active)
             .padding(start = 12.dp, end = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -1400,10 +1451,7 @@ private fun SfFileRow(
                     )
                 }
                 .sfTap(0.985f, onTap)
-                .shadow(4.dp, RowShape, spotColor = Color(0x99000000), ambientColor = Color(0x00000000))
-                .clip(RowShape)
-                .background(if (row.isLoaded) Color(0xFF1F2836) else Color(0xFF19212E))
-                .border(1.dp, if (row.isLoaded) white(0.15f) else white(0.09f), RowShape)
+                .glassRow(row.isLoaded, opaqueBase = true)
                 .padding(start = 12.dp, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
