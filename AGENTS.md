@@ -2889,3 +2889,68 @@ soundfont** (MIDI, volume, pan, mute, couleur) et comptent comme des
 - Captures Roborazzi de l'onglet Æther (l'onglet et la fenetre ne sont pas encore
   captures).
 
+
+## Session 2026-10-26 — Æther Leads + Sax (zip final + ajustements DeepSeek)
+
+Conversation source (parallele) : `dde6dffb48c5475a931918c2e3ff38f9`, surveillee par
+`python3 tools/conv_sync.py` (watermark dans `tools/.conv_sync_state.json`, gitignore).
+Son travail **est deja dans notre historique** : `origin/main` = `e12e9e0` est un
+**ancetre** de notre HEAD (`git merge-base --is-ancestor origin/main HEAD` -> vrai),
+donc « behind 0, ahead 11 ». Aucun rebase necessaire. Verifier quand meme avant chaque
+passe : le remote avance par « Add files via upload ».
+
+### Ce qui a ete fait
+1. **Import du zip `aether-instruments-final.zip`** : 4 fichiers neufs
+   (`AeDrawLeads.kt`, `AeLeadsUi.kt`, `AeSaxAssets.kt`, `AeSaxUi.kt`), 9 fichiers
+   partages mis a jour (dont `AePresets.kt` avec 30 presets Leads + 23 Sax),
+   12 webp `ae_sax_<type>_<finition>.webp` dans `res/drawable-nodpi/`.
+2. **`fx_leads.h`** (`LeadsEngine : public SourceFx`, 32 params, 6 voix) : 5 couches
+   (sine / pulse a largeur variable / saw / super-saw 5 detunes / soft triangle x2),
+   enveloppe AHDSR pilotant amplitude **et** filtre, SVF TPT low/high/band, puis bus
+   chorus -> tone (shelves) -> delay -> reverb et un bus vibrato.
+3. **`fx_sax.h`** (`SaxEngine`, 21 params) : table d'anche harmonique -> 4 formants
+   (2 formants d'anche + ancre + chaleur), bruit de souffle passe-bande, growl (AM rapide),
+   subtone, scoop/fall, clic de cle, vibrato retarde, room. Monophonique, glide legato.
+4. **Registre** : `FX_LEADS = 15`, `FX_SAX_AE = 16` (tous deux `Kind::Source`).
+   **Piege** : `FX_SAX = 7` existait deja (shaper) — le nouveau sax s'appelle
+   `FX_SAX_AE` pour ne pas entrer en collision. `FX_COUNT` passe a 17.
+   `info(id)` est desormais **borne** (`all[id >= 0 && id < FX_COUNT ? id : FX_SPACE]`) :
+   meme classe de bug que le `all[-1]` historique.
+5. **`fx_chain.h`** : `#include "fx_leads.h"` / `"fx_sax.h"` + `makeInstrument()`
+   construit les deux moteurs. `kindOf()` les classe `Kind::Source`.
+6. **Kotlin (2 namespaces)** : `FxRegistry.kt` regenere depuis `gen_kotlin.cpp`
+   (`constName` etendu), `instrumentIds` -> `listOf(5,6,7,8,9,12,14,15,16)`,
+   `AeInstrument.LEADS(15,...,32)` / `SAX(16,...,21)`.
+7. **`FxAddOverlay`** : `AE_RETIRED_INSTRUMENT_IDS = setOf(6, 14, 15, 16)` — Leads et
+   Sax sortent du rack FX comme Organ/Synth et se chargent via l'onglet Æther.
+
+### Ajustements DeepSeek (le lien `chat.deepseek.com/share/...` est bloque par CloudFront ;
+lire via `curl -s https://r.jina.ai/<url>` — le proxy jina renvoie le markdown)
+- **Leads** : a l'appui, chaque voix tire un LFO de drift lent (0,12..0,47 Hz,
+  1,5..4 cents), un offset de detune fixe (+-3,5 cents), un etalement des temps A/D
+  (+-12 %), un jitter de Q (+-0,25) et une drive de saturation (1,1..1,5), via un
+  **xorshift seede par voix**. `osc()` ne porte plus le vibrato : le detune total
+  (`vib + voiceOff + drift`) est calcule en amont.
+- **Sax** : les formants **suivent la hauteur** (x10 % pour les formants d'anche,
+  x5 % pour l'ancre) — un sax n'est pas un banc de filtres fixe. Ajouts : table d'anche
+  pilotee par le souffle, **courbe de grit asymetrique** (demi-positive plus poussee),
+  **LFO de souffle partage** (bruit + amplitude + detune), vibrato retarde a forme
+  ecretee avec wobble des formants, chute de hauteur en **u^2** au relachement, clic de
+  cle a l'appui **et** au relachement.
+- Sortie sax abaissee de `1.1` a `0.8` : la mesure hote donnait un peak de 0,99 (trop
+  pres de l'ecretage) ; 0,8 ramene le peak a 0,72 avec 0 echantillon ecrete.
+
+### Verification (hote, pas d'emulateur)
+`aetherfx` est **header-only et portable** : les deux moteurs se compilent avec
+`g++ -O2 -std=c++17 -I app/src/main/cpp`, sans Android. Banc `/tmp/render.cpp` :
+- Leads : peak 0,31 / rms 0,14 / 0 ecrete, **0 discontinuite**.
+- Sax : peak 0,72 / rms 0,23 / 0 ecrete. Les « sauts » mesures sont **interieurs**
+  (669) et non aux frontieres de bloc (3) : c'est la pente de l'onde d'anche, pas un
+  joint de bloc.
+`assembleDebug` (Kotlin + NDK, 4 ABI) -> **BUILD SUCCESSFUL**, APK 45,5 Mo,
+`libnative-lib.so` porte bien `LeadsEngine::*` et `SaxEngine::*`.
+
+### Reste
+- Validation **appareil** (le son reel des deux moteurs sur une piste).
+- Persistance du choix d'instrument Æther par piste (setlist) — toujours non branchee.
+- Captures Roborazzi de l'onglet Æther et des deux fenetres d'instrument.

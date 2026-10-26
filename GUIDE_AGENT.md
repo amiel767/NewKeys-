@@ -377,9 +377,9 @@ Puis mesurer les bandes de cartes (Pillow) : deux rangees d'environ 120 dp en
 
 ---
 
-## 10b. Instruments Aether (Organ / Synth) — sur une piste, comme un soundfont
+## 10b. Instruments Aether (Organ / Synth / Leads / Sax) — sur une piste, comme un soundfont
 
-Organ et Synth ne sont **plus** des entrees du rack FX. Ils se chargent sur une
+Organ, Synth, Leads et Sax ne sont **plus** des entrees du rack FX. Ils se chargent sur une
 piste depuis la **fenetre soundfonts** (onglet « Æther Instruments » a gauche),
 et se comportent exactement comme un soundfont : MIDI, volume, pan, mute, couleur,
 nom sur la plaque. Ce sont des **instruments reels**, pas des effets.
@@ -392,7 +392,9 @@ nom sur la plaque. Ce sont des **instruments reels**, pas des effets.
 | Onglet + fenetre instrument | `instruments/AeWindow.kt` |
 | Rendu / polices / SVG | `instruments/AeStage.kt`, `AeDraw.kt`, `AeSvgAssets.kt` |
 | UI Organ / Synth | `instruments/AeOrganUi.kt`, `AeSynthUi.kt`, `AeControls.kt` |
-| Presets | `instruments/AePresets.kt` |
+| UI Leads / Sax | `instruments/AeLeadsUi.kt`, `AeDrawLeads.kt`, `AeSaxUi.kt`, `AeSaxAssets.kt` |
+| Presets (organ 22, synth 28, leads 30, sax 23) | `instruments/AePresets.kt` |
+| Moteurs DSP natifs | `cpp/aetherfx/fx_organ.h`, `fx_synth.h`, `fx_leads.h`, `fx_sax.h` |
 | Point d'entree fenetre | `ui/components/SoundfontWindow.kt` (params `aether`, `aetherStrip`) |
 | Appelant | `ui/MixerScreen.kt` (`AeInstruments.manager`, `activeSoundfontSlotId`) |
 | Polices au demarrage | `SoundStageApplication.onCreate` -> `initAetherInstruments(this)` |
@@ -406,8 +408,16 @@ nom sur la plaque. Ce sont des **instruments reels**, pas des effets.
 - **Un instrument Æther et un soundfont s'excluent** sur une piste :
   `AeInstruments.onBeforeLoad` decharge le SF ; `loadSoundFontForSlot` decharge
   l'instrument. Le dernier charge gagne.
-- **Le registre garde les ids 6 et 14.** Seul `FxAddOverlay` les filtre
-  (`AE_RETIRED_INSTRUMENT_IDS`). Le routage natif et la persistance en ont besoin.
+- **Le registre garde les ids 6, 14, 15, 16.** Seul `FxAddOverlay` les filtre
+  (`AE_RETIRED_INSTRUMENT_IDS = setOf(6, 14, 15, 16)`). Le routage natif et la
+  persistance en ont besoin.
+- **`FX_SAX = 7` est un shaper ; le sax source s'appelle `FX_SAX_AE = 16`.** Ne pas
+  confondre les deux ids.
+- **`FxRegistry.info(id)` doit rester borne** (`all.getOrElse(id) { all[0] }`) : un id
+  hors plage sortait droit d'un callback Compose.
+- **Les moteurs sont header-only et portables** : `g++ -O2 -std=c++17 -I app/src/main/cpp`
+  les compile sur l'hote, sans Android ni emulateur. C'est la verification la moins chere
+  avant un build NDK complet.
 - **L'onglet n'existe que pour `SoundfontVariant.Track`** (slots 0..7).
 - **`AeFonts` a des replis systeme** : sans `initAetherInstruments`, l'UI tourne
   en SansSerif/Monospace, en silence. Ne pas retirer l'appel.
@@ -418,7 +428,10 @@ nom sur la plaque. Ce sont des **instruments reels**, pas des effets.
 
 ### Etat / reste a faire
 Fait : import, hote, gestionnaire, onglet + fenetre, exclusivite, retrait des FX,
-early-out silence (organ/synth), polices, nom sur la plaque, tests.
+early-out silence (organ/synth/leads/sax), polices, nom sur la plaque, tests.
+Leads (15) et Sax (16) ajoutes au zip final, ajustements DeepSeek appliques
+(drift par voix, formants suivis en pitch, LFO de souffle) ; verifies a l'hote et
+par `assembleDebug` (4 ABI).
 Reste : **validation appareil** (pas d'emulateur ici), persistance du choix
 d'instrument par piste (setlist), captures Roborazzi de l'onglet.
 
