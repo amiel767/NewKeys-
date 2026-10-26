@@ -3076,3 +3076,55 @@ fenetre, elle ne coute plus de frames.
 `:app:compileDebugKotlin` et `:app:assembleDebug` → BUILD SUCCESSFUL.
 Point non teste ici : le rendu **appareil** (le mute sur piste Æther, le fontScale a
 1,3x). Les captures Roborazzi tournent en fontScale = 1 et ne peuvent pas voir le bug A.
+
+## Session 2026-10-26 — setlist/patch vierge + verre depoli (3 demandes)
+
+### 1. Bug « des soundfonts se chargent tout seuls dans un nouveau Setlist »
+
+**Ce n'etait pas un chargement spontane du moteur, mais un heritage d'etat.**
+`createSetlistFromScreen` (`MixerViewModel.kt`) ecrivait un JSON de scene **sans**
+les cles `tracks` et `audioSlots` (et le patch embarque n'avait pas non plus ses
+`tracks`). Or `selectScene` traite une cle **absente** comme « garder l'etat
+courant » — c'est une regle de compatibilite pour les vieux fichiers. Resultat :
+le nouveau Setlist heritait des pistes en memoire, `soundfontName` compris, et le
+loader les repoussait dans le moteur natif. L'utilisateur voyait donc les
+soundfonts du dernier Setlist apparaitre dans un Setlist qu'il n'avait jamais
+rempli.
+
+Correctifs :
+- `model/TrackJson.kt` (nouveau) : codec partage `TrackJson` / `AudioSlotJson`.
+  La duplication etait la cause — un seul ecrivain oubliait les cles.
+- `createSetlistFromScreen` ecrit desormais `tracks`, `audioSlots`, `activePatchId`
+  et les `tracks` du patch.
+- `createNewPatch(isBlank)` : il ne dechargeait **pas** le moteur natif (contrairement
+  a `createNewProject`). Ajout de `safeAllNotesOff` + `safeUnloadAllSoundFonts` +
+  `safeTrimMemory`.
+
+**Regle a retenir** : un lecteur qui traite une cle absente comme « garder l'etat
+courant » transforme tout oubli d'ecriture en fuite d'etat. Tout nouvel ecrivain de
+scene/patch doit passer par `TrackJson`/`AudioSlotJson`, jamais ecrire le JSON a la main.
+
+### 2. Verre depoli des cartes soundfont
+
+`Modifier.glassRow(active, opaqueBase)` (`SoundfontWindow.kt`) remplace les
+remplissages plats `0xFF1F2836` / `0xFF19212E` de `SfPresetRow` et `SfFileRow`.
+Trois couches : voile en degrade, liseré clair 1 px sur le bord haut, bloom d'accent
+a gauche pour la ligne **chargee**. Le contour passe de 15 % a **7 %** de blanc en
+repos (c'etait le contour dur qui paraissait « esthetique faible »).
+`opaqueBase = true` pour les lignes de **fichier** : leur pastille poubelle de
+swipe-to-delete est peinte dessous, un fond translucide la laisserait transparaitre.
+
+Mesure de controle (`SoundfontGlassCaptureTest`, 2 captures) : ligne chargee
+**+28,7** de luminance moyenne contre une ligne au repos, liseré a +88 sur la
+premiere rangee, et **0 difference** en dehors de la ligne (diff max 2/255).
+
+### 3. Case « Æther Instruments » : sous-titre retire
+
+`AeInstrumentsTabItem` (`instruments/AeWindow.kt`) : la seconde ligne
+« Organ · Synth · Leads · Sax » est supprimee ; `Column` devient `Box` centre.
+
+### Environnement / remote
+
+`git fetch` echoue avec le token en dur (`ghu_...` expire) : remettre l'URL avec
+`${GITHUB_TOKEN}`. `origin/main` avance par petits commits « Add files via upload »
+ou docs — verifier `git log HEAD..origin/main` avant de rebaser.

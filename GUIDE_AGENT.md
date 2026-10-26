@@ -549,3 +549,36 @@ continue`) et derive des couleurs de piste. Elles reprennent seules a la fermetu
 
 Meme logique pour toute animation de fond : se demander « est-ce visible ? » avant
 « est-ce que ca coute cher ? ».
+
+---
+
+## Persistance des scenes : la regle du « lecteur permissif »
+
+`selectScene` / `openProject` lisent les cles du JSON de scene avec un repli :
+**cle absente = garder l'etat courant**. C'est voulu (compatibilite avec les
+fichiers ecrits par les anciennes versions), mais le corollaire est severe :
+
+> tout ecrivain qui omet une cle ne produit pas une scene vide, il produit une
+> scene qui **herite** de l'etat precedent.
+
+C'est exactement ce qui faisait apparaitre les soundfonts du dernier Setlist dans
+un Setlist neuf (`createSetlistFromScreen` n'ecrivait pas `tracks`/`audioSlots`).
+
+Regles :
+1. Tout ecrivain de scene/patch passe par `model/TrackJson.kt`
+   (`TrackJson.toJson`, `AudioSlotJson.toJson`). Ne jamais ecrire ces cles a la main.
+2. Un « nouveau X vierge » doit aussi **decharger le moteur natif** :
+   `safeAllNotesOff()` + `safeUnloadAllSoundFonts(ENGINE_FADER)` + `safeTrimMemory()`.
+   `createNewProject` le faisait, `createNewPatch` non.
+3. Quand on ajoute une fonction « creer un nouveau ... », verifier les **deux**
+   moities : l'etat Kotlin **et** le moteur natif.
+
+## Cartes soundfont : le traitement verre
+
+`SoundfontWindow.kt` porte `Modifier.glassRow(active, opaqueBase)`. A utiliser pour
+toute ligne de liste. Points a ne pas rater :
+- le contour doit rester **tres faible** (7 % de blanc en repos) ; un contour a 15 %
+  fait « dur » et c'est ce que l'utilisateur rejette ;
+- `opaqueBase = true` est **obligatoire** pour les lignes a swipe-to-delete (le
+  fond translucide laisserait voir la poubelle) ;
+- l'ordre des modificateurs compte : `shadow` -> `clip` -> fond -> bord -> liseré.
