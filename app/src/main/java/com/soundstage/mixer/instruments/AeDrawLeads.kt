@@ -57,7 +57,9 @@ fun DrawScope.drawLeadScope(a: AeAnim, y: (Int) -> Float, held: Boolean, samples
 /** Five LED columns of 12 segments, 566 x 160 units (aligned on the faders). */
 fun DrawScope.drawMeters(a: AeAnim) = scale(size.width / 566f, Offset.Zero) {
     for (i in 0 until 5) {
-        val x = 62f + i * 108f; val n = (a.la[i] * 12f).roundToInt()
+        // Canvas origin is window x=22 and the column base is x=36+i*108, so local 94 puts the
+        // block (12 wide) on the "+1" cell centre: window 122+i*108, the same axis as the chip.
+        val x = 94f + i * 108f; val n = (a.la[i] * 12f).roundToInt()
         for (j in 0 until 12) {
             val on = j < n; val yy = 146f - j * 12.2f
             val col = if (on) (if (j > 9) Color(0xFFFF4F9A) else if (j > 7) Color(0xFF7AA8FF) else CY) else Color(0xFF0B1624)
