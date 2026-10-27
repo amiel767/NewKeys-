@@ -100,6 +100,47 @@ class AeManagerTest {
         assertFalse(host.loaded.containsKey(5))
     }
 
+    // --- state kept across unload --------------------------------------------------------
+    // Unloading a strip must not reset the instrument: the zip requires that closing or
+    // swapping a window brings the knobs, the preset and the page back exactly as left.
+
+    @Test
+    fun reloadingAnInstrumentRestoresItsKnobsAndPreset() {
+        val host = FakeHost()
+        val m = manager(host)
+        m.load(3, AeInstrument.ORGAN)
+        m.loadPreset(3, 2)
+        val preset = m.sessions[3]?.preset
+        m.setParam(3, 27, 0.42f)   // a knob tweak after the preset
+
+        m.unload(3)
+        val again = m.load(3, AeInstrument.ORGAN)
+
+        assertEquals(preset, again?.preset)
+        assertEquals(0.42f, host.params[3]?.get(27)!!, 0.001f)
+    }
+
+    @Test
+    fun switchingBackToAnInstrumentKeepsItsStateToo() {
+        val host = FakeHost()
+        val m = manager(host)
+        m.load(0, AeInstrument.SYNTH)
+        m.setParam(0, 7, 0.8f)
+        m.load(0, AeInstrument.SAX)      // replaces it on the strip
+        m.load(0, AeInstrument.SYNTH)    // comes back
+
+        assertEquals(0.8f, host.params[0]?.get(7))
+    }
+
+    @Test
+    fun presetValueIsTheResetTargetForAKnob() {
+        val m = manager(FakeHost())
+        m.load(1, AeInstrument.ORGAN)
+        val expected = m.presets(AeInstrument.ORGAN)[0].values[27]
+        assertEquals(expected, m.presetValue(1, 27))
+        assertNull(m.presetValue(4, 27)) // no instrument on that strip
+    }
+
     @Test
     fun ccRoutesToTheDocumentedParameter() {
         val host = FakeHost()
