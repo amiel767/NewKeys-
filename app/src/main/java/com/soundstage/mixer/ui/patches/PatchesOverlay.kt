@@ -59,6 +59,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -637,6 +638,13 @@ private fun DrawerFooter(haptics: PatchHaptics, onNew: () -> Unit) {
                         spotColor = Color.Black.copy(alpha = 0.30f),
                     )
                     .clip(shape)
+                    // Opaque base under the veil, exactly like the soundfont cards: a
+                    // translucent wash alone sat straight on the panel gradient and read
+                    // as flat, which is why the glass looked missing on the patch cards.
+                    .background(
+                        if (active) Brush.verticalGradient(listOf(Color(0xFF232D42), Color(0xFF1A2333)))
+                        else Brush.verticalGradient(listOf(Color(0xFF1E2637), Color(0xFF171E2B)))
+                    )
                     .background(
                         Brush.verticalGradient(
                             if (active) listOf(white(0.11f), white(0.06f))
@@ -644,6 +652,18 @@ private fun DrawerFooter(haptics: PatchHaptics, onNew: () -> Unit) {
                         )
                     )
                     .border(1.dp, borderColor, shape)
+                    .drawWithContent {
+                        drawContent()
+                        // Top highlight line of the frosted card (inset 0 1px 0 #ffffff1c).
+                        drawLine(
+                            brush = Brush.horizontalGradient(
+                                listOf(Color(0x00FFFFFF), Color(0x2EFFFFFF), Color(0x00FFFFFF))
+                            ),
+                            start = Offset(10f, 1f),
+                            end = Offset(size.width - 10f, 1f),
+                            strokeWidth = 1.5f,
+                        )
+                    }
                     .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),

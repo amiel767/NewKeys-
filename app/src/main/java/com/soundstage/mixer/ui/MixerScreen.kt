@@ -17,6 +17,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -674,6 +676,10 @@ fun MixerScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var isSplashFinished by remember { mutableStateOf(skipSplash) }
     var tsPage by remember { mutableStateOf(TsPage.Track) }
+    // Lives at the screen level, not inside the popup: the popup branch leaves the
+    // composition when it closes, so a state remembered there was reset to the top and
+    // the user had to scroll back to the soundfont they had just loaded.
+    val sfListState = rememberLazyListState()
     LaunchedEffect(uiState.activeTrackSettingsId) { tsPage = TsPage.Track }
 
     // Track colours: resolved once here and shared with every strip through the
@@ -1081,6 +1087,7 @@ fun MixerScreen(
                     state = sfWindowState,
                     aether = com.soundstage.mixer.instruments.AeInstruments.manager,
                     aetherStrip = uiState.activeSoundfontSlotId,
+                    listState = sfListState,
                     actions = object : SfWindowActions {
                         override fun onClose() { viewModel.closePopup() }
 

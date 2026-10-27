@@ -59,6 +59,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -356,7 +357,12 @@ fun SoundfontWindow(
     modifier: Modifier = Modifier,
     aether: com.soundstage.mixer.instruments.AeManager? = null,
     aetherStrip: Int = 0,
+    // Hoisted so the list keeps its position when the window is closed and reopened.
+    // The popup branch is removed from the composition on close, so a state remembered
+    // inside would be reset to the top and the user had to scroll back to the file.
+    listState: LazyListState? = null,
 ) {
+    val rowsListState = listState ?: rememberLazyListState()
     var tab by remember { mutableStateOf(if (state.loadedFileId != null) SfTab.Presets else SfTab.All) }
     var aetherTab by remember { mutableStateOf(false) }
     var aetherOpen by remember { mutableStateOf(false) }
@@ -656,6 +662,7 @@ fun SoundfontWindow(
                                 rows = currentRows,
                                 tab = tab,
                                 query = query,
+                                listState = rowsListState,
                                 loadedFileId = state.loadedFileId,
                                 loadedBank = selectedBank,
                                 loadedPresetId = state.loadedPresetId,
@@ -680,9 +687,12 @@ fun SoundfontWindow(
                     }
                 }
 
+                // The instrument window must be there the moment it is opened. A 220/260 ms
+                // fade+scale read as "it takes a while, then it shows up", which is exactly
+                // what the user reported. The exit keeps its fade so closing stays smooth.
                 AnimatedVisibility(
                     visible = aetherOpen && aether != null,
-                    enter = fadeIn(tween(220)) + scaleIn(tween(260, easing = FastOutSlowInEasing), initialScale = 0.94f),
+                    enter = fadeIn(tween(90)),
                     exit = fadeOut(tween(160)) + scaleOut(tween(160), targetScale = 0.96f),
                 ) {
                     val mgr = aether
@@ -1091,6 +1101,7 @@ private fun SfList(
     rows: List<SfRow>,
     tab: SfTab,
     query: String,
+    listState: LazyListState,
     loadedFileId: String?,
     loadedBank: Int,
     loadedPresetId: Int,
@@ -1106,8 +1117,6 @@ private fun SfList(
     onOpenMenu: (ContextMenu) -> Unit,
     onRequestDeleteFile: (SfRow.File) -> Unit,
 ) {
-    val listState = rememberLazyListState()
-
     var letter by remember { mutableStateOf<String?>(null) }
     var letterAlpha by remember { mutableFloatStateOf(0f) }
 
@@ -1252,7 +1261,10 @@ private fun SfPresetRow(
                 translationY = (1f - enter.value) * 6.dp.toPx()
             }
             .sfTap(0.985f, onTap)
-            .glassRow(active)
+            // Same frosted treatment as the file cards: without the opaque base a preset
+            // row is only a translucent wash over the panel gradient and reads as flat,
+            // which is why the glass looked like it applied everywhere but on Presets.
+            .glassRow(active, opaqueBase = true)
             .padding(start = 12.dp, end = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
