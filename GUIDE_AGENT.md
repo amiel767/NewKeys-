@@ -231,6 +231,7 @@ sont des **pixels de canvas**, pas des dp. Aucun facteur d'echelle officiel.
 ## 7. Travailler en parallele (plusieurs agents sur le meme depot)
 
 Le depot est developpe par plusieurs conversations OpenHands en meme temps.
+Conversation de reference : `dde6dffb48c5475a931918c2e3ff38f9`.
 
 1. **Avant** toute modification : `python3 tools/conv_sync.py` -> liste ce que
    l'autre conversation a fait depuis le dernier appel.
@@ -246,6 +247,35 @@ exporte les nouveaux evenements.
 
 Si `conv_sync` montre que l'autre agent touche **le meme fichier** : s'arreter et
 demander, ne pas ecraser.
+
+### Le clone peut etre tres en retard — verifier AVANT de conclure
+
+Constate le 2026-10-27 : le clone local etait **44 commits derriere**
+`origin/main`, et `git status` affichait 23 fichiers Æther **indexes** (`A`/`M`).
+On pouvait croire a du travail non commite en danger. En realite ces fichiers
+etaient **identiques a `origin/main`** : l'index avait ete rempli par un
+`git add` anterieur, jamais commite.
+
+```bash
+git fetch origin main
+git rev-list --left-right --count HEAD...origin/main   # gauche=local, droite=remote
+# Preuve que rien n'est perdu : comparer l'index au remote, fichier par fichier
+for f in $(git diff --cached --name-only); do
+  a=$(git show ":$f" | md5sum); b=$(git show "origin/main:$f" | md5sum)
+  [ "$a" = "$b" ] && echo "identique $f" || echo "DIFFERENT $f"
+done
+```
+
+**Regles**
+
+- Un index rempli n'est **pas** du travail perdu : comparer au remote avant de
+  conclure quoi que ce soit.
+- Jamais de `git reset --hard` sans branche de sauvegarde
+  (`git branch -f backup/pre-sync-$(date +%Y%m%d-%H%M) HEAD`).
+- `main` est la branche de travail ; `docs/fx-agent-pack` et `fx-preview-blocs`
+  sont obsoletes (retard de 44 a 57 commits). Les 2 docs
+  `docs/FX_WINDOW_AGENT_PACK.md` / `docs/SOUNDFONT_WINDOW_PACK.md` n'existent que
+  dans `docs/fx-agent-pack` et les branches `backup/`.
 
 ---
 
@@ -434,6 +464,102 @@ Leads (15) et Sax (16) ajoutes au zip final, ajustements DeepSeek appliques
 par `assembleDebug` (4 ABI).
 Reste : **validation appareil** (pas d'emulateur ici), persistance du choix
 d'instrument par piste (setlist), captures Roborazzi de l'onglet.
+
+---
+
+## 10c. Æther Sax hybride — banques echantillonnees (recherche du 2026-10-27)
+
+Objectif demande : **instrument hybride** — la synthese reste en **lit de fond
+discret**, les samples deviennent le **timbre principal**. On ne supprime pas la
+synthese : elle couvre les transitions entre zones d'echantillons (le point
+faible d'un sampler) et garde le legato continu.
+
+### Ce qu'on remplace, exactement
+
+Dans `fx_sax.h`, `process()` genere la source en deux lignes :
+
+```cpp
+float mix = reed(ph_[0]) * .55f + reed(ph_[1]) * .35f;   // <-- source synthetique
+mix += nbF_.process(0, noise_.next()) * breathNoise;      // <-- souffle (a garder)
+```
+
+Tout le reste — formants suivis en pitch, grit asymetrique, growl, subtone,
+scoop/fall, vibrato retarde, clic, reverb — **reste intact**.
+
+Le point cle : `f` est calcule **en amont** avec bend, scoop, fall et vibrato
+deja appliques. Passer `f` a un lecteur d'echantillons fait donc porter
+l'articulation existante au sample **sans une ligne de changement**.
+
+### Banques : ce qui est utilisable et ce qui ne l'est pas
+
+| Banque | Licence | Contenu | Verdict |
+|---|---|---|---|
+| **MTG.SoloSax** (`sfzinstruments/MTG.SoloSax`) | **CC-BY 4.0** | Soprano, Alto, Tenor, **Bari** — 737 FLAC 24 bit/48 kHz mono, 105,6 Mo | **Retenue** : les 4 types d'un coup |
+| FreePats Tenor | **CC0 1.0** | 18 (small) / 46 (full), « infinite sustain loops » | Repli sans attribution |
+| Iowa MIS | « without restrictions » | Soprano, Alto, 15 a 67 s | Pas de bari ni de tenor |
+
+- **FluidR3 GM : ECARTE.** Son chunk `ICMT` dit **« DO NOT REDISTRIBUTE ANY OF
+  THESE SAMPLES. »** Ne plus le proposer.
+- **VSCO-2 CE : aucun sax** (0 fichier sur 3 313), malgre sa reputation.
+- **Philharmonia** : a bien un sax (733 mp3, `saxophone.zip` imbrique de 12,8 Mo
+  dans `Woodwind.zip`, extractible par requete Range) mais **le type n'est pas
+  indique** et D3..G6 est trop aigu pour un baryton. Licence introuvable.
+- **GeneralUser GS** : telechargement bloque (403), licence non verifiable.
+
+### MTG.SoloSax — mesures a connaitre
+
+- **Boucles impeccables** : correlation normalisee `x[loopStart]` / `x[loopEnd]`
+  = **0,95 a 0,998** sur les 4 types. Controle sur un point arbitraire : 0,2 a
+  0,99 -> la mesure discrimine.
+- Boucle = **nombre entier de periodes** (ecart 0,005 a 0,115 sur 12 a 52
+  periodes) -> pas de clic par construction.
+- 3,6 a 4,9 s par sample ; boucle de 78 a 182 ms.
+- **2 couches de velocite** (`p`/`f`), **3 round-robins**, souffle (`_b`) et clic
+  (`_k`) separes.
+- **Piege de parsing** : les points de boucle sont dans le bloc **APPLICATION
+  `riff`/`smpl`** du FLAC, **pas** dans le SFZ (`Data/*.txt` n'a aucun opcode
+  `loop_*`). Lire `smpl` a partir de `b.index(b'smpl')+8` ; sinon on lit des
+  octets deplaces et on croit qu'il n'y a pas de boucle.
+- **FreePats** : aucun vibrato grave dans les samples (**0 a 3 cents**, mesure par
+  autocorrelation). Le `V.Depth`/`V.Rate` du moteur reste donc *le* vibrato de
+  l'instrument.
+
+### La synthese est trop pauvre — enveloppe harmonique mesuree
+
+`buildTable()` est **deja additif** (32 harmoniques, `im[n] = (1/n^q) * (n impair
+? 1 : .78)`). « Passer en additif » = **corriger la loi**, pas reecrire le moteur.
+
+Mesure Goertzel, 16-17 notes par type, f0 exact pris des `key=`/`tune=` du SFZ,
+normalisee sur h1 :
+
+| h | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| **Reel** | 1,000 | **0,795** | 0,803 | 0,421 | 0,348 | 0,186 | 0,155 | 0,169 |
+| Loi actuelle | 1,000 | 0,351 | 0,283 | 0,158 | 0,157 | 0,099 | 0,107 | 0,071 |
+
+Sous-estimation de **47 a 80 %** sur h2..h8. Le baryton est le plus riche
+(h2 = 1,56x la fondamentale, h3 = 2,15x). C'est ce qui prive la synthese de son
+« mordant ».
+
+### Cibles de taille (mesurees)
+
+| | Brut 16 bits | 22,05 kHz | + ADPCM 4 bits |
+|---|---|---|---|
+| FreePats Tenor small (18 samples) | 7,0 Mo | 3,5 Mo | **1,8 Mo** |
+| FreePats Tenor full (46 samples) | 26,8 Mo | 12,3 Mo | 6,2 Mo |
+
+Compression retenue : **22,05 kHz + mono + ADPCM 4 bits** (le decodage reste
+quasi gratuit sur le thread audio ; OGG est ecarte pour le risque d'underrun).
+
+### Reste a faire
+
+1. Extraire le sous-ensemble sax (attaque + boucle, 22 kHz, ADPCM).
+2. Etendre `SamplePlaybackEngine` (`cpp/sample_playback_engine.h`, aujourd'hui
+   **one-shot** : ni boucle, ni keymap, ni enveloppe de relachement).
+3. Brancher le lecteur dans `SaxEngine::process` sur le `f` deja calcule, avec
+   un **parametre de mixage** synthese <-> samples (l'hybride est reglable).
+4. Corriger la loi harmonique de `buildTable()`.
+5. Validation appareil (pas d'emulateur ici).
 
 ---
 

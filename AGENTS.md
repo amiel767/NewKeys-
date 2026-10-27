@@ -481,6 +481,19 @@ merge **sans aucun conflit**.
 
 ## Conventions
 
+- **Veille de la conversation parallele — OBLIGATOIRE avant ET apres chaque
+  modification.** Ce depot est developpe par plusieurs conversations OpenHands
+  en meme temps. La conversation de reference est
+  `dde6dffb48c5475a931918c2e3ff38f9`. Lancer `python3 tools/conv_sync.py`
+  (incremental, watermark dans `tools/.conv_sync_state.json`) avant de toucher un
+  fichier et apres l'avoir touche. `--full` rejoue tout le flux.
+  Si l'autre conversation touche **le meme fichier** : s'arreter et demander, ne
+  pas ecraser.
+- **Se mettre a jour avant de travailler** : le clone local peut etre tres en
+  retard (44 commits constates le 2026-10-27). Toujours
+  `git fetch origin main` puis comparer `HEAD...origin/main` AVANT de conclure
+  quoi que ce soit sur l'etat du depot. Un index rempli (`git status` avec des
+  `A`/`M`) n'est pas du travail perdu : verifier par md5 contre `origin/main`.
 - Commits : `[Mixer V2] <résumé> — Compile: OK`, avec
   `Co-authored-by: openhands <openhands@all-hands.dev>`.
 - Ne pas pousser sans demande explicite.
@@ -2370,6 +2383,117 @@ lots.
 de pixels non-fond par ligne). La carte Track colors mesure ses 8 voies
 distinctes (verifie par echantillonnage de la bande : 8 couleurs saturees +
 master).
+
+## Session 2026-10-27 — mise en parallele + recherche d'une banque de sax
+
+### Le clone local etait 44 commits en retard (piege verifie, a re-verifier)
+
+Symptome trompeur : `git status` montrait **23 fichiers Æther indexes** (`A`/`M`)
+et on pouvait croire a du travail non commite en danger. En realite ces 23
+fichiers etaient **identiques a `origin/main`** (verifie par md5 sur chacun) : le
+clone etait simplement **en retard de 44 commits**, et l'index avait ete rempli
+par un `git add` anterieur jamais commite.
+
+- Detection : `git fetch origin main` puis
+  `git rev-list --left-right --count HEAD...origin/main`.
+- Preuve que rien n'est perdu : comparer fichier par fichier l'index au remote
+  (`git show :<f> | md5sum` vs `git show origin/main:<f> | md5sum`).
+- Correction faite : branche de sauvegarde `backup/pre-sync-<date>`, puis
+  `git checkout main && git reset --hard origin/main` (arbre propre, `main` =
+  `origin/main`, BUILD SUCCESSFUL).
+- **Lecon** : un index rempli n'est pas du travail perdu. Toujours comparer au
+  remote AVANT de conclure, et jamais de `reset --hard` sans branche de
+  sauvegarde.
+
+### Deux branches locales obsoletes (historique, ne pas s'en servir)
+
+`docs/fx-agent-pack` et `fx-preview-blocs` sont **en retard** de 44 a 57 commits.
+Les 2 commits de docs de `docs/fx-agent-pack` (`docs/FX_WINDOW_AGENT_PACK.md`,
+`docs/SOUNDFONT_WINDOW_PACK.md`) sont **absents de `origin/main`** : ils restent
+accessibles dans cette branche et dans `backup/pre-sync-*`. `main` est la branche
+de travail.
+
+### Recherche d'une banque de sax echantillonnee — resultats mesures
+
+Objectif : instrument **hybride** (synthese en lit de fond discret, samples en
+timbre principal) pour Æther Sax (`FX_SAX_AE = 16`, moteur `fx_sax.h`).
+
+**Banques retenues**
+
+| Banque | Licence | Contenu | Verdict |
+|---|---|---|---|
+| **MTG.SoloSax** (`sfzinstruments/MTG.SoloSax`) | **CC-BY 4.0** | **Soprano, Alto, Tenor, Bari** — 737 FLAC 24 bit / 48 kHz mono, 105,6 Mo | **La bonne** : les 4 types d'un coup |
+| FreePats Tenor | **CC0 1.0** | 18 samples (small) / 46 (full), « infinite sustain loops » | Excellent repli, sans attribution |
+| Iowa MIS | « without restrictions » | Soprano, Alto — fichiers de 15 a 67 s | Utile, mais pas de bari ni de tenor |
+
+**Banques ecartees (et pourquoi)**
+
+- **FluidR3 GM** : chunk `ICMT` = **« DO NOT REDISTRIBUTE ANY OF THESE
+  SAMPLES. »** Explicitement non embarquable. A ne plus proposer.
+- **VSCO-2 CE** : **aucun sax** (0 fichier sur 3 313) — contrairement a ce que
+  laissait croire sa reputation de banque d'orchestre.
+- **Philharmonia** `Woodwind.zip` : contient bien un saxophone (733 mp3,
+  `saxophone.zip` imbrique de 12,8 Mo, extractible par requete Range), **mais le
+  type n'est pas indique** et la tessiture D3..G6 est trop aigue pour un
+  baryton. Licence non trouvee sur le site.
+- **GeneralUser GS** : telechargement bloque (musical-artifacts 403), licence non
+  verifiable. A trancher avant tout usage.
+
+**MTG.SoloSax — ce que la mesure dit (important)**
+
+- **Boucles verifiees impeccables** : correlation normalisee entre `x[loopStart]`
+  et `x[loopEnd]` = **0,95 a 0,998** sur les 4 types (controle sur un point
+  arbitraire : 0,2 a 0,99, donc la mesure discrimine).
+- La boucle est un **nombre entier de periodes** (ecart 0,005 a 0,115 sur 12 a
+  52 periodes) : bouclage sans clic par construction.
+- Duree 3,6 a 4,9 s par sample ; boucle de **78 a 182 ms**.
+- Structure : **2 couches de velocite** (`p` / `f`), **3 round-robins**,
+  **souffle (`_b`) et clic de cle (`_k`) separes** — exactement ce qu'il faut
+  pour le modele hybride.
+- Points de boucle dans le bloc **APPLICATION `riff`/`smpl`** du FLAC, pas dans
+  le SFZ (`Data/*.txt` n'a aucun opcode `loop_*`). Le parser doit lire
+  `smpl` a partir de l'offset du chunk (`b.index(b'smpl')+8`), sinon on lit des
+  octets deplaces et on croit qu'il n'y a pas de boucle.
+
+**FreePats Tenor — deux atouts**
+
+- **Aucun vibrato grave dans les samples** : mesure par autocorrelation sur les
+  tenues = **0 a 3 cents**. Le `V.Depth` / `V.Rate` du moteur reste donc *le*
+  vibrato de l'instrument (un vibrato integre aurait battu contre le LFO).
+- CC0 1.0 : aucune attribution requise.
+
+**Enveloppe harmonique reelle — la synthese actuelle est trop pauvre**
+
+Mesure par Goertzel sur 16-17 notes par type, f0 exact pris des `key=`/`tune=`
+du SFZ, normalisee sur l'harmonique 1 :
+
+| Harmonique | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| Reel (moyenne) | 1,000 | **0,795** | 0,803 | 0,421 | 0,348 | 0,186 | 0,155 | 0,169 |
+| Loi actuelle `1/n^1.15` | 1,000 | 0,351 | 0,283 | 0,158 | 0,157 | 0,099 | 0,107 | 0,071 |
+
+La loi actuelle sous-estime les harmoniques 2 a 8 de **47 a 80 %**. Le baryton
+est le plus riche (h2 = 1,56x la fondamentale, h3 = 2,15x). C'est ce qui donne au
+sax son « mordant » : la synthese sonne actuellement trop douce.
+
+**Ce qui existe deja dans le moteur** (`fx_sax.h`) : `buildTable()` est **deja
+additive** (somme de 32 harmoniques avec `im[n] = (1/n^q) * (n impair ? 1 : .78)`),
+et `process()` somme **2 oscillateurs detunes** + un sub. « Passer en additif »
+= **corriger la loi harmonique** dans `buildTable()` (une table mesuree, ou un
+`q` plus faible + poids par harmonique), pas reecrire le moteur. Les formants, le
+grit, le souffle, le scoop/fall, le vibrato et la reverb restent intacts.
+
+### Etat / reste a faire
+
+- Environnement : `/workspace/restore_env.sh` (idempotent) puis
+  `/workspace/build.sh <tache>` ; `:app:compileDebugKotlin` = BUILD SUCCESSFUL
+  (2 min 58 s a froid, cache Gradle vide).
+- Fait : mise en parallele, verification de non-perte, recherche de banques,
+  mesures (boucles, vibrato, enveloppe harmonique).
+- Reste : extraire le sous-ensemble sax (attaque + boucle, 22 kHz, ADPCM 4 bits
+  → ~1,8 Mo par type), brancher le lecteur dans `SaxEngine::process` (le `f` du
+  moteur porte deja bend/scoop/fall/vibrato : il suffit de le passer au lecteur),
+  corriger la loi harmonique, puis validation appareil.
 
 ## Session 2026-10-25 — 4 bugs signales par l'utilisateur (corriges + prouves)
 
