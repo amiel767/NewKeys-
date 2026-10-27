@@ -874,6 +874,18 @@ private:
     // shaper this also pushes its generator offsets to the soundfont channel.
     void setTrackInstrument(int track, int fxId);
     void setTrackInstrumentParam(int track, int param, float norm);
+
+    /**
+     * Bend range (semitones at full wheel) for a track, from Track Settings.
+     * FluidSynth and an Æther source are two different renderers on the same channel:
+     * FluidSynth reads it through fluid_synth_pitch_wheel_sens, and a source renders
+     * outside FluidSynth so it needs the value pushed to its own object. Both are set
+     * here, so whichever one owns the channel honours the setting.
+     */
+    void setTrackPitchBendRange(int track, int semitones) {
+        mSynthEngine.setPitchBendSensitivity(track, semitones);
+        mFx.setInstrumentPitchBendRange(track, semitones);
+    }
     // Recomputes and pushes the generator offsets for a track's shaper. Cheap and
     // idempotent: unchanged values are not queued.
     void refreshTrackGens(int track);

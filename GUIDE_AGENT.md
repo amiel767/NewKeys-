@@ -582,3 +582,47 @@ toute ligne de liste. Points a ne pas rater :
 - `opaqueBase = true` est **obligatoire** pour les lignes a swipe-to-delete (le
   fond translucide laisserait voir la poubelle) ;
 - l'ordre des modificateurs compte : `shadow` -> `clip` -> fond -> bord -> liseré.
+
+## 16. Pitch bend : FluidSynth et les sources Æther ne se reglent pas pareil
+
+`setPitchBendSensitivity(channel, semitones)` ne pousse que FluidSynth
+(`fluid_synth_pitch_wheel_sens`). Des qu'une **source Æther** occupe le canal, ce
+canal ne passe plus par FluidSynth : la plage de bend doit etre poussee **dans la
+source**.
+
+Regle : pour regler la plage de bend d'une piste, appeler
+`AudioEngine.setTrackPitchBendRange(track, semitones)`. Cette methode pousse
+**les deux** renderers (synth FluidSynth et `FxMixer`) — un appel a
+`getEngine(...).setPitchBendSensitivity` seul laisserait l'instrument Æther sur sa
+plage par defaut.
+
+- Defaut : **2 demi-tons** (1 ton), cote natif (`SourceFx::bendSemis_ = 2`).
+- Chaque source applique la plage a sa maniere : Leads/Synth multiplient la
+  hauteur, Organ et Sax appliquent un **ratio** (une roue d'orgue ou un roseau ne
+  se transpose pas par addition de demi-tons).
+- Quand l'instrument est charge **apres** le reglage, il faut repousser la plage :
+  `MixerViewModel` le fait dans le callback `onLoaded` de `AeInstruments`.
+
+## 17. Les notes Æther et l'UI : un miroir, pas un rejeu
+
+Les notes passent par la file native (`playMidiNote`/`stopMidiNote`) : le son est
+bon, mais **aucun listener Kotlin ne voit le canal** (les callbacks MIDI ne portent
+que le nom de note). L'UI d'un instrument Æther resterait donc inerte.
+
+- `AudioEngine.onNoteRoutedListener(channel, note, velocity, on)` est le point de
+  passage unique (USB MIDI, clavier virtuel, pads).
+- Le ViewModel le branche sur `AeManager.mirrorNoteOn` / `mirrorNoteOff` : ces
+  methodes mettent a jour `held` / `lastNote` **uniquement**.
+- **Ne pas** y appeler `noteOn`/`noteOff` : la note partirait une seconde fois au
+  moteur et doublerait la voix.
+- Le sustain est respecte sans code special : pedale baissee, l'app n'emet pas le
+  NoteOff, donc aucun `mirrorNoteOff` n'arrive et la touche reste allumee.
+
+## 18. Bonnets de fader : utiliser `FaderThumb`, pas le SVG
+
+Le cap des faders de piste est le composable Kotlin `FaderThumb`
+(`ui/components/FaderThumb.kt`). `AeFader` (fenetre Leads) l'utilise aussi. Il est
+**portrait** (ratio 1327/1657) : pour remplacer un ancien cap 38x26, garder le
+**centre** du cap sur la valeur et laisser la boite changer de taille, sinon la
+course du fader se decale. `FaderThumb` porte deja sa barre LED — ne pas en
+dessiner une seconde dessous.

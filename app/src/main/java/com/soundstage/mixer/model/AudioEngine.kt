@@ -328,6 +328,15 @@ class AudioEngine(private val context: Context) {
     var onMidiCcListener: ((channel: Int, cc: Int, value: Int) -> Unit)? = null
     var onMidiProgramChangeListener: ((channel: Int, program: Int) -> Unit)? = null
     var onMidiRawEventListener: ((channel: Int, command: Int, data1: Int, data2: Int) -> Unit)? = null
+    /**
+     * Fires for every note the engine actually plays or stops, with the resolved channel
+     * and MIDI number. [onMidiNoteOnListener] only carries the note *name* and is emitted
+     * once per gesture, so it cannot drive a per-strip display (an Æther instrument window
+     * needs the strip index and the number to light the right key). This is the single
+     * choke point every source goes through: USB MIDI, the virtual keyboard and the pads.
+     * Purely observational — it must not send anything to the engine.
+     */
+    var onNoteRoutedListener: ((channel: Int, note: Int, velocity: Int, on: Boolean) -> Unit)? = null
     var onDeviceListChanged: ((List<MidiDeviceItem>) -> Unit)? = null
 
     private val disabledMidiDeviceIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
@@ -604,11 +613,14 @@ class AudioEngine(private val context: Context) {
     private fun playMidiNote(midiNote: Int, velocity: Int, targetChannel: Int) {
         val ch = if (targetChannel == 9) NativeAudioBridge.CHANNEL_TONIC_PAD else targetChannel.coerceIn(0, 8)
         NativeAudioBridge.safeNoteOn(ch, midiNote, velocity, engineIndex = NativeAudioBridge.ENGINE_FADER)
+        // Observational only: the engine already has the note, this feeds the per-strip UI.
+        onNoteRoutedListener?.invoke(ch, midiNote, velocity, true)
     }
 
     private fun stopMidiNote(midiNote: Int, targetChannel: Int) {
         val ch = if (targetChannel == 9) NativeAudioBridge.CHANNEL_TONIC_PAD else targetChannel.coerceIn(0, 8)
         NativeAudioBridge.safeNoteOff(ch, midiNote, engineIndex = NativeAudioBridge.ENGINE_FADER)
+        onNoteRoutedListener?.invoke(ch, midiNote, 0, false)
     }
 
     private fun bendMidiPitch(midiBend: Int, targetChannel: Int) {

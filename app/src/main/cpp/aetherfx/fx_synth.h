@@ -74,7 +74,7 @@ class SynthEngine : public SourceFx {
     const int l1s = static_cast<int>(std::lround(p(18) * 3.f)), l1dst = static_cast<int>(std::lround(p(19) * 3.f));
     const float m1 = p(22), m2 = p(23), m3 = p(24), m4 = p(25);
     const int mode = static_cast<int>(std::lround(p(26) * 2.f));
-    const float glide = p(27) * 2.f, bendR = 1.f + std::round(p(29) * 11.f), tune = (p(30) - 0.5f) * 200.f, level = dbToLin(-24.f + 30.f * p(31)) * 0.25f;
+    const float glide = p(27) * 2.f, bendR = static_cast<float>(bendSemis_), tune = (p(30) - 0.5f) * 200.f, level = dbToLin(-24.f + 30.f * p(31)) * 0.25f;
     const float aAtt = 1.f / std::max(1.f, att * static_cast<float>(sr_)), cDec = 1.f - std::exp(static_cast<float>(-1.0 / (dec * sr_))), cRel = 1.f - std::exp(static_cast<float>(-1.0 / (rel * sr_)));
     const float gl = glide < 0.002f ? 1.f : 1.f - std::exp(static_cast<float>(-1.0 / (glide * sr_)));
     const float invSr = static_cast<float>(1.0 / sr_);

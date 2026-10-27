@@ -65,6 +65,9 @@ class SaxEngine : public SourceFx {
     held_.clear();
     if (note_ >= 0) { note_ = -1; ampStage_ = 3; relT_ = 0.f; fallT_ = 0.f; relR_ = .12f + p(11) * .18f; }
   }
+  // Bends the reed stack by the Track Settings range (default 2 st = 1 tone). Applied on top
+  // of the scoop/fall curves, so a bend during a scoop still tracks the finger.
+  void pitchBend(float b) override { bend_ = b; }
 
   void process(float* io, int n) override {
     NoDenormals nd;
@@ -109,6 +112,7 @@ class SaxEngine : public SourceFx {
       // ---- pitch: glide, scoop, fall (curved u^2, like setValueCurveAtTime) ----
       freq_ += (target_ - freq_) * (legato > 1e-5f ? legato : 1.f);
       float pitch = freq_;
+      pitch *= std::pow(2.f, bend_ * static_cast<float>(bendSemis_) / 12.f);
       if (scoopT_ > 0.f) { scoopT_ -= invSr / .1f; if (scoopT_ < 0.f) scoopT_ = 0.f; pitch *= std::pow(2.f, -p(10) * 3.f / 12.f * scoopT_); }
       if (fallT_ > 0.f) {
         const float u = std::min(1.f, relT_ / std::max(1e-4f, relR_ * .9f));
@@ -225,6 +229,7 @@ class SaxEngine : public SourceFx {
   Noise noise_;
   std::vector<int> held_;
   int note_ = -1, ampStage_ = 0;
+  float bend_ = 0.f;
   float freq_ = 440.f, target_ = 440.f, vel_ = 0.f, ampT_ = 0.f, ampLvl_ = 0.f, relT_ = 0.f, relR_ = .2f;
   float ph_[3] = {0, 0, 0}, vibPh_ = 0.f, vibDriftPh_ = 0.f, breathLfoPh_ = 0.f, growlPh_ = 0.f;
   float scoopT_ = 0.f, fallT_ = 0.f, clickEnv_ = 0.f, relClickEnv_ = 0.f;

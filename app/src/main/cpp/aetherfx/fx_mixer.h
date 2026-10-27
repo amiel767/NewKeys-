@@ -106,6 +106,8 @@ class FxMixer {
   void noteOff(int strip, int note) { if (instrumentAllowed(strip)) tracks_[strip].noteOff(note); }
   void allNotesOff(int strip) { if (instrumentAllowed(strip)) tracks_[strip].allNotesOff(); }
   void pitchBend(int strip, float b) { if (instrumentAllowed(strip)) tracks_[strip].pitchBend(b); }
+  /** Track Settings bend range (semitones at full wheel) for the strip's source, if any. */
+  void setInstrumentPitchBendRange(int strip, int semis) { if (instrumentAllowed(strip)) tracks_[strip].setPitchBendRange(semis); }
   // Interleaved stereo. For a source track the input (soundfont) is ignored and replaced by the source.
   void processStrip(int strip, float* io, int frames) {
     if (strip >= 0 && strip <= 7) tracks_[strip].process(io, frames);

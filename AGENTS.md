@@ -3136,3 +3136,83 @@ Verifie avec `python3 tools/conv_sync.py` : la conversation parallele
 workflow sans accord »). Le travail de cette session ne recouvre aucun de ses
 fichiers (`MixerBottomBarV2.kt`, `SnapshotJson.kt`, `AppStatePersistence.kt`,
 `BottomBarCaptureTest.kt`).
+
+## Session 2026-10-24 — pitch bend Æther, bonnet de fader Leads, UI MIDI
+
+Trois demandes utilisateur, toutes verifiees. **Compile : OK** (`assembleDebug`,
+Kotlin + NDK 4 ABI).
+
+### 1. Pitch bend des Æther Instruments : plage pilotee par Track Settings
+
+Symptome : le bend partait a **1 demi-ton** et le reglage « Pitch bend range » de
+Track Settings n'avait **aucun effet** sur les instruments Æther.
+
+Cause : une source rend **hors de FluidSynth**. `setPitchBendSensitivity` ne
+pousse que `fluid_synth_pitch_wheel_sens`, jamais consulte pour un canal dont la
+source s'est emparé. Chaque source avait donc sa plage en dur :
+
+| Source | Avant | Apres |
+|---|---|---|
+| Leads (`fx_leads.h`) | `bend_ * 2.f` fixe | `bend_ * bendSemis_` |
+| Synth (`fx_synth.h`) | `1 + round(p(29)*11)` (1 a 12, dependait du knob « Bend ») | `bendSemis_` |
+| Organ (`fx_organ.h`) | **ignore** (pas d'override) | ratio sur les increments de roues |
+| Sax (`fx_sax.h`) | **ignore** | ratio sur la hauteur du roseau |
+
+La plage vient desormais de `SourceFx::setPitchBendRange(int)` (defaut **2** =
+**1 ton**), propagee par
+`FxChain::setPitchBendRange` -> `FxMixer::setInstrumentPitchBendRange` ->
+`AudioEngine::setTrackPitchBendRange(track, semis)` (nouvelle methode publique,
+**au-dessus** du `private:`) qui pousse **les deux** renderers :
+`mSynthEngine.setPitchBendSensitivity` **et** `mFx.setInstrumentPitchBendRange`.
+Le JNI `setPitchBendRange` route par cette methode (plus par `getEngine`).
+
+Kotlin : `MixerViewModel` pousse la plage au **chargement** de l'instrument
+(`AeInstruments.onLoaded` -> `safeSetPitchBendRange(slot, track.pitchBendRange)`),
+sinon la source gardait son defaut jusqu'au prochain reglage.
+
+**Preuve hote** (`/workspace/audit/bend_test5.cpp`, `g++ -O2`) : frequence de
+crete mesuree roue centree vs roue a fond, 4 sources, 3 plages (1/2/12 st),
+12/12 PASS, erreur **<= 0,17 %**. Pieges du banc : un preset bricole d'un seul
+parametre rend un timbre ambigu (le vrai preset « Pure Sine » donne 0,10 %), et
+la voix Leads porte un vibrato + drift qui exige une fenetre d'analyse courte.
+
+Note : le knob **Bend** du Synth (param 29) reste affiche (fidele au preview) mais
+n'est plus la plage — c'est Track Settings qui commande, comme demande.
+
+### 2. Bonnet des faders Leads = celui des pistes
+
+`AeFader` (`AeLeadsUi.kt`) utilisait un SVG plat (`AeSvgs.FADER_CAP`). Remplacé par
+le **composable Kotlin `FaderThumb`** (`ui/components/FaderThumb.kt`), celui des
+faders de piste. `FaderThumb` est **portrait** (ratio 1327/1657) alors que la boite
+SVG etait 38x26 : la boite garde le **centre** du cap sur la valeur
+(`at(22 - capW/2, capY + 13 - capH/2, capW, capH)`), donc la course est inchangee.
+La barre LED maison sous le cap a ete **retiree** : `FaderThumb` en porte deja une.
+`AeSvgs.FADER_CAP` n'a plus d'appelant (laisse en place, inoffensif).
+
+### 3. L'UI des Æther Instruments ne voyait pas les notes MIDI
+
+Le son repondait (le natif route bien NoteOn/NoteOff vers la source) mais l'UI
+restait inerte : `AeManager.onMidiNoteOn` n'est appele **par personne**. Les notes
+sont consommees par la file native avant tout listener Kotlin, et
+`onMidiNoteOnListener` ne porte que le **nom** de note, pas le canal.
+
+Correctif : nouveau hook `AudioEngine.onNoteRoutedListener(channel, note, velocity, on)`
+emis par `playMidiNote`/`stopMidiNote` — le **point de passage unique** (USB MIDI,
+clavier virtuel, pads). Le ViewModel le branche sur
+`AeManager.mirrorNoteOn`/`mirrorNoteOff`, qui mettent a jour **uniquement**
+`AeSession.held` / `lastNote` / `noteEvents`. Ne **pas** utiliser `noteOn`/`noteOff`
+la : elles repousseraient la note au moteur et la doubleraient. Le sustain est
+respecte sans code special : pedale baissee, l'app n'emet pas le NoteOff (la note
+attend dans sa propre liste), donc le miroir reste allume.
+
+**Tests** : `AeManagerTest` **12/12 PASS**, dont 4 nouveaux garde-fous
+(`mirrorNoteOnLightsTheKeyWithoutReplayingIt` verifie qu'aucune note ne repart,
+`heldPedalKeepsTheMirroredKeyLitUntilItLifts`, etc.).
+
+### Pieges du banc (a relire avant de toucher au bend)
+
+- `setPitchBendRange` du JNI doit passer par `AudioEngine::setTrackPitchBendRange`,
+  pas par `getEngine(...)`, sinon la source est muette au bend.
+- Une nouvelle methode publique d'`AudioEngine` va **au-dessus** du `private:`.
+- Mesurer un bend par suivi de hauteur est fragile : utiliser le **pic du spectre
+  mesure** (Goertzel, pas de zero-crossings) et le **vrai preset** de l'app.

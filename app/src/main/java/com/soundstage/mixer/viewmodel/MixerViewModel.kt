@@ -477,6 +477,15 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             handleMidiMappingEvent(channel, command, data1, data2)
         }
 
+        // The Æther instrument window draws its own key highlight and note readout, but the
+        // notes are routed natively before any Kotlin listener sees them. Mirror them into
+        // the manager so the UI follows the sound (it used to stay inert on external MIDI).
+        audioEngine.onNoteRoutedListener = { channel, note, velocity, on ->
+            val manager = com.soundstage.mixer.instruments.AeInstruments.manager
+            if (on) manager.mirrorNoteOn(channel, note, velocity)
+            else manager.mirrorNoteOff(channel, note)
+        }
+
         // Connect multi-channel layer performance routing for USB MIDI
         audioEngine.activeLayerChannelsProvider = { midiNote, incomingChannel, deviceId ->
             getActivePerformanceChannels(midiNote, incomingChannel, deviceId)
@@ -513,6 +522,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             if (track != null) {
                 val anySolo = _uiState.value.tracks.any { it.isSolo }
                 pushFxStripMix(slot, effectiveTrackVolume(track, anySolo), track.pan)
+                // A source renders outside FluidSynth, so it never saw the track's bend range
+                // (the sensitivity the JNI pushes only reaches FluidSynth). Push it again now
+                // that the instrument exists, otherwise the wheel would use its built-in default.
+                NativeAudioBridge.safeSetPitchBendRange(slot, track.pitchBendRange)
             }
         }
         _uiState.value.tracks.forEach { track ->

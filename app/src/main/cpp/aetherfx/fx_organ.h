@@ -36,6 +36,9 @@ class OrganEngine : public SourceFx {
   }
   void noteOff(int note) override { if (note >= 0 && note < 128 && held_[note]) { held_[note] = false; --heldCount_; } }
   void allNotesOff() override { std::memset(held_, 0, sizeof(held_)); heldCount_ = 0; }
+  // The organ is additive: a bend scales every wheel increment by the same ratio, so the
+  // drawbar stack glides as one instrument instead of detuning against itself.
+  void pitchBend(float b) override { bend_ = b; }
 
   void process(float* io, int n) override {
     NoDenormals nd;
@@ -51,6 +54,8 @@ class OrganEngine : public SourceFx {
       return;
     }
     const float cf = smoothCoef(n, sr_, 0.02);
+    // Range comes from Track Settings via SourceFx::setPitchBendRange (default 2 st = 1 tone).
+    const float bendRatio = std::pow(2.f, bend_ * static_cast<float>(bendSemis_) / 12.f);
     const float click = sm_[0].step(p(26), cf), tone = sm_[1].step(p(27), cf), drive = sm_[2].step(p(28), cf), space = sm_[3].step(p(29), cf), lvl = sm_[4].step(p(30), cf);
     int dbU[9], dbL[9];
     for (int j = 0; j < 9; ++j) { dbU[j] = static_cast<int>(std::lround(p(j) * 8.f)); dbL[j] = static_cast<int>(std::lround(p(9 + j) * 8.f)); }
@@ -88,7 +93,7 @@ class OrganEngine : public SourceFx {
         const int w = act_[q];
         amp_[w] += (tw_[w] - amp_[w]) * aC;
         s += (amp_[w] + pw_[w] * percEnv_) * sineTable().at(ph_[w]);
-        ph_[w] += inc_[w]; if (ph_[w] >= 1.f) ph_[w] -= 1.f;
+        ph_[w] += inc_[w] * bendRatio; if (ph_[w] >= 1.f) ph_[w] -= 1.f;
       }
       percEnv_ *= percDec;
       if (clickEnv_ > 1e-4f) { s += noise_.next() * clickEnv_ * click * 0.25f; clickEnv_ *= clickDec; }
@@ -125,6 +130,7 @@ class OrganEngine : public SourceFx {
   static constexpr float kRevDef[7] = {0.55f, 0.45f, 0.12f, 0.45f, 0.8f, 0.3f, 0.5f};
   double sr_ = 48000.0;
   float inc_[128], amp_[128], ph_[128], tw_[128], pw_[128]; int act_[128]; bool held_[128]; int heldCount_ = 0;
+  float bend_ = 0.f;
   float percEnv_ = 0.f, clickEnv_ = 0.f, hornSp_ = 0.f, drumSp_ = 0.f, hornPh_ = 0.f, drumPh_ = 0.f, vibPh_ = 0.f;
   DelayLine dlH_[2], dlD_[2], dlV_; SpaceReverb rev_; Biquad xo_[2], tone_; Noise noise_; BlockSmoother sm_[5];
 };

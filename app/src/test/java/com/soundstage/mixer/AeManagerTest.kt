@@ -116,4 +116,55 @@ class AeManagerTest {
         assertTrue(m.onMidiNoteOn(1, 64, 90))
         assertEquals(1 to 64, host.notesOn.first())
     }
+
+    // --- UI mirror of engine-routed notes ------------------------------------------------
+    // The app plays every note through the native queue, which hands it to the source
+    // directly; the instrument window used to stay inert on external MIDI because nothing
+    // told the manager. mirrorNote* feeds the UI and must NOT re-send the note.
+
+    @Test
+    fun mirrorNoteOnLightsTheKeyWithoutReplayingIt() {
+        val host = FakeHost()
+        val m = manager(host)
+        m.load(2, AeInstrument.LEADS)
+        val before = host.notesOn.size
+
+        m.mirrorNoteOn(2, 67, 100)
+
+        assertEquals(true, m.sessions[2]?.held?.get(67))
+        assertEquals(67, m.sessions[2]?.lastNote)
+        assertEquals(1, m.sessions[2]?.noteEvents)
+        // A second native copy would double the voice, so nothing must reach the engine.
+        assertEquals(before, host.notesOn.size)
+    }
+
+    @Test
+    fun mirrorNoteOffReleasesTheKey() {
+        val host = FakeHost()
+        val m = manager(host)
+        m.load(2, AeInstrument.LEADS)
+        m.mirrorNoteOn(2, 67, 100)
+        m.mirrorNoteOff(2, 67)
+        assertEquals(null, m.sessions[2]?.held?.get(67))
+    }
+
+    @Test
+    fun mirrorNoteOffOnAStripWithoutInstrumentIsIgnored() {
+        val m = manager(FakeHost())
+        m.mirrorNoteOn(5, 60, 100)  // must not create a session
+        m.mirrorNoteOff(5, 60)
+        assertFalse(m.sessions.containsKey(5))
+    }
+
+    @Test
+    fun mirrorNoteOffOnlyReleasesItsOwnNote() {
+        val host = FakeHost()
+        val m = manager(host)
+        m.load(0, AeInstrument.ORGAN)
+        m.mirrorNoteOn(0, 60, 100)
+        m.mirrorNoteOn(0, 64, 100)
+        m.mirrorNoteOff(0, 60)
+        assertEquals(null, m.sessions[0]?.held?.get(60))
+        assertEquals(true, m.sessions[0]?.held?.get(64))
+    }
 }

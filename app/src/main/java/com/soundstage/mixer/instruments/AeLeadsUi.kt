@@ -26,6 +26,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import com.soundstage.mixer.ui.components.FaderThumb
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -60,8 +61,17 @@ private fun AeFader(c: AeCtl, idx: Int, x: Number, y: Number) {
             drawRoundRect(Color(0x8C19E3FF), Offset(19.5f * k, (yy + 13f) * k), Size(5f * k, max(0f, 140f - yy - 13f) * k), CornerRadius(2.5f * k))
         }
         val capY = 4f + (1f - v) * 118f
-        Box(Modifier.at(3, capY, 38, 26).aeSvg(AeSvgs.FADER_CAP))
-        Canvas(Modifier.at(8, capY + 12f, 28, 3)) { drawRoundRect(Color(0xFF19E3FF).copy(alpha = 0.35f + 0.65f * v), Offset.Zero, size, CornerRadius(size.height / 2f)) }
+        // Cap = the same Kotlin bonnet the mixer track faders use (FaderThumb), not the flat
+        // SVG rectangle it replaced. FaderThumb is portrait (1327x1657): the box keeps the
+        // cap's centre on the value so the travel is unchanged, and the drawing stays inside.
+        val capH = 40f; val capW = capH * (1327f / 1657f)
+        Box(Modifier.at(22f - capW / 2f, capY + 13f - capH / 2f, capW, capH)) {
+            FaderThumb(
+                accent = Color(0xFF19E3FF),
+                modifier = Modifier.fillMaxSize(),
+                glow = 0.28f + 0.72f * v,
+            )
+        }
         AeT("${(v * 100).roundToInt()}", 10, Color(0xFF9FDCEA), Modifier.at(0, 145, 44, 13), AeFonts.mono, FontWeight.Normal, align = TextAlign.Center)
     }
 }

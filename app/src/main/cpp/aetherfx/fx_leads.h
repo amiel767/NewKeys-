@@ -120,7 +120,7 @@ class LeadsEngine : public SourceFx {
         if (!v.on) continue;
         stepEnv(v, A, H, D, R, invSr);
         if (v.stage >= 6) { v.on = false; continue; }
-        const float tgt = v.target + bend_ * 2.f;
+        const float tgt = v.target + bend_ * static_cast<float>(bendSemis_);
         v.pit += (tgt - v.pit) * (mode == 0 ? 1.f : gl);
         const float f = 440.f * std::pow(2.f, (v.pit - 69.f) / 12.f);
         // Per-voice slow drift (DeepSeek patch): a 0.12..0.47 Hz LFO on the detune, so held

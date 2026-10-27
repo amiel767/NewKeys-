@@ -195,7 +195,9 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_setPitchBendRange(
         jint engineIndex,
         jint channel,
         jint semitones) {
-    gAudioEngine.getEngine(engineIndex).setPitchBendSensitivity(channel, semitones);
+    // Route through AudioEngine so an Æther source (which renders outside FluidSynth)
+    // receives the range too; setPitchBendSensitivity alone would only reach FluidSynth.
+    gAudioEngine.setTrackPitchBendRange(channel, semitones);
 }
 
 JNIEXPORT void JNICALL

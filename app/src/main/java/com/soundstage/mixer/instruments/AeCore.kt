@@ -195,4 +195,27 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
         setParam(channel, idx, value / 127f); return true
     }
     fun onMidiAllNotesOff(channel: Int) { sessions[channel]?.let { it.held.clear(); host.allNotesOff(channel) } }
+
+    /**
+     * UI mirror of a note the engine already routed to this strip's source.
+     *
+     * The app plays every note through the native event queue, which hands it to the
+     * Source when the strip carries one; [noteOn]/[noteOff] would push a *second* copy.
+     * These only update [AeSession.held] and [AeSession.lastNote], which is what the
+     * instrument window draws (key highlight, oscilloscope, note readout). They never
+     * touch [host]: purely observational.
+     */
+    fun mirrorNoteOn(channel: Int, note: Int, velocity: Int) {
+        val s = sessions[channel] ?: return
+        s.held[note] = true
+        s.lastNote = note
+        s.noteEvents++
+    }
+
+    fun mirrorNoteOff(channel: Int, note: Int) {
+        // A held pedal needs no special case here: while it is down the app does not emit
+        // the NoteOff at all (the note waits in its own release list), so no mirror arrives
+        // and the key stays lit. When the pedal lifts the engine emits it and we clear here.
+        sessions[channel]?.held?.remove(note)
+    }
 }
