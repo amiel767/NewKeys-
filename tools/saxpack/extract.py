@@ -41,6 +41,12 @@ from scipy.signal import resample_poly
 RAW = "https://raw.githubusercontent.com/sfzinstruments/MTG.SoloSax/master/"
 OUT_DIR = Path(__file__).resolve().parent / "out"
 TARGET_RATE = 22050
+# Level target for a region, in RMS. Chosen so a note rendered from the pack
+# blends with the synthesis at the same loudness: the synthesis measures 0.23 RMS
+# on the baritone, and peak normalisation landed 2.7x below it because of the
+# transients. 0.20 leaves a little headroom for the hybrid sum.
+TARGET_RMS = 0.20
+PEAK_CEIL = 0.95
 TYPES = ("sop", "alt", "ten", "bar")
 
 # IMA ADPCM, the table pair from the WAV specification.
@@ -273,9 +279,16 @@ def build_type(kind: str, layers: list[str], keep: float) -> tuple[bytes, dict]:
                 end = len(seg)
             # remove DC so the ADPCM predictor does not chase an offset
             seg = seg - float(seg.mean())
+            # Normalise in RMS, not in peak: a peak normalisation makes the level
+            # depend on the crest factor, and the baritone's transients pushed it
+            # 2.7x below the synthesis it has to blend with (measured). The peak
+            # ceiling keeps the loudest regions from clipping.
+            rms = float(np.sqrt(np.mean(seg ** 2)))
             peak = float(np.max(np.abs(seg)))
-            if peak > 1e-6:
-                seg = seg / peak * 0.9
+            gain = TARGET_RMS / rms if rms > 1e-9 else 1.0
+            if peak * gain > PEAK_CEIL:
+                gain = PEAK_CEIL / peak
+            seg = seg * gain
             # seam before encoding: separates a bad trim/resample from ADPCM noise
             w = min(4096, (loop_end - loop_start) // 3, len(seg) - loop_end - 1)
             seam = 0.0

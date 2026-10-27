@@ -10,6 +10,7 @@
 #pragma once
 #include "fx_source.h"
 #include "fx_space.h"
+#include "fx_sax_samples.h"
 
 namespace aetherfx {
 
@@ -20,6 +21,7 @@ class SaxEngine : public SourceFx {
   void prepare(double sr, int maxBlock) override {
     sr_ = sr;
     rev_.prepare(sr, maxBlock);
+    smp_.setOutputRate(sr);
     reset();
   }
   void reset() override {
@@ -31,6 +33,7 @@ class SaxEngine : public SourceFx {
     held_.clear(); note_ = -1; freq_ = 440.f; target_ = 440.f;
     for (auto& b : form_) b.reset();
     lpF_.reset(); nbF_.reset(); clickF_.reset(); warm_.reset(); bright_.reset();
+    smp_.allNotesOff();
     rev_.reset(); setMeter(0, 0.f);
   }
 
@@ -44,6 +47,7 @@ class SaxEngine : public SourceFx {
     ampStage_ = 1; ampT_ = 0.f; ampLvl_ = 0.f; fallT_ = 0.f;
     scoopT_ = p(10) > .02f ? 1.f : 0.f;
     clickEnv_ = 1.f;
+    smp_.noteOn(note, vel);
     seed(f);
     for (auto& b : form_) b.reset();
     lpF_.reset(); nbF_.reset();
@@ -53,6 +57,7 @@ class SaxEngine : public SourceFx {
     if (!held_.empty()) { note_ = held_.back(); target_ = static_cast<float>(440.0 * std::pow(2.0, (held_.back() - 69) / 12.0)); return; }
     if (note_ < 0) return;
     note_ = -1;
+    smp_.noteOff();
     ampStage_ = 3;
     relT_ = 0.f;
     fallT_ = p(11) > .05f ? 1.f : 0.f;
@@ -63,20 +68,45 @@ class SaxEngine : public SourceFx {
   }
   void allNotesOff() override {
     held_.clear();
+    smp_.allNotesOff();
     if (note_ >= 0) { note_ = -1; ampStage_ = 3; relT_ = 0.f; fallT_ = 0.f; relR_ = .12f + p(11) * .18f; }
   }
   // Bends the reed stack by the Track Settings range (default 2 st = 1 tone). Applied on top
   // of the scoop/fall curves, so a bend during a scoop still tracks the finger.
   void pitchBend(float b) override { bend_ = b; }
 
+  /**
+   * Enables the measured harmonic table (the "additive" correction). Default true.
+   * Off restores the generic 1/n^q voice, which is what earlier builds sounded
+   * like; kept so the change can be A/B'd on a device.
+   */
+  void setMeasuredTable(bool on) { if (on != measured_) { measured_ = on; buildTable(); } }
+  bool measuredTable() const { return measured_; }
+
+  /**
+   * Hybrid mix: 0 = pure synthesis, 1 = pure samples. The pack supplies the
+   * timbre and the synthesis stays under it as a bed, so the instrument keeps a
+   * continuous voice across the gaps between sampled zones and through legato.
+   * With no pack loaded the reader is inactive and this has no effect.
+   */
+  void setSampleMix(float v) { sampleMix_ = clamp01(v); }
+  float sampleMix() const { return sampleMix_; }
+
+  /** Hand over a pack built by tools/saxpack/extract.py. Returns false if malformed. */
+  bool loadSamples(const uint8_t* bytes, size_t size) { return smp_.load(bytes, size); }
+  bool hasSamples() const { return smp_.loaded(); }
+
   void process(float* io, int n) override {
     NoDenormals nd;
-    if (ampStage_ == 0 && relClickEnv_ < 1e-4f && rev_.meter(0) < 1e-4f) {
+    if (ampStage_ == 0 && relClickEnv_ < 1e-4f && rev_.meter(0) < 1e-4f && !smp_.active()) {
       std::fill(io, io + 2 * n, 0.f);
       setMeter(0, 0.f);
       return;
     }
     const int ty = static_cast<int>(std::lround(p(0) * 3.f)), rd = static_cast<int>(std::lround(p(3) * 2.f)), mp = static_cast<int>(std::lround(p(2) * 2.f));
+    // The reed table is built from the type (envelope) and the brightness (q);
+    // both are parameters, so the table has to follow them.
+    if (ty != ty_) { ty_ = ty; buildTable(); }
     const float br = clamp01(p(19) * .75f + RD_BR[rd] + MP_BR[mp]);
     const float q = 1.15f - br * .65f;
     if (std::fabs(q - q_) > 1e-4f) { q_ = q; buildTable(); }
@@ -165,6 +195,15 @@ class SaxEngine : public SourceFx {
         x += clickF_.process(0, noise_.next()) * relClickEnv_;
         relClickEnv_ *= std::exp(static_cast<float>(-1.0 / (.015 * sr_)));
       }
+      // ---- hybrid mix: the pack supplies the timbre, the synthesis stays under it ----
+      // Applied after the formant chain on purpose: the recorded sax already carries
+      // its own formant, so running it through form_[0..3] would apply it twice.
+      // The sample keeps its own envelope, hence the mix happens after `amp`.
+      if (sampleMix_ > .001f && smp_.active()) {
+        float sm = 0.f;
+        smp_.render(&sm, 1, kSampleGain);
+        x = x * (1.f - sampleMix_) + sm * sampleMix_;
+      }
       // ---- warm/bright shelves then out ----
       x = bright_.process(0, warm_.process(0, x));
       x *= p(20) * .8f;
@@ -185,6 +224,45 @@ class SaxEngine : public SourceFx {
   static constexpr float RD_ATT[3] = {1.3f, 1.f, .8f};
   static constexpr float MP_GRIT[3] = {1.2f, 0.f, .5f};
 
+  // Measured harmonic envelopes of the MTG Solo Saxophones library (CC-BY 4.0),
+  // normalised to h1. Taken by Goertzel on the sustain loop of 33 notes per type
+  // with the fundamental measured (not read from the SFZ: the library is tuned
+  // about 5 % flat). These are *relative* corrections against the old 1/n^1.15
+  // law, not absolute spectra: the measured signal already carries the formant
+  // that form_[0..3] reproduces, so using the raw envelope would apply it twice.
+  // See tools/saxpack/ and the session note in AGENTS.md.
+  static constexpr float ENV_SOP[32] = {
+      1.000f, 0.904f, 0.512f, 0.224f, 0.135f, 0.062f, 0.039f, 0.037f,
+      0.028f, 0.020f, 0.014f, 0.011f, 0.008f, 0.007f, 0.007f, 0.005f,
+      0.004f, 0.003f, 0.004f, 0.003f, 0.002f, 0.002f, 0.001f, 0.001f,
+      0.001f, 0.001f, 0.001f, 0.001f, 0.000f, 0.000f, 0.001f, 0.000f,
+  };
+  static constexpr float ENV_ALT[32] = {
+      1.000f, 0.594f, 0.477f, 0.232f, 0.210f, 0.174f, 0.117f, 0.118f,
+      0.092f, 0.064f, 0.047f, 0.044f, 0.043f, 0.045f, 0.043f, 0.039f,
+      0.032f, 0.024f, 0.021f, 0.017f, 0.016f, 0.013f, 0.010f, 0.007f,
+      0.005f, 0.004f, 0.004f, 0.002f, 0.002f, 0.002f, 0.002f, 0.002f,
+  };
+  static constexpr float ENV_TEN[32] = {
+      1.000f, 0.869f, 0.782f, 0.452f, 0.411f, 0.326f, 0.265f, 0.218f,
+      0.165f, 0.171f, 0.176f, 0.157f, 0.133f, 0.105f, 0.081f, 0.065f,
+      0.064f, 0.058f, 0.053f, 0.044f, 0.040f, 0.039f, 0.034f, 0.037f,
+      0.029f, 0.027f, 0.025f, 0.021f, 0.016f, 0.012f, 0.013f, 0.012f,
+  };
+  // The baritone genuinely has h2 and h3 above h1: a large conical bore radiates
+  // its fundamental weakly. Verified with the measured f0 (ratio 0.94, so no
+  // octave error), and confirmed on the absolute spectrum (h1 -3.9 dB against a
+  // maximum at h3). It is a real acoustic signature, not a measurement artefact.
+  static constexpr float ENV_BAR[32] = {
+      1.000f, 1.886f, 2.520f, 1.600f, 1.989f, 1.004f, 1.082f, 0.976f,
+      0.967f, 0.867f, 0.867f, 0.709f, 0.609f, 0.484f, 0.518f, 0.569f,
+      0.512f, 0.439f, 0.432f, 0.410f, 0.404f, 0.324f, 0.337f, 0.327f,
+      0.272f, 0.254f, 0.266f, 0.231f, 0.205f, 0.166f, 0.142f, 0.141f,
+  };
+  static const float* envTable(int ty) {
+    switch (ty) { case 0: return ENV_SOP; case 2: return ENV_TEN; case 3: return ENV_BAR; default: return ENV_ALT; }
+  }
+
   static float fastTanh(float x) { if (x > 3.f) return 1.f; if (x < -3.f) return -1.f; const float x2 = x * x; return x * (27.f + x2) / (27.f + 9.f * x2); }
   // Asymmetric grit: the positive half is driven harder than the negative one, which is what
   // gives the reed its edge without sounding like a symmetric distortion.
@@ -192,13 +270,47 @@ class SaxEngine : public SourceFx {
     const float kp = k * 1.15f, kn = k * .9f;
     return x > 0.f ? fastTanh(x * kp) / fastTanh(kp) : fastTanh(x * kn) / fastTanh(kn);
   }
-  // Harmonic reed table: im[n] = (1/n^q) * (n odd ? 1 : .78), like saxWave() in the reference.
+  // Harmonic reed table. Two modes:
+  //
+  //  * default: the generic law im[n] = (1/n^q) * (n odd ? 1 : .78), like saxWave()
+  //    in the reference preview. The table is NOT normalised, so the oscillator
+  //    level already changes with `q` (peak spans 1.18 to 5.35 across the brightness
+  //    range) and the engine relies on that.
+  //  * measured: the same law multiplied by the measured envelope of the type,
+  //    normalised in level so that only the *shape* changes. This is the "additive"
+  //    correction: the real sax keeps far more energy in harmonics 2..6 than 1/n^1.15,
+  //    which is what its edge comes from. The envelope is applied as a ratio against
+  //    the generic law because the measured spectrum already contains the formant
+  //    that form_[0..3] reproduces; using it raw would apply the formant twice.
   void buildTable() {
     constexpr int N = 1024, H = 32;
+    const float* env = measured_ ? envTable(ty_) : nullptr;
+    // normalise the correction so the peak matches the unmeasured table
+    float norm = 1.f;
+    if (env) {
+      float a = 0.f, b = 0.f;
+      for (int i = 0; i < N; ++i) {
+        const float t = static_cast<float>(i) / N;
+        float plain = 0.f, corr = 0.f;
+        for (int h = 1; h <= H; ++h) {
+          const float g = std::pow(1.f / h, q_) * ((h & 1) ? 1.f : .78f);
+          const float s = std::sin(2.f * static_cast<float>(kPi) * h * t);
+          plain += s * g;
+          corr += s * g * env[h - 1];
+        }
+        a = std::max(a, std::fabs(plain));
+        b = std::max(b, std::fabs(corr));
+      }
+      norm = (b > 1e-6f) ? a / b : 1.f;
+    }
     for (int i = 0; i < N; ++i) {
       const float t = static_cast<float>(i) / N;
       float s = 0.f;
-      for (int h = 1; h <= H; ++h) s += std::sin(2.f * static_cast<float>(kPi) * h * t) * std::pow(1.f / h, q_) * ((h & 1) ? 1.f : .78f);
+      for (int h = 1; h <= H; ++h) {
+        float g = std::pow(1.f / h, q_) * ((h & 1) ? 1.f : .78f);
+        if (env) g *= env[h - 1] * norm;
+        s += std::sin(2.f * static_cast<float>(kPi) * h * t) * g;
+      }
       tbl_[i] = s;
     }
     tbl_[N] = tbl_[0];
@@ -224,6 +336,20 @@ class SaxEngine : public SourceFx {
 
   double sr_ = 48000.0;
   float tbl_[1025] = {0};
+  // Measured-table state. `measured_` is the "additive" correction: when on, the
+  // reed table carries the harmonic envelope measured on the real instruments
+  // instead of the generic 1/n^q law, which is what removes the synthetic
+  // character. Exposed so a preset or the UI can fall back to the old voice.
+  int ty_ = 1;
+  bool measured_ = true;
+  SaxSampleReader smp_;
+  float sampleMix_ = 0.f;   // 0 = pure synthesis, 1 = pure samples
+  // Level trim so a note played from the pack matches the synthesis it blends
+  // with. Measured on the baritone at mix 1: synthesis 0.230 RMS, pack 0.0753,
+  // so the pack sits 3.05x lower. The pack itself is normalised to a canonical
+  // 0.20 RMS by tools/saxpack/extract.py, which keeps it free of clipping; the
+  // balance is the engine's business, not the asset's.
+  static constexpr float kSampleGain = 3.05f;
   Biquad form_[4], lpF_, nbF_, clickF_, warm_, bright_;
   SpaceReverb rev_;
   Noise noise_;
