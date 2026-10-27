@@ -399,6 +399,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             val masterVol = _uiState.value.masterTrack.volume
             audioEngine.masterVolume = masterVol
             NativeAudioBridge.safeSetMasterVolume(masterVol)
+            NativeAudioBridge.safeFxStripGain(NativeAudioBridge.FX_STRIP_MASTER, masterVol)
         }
     }
 
@@ -2312,6 +2313,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         if (trackId == 0) {
             audioEngine.masterVolume = clampedVol
             NativeAudioBridge.safeSetMasterVolume(clampedVol)
+            // An Æther instrument renders outside FluidSynth, so the master fader has to be
+            // pushed onto the FX master strip as well; otherwise the instrument kept its own
+            // gain and the master slider did not move it.
+            NativeAudioBridge.safeFxStripGain(NativeAudioBridge.FX_STRIP_MASTER, clampedVol)
             _uiState.update { state ->
                 state.copy(masterTrack = state.masterTrack.copy(volume = clampedVol))
             }

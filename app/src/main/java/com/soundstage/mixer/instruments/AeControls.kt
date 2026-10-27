@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -42,6 +43,24 @@ class AeCtl(val s: AeSession, val m: AeManager) {
 @Composable
 private fun Modifier.noRipple(onClick: () -> Unit): Modifier = clickable(remember { MutableInteractionSource() }, null, onClick = onClick)
 
+/**
+ * Drag sets the value; a double tap resets the knob to the current preset's value for that
+ * index. The reset target is read from the preset rather than a hard-coded default, so it
+ * always undoes a tweak back to where the preset put it.
+ */
+@Composable
+private fun Modifier.aeKnobInput(c: AeCtl, idx: Int): Modifier {
+    val sc = LocalAeScale.current
+    val reset = c.m.presetValue(c.s.strip, idx)
+    return pointerInput(idx, reset) {
+        detectDragGestures { ch, d -> ch.consume(); c.set(idx, c.v(idx) - d.y / (130f * sc)) }
+    }.pointerInput(idx, reset) {
+        detectTapGestures(
+            onDoubleTap = { reset?.let { c.set(idx, it) } },
+        )
+    }
+}
+
 /** Synth knob: glowing value ring + glass cap. Vertical drag, 130 stage units = full range (same as the preview). */
 @Composable
 fun AeGlassKnob(c: AeCtl, idx: Int, label: String, x: Number, y: Number, size: Number) {
@@ -49,9 +68,7 @@ fun AeGlassKnob(c: AeCtl, idx: Int, label: String, x: Number, y: Number, size: N
     val sc = LocalAeScale.current
     val sz = size.toFloat()
     Column(
-        Modifier.at(x.toFloat() - 11f, y, sz + 22f, sz + 28f).pointerInput(idx) {
-            detectDragGestures { ch, d -> ch.consume(); c.set(idx, c.v(idx) - d.y / (130f * sc)) }
-        },
+        Modifier.at(x.toFloat() - 11f, y, sz + 22f, sz + 28f).aeKnobInput(c, idx),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(Modifier.size(size.su())) {
@@ -84,9 +101,7 @@ fun AeMetalKnob(c: AeCtl, idx: Int, label: String, x: Number, y: Number, size: N
     val sc = LocalAeScale.current
     val sz = size.toFloat()
     Column(
-        Modifier.at(x.toFloat() - 8f, y, sz + 16f, sz + 14f).pointerInput(idx) {
-            detectDragGestures { ch, d -> ch.consume(); c.set(idx, c.v(idx) - d.y / (130f * sc)) }
-        },
+        Modifier.at(x.toFloat() - 8f, y, sz + 16f, sz + 14f).aeKnobInput(c, idx),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(Modifier.size(size.su()).aeSvg(AeSvgs.KNOB_METAL)) {
@@ -177,24 +192,30 @@ fun AeRocker(c: AeCtl, idx: Int, label: String, x: Number, y: Number, w: Number)
 }
 
 /**
- * Multi-touch keyboard C3..C5 (MIDI 48..72), glissando between keys, velocity from the touch height.
+ * Multi-touch keyboard C2..C6 (MIDI 36..84, 4 octaves), glissando between keys, velocity from the touch height.
  * Notes go through the manager (engine + MIDI-style state), so UI and hardware MIDI share the same path.
+ *
+ * [octaves] sets the span; the reference window draws 3 octaves and the C above.
  */
 @Composable
-fun AeKeyboard(c: AeCtl, x: Number, y: Number, w: Number, h: Number) {
+fun AeKeyboard(c: AeCtl, x: Number, y: Number, w: Number, h: Number, octaves: Int = 3) {
     val wn = intArrayOf(0, 2, 4, 5, 7, 9, 11)
     val blackNotes = intArrayOf(1, 3, 6, 8, 10); val blackWhite = intArrayOf(0, 1, 3, 4, 5)
-    val ww = w.toFloat() / 15f; val bw = w.toFloat() * 0.046f; val bh = h.toFloat() * 0.6f
-    fun blackLeft(j: Int) = ((j / 5) * 7 + blackWhite[j % 5] + 1) * ww - w.toFloat() * 0.023f
+    val whiteCount = octaves * 7 + 1
+    val blackCount = octaves * 5
+    val lo = 36
+    val hi = lo + octaves * 12
+    val ww = w.toFloat() / whiteCount; val bw = w.toFloat() * (0.046f * 15f / whiteCount); val bh = h.toFloat() * 0.6f
+    fun blackLeft(j: Int) = ((j / 5) * 7 + blackWhite[j % 5] + 1) * ww - w.toFloat() * (0.023f * 15f / whiteCount)
     fun hit(px: Float, py: Float, sc: Float): Int {
         val ux = px / sc; val uy = py / sc
-        if (uy < bh) for (j in 0 until 10) { val l = blackLeft(j); if (ux >= l && ux <= l + bw) return 48 + (j / 5) * 12 + blackNotes[j % 5] }
-        val i = (ux / ww).toInt().coerceIn(0, 14)
-        return if (i == 14) 72 else 48 + (i / 7) * 12 + wn[i % 7]
+        if (uy < bh) for (j in 0 until blackCount) { val l = blackLeft(j); if (ux >= l && ux <= l + bw) return lo + (j / 5) * 12 + blackNotes[j % 5] }
+        val i = (ux / ww).toInt().coerceIn(0, whiteCount - 1)
+        return if (i == whiteCount - 1) hi else lo + (i / 7) * 12 + wn[i % 7]
     }
     val sc = LocalAeScale.current
     Canvas(
-        Modifier.at(x, y, w, h).clip(RoundedCornerShape(10.su())).pointerInput(c) {
+        Modifier.at(x, y, w, h).clip(RoundedCornerShape(10.su())).pointerInput(c, octaves) {
             awaitPointerEventScope {
                 val down = HashMap<PointerId, Int>()
                 while (true) {
@@ -215,8 +236,8 @@ fun AeKeyboard(c: AeCtl, x: Number, y: Number, w: Number, h: Number) {
     ) {
         val u = size.width / w.toFloat()
         drawRect(Color.Black)
-        for (i in 0 until 15) {
-            val note = if (i == 14) 72 else 48 + (i / 7) * 12 + wn[i % 7]
+        for (i in 0 until whiteCount) {
+            val note = if (i == whiteCount - 1) hi else lo + (i / 7) * 12 + wn[i % 7]
             val on = c.s.held.containsKey(note)
             drawRect(
                 Brush.verticalGradient(if (on) listOf(Color(0xFFF2D99A), Color(0xFFD9B866)) else listOf(Color(0xFFFBF7EE), Color(0xFFD9D0BE)), 0f, size.height),
@@ -224,8 +245,8 @@ fun AeKeyboard(c: AeCtl, x: Number, y: Number, w: Number, h: Number) {
             )
             drawLine(Color(0x40000000), Offset((i + 1) * ww * u, 0f), Offset((i + 1) * ww * u, size.height), u)
         }
-        for (j in 0 until 10) {
-            val note = 48 + (j / 5) * 12 + blackNotes[j % 5]; val on = c.s.held.containsKey(note)
+        for (j in 0 until blackCount) {
+            val note = lo + (j / 5) * 12 + blackNotes[j % 5]; val on = c.s.held.containsKey(note)
             drawRoundRect(
                 Brush.verticalGradient(if (on) listOf(Color(0xFF7A6A34), Color(0xFF2A2210)) else listOf(Color(0xFF2C2C36), Color(0xFF0B0B0F)), 0f, bh * u),
                 Offset(blackLeft(j) * u, 0f), Size(bw * u, bh * u), CornerRadius(5f * u),

@@ -22,6 +22,9 @@ enum class AeInstrument(val fxId: Int, val title: String, val paramCount: Int) {
 
 class AePreset(val name: String, val category: String, val values: FloatArray)
 
+/** Knobs, preset index and page of an unloaded instrument, kept so reloading it is not a reset. */
+class SavedAeState(val values: FloatArray, val preset: Int, val page: Int)
+
 /** Value text shown under the knobs. Same formulas as the validated preview. */
 object AeFmt {
     private val wn = arrayOf("SIN", "TRI", "SAW", "SQR")
@@ -102,7 +105,13 @@ class AeSession(val strip: Int, val instrument: AeInstrument, init: FloatArray) 
     /** Sampled bank currently loaded (-1 = none). Each sax type has its own. */
     var bankType = -1
     val held = mutableStateMapOf<Int, Boolean>()
-    @Volatile var noteEvents = 0
+    /**
+     * Bumped on every note the engine routed here. It is Compose state, not a plain
+     * counter, because the window's animation loop sleeps on it while idle: a plain
+     * field would never wake that wait and the first key press would wait for the
+     * timeout, which is exactly the lag the interface showed.
+     */
+    val noteEvents = mutableIntStateOf(0)
 }
 
 /**
@@ -114,6 +123,8 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
     private val tweens = HashMap<Int, Job>()
     private val sustain = HashMap<Int, Boolean>()
     private val pending = HashMap<Int, MutableSet<Int>>()
+    /** Knobs/preset/page of an instrument that was unloaded, so reloading it is not a reset. */
+    private val savedState = HashMap<Pair<Int, AeInstrument>, SavedAeState>()
 
     /** Default MIDI CC map (editable). Value = parameter index. CC1 on the organ drives the Leslie speed. */
     val ccOrgan = mutableMapOf(74 to 27, 91 to 29, 7 to 30, 71 to 28)
@@ -124,18 +135,28 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
 
     fun presets(i: AeInstrument): List<AePreset> = when (i) { AeInstrument.ORGAN -> AePresets.organ; AeInstrument.SYNTH -> AePresets.synth; AeInstrument.LEADS -> AePresets.leads; AeInstrument.SAX -> AePresets.sax }
 
+    /** Value the session's current preset gives to [index], for the double-tap reset on a knob. */
+    fun presetValue(strip: Int, index: Int): Float? {
+        val s = sessions[strip] ?: return null
+        return presets(s.instrument).getOrNull(s.preset)?.values?.getOrNull(index)
+    }
+
     /** Starts the instrument now (audio is live as soon as this returns true). Re-selecting the same one keeps its state. */
     fun load(strip: Int, inst: AeInstrument): AeSession? {
         sessions[strip]?.let { if (it.instrument == inst) return it else unload(strip) }
         if (!host.loadInstrument(strip, inst.fxId)) return null
-        val p = presets(inst)[0]
-        val s = AeSession(strip, inst, p.values)
+        // Reopening an instrument restores what the user left: unloading a strip is not a reset,
+        // so the knobs, the preset and the page come back exactly as they were.
+        val saved = savedState.remove(strip to inst)
+        val init = saved?.values ?: presets(inst)[0].values
+        val s = AeSession(strip, inst, init)
+        saved?.let { s.preset = it.preset; s.page = it.page }
         sessions[strip] = s
-        p.values.forEachIndexed { i, v -> host.setParam(strip, i, v) }
+        init.forEachIndexed { i, v -> host.setParam(strip, i, v) }
         // Hybrid layer, when the instrument ships one (only the sax today). It is a layer,
         // not a replacement: the synthesis stays underneath and covers the sample seams.
         // The bank is optional, so a failure here must not abort the load.
-        val type = (p.values.firstOrNull() ?: 0f).let { (it * 3f).roundToInt() }
+        val type = (init.firstOrNull() ?: 0f).let { (it * 3f).roundToInt() }
         s.bankLoaded = host.loadBank(strip, inst, type)
         if (s.bankLoaded) s.bankType = type
         return s
@@ -143,7 +164,10 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
 
     fun unload(strip: Int) {
         tweens.remove(strip)?.cancel()
-        if (sessions.remove(strip) != null) { host.allNotesOff(strip); host.unloadInstrument(strip) }
+        sessions.remove(strip)?.let { s ->
+            savedState[strip to s.instrument] = SavedAeState(s.values.toFloatArray(), s.preset, s.page)
+            host.allNotesOff(strip); host.unloadInstrument(strip)
+        }
         sustain.remove(strip); pending.remove(strip)
     }
 
@@ -191,7 +215,7 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
 
     fun noteOn(strip: Int, note: Int, velocity: Int = 100) {
         val s = sessions[strip] ?: return
-        s.held[note] = true; s.lastNote = note; s.noteEvents++
+        s.held[note] = true; s.lastNote = note; s.noteEvents.intValue++
         host.noteOn(strip, note, velocity.coerceIn(1, 127))
     }
 
@@ -239,7 +263,7 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
         val s = sessions[channel] ?: return
         s.held[note] = true
         s.lastNote = note
-        s.noteEvents++
+        s.noteEvents.intValue++
     }
 
     fun mirrorNoteOff(channel: Int, note: Int) {

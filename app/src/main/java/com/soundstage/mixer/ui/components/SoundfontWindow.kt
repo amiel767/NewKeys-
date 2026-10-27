@@ -572,7 +572,13 @@ fun SoundfontWindow(
                         categories = visibleCats,
                         counts = countsByCategory,
                         selected = selectedCategory,
-                        onSelect = { c -> selectedCategory = if (selectedCategory == c) null else c },
+                        onSelect = { c ->
+                            // Picking a soundfont category leaves the instrument interface. Without
+                            // this the Æther cards stayed on screen while the user browsed the
+                            // soundfont list, so the window looked stuck on the instrument.
+                            aetherTab = false
+                            selectedCategory = if (selectedCategory == c) null else c
+                        },
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .padding(start = 14.dp, top = 68.dp, bottom = 14.dp)

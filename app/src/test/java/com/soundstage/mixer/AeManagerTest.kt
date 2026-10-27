@@ -142,7 +142,7 @@ class AeManagerTest {
 
         assertEquals(true, m.sessions[2]?.held?.get(67))
         assertEquals(67, m.sessions[2]?.lastNote)
-        assertEquals(1, m.sessions[2]?.noteEvents)
+        assertEquals(1, m.sessions[2]?.noteEvents?.intValue)
         // A second native copy would double the voice, so nothing must reach the engine.
         assertEquals(before, host.notesOn.size)
     }

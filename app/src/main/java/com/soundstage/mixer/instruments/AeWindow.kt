@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,6 +26,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.min
 import kotlin.math.roundToInt
 import androidx.compose.foundation.Canvas
@@ -44,11 +47,24 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
     val c = remember(s) { AeCtl(s, manager) }
     val a = remember(s) { AeAnim() }
     var list by remember { mutableStateOf(false) }
-    // One loop per open window: 30 fps while playing / dragging / gliding, ~8 fps idle. Cancelled when the window leaves composition.
+    // One loop per open window. While anything is moving it runs at ~60 fps, and when the
+    // instrument is idle it *sleeps on the note counter* instead of polling slowly: a slow
+    // idle poll made the first key press wait for the next tick, which is what read as
+    // "the interface lags behind the note". A note wakes the loop immediately.
     LaunchedEffect(s) {
         var last = System.nanoTime()
+        var seenNotes = s.noteEvents.intValue
         while (true) {
-            delay(if (s.held.isNotEmpty() || a.lv > 0.01f || s.tweening) 33L else 125L)
+            val active = s.held.isNotEmpty() || a.lv > 0.01f || s.tweening
+            if (active) {
+                delay(16L)
+            } else {
+                // Idle: wait for a note, a knob tween or a timeout, whichever comes first.
+                withTimeoutOrNull(100L) {
+                    snapshotFlow { s.noteEvents.intValue to s.tweening }.first { it.first != seenNotes || it.second }
+                }
+            }
+            seenNotes = s.noteEvents.intValue
             manager.pollLevel(strip)
             val now = System.nanoTime(); a.step(min(0.1f, (now - last) / 1e9f), s); last = now
         }
@@ -202,7 +218,18 @@ private fun AeTile(inst: AeInstrument, loaded: Boolean, modifier: Modifier, onCl
         // the bottom. Before, all three were absolutely placed in the box and collided.
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Chip(st.tag); if (loaded) Chip("● LOADED") }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Chip(st.tag)
+                    // The state is a small green light, not a word: the card already reads as
+                    // selected from its border, and a chip the size of the title crowded it.
+                    if (loaded) Box(
+                        Modifier
+                            .size(9.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(Color(0xFF35E06A))
+                            .border(1.dp, Color(0x6600FF66), RoundedCornerShape(50)),
+                    )
+                }
                 if (loaded) Box(Modifier.clip(RoundedCornerShape(50)).background(Color(0x33FF5C7A)).clickable(remember { MutableInteractionSource() }, null, onClick = onUnload).padding(horizontal = 10.dp, vertical = 5.dp)) {
                     Text("Unload", color = Color(0xFFFFB3C0), fontSize = 10.sp, lineHeight = 10.sp, fontWeight = FontWeight.Bold, fontFamily = AeFonts.ui)
                 }

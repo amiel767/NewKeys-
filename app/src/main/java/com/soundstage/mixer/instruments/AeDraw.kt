@@ -47,7 +47,7 @@ class AeAnim {
         } else if (s.instrument == AeInstrument.SYNTH) {
             val l = orbLevel()
             rot += dt * (0.15f + l * 1.2f)
-            if (s.noteEvents != seen) { seen = s.noteEvents; pulses.add(floatArrayOf(0f)) }
+            if (s.noteEvents.intValue != seen) { seen = s.noteEvents.intValue; pulses.add(floatArrayOf(0f)) }
             val it = pulses.iterator(); while (it.hasNext()) { val p = it.next(); p[0] += dt; if (p[0] > 1.2f) it.remove() }
         }
         if (s.instrument == AeInstrument.LEADS) for (i in 0 until 5) la[i] += ((if (held) s.values[i] * (0.55f + 0.45f * min(1f, lv * 5f)) else 0f) - la[i]) * 0.3f
