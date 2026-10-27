@@ -423,7 +423,7 @@ nom sur la plaque. Ce sont des **instruments reels**, pas des effets.
 | Rendu / polices / SVG | `instruments/AeStage.kt`, `AeDraw.kt`, `AeSvgAssets.kt` |
 | UI Organ / Synth | `instruments/AeOrganUi.kt`, `AeSynthUi.kt`, `AeControls.kt` |
 | UI Leads / Sax | `instruments/AeLeadsUi.kt`, `AeDrawLeads.kt`, `AeSaxUi.kt`, `AeSaxAssets.kt` |
-| Presets (organ 22, synth 28, leads 30, sax 23) | `instruments/AePresets.kt` |
+| Presets (organ 22, synth 55, leads 32, sax 23) | `instruments/AePresets.kt` |
 | Moteurs DSP natifs | `cpp/aetherfx/fx_organ.h`, `fx_synth.h`, `fx_leads.h`, `fx_sax.h` |
 | Point d'entree fenetre | `ui/components/SoundfontWindow.kt` (params `aether`, `aetherStrip`) |
 | Appelant | `ui/MixerScreen.kt` (`AeInstruments.manager`, `activeSoundfontSlotId`) |
@@ -456,12 +456,41 @@ nom sur la plaque. Ce sont des **instruments reels**, pas des effets.
 - **Le manager pousse le preset 1 en entier** au chargement. Ne pas re-pousser
   les params cote VM.
 
+### Presets : la liste est la source, pas le brief
+
+Les presets viennent de `presets-leads-sax.json` / `presets-organ-synth.json`
+(dans `app/assets/aether-instruments-final.zip`, gitignore) et sont recopies
+dans `AePresets.kt`. `param_order` du JSON donne l'ordre exact des 32 valeurs —
+c'est lui qui permet de convertir une intention en tableau.
+
+**Piege majeur — un brief externe decrit un moteur qui n'existe pas.** Les specs
+recues parlaient de `osc1`/`osc2`/`fm`/`layer1`/`arpRate`/`chord`. Aucun n'est un
+parametre de `fx_synth.h`, qui expose 32 parametres reels (WaveA/WaveB morphing,
+Detune, Sub, Noise, Unison, Spread, Cutoff, Res, Drive, EnvAmt, FType, ADSR,
+2 LFO, 4 macros, Mode, Glide, Voices, Bend, Tune, Level). Traduire vers ces
+parametres ; ne pas inventer de champs. Deux consequences a annoncer :
+- **pas de FM** dans ce moteur (soustractif) : les presets nommes « FM » sont
+  rendus en sinus + enveloppe percussive, le nom ne decrit pas le timbre ;
+- **pas d'arpeggiateur** : un preset « Arp » est un *son* d'arpege.
+`arpRate`, `chord`, `unison2`, `det2`, `mix2` n'ont pas d'equivalent et sont
+ignores. Toujours dire ces ecarts a l'utilisateur au lieu de les taire.
+
+**Regle de classement** : « concentrer les leads dans Leads ». Un preset de
+synth qui se joue en melodie montee (lead) va dans `leads`, meme si son genre
+est Kompa/Gospel. `synth` garde les pads, basses, claviers, stabs, cordes, FX.
+
+**Les chips de categorie** (`PresetList`) sont un `LazyRow` : elles defilent.
+Ajouter des categories ne casse pas la mise en page.
+
 ### Etat / reste a faire
 Fait : import, hote, gestionnaire, onglet + fenetre, exclusivite, retrait des FX,
 early-out silence (organ/synth/leads/sax), polices, nom sur la plaque, tests.
 Leads (15) et Sax (16) ajoutes au zip final, ajustements DeepSeek appliques
 (drift par voix, formants suivis en pitch, LFO de souffle) ; verifies a l'hote et
 par `assembleDebug` (4 ABI).
+Presets v2 (2026-10-27) : leads remplaces (32), synth etendu a 55 en 11
+categories fonctionnelles, anti-tac de l'attaque corrige dans `fx_leads.h`
+(mesure : saut d'attaque -33 % sur les leads saw).
 Reste : **validation appareil** (pas d'emulateur ici), persistance du choix
 d'instrument par piste (setlist), captures Roborazzi de l'onglet.
 
