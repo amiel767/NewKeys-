@@ -529,17 +529,41 @@ l'articulation existante au sample **sans une ligne de changement**.
 `buildTable()` est **deja additif** (32 harmoniques, `im[n] = (1/n^q) * (n impair
 ? 1 : .78)`). « Passer en additif » = **corriger la loi**, pas reecrire le moteur.
 
-Mesure Goertzel, 16-17 notes par type, f0 exact pris des `key=`/`tune=` du SFZ,
-normalisee sur h1 :
+Mesure Goertzel sur la **boucle de sustain**, 33 notes par type, **f0 mesure par
+autocorrelation** et non lu du SFZ : la banque est environ **5 % basse** (ratio
+0,94 a 0,95 sur les 4 types), donc un f0 lu du SFZ decale toutes les harmoniques.
 
-| h | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
-|---|---|---|---|---|---|---|---|---|
-| **Reel** | 1,000 | **0,795** | 0,803 | 0,421 | 0,348 | 0,186 | 0,155 | 0,169 |
-| Loi actuelle | 1,000 | 0,351 | 0,283 | 0,158 | 0,157 | 0,099 | 0,107 | 0,071 |
+Enveloppe normalisee sur h1, moyennee par type :
 
-Sous-estimation de **47 a 80 %** sur h2..h8. Le baryton est le plus riche
-(h2 = 1,56x la fondamentale, h3 = 2,15x). C'est ce qui prive la synthese de son
-« mordant ».
+| h | sop | alt | ten | bar | loi `1/n^1.15` |
+|---|---|---|---|---|---|
+| 1 | 1,000 | 1,000 | 1,000 | 1,000 | 1,000 |
+| 2 | 0,904 | 0,594 | 0,869 | **1,886** | 0,351 |
+| 3 | 0,512 | 0,477 | 0,782 | **2,520** | 0,283 |
+| 4 | 0,224 | 0,232 | 0,452 | 1,600 | 0,158 |
+| 5 | 0,135 | 0,210 | 0,411 | 1,989 | 0,157 |
+| 6 | 0,062 | 0,174 | 0,326 | 1,004 | 0,099 |
+| 8 | 0,037 | 0,118 | 0,218 | 0,976 | 0,071 |
+
+Deux corrections par rapport a la table d'une passe precedente : elle moyennait
+les 4 types ensemble (ce qui masquait le baryton) et prenait le f0 du SFZ.
+
+**Le baryton a h2 et h3 AU-DESSUS de h1.** Verifie deux fois : f0 mesure (ratio
+0,94, donc pas d'erreur d'octave) et spectre absolu (h1 a -3,9 dB contre un
+maximum en h3). Un grand cone rayonne mal sa fondamentale : c'est une signature
+acoustique reelle, pas un artefact. Ne pas « corriger ».
+
+**Piege majeur — double formant.** Le spectre mesure contient deja le formant que
+`form_[0..3]` reproduit. Appliquer l'enveloppe brute **compte le formant deux
+fois**. Elle doit etre appliquee en **rapport** a la loi generique, normalisee en
+niveau (c'est ce que fait `buildTable()` quand `measured_` est vrai). Verifie :
+baryton h3 0,043 -> 0,141, soprano h2 0,143 -> 0,051 — le baryton gagne son
+corps, le soprano s'epure, dans la bonne direction.
+
+**Piege — la table n'est pas normalisee.** Sa crete varie d'un **facteur 4,5**
+selon `q` (1,18 a 5,35) et le moteur s'appuie dessus. Toute modification de
+`buildTable()` doit preserver ce comportement, d'ou la normalisation du *rapport*
+et non de la table entiere.
 
 ### Cibles de taille (mesurees)
 
@@ -551,15 +575,77 @@ Sous-estimation de **47 a 80 %** sur h2..h8. Le baryton est le plus riche
 Compression retenue : **22,05 kHz + mono + ADPCM 4 bits** (le decodage reste
 quasi gratuit sur le thread audio ; OGG est ecarte pour le risque d'underrun).
 
-### Reste a faire
+### Etat (au 2026-10-27)
 
-1. Extraire le sous-ensemble sax (attaque + boucle, 22 kHz, ADPCM).
-2. Etendre `SamplePlaybackEngine` (`cpp/sample_playback_engine.h`, aujourd'hui
-   **one-shot** : ni boucle, ni keymap, ni enveloppe de relachement).
-3. Brancher le lecteur dans `SaxEngine::process` sur le `f` deja calcule, avec
-   un **parametre de mixage** synthese <-> samples (l'hybride est reglable).
-4. Corriger la loi harmonique de `buildTable()`.
-5. Validation appareil (pas d'emulateur ici).
+Les quatre premiers points sont **faits et verifies sur l'hote** (`g++ -O2`) :
+
+1. **Extraction** : `tools/saxpack/extract.py` -> 4 packs, **266 regions, 7,01 Mo**
+   (sop 1823 Ko / alt 2138 / ten 1988 / bar 1234), MIDI 36..88, 2 couches de
+   velocite. Verification `tools/saxpack/verify.py` : **couture 0,974 au pire,
+   0,994 en mediane**, SNR 30,8 a 32,2 dB, couverture MIDI sans trou.
+2. **Lecteur** : `aetherfx/fx_sax_samples.h` (nouveau). Keymap par region la plus
+   proche, transposition, boucle, fondu de raccord, enveloppe attaque/relachement.
+3. **Mixage hybride** : `SaxEngine::setSampleMix(0..1, defaut 0)` +
+   `loadSamples()`. Le mixage se fait **apres** la chaine de formants (le sample
+   porte le sien). A 0, la sortie est **bit-identique** a la synthese seule.
+4. **Loi harmonique** : `ENV_SOP/ALT/TEN/BAR` + `setMeasuredTable(bool, defaut
+   vrai)`.
+
+Reste : **integration des assets** (le pack n'est pas embarque), **pont JNI**
+pour `loadSamples`/`setSampleMix`, et **validation appareil**.
+
+### Trois pieges qui ont coute une passe chacun
+
+- **Le reechantillonnage casse la couture.** A 48 kHz les boucles de la banque
+  font un nombre entier de periodes ; a 22,05 kHz les points tombent entre deux
+  frames et la correlation chute de **0,95 a 0,82** sur les aigus (mesure sur
+  `sop_f_30`). Corrige par `snap_loop_end`, qui **recherche** `loopEnd` sur
+  +/-384 frames par correlation de couture (retour a 0,99).
+  **Ne PAS estimer la periode par autocorrelation pour recaler** : sur les aigus
+  elle accroche l'harmonique 2 et la boucle tombe une octave a cote — couture
+  mesuree **0,32**, pire qu'avant. Optimiser la couture elle-meme n'a pas ce
+  mode de defaillance.
+- **Le lecteur ne doit pas emprunter la memoire de l'appelant.** Garder un
+  pointeur vers le tampon de l'appelant est un use-after-free des que l'asset est
+  libere alors qu'une note sonne : segfault constate. `load()` copie la charge
+  utile.
+- **Le decodage ADPCM ne doit pas etre paresseux.** Le predicteur doit rejouer
+  depuis le debut du region a chaque acces : le decodage a la demande dans la
+  boucle de rendu est **quadratique**. Une passe par note dans un tampon reutilise.
+
+### Piege de niveau (mesure)
+
+Normaliser en **crete** rend le niveau dependant du facteur de crete : les
+transitoires du baryton le placaient **2,7x sous** la synthese avec laquelle il
+doit se melanger. Les regions sont donc normalisees en **RMS (0,20)** avec un
+plafond de crete a 0,95, et le moteur applique `kSampleGain` (3,05, mesure).
+Resultat a mix 1,0 : **0,186 RMS contre 0,230** pour la synthese, **0 ecretage**
+(la synthese seule en ecrete 24).
+
+### Ce que la mesure dit du signal, et qui n'est pas un defaut
+
+Les packs baryton contiennent ~400 « sauts » de continuite (pas local > 6x la
+moyenne locale). Comparaison original 48 kHz vs decode ADPCM : **404 contre 387**.
+Les transitoires sont donc **dans l'enregistrement** (morsure de l'anche), pas
+dans l'encodage. Controle sur un sinus : **SNR 46,6 dB** pour l'ADPCM seul contre
+29 a 32 dB sur du sax reel — c'est le signal qui est dur a coder, pas le codec qui
+est mauvais.
+
+### Formants : ecart mesure avec `TY_f1`
+
+Centre du formant principal mesure sur les samples (mediane du pic de l'enveloppe
+spectrale, 200..2500 Hz) :
+
+| type | f0 moyen | pic d'enveloppe | centroide | `TY_f1` actuel |
+|---|---|---|---|---|
+| sop | 609 | 766 | 828 | 617 |
+| alt | 406 | 398 | 640 | 813 |
+| ten | 303 | 375 | 594 | 570 |
+| bar | 190 | 342 | 726 | 523 |
+
+Le pic d'enveloppe est proche de `TY_f1` sauf pour le **soprano** (766 contre
+617) et l'**alto** (398 contre 813). A creuser sur appareil : ces deux ecarts
+pourraient expliquer une partie du caractere « synthetique » restant.
 
 ---
 

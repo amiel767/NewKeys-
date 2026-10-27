@@ -3414,3 +3414,87 @@ Presets/All de la fenêtre soundfonts ». Avant : deux `Pill` dans une boîte
   1 = Standard (A-G).
 - Mesure sur la capture : conteneur x 682→812 (130 dp), pouce x 684→746 (63 dp = la
   moitié), texte « A-G » dans la moitié droite. Conforme.
+
+## Session 2026-10-27 — Æther Sax : banque echantillonnee + table harmonique mesuree
+
+Travail mene **en parallele** de la conversation `dde6dffb48c5475a931918c2e3ff38f9`
+(veille par `tools/conv_sync.py`). Branche `main`, **aucun push**.
+
+### Le sax est desormais hybride (synthese + samples)
+
+- `app/src/main/cpp/aetherfx/fx_sax_samples.h` (**nouveau**) : lecteur des packs.
+  En-tete + 24 o/region + ADPCM 4 bits. Region la plus proche, transposition,
+  boucle, fondu de raccord, enveloppe attaque/relachement.
+- `SaxEngine::setSampleMix(0..1, defaut **0**)` et `loadSamples()`. Le mixage se
+  fait **apres** `form_[0..3]` : le sample porte deja son formant, le passer dans
+  la chaine le compterait deux fois. A mix 0 la sortie est **bit-identique** a la
+  synthese seule (verifie) — aucune regression tant qu'aucun pack n'est charge.
+- `SaxEngine::setMeasuredTable(bool, defaut **vrai**)` : table harmonique
+  mesuree (voir plus bas).
+- **Reste** : embarquer les assets, pont JNI pour `loadSamples`/`setSampleMix`,
+  validation appareil.
+
+### `tools/saxpack/` — constructeur de packs (nouveau)
+
+`extract.py` (MTG Solo Saxophones, CC-BY 4.0 -> 4 packs) et `verify.py`
+(couture / SNR / couverture MIDI). Resultat : **266 regions, 7,01 Mo**,
+couture **0,974 mini / 0,994 mediane**, SNR 30,8 a 32,2 dB, MIDI 36..88.
+La sortie (`out/`) est gitignoree : regenerable, la banque source fait 105 Mo.
+`ATTRIBUTION.md` porte le texte CC-BY (obligation) et le repli CC0 (FreePats).
+
+**Piege de licence, a ne pas rouvrir** : FluidR3 GM dit « DO NOT REDISTRIBUTE »
+dans son chunk `ICMT` ; VSCO-2 CE n'a **aucun** sax (0 sur 3313).
+
+### Table harmonique mesuree — deux pieges
+
+Enveloppes `ENV_SOP/ALT/TEN/BAR` dans `fx_sax.h`, mesurees sur 33 notes/type avec
+le **f0 mesure** (la banque est ~5 % basse ; un f0 lu du SFZ decale tout).
+
+1. **Double formant** : le spectre mesure contient deja le formant de
+   `form_[0..3]`. L'enveloppe est appliquee **en rapport** a la loi generique et
+   **normalisee en niveau**, jamais brute.
+2. **La table n'est pas normalisee** : sa crete varie d'un facteur **4,5** avec
+   `q` (1,18 a 5,35) et le moteur s'y appuie. Preserver ce comportement.
+
+**Le baryton a h2 et h3 au-dessus de h1** — verifie par f0 mesure (ratio 0,94,
+pas d'erreur d'octave) et spectre absolu (h1 a -3,9 dB, maximum en h3). Grand cone
+= fondamentale mal rayonnee. C'est reel, ne pas « corriger ».
+
+### Trois pieges qui ont coute une passe
+
+- **Le reechantillonnage casse la couture** : les boucles sont un nombre entier de
+  periodes a 48 kHz, plus a 22,05 kHz -> 0,95 devient 0,82 sur les aigus.
+  `snap_loop_end` **recherche** `loopEnd` sur +/-384 frames (retour a 0,99).
+  **Ne pas recaler par estimation de periode** : l'autocorrelation accroche
+  l'harmonique 2 sur les aigus, la boucle tombe une octave a cote, couture 0,32.
+- **Le lecteur ne doit pas emprunter la memoire de l'appelant** : use-after-free
+  des que l'asset est libere pendant qu'une note sonne (segfault constate).
+  `load()` copie la charge utile.
+- **Le decodage ADPCM ne doit pas etre paresseux** : le predicteur doit rejouer
+  depuis le debut du region, donc le decodage dans la boucle de rendu est
+  **quadratique**. Une passe par note dans un tampon reutilise.
+
+### Niveau : normaliser en RMS, pas en crete
+
+Le facteur de crete des transitoires du baryton placait le pack **2,7x sous** la
+synthese. Regions normalisees en **RMS 0,20** (plafond de crete 0,95) +
+`kSampleGain` 3,05 cote moteur. Resultat a mix 1,0 : **0,186 contre 0,230 RMS**,
+**0 ecretage** (la synthese seule en ecrete 24).
+
+### Ce qui n'est PAS un defaut (evite une fausse chasse)
+
+~400 « sauts » de continuite mesures dans les packs baryton : original 48 kHz
+**404** contre decode ADPCM **387**. Ils sont **dans l'enregistrement** (morsure
+de l'anche). Controle sinus : ADPCM seul **46,6 dB** contre 29-32 dB sur du sax
+reel — c'est le signal qui est dur a coder.
+
+### Formants : ecart mesure avec `TY_f1`
+
+Pic d'enveloppe mesure : sop 766 (`TY_f1` 617), alt 398 (**813**), ten 375 (570),
+bar 342 (523). Soprano et alto divergent nettement. A creuser sur appareil.
+
+### Environnement (rappel)
+
+`JAVA_HOME=/workspace/jdk/jdk-21.0.13+9` (le chemin `jdk21` **n'existe plus** :
+`restore_env.sh` le detecte, mais un export en dur casse le build).
+Verification hote du moteur, sans Android : `g++ -O2 -std=c++17 -I app/src/main/cpp`.
