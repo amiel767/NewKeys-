@@ -125,7 +125,7 @@ fun BoxScope.AeLeadsUi(c: AeCtl, a: AeAnim, samples: FloatArray? = null) {
                 val x = 36 + i * 108
                 AeT(names[i], 9, CYAN, Modifier.at(x, 82, 100, 12), weight = FontWeight.ExtraBold, spacing = 0.2f, align = TextAlign.Center)
                 Canvas(Modifier.at(x + 30, 96, 40, 20)) { drawWaveIcon(i) }
-                AeFader(c, i, x + 6, 118)
+                AeFader(c, i, x + 32, 118)
                 arrayOf("-1", "0", "+1").forEachIndexed { j, t -> AeChip(c, 5 + i, j, 3, t, x + 5 + j * 33, 284, 30) }
             }
             Canvas(Modifier.at(22, 118, 566, 160)) { a.frame.intValue; drawMeters(a) }
