@@ -3216,3 +3216,10 @@ attend dans sa propre liste), donc le miroir reste allume.
 - Une nouvelle methode publique d'`AudioEngine` va **au-dessus** du `private:`.
 - Mesurer un bend par suivi de hauteur est fragile : utiliser le **pic du spectre
   mesure** (Goertzel, pas de zero-crossings) et le **vrai preset** de l'app.
+
+### Banc de bend preserve : `tools/aetherfx/`
+
+`tools/aetherfx/bend_range_check.cpp` (README a cote) rejoue la preuve de plage de
+bend **hors Android** : `g++ -O2 -std=c++17` suffit, `aetherfx` est header-only et
+portable. 12/12 PASS attendu. C'est le seul moyen de valider le bend sans device,
+puisque le chemin DSP est le meme que dans l'APK.
