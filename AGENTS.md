@@ -3498,3 +3498,48 @@ bar 342 (523). Soprano et alto divergent nettement. A creuser sur appareil.
 `JAVA_HOME=/workspace/jdk/jdk-21.0.13+9` (le chemin `jdk21` **n'existe plus** :
 `restore_env.sh` le detecte, mais un export en dur casse le build).
 Verification hote du moteur, sans Android : `g++ -O2 -std=c++17 -I app/src/main/cpp`.
+
+## Session 2026-10-27 (suite) — presets Æther v2 + anti-tac des leads
+
+Brief externe (discussion DeepSeek partagee). Les sources de verite restent les
+JSON : `app/assets/aether-instruments-final.zip` -> `presets-*.json`, recopies
+dans `instruments/AePresets.kt`. **`param_order` du JSON donne l'ordre exact des
+32 valeurs** — c'est lui qui permet de convertir une intention en tableau.
+
+### Piege majeur : le brief decrit un moteur qui n'existe pas
+Le brief ecrivait des presets en `osc1`/`osc2`/`fm`/`layer1`/`arpRate`/`chord`.
+**Aucun** n'est un parametre de `fx_synth.h` (32 params reels : WaveA/WaveB,
+Detune, Sub, Noise, Unison, Spread, Cutoff, Res, Drive, EnvAmt, FType, ADSR,
+2 LFO, 4 macros, Mode, Glide, Voices, Bend, Tune, Level). Il faut **traduire**,
+jamais inventer de champs, et **annoncer les ecarts** :
+- pas de FM dans ce moteur : les presets nommes « FM » sont un sinus +
+  enveloppe percussive (le nom ne decrit pas le timbre) ;
+- pas d'arpeggiateur : un preset « Arp » est un *son* d'arpege.
+
+### « tac tac » des leads — corrige et mesure (fx_leads.h)
+Trois correctifs, pas quatre : la 4e du brief (marge de 5 ms sur `t0`) est propre
+a WebAudio, ou l'evenement est programme dans le futur. Ici la note est deja
+echantillonnee, il n'y a pas de rattrapage de tampon a couvrir.
+1. attaque minimale **8 ms** ;
+2. le sweep de filtre demarre **apres** l'attaque (il balayait pendant, d'ou un
+   « ping » resonnant) ;
+3. fondu du mix d'oscillateurs **avant** le saturateur (sinon il voit une somme
+   pleine amplitude des le 1er echantillon : c'est le clic).
+Mesure (pire saut echantillon a echantillon, 25 ms) : Gospel Supersaw
+0,1248 -> 0,0839 (**-33 %**), Super Saw Lead 0,1252 -> 0,0856 (**-32 %**),
+Pluck Lead 0,1086 -> 0,0989. Les sinus ne cliquaient pas : inchanges.
+
+### Regle de classement (utilisateur)
+« Concentrer les leads dans Leads » : un preset qui se joue en **melodie** va
+dans `leads`, meme si son genre est Kompa ou Gospel (d'ou `Kompa Poly Saw Lead`
+et `Kompa Guyad Lead` cote leads). `synth` garde pads, basses, claviers, stabs,
+cordes, FX. Trois leads ont ete retires de `synth` pour cette raison (Silk Lead,
+Warm Analog Lead, Zouk Love Lead) ; les 24 autres presets de l'app sont
+**conserves** (identite Kompa/Zouk/Haiti, 808, Reese...) : le brief decrivait
+« la nouvelle liste », il ne demandait pas de supprimer l'existant.
+
+### Comptes
+`AePresets.kt` : organ 22 (inchange), **synth 55**, **leads 32**, sax 23
+(inchange). `organ` et `sax` verifies **octet pour octet** contre HEAD.
+Les chips de categorie (`PresetList`) sont un `LazyRow` : elles defilent, donc
+18 categories passent sans casser la mise en page.
