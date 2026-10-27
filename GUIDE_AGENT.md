@@ -975,3 +975,45 @@ git fetch origin main && git rev-list --left-right --count HEAD...origin/main
   `git fetch origin main` et comparer. `git merge-base --is-ancestor <sha> HEAD`
   dit si un commit distant est deja dans l'arbre.
 - **Ne pas pousser** sans demande explicite (regle AGENTS.md).
+
+## 21. Regles apprises (session 2026-10-27, suite)
+
+### Le verre ne se voit que sur une base opaque
+Symptome : « le verre depoli s'applique partout sauf sur tel ecran ».
+Cause : `Modifier.glassRow(...)` empile une **veil translucide** ; posee directement
+sur le degrade du panneau, elle ne se distingue pas. Regle : toute ligne/carte
+frostee passe d'abord une **couleur opaque** (`.background(Color(0xFF1E2637))`),
+puis la veil. Verifie sur les lignes Presets et les cartes de la fenetre patches.
+
+### Une entree de fenetre doit etre immediate
+Un `fadeIn(tween(220))` + `scaleIn` sur une fenetre instrument se lit « ca rame »
+et non « c'est fluide ». Regle : **entree sans animation**, sortie adoucie
+(`fadeOut` + `scaleOut`). Ne pas mettre d'animation d'entree sur un panneau modal.
+
+### `LocalAeScale.current` est `@Composable`
+On ne peut pas l'appeler dans un lambda `pointerInput { }`. Lire la valeur **avant**
+le `pointerInput` et la capturer. Erreur compile exacte :
+`@Composable invocations can only happen from the context of a @Composable function`.
+
+### Un selecteur a N crans se draggue, il ne se clique pas
+Un cycle par clic (`(step+1)%N`) demande jusqu'a N-1 appuis : l'utilisateur le
+ressent comme « il faut forcer ». Un drag vertical (`awaitEachGesture` + `drag`) est
+le comportement attendu, identique aux potards.
+
+### Caches indexes par chemin : purger a la suppression
+`deleteSoundFontFile` retirait le fichier des listes mais laissait
+`sfParsedPresets` / `sfFavorites` / `sfCategoryOverrides` indexes sur son nom.
+Regle generale : **toute map derivee d'un fichier doit etre purgee quand le fichier
+part**, sinon la memoire ne redescend jamais pendant la session.
+
+### Le dechargement de patch est deja en place
+Avant de chercher une fuite au changement de patch : `7f74d68` a introduit
+`SnapshotLogic.retainedSoundfontPaths` / `slotsToRelease` et la purge des ids dans
+`selectPatch`. Verifier `git merge-base --is-ancestor 7f74d68 HEAD` avant de
+re-implementer.
+
+### Veille de la conversation parallele
+`python3 tools/conv_sync.py` affiche ce qui a change depuis le dernier appel
+(watermark `tools/.conv_sync_state.json`, gitignore). A lancer avant/apres chaque
+modification. Au 27/10, la conversation `dde6dffb…` est **en retard** sur `main`
+(dernier evenement 26/10) : ses commits sont deja des ancetres de HEAD.

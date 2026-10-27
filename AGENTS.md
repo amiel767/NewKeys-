@@ -3582,3 +3582,57 @@ passe `SheetsRepository(viewModel.fileManager.sheetsDir)`.
 ### Compilation / tests
 `:app:compileDebugKotlin` -> BUILD SUCCESSFUL. `AeManagerTest` -> 15/15.
 Rappel : deux builds Gradle en parallele tuent la sandbox ; un seul a la fois.
+
+## Session 2026-10-27 (suite) — fenetre Æther immediate, verre, presets Organ, caches
+
+Reprise de la liste « Traite les restants » (27/10). `tools/conv_sync.py` confirme
+**0 nouvel evenement** cote conversation parallele `dde6dffb…` (dernier = 26/10
+18:41) : elle est en retard sur `main`, tout son travail est deja un ancetre de HEAD.
+
+### Fenetre Æther : ouverture immediate (point 4)
+`SoundfontWindow.kt` : la fenetre instrument passe de `fadeIn(tween(220))` +
+`scaleIn(spring)` a une **entree sans animation**. Le delai se lisait « ca met du
+temps puis ca apparait ». La **sortie** garde son fade (`fadeOut(160)` +
+`scaleOut(tween(180))`) : elle ne genait personne et adoucit la fermeture.
+`scaleIn` reste utilise ailleurs (l.519, 1204) — l'import reste necessaire.
+
+### Verre depoli : base opaque obligatoire (point 5)
+Regle generale, verifiee deux fois : **`glassRow` ne se voit que sur une base
+opaque**. Sans elle, la veil translucide se pose directement sur le degrade du
+panneau et parait plate — c'est exactement le symptome « le verre ne s'applique
+pas ».
+- Lignes de la page **Presets** : `glassRow(active, opaqueBase = true)`.
+- Cartes de la fenetre **patches** (`PatchesOverlay.kt`) : meme traitement (fond
+  opaque `0xFF1E2637`/`0xFF171E2B`, veil, lisere haut 1 px via `drawWithContent`).
+  L'import `androidx.compose.ui.draw.drawWithContent` a ete ajoute.
+
+### Presets Organ : standards, plus de Kompa (point 6)
+`AePresets.kt` : les 5 presets `Reggae / Kompa` (Reggae Bubble, Ska Stab, Kompa
+Skank, Kompa Warm Pad, Zouk Love Pad) sont remplaces par les standards demandes :
+**B3 Full / B3 Fast / B3 Slow / Full Bar / Pipe Organ**. Le reste (Jazz, Gospel,
+Church, Rock/Blues, Neo-Soul, Pop/Funk) est inchange.
+
+### Organ : dial vibrato + knobs du bas
+- Le selecteur **V1..C3** ne reagissait qu'au clic (`(step+1)%6`) : jusqu'a 5 appuis
+  pour traverser. Il suit desormais le **drag vertical** (`awaitEachGesture` +
+  `drag`), comme les autres potards. Piege : lire `LocalAeScale.current` **hors**
+  du `pointerInput` (l'appel est `@Composable`, interdit dans le lambda).
+- **CLICK / DRIVE / TONE / SPACE / LEVEL** : 34 -> **40** unites, la rangee
+  paraissait trop petite sous les libelles.
+
+### Scroll de la liste soundfonts conserve (point 13)
+`rememberLazyListState` est hoiste au niveau `MixerScreen` et passe en parametre a
+`SoundfontWindow` / `SfList` (`rowsListState`). Fermer puis rouvrir la fenetre ne
+remet plus la liste en haut.
+
+### Fuite memoire (point 12)
+Le dechargement du patch sortant est **deja fait** (`7f74d68`, ancetre de HEAD :
+`SnapshotLogic.retainedSoundfontPaths` / `slotsToRelease` + purge des ids dans
+`selectPatch`). Fuite residuelle corrigee : `deleteSoundFontFile` retirait le
+fichier des listes mais laissait `sfParsedPresets`, `sfParsingFiles`,
+`sfFavorites` et `sfCategoryOverrides` indexes sur son nom/chemin — la liste de
+presets deja parsee restait en memoire toute la session. Purges a la suppression.
+
+### Commits
+`fe055c7` (fenetre/verre/presets/scroll), `96af4de` (Organ dial + knobs),
+`916689e` (purge caches). `:app:compileDebugKotlin` = BUILD SUCCESSFUL a chaque fois.
