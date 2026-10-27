@@ -1,5 +1,6 @@
 package com.aetherkeys.sheets.ui.components
 
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
@@ -15,16 +16,20 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -71,6 +76,58 @@ fun Pill(text: String, modifier: Modifier = Modifier, selected: Boolean = false,
         contentAlignment = Alignment.Center,
     ) {
         Text(text, style = SheetsType.Label, color = if (selected) SheetsColors.AccentText else SheetsColors.TextPrimary, maxLines = 1)
+    }
+}
+
+/**
+ * Segmented control à pouce glissant. Reprend exactement la composition du
+ * segmented `Presets / All` de la fenêtre soundfonts (`SoundfontWindow.kt`) :
+ * conteneur arrondi 12 dp sur `#CC0F141D` avec bordure 1 dp blanc 8 %,
+ * padding 3 dp, pouce arrondi 9 dp en dégradé `#38445E → #2B3650` animé par
+ * un ressort (damping 0.72 / stiffness 500), libellés 12 sp bold
+ * (`#F1F4FA` actif, `Mute` inactif). Le nombre de segments est libre.
+ */
+@Composable
+fun SegmentedToggle(
+    options: List<String>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    height: Dp = 38.dp,
+) {
+    if (options.isEmpty()) return
+    val count = options.size
+    BoxWithConstraints(
+        modifier
+            .height(height)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xCC0F141D))
+            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
+            .padding(3.dp),
+    ) {
+        val segW = maxWidth / count
+        val thumb by animateDpAsState(
+            segW * selectedIndex.coerceIn(0, count - 1),
+            spring(dampingRatio = 0.72f, stiffness = 500f),
+            label = "segThumb",
+        )
+        Box(
+            Modifier.offset(x = thumb).width(segW).fillMaxHeight()
+                .clip(RoundedCornerShape(9.dp))
+                .background(Brush.verticalGradient(listOf(Color(0xFF38445E), Color(0xFF2B3650)))),
+        )
+        Row(Modifier.fillMaxSize()) {
+            options.forEachIndexed { i, label ->
+                val on = i == selectedIndex
+                val c by animateColorAsState(if (on) Color(0xFFF1F4FA) else SheetsColors.TextMuted, tween(200), label = "segColor")
+                Box(
+                    Modifier.weight(1f).fillMaxHeight().clickable { onSelect(i) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(label, style = SheetsType.Label, color = c, maxLines = 1)
+                }
+            }
+        }
     }
 }
 

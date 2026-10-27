@@ -3274,3 +3274,19 @@ sur `Dispatchers.IO`, une capture sans attente rend une page **vide** (piège v�
 416 Ko vide → 857 Ko avec les cartes).
 Mesure : les 3 cartes sont aux couleurs/positions attendues
 (Midnight 634,189 · Salt 89,193 · Paper 355,190 en unités dp).
+
+### 5. Segmented `1-7 / A-G` = composition du `Presets / All` (2026-10-27)
+Demande utilisateur : « le truc 1-7 / A-G doit ressembler à la même composition que
+Presets/All de la fenêtre soundfonts ». Avant : deux `Pill` dans une boîte
+`SheetsColors.Chip` — rien à voir.
+- Nouveau `SegmentedToggle(options, selectedIndex, onSelect, modifier, height)` dans
+  `ui/components/Components.kt`, porté de `SfTabBar` (`SoundfontWindow.kt:975-1020`) :
+  conteneur arrondi **12 dp**, fond `#CC0F141D`, bordure **1 dp blanc 8 %**,
+  padding **3 dp** ; pouce arrondi **9 dp**, dégradé `#38445E → #2B3650`, déplacé par
+  `animateDpAsState(spring(dampingRatio = 0.72f, stiffness = 500f))` ; libellés
+  **12 sp bold** (`#F1F4FA` actif / `Mute` inactif) avec `animateColorAsState(tween(200))`.
+  Le nombre de segments est libre (`segW = maxWidth / count`) — réutilisable ailleurs.
+- Utilisé dans `HomeHeader` : `Modifier.width(132.dp)`, index 0 = Nashville (1-7),
+  1 = Standard (A-G).
+- Mesure sur la capture : conteneur x 682→812 (130 dp), pouce x 684→746 (63 dp = la
+  moitié), texte « A-G » dans la moitié droite. Conforme.

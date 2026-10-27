@@ -126,10 +126,12 @@ private fun HomeHeader(state: LibraryUiState, actions: HomeActions, onBackToMixe
         }
         Text("Sheets", style = SheetsType.Title, color = Color.White, modifier = Modifier.align(Alignment.Center))
         Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(Modifier.clip(RoundedCornerShape(SheetsRadius.Chip)).background(SheetsColors.Chip).padding(4.dp)) {
-                Pill("1-7", selected = notation == Notation.Nashville) { actions.setNotation(Notation.Nashville) }
-                Pill("A-G", selected = notation == Notation.Standard) { actions.setNotation(Notation.Standard) }
-            }
+            SegmentedToggle(
+                options = listOf("1-7", "A-G"),
+                selectedIndex = if (notation == Notation.Nashville) 0 else 1,
+                onSelect = { actions.setNotation(if (it == 0) Notation.Nashville else Notation.Standard) },
+                modifier = Modifier.width(132.dp),
+            )
             GlyphButton(SheetsIcons.Settings, onOpenSettings, contentDescription = "Sheets settings")
         }
     }
