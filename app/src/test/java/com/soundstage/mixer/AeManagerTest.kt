@@ -3,6 +3,8 @@ package com.soundstage.mixer
 import com.soundstage.mixer.instruments.AeHost
 import com.soundstage.mixer.instruments.AeInstrument
 import com.soundstage.mixer.instruments.AeManager
+import com.soundstage.mixer.instruments.AePresets
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -37,6 +39,13 @@ class AeManagerTest {
         override fun noteOff(strip: Int, note: Int) {}
         override fun allNotesOff(strip: Int) {}
         override fun level(strip: Int) = 0f
+        /** Banks loaded, in order: strip to type. Records the call even when it fails. */
+        val bankLoads = mutableListOf<Pair<Int, Int>>()
+        var bankOk = true
+        override fun loadBank(strip: Int, instrument: AeInstrument, type: Int, mix: Float): Boolean {
+            bankLoads += strip to type
+            return bankOk && instrument == AeInstrument.SAX
+        }
     }
 
     private fun manager(host: FakeHost) =
@@ -166,5 +175,55 @@ class AeManagerTest {
         m.mirrorNoteOff(0, 60)
         assertEquals(null, m.sessions[0]?.held?.get(60))
         assertEquals(true, m.sessions[0]?.held?.get(64))
+    }
+
+    @Test
+    fun saxLoadsItsBankWithTheTypeOfTheFirstPreset() {
+        val host = FakeHost()
+        val m = manager(host)
+        val s = m.load(2, AeInstrument.SAX)
+        assertTrue(s?.bankLoaded == true)
+        // The type comes from parameter 0 of the preset, which is what the engine reads.
+        val expected = (AePresets.sax[0].values[0] * 3f).roundToInt()
+        assertEquals(listOf(2 to expected), host.bankLoads)
+        assertEquals(expected, s?.bankType)
+    }
+
+    @Test
+    fun instrumentsWithoutABankDoNotLoadOne() {
+        val host = FakeHost()
+        val m = manager(host)
+        listOf(AeInstrument.ORGAN, AeInstrument.SYNTH, AeInstrument.LEADS).forEachIndexed { i, inst ->
+            assertFalse(m.load(i, inst)?.bankLoaded ?: true)
+        }
+        // The call still goes out (the host decides), but it reports false.
+        assertEquals(3, host.bankLoads.size)
+    }
+
+    @Test
+    fun changingTheSaxTypeReloadsTheBank() {
+        val host = FakeHost()
+        val m = manager(host)
+        m.load(0, AeInstrument.SAX)
+        host.bankLoads.clear()
+        // Parameter 0 at 1.0 is the last type; anything else must trigger a reload.
+        m.setParam(0, 0, 1f)
+        assertEquals(listOf(0 to 3), host.bankLoads)
+        // Setting the same type again must NOT reload: the bank is already the right one.
+        host.bankLoads.clear()
+        m.setParam(0, 0, 1f)
+        assertTrue(host.bankLoads.isEmpty())
+    }
+
+    @Test
+    fun aFailedBankLoadLeavesTheInstrumentUsable() {
+        val host = FakeHost()
+        host.bankOk = false
+        val m = manager(host)
+        val s = m.load(1, AeInstrument.SAX)
+        // The synthesis is the instrument; the bank is an optional layer on top of it.
+        assertTrue(s != null)
+        assertFalse(s!!.bankLoaded)
+        assertEquals(-1, s.bankType)
     }
 }

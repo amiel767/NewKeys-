@@ -1,6 +1,7 @@
 package com.soundstage.mixer.instruments
 
 import android.content.Context
+import android.util.Log
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import com.soundstage.mixer.R
@@ -15,6 +16,37 @@ fun initAetherInstruments(context: Context) {
     AeFonts.mono = FontFamily(Font(R.font.share_tech_mono))
     AeFonts.ui = FontFamily(Font(R.font.plus_jakarta_sans))
     AeFonts.display = FontFamily(Font(R.font.sora))
+    AeBanks.app = context.applicationContext
+}
+
+/**
+ * Reads the sampled banks shipped in `assets/saxpack/`. They are loaded on demand and kept
+ * decoded as a ByteArray, because the native side copies what it needs: a 2 MB array held
+ * once is cheaper than re-reading the asset on every instrument load.
+ */
+object AeBanks {
+    /** Set by [initAetherInstruments]; null in unit tests, where the load simply fails. */
+    @Volatile var app: Context? = null
+    private val cache = HashMap<String, ByteArray>()
+    /** Bank file per instrument type (0 soprano, 1 alto, 2 tenor, 3 baritone), empty = none. */
+    private val saxFiles = arrayOf("saxpack_sop.bin", "saxpack_alt.bin", "saxpack_ten.bin", "saxpack_bar.bin")
+
+    /** The bank belonging to an instrument, or null when it has none (organ, synth, leads). */
+    fun fileFor(instrument: AeInstrument, saxType: Int): String? = when (instrument) {
+        AeInstrument.SAX -> saxFiles[saxType.coerceIn(0, 3)]
+        else -> null
+    }
+
+    fun read(name: String): ByteArray? {
+        cache[name]?.let { return it }
+        val ctx = app ?: return null
+        return try {
+            ctx.assets.open("saxpack/$name").use { it.readBytes() }.also { cache[name] = it }
+        } catch (e: Throwable) {
+            Log.e("AeBanks", "Cannot read asset saxpack/$name: ${e.message}")
+            null
+        }
+    }
 }
 
 /**
@@ -53,6 +85,20 @@ object AeInstrumentHost : AeHost {
     }
 
     override fun level(strip: Int): Float = NativeAudioBridge.safeFxStripPeak(strip)
+
+    override fun loadBank(strip: Int, instrument: AeInstrument, type: Int, mix: Float): Boolean {
+        // Only the sax ships a bank today. `type` is the sax's first parameter, the same
+        // value the engine reads to pick a formant set, so the two stay in step.
+        if (instrument != AeInstrument.SAX) return false
+        val name = AeBanks.fileFor(instrument, type) ?: return false
+        val bytes = AeBanks.read(name) ?: return false
+        val ok = NativeAudioBridge.safeLoadInstrumentBank(strip, bytes)
+        if (ok) NativeAudioBridge.safeSetInstrumentSampleMix(strip, mix)
+        Log.d("AeInstrumentHost", "loadBank(strip=$strip, $name, ${bytes.size} o) -> $ok")
+        return ok
+    }
+
+    override fun bankMix(strip: Int): Float = NativeAudioBridge.safeInstrumentSampleMix(strip)
 }
 
 /**

@@ -89,8 +89,12 @@ class SaxEngine : public SourceFx {
    * continuous voice across the gaps between sampled zones and through legato.
    * With no pack loaded the reader is inactive and this has no effect.
    */
-  void setSampleMix(float v) { sampleMix_ = clamp01(v); }
-  float sampleMix() const { return sampleMix_; }
+  // SourceFx hooks: the engine reaches the bank through these, so it never needs to
+  // know which source it holds.
+  bool loadSampleBank(const uint8_t* bytes, size_t size) override { return smp_.load(bytes, size); }
+  float sampleMix() const override { return sampleMix_; }
+  void setSampleMix(float v) override { sampleMix_ = clamp01(v); }
+  bool hasSampleBank() const override { return smp_.loaded(); }
 
   /** Hand over a pack built by tools/saxpack/extract.py. Returns false if malformed. */
   bool loadSamples(const uint8_t* bytes, size_t size) { return smp_.load(bytes, size); }

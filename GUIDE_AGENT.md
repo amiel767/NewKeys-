@@ -620,8 +620,14 @@ Les quatre premiers points sont **faits et verifies sur l'hote** (`g++ -O2`) :
 4. **Loi harmonique** : `ENV_SOP/ALT/TEN/BAR` + `setMeasuredTable(bool, defaut
    vrai)`.
 
-Reste : **integration des assets** (le pack n'est pas embarque), **pont JNI**
-pour `loadSamples`/`setSampleMix`, et **validation appareil**.
+**Fait depuis (2026-10-27)** : les 4 packs sont **embarques**
+(`app/src/main/assets/saxpack/`, 7,01 Mo), le **pont JNI** est pose
+(`fxLoadInstrumentBank` / `fxInstrumentHasBank` / `fxSetInstrumentSampleMix` /
+`fxInstrumentSampleMix`) et **le chargement est automatique** au montage de
+l'instrument. Verifie sur l'hote et par `assembleDebug` (4 ABI), 16 tests verts.
+
+Reste : **validation appareil** (ecouter le mix a 0,7) et le **reglage du mix
+dans l'UI** (il est fixe a 0,7 cote Kotlin, aucun potard ne l'expose encore).
 
 ### Trois pieges qui ont coute une passe chacun
 
@@ -642,6 +648,37 @@ pour `loadSamples`/`setSampleMix`, et **validation appareil**.
   depuis le debut du region a chaque acces : le decodage a la demande dans la
   boucle de rendu est **quadratique**. Une passe par note dans un tampon reutilise.
 
+### Pont JNI du pack (2026-10-27)
+
+Le moteur ne connait pas les banques : il tient un `SourceFx*` et rien de plus.
+L'ouverture se fait donc par la **classe de base**, `fx_source.h` :
+
+```cpp
+virtual bool loadSampleBank(const uint8_t*, size_t) { return false; }
+virtual float sampleMix() const { return 0.f; }
+virtual void setSampleMix(float) {}
+virtual bool hasSampleBank() const { return false; }
+```
+
+`SaxEngine` les surcharge ; `Organ`/`Synth`/`Leads` gardent le defaut et
+**refusent** (c'est le comportement attendu, pas une erreur). Chaine d'appel :
+`fx_mixer.h` (`loadInstrumentBank`) -> `audio_engine.h` (`fxLoadInstrumentBank`,
+**au-dessus du `private:`** l.912) -> `native-lib.cpp` -> `NativeAudioBridge.kt`
+(`safeLoadInstrumentBank`) -> `AeInstrumentHost.loadBank`.
+
+- **Le type de sax vient de `values[0]` du preset**, pas d'une seconde source :
+  c'est exactement la valeur que le moteur lit pour choisir ses formants.
+- **`AeBanks`** (`AeInstrumentHost.kt`) lit l'asset et **le garde en cache** :
+  le natif copie, donc relire 2 Mo a chaque chargement serait du gaspillage.
+- **Changer le type recharge la banque** (`AeManager.setParam`, index 0 du sax).
+  Sans ca les samples restaient ceux de l'ancien type pendant que la synthese
+  passait au nouveau. Le test `changingTheSaxTypeReloadsTheBank` le verrouille.
+- **Un echec de banque ne casse pas l'instrument** : `loadBank` renvoie false,
+  la synthese reste et joue seule (`aFailedBankLoadLeavesTheInstrumentUsable`).
+- **Invariant a ne pas perdre** : a `sampleMix = 0` la sortie est
+  **bit-identique** a la synthese pure (mesure : ecart max 0,000000000). C'est ce
+  qui rend la regression detectable.
+
 ### Piege de niveau (mesure)
 
 Normaliser en **crete** rend le niveau dependant du facteur de crete : les
@@ -660,21 +697,42 @@ dans l'encodage. Controle sur un sinus : **SNR 46,6 dB** pour l'ADPCM seul contr
 29 a 32 dB sur du sax reel — c'est le signal qui est dur a coder, pas le codec qui
 est mauvais.
 
-### Formants : ecart mesure avec `TY_f1`
+### Formants : la colonne « `TY_f1` actuel » du guide etait FAUSSE
 
-Centre du formant principal mesure sur les samples (mediane du pic de l'enveloppe
-spectrale, 200..2500 Hz) :
+**Correction 2026-10-27.** La table plus haut annoncait `TY_f1` = 617/813/570/523.
+Ces valeurs ne correspondent a **aucune** version de `fx_sax.h` : verifie par
+`git show` sur `ca32bf4`, `9bc5107` et `a866928`, les trois commits qui l'ont
+touche. Les vraies constantes sont :
 
-| type | f0 moyen | pic d'enveloppe | centroide | `TY_f1` actuel |
-|---|---|---|---|---|
-| sop | 609 | 766 | 828 | 617 |
-| alt | 406 | 398 | 640 | 813 |
-| ten | 303 | 375 | 594 | 570 |
-| bar | 190 | 342 | 726 | 523 |
+```cpp
+static constexpr float TY_f1[4]  = {900.f, 650.f, 520.f, 400.f};   // sop, alt, ten, bar
+static constexpr float TY_af[4]  = {670.f, 837.f, 618.f, 570.f};   // formant d'anche
+```
 
-Le pic d'enveloppe est proche de `TY_f1` sauf pour le **soprano** (766 contre
-617) et l'**alto** (398 contre 813). A creuser sur appareil : ces deux ecarts
-pourraient expliquer une partie du caractere « synthetique » restant.
+Les valeurs annoncees etaient celles de `TY_af`, etiquetees `TY_f1`. Un « ecart
+mesure » a donc ete poursuivi contre une table qui n'existait pas.
+
+**`TY_f1` est physiquement coherent** : 900/650/520/400 Hz **decroit** avec la
+taille de l'instrument, ce que fait tout saxophone reel (la cavite s'allonge).
+Ne pas la « corriger » sur la foi de l'ancienne note.
+
+**Nouvelle mesure (LTAS, moyenne sur toutes les notes, boucles de sustain
+seules, lissage 101 bins)** — elle ne peut PAS trancher, et c'est le resultat :
+
+| type | sommet de la bosse | largeur a -6 dB |
+|---|---|---|
+| sop | 743 Hz | 1174 Hz |
+| alt | 721 Hz | 1001 Hz |
+| ten | 721 Hz | 915 Hz |
+| bar | 657 Hz | 1130 Hz |
+
+Le sommet suit a peine le type et la bosse est large de ~1 kHz : F1 et F2 se
+recouvrent, on lit un maximum unique au lieu de deux formants. Meme mesure avec
+une fenetre plus fine : les « pics » trouves suivent la fondamentale (bar : f0
+190 Hz, pics a 1227 et 1766 Hz = harmoniques 6 et 9), ce ne sont pas des
+formants. **Le pack ne permet donc pas de valider `TY_f1`, ni de l'invalider.**
+La mesure decisive demande un son tenu joue par un vrai sax sur la meme note,
+analyse sur appareil — a faire avec l'utilisateur, pas en aveugle.
 
 ---
 

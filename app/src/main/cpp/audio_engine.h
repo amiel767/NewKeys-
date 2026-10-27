@@ -904,6 +904,15 @@ private:
     bool fxSoundfontPaused(int strip) { return mFx.soundfontPaused(strip); }
     void fxSetInstrumentBypass(int strip, bool b) { mFx.setInstrumentBypass(strip, b); }
     bool fxApplyInstrumentPreset(int strip, int preset) { return mFx.applyInstrumentPreset(strip, preset); }
+    /**
+     * Load a sampled bank into the source sitting on this strip (hybrid instruments).
+     * False when the strip has no source or the source has no bank (Organ, Synth,
+     * Leads), which is the ordinary case: only the sax carries one today.
+     */
+    bool fxLoadInstrumentBank(int strip, const uint8_t* bytes, size_t size) { return mFx.loadInstrumentBank(strip, bytes, size); }
+    bool fxInstrumentHasBank(int strip) { return mFx.instrumentHasBank(strip); }
+    void fxSetInstrumentSampleMix(int strip, float v) { mFx.setInstrumentSampleMix(strip, v); }
+    float fxInstrumentSampleMix(int strip) { return mFx.instrumentSampleMix(strip); }
     float fxMeter(int strip, int slot, int i) { return mFx.meter(strip, slot, i); }
     void fxCollectGarbage() { mFx.collectGarbage(); }
     /** Panic: clears every Æther effect tail so a runaway loop stops ringing. */

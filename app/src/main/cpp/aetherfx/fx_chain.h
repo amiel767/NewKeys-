@@ -240,6 +240,8 @@ class TrackStrip {
   bool setInstrument(int id) { return instrument.setEffect(0, id); }  // id < 0: back to the plain soundfont
   int instrumentId() const { return instrument.effectId(0); }
   bool hasSource() const { return kindOf(instrument.effectId(0)) == Kind::Source && !instrument.bypassed(0); }  // engine: skip FluidSynth rendering for this channel
+  /** Source currently in the instrument slot, or null. Used by the JNI facade to load a bank. */
+  SourceFx* source() const { return src(); }
   // note events forwarded to the active source (audio thread)
   void noteOn(int n, int v) { if (SourceFx* s = src()) s->noteOn(n, v); }
   void noteOff(int n) { if (SourceFx* s = src()) s->noteOff(n); }

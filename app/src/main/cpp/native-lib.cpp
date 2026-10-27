@@ -710,6 +710,51 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_fxApplyInstrumentPreset(
     return static_cast<jboolean>(gAudioEngine.fxApplyInstrumentPreset(strip, preset));
 }
 
+/**
+ * Load a sampled bank (the saxpack format) into the source on this strip. The bytes are
+ * copied natively, so the Java array can be released as soon as this returns.
+ */
+JNIEXPORT jboolean JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_fxLoadInstrumentBank(
+        JNIEnv *env,
+        jobject /* this */,
+        jint strip,
+        jbyteArray data,
+        jint length) {
+    if (!data || length <= 0) return JNI_FALSE;
+    jbyte *buf = env->GetByteArrayElements(data, nullptr);
+    if (!buf) return JNI_FALSE;
+    const bool ok = gAudioEngine.fxLoadInstrumentBank(
+            strip, reinterpret_cast<const uint8_t *>(buf), static_cast<size_t>(length));
+    env->ReleaseByteArrayElements(data, buf, JNI_ABORT);   // read-only: do not copy back
+    return static_cast<jboolean>(ok);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_fxInstrumentHasBank(
+        JNIEnv *env,
+        jobject /* this */,
+        jint strip) {
+    return static_cast<jboolean>(gAudioEngine.fxInstrumentHasBank(strip));
+}
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_fxSetInstrumentSampleMix(
+        JNIEnv *env,
+        jobject /* this */,
+        jint strip,
+        jfloat mix) {
+    gAudioEngine.fxSetInstrumentSampleMix(strip, mix);
+}
+
+JNIEXPORT jfloat JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_fxInstrumentSampleMix(
+        JNIEnv *env,
+        jobject /* this */,
+        jint strip) {
+    return static_cast<jfloat>(gAudioEngine.fxInstrumentSampleMix(strip));
+}
+
 JNIEXPORT jfloat JNICALL
 Java_com_soundstage_mixer_audio_NativeAudioBridge_fxGetMeter(
         JNIEnv *env,

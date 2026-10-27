@@ -1,0 +1,42 @@
+{
+  "license": "CC-BY 4.0 \u2014 MTG Solo Saxophones (kinwie)",
+  "source": "https://github.com/sfzinstruments/MTG.SoloSax",
+  "types": {
+    "sop": {
+      "file": "saxpack_sop.bin",
+      "rate": 22050,
+      "samples": 66,
+      "pcm_bytes": 1865676,
+      "snr_db_median": 31.4,
+      "seam_pre_min": 0.994,
+      "seam_pre_median": 1.0
+    },
+    "alt": {
+      "file": "saxpack_alt.bin",
+      "rate": 22050,
+      "samples": 66,
+      "pcm_bytes": 2187711,
+      "snr_db_median": 30.8,
+      "seam_pre_min": 0.988,
+      "seam_pre_median": 0.999
+    },
+    "ten": {
+      "file": "saxpack_ten.bin",
+      "rate": 22050,
+      "samples": 66,
+      "pcm_bytes": 2034160,
+      "snr_db_median": 32.2,
+      "seam_pre_min": 0.99,
+      "seam_pre_median": 0.999
+    },
+    "bar": {
+      "file": "saxpack_bar.bin",
+      "rate": 22050,
+      "samples": 68,
+      "pcm_bytes": 1262804,
+      "snr_db_median": 30.9,
+      "seam_pre_min": 0.976,
+      "seam_pre_median": 0.996
+    }
+  }
+}

@@ -77,6 +77,16 @@ interface AeHost {
     fun level(strip: Int): Float = 0f
     /** Optional: copy the last output samples (mono, -1..1) for the Leads oscilloscope. Return false if unavailable (a synthetic trace is drawn). */
     fun scope(strip: Int, out: FloatArray): Boolean = false
+
+    /**
+     * Load the sampled bank that goes with an instrument, if it has one. Only the sax does
+     * today; every other instrument returns false and stays purely synthetic. The bank is
+     * a hybrid layer, not a replacement: at mix 0 the output is the plain synthesis.
+     */
+    fun loadBank(strip: Int, instrument: AeInstrument, type: Int, mix: Float = 0.7f): Boolean = false
+
+    /** Mix of samples in the instrument output, 0 = pure synthesis. For the UI readback. */
+    fun bankMix(strip: Int): Float = 0f
 }
 
 /** One loaded instrument on one strip. Lives in [AeManager], so it survives the window being closed. */
@@ -87,6 +97,10 @@ class AeSession(val strip: Int, val instrument: AeInstrument, init: FloatArray) 
     var level by mutableFloatStateOf(0f)
     var tweening by mutableStateOf(false)
     var lastNote = 60
+    /** True when a sampled bank was loaded on top of the synthesis (sax). */
+    var bankLoaded by mutableStateOf(false)
+    /** Sampled bank currently loaded (-1 = none). Each sax type has its own. */
+    var bankType = -1
     val held = mutableStateMapOf<Int, Boolean>()
     @Volatile var noteEvents = 0
 }
@@ -118,6 +132,12 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
         val s = AeSession(strip, inst, p.values)
         sessions[strip] = s
         p.values.forEachIndexed { i, v -> host.setParam(strip, i, v) }
+        // Hybrid layer, when the instrument ships one (only the sax today). It is a layer,
+        // not a replacement: the synthesis stays underneath and covers the sample seams.
+        // The bank is optional, so a failure here must not abort the load.
+        val type = (p.values.firstOrNull() ?: 0f).let { (it * 3f).roundToInt() }
+        s.bankLoaded = host.loadBank(strip, inst, type)
+        if (s.bankLoaded) s.bankType = type
         return s
     }
 
@@ -133,6 +153,16 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
         val v = value.coerceIn(0f, 1f)
         s.values[index] = v
         host.setParam(strip, index, v)
+        // Parameter 0 of the sax picks the instrument type, and every type has its own
+        // bank. Without a reload the samples would keep playing the previous type while
+        // the synthesis moved to the new one.
+        if (s.instrument == AeInstrument.SAX && index == 0) {
+            val t = (v * 3f).roundToInt().coerceIn(0, 3)
+            if (t != s.bankType) {
+                s.bankLoaded = host.loadBank(strip, s.instrument, t)
+                s.bankType = if (s.bankLoaded) t else -1
+            }
+        }
     }
 
     fun loadPreset(strip: Int, index: Int) {

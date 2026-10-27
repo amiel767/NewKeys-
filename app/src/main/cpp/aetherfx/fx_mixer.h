@@ -72,6 +72,31 @@ class FxMixer {
   void setInstrumentParam(int strip, int param, float norm) { if (instrumentAllowed(strip)) tracks_[strip].instrument.setParam(0, param, norm); }
   bool applyInstrumentPreset(int strip, int preset) { return instrumentAllowed(strip) ? tracks_[strip].instrument.applyPreset(0, preset) : false; }
   void setInstrumentBypass(int strip, bool b) { if (instrumentAllowed(strip)) tracks_[strip].instrument.setBypass(0, b); }
+
+  /**
+   * Load a sample bank into whatever source occupies the strip, and set its sample mix.
+   * Called from the control thread. Returns false when the strip has no source or the
+   * source has no bank support (Organ, Synth, Leads), which is the normal case.
+   */
+  bool loadInstrumentBank(int strip, const uint8_t* bytes, size_t size) {
+    if (!instrumentAllowed(strip)) return false;
+    SourceFx* s = tracks_[strip].source();
+    return s && s->loadSampleBank(bytes, size);
+  }
+  bool instrumentHasBank(int strip) const {
+    if (!instrumentAllowed(strip)) return false;
+    const SourceFx* s = tracks_[strip].source();
+    return s && s->hasSampleBank();
+  }
+  void setInstrumentSampleMix(int strip, float v) {
+    if (!instrumentAllowed(strip)) return;
+    if (SourceFx* s = tracks_[strip].source()) s->setSampleMix(v);
+  }
+  float instrumentSampleMix(int strip) const {
+    if (!instrumentAllowed(strip)) return 0.f;
+    const SourceFx* s = tracks_[strip].source();
+    return s ? s->sampleMix() : 0.f;
+  }
   void setGain(int strip, float lin) { if (FxStrip* s = fxStrip(strip)) s->setGain(lin); }
   void setPan(int strip, float pan) { if (FxStrip* s = fxStrip(strip)) s->setPan(pan); }
   void setMute(int strip, bool m) { if (FxStrip* s = fxStrip(strip)) s->setMute(m); }

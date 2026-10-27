@@ -135,6 +135,11 @@ object NativeAudioBridge {
     external fun fxSoundfontPaused(strip: Int): Boolean
     external fun fxSetInstrumentBypass(strip: Int, bypass: Boolean)
     external fun fxApplyInstrumentPreset(strip: Int, preset: Int): Boolean
+    /** Load a sampled bank (saxpack) into the source on this strip. Bytes are copied natively. */
+    external fun fxLoadInstrumentBank(strip: Int, data: ByteArray, length: Int): Boolean
+    external fun fxInstrumentHasBank(strip: Int): Boolean
+    external fun fxSetInstrumentSampleMix(strip: Int, mix: Float)
+    external fun fxInstrumentSampleMix(strip: Int): Float
     external fun fxGetMeter(strip: Int, slot: Int, index: Int): Float
     external fun fxCollectGarbage()
     external fun fxPanic()
@@ -207,6 +212,49 @@ object NativeAudioBridge {
             setTrackInstrumentParam(track, param, norm)
         } catch (e: Throwable) {
             Log.e("NativeAudioBridge", "Error invoking setTrackInstrumentParam: ${e.message}")
+        }
+    }
+
+    /**
+     * Load a sampled bank into the source on a strip. Returns false when the strip holds no
+     * source, or a source without bank support (Organ, Synth, Leads) — the ordinary case.
+     */
+    fun safeLoadInstrumentBank(strip: Int, data: ByteArray): Boolean {
+        if (!isLibraryLoaded) return false
+        return try {
+            fxLoadInstrumentBank(strip, data, data.size)
+        } catch (e: Throwable) {
+            Log.e("NativeAudioBridge", "Error invoking fxLoadInstrumentBank: ${e.message}")
+            false
+        }
+    }
+
+    fun safeInstrumentHasBank(strip: Int): Boolean {
+        if (!isLibraryLoaded) return false
+        return try {
+            fxInstrumentHasBank(strip)
+        } catch (e: Throwable) {
+            Log.e("NativeAudioBridge", "Error invoking fxInstrumentHasBank: ${e.message}")
+            false
+        }
+    }
+
+    fun safeSetInstrumentSampleMix(strip: Int, mix: Float) {
+        if (!isLibraryLoaded) return
+        try {
+            fxSetInstrumentSampleMix(strip, mix)
+        } catch (e: Throwable) {
+            Log.e("NativeAudioBridge", "Error invoking fxSetInstrumentSampleMix: ${e.message}")
+        }
+    }
+
+    fun safeInstrumentSampleMix(strip: Int): Float {
+        if (!isLibraryLoaded) return 0f
+        return try {
+            fxInstrumentSampleMix(strip)
+        } catch (e: Throwable) {
+            Log.e("NativeAudioBridge", "Error invoking fxInstrumentSampleMix: ${e.message}")
+            0f
         }
     }
 
