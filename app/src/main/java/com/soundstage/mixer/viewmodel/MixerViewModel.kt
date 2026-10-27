@@ -231,6 +231,12 @@ data class MixerUiState(
     val sheets: List<SheetItem> = emptyList(),
     val activeSheetId: String? = null,
     val floatingSheet: SheetItem? = null,
+    /**
+     * The sheet the floating window over the mixer renders. It is the *Sheets* model, not the
+     * flattened [SheetItem]: the floating window draws the real chart (sections, bars, lyrics)
+     * through `FloatingSheetHost`, so it needs the structured sheet, not a plain-text digest.
+     */
+    val floatingSheetData: com.aetherkeys.sheets.model.Sheet? = null,
     val floatingSheetIsLeft: Boolean = false,
     val floatingSheetScale: Float = 1.0f,
 
@@ -2832,6 +2838,21 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Opens the floating window from a Sheets library sheet. [SheetItem] only carries the
+     * flattened text, which is what the mixer's live-chord panel needs, but the floating
+     * window renders the real chart, so the structured sheet is kept alongside it.
+     */
+    fun openFloatingSheet(sheet: com.aetherkeys.sheets.model.Sheet) {
+        _uiState.update {
+            it.copy(
+                floatingSheet = sheet.toSheetItem(it.sheets.size),
+                floatingSheetData = sheet,
+                currentPage = AppScreenPage.MIXER
+            )
+        }
+    }
+
     fun toggleFloatingSheetPosition() {
         _uiState.update { it.copy(floatingSheetIsLeft = !it.floatingSheetIsLeft) }
     }
@@ -2845,7 +2866,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun closeFloatingSheet() {
-        _uiState.update { it.copy(floatingSheet = null) }
+        _uiState.update { it.copy(floatingSheet = null, floatingSheetData = null) }
     }
 
     fun closeDrumPad() {

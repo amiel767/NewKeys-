@@ -88,7 +88,6 @@ import com.soundstage.mixer.ui.tracksettings.TrackSettingsActions
 import com.soundstage.mixer.ui.tracksettings.TrackSettingsState
 import com.soundstage.mixer.ui.tracksettings.TrackSettingsWindow
 import com.aetherkeys.sheets.data.SheetsRepository
-import com.soundstage.mixer.model.toSheetItem
 import com.soundstage.mixer.ui.components.SoundfontWindow
 import com.soundstage.mixer.ui.components.SoundfontWindowState
 import com.soundstage.mixer.ui.components.SoundfontVariant
@@ -775,6 +774,17 @@ fun MixerScreen(
     val safeBottomPadding = animatedBottomPadding.coerceAtLeast(0.dp)
     val trackScrollState = rememberScrollState()
 
+    // The floating window renders the real chart, and the chart's look (notation, chord
+    // face, pagination) lives in the Sheets library settings. They are read once from the
+    // same repository the Sheets page uses, so the window matches the page instead of
+    // falling back to defaults.
+    var floatingSettings by remember { mutableStateOf(com.aetherkeys.sheets.model.SheetsSettings()) }
+    LaunchedEffect(Unit) {
+        floatingSettings = runCatching {
+            com.aetherkeys.sheets.data.SheetsRepository(viewModel.fileManager.sheetsDir).loadLibrary().settings
+        }.getOrDefault(com.aetherkeys.sheets.model.SheetsSettings())
+    }
+
     // Blur is a RenderEffect: enabling it on the same frame the window opens makes
     // that frame render the whole page through an offscreen pass, which is the
     // stutter seen when tapping Track Settings or the FX button. Settle one frame
@@ -877,7 +887,7 @@ fun MixerScreen(
                         bottomInset = safeBottomPadding,
                         onBackToMixer = { viewModel.navigateBackToMixer() },
                         onFloatOverMixer = { sheet ->
-                            viewModel.openFloatingSheet(sheet.toSheetItem(uiState.sheets.size))
+                            viewModel.openFloatingSheet(sheet)
                             viewModel.navigateBackToMixer()
                         },
                     )
@@ -1211,18 +1221,28 @@ fun MixerScreen(
         }
 
 
-        // Floating Sheet Window (Spotify style, 0 contour, free drag + magnetic snap, double-tap dismiss)
-        if (uiState.floatingSheet != null && uiState.currentPage == AppScreenPage.MIXER) {
+        // Floating Sheet Window over the mixer. It is the Sheets window itself
+        // (`FloatingSheetHost`), not a second, simpler card: the reference design for a
+        // sheet floating above the mixer already exists in the code, so the mixer reuses
+        // it instead of drawing its own. Swipe between sections, long-press to move with
+        // magnetic snap, swipe down to close, double-tap to open the editor.
+        val floatingData = uiState.floatingSheetData
+        if (floatingData != null && uiState.currentPage == AppScreenPage.MIXER) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .zIndex(85f)
             ) {
-                FloatingSheetWindow(
-                    sheet = uiState.floatingSheet,
-                    scale = uiState.floatingSheetScale,
-                    onScaleChange = { viewModel.updateFloatingSheetScale(it) },
-                    onClose = { viewModel.closeFloatingSheet() }
+                com.aetherkeys.sheets.ui.floating.FloatingSheetHost(
+                    sheet = floatingData,
+                    settings = floatingSettings,
+                    originRect = null,
+                    bottomInset = safeBottomPadding,
+                    onOpenEditor = {
+                        viewModel.closeFloatingSheet()
+                        viewModel.navigateToPage(AppScreenPage.SHEETS)
+                    },
+                    onClose = { viewModel.closeFloatingSheet() },
                 )
             }
         }
