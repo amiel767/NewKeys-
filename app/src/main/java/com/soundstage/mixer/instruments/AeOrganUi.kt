@@ -23,8 +23,12 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.remember
+import androidx.compose.ui.input.pointer.pointerInput
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -62,7 +66,18 @@ fun BoxScope.AeOrganUi(c: AeCtl, a: AeAnim) {
     Panel(402, 54, 196, 238)
     AeT("VIBRATO · CHORUS", 8, AeC.goldDim, Modifier.at(402, 62, 196, 12), AeFonts.plate, spacing = 0.14f, align = TextAlign.Center)
     val step = (c.v(22) * 5).roundToInt()
-    val vibClick = Modifier.at(452, 78, 96, 96).clickable(remember { MutableInteractionSource() }, null) { c.set(22, ((step + 1) % 6) / 5f) }
+    // Drag, not click-to-advance: a six-position cycle needed up to five taps to cross the
+    // dial, which is what read as "you have to force it". A vertical drag moves it like the
+    // other knobs; the touch target keeps the 96-unit box the labels sit in.
+    val vibScale = LocalAeScale.current
+    val vibClick = Modifier.at(452, 78, 96, 96).pointerInput(Unit) {
+        awaitEachGesture {
+            val d = awaitFirstDown(requireUnconsumed = false)
+            val start = c.v(22)
+            d.consume()
+            drag(d.id) { c.set(22, start - it.position.y / (130f * vibScale)); it.consume() }
+        }
+    }
     Box(vibClick) {
         arrayOf("V1", "V2", "V3", "C1", "C2", "C3").forEachIndexed { i, t ->
             val an = Math.toRadians((-75 + 30 * i - 90).toDouble())
@@ -101,7 +116,9 @@ fun BoxScope.AeOrganUi(c: AeCtl, a: AeAnim) {
         }
         arrayOf("STOP", "SLOW", "FAST").forEachIndexed { i, t -> AeT(t, 7, AeC.goldDim, Modifier.at(25 + i * 50 - 20, 23, 40, 10), AeFonts.plate, FontWeight.ExtraBold, align = TextAlign.Center) }
     }
-    AeMetalKnob(c, 26, "CLICK", 636, 298, 34); AeMetalKnob(c, 28, "DRIVE", 706, 298, 34); AeMetalKnob(c, 27, "TONE", 776, 298, 34)
-    AeMetalKnob(c, 29, "SPACE", 846, 298, 34); AeMetalKnob(c, 30, "LEVEL", 916, 298, 34)
+    // Slightly larger than the preview's 34: on the device the row read as too small under the
+    // labels, and the user asked for it. The spacing (70 units) still clears a 40-unit cap.
+    AeMetalKnob(c, 26, "CLICK", 636, 296, 40); AeMetalKnob(c, 28, "DRIVE", 706, 296, 40); AeMetalKnob(c, 27, "TONE", 776, 296, 40)
+    AeMetalKnob(c, 29, "SPACE", 846, 296, 40); AeMetalKnob(c, 30, "LEVEL", 916, 296, 40)
     AeKeyboard(c, 52, 360, 896, 90)
 }
