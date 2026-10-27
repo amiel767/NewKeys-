@@ -22,6 +22,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aetherkeys.sheets.data.SheetsRepository
 import com.aetherkeys.sheets.export.ChordProExporter
 import com.aetherkeys.sheets.model.ExportFormat
+import com.aetherkeys.sheets.model.Sheet
 import com.aetherkeys.sheets.ui.editor.EditorScreen
 import com.aetherkeys.sheets.ui.home.HomeScreen
 import com.aetherkeys.sheets.ui.settings.SheetsSettingsScreen
@@ -46,6 +47,7 @@ fun SheetsRoot(
     repo: SheetsRepository,
     bottomInset: Dp,
     onBackToMixer: () -> Unit,
+    onFloatOverMixer: (Sheet) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val ctx = LocalContext.current
@@ -71,14 +73,15 @@ fun SheetsRoot(
             HomeScreen(
                 state = libState, actions = lib, bottomInset = bottomInset,
                 onBackToMixer = onBackToMixer, onOpenSettings = { showSettings = true },
-                onOpenEditor = { id -> lib.closeFloating(); editingId = id },
+                onOpenEditor = { id -> editingId = id },
+                onFloatOverMixer = onFloatOverMixer,
             )
         } else {
             EditorScreen(
                 state = edState, settings = libState.settings, actions = ed,
                 onBack = { closeEditor() },
                 // Mode scène : feuille flottante (swipe entre sections, verrou).
-                onOpenScene = { val id = editingId; closeEditor(); if (id != null) lib.openFloating(id) },
+                onOpenScene = { edState.sheet?.let { onFloatOverMixer(it) }; closeEditor() },
                 onSetNotation = lib::setNotation,
                 onExport = { f ->
                     val sheet = edState.sheet

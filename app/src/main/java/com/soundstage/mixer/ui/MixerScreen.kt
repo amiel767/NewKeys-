@@ -88,6 +88,7 @@ import com.soundstage.mixer.ui.tracksettings.TrackSettingsActions
 import com.soundstage.mixer.ui.tracksettings.TrackSettingsState
 import com.soundstage.mixer.ui.tracksettings.TrackSettingsWindow
 import com.aetherkeys.sheets.data.SheetsRepository
+import com.soundstage.mixer.model.toSheetItem
 import com.soundstage.mixer.ui.components.SoundfontWindow
 import com.soundstage.mixer.ui.components.SoundfontWindowState
 import com.soundstage.mixer.ui.components.SoundfontVariant
@@ -874,7 +875,11 @@ fun MixerScreen(
                     SheetsRoot(
                         repo = SheetsRepository(viewModel.fileManager.sheetsDir),
                         bottomInset = safeBottomPadding,
-                        onBackToMixer = { viewModel.navigateBackToMixer() }
+                        onBackToMixer = { viewModel.navigateBackToMixer() },
+                        onFloatOverMixer = { sheet ->
+                            viewModel.openFloatingSheet(sheet.toSheetItem(uiState.sheets.size))
+                            viewModel.navigateBackToMixer()
+                        },
                     )
                 }
                 AppScreenPage.MIXER -> {

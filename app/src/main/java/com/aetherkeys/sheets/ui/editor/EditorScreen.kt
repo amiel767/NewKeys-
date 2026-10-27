@@ -18,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -75,7 +76,7 @@ fun EditorScreen(
     var open by rememberSaveable { mutableStateOf<String?>(null) }
     val current = EditorTab.valueOf(tab)
 
-    Row(modifier.fillMaxSize().background(SheetsColors.Background)) {
+    Row(modifier.fillMaxSize()) {
         // ---------------- Ribbon (40 %) ----------------
         Column(
             Modifier.weight(SheetsLayout.RibbonWeight).fillMaxHeight().zIndex(1f)
@@ -83,16 +84,16 @@ fun EditorScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                GlyphButton("←", onBack)
+                GlyphButton(SheetsIcons.Back, onBack, contentDescription = "Back")
                 ToolChip("Key ${Theory.KEY_NAMES[sheet.keyPc]}", { tab = EditorTab.Page.name; open = "display" })
                 Row(Modifier.clip(RoundedCornerShape(SheetsRadius.Button)).background(SheetsColors.Surface).padding(3.dp)) {
                     Pill("Chart", selected = !lyricsView) { lyricsView = false }
                     Pill("Lyrics", selected = lyricsView) { lyricsView = true }
                 }
                 Box(Modifier.weight(1f))
-                GlyphButton("↶", actions::undo, enabled = state.canUndo)
-                GlyphButton("↷", actions::redo, enabled = state.canRedo)
-                GlyphButton("▶", onOpenScene)
+                GlyphButton(SheetsIcons.Undo, actions::undo, contentDescription = "Undo", enabled = state.canUndo)
+                GlyphButton(SheetsIcons.Redo, actions::redo, contentDescription = "Redo", enabled = state.canRedo)
+                GlyphButton(SheetsIcons.Play, onOpenScene, contentDescription = "Open scene", filled = true)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(22.dp), verticalAlignment = Alignment.CenterVertically) {
                 EditorTab.values().forEach { t ->
@@ -249,7 +250,7 @@ private fun ChordsTab(st: EditorUiState, sheet: Sheet, settings: SheetsSettings,
             ToolChip("Clear", { a.clearBar() })
         }
         ChipFlow {
-            ToolChip("◀ Prev", { a.prevBar() })
+            ToolChip("Prev", { a.prevBar() })
             ToolChip("Next ▶", { a.nextBar() })
             ToolChip("Transpose −1", { a.transpose(-1) })
             ToolChip("Transpose +1", { a.transpose(1) })

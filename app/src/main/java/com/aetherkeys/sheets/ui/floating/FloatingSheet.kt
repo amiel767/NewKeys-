@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -38,6 +39,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,6 +72,7 @@ import com.aetherkeys.sheets.model.SheetsSettings
 import com.aetherkeys.sheets.ui.chart.ChartLayout
 import com.aetherkeys.sheets.ui.chart.ChartLines
 import com.aetherkeys.sheets.ui.components.SectionTagChip
+import com.aetherkeys.sheets.ui.components.SheetsIcons
 import com.aetherkeys.sheets.ui.theme.*
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -204,9 +207,11 @@ fun FloatingSheetHost(
                 },
         ) {
             // Verrou de scène : cadenas discret. Verrouillé = plus de swipe, de déplacement ni de fermeture.
-            Text(
-                if (locked) "\uD83D\uDD12" else "\uD83D\uDD13", style = TextStyle(fontSize = 12.sp), color = ink,
-                modifier = Modifier.align(Alignment.TopEnd).padding(10.dp)
+            Icon(
+                imageVector = if (locked) SheetsIcons.Lock else SheetsIcons.Unlock,
+                contentDescription = if (locked) "Unlock scene" else "Lock scene",
+                tint = ink,
+                modifier = Modifier.align(Alignment.TopEnd).padding(10.dp).size(16.dp)
                     .graphicsLayer { alpha = if (locked) 0.85f else 0.3f }
                     .pointerInput(Unit) { detectTapGestures { locked = !locked; haptic.performHapticFeedback(HapticFeedbackType.LongPress) } },
             )

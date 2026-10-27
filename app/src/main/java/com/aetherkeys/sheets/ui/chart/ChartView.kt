@@ -2,7 +2,6 @@ package com.aetherkeys.sheets.ui.chart
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -22,10 +21,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -33,10 +36,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aetherkeys.sheets.model.*
 import com.aetherkeys.sheets.ui.components.SectionTagChip
+import com.aetherkeys.sheets.ui.components.SheetsIcons
 import com.aetherkeys.sheets.ui.theme.*
 
-private fun Mark.glyph() = when (this) {
-    Mark.Fermata -> "⌒"; Mark.Stop -> "◇"; Mark.Push -> "<"; Mark.Accent -> ">"; Mark.Segno -> "§"; Mark.Coda -> "⊕"
+/** Marque musicale -> icône vectorielle (aucun glyphe texte : le rendu ne dépend plus de la police). */
+private fun Mark.icon(): ImageVector = when (this) {
+    Mark.Fermata -> SheetsIcons.Fermata
+    Mark.Stop -> SheetsIcons.Stop
+    Mark.Push -> SheetsIcons.Push
+    Mark.Accent -> SheetsIcons.Accent
+    Mark.Segno -> SheetsIcons.Segno
+    Mark.Coda -> SheetsIcons.Coda
 }
 
 private fun DrawScope.drawBarLines(bar: Bar, ink: Color) {
@@ -67,7 +77,6 @@ fun BarCell(
 ) {
     val above = buildList {
         bar.volta?.let { add("$it.") }
-        if (bar.marks.isNotEmpty()) add(bar.marks.joinToString(" ") { it.glyph() })
         if (bar.repeatEnd && bar.repeatCount > 2) add("x${bar.repeatCount}")
     }.joinToString("  ")
     Box(
@@ -79,7 +88,17 @@ fun BarCell(
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            if (above.isNotEmpty()) Text(above, style = SheetsType.Caption, color = ink.copy(alpha = 0.8f), maxLines = 1)
+            if (above.isNotEmpty() || bar.marks.isNotEmpty()) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    if (above.isNotEmpty()) Text(above, style = SheetsType.Caption, color = ink.copy(alpha = 0.8f), maxLines = 1)
+                    bar.marks.forEach { mark ->
+                        Icon(mark.icon(), contentDescription = null, tint = ink.copy(alpha = 0.8f), modifier = Modifier.size(12.dp))
+                    }
+                }
+            }
             Text(text, style = SheetsType.chord(family, sizeSp), color = ink, maxLines = 1, softWrap = false)
         }
     }

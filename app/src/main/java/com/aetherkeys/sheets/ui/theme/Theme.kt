@@ -6,6 +6,15 @@ package com.aetherkeys.sheets.ui.theme
 //   plus_jakarta_sans.ttf (variable), architects_daughter.ttf, caveat.ttf (variable),
 //   kalam.ttf, patrick_hand.ttf, fira_code.ttf (variable), jetbrains_mono.ttf (variable)
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
@@ -17,23 +26,34 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soundstage.mixer.R
+import com.soundstage.mixer.ui.theme.AppColors
 import com.aetherkeys.sheets.model.FontIds
 import com.aetherkeys.sheets.model.PalettePresets
 import com.aetherkeys.sheets.model.SectionKind
 
+/**
+ * Chrome tokens. They mirror [AppColors] so Sheets reads as the same app as the
+ * mixer, Settings and Setlists: same page gradient, same panel relief, same
+ * accent. Card colours and the editor's page pane stay in [SheetPalette] /
+ * [onColorFor] — those are the sheet's own identity and are not themed here.
+ */
 object SheetsColors {
-    val Background = Color(0xFF0B0F1C)
-    val Ribbon = Color(0xFF0B0F1C)
-    val Surface = Color(0xFF161C30)
-    val SurfaceRaised = Color(0xFF1C2340)
-    val SurfaceChip = Color(0xFF232B45)
-    val Chip = Color(0xFF1A2036)
-    val Outline = Color(0xFF4A5A8A)
-    val TextPrimary = Color(0xFFCFD8F5)
-    val TextMuted = Color(0xFF8793B5)
-    val Accent = Color(0xFF9DB8F2)
-    val AccentText = Color(0xFF0B0F1C)
-    val Warning = Color(0xFFF0A23C)
+    val Background = AppColors.BgTop
+    val BackgroundBottom = AppColors.BgBottom
+    val Ribbon = AppColors.PanelBottom
+    val Surface = AppColors.PanelBottom
+    val SurfaceRaised = AppColors.PanelTop
+    val SurfaceChip = AppColors.PanelTop
+    val Chip = AppColors.PanelTop
+    val Well = AppColors.Well
+    val Outline = AppColors.Dim
+    val TextPrimary = AppColors.Soft
+    val TextMuted = AppColors.Mute
+    val Accent = AppColors.Accent
+    val AccentDeep = AppColors.AccentDeep
+    val AccentText = AppColors.AccentText
+    val Warning = AppColors.SetlistAmber
+    val Danger = AppColors.DangerText
     val InkDark = Color(0xFF2B2A33)
     val Scrim = Color(0x99000000)
 }
@@ -146,4 +166,33 @@ object SheetsType {
     /** Notes : police de la partition (défaut Architects Daughter). */
     fun chord(family: FontFamily = SheetsFonts.ArchitectsDaughter, sizeSp: Float = 32f) =
         TextStyle(fontFamily = family, fontWeight = FontWeight.Normal, fontSize = sizeSp.sp)
+}
+
+/**
+ * Page background: the same vertical gradient as the mixer and Settings
+ * ([AppColors.BgTop] -> [AppColors.BgBottom]) plus the soft top halo. Sheets
+ * screens used to paint a flat [SheetsColors.Background], which is what made
+ * them read as a separate app.
+ */
+@Composable
+fun SheetsPageBackground(
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    Box(
+        modifier.fillMaxSize().background(
+            Brush.verticalGradient(listOf(SheetsColors.Background, SheetsColors.BackgroundBottom))
+        ),
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            drawRect(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color.White.copy(alpha = 0.045f), Color.Transparent),
+                    center = Offset(size.width / 2f, 0f),
+                    radius = size.width * 0.8f,
+                )
+            )
+        }
+        content()
+    }
 }

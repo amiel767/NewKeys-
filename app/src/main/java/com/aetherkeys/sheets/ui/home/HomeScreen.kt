@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -31,7 +32,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Rect
@@ -49,7 +49,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.aetherkeys.sheets.model.*
 import com.aetherkeys.sheets.ui.components.*
-import com.aetherkeys.sheets.ui.floating.FloatingSheetHost
 import com.aetherkeys.sheets.ui.theme.*
 import com.aetherkeys.sheets.vm.HomeActions
 import com.aetherkeys.sheets.vm.LibraryFilter
@@ -65,6 +64,7 @@ fun HomeScreen(
     onBackToMixer: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenEditor: (String) -> Unit,
+    onFloatOverMixer: (Sheet) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val settings = state.settings
@@ -72,9 +72,8 @@ fun HomeScreen(
     val bounds = remember { mutableStateMapOf<String, Rect>() }
     var menuFor by remember { mutableStateOf<Sheet?>(null) }
     var newSetlist by remember { mutableStateOf(false) }
-    val floating = state.floatingSheet()
 
-    Box(modifier.fillMaxSize().background(SheetsColors.Background)) {
+    SheetsPageBackground(modifier) {
         Column(Modifier.fillMaxSize().padding(horizontal = 28.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             HomeHeader(state, actions, onBackToMixer, onOpenSettings)
             SetlistRow(state, actions, onNewSetlist = { newSetlist = true })
@@ -92,10 +91,9 @@ fun HomeScreen(
                         items(visible, key = { it.id }) { sheet ->
                             SheetCard(
                                 sheet = sheet, settings = settings,
-                                hidden = state.floatingId == sheet.id,
-                                modifier = Modifier.onGloballyPositioned { bounds[sheet.id] = it.boundsInRoot() },
+                                modifier = Modifier,
                                 onOpen = { onOpenEditor(sheet.id) },
-                                onFloat = { actions.openFloating(sheet.id) },
+                                onFloat = { onFloatOverMixer(sheet) },
                                 onMenu = { menuFor = sheet },
                             )
                         }
@@ -110,15 +108,8 @@ fun HomeScreen(
                 .shadow(8.dp, CircleShape).size(56.dp).clip(CircleShape).background(SheetsColors.Accent)
                 .clickable { actions.createSheet(onOpenEditor) },
             contentAlignment = Alignment.Center,
-        ) { Text("+", style = SheetsType.Title.copy(fontSize = 30.sp), color = SheetsColors.AccentText) }
+        ) { Icon(SheetsIcons.Plus, contentDescription = "New sheet", tint = SheetsColors.AccentText, modifier = Modifier.size(26.dp)) }
 
-        if (floating != null) {
-            FloatingSheetHost(
-                sheet = floating, settings = settings, originRect = bounds[floating.id], bottomInset = bottomInset,
-                onOpenEditor = { actions.closeFloating(); onOpenEditor(floating.id) },
-                onClose = actions::closeFloating,
-            )
-        }
     }
 
     menuFor?.let { s -> CardMenuDialog(s, state, actions, onDismiss = { menuFor = null }) }
@@ -139,7 +130,7 @@ private fun HomeHeader(state: LibraryUiState, actions: HomeActions, onBackToMixe
                 Pill("1-7", selected = notation == Notation.Nashville) { actions.setNotation(Notation.Nashville) }
                 Pill("A-G", selected = notation == Notation.Standard) { actions.setNotation(Notation.Standard) }
             }
-            GlyphButton("⚙", onOpenSettings)
+            GlyphButton(SheetsIcons.Settings, onOpenSettings, contentDescription = "Sheets settings")
         }
     }
 }
@@ -161,14 +152,14 @@ private fun SetlistRow(state: LibraryUiState, actions: HomeActions, onNewSetlist
             val sl = state.library.setlists[i]
             Pill(sl.name, selected = (state.filter as? LibraryFilter.OfSetlist)?.id == sl.id) { actions.setFilter(LibraryFilter.OfSetlist(sl.id)) }
         }
-        item { Pill("+") { onNewSetlist() } }
+        item { Pill("New setlist") { onNewSetlist() } }
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SheetCard(
-    sheet: Sheet, settings: SheetsSettings, hidden: Boolean, modifier: Modifier,
+    sheet: Sheet, settings: SheetsSettings, modifier: Modifier,
     onOpen: () -> Unit, onFloat: () -> Unit, onMenu: () -> Unit,
 ) {
     val base = sheet.colorArgb.toColor()
@@ -179,7 +170,7 @@ private fun SheetCard(
     val key = firstSection?.let { sheet.keyFor(it) } ?: sheet.keyPc
     val preview = firstSection?.bars?.take(4)?.joinToString("   ") { Theory.barText(it, key, settings.notation, settings.passing) }.orEmpty()
     Column(
-        modifier.alpha(if (hidden) 0f else 1f).height(150.dp).clip(RoundedCornerShape(SheetsRadius.Card))
+        modifier.height(150.dp).clip(RoundedCornerShape(SheetsRadius.Card))
             .background(Brush.linearGradient(listOf(base, lerp(base, Color.Black, 0.35f))))
             .combinedClickable(onClick = onOpen, onDoubleClick = onFloat, onLongClick = onMenu)
             .padding(horizontal = 18.dp, vertical = 14.dp),
@@ -187,7 +178,7 @@ private fun SheetCard(
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(sheet.title, style = SheetsType.chord(family, 26f), color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            if (sheet.favorite) Text("★", color = SheetsColors.Warning, modifier = Modifier.padding(horizontal = 6.dp))
+            if (sheet.favorite) Icon(SheetsIcons.Star, contentDescription = "Favorite", tint = SheetsColors.Warning, modifier = Modifier.padding(horizontal = 6.dp).size(16.dp))
             Box(Modifier.clip(RoundedCornerShape(9.dp)).background(ink.copy(alpha = 0.18f)).padding(horizontal = 11.dp, vertical = 5.dp)) {
                 Text(Theory.KEY_NAMES[sheet.keyPc], style = SheetsType.Label, color = ink)
             }

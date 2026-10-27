@@ -3223,3 +3223,54 @@ attend dans sa propre liste), donc le miroir reste allume.
 bend **hors Android** : `g++ -O2 -std=c++17` suffit, `aetherfx` est header-only et
 portable. 12/12 PASS attendu. C'est le seul moyen de valider le bend sans device,
 puisque le chemin DSP est le meme que dans l'APK.
+
+## Session 2026-10-27 — Sheets : cohérence visuelle, icônes, double-tap flottant
+
+Travail en parallèle de la conversation `dde6dffb48c5475a931918c2e3ff38f9`
+(faders/VU Leads, halo armé, instruments Æther). Aucun conflit : le local contenait
+déjà `origin/main` (`0b76712`), vérifié par `git merge-base --is-ancestor`.
+
+### 1. Chrome de Sheets aligné sur l'app (commit à venir)
+`ui/theme/Theme.kt` : `SheetsColors` ne porte plus de valeurs propres — il **délègue**
+à `AppColors` (BgTop/BgBottom/PanelTop/PanelBottom/Well/Dim/Accent/Mute/Soft…).
+Nouveau `SheetsPageBackground` (dégradé BgTop→BgBottom + halo radial) utilisé par
+Home, Settings et la coquille d'éditeur : les trois écrans peignaient un
+`SheetsColors.Background` **plat**, c'est ce qui les faisait lire comme une autre app.
+**Non touché volontairement** : couleurs de cartes (`Sheet.colorArgb`, `SheetPalette`)
+et page de droite de l'édition — identité de la feuille, pas du chrome.
+
+### 2. Emojis remplacés par des icônes vectorielles
+`ui/components/SheetsIcons.kt` (nouveau) : 20 `ImageVector` maison, grille 24×24,
+trait 2 px, caps/joins round — même famille que `SettingsTabIcons`. Couvre Back,
+Undo, Redo, Play, Edit, Settings, Star, Plus, Lock, Unlock, ChevronDown/Right, Close
+et les **6 marques musicales** (Fermata, Stop, Push, Accent, Segno, Coda).
+- `GlyphButton(glyph: String, …)` → `GlyphButton(icon: ImageVector, …)`.
+  Appelants migrés : HomeScreen (`⚙`, `+`, `★`), EditorScreen (`←`, `↶`, `↷`, `▶`,
+  `◀ Prev` → `Prev`), SheetsSettingsScreen (`←`), FloatingSheet (`🔒`/`🔓`).
+- `Drawer` : `▾`/`▸` → `SheetsIcons.ChevronDown`/`ChevronRight`.
+- `ChartView.Mark.glyph()` (chaînes `⌒ ◇ < > § ⊕`) → `Mark.icon()`, rendues en `Row`
+  d'`Icon` 12 dp. Le rendu des marques ne dépend plus de la police.
+- **Piège** : `SimpleSlider`/`SwitchRow` ont été alignés sur l'app (rail `Well`,
+  pouce `#DCE2EE`, switch 40×22 avec `animateColorAsState` + `spring`) — les anciennes
+  valeurs (44×26, rail translucide) juraient à côté de `SetSwitch`.
+
+### 3. Double-tap sur une carte → flotte AU-DESSUS du mixer
+Avant : `FloatingSheetHost` vivait **dans** la page Sheets. Désormais le double-tap
+(déjà câblé sur `SheetCard.onFloat`) remonte au mixer :
+`HomeScreen.onFloatOverMixer` → `SheetsRoot` → `MixerScreen` →
+`viewModel.openFloatingSheet(sheet.toSheetItem(uiState.sheets.size))` +
+`navigateBackToMixer()`. Le même chemin sert au bouton « scène » de l'éditeur.
+- `model/SheetItemBridge.kt` (nouveau) : `Sheet.toSheetItem()` aplatit la grille
+  (une ligne par groupe de mesures, paroles en dessous) en texte Standard — la
+  fenêtre flottante reconvertit elle-même vers la notation courante.
+- `HomeScreen` : `SheetCard` perd `hidden`/`alpha` et le host local ; le paramètre
+  `bottomInset`/`FloatingSheetHost` ne sert plus dans cette page.
+
+### 4. Capture de vérification
+`app/src/test/java/com/soundstage/mixer/SheetsCaptureTest.kt` (nouveau) :
+`w891dp-h411dp-440dpi`, 3 feuilles écrites via le **vrai** `SheetsRepository` dans un
+dossier temporaire, puis `waitUntil` sur « Midnight Drive » — la bibliothèque se lit
+sur `Dispatchers.IO`, une capture sans attente rend une page **vide** (piège vérifié :
+416 Ko vide → 857 Ko avec les cartes).
+Mesure : les 3 cartes sont aux couleurs/positions attendues
+(Midnight 634,189 · Salt 89,193 · Paper 355,190 en unités dp).

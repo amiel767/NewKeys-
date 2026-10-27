@@ -1,6 +1,10 @@
 package com.aetherkeys.sheets.ui.components
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -23,6 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,6 +43,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -59,7 +65,7 @@ fun Pill(text: String, modifier: Modifier = Modifier, selected: Boolean = false,
     Box(
         modifier
             .clip(RoundedCornerShape(SheetsRadius.Chip))
-            .background(if (selected) Color.White else SheetsColors.Chip)
+            .background(if (selected) SheetsColors.Accent else SheetsColors.Chip)
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 9.dp),
         contentAlignment = Alignment.Center,
@@ -68,10 +74,11 @@ fun Pill(text: String, modifier: Modifier = Modifier, selected: Boolean = false,
     }
 }
 
-/** Bouton glyphe (←, ↶, ⚙, +, 🔒…). */
+/** Bouton glyphe (retour, undo, réglages, scène…). L'icône vient de [SheetsIcons]. */
 @Composable
 fun GlyphButton(
-    glyph: String, onClick: () -> Unit, modifier: Modifier = Modifier,
+    icon: ImageVector, onClick: () -> Unit, modifier: Modifier = Modifier,
+    contentDescription: String? = null,
     enabled: Boolean = true, filled: Boolean = false, size: Int = 40,
 ) {
     Box(
@@ -82,13 +89,14 @@ fun GlyphButton(
             .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            glyph, style = SheetsType.Title.copy(fontSize = 16.sp),
-            color = when {
+        Icon(
+            imageVector = icon, contentDescription = contentDescription,
+            tint = when {
                 !enabled -> SheetsColors.TextMuted.copy(alpha = 0.4f)
                 filled -> SheetsColors.AccentText
                 else -> SheetsColors.TextPrimary
             },
+            modifier = Modifier.size((size * 0.5f).dp),
         )
     }
 }
@@ -141,10 +149,17 @@ fun Drawer(
             horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(title, style = SheetsType.Label, color = if (warn) SheetsColors.Warning else SheetsColors.TextPrimary)
-            Text(
-                if (expanded) "▾" else (summary?.let { "$it  ▸" } ?: "▸"),
-                style = SheetsType.Caption, color = if (warn) SheetsColors.Warning else SheetsColors.TextMuted, maxLines = 1,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (!expanded && summary != null) {
+                    Text(summary, style = SheetsType.Caption, color = if (warn) SheetsColors.Warning else SheetsColors.TextMuted, maxLines = 1)
+                }
+                Icon(
+                    imageVector = if (expanded) SheetsIcons.ChevronDown else SheetsIcons.ChevronRight,
+                    contentDescription = null,
+                    tint = if (warn) SheetsColors.Warning else SheetsColors.TextMuted,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
         }
         if (expanded) {
             Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
@@ -185,20 +200,36 @@ fun DegreeKey(n: Int, family: FontFamily, onClick: () -> Unit, modifier: Modifie
     ) { Text("$n", style = SheetsType.chord(family, 26f), color = Color.White) }
 }
 
+/**
+ * Interrupteur. Mêmes dimensions, mêmes couleurs et même animation que
+ * `SetSwitch` de Settings, pour que les deux écrans se lisent d'un seul tenant.
+ */
 @Composable
 fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+    val track by animateColorAsState(
+        if (checked) SheetsColors.Accent else Color.White.copy(alpha = 0.14f), tween(250), label = "swTrack"
+    )
+    val knobX by animateFloatAsState(if (checked) 20f else 2f, spring(dampingRatio = 0.6f, stiffness = 500f), label = "swX")
     Row(
         modifier.fillMaxWidth().clickable { onChange(!checked) }.padding(vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, style = SheetsType.Body, color = SheetsColors.TextPrimary)
         Box(
-            Modifier.size(width = 44.dp, height = 26.dp).clip(CircleShape).background(if (checked) SheetsColors.Accent else SheetsColors.SurfaceChip).padding(3.dp),
-            contentAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart,
-        ) { Box(Modifier.size(20.dp).clip(CircleShape).background(if (checked) SheetsColors.AccentText else SheetsColors.TextMuted)) }
+            Modifier.size(width = 40.dp, height = 22.dp).clip(RoundedCornerShape(11.dp)).background(track),
+        ) {
+            Box(
+                Modifier.offset { IntOffset(knobX.dp.roundToPx(), 2.dp.roundToPx()) }.size(18.dp)
+                    .clip(CircleShape).background(if (checked) SheetsColors.AccentText else Color(0xFFC7CFDD)),
+            )
+        }
     }
 }
 
+/**
+ * Curseur. Rail creusé ([SheetsColors.Well]) et pouce clair, comme les
+ * réglages de l'app, au lieu du rail translucide d'origine.
+ */
 @Composable
 fun SimpleSlider(
     value: Float, onValueChange: (Float) -> Unit, modifier: Modifier = Modifier,
@@ -215,10 +246,10 @@ fun SimpleSlider(
             .pointerInput(valueRange) { detectHorizontalDragGestures { change, _ -> change.consume(); onValueChange(at(change.position.x)) } },
         contentAlignment = Alignment.CenterStart,
     ) {
-        Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(trackBrush ?: SolidColor(SheetsColors.SurfaceChip)))
+        Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(trackBrush ?: SolidColor(SheetsColors.Well)))
         Box(
             Modifier.offset { IntOffset(((widthPx - thumb) * frac).roundToInt(), 0) }.size(20.dp)
-                .clip(CircleShape).background(Color.White).border(BorderStroke(1.dp, Color(0x33000000)), CircleShape),
+                .clip(CircleShape).background(Color(0xFFDCE2EE)).border(BorderStroke(1.dp, Color(0x33000000)), CircleShape),
         )
     }
 }
