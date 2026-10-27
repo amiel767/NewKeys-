@@ -96,7 +96,10 @@ class LeadsEngine : public SourceFx {
     }
     const float lvl[5] = {std::pow(p(0), 1.4f) * .9f, std::pow(p(1), 1.4f) * .42f, std::pow(p(2), 1.4f) * .34f, std::pow(p(3), 1.4f) * .16f, std::pow(p(4), 1.4f) * .6f};
     const float pw = .05f + p(10) * .45f, det = p(11) * 18.f;
-    const float A = .002f + p(12) * p(12) * 2.5f, H = p(13) * p(13) * 1.5f, D = .01f + p(14) * p(14) * 3.f, S = p(15);
+    // Anti-click: below ~8 ms the oscillator sum reaches the saturator at full
+    // amplitude on its very first sample, which is the "tac" at note-on. The
+    // reference clamps the attack; we do the same.
+    const float A = std::max(.008f, .002f + p(12) * p(12) * 2.5f), H = p(13) * p(13) * 1.5f, D = .01f + p(14) * p(14) * 3.f, S = p(15);
     const float R = .01f + p(16) * p(16) * 4.f;
     const int ftype = static_cast<int>(std::lround(p(17) * 2.f));
     const float fc0 = 40.f * std::pow(500.f, p(18)), pk = std::min(18000.f, fc0 * std::pow(2.f, p(20) * 6.f));
@@ -128,7 +131,7 @@ class LeadsEngine : public SourceFx {
         v.driftPh += static_cast<float>(0.12f + v.driftPh2 * 0.35f) * invSr; if (v.driftPh >= 1.f) v.driftPh -= 1.f;
         const float drift = sineTable().at(v.driftPh) * v.driftDepth;
         const float detuneAll = vib + v.voiceOff + drift;
-        const float fc = fcAt(v, fc0, pk, S, A * v.varA, D * v.varD);
+        const float fc = fcAt(v, fc0, pk, S, A * v.varA, H, D * v.varD);
         const float kf = 1.f / (kfBase + v.qJit);
         const float g = std::tan(static_cast<float>(kPi) * std::min(fc, .45f * static_cast<float>(sr_)) * invSr);
         const float a1 = 1.f / (1.f + g * (g + kf)), a2 = g * a1, a3 = g * a2;
@@ -139,7 +142,11 @@ class LeadsEngine : public SourceFx {
         for (int k = 0; k < 5; ++k) sum += osc(v, 3 + k, f, oct(p(8)), detuneAll + (k - 2) * det, 2, lvl[3], pw, invSr);
         sum += osc(v, 8, f, oct(p(9)), detuneAll - 5.f, 3, lvl[4], pw, invSr);
         sum += osc(v, 9, f, oct(p(9)), detuneAll + 5.f, 3, lvl[4], pw, invSr);
-        sum = fastTanh(sum * .55f * v.satDrive);
+        // Fade the oscillator sum in before the saturator: the reference ramps its mix
+        // bus over 5 ms. Without it the saturator sees a full-amplitude sum on the first
+        // sample of a voice, and that discontinuity is the click.
+        const float fade = v.stage == 1 ? std::min(1.f, v.envT / std::max(1e-4f, A * v.varA)) : 1.f;
+        sum = fastTanh(sum * .55f * v.satDrive * fade);
         const float v3 = sum - v.ic[1], v1 = a1 * v.ic[0] + a2 * v3, v2 = v.ic[1] + a2 * v.ic[0] + a3 * v3;
         v.ic[0] = 2.f * v1 - v.ic[0]; v.ic[1] = 2.f * v2 - v.ic[1];
         const float y = ftype == 0 ? v2 : ftype == 1 ? sum - kf * v1 - v2 : v1;
@@ -230,11 +237,15 @@ class LeadsEngine : public SourceFx {
       default: return 0.f;
     }
   }
-  static float fcAt(const Voice& v, float fc0, float pk, float S, float A, float D) {
+  // The filter holds at fc0 for the whole attack and only sweeps during the hold stage.
+  // Sweeping during the attack is what produced a resonant "ping" on top of the note
+  // (the reference starts its ramp at t+A, not at t).
+  static float fcAt(const Voice& v, float fc0, float pk, float S, float A, float H, float D) {
     const float hi = std::max(pk, fc0 + 1.f), end = std::max(fc0 * std::pow(2.f, S * 6.f), 20.f);
+    const float sweep = std::max(.015f, H);
     switch (v.stage) {
-      case 1: return fc0 * std::pow(hi / fc0, std::min(1.f, v.envT / std::max(1e-4f, A)));
-      case 2: return hi;
+      case 1: return fc0;
+      case 2: return fc0 * std::pow(hi / fc0, std::min(1.f, v.envT / std::max(1e-4f, sweep)));
       case 3: return hi * std::pow(end / hi, std::min(1.f, v.envT / std::max(1e-4f, D)));
       default: return end;
     }
