@@ -3696,9 +3696,17 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update { state ->
                     val updatedList = state.realSoundfonts.filterNot { it.path == file.path || it.name == file.name }
                     val updatedBankFiles = state.soundfontBankFiles.filterNot { it.path == file.path || it.name == file.name }
+                    // Purge the per-file caches too. They are keyed by path/name and were
+                    // never cleared on delete, so every removed soundfont left its parsed
+                    // preset list (a List<SF2PresetInfo> per file) and its favourite /
+                    // category entries in memory for the rest of the session.
                     state.copy(
                         realSoundfonts = updatedList,
-                        soundfontBankFiles = updatedBankFiles
+                        soundfontBankFiles = updatedBankFiles,
+                        sfParsedPresets = state.sfParsedPresets - file.path - file.name,
+                        sfParsingFiles = state.sfParsingFiles - file.path - file.name,
+                        sfFavorites = state.sfFavorites.filterNot { it == file.path || it == file.name || it.startsWith("${file.name}|") }.toSet(),
+                        sfCategoryOverrides = state.sfCategoryOverrides.filterKeys { it != file.path && it != file.name && !it.startsWith("${file.name}|") },
                     )
                 }
             } catch (e: Exception) {
