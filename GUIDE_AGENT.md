@@ -925,3 +925,53 @@ Le cap des faders de piste est le composable Kotlin `FaderThumb`
 **centre** du cap sur la valeur et laisser la boite changer de taille, sinon la
 course du fader se decale. `FaderThumb` porte deja sa barre LED — ne pas en
 dessiner une seconde dessous.
+
+## 19. Etat d'un instrument Æther : conserver, ne pas remettre a zero
+
+`AeManager` garde les reglages d'un instrument **decharge** dans `savedState`
+(cle = `strip to AeInstrument`) : valeurs de knobs, index de preset, page.
+
+- `unload(strip)` **enregistre** l'etat avant de liberer le moteur.
+- `load(strip, inst)` **restaure** cet etat au lieu du preset 1 si une sauvegarde existe.
+- Consequence attendue : fermer la fenetre, changer d'instrument, puis revenir rend
+  exactement ce qui avait ete laisse. Ne pas « simplifier » en repartant du preset 1 :
+  c'est une regression que l'utilisateur voit tout de suite.
+
+### Double-tap sur un knob
+`Modifier.aeKnobInput(c, idx)` (dans `AeControls.kt`) fait les deux gestes : le drag
+regle la valeur, le **double-tap** la remet a `AeManager.presetValue(strip, idx)` —
+la valeur du **preset courant**, pas une constante. Si le preset change, la cible du
+reset suit.
+
+### Master et instruments Æther
+Une source Æther rend **hors** FluidSynth : `safeSetMasterVolume` ne la touche pas.
+`setTrackVolume(0, …)` et `ensureEngineStarted()` poussent donc aussi
+`safeFxStripGain(FX_STRIP_MASTER, vol)`. Si un jour le master ne bouge plus un
+instrument, verifier **cette ligne** avant de chercher ailleurs.
+
+### Fenetre soundfonts : quitter l'instrument
+Cliquer une **categorie** soundfont dans la colonne de gauche remet `aetherTab = false`.
+Sans ca, les cartes Æther restaient affichees et la fenetre semblait bloquee.
+
+## 20. Travailler en parallele : `tools/conv_sync.py` en pratique
+
+`python3 tools/conv_sync.py` interroge l'API Cloud sur la conversation parallele
+(`dde6dffb48c5475a931918c2e3ff38f9` par defaut) et affiche ce qui a change depuis le
+dernier appel. Le watermark est dans `tools/.conv_sync_state.json` (gitignore).
+
+Sequence recommandee, **a chaque modification** :
+
+```bash
+python3 tools/conv_sync.py            # 1. avant : l'autre agent a-t-il bouge ?
+# ... travail ...
+python3 tools/conv_sync.py            # 2. apres
+git fetch origin main && git rev-list --left-right --count HEAD...origin/main
+```
+
+- `--full` rejoue tout le flux, `--since <ISO>` part d'une date, `--json <f>` exporte.
+- Si l'autre conversation touche **le meme fichier** : s'arreter et demander, ne pas
+  ecraser son travail.
+- Le remote peut avancer (uploads manuels de l'utilisateur). Avant de commiter :
+  `git fetch origin main` et comparer. `git merge-base --is-ancestor <sha> HEAD`
+  dit si un commit distant est deja dans l'arbre.
+- **Ne pas pousser** sans demande explicite (regle AGENTS.md).

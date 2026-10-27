@@ -3543,3 +3543,42 @@ Warm Analog Lead, Zouk Love Lead) ; les 24 autres presets de l'app sont
 (inchange). `organ` et `sax` verifies **octet pour octet** contre HEAD.
 Les chips de categorie (`PresetList`) sont un `LazyRow` : elles defilent, donc
 18 categories passent sans casser la mise en page.
+
+## Session 2026-10-27 (sync parallele) — Sheets flottant + Æther Lot B
+
+Contexte : reprise apres la conversation parallele `dde6dffb48c5475a931918c2e3ff38f9`.
+**Tout son travail est deja dans l'arbre** (dernier commit remote `8513678`, ma base).
+L'outil de veille est `python3 tools/conv_sync.py` (watermark dans
+`tools/.conv_sync_state.json`, gitignore) : a lancer **avant et apres** chaque
+modification. Il a confirme 0 nouvel evenement cote parallele pendant cette session.
+
+### Sheets — fenetre flottante du mixer (commit `acc035d`)
+`ui/components/FloatingSheetWindow.kt` (code mort) supprime. Le mixer reutilise
+desormais `FloatingSheetHost` (le design valide des Sheets) :
+`MixerViewModel` porte `floatingSheet` / `floatingSheetIsLeft` / `floatingSheetScale`
++ `openFloatingSheet` / `toggleFloatingSheetPosition` / `setFloatingSheetPosition` /
+`closeFloatingSheet` (via `Sheet.toSheetItem(...)`). Le call-site `SheetsRoot`
+passe `SheetsRepository(viewModel.fileManager.sheetsDir)`.
+
+### Æther — Lot B (commits `f461f24`, `41b4a53`)
+- **Etat conserve au dechargement** : `AeManager.savedState` (cle = strip + instrument)
+  garde valeurs, index de preset et page. `load()` les restaure ; `unload()` les
+  enregistre. Recharger un instrument **n'est plus une remise a zero**.
+  Test : `AeManagerTest.reloadingAnInstrumentRestoresItsKnobsAndPreset` +
+  `switchingBackToAnInstrumentKeepsItsStateToo` (15 tests, 0 echec).
+- **Puce « LOADED » -> petite LED verte** (`AeWindow.AeTile`) : la carte se lit deja
+  selectionnee par sa bordure, un chip de la taille du titre encombrait.
+- **Double-tap sur un knob = reset** a la valeur du preset courant
+  (`AeManager.presetValue`, `Modifier.aeKnobInput`). Le reset lit le **preset**, pas
+  une constante : il defait le reglage d'origine.
+- **Fader master pousse a la source** : `setTrackVolume(0, …)` et `ensureEngineStarted`
+  envoient aussi `safeFxStripGain(FX_STRIP_MASTER, vol)`. Sans ca, un instrument Æther
+  (qui rend **hors** FluidSynth) gardait son propre gain et le slider master ne le
+  bougeait pas.
+- **SoundfontWindow** : choisir une **categorie** soundfont quitte l'interface
+  instrument (`aetherTab = false`). Avant, les cartes Æther restaient affichees pendant
+  la navigation du soundfont — la fenetre semblait bloquee sur l'instrument.
+
+### Compilation / tests
+`:app:compileDebugKotlin` -> BUILD SUCCESSFUL. `AeManagerTest` -> 15/15.
+Rappel : deux builds Gradle en parallele tuent la sandbox ; un seul a la fois.
