@@ -42,13 +42,33 @@ internal fun AeCardBox(x: Number, y: Number, w: Number, h: Number, title: String
     if (title.isNotEmpty()) AeT(title, 9, titleColor, Modifier.at(x.toFloat() + 16f, y.toFloat() + 10f, 420, 12), font, FontWeight.ExtraBold, 0.2f)
 }
 
-/** LED fader: SVG track + cap, live value bar, LED line on the cap. Drag anywhere on the track. */
+/**
+ * LED fader: SVG track + cap, live value bar. Drag anywhere on the track.
+ *
+ * The cap travels inside [CAP_TOP]..[CAP_BOTTOM]: the groove (y 8..144 of the SVG track)
+ * shrunk so the whole cap stays inside and never covers the value readout below. Everything
+ * derives from [capCenterY], so the drawing and the drag cannot disagree — that is what let
+ * the cap sink onto the label and poke out of the top before.
+ */
+private const val FADER_H = 160f
+private const val FADER_W = 44f
+private const val CAP_H = 40f
+private const val CAP_W = CAP_H * (1327f / 1657f)  // FaderThumb is portrait
+private const val GROOVE_TOP = 8f
+private const val LABEL_TOP = 145f
+private const val CAP_TOP = GROOVE_TOP + CAP_H / 2f
+private const val CAP_BOTTOM = LABEL_TOP - 4f - CAP_H / 2f
+private const val CAP_TRAVEL = CAP_BOTTOM - CAP_TOP
+
+/** Centre of the cap for a 0..1 value. */
+private fun capCenterY(v: Float) = CAP_TOP + (1f - v.coerceIn(0f, 1f)) * CAP_TRAVEL
+
 @Composable
 private fun AeFader(c: AeCtl, idx: Int, x: Number, y: Number) {
     val sc = LocalAeScale.current
     val v = c.v(idx)
-    fun fromY(py: Float) = (1f - ((py / sc) - 16f) / 118f).coerceIn(0f, 1f)
-    Box(Modifier.at(x, y, 44, 160).pointerInput(idx) {
+    fun fromY(py: Float) = (1f - ((py / sc) - CAP_TOP) / CAP_TRAVEL).coerceIn(0f, 1f)
+    Box(Modifier.at(x, y, FADER_W, FADER_H).pointerInput(idx) {
         awaitEachGesture {
             val d = awaitFirstDown(requireUnconsumed = false)
             c.set(idx, fromY(d.position.y)); d.consume()
@@ -57,22 +77,21 @@ private fun AeFader(c: AeCtl, idx: Int, x: Number, y: Number) {
     }) {
         Box(Modifier.fillMaxSize().aeSvg(AeSvgs.FADER_TRACK))
         Canvas(Modifier.fillMaxSize()) {
-            val k = size.width / 44f; val yy = 4f + (1f - c.v(idx)) * 118f
-            drawRoundRect(Color(0x8C19E3FF), Offset(19.5f * k, (yy + 13f) * k), Size(5f * k, max(0f, 140f - yy - 13f) * k), CornerRadius(2.5f * k))
+            val k = size.width / FADER_W
+            val top = capCenterY(c.v(idx)) * k
+            drawRoundRect(Color(0x8C19E3FF), Offset(19.5f * k, top), Size(5f * k, max(0f, 144f * k - top)), CornerRadius(2.5f * k))
         }
-        val capY = 4f + (1f - v) * 118f
+        val cy = capCenterY(v)
         // Cap = the same Kotlin bonnet the mixer track faders use (FaderThumb), not the flat
-        // SVG rectangle it replaced. FaderThumb is portrait (1327x1657): the box keeps the
-        // cap's centre on the value so the travel is unchanged, and the drawing stays inside.
-        val capH = 40f; val capW = capH * (1327f / 1657f)
-        Box(Modifier.at(22f - capW / 2f, capY + 13f - capH / 2f, capW, capH)) {
+        // SVG rectangle it replaced. The box centres the cap on its value.
+        Box(Modifier.at(FADER_W / 2f - CAP_W / 2f, cy - CAP_H / 2f, CAP_W, CAP_H)) {
             FaderThumb(
                 accent = Color(0xFF19E3FF),
                 modifier = Modifier.fillMaxSize(),
                 glow = 0.28f + 0.72f * v,
             )
         }
-        AeT("${(v * 100).roundToInt()}", 10, Color(0xFF9FDCEA), Modifier.at(0, 145, 44, 13), AeFonts.mono, FontWeight.Normal, align = TextAlign.Center)
+        AeT("${(v * 100).roundToInt()}", 10, Color(0xFF9FDCEA), Modifier.at(0, LABEL_TOP, FADER_W, 13), AeFonts.mono, FontWeight.Normal, align = TextAlign.Center)
     }
 }
 
