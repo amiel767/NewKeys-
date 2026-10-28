@@ -925,3 +925,110 @@ Le cap des faders de piste est le composable Kotlin `FaderThumb`
 **centre** du cap sur la valeur et laisser la boite changer de taille, sinon la
 course du fader se decale. `FaderThumb` porte deja sa barre LED — ne pas en
 dessiner une seconde dessous.
+
+## 19. Assets UI (pianos, strings) : dimensionner sur l'affichage, pas sur la source
+
+### La regle
+
+Un fond d'interface n'a **jamais** besoin de plus de pixels qu'il n'en affiche.
+Les generateurs (Qwen, Gemini) livrent du 2736×1520 ; c'est 3,6× la resolution
+utile. Ce surplus ne se voit pas, il se paie.
+
+### Comment on connait la resolution utile
+
+Le preview (`app/assets/Æther Pianos & Strings · preview.html`) est un **canvas
+WebGL**, pas une image CSS. On mesure au CDP sur le vrai rendu :
+
+```bash
+# chromium --remote-debugging-port=9334 --remote-allow-origins=*
+# puis Runtime.evaluate sur canvas#gl : clientWidth/clientHeight et width/height
+```
+
+Resultats mesures :
+
+| Grandeur | Valeur |
+|---|---|
+| Canvas telephone | 500 × 230 CSS |
+| `devicePixelRatio` | plafonne a **1,5** |
+| **Resolution utile telephone** | **750 × 345 px** |
+| Filtrage de texture | `LINEAR` **sans mipmaps** |
+
+Le filtrage est le point decisif. Sans mipmaps, une texture plus grande que sa
+zone d'affichage est sous-echantillonnee en lineaire : elle **ajoute de
+l'aliasing**. Au-dela de 750 px, on paie des octets pour une degradation.
+
+### Paliers et format
+
+| Palier | Largeur | Usage |
+|---|---|---|
+| `_750` | 750 px | telephone (500 CSS × 1,5) |
+| `_1500` | 1500 px | desktop 2× |
+
+Pas de 3× : le DPR est plafonne a 1,5, un palier 3× ne serait jamais lu.
+
+**AVIF, pas WebP.** A qualite egale (SSIM ≥ 0,985) : WebP q80 @750 = 45,7 Ko /
+0,967 ; AVIF q80 @750 = 64,5 Ko / **0,986**. L'AVIF est ~30 % plus petit a
+qualite egale, et nettement meilleur a taille egale.
+
+### La chaine
+
+```bash
+pip install pillow numpy scikit-image
+python3 /workspace/dl/tools/make_all.py        # 14 instruments × 2 paliers
+python3 /workspace/dl/tools/build_html.py SRC OUT   # reinjecte dans le HTML
+```
+
+`uikit.py` porte la logique, et deux details comptent :
+
+- **`reference(src, width)` vise la source pleine resolution** vue a la taille
+  d'affichage. Si on comparait l'image deja reduite a elle-meme, la metrique ne
+  dirait rien.
+- **`pick(...)` cherche la qualite la plus basse** qui tient le SSIM cible. La
+  qualite fixe gaspille ; le seuil s'adapte au contenu.
+
+### Resultats
+
+| Lot | Avant | Apres |
+|---|---|---|
+| HTML complet | 11,61 Mo | **0,69 Mo** |
+| 14 instruments × 2 paliers | 61,6 Mo (PNG) | **4,25 Mo** |
+
+Tous a SSIM ≥ 0,985 mesure a la taille d'affichage. Cible < 10 Mo tenue avec
+14× de marge.
+
+### Pieges
+
+- **`devicePixelRatio` est plafonne a 1,5** dans le preview. Ne pas dimensionner
+  sur un DPR de 3 en croyant bien faire.
+- **Toujours mesurer a la taille d'affichage.** Comparer un 750 px a un 2736 px
+  donne un SSIM artificiellement bas qui pousse a sur-dimensionner.
+- **Verifier que le navigateur decode vraiment.** Un `data:image/avif` peut etre
+  accepte sans etre decode : `img.decode()` puis `naturalWidth > 0` tranche.
+- **Les images du preview ne sont pas celles du depot.** Le HTML embarque ses
+  propres images (NCC 0,41 avec les photos fournies). Apres remplacement, un
+  ecart de luminance n'est pas un bug : corréler avec l'asset (0,72 = affiche,
+  0,39 = non affiche) avant de conclure.
+- **`/tmp` est efface a chaque crash sandbox.** Re-telecharger les sources Qwen
+  et Gemini.
+
+### Mappage Qwen (ordre du recap)
+
+| Fichier | Preset |
+|---|---|
+| `raw_01` / `raw_02` / `raw_03` | Mellow / Lady D / Electric Keys |
+| `raw_07` | Solo Violin + Viola |
+| `raw_08` | Solo Cello + Bass |
+| `raw_09` | Section |
+| `raw_10` | Orchestra |
+| `raw_11` | Pizzicato |
+| Gemini | Pad (aurora cyan/violet) |
+
+`raw_05` et `raw_06` sont une **premiere tentative rejetee** (controles sur les
+cotes) : ne pas les reutiliser.
+
+### Etat
+
+30 fichiers AVIF dans `app/src/main/assets/instruments/` (4,4 Mo). Le HTML de
+reference est dans le depot (commit `f731fb4`). Les **strings sont encore
+proceduraux** dans le HTML : les 6 images ne sont pas branchees, a faire quand
+l'UI strings sera portee en Compose.

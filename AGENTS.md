@@ -3543,3 +3543,82 @@ Warm Analog Lead, Zouk Love Lead) ; les 24 autres presets de l'app sont
 (inchange). `organ` et `sax` verifies **octet pour octet** contre HEAD.
 Les chips de categorie (`PresetList`) sont un `LazyRow` : elles defilent, donc
 18 categories passent sans casser la mise en page.
+
+## Session 2026-10-28 — assets UI Pianos/Strings : dimensionner sur l'affichage (mesure)
+
+Demande : images de piano comme **fonds d'UI**, reduire le poids **sans perdre la
+nettete**, cible **< 10 Mo** d'assets. Les 3 derniers pianos (mellow/lady/electric)
+arrivent de Qwen, le 6e string (PAD) de Gemini.
+
+### La mesure qui tranche : la resolution utile est 750 px, pas 1280
+
+Le preview (`app/assets/Æther Pianos & Strings · preview.html`) est un **canvas
+WebGL**, pas du CSS. Mesure au CDP sur le vrai rendu :
+
+| Grandeur | Valeur |
+|---|---|
+| Canvas telephone | **500 × 230 CSS** |
+| `devicePixelRatio` | **plafonne a 1,5** (`Math.min(devicePixelRatio||1,1.5)`) |
+| Resolution utile telephone | **750 × 345 px** |
+| Filtrage de texture | `LINEAR`, **sans mipmaps** |
+
+Le dernier point est decisif : sans mipmaps, une texture plus grande que sa zone
+d'affichage est sous-echantillonnee en lineaire — elle **ajoute de l'aliasing**.
+Au-dela de 750 px on paie des octets pour une degradation. Les sources Qwen font
+2736×1520, soit **3,6× la resolution utile**.
+
+### Format : AVIF, pas WebP (mesure a qualite egale)
+
+| Format | Taille | SSIM |
+|---|---|---|
+| WebP q80 @750 | 45,7 Ko | 0,967 |
+| **AVIF q80 @750** | 64,5 Ko | **0,986** |
+| PNG source | 7,7 Mo | 1,000 |
+
+A qualite egale l'AVIF est ~30 % plus petit ; a taille egale il est nettement
+meilleur. **Decodage verifie** dans le moteur de rendu : `img.decode()` puis
+`naturalWidth` vaut bien 750 sur `data:image/avif;base64,...` — le navigateur ne
+l'ignore pas silencieusement.
+
+### Resultats
+
+| Lot | Avant | Apres |
+|---|---|---|
+| HTML complet | 11,61 Mo | **0,69 Mo** |
+| 14 instruments × 2 paliers | 61,6 Mo (PNG) | **4,25 Mo** |
+
+SSIM ≥ 0,985 pour **tous** les fichiers, mesure **a la taille d'affichage**.
+Cible « < 10 Mo » tenue avec 14× de marge.
+
+### Outils (dans `/workspace/dl/tools/`)
+
+- `uikit.py` : `prep` (LANCZOS, un seul passage), `reference` (la cible est la
+  **source pleine resolution** vue a la taille d'affichage, pas l'image deja
+  reduite — sinon on se compare a soi-meme), `pick` (cherche la qualite la plus
+  **basse** qui tient le SSIM cible).
+- `make_all.py` : 14 instruments × 2 paliers (750 telephone / 1500 desktop).
+- `build_html.py` : reinjecte les AVIF dans le HTML par slot.
+
+### Pieges verifies
+
+- **`devicePixelRatio` est plafonne a 1,5.** Ne pas dimensionner sur un DPR de 3.
+- **Comparer un 750 px a un 2736 px** donne un SSIM artificiellement bas qui
+  pousse a sur-dimensionner. Toujours mesurer a la taille d'affichage.
+- **Les images du preview ne sont pas celles du depot.** Le HTML d'origine
+  embarque *ses* images (NCC 0,41 avec les photos fournies). Un ecart de
+  luminance apres remplacement n'est pas un bug : corréler avec l'asset
+  (0,72 = affiche, 0,39 = non affiche) avant de conclure.
+- **`/tmp` est efface a chaque crash sandbox.** Les sources Qwen (`/tmp/qwen/`)
+  et Gemini (`/tmp/gemini_img_0.png`) doivent etre re-telechargees.
+- **Mappage Qwen** : `raw_01/02/03` = mellow/lady/electric ;
+  `raw_07..11` = solo, cello+bass, section, orchestra, pizzicato ;
+  Gemini = pad. `raw_05`/`raw_06` = **1re tentative rejetee**, ne pas reutiliser.
+
+### Etat
+
+- 30 fichiers AVIF dans `app/src/main/assets/instruments/` (4,4 Mo).
+- Le HTML de reference est **desormais dans le depot** (commit `f731fb4`,
+  « Add files via upload »), identique octet pour octet a la source de travail.
+- **Les strings restent proceduraux** dans le HTML (particules `pet`/`pal`) :
+  les 6 images ne sont pas encore branchees, les slots strings n'existent pas
+  cote `IMG`. A faire quand l'UI strings sera portee en Compose.
