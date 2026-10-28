@@ -3694,3 +3694,24 @@ Corrige par `const PTAIL=.76471` (division). Verifier ce genre de formule par
   preview, attente du crossfade avant capture)
 - Planches : `tools/uiassets/sheets/sheet_{piano,strings}.png`
 - Fichiers servis : `/workspace/dl/pub/` (port 12000)
+
+### Etat de cablage des AVIF (verifie 2026-10-28)
+
+**Aucun code Kotlin ne reference les AVIF.** `grep -rn "instruments/" --include=*.kt`
+et la recherche des noms d'asset (`piano_felt`, `strings_solo`) ne renvoient rien.
+Les 30 fichiers de `app/src/main/assets/instruments/` ne sont consommes que par
+les **previews HTML**. Consequences :
+
+- l'APK embarque 4,25 Mo d'images jamais lues par l'app (a brancher, ou a retirer
+  du module si les previews suffisent) ;
+- `app/assets/*.html` n'est **pas** dans l'APK (seul `src/main/assets` l'est), donc
+  les 2,2 Mo de previews ne pesent rien sur le binaire.
+
+`./gradlew :app:compileDebugKotlin` -> BUILD SUCCESSFUL (1m32), 0 erreur.
+
+### Synchronisation conversation parallele (2026-10-28)
+
+Le commit `4ac5f58` (« Snapshot recall », session du 10-25) de la conversation
+parallele est un **ancetre de HEAD** : son travail est bien integre. Les sessions
+10-25 / 10-26 / 10-27 sont presentes dans ce fichier (14 occurrences). Le remote
+`origin/main` et le local etaient identiques apres rebase — rien a rattraper.
