@@ -3636,3 +3636,174 @@ presets deja parsee restait en memoire toute la session. Purges a la suppression
 ### Commits
 `fe055c7` (fenetre/verre/presets/scroll), `96af4de` (Organ dial + knobs),
 `916689e` (purge caches). `:app:compileDebugKotlin` = BUILD SUCCESSFUL a chaque fois.
+## Session 2026-10-28 — assets UI Pianos/Strings : dimensionner sur l'affichage (mesure)
+
+Demande : images de piano comme **fonds d'UI**, reduire le poids **sans perdre la
+nettete**, cible **< 10 Mo** d'assets. Les 3 derniers pianos (mellow/lady/electric)
+arrivent de Qwen, le 6e string (PAD) de Gemini.
+
+### La mesure qui tranche : la resolution utile est 750 px, pas 1280
+
+Le preview (`app/assets/Æther Pianos & Strings · preview.html`) est un **canvas
+WebGL**, pas du CSS. Mesure au CDP sur le vrai rendu :
+
+| Grandeur | Valeur |
+|---|---|
+| Canvas telephone | **500 × 230 CSS** |
+| `devicePixelRatio` | **plafonne a 1,5** (`Math.min(devicePixelRatio||1,1.5)`) |
+| Resolution utile telephone | **750 × 345 px** |
+| Filtrage de texture | `LINEAR`, **sans mipmaps** |
+
+Le dernier point est decisif : sans mipmaps, une texture plus grande que sa zone
+d'affichage est sous-echantillonnee en lineaire — elle **ajoute de l'aliasing**.
+Au-dela de 750 px on paie des octets pour une degradation. Les sources Qwen font
+2736×1520, soit **3,6× la resolution utile**.
+
+### Format : AVIF, pas WebP (mesure a qualite egale)
+
+| Format | Taille | SSIM |
+|---|---|---|
+| WebP q80 @750 | 45,7 Ko | 0,967 |
+| **AVIF q80 @750** | 64,5 Ko | **0,986** |
+| PNG source | 7,7 Mo | 1,000 |
+
+A qualite egale l'AVIF est ~30 % plus petit ; a taille egale il est nettement
+meilleur. **Decodage verifie** dans le moteur de rendu : `img.decode()` puis
+`naturalWidth` vaut bien 750 sur `data:image/avif;base64,...` — le navigateur ne
+l'ignore pas silencieusement.
+
+### Resultats
+
+| Lot | Avant | Apres |
+|---|---|---|
+| HTML complet | 11,61 Mo | **0,69 Mo** |
+| 15 instruments × 2 paliers | 61,6 Mo (PNG) | **4,25 Mo** |
+
+SSIM ≥ 0,985 pour **tous** les fichiers, mesure **a la taille d'affichage**.
+Cible « < 10 Mo » tenue avec 14× de marge.
+
+### Outils (dans `/workspace/dl/tools/`)
+
+- `uikit.py` : `prep` (LANCZOS, un seul passage), `reference` (la cible est la
+  **source pleine resolution** vue a la taille d'affichage, pas l'image deja
+  reduite — sinon on se compare a soi-meme), `pick` (cherche la qualite la plus
+  **basse** qui tient le SSIM cible).
+- `make_all.py` : 15 instruments × 2 paliers (750 telephone / 1500 desktop).
+- `build_html.py` : reinjecte les AVIF dans le HTML par slot.
+
+### Pieges verifies
+
+- **`devicePixelRatio` est plafonne a 1,5.** Ne pas dimensionner sur un DPR de 3.
+- **Comparer un 750 px a un 2736 px** donne un SSIM artificiellement bas qui
+  pousse a sur-dimensionner. Toujours mesurer a la taille d'affichage.
+- **Les images du preview ne sont pas celles du depot.** Le HTML d'origine
+  embarque *ses* images (NCC 0,41 avec les photos fournies). Un ecart de
+  luminance apres remplacement n'est pas un bug : corréler avec l'asset
+  (0,72 = affiche, 0,39 = non affiche) avant de conclure.
+- **`/tmp` est efface a chaque crash sandbox.** Les sources Qwen (`/tmp/qwen/`)
+  et Gemini (`/tmp/gemini_img_0.png`) doivent etre re-telechargees.
+- **Mappage Qwen** : `raw_01/02/03` = mellow/lady/electric ;
+  `raw_07..11` = solo, cello+bass, section, orchestra, pizzicato ;
+  Gemini = pad. `raw_05`/`raw_06` = **1re tentative rejetee**, ne pas reutiliser.
+
+### Etat
+
+- 30 fichiers AVIF dans `app/src/main/assets/instruments/` (4,4 Mo).
+- Le HTML de reference est **desormais dans le depot** (commit `f731fb4`,
+  « Add files via upload »), identique octet pour octet a la source de travail.
+- **Les strings restent proceduraux** dans le HTML (particules `pet`/`pal`) :
+  les 6 images ne sont pas encore branchees, les slots strings n'existent pas
+  cote `IMG`. A faire quand l'UI strings sera portee en Compose.
+
+## Session 2026-10-28 (suite) — previews separes + animations adoucies
+
+Demande : **deux HTML separes** (piano / strings) pour juger le rendu, **reduire
+les animations** (eau plus calme, chutes -50 % et **non lineaires**), et pour
+Strings **les images immediatement, meme composition que le piano** (plus
+d'instruments flottants).
+
+### Deux fichiers, une source
+
+`app/assets/Æther Pianos · preview.html` et `Æther Strings · preview.html` sont
+**generes** depuis `Æther Pianos & Strings · preview.html` par
+`tools/uiassets/split_preview.py` (ne pas editer les deux fichiers a la main :
+editer la source puis regenerer). Le script utilise `sub()` qui **asserte** que
+l'ancre existe — une ancre perimee leve au lieu de produire un no-op silencieux.
+
+- **Piano** : 9 slots, onglet `PIANO` unique, photos AVIF 750 px.
+- **Strings** : 6 slots (solo/cello/... partagent leur image), onglet `STRINGS`
+  unique, `setBg(SM[i].id)` au lieu de `PT=SM[i].pal`.
+- Le selecteur PIANO/STRINGS est retire dans les deux : chaque fichier est
+  dedie, un onglet mort n'aurait aucun sens.
+
+### Strings : la photographie, pas la scene procedurale
+
+Le preview d'origine bascule sur `procScene` (ciel procedural + instruments SVG
+flottants sur l'eau) via `modeT=m=='strings'?1:0`. Pour Strings :
+`modeT=0` en dur, `if(modeS>.003){drawInst(Tm)}` supprime, et le **bloc SVG des
+violons entier est retire** (`/* ---------- violin family` -> `/* ---------- GL
+scene`). Ce bloc etait rasterise au demarrage en 4 canvas de 720 px pour rien.
+Fichier : 777 Ko -> 759 Ko, et plus de rasterisation inutile.
+
+Preuve du cablage : `bgB` (cle de texture liee) egale l'id du preset pour
+**8/8** strings et **9/9** pianos. Verifier autrement est trompeur — la
+correlation d'image est dominee par la luminance globale (marges de 0,002 entre
+pistes), donc non discriminante.
+
+### Animations adoucies (les deux fichiers)
+
+| Element | Avant | Apres |
+|---|---|---|
+| Propagation de l'onde `cx,cy` | `.30,.13` | **`.16,.07`** |
+| Amortissement `dm` | `.9925` | **`.9880`** |
+| Deplacement image (shader) | `g*.07` | **`g*.035`** |
+| Specular image | `*sp*.5` | **`*sp*.26`** |
+| Deplacement eau proc. | `g*.06` | **`g*.03`** |
+| Goutte ambiante | `.55+rand*.9` | **`.26+rand*.44`** |
+| Goutte touche | `.5+vel*.9` | **`.24+vel*.44`** |
+| Gravite particules | `+=40*dt` | **`+=(p.vy<0?40:5)*dt`** |
+| Cadence de spawn | `petal:3.2` (Poisson) | **`PRATE.petal=1.6`** |
+
+**Mesure** (CDP, 12 echantillons sur 6 s) : particules **30,8 -> 15,7**
+(−49 %). Bruit de fond des vagues **0,149 -> 0,059** (2,5x plus calme) ; apres
+une goutte de reference l'onde retombe a 0,085 a t=3 s (contre 0,142).
+
+### Le piege du spawn non lineaire : normaliser la moyenne
+
+La demande « non lineaire, vraiment du random » est implementee par un
+intervalle a queue lourde : `(.25+1.75*u^2.4)/PTAIL/(PRATE[pType])`.
+
+**Sans `PTAIL`**, la moyenne du multiplicateur vaut `0,25+1,75*E[u^2.4]` =
+`0,25+1,75*0,29412` = **0,7647** : la cadence reelle etait `1,6/0,7647 = 2,09`
+au lieu de 1,6, soit **−35 % au lieu de −50 %**. Mesure initiale : 30,8 -> 19,2.
+Corrige par `const PTAIL=.76471` (division). Verifier ce genre de formule par
+`E[f(u)] = integral`, jamais a l'oeil.
+
+### Ou sont les choses
+
+- Generateur : `tools/uiassets/split_preview.py`
+- Capture par preset : `tools/uiassets/cap_presets.py` (selections via l'API du
+  preview, attente du crossfade avant capture)
+- Planches : `tools/uiassets/sheets/sheet_{piano,strings}.png`
+- Fichiers servis : `/workspace/dl/pub/` (port 12000)
+
+### Etat de cablage des AVIF (verifie 2026-10-28)
+
+**Aucun code Kotlin ne reference les AVIF.** `grep -rn "instruments/" --include=*.kt`
+et la recherche des noms d'asset (`piano_felt`, `strings_solo`) ne renvoient rien.
+Les 30 fichiers de `app/src/main/assets/instruments/` ne sont consommes que par
+les **previews HTML**. Consequences :
+
+- l'APK embarque 4,25 Mo d'images jamais lues par l'app (a brancher, ou a retirer
+  du module si les previews suffisent) ;
+- `app/assets/*.html` n'est **pas** dans l'APK (seul `src/main/assets` l'est), donc
+  les 2,2 Mo de previews ne pesent rien sur le binaire.
+
+`./gradlew :app:compileDebugKotlin` -> BUILD SUCCESSFUL (1m32), 0 erreur.
+
+### Synchronisation conversation parallele (2026-10-28)
+
+Le commit `4ac5f58` (« Snapshot recall », session du 10-25) de la conversation
+parallele est un **ancetre de HEAD** : son travail est bien integre. Les sessions
+10-25 / 10-26 / 10-27 sont presentes dans ce fichier (14 occurrences). Le remote
+`origin/main` et le local etaient identiques apres rebase — rien a rattraper.

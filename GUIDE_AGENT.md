@@ -1017,3 +1017,189 @@ re-implementer.
 (watermark `tools/.conv_sync_state.json`, gitignore). A lancer avant/apres chaque
 modification. Au 27/10, la conversation `dde6dffb…` est **en retard** sur `main`
 (dernier evenement 26/10) : ses commits sont deja des ancetres de HEAD.
+## 19. Assets UI (pianos, strings) : dimensionner sur l'affichage, pas sur la source
+
+### La regle
+
+Un fond d'interface n'a **jamais** besoin de plus de pixels qu'il n'en affiche.
+Les generateurs (Qwen, Gemini) livrent du 2736×1520 ; c'est 3,6× la resolution
+utile. Ce surplus ne se voit pas, il se paie.
+
+### Comment on connait la resolution utile
+
+Le preview (`app/assets/Æther Pianos & Strings · preview.html`) est un **canvas
+WebGL**, pas une image CSS. On mesure au CDP sur le vrai rendu :
+
+```bash
+# chromium --remote-debugging-port=9334 --remote-allow-origins=*
+# puis Runtime.evaluate sur canvas#gl : clientWidth/clientHeight et width/height
+```
+
+Resultats mesures :
+
+| Grandeur | Valeur |
+|---|---|
+| Canvas telephone | 500 × 230 CSS |
+| `devicePixelRatio` | plafonne a **1,5** |
+| **Resolution utile telephone** | **750 × 345 px** |
+| Filtrage de texture | `LINEAR` **sans mipmaps** |
+
+Le filtrage est le point decisif. Sans mipmaps, une texture plus grande que sa
+zone d'affichage est sous-echantillonnee en lineaire : elle **ajoute de
+l'aliasing**. Au-dela de 750 px, on paie des octets pour une degradation.
+
+### Paliers et format
+
+| Palier | Largeur | Usage |
+|---|---|---|
+| `_750` | 750 px | telephone (500 CSS × 1,5) |
+| `_1500` | 1500 px | desktop 2× |
+
+Pas de 3× : le DPR est plafonne a 1,5, un palier 3× ne serait jamais lu.
+
+**AVIF, pas WebP.** A qualite egale (SSIM ≥ 0,985) : WebP q80 @750 = 45,7 Ko /
+0,967 ; AVIF q80 @750 = 64,5 Ko / **0,986**. L'AVIF est ~30 % plus petit a
+qualite egale, et nettement meilleur a taille egale.
+
+### La chaine
+
+```bash
+pip install pillow numpy scikit-image
+python3 /workspace/dl/tools/make_all.py        # 15 instruments × 2 paliers
+python3 /workspace/dl/tools/build_html.py SRC OUT   # reinjecte dans le HTML
+```
+
+`uikit.py` porte la logique, et deux details comptent :
+
+- **`reference(src, width)` vise la source pleine resolution** vue a la taille
+  d'affichage. Si on comparait l'image deja reduite a elle-meme, la metrique ne
+  dirait rien.
+- **`pick(...)` cherche la qualite la plus basse** qui tient le SSIM cible. La
+  qualite fixe gaspille ; le seuil s'adapte au contenu.
+
+### Resultats
+
+| Lot | Avant | Apres |
+|---|---|---|
+| HTML complet | 11,61 Mo | **0,69 Mo** |
+| 15 instruments × 2 paliers | 61,6 Mo (PNG) | **4,25 Mo** |
+
+Tous a SSIM ≥ 0,985 mesure a la taille d'affichage. Cible < 10 Mo tenue avec
+14× de marge.
+
+### Pieges
+
+- **`devicePixelRatio` est plafonne a 1,5** dans le preview. Ne pas dimensionner
+  sur un DPR de 3 en croyant bien faire.
+- **Toujours mesurer a la taille d'affichage.** Comparer un 750 px a un 2736 px
+  donne un SSIM artificiellement bas qui pousse a sur-dimensionner.
+- **Verifier que le navigateur decode vraiment.** Un `data:image/avif` peut etre
+  accepte sans etre decode : `img.decode()` puis `naturalWidth > 0` tranche.
+- **Les images du preview ne sont pas celles du depot.** Le HTML embarque ses
+  propres images (NCC 0,41 avec les photos fournies). Apres remplacement, un
+  ecart de luminance n'est pas un bug : corréler avec l'asset (0,72 = affiche,
+  0,39 = non affiche) avant de conclure.
+- **`/tmp` est efface a chaque crash sandbox.** Re-telecharger les sources Qwen
+  et Gemini.
+
+### Mappage Qwen (ordre du recap)
+
+| Fichier | Preset |
+|---|---|
+| `raw_01` / `raw_02` / `raw_03` | Mellow / Lady D / Electric Keys |
+| `raw_07` | Solo Violin + Viola |
+| `raw_08` | Solo Cello + Bass |
+| `raw_09` | Section |
+| `raw_10` | Orchestra |
+| `raw_11` | Pizzicato |
+| Gemini | Pad (aurora cyan/violet) |
+
+`raw_05` et `raw_06` sont une **premiere tentative rejetee** (controles sur les
+cotes) : ne pas les reutiliser.
+
+### Etat
+
+30 fichiers AVIF dans `app/src/main/assets/instruments/` (4,4 Mo). Le HTML de
+reference est dans le depot (commit `f731fb4`). Les **strings sont encore
+proceduraux** dans le HTML : les 6 images ne sont pas branchees, a faire quand
+l'UI strings sera portee en Compose.
+
+## 20. Previews separes (Piano / Strings) et dosage des animations
+
+### Deux fichiers, une seule source
+
+`app/assets/Æther Pianos · preview.html` et `Æther Strings · preview.html` sont
+**generes** depuis `Æther Pianos & Strings · preview.html` :
+
+```bash
+python3 tools/uiassets/split_preview.py
+```
+
+Ne pas editer les deux fichiers produits : editer la source, puis regenerer.
+Le script passe par `sub(html, ancien, nouveau)` qui **asserte** que l'ancre
+existe et est unique. Une ancre perimee leve immediatement au lieu de produire
+un fichier silencieusement inchange — c'est la garantie qui compte ici.
+
+### Ce que chaque fichier change
+
+| | Piano | Strings |
+|---|---|---|
+| Onglet | `PIANO` seul | `STRINGS` seul |
+| Slots | 9 (un par image) | 6 images pour 8 presets |
+| Scene | photo | photo (`modeT=0` en dur) |
+| Fond | `setBg(PM[i].id)` | `setBg(SM[i].id)` |
+| SVG violons | conserve | **bloc retire** |
+
+Le bloc `/* ---------- violin family` ne sert qu'a la scene procedurale. Comme
+Strings ne la montre jamais, le garder ne faisait que rasteriser 4 canvas de
+720 px au demarrage, pour rien.
+
+### Verifier un mappage : lire la cle liee, pas l'image
+
+`bgB` contient la cle de texture effectivement liee. Comparer `bgB` a l'id du
+preset est **decisif** (8/8 strings, 9/9 pianos).
+
+La correlation d'image, elle, ne l'est pas : toutes les pistes partagent une
+meme composition sombre avec un centre clair, et les marges entre la bonne et
+la deuxieme piste tombent a **0,002**. Un classement par NCC designait
+`piano_lady` comme gagnant pour 6 pistes sur 9. Ne pas conclure d'un NCC.
+
+### Dosage des animations
+
+| Element | Avant | Apres |
+|---|---|---|
+| Propagation de l'onde | `.30,.13` | `.16,.07` |
+| Amortissement | `.9925` | `.9880` |
+| Deplacement image | `g*.07` | `g*.035` |
+| Specular | `*sp*.5` | `*sp*.26` |
+| Goutte ambiante | `.55+rand*.9` | `.26+rand*.44` |
+| Goutte touche | `.5+vel*.9` | `.24+vel*.44` |
+| Gravite | `+=40*dt` | `+=(p.vy<0?40:5)*dt` |
+| Cadence | `petal:3.2` | `PRATE.petal=1.6` |
+
+Mesure : particules 30,8 -> 15,7 (−49 %). Bruit de fond des vagues 0,149 ->
+0,059. L'onde d'une goutte de reference retombe a 0,085 a t=3 s (0,142 avant).
+
+### Le piege : normaliser la moyenne d'une loi non lineaire
+
+Le spawn « vraiment random » utilise un intervalle a queue lourde :
+
+```js
+nextP=(.25+1.75*Math.pow(u,2.4))/PTAIL/(PRATE[pType]||1.5)
+```
+
+`PTAIL` vaut `0,76471` et **n'est pas cosmetique**. La moyenne de
+`.25+1.75*u^2.4` est `0,25+1,75*E[u^2.4]`, et `E[u^2.4] = 1/(2,4+1) = 0,29412`.
+Sans la division, la cadence reelle valait `1,6/0,7647 = 2,09` au lieu de 1,6 :
+**−35 % au lieu des −50 % demandes**. La mesure l'a montre (30,8 -> 19,2 avant
+correction, -> 15,7 apres).
+
+Regle generale : des qu'on applique une fonction non lineaire a un tirage
+uniforme, recalculer `E[f(u)]` et le diviser. Un reglage « qui a l'air bon » a
+l'oeil peut etre faux de 15 points.
+
+### Fichiers
+
+- Generateur : `tools/uiassets/split_preview.py`
+- Capture par preset : `tools/uiassets/cap_presets.py`
+- Planches de contact : `tools/uiassets/sheets/`
