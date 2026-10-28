@@ -1124,7 +1124,7 @@ reference est dans le depot (commit `f731fb4`). Les **strings sont encore
 proceduraux** dans le HTML : les 6 images ne sont pas branchees, a faire quand
 l'UI strings sera portee en Compose.
 
-## 23. Previews separes (Piano / Strings) et dosage des animations
+## 22. Previews separes (Piano / Strings) et dosage des animations
 
 ### Deux fichiers, une seule source
 
@@ -1204,7 +1204,7 @@ l'oeil peut etre faux de 15 points.
 - Capture par preset : `tools/uiassets/cap_presets.py`
 - Planches de contact : `tools/uiassets/sheets/`
 
-## 22. Developpement en parallele avec un autre agent (veille)
+## 23. Developpement en parallele avec un autre agent (veille)
 
 Deux conversations OpenHands travaillent le meme depot. Chacune pousse sur `origin/main` ;
 il faut donc **rebaser/merger avant chaque session** et **verifier ce que l'autre a fait**.
