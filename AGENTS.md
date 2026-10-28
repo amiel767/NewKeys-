@@ -3807,3 +3807,31 @@ Le commit `4ac5f58` (« Snapshot recall », session du 10-25) de la conversation
 parallele est un **ancetre de HEAD** : son travail est bien integre. Les sessions
 10-25 / 10-26 / 10-27 sont presentes dans ce fichier (14 occurrences). Le remote
 `origin/main` et le local etaient identiques apres rebase — rien a rattraper.
+
+## Session 2026-10-28 (2e) — synchro Clone 2 : merge + veille multi-pairs
+
+Contexte : deux conversations tournent en parallele. **Clone 2** = `f0aa78669e1640bca4708537876e5ce2`
+(Æther Piano + Strings, assets AVIF). L'ancienne (`dde6dffb…`) = moteur FX/mixer.
+
+### Merge fait (commit `2cd2195`)
+
+Clone 2 avait pousse 6 commits sur `origin/main` (`f731fb4`..`6eb86e4`) : 30 AVIF dans
+`app/src/main/assets/instruments/`, les 3 previews HTML, `tools/uiassets/*`.
+**Seuls `AGENTS.md` et `GUIDE_AGENT.md` conflictaient** (les deux agents y ajoutent des
+sections) : resolution en **gardant les deux cotes** (sections purement additives).
+`:app:compileDebugKotlin` -> BUILD SUCCESSFUL apres merge.
+
+### Veille multi-pairs (`tools/conv_sync.py`)
+
+Le script suit desormais **plusieurs conversations** via une table `PEERS` :
+`--all` les parcourt toutes, le defaut est `CLONE2`. Watermark par conversation dans
+`tools/.conv_sync_state.json`. **A lancer avant ET apres chaque modification.**
+
+### Etat des assets (Clone 2, verifie)
+
+- 30 AVIF (`_750` telephone / `_1500` desktop), 4,4 Mo, dans `app/src/main/assets/instruments/`.
+- **Aucun code Kotlin ne les reference** : ils ne sont consommes que par les previews HTML.
+- Regle de dimensionnement : la resolution utile du preview est **750 px** (canvas 500 CSS
+  × `devicePixelRatio` plafonne a 1,5), filtrage `LINEAR` **sans mipmaps** -> sur-dimensionner
+  degrade. Format **AVIF** (SSIM ≥ 0,985 a la taille d'affichage).
+- Les **strings restent proceduraux** dans le HTML : 6 images pretes mais slots non branches.

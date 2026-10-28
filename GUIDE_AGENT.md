@@ -1203,3 +1203,23 @@ l'oeil peut etre faux de 15 points.
 - Generateur : `tools/uiassets/split_preview.py`
 - Capture par preset : `tools/uiassets/cap_presets.py`
 - Planches de contact : `tools/uiassets/sheets/`
+
+## 21. Developpement en parallele avec un autre agent (veille)
+
+Deux conversations OpenHands travaillent le meme depot. Chacune pousse sur `origin/main` ;
+il faut donc **rebaser/merger avant chaque session** et **verifier ce que l'autre a fait**.
+
+```bash
+python3 tools/conv_sync.py --all      # ce que chaque pair a produit depuis le dernier check
+```
+
+`tools/conv_sync.py` porte une table `PEERS` (nom, id de conversation). `--all` les
+parcourt, le defaut est le pair actif. Le watermark vit dans
+`tools/.conv_sync_state.json` (gitignore). **Le lancer avant et apres chaque modification.**
+
+Pieges verifies :
+
+- **Les deux agents ecrivent dans `AGENTS.md` et `GUIDE_AGENT.md`** : c'est la seule source
+  de conflit de merge. Les sections sont additives -> garder les deux cotes.
+- `git fetch` marche avec `$GITHUB_TOKEN` ; le token en dur dans l'URL du remote expire.
+- Ne jamais `checkout --theirs` sur ces docs : cela effacerait le travail local.

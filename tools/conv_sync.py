@@ -14,6 +14,17 @@ Usage
 
 Watermark lives in tools/.conv_sync_state.json (gitignored). Run this BEFORE and
 AFTER every change so the two agents do not edit the same file at once.
+
+Several peers are watched at once. `--conv` (or `--all`) picks which; the default
+is the active peer, CLONE2, which now owns the Æther Piano/Strings work. The
+older conversation is kept so a switch back needs no archaeology:
+
+    python3 tools/conv_sync.py --all      # every watched peer, one after the other
+
+Peers
+-----
+    CLONE2 (default)  f0aa78669e1640bca4708537876e5ce2  Æther Piano + Strings
+    PEER1             dde6dffb48c5475a931918c2e3ff38f9  FX/mixer engine (older)
 """
 from __future__ import annotations
 
@@ -25,7 +36,14 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-DEFAULT_CONV = "dde6dffb48c5475a931918c2e3ff38f9"
+# Every peer the project is developed with, in priority order. The first one is the
+# default: it owns the work in flight (Æther Piano/Strings), the others are kept so a
+# switch back is a flag, not archaeology.
+PEERS = [
+    ("CLONE2", "f0aa78669e1640bca4708537876e5ce2"),  # Æther Piano + Strings, AVIF assets
+    ("PEER1", "dde6dffb48c5475a931918c2e3ff38f9"),   # FX / mixer engine (older axis)
+]
+DEFAULT_CONV = PEERS[0][1]
 API = "https://app.all-hands.dev/api/v1/conversation/{cid}/events/search"
 STATE = Path(__file__).resolve().parent / ".conv_sync_state.json"
 
@@ -101,9 +119,32 @@ def describe(ev: dict) -> str | None:
     return None
 
 
+def watch(conv: str, state: dict, since_arg: str | None, full: bool, quiet: bool, dump: str | None, label: str = "") -> None:
+    """Report the fresh events of one conversation and advance its watermark."""
+    since = since_arg if since_arg else (None if full else state.get(conv))
+    events = fetch_all(conv)
+    # Events arrive in chronological order; keep those strictly after the watermark.
+    fresh = [e for e in events if e.get("timestamp", "") > since] if since else events
+
+    lines = [d for d in (describe(e) for e in fresh) if d]
+    if not quiet:
+        if label:
+            print(f"===== {label} ({conv}) =====")
+        for ln in lines:
+            print(ln)
+    last_ts = events[-1].get("timestamp") if events else None
+    print(f"--- {label or conv}: {len(fresh)} new / {len(events)} total events; last={last_ts}")
+
+    if dump:
+        Path(dump).write_text(json.dumps(fresh, ensure_ascii=False, indent=1))
+    if last_ts:
+        state[conv] = last_ts
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--conv", default=DEFAULT_CONV, help="conversation id")
+    ap.add_argument("--conv", default=DEFAULT_CONV, help="conversation id (default: the active peer)")
+    ap.add_argument("--all", action="store_true", help="watch every peer in PEERS, one after the other")
     ap.add_argument("--full", action="store_true", help="ignore the watermark")
     ap.add_argument("--since", help="ISO timestamp; report events strictly after it")
     ap.add_argument("--json", dest="dump", help="write the new events to this file")
@@ -117,32 +158,13 @@ def main() -> int:
         except json.JSONDecodeError:
             state = {}
 
-    since = None
-    if args.since:
-        since = args.since
-    elif not args.full:
-        since = state.get(args.conv)
+    targets = PEERS if args.all else [(next((n for n, c in PEERS if c == args.conv), ""), args.conv)]
+    for i, (label, conv) in enumerate(targets):
+        # --json only makes sense for a single peer; the last one wins otherwise.
+        dump = args.dump if (not args.all or i == len(targets) - 1) else None
+        watch(conv, state, args.since, args.full, args.quiet, dump, label)
 
-    events = fetch_all(args.conv)
-    # Events arrive in chronological order; keep those strictly after the watermark.
-    if since:
-        fresh = [e for e in events if e.get("timestamp", "") > since]
-    else:
-        fresh = events
-
-    lines = [d for d in (describe(e) for e in fresh) if d]
-    if not args.quiet:
-        for ln in lines:
-            print(ln)
-    last_ts = events[-1].get("timestamp") if events else None
-    print(f"--- {len(fresh)} new / {len(events)} total events; last={last_ts}")
-
-    if args.dump:
-        Path(args.dump).write_text(json.dumps(fresh, ensure_ascii=False, indent=1))
-
-    if last_ts:
-        state[args.conv] = last_ts
-        STATE.write_text(json.dumps(state, indent=1))
+    STATE.write_text(json.dumps(state, indent=1))
     return 0
 
 
