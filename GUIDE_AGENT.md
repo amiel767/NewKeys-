@@ -1224,11 +1224,10 @@ Pieges verifies :
 - `git fetch` marche avec `$GITHUB_TOKEN` ; le token en dur dans l'URL du remote expire.
 - Ne jamais `checkout --theirs` sur ces docs : cela effacerait le travail local.
 
-## 24. Construire un pack d'echantillons (modele `saxpack` -> `pianopack`)
+## 24. Samples legers + boost maison (piano)
 
-Le sax est le patron a copier : `tools/saxpack/extract.py` -> attaque + boucle,
-mono 22,05 kHz, **ADPCM 4 bits**, lu par `fx_sax_samples.h` (header-only, sans
-allocation apres `load()`). Un pack piano suit le meme chemin.
+Objectif : des samples **legers** qu'on **faconne** nous-memes. On ne copie aucun
+moteur existant et on ne reutilise aucun FX : on cree le boost.
 
 **Trois regles qui evitent de perdre une journee :**
 
@@ -1244,6 +1243,5 @@ allocation apres `load()`). Un pack piano suit le meme chemin.
    bouclage et comparer au 99,9e percentile des sauts internes ; viser < 0,2.
    Le crossfade doit etre **plein a l'index 0**, sinon il ne corrige rien.
 
-**Estimation de taille :** ratio mesure pack/FLAC = **0,0844** (mono + 22,05 k +
-troncature + ADPCM). Un piano = **~30 Ko par region**, ~1,4 Mo pour 21 notes x 3
-couches.
+**Taille :** ratio mesure pack/FLAC = **0,0844** (mono + 22,05 k + troncature +
+ADPCM). Un piano = **~30 Ko par region**, ~1,4 Mo pour 21 notes x 3 couches.
