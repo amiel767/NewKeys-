@@ -3835,3 +3835,54 @@ Le script suit desormais **plusieurs conversations** via une table `PEERS` :
   × `devicePixelRatio` plafonne a 1,5), filtrage `LINEAR` **sans mipmaps** -> sur-dimensionner
   degrade. Format **AVIF** (SSIM ≥ 0,985 a la taille d'affichage).
 - Les **strings restent proceduraux** dans le HTML : 6 images pretes mais slots non branches.
+
+## Session 2026-10-28 (3e) — Æther Piano : choix des samples (mesure, pas d'estimation)
+
+Objectif : un pack piano **leger** construit comme `tools/saxpack` (attaque + boucle,
+mono 22,05 kHz, ADPCM 4 bits), puis boost par notre moteur et nos parametres.
+
+### Licence = premier filtre (verifie)
+
+| Banque | Licence | Contenu | Boucles | Verdict |
+|---|---|---|---|---|
+| **SplendidGrandPiano** (AKAI/Steinway) | **domaine public** | 62 notes x 5 couches, 73,3 Mo | `smpl` present mais **fin = EOF**, seam −0,85..+0,29 | **principal** |
+| SalamanderGrandPiano | CC-BY **3.0** | 16 couches, **714 Mo** | **aucun `smpl`** | rejete (trop lourd) |
+| GregSullivan.E-Pianos | CC-BY **3.0** | Wurlitzer 2,3 Mo, CP80 10,5 Mo | vraies boucles mais courtes (0,09–0,20 s) | **secondaire** (electriques) |
+| jlearman.jRhodes3c (Rhodes) | CC BY-**NC**-SA 4.0 | 17,8 Mo | boucle | **rejete — non commercial** |
+
+### Taille : ~1,4 Mo (mesure sur les octets reels)
+
+Selection mesuree : **21 notes x 3 couches = 46 regions**. FLAC de la selection
+16,2 Mo -> pack **1,37 Mo** (ratio 0,0844, **~30 Ko par region**). Le sax fait 7 Mo
+pour 4 instruments ; un piano tient en 1,4 Mo car l'echantillon decroit et la boucle
+est courte. 5 couches x 1 note sur 2 -> ~4 Mo.
+
+### Les deux problemes que le sax n'avait pas
+
+1. **Pas de point de boucle exploitable.** Chez Splendid le `smpl` existe mais son
+   `loopEnd` = derniere frame du fichier et le seam est mauvais (C3 −0,85, A0 +0,10).
+   Chez Salamander il n'y a **aucun** `smpl`. Il faut donc **chercher** la boucle.
+   Solution mesuree : fenetre de **0,35–1,6 s** dans le sustain, score = correlation
+   entre la tete de fenetre et le segment une periode plus loin -> **+0,91..+0,98**.
+2. **Une bonne correlation ne suffit pas.** Boucler la fenetre brute saute encore
+   **5–10x** le plus grand pas interne (ratio mesure 5,4 / 10,6 / 10,3 vs le 99,9e
+   percentile de la difference echantillon a echantillon) : clic audible.
+   Solution mesuree : **crossfade de 12 ms** queue -> tete, avec un poids **plein a
+   l'index 0** (`w = linspace(1,0,X)`). Avec le poids inverse le ratio ne bouge pas
+   (5,41 -> 5,60 de 12 a 100 ms) — c'est le bug de la premiere tentative.
+
+| Note | brut | crossfade 12 ms |
+|---|---|---|
+| FF C3 | 5,38 | **0,01** |
+| PP C4 | 10,64 | **0,11** |
+| MF A2 | 10,31 | **0,07** |
+
+Un ratio proche de 1 = indistinguable du signal.
+
+### A savoir
+
+- **`FX_PIANO = 5` est un `Shaper`**, pas une `Source` : il faconne le soundfont de
+  la piste (`fx_shaper.h`, `computeGens`). Le moteur sample hybride devra etre une
+  **Source** (`makeInstrument`), comme `FX_SAX_AE = 16`. C'est la decision
+  d'architecture a prendre avant l'etape 3.
+- Plan complet et chiffres : `tools/pianopack/README.md`.

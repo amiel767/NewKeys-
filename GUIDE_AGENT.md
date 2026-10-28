@@ -1223,3 +1223,27 @@ Pieges verifies :
   de conflit de merge. Les sections sont additives -> garder les deux cotes.
 - `git fetch` marche avec `$GITHUB_TOKEN` ; le token en dur dans l'URL du remote expire.
 - Ne jamais `checkout --theirs` sur ces docs : cela effacerait le travail local.
+
+## 24. Construire un pack d'echantillons (modele `saxpack` -> `pianopack`)
+
+Le sax est le patron a copier : `tools/saxpack/extract.py` -> attaque + boucle,
+mono 22,05 kHz, **ADPCM 4 bits**, lu par `fx_sax_samples.h` (header-only, sans
+allocation apres `load()`). Un pack piano suit le meme chemin.
+
+**Trois regles qui evitent de perdre une journee :**
+
+1. **Verifier la licence avant de telecharger.** `jlearman.jRhodes3c` est
+   CC BY-**NC**-SA : inutilisable dans une app distribuee. Lire le `LICENSE` brut,
+   pas le champ `license` de l'API (souvent `NOASSERTION`).
+2. **Verifier que la boucle existe vraiment.** `smpl` peut etre present et inutile
+   (Splendid : `loopEnd` = EOF, seam −0,85) ou absent (Salamander). Lire le chunk a
+   `b.index(b'smpl') + 8` (id **et** taille) et **mesurer le seam** avant de
+   construire dessus.
+3. **Mesurer le clic, pas la correlation.** Une correlation de 0,95 laisse encore un
+   saut de 5–10x le pas interne. Compter les sauts a l'echantillon au point de
+   bouclage et comparer au 99,9e percentile des sauts internes ; viser < 0,2.
+   Le crossfade doit etre **plein a l'index 0**, sinon il ne corrige rien.
+
+**Estimation de taille :** ratio mesure pack/FLAC = **0,0844** (mono + 22,05 k +
+troncature + ADPCM). Un piano = **~30 Ko par region**, ~1,4 Mo pour 21 notes x 3
+couches.
