@@ -1245,3 +1245,30 @@ moteur existant et on ne reutilise aucun FX : on cree le boost.
 
 **Taille :** ratio mesure pack/FLAC = **0,0844** (mono + 22,05 k + troncature +
 ADPCM). Un piano = **~30 Ko par region**, ~1,4 Mo pour 21 notes x 3 couches.
+
+## 25. Ou est la "liste" ? (recuperer les messages utilisateur d'une conversation)
+
+Les consignes de l'utilisateur vivent dans le journal d'evenements local, pas dans
+l'API Cloud (`fetch_all` renvoie 0 message user : le schema a change).
+
+```bash
+cd /workspace/conversations/<CONV_ID>/events
+```
+Chaque `event-*.json` porte `source` (`user`/`agent`/`environment`) et `kind`
+(`MessageEvent`, `ActionEvent`, `ObservationEvent`, ...). Un message utilisateur se
+lit dans **`llm_message.content[].text`** — pas dans `action.content`.
+
+```python
+import json,glob
+for f in sorted(glob.glob('event-*.json')):
+    d=json.load(open(f))
+    if d.get('source')!='user': continue
+    c=(d.get('llm_message') or {}).get('content')
+    print(d['timestamp'], '\n'.join(x.get('text','') for x in c if isinstance(x,dict)))
+```
+
+`OH_CONVERSATIONS_PATH=/workspace/conversations` donne la racine. La conversation
+courante est le seul dossier present. Ne pas charger tout le dossier d'un coup
+(126 Mo d'evenements) : lire fichier par fichier et ne garder que les `source=user`.
+
+**Ne jamais redemander une liste a l'utilisateur** : elle est dans le journal.
