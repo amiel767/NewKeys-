@@ -974,7 +974,7 @@ qualite egale, et nettement meilleur a taille egale.
 
 ```bash
 pip install pillow numpy scikit-image
-python3 /workspace/dl/tools/make_all.py        # 14 instruments × 2 paliers
+python3 /workspace/dl/tools/make_all.py        # 15 instruments × 2 paliers
 python3 /workspace/dl/tools/build_html.py SRC OUT   # reinjecte dans le HTML
 ```
 
@@ -991,7 +991,7 @@ python3 /workspace/dl/tools/build_html.py SRC OUT   # reinjecte dans le HTML
 | Lot | Avant | Apres |
 |---|---|---|
 | HTML complet | 11,61 Mo | **0,69 Mo** |
-| 14 instruments × 2 paliers | 61,6 Mo (PNG) | **4,25 Mo** |
+| 15 instruments × 2 paliers | 61,6 Mo (PNG) | **4,25 Mo** |
 
 Tous a SSIM ≥ 0,985 mesure a la taille d'affichage. Cible < 10 Mo tenue avec
 14× de marge.

@@ -3585,7 +3585,7 @@ l'ignore pas silencieusement.
 | Lot | Avant | Apres |
 |---|---|---|
 | HTML complet | 11,61 Mo | **0,69 Mo** |
-| 14 instruments × 2 paliers | 61,6 Mo (PNG) | **4,25 Mo** |
+| 15 instruments × 2 paliers | 61,6 Mo (PNG) | **4,25 Mo** |
 
 SSIM ≥ 0,985 pour **tous** les fichiers, mesure **a la taille d'affichage**.
 Cible « < 10 Mo » tenue avec 14× de marge.
@@ -3596,7 +3596,7 @@ Cible « < 10 Mo » tenue avec 14× de marge.
   **source pleine resolution** vue a la taille d'affichage, pas l'image deja
   reduite — sinon on se compare a soi-meme), `pick` (cherche la qualite la plus
   **basse** qui tient le SSIM cible).
-- `make_all.py` : 14 instruments × 2 paliers (750 telephone / 1500 desktop).
+- `make_all.py` : 15 instruments × 2 paliers (750 telephone / 1500 desktop).
 - `build_html.py` : reinjecte les AVIF dans le HTML par slot.
 
 ### Pieges verifies
