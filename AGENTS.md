@@ -3622,3 +3622,75 @@ Cible « < 10 Mo » tenue avec 14× de marge.
 - **Les strings restent proceduraux** dans le HTML (particules `pet`/`pal`) :
   les 6 images ne sont pas encore branchees, les slots strings n'existent pas
   cote `IMG`. A faire quand l'UI strings sera portee en Compose.
+
+## Session 2026-10-28 (suite) — previews separes + animations adoucies
+
+Demande : **deux HTML separes** (piano / strings) pour juger le rendu, **reduire
+les animations** (eau plus calme, chutes -50 % et **non lineaires**), et pour
+Strings **les images immediatement, meme composition que le piano** (plus
+d'instruments flottants).
+
+### Deux fichiers, une source
+
+`app/assets/Æther Pianos · preview.html` et `Æther Strings · preview.html` sont
+**generes** depuis `Æther Pianos & Strings · preview.html` par
+`tools/uiassets/split_preview.py` (ne pas editer les deux fichiers a la main :
+editer la source puis regenerer). Le script utilise `sub()` qui **asserte** que
+l'ancre existe — une ancre perimee leve au lieu de produire un no-op silencieux.
+
+- **Piano** : 9 slots, onglet `PIANO` unique, photos AVIF 750 px.
+- **Strings** : 6 slots (solo/cello/... partagent leur image), onglet `STRINGS`
+  unique, `setBg(SM[i].id)` au lieu de `PT=SM[i].pal`.
+- Le selecteur PIANO/STRINGS est retire dans les deux : chaque fichier est
+  dedie, un onglet mort n'aurait aucun sens.
+
+### Strings : la photographie, pas la scene procedurale
+
+Le preview d'origine bascule sur `procScene` (ciel procedural + instruments SVG
+flottants sur l'eau) via `modeT=m=='strings'?1:0`. Pour Strings :
+`modeT=0` en dur, `if(modeS>.003){drawInst(Tm)}` supprime, et le **bloc SVG des
+violons entier est retire** (`/* ---------- violin family` -> `/* ---------- GL
+scene`). Ce bloc etait rasterise au demarrage en 4 canvas de 720 px pour rien.
+Fichier : 777 Ko -> 759 Ko, et plus de rasterisation inutile.
+
+Preuve du cablage : `bgB` (cle de texture liee) egale l'id du preset pour
+**8/8** strings et **9/9** pianos. Verifier autrement est trompeur — la
+correlation d'image est dominee par la luminance globale (marges de 0,002 entre
+pistes), donc non discriminante.
+
+### Animations adoucies (les deux fichiers)
+
+| Element | Avant | Apres |
+|---|---|---|
+| Propagation de l'onde `cx,cy` | `.30,.13` | **`.16,.07`** |
+| Amortissement `dm` | `.9925` | **`.9880`** |
+| Deplacement image (shader) | `g*.07` | **`g*.035`** |
+| Specular image | `*sp*.5` | **`*sp*.26`** |
+| Deplacement eau proc. | `g*.06` | **`g*.03`** |
+| Goutte ambiante | `.55+rand*.9` | **`.26+rand*.44`** |
+| Goutte touche | `.5+vel*.9` | **`.24+vel*.44`** |
+| Gravite particules | `+=40*dt` | **`+=(p.vy<0?40:5)*dt`** |
+| Cadence de spawn | `petal:3.2` (Poisson) | **`PRATE.petal=1.6`** |
+
+**Mesure** (CDP, 12 echantillons sur 6 s) : particules **30,8 -> 15,7**
+(−49 %). Bruit de fond des vagues **0,149 -> 0,059** (2,5x plus calme) ; apres
+une goutte de reference l'onde retombe a 0,085 a t=3 s (contre 0,142).
+
+### Le piege du spawn non lineaire : normaliser la moyenne
+
+La demande « non lineaire, vraiment du random » est implementee par un
+intervalle a queue lourde : `(.25+1.75*u^2.4)/PTAIL/(PRATE[pType])`.
+
+**Sans `PTAIL`**, la moyenne du multiplicateur vaut `0,25+1,75*E[u^2.4]` =
+`0,25+1,75*0,29412` = **0,7647** : la cadence reelle etait `1,6/0,7647 = 2,09`
+au lieu de 1,6, soit **−35 % au lieu de −50 %**. Mesure initiale : 30,8 -> 19,2.
+Corrige par `const PTAIL=.76471` (division). Verifier ce genre de formule par
+`E[f(u)] = integral`, jamais a l'oeil.
+
+### Ou sont les choses
+
+- Generateur : `tools/uiassets/split_preview.py`
+- Capture par preset : `tools/uiassets/cap_presets.py` (selections via l'API du
+  preview, attente du crossfade avant capture)
+- Planches : `tools/uiassets/sheets/sheet_{piano,strings}.png`
+- Fichiers servis : `/workspace/dl/pub/` (port 12000)

@@ -1032,3 +1032,83 @@ cotes) : ne pas les reutiliser.
 reference est dans le depot (commit `f731fb4`). Les **strings sont encore
 proceduraux** dans le HTML : les 6 images ne sont pas branchees, a faire quand
 l'UI strings sera portee en Compose.
+
+## 20. Previews separes (Piano / Strings) et dosage des animations
+
+### Deux fichiers, une seule source
+
+`app/assets/Æther Pianos · preview.html` et `Æther Strings · preview.html` sont
+**generes** depuis `Æther Pianos & Strings · preview.html` :
+
+```bash
+python3 tools/uiassets/split_preview.py
+```
+
+Ne pas editer les deux fichiers produits : editer la source, puis regenerer.
+Le script passe par `sub(html, ancien, nouveau)` qui **asserte** que l'ancre
+existe et est unique. Une ancre perimee leve immediatement au lieu de produire
+un fichier silencieusement inchange — c'est la garantie qui compte ici.
+
+### Ce que chaque fichier change
+
+| | Piano | Strings |
+|---|---|---|
+| Onglet | `PIANO` seul | `STRINGS` seul |
+| Slots | 9 (un par image) | 6 images pour 8 presets |
+| Scene | photo | photo (`modeT=0` en dur) |
+| Fond | `setBg(PM[i].id)` | `setBg(SM[i].id)` |
+| SVG violons | conserve | **bloc retire** |
+
+Le bloc `/* ---------- violin family` ne sert qu'a la scene procedurale. Comme
+Strings ne la montre jamais, le garder ne faisait que rasteriser 4 canvas de
+720 px au demarrage, pour rien.
+
+### Verifier un mappage : lire la cle liee, pas l'image
+
+`bgB` contient la cle de texture effectivement liee. Comparer `bgB` a l'id du
+preset est **decisif** (8/8 strings, 9/9 pianos).
+
+La correlation d'image, elle, ne l'est pas : toutes les pistes partagent une
+meme composition sombre avec un centre clair, et les marges entre la bonne et
+la deuxieme piste tombent a **0,002**. Un classement par NCC designait
+`piano_lady` comme gagnant pour 6 pistes sur 9. Ne pas conclure d'un NCC.
+
+### Dosage des animations
+
+| Element | Avant | Apres |
+|---|---|---|
+| Propagation de l'onde | `.30,.13` | `.16,.07` |
+| Amortissement | `.9925` | `.9880` |
+| Deplacement image | `g*.07` | `g*.035` |
+| Specular | `*sp*.5` | `*sp*.26` |
+| Goutte ambiante | `.55+rand*.9` | `.26+rand*.44` |
+| Goutte touche | `.5+vel*.9` | `.24+vel*.44` |
+| Gravite | `+=40*dt` | `+=(p.vy<0?40:5)*dt` |
+| Cadence | `petal:3.2` | `PRATE.petal=1.6` |
+
+Mesure : particules 30,8 -> 15,7 (−49 %). Bruit de fond des vagues 0,149 ->
+0,059. L'onde d'une goutte de reference retombe a 0,085 a t=3 s (0,142 avant).
+
+### Le piege : normaliser la moyenne d'une loi non lineaire
+
+Le spawn « vraiment random » utilise un intervalle a queue lourde :
+
+```js
+nextP=(.25+1.75*Math.pow(u,2.4))/PTAIL/(PRATE[pType]||1.5)
+```
+
+`PTAIL` vaut `0,76471` et **n'est pas cosmetique**. La moyenne de
+`.25+1.75*u^2.4` est `0,25+1,75*E[u^2.4]`, et `E[u^2.4] = 1/(2,4+1) = 0,29412`.
+Sans la division, la cadence reelle valait `1,6/0,7647 = 2,09` au lieu de 1,6 :
+**−35 % au lieu des −50 % demandes**. La mesure l'a montre (30,8 -> 19,2 avant
+correction, -> 15,7 apres).
+
+Regle generale : des qu'on applique une fonction non lineaire a un tirage
+uniforme, recalculer `E[f(u)]` et le diviser. Un reglage « qui a l'air bon » a
+l'oeil peut etre faux de 15 points.
+
+### Fichiers
+
+- Generateur : `tools/uiassets/split_preview.py`
+- Capture par preset : `tools/uiassets/cap_presets.py`
+- Planches de contact : `tools/uiassets/sheets/`
