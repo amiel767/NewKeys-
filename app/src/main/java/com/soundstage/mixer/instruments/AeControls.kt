@@ -19,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -125,11 +126,98 @@ fun AeChip(c: AeCtl, idx: Int, i: Int, n: Int, label: String, x: Number, y: Numb
     Box(
         Modifier.at(x, y, w, 21)
             .clip(shape)
-            .background(if (on) Brush.horizontalGradient(listOf(p.chipOn0, p.chipOn1)) else Brush.horizontalGradient(listOf(Color(0x10FFFFFF), Color(0x10FFFFFF))))
-            .border(1.su(), if (on) Color.Transparent else Color(0x1CFFFFFF), shape)
+            // The selected chip used to be a flat gradient with a 1 px outline, which reads as a
+            // sticker laid on the panel. A control that is "pressed" should look recessed, so the
+            // selected state is now a dark well with an inner shadow along its top edge; the
+            // unselected one keeps the raised face with a light top bevel.
+            .background(
+                if (on) Brush.verticalGradient(listOf(Color(0xE603060B), Color(0xF20B1119)))
+                else Brush.verticalGradient(listOf(Color(0x1AFFFFFF), Color(0x0AFFFFFF))),
+            )
+            .then(
+                if (on) Modifier.drawWithContent {
+                    drawContent()
+                    drawRoundRect(
+                        brush = Brush.verticalGradient(listOf(Color(0x66000000), Color(0x00000000)), endY = size.height * 0.7f),
+                        cornerRadius = CornerRadius(size.height / 2f),
+                    )
+                    drawRoundRect(
+                        brush = Brush.verticalGradient(listOf(Color(0x59FFFFFF), Color(0x00FFFFFF)), endY = size.height * 0.45f),
+                        style = Stroke(width = 1f * density),
+                        cornerRadius = CornerRadius(size.height / 2f),
+                    )
+                } else Modifier
+            )
+            .border(1.su(), if (on) Color(0x14FFFFFF) else Color(0x1CFFFFFF), shape)
             .noRipple { c.set(idx, i.toFloat() / (n - 1)) },
         contentAlignment = Alignment.Center,
-    ) { AeT(label, 9, if (on) p.chipText else AeC.tx, spacing = 0.08f) }
+    ) {
+        if (on) {
+            // A lit lamp behind the label, not a filled pill: the colour says "this one is on"
+            // without turning the chip into a solid block that fights the panel.
+            Box(Modifier.fillMaxSize().drawWithContent {
+                drawContent()
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(p.chipOn1.copy(alpha = 0.30f), p.chipOn0.copy(alpha = 0.06f), Color.Transparent),
+                        center = Offset(size.width / 2f, size.height / 2f),
+                        radius = size.height * 2.1f,
+                    ),
+                    radius = size.height * 2.1f,
+                )
+            })
+        }
+        AeT(label, 9, if (on) p.chipOn1 else AeC.tx, spacing = 0.08f)
+    }
+}
+
+/**
+ * Segmented toggle at scene scale: one track, a thumb that slides between the options.
+ *
+ * This is the app's [com.soundstage.mixer.ui.tracksettings] Segmented, re-expressed in the
+ * 1000x460 stage units so it can live inside an instrument window. It exists because a row of
+ * independent chips reads as "three buttons", while a segmented control reads as "one setting
+ * with three positions" — which is what an octave switch and a filter type actually are.
+ */
+@Composable
+fun AeSeg(
+    options: List<String>,
+    selected: Int,
+    x: Number,
+    y: Number,
+    w: Number,
+    accent: Color,
+    onSelect: (Int) -> Unit,
+    h: Number = 24,
+) {
+    if (options.isEmpty()) return
+    val n = options.size
+    val sel = selected.coerceIn(0, n - 1)
+    val shape = RoundedCornerShape(50)
+    val segW = w.toFloat() / n
+    val tx by animateFloatAsState(segW * sel, spring(dampingRatio = 0.72f, stiffness = 900f), label = "aeSeg")
+    Box(
+        Modifier.at(x, y, w, h).clip(shape)
+            .background(Brush.verticalGradient(listOf(Color(0xF00A0E16), Color(0xF2121824))))
+            .border(1.su(), Color(0x14FFFFFF), shape)
+            .padding(2.su()),
+    ) {
+        Box(
+            Modifier.at(tx, 0, segW, h.toFloat() - 4f)
+                .clip(shape)
+                .background(Brush.verticalGradient(listOf(Color(0xFF39445E), Color(0xFF28324A))))
+                .border(1.su(), Color(0x1AFFFFFF), shape),
+        )
+        Row(Modifier.fillMaxSize()) {
+            options.forEachIndexed { i, label ->
+                val on = i == sel
+                Box(
+                    Modifier.weight(1f).fillMaxHeight().noRipple { onSelect(i) },
+                    contentAlignment = Alignment.Center,
+                ) { AeT(label, 9, if (on) Color(0xFFF1F4FA) else AeC.mute, weight = if (on) FontWeight.Bold else FontWeight.SemiBold, spacing = 0.06f) }
+            }
+        }
+    }
 }
 
 /** Hammond drawbar: SVG slot + cap, chrome shaft drawn live, snap spring, drag anywhere on the bar. */

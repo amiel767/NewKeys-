@@ -267,4 +267,79 @@ class AeManagerTest {
         assertFalse(s!!.bankLoaded)
         assertEquals(-1, s.bankType)
     }
+
+    // ---- Snapshots ---------------------------------------------------------------------
+
+    @Test
+    fun aSnapshotCarriesTheInstrumentAndEveryKnob() {
+        val host = FakeHost()
+        val m = manager(host)
+        m.load(2, AeInstrument.LEADS)
+        m.setParam(2, 18, 0.31f)
+        m.setParam(2, 19, 0.77f)
+        val st = m.snapshotState(2)
+        assertEquals(AeInstrument.LEADS.name, st?.instrument)
+        assertEquals(AeInstrument.LEADS.paramCount, st?.values?.size)
+        // The captured values are the live ones, not the preset's: a snapshot stores what the
+        // user had, including a tweak made after loading a preset.
+        assertEquals(0.31f, st!!.values[18], 1e-6f)
+        assertEquals(0.77f, st.values[19], 1e-6f)
+    }
+
+    @Test
+    fun aSnapshotRemembersWhichPresetWasLoaded() {
+        val host = FakeHost()
+        val m = manager(host)
+        m.load(2, AeInstrument.LEADS)
+        m.loadPreset(2, 3)
+        // The index is set synchronously; the knob tween that follows is a display detail.
+        assertEquals(3, m.snapshotState(2)?.preset)
+    }
+
+    @Test
+    fun aStripWithoutAnInstrumentCapturesNothing() {
+        val m = manager(FakeHost())
+        assertNull(m.snapshotState(5))
+    }
+
+    @Test
+    fun restoringASnapshotReloadsTheInstrumentAndItsValues() {
+        val host = FakeHost()
+        val m = manager(host)
+        m.load(0, AeInstrument.SAX)
+        m.setParam(0, 4, 0.42f)
+        val st = m.snapshotState(0)!!
+        // Something else takes the strip over, then the snapshot is recalled.
+        m.unload(0)
+        m.load(0, AeInstrument.ORGAN)
+        host.params.clear()
+        m.restoreFromSnapshot(0, st)
+        assertEquals(AeInstrument.SAX.fxId, host.loaded[0])
+        assertEquals(AeInstrument.SAX, m.sessions[0]?.instrument)
+        assertEquals(0.42f, host.params[0]?.get(4) ?: -1f, 1e-6f)
+    }
+
+    @Test
+    fun aSnapshotWithoutAetherLeavesTheStripAlone() {
+        val host = FakeHost()
+        val m = manager(host)
+        m.load(0, AeInstrument.ORGAN)
+        m.restoreFromSnapshot(0, null)
+        // No Æther block means "this snapshot's track carried a soundfont"; the caller decides
+        // whether to unload, and restore itself must never guess.
+        assertEquals(AeInstrument.ORGAN.fxId, host.loaded[0])
+    }
+
+    @Test
+    fun restoringAnInstrumentTheStripAlreadyHasKeepsTheSameSession() {
+        val host = FakeHost()
+        val m = manager(host)
+        val before = m.load(0, AeInstrument.LEADS)
+        m.restoreFromSnapshot(0, com.soundstage.mixer.model.AetherTrackState(
+            AeInstrument.LEADS.name, 1, List(AeInstrument.LEADS.paramCount) { 0.25f },
+        ))
+        // Reloading would drop the held notes and re-push the preset; the session must survive.
+        assertTrue(before === m.sessions[0])
+        assertEquals(1, m.sessions[0]?.preset)
+    }
 }

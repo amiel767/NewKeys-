@@ -26,6 +26,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import com.soundstage.mixer.ui.components.FaderRail
 import com.soundstage.mixer.ui.components.FaderThumb
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -75,12 +76,17 @@ private fun AeFader(c: AeCtl, idx: Int, x: Number, y: Number) {
             drag(d.id) { c.set(idx, fromY(it.position.y)); it.consume() }
         }
     }) {
-        Box(Modifier.fillMaxSize().aeSvg(AeSvgs.FADER_TRACK))
-        Canvas(Modifier.fillMaxSize()) {
-            val k = size.width / FADER_W
-            val top = capCenterY(c.v(idx)) * k
-            drawRoundRect(Color(0x8C19E3FF), Offset(19.5f * k, top), Size(5f * k, max(0f, 144f * k - top)), CornerRadius(2.5f * k))
-        }
+        // The track is the mixer's own FaderRail, not the flat SVG slot it replaced: the same
+        // chassis, rim, groove and LED halo the channel faders use, so a Leads fader reads as the
+        // same piece of hardware. It is 86 units wide in its own space and scales from the box,
+        // and its groove is inset by 36 units top and bottom, which is what the cap travel above
+        // already accounts for.
+        FaderRail(
+            accent = Color(0xFF19E3FF),
+            modifier = Modifier.at(FADER_W / 2f - 12f, 0f, 24f, FADER_H),
+            level = v,
+            glow = 0.30f + 0.70f * v,
+        )
         val cy = capCenterY(v)
         // Cap = the same Kotlin bonnet the mixer track faders use (FaderThumb), not the flat
         // SVG rectangle it replaced. The box centres the cap on its value.
@@ -126,7 +132,9 @@ fun BoxScope.AeLeadsUi(c: AeCtl, a: AeAnim, samples: FloatArray? = null) {
                 AeT(names[i], 9, CYAN, Modifier.at(x, 82, 100, 12), weight = FontWeight.ExtraBold, spacing = 0.2f, align = TextAlign.Center)
                 Canvas(Modifier.at(x + 30, 96, 40, 20)) { drawWaveIcon(i) }
                 AeFader(c, i, x + 32, 118)
-                arrayOf("-1", "0", "+1").forEachIndexed { j, t -> AeChip(c, 5 + i, j, 3, t, x + 5 + j * 33, 284, 30) }
+                // One octave switch per layer, the app's segmented toggle rather than three
+                // loose chips: "−1 0 +1" is a single setting with three positions.
+                AeSeg(listOf("−1", "0", "+1"), (c.v(5 + i) * 2f).roundToInt(), x + 3, 278, 102, CYAN, onSelect = { j -> c.set(5 + i, j / 2f) })
             }
             Canvas(Modifier.at(22, 118, 566, 160)) { a.frame.intValue; drawMeters(a) }
             AeCardBox(604, 54, 374, 150, "OSCILLOSCOPE", CYAN, border)

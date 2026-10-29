@@ -1,6 +1,7 @@
 package com.soundstage.mixer.instruments
 
 import androidx.compose.runtime.*
+import com.soundstage.mixer.model.AetherTrackState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -83,10 +84,14 @@ interface AeHost {
 
     /**
      * Load the sampled bank that goes with an instrument, if it has one. Only the sax does
-     * today; every other instrument returns false and stays purely synthetic. The bank is
-     * a hybrid layer, not a replacement: at mix 0 the output is the plain synthesis.
+     * today; every other instrument returns false and stays purely synthetic.
+     *
+     * [mix] is how much of the output the samples carry. It defaults to 1, i.e. the samples
+     * alone: the sampled bank is what the user wants to hear, and blending it with the
+     * synthesis underneath made the sax sound like a detuned double rather than one
+     * instrument. A mix below 1 remains available for a diagnostic A/B.
      */
-    fun loadBank(strip: Int, instrument: AeInstrument, type: Int, mix: Float = 0.7f): Boolean = false
+    fun loadBank(strip: Int, instrument: AeInstrument, type: Int, mix: Float = 1f): Boolean = false
 
     /** Mix of samples in the instrument output, 0 = pure synthesis. For the UI readback. */
     fun bankMix(strip: Int): Float = 0f
@@ -265,6 +270,35 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
     }
 
     fun pollLevel(strip: Int) { sessions[strip]?.level = host.level(strip).coerceIn(0f, 1f) }
+
+    // ---- Snapshots ---------------------------------------------------------------------
+    /**
+     * The Æther instrument this strip is running, in the form a snapshot stores.
+     *
+     * The enum name is written, not its ordinal: the ordinal is an implementation detail of
+     * [AeInstrument] and would silently mean a different instrument if the enum were reordered.
+     */
+    fun snapshotState(strip: Int): AetherTrackState? {
+        val s = sessions[strip] ?: return null
+        return AetherTrackState(s.instrument.name, s.preset, s.values.toList())
+    }
+
+    /**
+     * Puts the strip back where a snapshot left it: loads the instrument if the strip no
+     * longer carries one, then writes the preset and every knob. A snapshot with no Æther
+     * block leaves the strip alone, which is what lets a snapshot taken before an instrument
+     * was added coexist with one taken after.
+     */
+    fun restoreFromSnapshot(strip: Int, st: AetherTrackState?) {
+        if (st == null) return
+        val inst = AeInstrument.entries.firstOrNull { it.name == st.instrument } ?: return
+        val s = sessions[strip]?.takeIf { it.instrument == inst } ?: (load(strip, inst) ?: return)
+        s.preset = st.preset.coerceAtLeast(0)
+        st.values.forEachIndexed { i, v -> if (i < s.values.size) setParam(strip, i, v) }
+    }
+
+    /** True when the strip currently runs an Æther instrument. */
+    fun holds(strip: Int): Boolean = sessions.containsKey(strip)
 
     // ---- MIDI entry points: call these from the app's MIDI dispatcher. Channel n (0-based) = strip n.
     /** @return true if an Æther instrument consumed the event (so the app can skip FluidSynth for it). */

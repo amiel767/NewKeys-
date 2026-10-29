@@ -111,7 +111,10 @@ class SaxSampleReader {
     const double step = static_cast<double>(ratio_) * static_cast<double>(rate_) / outRate_;
     const double ls = cur_->loopStart, le = cur_->loopEnd;
     const double xf = std::min<double>(64.0, std::max(4.0, (le - ls) * 0.05));
-    const float att = 0.006f, rel = 0.09f;
+    // Attack 3.5 ms, release ~60 ms. The release used to be 1 ms, which is fine while the
+    // synthesis is mixed underneath (it carries its own, slow, release) but not once the
+    // samples carry the voice alone: cutting a note in a millisecond is a click, not a release.
+    const float att = 0.006f, rel = 3.5e-4f;
     const uint32_t nf = static_cast<uint32_t>(buf_.size());
     for (int i = 0; i < n; ++i) {
       if (releasing_) { env_ -= env_ * rel; if (env_ < 1e-4f) { active_ = false; break; } }
@@ -119,10 +122,18 @@ class SaxSampleReader {
       if (pos_ >= nf - 2) { active_ = false; break; }
 
       float s = interp(pos_);
-      // crossfade the tail of the loop into its head so a transposed loop cannot click
+      // Crossfade the tail of the loop into the *matching phase of the previous loop*, i.e.
+      // x[ls-xf .. ls) blended with x[le-xf .. le). Fading into the head x[ls .. ls+xf) instead —
+      // which is what this did — makes the last blended frame sit xf frames past loopStart while
+      // the wrap restarts at loopStart, so every wrap jumps by whatever the waveform does in xf
+      // frames. At 22 kHz with a 64-frame blend that is a 3 ms jump, which is audible as a
+      // periodic click: measured at 0.57 against 0.09 for the synthesis, exactly once per loop
+      // period. Blending with the earlier phase keeps the join at the size of one normal sample
+      // step and, because the loop is a whole number of periods, the two phases are in step.
       if (pos_ >= le - xf && pos_ < le) {
         const float u = static_cast<float>((pos_ - (le - xf)) / xf);
-        s = s * (1.f - u) + interp(ls + (pos_ - (le - xf))) * u;
+        const double j = static_cast<double>(ls) - xf + (pos_ - (le - xf));
+        s = s * (1.f - u) + interp(j >= 0.0 ? j : ls) * u;
       }
       if (pos_ >= le) pos_ += ls - le;      // loop back
       pos_ += step;

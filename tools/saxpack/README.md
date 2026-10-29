@@ -37,6 +37,34 @@ try to fix this by estimating the period from the audio: on high notes the
 autocorrelation locks onto the second harmonic and the loop lands an octave out
 (measured: seam fell to 0.32). Optimise the seam itself.
 
+## Tuning: `tuneCents` is measured, not read
+
+Every region carries a `tuneCents` field and the reader compensates with
+`rootF *= 2^(tuneCents/1200)`. The value shipped in the first packs did **not**
+describe the audio it labelled, so the engine played sharp: measured on the decoded
+packs, **+28 cents** on average for the soprano, +11 for the alto and the baritone,
++16 for the tenor.
+
+`retune.cpp` re-measures each region and rewrites the field:
+
+```bash
+g++ -O2 -std=c++17 -o retune retune.cpp
+for f in sop alt ten bar; do ./retune ../../app/src/main/assets/saxpack/saxpack_$f.bin --apply; done
+```
+
+Two traps, both of which cost a pass:
+
+**A plain peak pick reports a partial.** The sax puts strong energy in h2, so the
+fundamental is only accepted when there is also energy at 2f and 3f.
+
+**Some regions are unmeasurable** (a noisy attack, a very short region) and must
+not keep their stale value. The fallback takes the strongest partial and shifts it
+by octaves until it lands nearest the region's nominal root: the library drifts by
+well under a semitone, so the octave nearest the root is the right one. Without
+that fallback the alto's C5 stayed **+44 cents** after the first pass.
+
+After the fix the engine measures within **12 cents** across C4..C5 (was 52).
+
 ## Licence
 
 CC-BY 4.0 — attribution is required. See `ATTRIBUTION.md`.

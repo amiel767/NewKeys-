@@ -94,7 +94,10 @@ object AeInstrumentHost : AeHost {
         val name = AeBanks.fileFor(instrument, type) ?: return false
         val bytes = AeBanks.read(name) ?: return false
         val ok = NativeAudioBridge.safeLoadInstrumentBank(strip, bytes)
-        if (ok) NativeAudioBridge.safeSetInstrumentSampleMix(strip, mix)
+        // The bank is the voice, not a layer on top of the synthesis: a mix of 1 makes the
+        // engine output the samples alone. The synthesis still runs underneath to cover the
+        // seams between regions, but it is weighted out of the sum.
+        if (ok) NativeAudioBridge.safeSetInstrumentSampleMix(strip, mix.coerceIn(0f, 1f))
         Log.d("AeInstrumentHost", "loadBank(strip=$strip, $name, ${bytes.size} o) -> $ok")
         return ok
     }

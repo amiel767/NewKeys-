@@ -231,7 +231,25 @@ data class TrackSnapshot(
     val pitchBendRange: Int = 2,
     val midiChannel: Int = 1,
     /** Per-track colour override, so a recalled snapshot restores the strip colour too. */
-    val customColorArgb: Int? = null
+    val customColorArgb: Int? = null,
+    /**
+     * Æther instrument carried by this track, if any: the instrument, its preset and its
+     * knob values. A snapshot used to capture only the soundfont identity, so recalling it
+     * on a track running an Æther instrument left that instrument in place and the snapshot
+     * silently did nothing for that track.
+     */
+    val aether: AetherTrackState? = null
+)
+
+/**
+ * An Æther instrument as a snapshot sees it. [instrument] is the enum name (a stable
+ * string, not the ordinal: the ordinals have changed before), [values] the full knob
+ * array at capture time and [preset] the preset index it was loaded from.
+ */
+data class AetherTrackState(
+    val instrument: String,
+    val preset: Int,
+    val values: List<Float>
 )
 
 data class SubSceneSnapshot(

@@ -4516,7 +4516,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         trackFx: Map<Int, FxParameters> = state.fxParameters
     ) = SubSceneSnapshot(
         slotName = slotName,
-        tracks = tracks.map { SnapshotLogic.captureTrack(it) },
+        tracks = tracks.map { track ->
+            // An Æther instrument is part of the track's identity, so it travels with the
+            // snapshot like the soundfont does. Strip index == track index for slots 0..7.
+            SnapshotLogic.captureTrack(track).copy(
+                aether = com.soundstage.mixer.instruments.AeInstruments.manager.snapshotState(track.id - 1)
+            )
+        },
         globalTranspose = globalTranspose,
         globalOctaveShift = globalOctaveShift,
         masterVolume = masterVolume,
@@ -6579,6 +6585,11 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             targetTracks.forEachIndexed { idx, track ->
+                // A track whose snapshot carries an Æther instrument must not have a soundfont
+                // loaded for it: the two are exclusive on a strip, and the instrument is
+                // restored just below. Without this guard the soundfont pass would load and
+                // then be immediately unloaded again by the instrument taking the strip over.
+                if (targetSnapshot.tracks.find { it.id == track.id }?.aether != null) return@forEachIndexed
                 if (!track.isEnabled || track.isMuted) {
                     audioEngine.setChannelEnabled(idx, false)
                     if (idx in 0..7) {
@@ -6604,6 +6615,18 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     } else if (candidate.exists()) {
                         loadSoundFontForSlot(idx, candidate.absolutePath, track.bank, track.program, track.patchName, saveAfterLoad = false)
                     }
+                }
+            }
+
+            // Æther instruments are restored AFTER the soundfont pass above: loading an
+            // instrument releases the slot's soundfont (the two are exclusive on a strip), so
+            // doing it first would have the soundfont load wipe the instrument back out.
+            val aetherMgr = com.soundstage.mixer.instruments.AeInstruments.manager
+            targetSnapshot.tracks.forEach { snap ->
+                val strip = snap.id - 1
+                if (strip in 0..7) {
+                    if (snap.aether != null) aetherMgr.restoreFromSnapshot(strip, snap.aether)
+                    else aetherMgr.unload(strip)   // this snapshot's track carried a soundfont, not a source
                 }
             }
 

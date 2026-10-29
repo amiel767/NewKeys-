@@ -115,6 +115,11 @@ object SnapshotJson {
         put("pitchBendRange", t.pitchBendRange)
         put("midiChannel", t.midiChannel)
         t.customColorArgb?.let { put("customColorArgb", it) }
+        t.aether?.let { a ->
+            put("aetherInstrument", a.instrument)
+            put("aetherPreset", a.preset)
+            put("aetherValues", JSONArray().apply { a.values.forEach { put(it.toDouble()) } })
+        }
     }
 
     fun trackFromJson(o: JSONObject, fallbackId: Int): TrackSnapshot = TrackSnapshot(
@@ -140,8 +145,19 @@ object SnapshotJson {
         pitchBendRange = o.optInt("pitchBendRange", 2),
         midiChannel = o.optInt("midiChannel", 1),
         // Absent means "no override", which is not the same as 0 (opaque black).
-        customColorArgb = if (o.has("customColorArgb")) o.optInt("customColorArgb") else null
+        customColorArgb = if (o.has("customColorArgb")) o.optInt("customColorArgb") else null,
+        aether = aetherFromJson(o)
     )
+
+    /** Reads the Æther block, or null when the track carried no instrument. */
+    private fun aetherFromJson(o: JSONObject): AetherTrackState? {
+        val name = o.optString("aetherInstrument", "")
+        if (name.isEmpty()) return null
+        val arr = o.optJSONArray("aetherValues") ?: return null
+        val values = ArrayList<Float>(arr.length())
+        for (i in 0 until arr.length()) values.add(arr.optDouble(i, 0.5).toFloat())
+        return AetherTrackState(name, o.optInt("aetherPreset", 0), values)
+    }
 
     fun toJson(snap: SubSceneSnapshot): JSONObject = JSONObject().apply {
         put("slotName", snap.slotName)

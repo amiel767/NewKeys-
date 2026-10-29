@@ -1336,6 +1336,87 @@ Le script suit desormais **plusieurs conversations** via une table `PEERS` :
   degrade. Format **AVIF** (SSIM ≥ 0,985 a la taille d'affichage).
 - Les **strings restent proceduraux** dans le HTML : 6 images pretes mais slots non branches.
 
+## Session 2026-10-29 — UI Æther (faders, segments, power, nommage), snapshots, sax samples-only
+
+### 1. Faders Leads = rail du mixer
+`AeFader` (`AeLeadsUi.kt`) dessinait un SVG plat (`AeSvgs.FADER_TRACK`) + un bonnet SVG.
+Désormais le rail est **`FaderRail`** (`ui/components/FaderRail.kt`, celui des pistes) et le
+bonnet **`FaderThumb`**, tous deux réutilisés tels quels. Le rail fait 86 unités de large dans
+son propre espace (scalé depuis la boîte de 24) et sa rainure est **inset de 36 unités** en
+haut et en bas — c'est ce que `CAP_TOP`/`CAP_BOTTOM` couvrent déjà, donc la course du bonnet
+ne change pas. `AeSvgs.FADER_TRACK` n'a plus d'appelant (laissé en place).
+
+### 2. `AeSeg` : segmented control à l'échelle de la scène
+Nouveau composable (`AeControls.kt`), porté du `Segmented` de Track Settings : piste + pouce
+qui glisse (`animateFloatAsState`, spring). Utilisé pour l'**octave par couche** des Leads
+(« −1 0 +1 »), qui était 3 `AeChip` indépendants : trois boutons ne se lisent pas comme un
+réglage à trois positions. `AeSeg` sert aussi de base aux groupes LP/HP/BP.
+
+**Piège** : `h` est un `Number` (type scène) → `h - 4` ne compile pas, écrire
+`h.toFloat() - 4f`. Et un paramètre `onSelect` suivi d'un lambda trailing ne se résout pas
+(déclaré après `w`/`accent` mais avant `h`) → nommer l'argument.
+
+### 3. Chips : état enfoncé, pas de pastille
+`AeChip` sélectionné n'est plus un dégradé plein + contour : c'est un **puits sombre** avec
+ombre interne en haut, libellé dans la couleur d'accent et une **lueur radiale** derrière. Un
+contrôle « enfoncé » doit paraître creusé ; le plein se lisait comme un autocollant.
+
+### 4. `AePowerIcon` : centrage + relief + rebond
+Deux bugs dans la version précédente :
+- **centrage** : le glyphe (arc + tige) a son centre optique au-dessus du centre de l'arc →
+  centrer l'arc dans la boîte poussait la marque vers le bas. L'arc est posé sur un cercle
+  décalé de `s*0.055` vers le bas, la tige part du haut de ce cercle.
+- **relief** : plus de contour dur ; puits + ombre interne, glyphe embossé (copie sombre
+  décalée + copie allumée), et l'appui répond par un spring (`Animatable` + `detectTapGestures`).
+
+### 5. Feuille de nommage : largeur bornée + matière
+`NameSheet` était un `Dialog` contenant une `Column` : un Dialog se dimensionne sur son
+contenu, donc la feuille s'étalait sur toute la largeur de la fenêtre. Corrigé par
+`Modifier.width(340.dp)`, un **grain vertical** déterministe (pas de scintillement), un liseré
+haut clair / bas sombre, un champ en puits, et un bouton Save en relief.
+
+### 6. Snapshots ↔ instruments Æther (nouveau)
+`TrackSnapshot.aether: AetherTrackState?` (`MixerState.kt`) = `instrument` (**nom d'enum**,
+pas l'ordinal : les ordinaux ont déjà changé), `preset`, `values`. Codec dans `SnapshotJson`
+(clés `aetherInstrument` / `aetherPreset` / `aetherValues`).
+- `AeManager.snapshotState(strip)` / `restoreFromSnapshot(strip, st)`.
+- `captureSnapshot` (VM) ajoute le bloc ; `recallSnapshotDirect` le restaure **après** la passe
+  soundfont (les deux sont exclusifs sur une piste : charger l'un décharge l'autre) et
+  `unload(strip)` quand le snapshot n'a pas de bloc.
+- **Blob ancien** : les clés absentes donnent `null`, jamais un instrument inventé. Un bloc
+  `aetherInstrument` **sans** `aetherValues` est ignoré (rien à restaurer).
+
+### 7. Sax : samples seuls (plus d'hybride)
+`loadBank(mix)` passe de `0.7` à **`1.0`** : le pack porte la voix, la synthèse n'est plus
+mixée dessous. Un mix < 1 reste possible pour un A/B de diagnostic.
+
+### 8. Pack sax : accord corrigé (cause racine)
+Le champ `tuneCents` livré **ne décrivait pas l'audio** : le lecteur compense par
+`rootF *= 2^(tuneCents/1200)`, donc une valeur fausse transposait la note. Mesure sur le pack
+décodé (ADPCM) : **+28 cents en moyenne (sop), +11 (alt/bar), +16 (ten)**, et le Do5 de l'alto
+restait **+44 cents** même après correction (sa région n'était pas mesurable par le test
+harmonique). Outil : `/workspace/audit/retune.cpp` (fondamentale confirmée par énergie en 2f/3f,
+repli par octave la plus proche du root, réécriture du champ). Résultat moteur : **max 12 cents**
+(contre 52). **Piège** : ce repli par octave est nécessaire — sans lui les régions non
+mesurables gardent leur valeur périmée, et c'est exactement ce qui laissait le Do5 faux.
+
+### 9. Lecteur d'échantillons : deux clics corrigés (`fx_sax_samples.h`)
+Le mix à 1.0 a révélé ce que la synthèse masquait. Mesuré : saut de **0,57** contre **0,09**
+pour la synthèse, **une fois par période de boucle** (~95 ms).
+- **Cause** : le crossfade fondait la queue de boucle vers la **tête** `x[ls..ls+xf)` alors que
+  le rebouclage repart à `ls` → la dernière frame fondue était à `xf` frames après `ls`, d'où
+  un saut de 3 ms à chaque tour. Corrigé en fondant vers la **phase précédente**
+  (`x[ls-xf..ls)`). Saut max : 0,57 → **0,155**.
+- **Release** : `rel` du lecteur valait 0,09/frame (~1 ms). Acceptable sous la synthèse (elle
+  porte son propre release), pas en samples seuls → clic au relâchement. Passé à `3.5e-4`
+  (~60 ms) : pas max dans la queue 0,09 → **0,004**.
+- **Piège de mesure** : un test de seuil `|x| < ε` déclenche sur le premier passage par zéro
+  d'une note encore sonore (« release 1 ms »). Mesurer en **RMS fenêtré**.
+
+### Tests
+`AeManagerTest` **25** (dont 5 snapshots), `AetherSnapshotJsonTest` **5** (nouveau, Robolectric
+— `org.json` lève « not mocked » sur la JVM nue), `SnapshotLogicTest` **11**. 0 échec.
+
 ## Session 2026-10-28 (3e) — Æther Piano : samples legers + boost (mesure)
 
 But : des samples **legers** qu'on **faconne** nous-memes pour obtenir **9 presets
