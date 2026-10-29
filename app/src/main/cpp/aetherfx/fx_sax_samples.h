@@ -92,7 +92,13 @@ class SaxSampleReader {
     const float f = 440.f * std::pow(2.f, (note - 69) / 12.f);
     const float rootF = 440.f * std::pow(2.f, (best->root - 69) / 12.f) * std::pow(2.f, best->tuneCents / 1200.f);
     ratio_ = (rootF > 1e-6f) ? f / rootF : 1.f;
-    pos_ = 0.0;
+    // Start a little way into the recorded attack, the way a sampler's sample-start offset
+    // works. Measured on the pack: the region reaches only 8 % of its sustain RMS in the first
+    // 5 ms and takes 127 ms to reach half its peak, against 28 ms for the synthesis — the
+    // microphone captured the note swelling, not the reed slap. Playing from frame 0 therefore
+    // gave a soft, late note with no punch. The onset is the first 3 ms window that reaches
+    // 45 % of the region RMS, searched only up to the loop start so the loop is never skipped.
+    pos_ = static_cast<double>(onset_);
     env_ = 0.f;
     active_ = true;
     releasing_ = false;
@@ -105,16 +111,28 @@ class SaxSampleReader {
 
   bool active() const { return active_; }
 
+  /**
+   * Extra playback-rate factor applied on top of the note's own transposition.
+   *
+   * The reader used to compute its rate once, in noteOn, from the note number. That is
+   * correct for a plain sampler but wrong for this instrument: with the pack carrying the
+   * voice alone, pitch bend, vibrato, scoop and fall are computed by the engine and reached
+   * only the synthesis, so none of them was audible on a sampled note. The engine now pushes
+   * the live factor once per block (a 5 ms granularity at 48 kHz / 256 frames, which is
+   * inaudible on a 3.5-7.5 Hz vibrato).
+   */
+  void setPitchScale(float s) { pitchScale_ = (s > .25f && s < 4.f) ? s : pitchScale_; }
+
   /** Mixes `n` frames into a mono accumulator at the given gain. */
   void render(float* out, int n, float gain) {
     if (!active_ || !cur_ || buf_.empty() || pcm_.empty()) return;
-    const double step = static_cast<double>(ratio_) * static_cast<double>(rate_) / outRate_;
+    const double step = static_cast<double>(ratio_) * pitchScale_ * static_cast<double>(rate_) / outRate_;
     const double ls = cur_->loopStart, le = cur_->loopEnd;
     const double xf = std::min<double>(64.0, std::max(4.0, (le - ls) * 0.05));
     // Attack 3.5 ms, release ~60 ms. The release used to be 1 ms, which is fine while the
     // synthesis is mixed underneath (it carries its own, slow, release) but not once the
     // samples carry the voice alone: cutting a note in a millisecond is a click, not a release.
-    const float att = 0.006f, rel = 3.5e-4f;
+    const float att = 0.006f, rel = 1.6e-4f;
     const uint32_t nf = static_cast<uint32_t>(buf_.size());
     for (int i = 0; i < n; ++i) {
       if (releasing_) { env_ -= env_ * rel; if (env_ < 1e-4f) { active_ = false; break; } }
@@ -178,6 +196,19 @@ class SaxSampleReader {
         buf_[f++] = pred / 32768.f;
       }
     }
+    // Onset search, once per region: first 3 ms window reaching 45 % of the region RMS,
+    // never past the loop start (which would skip the whole body of the sample).
+    const size_t win = std::max<size_t>(1, static_cast<size_t>(0.003 * rate_));
+    const size_t limit = std::min<size_t>(cur_->loopStart, buf_.size());
+    double ms = 0;
+    for (size_t i = 0; i < buf_.size(); ++i) ms += static_cast<double>(buf_[i]) * buf_[i];
+    const double thr = 0.45 * std::sqrt(ms / std::max<size_t>(1, buf_.size()));
+    onset_ = 0;
+    for (size_t i = 0; i + win < limit; i += win) {
+      double s = 0;
+      for (size_t j = 0; j < win; ++j) s += static_cast<double>(buf_[i + j]) * buf_[i + j];
+      if (std::sqrt(s / win) >= thr) { onset_ = static_cast<uint32_t>(i); break; }
+    }
   }
 
  public:
@@ -192,7 +223,8 @@ class SaxSampleReader {
   double outRate_ = 48000.0;
   const Region* cur_ = nullptr;
   double pos_ = 0.0;
-  float ratio_ = 1.f, env_ = 0.f, vel_ = 1.f;
+  float ratio_ = 1.f, pitchScale_ = 1.f, env_ = 0.f, vel_ = 1.f;
+  uint32_t onset_ = 0;
   bool active_ = false, releasing_ = false;
 };
 

@@ -82,7 +82,7 @@ class AePresetUiCaptureTest {
         manager.saveUserPreset(0, "My Lead")
         composeTestRule.mainClock.advanceTimeBy(200)
         val density = context.resources.displayMetrics.density
-        clickStage(791f, 23f, density)   // the preset chip in the header
+        clickStage(753f, 23f, density)   // the preset chip in the header (now at x 640..866)
         composeTestRule.mainClock.advanceTimeBy(600)
         // The User group sits at the very bottom of a 32-preset list, so scroll to it:
         // a capture of the top would only show the factory groups and prove nothing
@@ -104,7 +104,7 @@ class AePresetUiCaptureTest {
     fun ae_leads_intensity_slider() {
         val (context, _) = open(AeInstrument.LEADS)
         val density = context.resources.displayMetrics.density
-        clickStage(595f, 23f, density)   // the "PLAY" tab
+        clickStage(500f, 23f, density)   // the "PLAY" tab (4th of 4 in the shared tab row, x 264..532)
         composeTestRule.mainClock.advanceTimeBy(400)
         composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/ae_leads_intensity.png")
     }
@@ -114,7 +114,7 @@ class AePresetUiCaptureTest {
     fun ae_preset_naming_sheet() {
         val (context, _) = open(AeInstrument.LEADS)
         val density = context.resources.displayMetrics.density
-        clickStage(635f, 23f, density)   // the save-to-disk button
+        clickStage(567f, 23f, density)   // the save-to-disk button (now at x 552..582)
         composeTestRule.mainClock.advanceTimeBy(600)
         composeTestRule.onNode(isDialog()).captureRoboImage(filePath = "src/test/screenshots/ae_preset_naming.png")
     }

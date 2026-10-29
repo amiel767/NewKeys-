@@ -44,21 +44,29 @@ internal fun AeCardBox(x: Number, y: Number, w: Number, h: Number, title: String
 }
 
 /**
- * LED fader: SVG track + cap, live value bar. Drag anywhere on the track.
+ * LED fader: the mixer's rail and cap, live value bar. Drag anywhere on the track.
+ *
+ * Sized at 75% of the first version: at 44 units wide the five rails took most of the card and
+ * read as the mixer's channel faders rather than as a level trim inside an instrument. The
+ * groove is inset from the rail body, so the rail is drawn narrower than [FADER_W] and stays
+ * centred on it.
+ *
+ * The value readout under the rail is gone on purpose: five numbers under five rails competed
+ * with the rail LEDs for attention, and the LED height already carries the level.
  *
  * The cap travels inside [CAP_TOP]..[CAP_BOTTOM]: the groove (y 8..144 of the SVG track)
  * shrunk so the whole cap stays inside and never covers the value readout below. Everything
- * derives from [capCenterY], so the drawing and the drag cannot disagree — that is what let
- * the cap sink onto the label and poke out of the top before.
+ * derives from [capCenterY], so the drawing and the drag cannot disagree.
  */
-private const val FADER_H = 160f
-private const val FADER_W = 44f
-private const val CAP_H = 40f
+private const val FADER_H = 120f
+private const val FADER_W = 33f
+private const val CAP_H = 30f
 private const val CAP_W = CAP_H * (1327f / 1657f)  // FaderThumb is portrait
+private const val RAIL_W = 18f
 private const val GROOVE_TOP = 8f
-private const val LABEL_TOP = 145f
+private const val LABEL_TOP = 112f
 private const val CAP_TOP = GROOVE_TOP + CAP_H / 2f
-private const val CAP_BOTTOM = LABEL_TOP - 4f - CAP_H / 2f
+private const val CAP_BOTTOM = LABEL_TOP - CAP_H / 2f
 private const val CAP_TRAVEL = CAP_BOTTOM - CAP_TOP
 
 /** Centre of the cap for a 0..1 value. */
@@ -78,12 +86,10 @@ private fun AeFader(c: AeCtl, idx: Int, x: Number, y: Number) {
     }) {
         // The track is the mixer's own FaderRail, not the flat SVG slot it replaced: the same
         // chassis, rim, groove and LED halo the channel faders use, so a Leads fader reads as the
-        // same piece of hardware. It is 86 units wide in its own space and scales from the box,
-        // and its groove is inset by 36 units top and bottom, which is what the cap travel above
-        // already accounts for.
+        // same piece of hardware. It is 86 units wide in its own space and scales from the box.
         FaderRail(
             accent = Color(0xFF19E3FF),
-            modifier = Modifier.at(FADER_W / 2f - 12f, 0f, 24f, FADER_H),
+            modifier = Modifier.at(FADER_W / 2f - RAIL_W / 2f, 0f, RAIL_W, FADER_H),
             level = v,
             glow = 0.30f + 0.70f * v,
         )
@@ -97,23 +103,11 @@ private fun AeFader(c: AeCtl, idx: Int, x: Number, y: Number) {
                 glow = 0.28f + 0.72f * v,
             )
         }
-        AeT("${(v * 100).roundToInt()}", 10, Color(0xFF9FDCEA), Modifier.at(0, LABEL_TOP, FADER_W, 13), AeFonts.mono, FontWeight.Normal, align = TextAlign.Center)
     }
 }
 
 @Composable
-private fun LeadsTabs(c: AeCtl) {
-    val shape = RoundedCornerShape(50)
-    Box(Modifier.at(354, 7, 280, 32).clip(shape).background(Color(0x10FFFFFF)).border(1.su(), Color(0x18FFFFFF), shape))
-    arrayOf("SOUND", "SHAPE", "FX", "PLAY").forEachIndexed { i, t ->
-        val on = c.s.page == i
-        Box(Modifier.at(358 + i * 68, 10, 66, 26).clip(shape)
-            .then(if (on) Modifier.background(Brush.horizontalGradient(listOf(Color(0xFF19E3FF), Color(0xFF3A7BFF)))) else Modifier)
-            .clickable(remember { MutableInteractionSource() }, null) { c.s.page = i }, contentAlignment = Alignment.Center) {
-            AeT(t, 10, if (on) Color(0xFF02101A) else AeC.tx, spacing = 0.14f)
-        }
-    }
-}
+private fun LeadsTabs(c: AeCtl) = AePageTabs(c, arrayOf("SOUND", "SHAPE", "FX", "PLAY"))
 
 /** Mono lead: five layers with LED faders, oscilloscope, AHDSR + filter, FX, performance. Layout of the validated preview. */
 @Composable
@@ -131,7 +125,9 @@ fun BoxScope.AeLeadsUi(c: AeCtl, a: AeAnim, samples: FloatArray? = null) {
                 val x = 36 + i * 108
                 AeT(names[i], 9, CYAN, Modifier.at(x, 82, 100, 12), weight = FontWeight.ExtraBold, spacing = 0.2f, align = TextAlign.Center)
                 Canvas(Modifier.at(x + 30, 96, 40, 20)) { drawWaveIcon(i) }
-                AeFader(c, i, x + 32, 118)
+                // Centred on the wave icon above it (icon centre x = x+50, rail 33 wide), and
+                // centred in the gap between the icon and the octave switch below.
+                AeFader(c, i, x + 33.5f, 137)
                 // One octave switch per layer, the app's segmented toggle rather than three
                 // loose chips: "−1 0 +1" is a single setting with three positions.
                 AeSeg(listOf("−1", "0", "+1"), (c.v(5 + i) * 2f).roundToInt(), x + 3, 278, 102, CYAN, onSelect = { j -> c.set(5 + i, j / 2f) })
@@ -140,7 +136,7 @@ fun BoxScope.AeLeadsUi(c: AeCtl, a: AeAnim, samples: FloatArray? = null) {
             AeCardBox(604, 54, 374, 150, "OSCILLOSCOPE", CYAN, border)
             Canvas(Modifier.at(620, 82, 342, 107).clip(RoundedCornerShape(6.su()))) { a.frame.intValue; drawLeadScope(a, y, c.s.held.isNotEmpty(), samples) }
             AeCardBox(604, 210, 374, 130, "SHAPING", CYAN, border)
-            AeGlassKnob(c, 10, "Pulse W", 640, 240, 40); AeGlassKnob(c, 11, "Detune", 724, 240, 40); AeGlassKnob(c, 29, "Glide", 808, 240, 40); AeGlassKnob(c, 31, "Level", 892, 240, 40)
+            AeGlassKnob(c, 10, "Pulse W", 640, 238, 46); AeGlassKnob(c, 11, "Detune", 724, 238, 46); AeGlassKnob(c, 29, "Glide", 808, 238, 46); AeGlassKnob(c, 31, "Level", 892, 238, 46)
         }
         1 -> {
             AeCardBox(22, 54, 566, 286, "AHDSR ENVELOPE", CYAN, border)
@@ -150,22 +146,22 @@ fun BoxScope.AeLeadsUi(c: AeCtl, a: AeAnim, samples: FloatArray? = null) {
                 else if (px < 0.62f) { c.set(14, (px - 0.36f) / 0.26f); c.set(15, 1f - py) }
                 else if (px > 0.74f) c.set(16, (px - 0.74f) / 0.26f)
             }) { a.frame.intValue; drawLeadEnv(y) }
-            AeGlassKnob(c, 12, "Attack", 60, 244, 40); AeGlassKnob(c, 13, "Hold", 160, 244, 40); AeGlassKnob(c, 14, "Decay", 260, 244, 40); AeGlassKnob(c, 15, "Sustain", 360, 244, 40); AeGlassKnob(c, 16, "Release", 460, 244, 40)
+            AeGlassKnob(c, 12, "Attack", 60, 240, 48); AeGlassKnob(c, 13, "Hold", 160, 240, 48); AeGlassKnob(c, 14, "Decay", 260, 240, 48); AeGlassKnob(c, 15, "Sustain", 360, 240, 48); AeGlassKnob(c, 16, "Release", 460, 240, 48)
             AeCardBox(604, 54, 374, 286, "FILTER", CYAN, border)
             arrayOf("LP", "HP", "BP").forEachIndexed { i, t -> AeChip(c, 17, i, 3, t, 620 + i * 62, 82, 56) }
             Canvas(Modifier.at(620, 112, 342, 93).drag01 { px, py -> c.set(18, px); c.set(19, 1f - py) }) { a.frame.intValue; drawLeadFilter(a, y) }
-            AeGlassKnob(c, 18, "Cutoff", 640, 222, 44); AeGlassKnob(c, 19, "Reso", 726, 222, 44); AeGlassKnob(c, 20, "Env Amt", 812, 222, 44)
+            AeGlassKnob(c, 18, "Cutoff", 640, 218, 48); AeGlassKnob(c, 19, "Reso", 726, 218, 48); AeGlassKnob(c, 20, "Env Amt", 812, 218, 48)
         }
         2 -> {
             AeCardBox(22, 54, 300, 286, "DELAY", CYAN, border)
             Canvas(Modifier.at(38, 84, 268, 56)) { drawDelayViz(y) }
-            AeGlassKnob(c, 21, "Time", 50, 170, 46); AeGlassKnob(c, 22, "Feedback", 130, 170, 46); AeGlassKnob(c, 23, "Mix", 210, 170, 46)
+            AeGlassKnob(c, 21, "Time", 50, 166, 48); AeGlassKnob(c, 22, "Feedback", 130, 166, 48); AeGlassKnob(c, 23, "Mix", 210, 166, 48)
             AeCardBox(336, 54, 300, 286, "REVERB", CYAN, border)
             Canvas(Modifier.at(352, 84, 268, 56)) { drawReverbViz(y) }
-            AeGlassKnob(c, 24, "Size", 390, 170, 46); AeGlassKnob(c, 25, "Mix", 490, 170, 46)
+            AeGlassKnob(c, 24, "Size", 390, 166, 48); AeGlassKnob(c, 25, "Mix", 490, 166, 48)
             AeCardBox(650, 54, 328, 286, "CHORUS · TONE", CYAN, border)
             Canvas(Modifier.at(666, 84, 296, 56)) { a.frame.intValue; drawToneViz(y, a.t) }
-            AeGlassKnob(c, 26, "Chorus", 700, 170, 46); AeGlassKnob(c, 27, "Tone", 810, 170, 46)
+            AeGlassKnob(c, 26, "Chorus", 700, 166, 48); AeGlassKnob(c, 27, "Tone", 810, 166, 48)
         }
         else -> {
             AeCardBox(22, 54, 420, 286, "VOICE MODE", CYAN, border)
@@ -173,7 +169,7 @@ fun BoxScope.AeLeadsUi(c: AeCtl, a: AeAnim, samples: FloatArray? = null) {
             // Intensity sits in the empty band under the mode chips: the card is 286 tall
             // and the knobs end at 206, so this is the "de la place" the user pointed at.
             AeIntensitySlider(c, 32, 38, 122, 370, CYAN)
-            AeGlassKnob(c, 29, "Glide", 70, 186, 56); AeGlassKnob(c, 30, "Vibrato", 190, 186, 56); AeGlassKnob(c, 31, "Level", 310, 186, 56)
+            AeGlassKnob(c, 29, "Glide", 70, 182, 58); AeGlassKnob(c, 30, "Vibrato", 190, 182, 58); AeGlassKnob(c, 31, "Level", 310, 182, 58)
             AeCardBox(458, 54, 520, 286, "PERFORMANCE", CYAN, border)
             AeT(if (c.s.held.isEmpty()) "—" else noteName(c.s.lastNote), 64, Color(0xFFD9FBFF), Modifier.at(474, 96, 200, 80), AeFonts.display, FontWeight.Light)
             Canvas(Modifier.at(690, 90, 270, 86)) { a.frame.intValue; drawVibViz(y, a.t, c.s.held.isNotEmpty()) }

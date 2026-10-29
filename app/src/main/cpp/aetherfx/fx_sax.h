@@ -27,7 +27,7 @@ class SaxEngine : public SourceFx {
   void reset() override {
     ampStage_ = 0; ampT_ = 0.f; ampLvl_ = 0.f; relT_ = 0.f; relR_ = .2f;
     ph_[0] = ph_[1] = ph_[2] = 0.f; vibPh_ = 0.f; vibDriftPh_ = 0.f; breathLfoPh_ = 0.f; growlPh_ = 0.f;
-    scoopT_ = 0.f; fallT_ = 0.f; clickEnv_ = 0.f; relClickEnv_ = 0.f;
+    scoopT_ = 0.f; fallT_ = 0.f; clickEnv_ = 0.f; relClickEnv_ = 0.f; biteT_ = 1.f;
     q_ = -1.f; rng_ = 0x2545F491u; nVar_ = 1.f; pitchScale_ = 1.f; afScale_ = 1.f;
     nGainJit_ = 1.f; vfJit_ = 1.f; clickJit_ = 1.f; fallStart_ = 440.f; fallEnd_ = 440.f;
     held_.clear(); note_ = -1; freq_ = 440.f; target_ = 440.f;
@@ -44,7 +44,7 @@ class SaxEngine : public SourceFx {
     const float f = static_cast<float>(440.0 * std::pow(2.0, (note - 69) / 12.0));
     if (note_ >= 0 && p(15) > .12f) { target_ = f; note_ = note; return; }  // legato glide
     note_ = note; freq_ = f; target_ = f; vel_ = vel / 127.f;
-    ampStage_ = 1; ampT_ = 0.f; ampLvl_ = 0.f; fallT_ = 0.f;
+    ampStage_ = 1; ampT_ = 0.f; ampLvl_ = 0.f; fallT_ = 0.f; biteT_ = 0.f;
     scoopT_ = p(10) > .02f ? 1.f : 0.f;
     clickEnv_ = 1.f;
     smp_.noteOn(note, vel);
@@ -136,6 +136,9 @@ class SaxEngine : public SourceFx {
     const float bLfoRate = .1f + p(4) * .4f;
     const float ngModDepth = p(4) * .15f + .03f, ampModDepth = p(4) * .05f + .01f, bPitchDepth = p(4) * 2.5f + 1.f;
     float peak = 0.f;
+    // Last sample's live frequency, for the sample reader's pitch factor (see the block
+    // comment after the loop). Seeded on the target so an idle block reads as "no detune".
+    float lastF = target_;
     for (int i = 0; i < n; ++i) {
       // ---- amplitude envelope ----
       float amp;
@@ -164,6 +167,7 @@ class SaxEngine : public SourceFx {
       const float bLfo = sineTable().at(breathLfoPh_);
       // ---- reed oscillators: two detuned copies + optional sub ----
       const float f = pitch * std::pow(2.f, (vib + bLfo * bPitchDepth) / 1200.f);
+      lastF = f;
       const float inc1 = f * invSr, inc2 = f * std::pow(2.f, 6.f / 1200.f) * invSr, incS = f * .5f * invSr;
       float mix = reed(ph_[0]) * .55f + reed(ph_[1]) * .35f;
       ph_[0] += inc1; if (ph_[0] >= 1.f) ph_[0] -= 1.f;
@@ -188,7 +192,21 @@ class SaxEngine : public SourceFx {
       // ---- growl AM (fast) and breath AM (slow) ----
       growlPh_ += static_cast<float>(growlHz * invSr); if (growlPh_ >= 1.f) growlPh_ -= 1.f;
       x *= (1.f + sineTable().at(growlPh_) * growlD) * amp * (1.f + bLfo * ampModDepth);
+      // ---- hybrid mix: the pack supplies the timbre, the synthesis stays under it ----
+      // Applied after the formant chain on purpose: the recorded sax already carries
+      // its own formant, so running it through form_[0..3] would apply it twice.
+      // The sample keeps its own envelope, hence the mix happens after `amp`.
+      if (sampleMix_ > .001f && smp_.active()) {
+        float sm = 0.f;
+        smp_.render(&sm, 1, kSampleGain);
+        x = x * (1.f - sampleMix_) + sm * sampleMix_;
+      }
       // ---- key click: at note-on, and a shorter one at release when there is a fall ----
+      // Both sit *after* the mix, not before it. They used to be summed into the synthesis
+      // branch, so at mix 1.0 the mix replaced the whole sum and threw the click away: the
+      // measured attack of the sampled voice was 0.08x its sustain, against 0.41x for the
+      // synthesis, which is the "no punch" the user heard. The reed slap belongs to the
+      // instrument, not to one of its two sound sources.
       if (clickEnv_ > 1e-4f) {
         clickF_.setBandpass(sr_, 2800.f + (freq_ / 440.f - 1.f) * -200.f + clickJit_ * 400.f, 1.6f);
         x += clickF_.process(0, noise_.next()) * p(9) * .3f * (.6f + clickJit_ * .6f) * clickEnv_;
@@ -199,22 +217,26 @@ class SaxEngine : public SourceFx {
         x += clickF_.process(0, noise_.next()) * relClickEnv_;
         relClickEnv_ *= std::exp(static_cast<float>(-1.0 / (.015 * sr_)));
       }
-      // ---- hybrid mix: the pack supplies the timbre, the synthesis stays under it ----
-      // Applied after the formant chain on purpose: the recorded sax already carries
-      // its own formant, so running it through form_[0..3] would apply it twice.
-      // The sample keeps its own envelope, hence the mix happens after `amp`.
-      if (sampleMix_ > .001f && smp_.active()) {
-        float sm = 0.f;
-        smp_.render(&sm, 1, kSampleGain);
-        x = x * (1.f - sampleMix_) + sm * sampleMix_;
-      }
       // ---- warm/bright shelves then out ----
       x = bright_.process(0, warm_.process(0, x));
+      // ---- bite ----
+      // A saxophone note starts with a reed slap the microphone never captures, so at mix 1.0
+      // the instrument had no attack transient at all. A short lift gated to the first ~35 ms
+      // of the note restores it; it is applied after the mix, so both voices get it.
+      biteT_ += invSr;
+      if (biteT_ < .035f) {
+        const float u = 1.f - biteT_ / .035f;
+        x *= 1.f + u * u * (0.9f + p(7) * 0.6f);
+      }
       x *= p(20) * .8f;
       io[2 * i] += x; io[2 * i + 1] += x;
       peak = std::max(peak, std::fabs(x));
     }
     if (p(16) > 0.01f) rev_.process(io, n);
+    // Push the live pitch factor to the sample reader once per block, after the loop: bend,
+    // vibrato, scoop and fall are computed inside it, and at mix 1.0 the samples ARE the
+    // voice, so without this none of those controls could be heard.
+    smp_.setPitchScale((target_ > 1e-6f) ? lastF / target_ : 1.f);
     setMeter(0, peak);
   }
 
@@ -362,6 +384,7 @@ class SaxEngine : public SourceFx {
   float bend_ = 0.f;
   float freq_ = 440.f, target_ = 440.f, vel_ = 0.f, ampT_ = 0.f, ampLvl_ = 0.f, relT_ = 0.f, relR_ = .2f;
   float ph_[3] = {0, 0, 0}, vibPh_ = 0.f, vibDriftPh_ = 0.f, breathLfoPh_ = 0.f, growlPh_ = 0.f;
+  float biteT_ = 1.f;
   float scoopT_ = 0.f, fallT_ = 0.f, clickEnv_ = 0.f, relClickEnv_ = 0.f;
   float q_ = -1.f, nVar_ = 1.f, pitchScale_ = 1.f, afScale_ = 1.f, nGainJit_ = 1.f, vfJit_ = 1.f, clickJit_ = 1.f;
   float fallStart_ = 440.f, fallEnd_ = 440.f;

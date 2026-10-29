@@ -112,10 +112,10 @@ fun BoxScope.AeSaxUi(c: AeCtl, a: AeAnim) {
     arrayOf("SOFT", "MEDIUM", "HARD").forEachIndexed { i, t -> AeChip(c, 3, i, 3, t, 36 + i * 90, 218, 86) }
     Canvas(Modifier.at(38, 266, 180, 14)) { a.frame.intValue; drawSaxVu(a) }
     AeT("OUTPUT", 9, GOLD, Modifier.at(38, 286, 100, 12), AeFonts.plate, FontWeight.ExtraBold, 0.2f)
-    AeGlassKnob(c, 20, "Level", 262, 252, 38)
+    AeGlassKnob(c, 20, "Level", 262, 250, 42)
     AeCardBox(678, 54, 300, 286, "EXPRESSION · ARTICULATION · ROOM", GOLD, border, AeFonts.plate)
     listOf(4 to "Breath", 5 to "Growl", 6 to "Subtone", 7 to "Grit", 8 to "Attack", 9 to "Click", 10 to "Scoop", 11 to "Fall",
         12 to "V.Depth", 13 to "V.Rate", 14 to "V.Delay", 15 to "Legato", 16 to "Room", 17 to "Size", 18 to "Warm", 19 to "Bright")
-        .forEachIndexed { i, (k, l) -> AeGlassKnob(c, k, l, 704 + (i % 4) * 72, 80 + (i / 4) * 64, 32) }
+        .forEachIndexed { i, (k, l) -> AeGlassKnob(c, k, l, 704 + (i % 4) * 72, 78 + (i / 4) * 66, 36) }
     AeKeyboard(c, 52, 360, 896, 90)
 }

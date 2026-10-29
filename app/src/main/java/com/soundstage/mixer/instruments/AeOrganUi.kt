@@ -118,7 +118,7 @@ fun BoxScope.AeOrganUi(c: AeCtl, a: AeAnim) {
     }
     // Slightly larger than the preview's 34: on the device the row read as too small under the
     // labels, and the user asked for it. The spacing (70 units) still clears a 40-unit cap.
-    AeMetalKnob(c, 26, "CLICK", 636, 296, 40); AeMetalKnob(c, 28, "DRIVE", 706, 296, 40); AeMetalKnob(c, 27, "TONE", 776, 296, 40)
-    AeMetalKnob(c, 29, "SPACE", 846, 296, 40); AeMetalKnob(c, 30, "LEVEL", 916, 296, 40)
+    AeMetalKnob(c, 26, "CLICK", 640, 288, 44); AeMetalKnob(c, 28, "DRIVE", 716, 288, 44); AeMetalKnob(c, 27, "TONE", 792, 288, 44)
+    AeMetalKnob(c, 29, "SPACE", 868, 288, 44); AeMetalKnob(c, 30, "LEVEL", 944, 288, 44)
     AeKeyboard(c, 52, 360, 896, 90)
 }

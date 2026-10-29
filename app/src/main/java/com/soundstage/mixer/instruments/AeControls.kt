@@ -42,7 +42,55 @@ class AeCtl(val s: AeSession, val m: AeManager) {
 }
 
 @Composable
-private fun Modifier.noRipple(onClick: () -> Unit): Modifier = clickable(remember { MutableInteractionSource() }, null, onClick = onClick)
+internal fun Modifier.noRipple(onClick: () -> Unit): Modifier = clickable(remember { MutableInteractionSource() }, null, onClick = onClick)
+
+/**
+ * Recessed well, painted over the fill instead of stroked around it.
+ *
+ * Depth on a real control comes from light falling *into* the recess: the top edge of the well
+ * is in shadow, the bottom lip catches the light. A 1 px outline around the shape reads as a
+ * sticker laid on the panel, which is what these controls looked like. Two gradients and a
+ * bottom lip give the same read with no stroke at all.
+ */
+private fun Modifier.aeInset(radius: CornerRadius): Modifier = drawWithContent {
+    drawContent()
+    drawRoundRect(
+        brush = Brush.verticalGradient(listOf(Color(0x73000000), Color(0x00000000)), endY = size.height * 0.6f),
+        cornerRadius = radius,
+    )
+    drawRoundRect(
+        brush = Brush.verticalGradient(listOf(Color(0x00000000), Color(0x14FFFFFF)), startY = size.height * 0.55f),
+        cornerRadius = radius,
+    )
+    drawRoundRect(
+        color = Color(0x1AFFFFFF),
+        topLeft = Offset(radius.x * 0.7f, size.height - 1f),
+        size = Size(size.width - radius.x * 1.4f, 1f),
+        cornerRadius = CornerRadius(0.5f),
+    )
+}
+
+/**
+ * Raised face: a lit top edge, a shaded bottom edge and a tight drop shadow, so the thumb reads
+ * as sitting *above* the well rather than as a flat block of colour inside it.
+ */
+private fun Modifier.aeRaised(radius: CornerRadius): Modifier = drawWithContent {
+    drawContent()
+    drawRoundRect(
+        brush = Brush.verticalGradient(listOf(Color(0x30FFFFFF), Color(0x00FFFFFF)), endY = size.height * 0.5f),
+        cornerRadius = radius,
+    )
+    drawRoundRect(
+        brush = Brush.verticalGradient(listOf(Color(0x00000000), Color(0x80000000)), startY = size.height * 0.5f),
+        cornerRadius = radius,
+    )
+    drawRoundRect(
+        color = Color(0x45000000),
+        topLeft = Offset(radius.x * 0.5f, size.height - 1.5f),
+        size = Size(size.width - radius.x, 2f),
+        cornerRadius = CornerRadius(1f),
+    )
+}
 
 /**
  * Drag sets the value; a double tap resets the knob to the current preset's value for that
@@ -68,8 +116,13 @@ fun AeGlassKnob(c: AeCtl, idx: Int, label: String, x: Number, y: Number, size: N
     val p = c.pal
     val sc = LocalAeScale.current
     val sz = size.toFloat()
+    // The hit box is `sz + 22` wide and `sz + 26` tall: wide enough for the widest label
+    // ("FEEDBACK") and the value under it, and never wider than the tightest row pitch in the
+    // instrument windows (66 units), so growing the caps cannot make two knobs share a sliver
+    // of touch area.
+    val boxW = sz + 22f
     Column(
-        Modifier.at(x.toFloat() - 11f, y, sz + 22f, sz + 28f).aeKnobInput(c, idx),
+        Modifier.at(x.toFloat() - 11f, y, boxW, sz + 26f).aeKnobInput(c, idx),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(Modifier.size(size.su())) {
@@ -91,8 +144,8 @@ fun AeGlassKnob(c: AeCtl, idx: Int, label: String, x: Number, y: Number, size: N
                 }
             }
         }
-        AeT(label.uppercase(), 9, p.label, spacing = 0.12f, align = TextAlign.Center)
-        AeT(c.fmt(idx), 10, AeC.tx, font = AeFonts.mono, weight = FontWeight.Normal, align = TextAlign.Center)
+        AeT(label.uppercase(), 9, p.label, Modifier.fillMaxWidth(), spacing = 0.12f, align = TextAlign.Center)
+        AeT(c.fmt(idx), 10, AeC.tx, Modifier.fillMaxWidth(), font = AeFonts.mono, weight = FontWeight.Normal, align = TextAlign.Center)
     }
 }
 
@@ -102,7 +155,7 @@ fun AeMetalKnob(c: AeCtl, idx: Int, label: String, x: Number, y: Number, size: N
     val sc = LocalAeScale.current
     val sz = size.toFloat()
     Column(
-        Modifier.at(x.toFloat() - 8f, y, sz + 16f, sz + 14f).aeKnobInput(c, idx),
+        Modifier.at(x.toFloat() - 13f, y, sz + 26f, sz + 22f).aeKnobInput(c, idx),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(Modifier.size(size.su()).aeSvg(AeSvgs.KNOB_METAL)) {
@@ -113,7 +166,39 @@ fun AeMetalKnob(c: AeCtl, idx: Int, label: String, x: Number, y: Number, size: N
                 }
             }
         }
-        AeT(label, 7.5f, AeC.goldDim, font = AeFonts.plate, spacing = 0.1f, align = TextAlign.Center, modifier = Modifier.padding(top = 2.su()))
+        AeT(label, 8, AeC.goldDim, Modifier.fillMaxWidth().padding(top = 2.su()), font = AeFonts.plate, spacing = 0.1f, align = TextAlign.Center)
+    }
+}
+
+/**
+ * Page tabs for an instrument window.
+ *
+ * Shared so the header geometry exists in one place. The tabs used to be laid out from a
+ * per-instrument x (354 for Leads, 318 for Synth) and the Synth row ran to x=682 — straight
+ * under the save-disk button at x=620 — which is what read as "the tabs crush the disk". A
+ * fixed span with an equal slot per label keeps the widest row (Synth's three labels) inside
+ * the same space as the narrowest (Leads' four), so neither can reach the disk again.
+ */
+@Composable
+fun AePageTabs(c: AeCtl, labels: Array<String>, x: Number = 264, w: Number = 268) {
+    val n = labels.size
+    if (n == 0) return
+    val slot = w.toFloat() / n
+    val shape = RoundedCornerShape(50)
+    Box(Modifier.at(x, 7, w, 32).clip(shape).background(Color(0xFF070A11)).aeInset(CornerRadius(16f)))
+    labels.forEachIndexed { i, t ->
+        val on = c.s.page == i
+        Box(
+            Modifier.at(x.toFloat() + i * slot + 3f, 10, slot - 6f, 26)
+                .clip(shape)
+                .then(
+                    if (on) Modifier.background(Brush.horizontalGradient(listOf(c.pal.chipOn1, c.pal.chipOn0)))
+                        .aeRaised(CornerRadius(13f))
+                    else Modifier
+                )
+                .noRipple { c.s.page = i },
+            contentAlignment = Alignment.Center,
+        ) { AeT(t, 10, if (on) c.pal.chipText else AeC.tx, spacing = 0.12f) }
     }
 }
 
@@ -122,33 +207,19 @@ fun AeMetalKnob(c: AeCtl, idx: Int, label: String, x: Number, y: Number, size: N
 fun AeChip(c: AeCtl, idx: Int, i: Int, n: Int, label: String, x: Number, y: Number, w: Number) {
     val p = c.pal
     val on = (c.v(idx) * (n - 1)).roundToInt() == i
-    val shape = RoundedCornerShape(50)
+    val r = CornerRadius(21f / 2f)
     Box(
         Modifier.at(x, y, w, 21)
-            .clip(shape)
-            // The selected chip used to be a flat gradient with a 1 px outline, which reads as a
-            // sticker laid on the panel. A control that is "pressed" should look recessed, so the
-            // selected state is now a dark well with an inner shadow along its top edge; the
-            // unselected one keeps the raised face with a light top bevel.
+            .clip(RoundedCornerShape(50))
+            // Selected = a dark well with the light falling into it; unselected = a raised face
+            // with a lit top bevel. No outline on either: a 1 px stroke around the shape is what
+            // made the selected chip read as a sticker laid on the panel rather than as a control
+            // that is pressed in.
             .background(
-                if (on) Brush.verticalGradient(listOf(Color(0xE603060B), Color(0xF20B1119)))
+                if (on) Brush.verticalGradient(listOf(Color(0xFF04070C), Color(0xFF0C1219)))
                 else Brush.verticalGradient(listOf(Color(0x1AFFFFFF), Color(0x0AFFFFFF))),
             )
-            .then(
-                if (on) Modifier.drawWithContent {
-                    drawContent()
-                    drawRoundRect(
-                        brush = Brush.verticalGradient(listOf(Color(0x66000000), Color(0x00000000)), endY = size.height * 0.7f),
-                        cornerRadius = CornerRadius(size.height / 2f),
-                    )
-                    drawRoundRect(
-                        brush = Brush.verticalGradient(listOf(Color(0x59FFFFFF), Color(0x00FFFFFF)), endY = size.height * 0.45f),
-                        style = Stroke(width = 1f * density),
-                        cornerRadius = CornerRadius(size.height / 2f),
-                    )
-                } else Modifier
-            )
-            .border(1.su(), if (on) Color(0x14FFFFFF) else Color(0x1CFFFFFF), shape)
+            .then(if (on) Modifier.aeInset(r) else Modifier)
             .noRipple { c.set(idx, i.toFloat() / (n - 1)) },
         contentAlignment = Alignment.Center,
     ) {
@@ -172,12 +243,22 @@ fun AeChip(c: AeCtl, idx: Int, i: Int, n: Int, label: String, x: Number, y: Numb
 }
 
 /**
- * Segmented toggle at scene scale: one track, a thumb that slides between the options.
+ * Segmented toggle at scene scale: one recessed track, a raised thumb that slides between the
+ * options.
  *
  * This is the app's [com.soundstage.mixer.ui.tracksettings] Segmented, re-expressed in the
  * 1000x460 stage units so it can live inside an instrument window. It exists because a row of
  * independent chips reads as "three buttons", while a segmented control reads as "one setting
  * with three positions" — which is what an octave switch and a filter type actually are.
+ *
+ * Two things were wrong in the first version and both showed as "the thumb does not sit on the
+ * label":
+ *  - the thumb was positioned on `w / n` while the track had already been inset by 2 units of
+ *    padding, so every step drifted 2 units and the last one hung outside the track;
+ *  - the thumb was the same width as the *label cell* rather than of the recess, so it filled
+ *    the well edge to edge and the two read as one flat block.
+ * The thumb is now sized from the inner width and moves inside the padding, so it lands exactly
+ * on the label at every position.
  */
 @Composable
 fun AeSeg(
@@ -188,33 +269,34 @@ fun AeSeg(
     w: Number,
     accent: Color,
     onSelect: (Int) -> Unit,
-    h: Number = 24,
+    h: Number = 26,
 ) {
     if (options.isEmpty()) return
     val n = options.size
     val sel = selected.coerceIn(0, n - 1)
-    val shape = RoundedCornerShape(50)
-    val segW = w.toFloat() / n
-    val tx by animateFloatAsState(segW * sel, spring(dampingRatio = 0.72f, stiffness = 900f), label = "aeSeg")
+    val pad = 2f
+    val inner = w.toFloat() - pad * 2f
+    val segW = inner / n
+    val tx by animateFloatAsState(segW * sel, spring(dampingRatio = 0.78f, stiffness = 900f), label = "aeSeg")
     Box(
-        Modifier.at(x, y, w, h).clip(shape)
-            .background(Brush.verticalGradient(listOf(Color(0xF00A0E16), Color(0xF2121824))))
-            .border(1.su(), Color(0x14FFFFFF), shape)
-            .padding(2.su()),
+        Modifier.at(x, y, w, h)
+            .clip(RoundedCornerShape(h.toFloat() / 2f))
+            .background(Brush.verticalGradient(listOf(Color(0xFF070A11), Color(0xFF10161F))))
+            .aeInset(CornerRadius(h.toFloat() / 2f)),
     ) {
         Box(
-            Modifier.at(tx, 0, segW, h.toFloat() - 4f)
-                .clip(shape)
-                .background(Brush.verticalGradient(listOf(Color(0xFF39445E), Color(0xFF28324A))))
-                .border(1.su(), Color(0x1AFFFFFF), shape),
+            Modifier.at(pad + tx, pad, segW, h.toFloat() - pad * 2f)
+                .clip(RoundedCornerShape((h.toFloat() - pad * 2f) / 2f))
+                .background(Brush.verticalGradient(listOf(Color(0xFF3B4762), Color(0xFF242E44))))
+                .aeRaised(CornerRadius((h.toFloat() - pad * 2f) / 2f)),
         )
-        Row(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxSize().padding(horizontal = pad.su())) {
             options.forEachIndexed { i, label ->
                 val on = i == sel
                 Box(
                     Modifier.weight(1f).fillMaxHeight().noRipple { onSelect(i) },
                     contentAlignment = Alignment.Center,
-                ) { AeT(label, 9, if (on) Color(0xFFF1F4FA) else AeC.mute, weight = if (on) FontWeight.Bold else FontWeight.SemiBold, spacing = 0.06f) }
+                ) { AeT(label, 10, if (on) Color(0xFFF4F7FD) else AeC.mute, weight = if (on) FontWeight.Bold else FontWeight.SemiBold, spacing = 0.04f) }
             }
         }
     }
@@ -387,5 +469,8 @@ object AePals {
     val SYNTH = AePal(Color(0xFF5A3CFF), Color(0xFFE05CFF), Color(0x55C06AFF), AeC.knobLabel, AeC.p1, AeC.p2, Color.White, AeSvgs.KNOB_GLASS)
     val LEADS = AePal(Color(0xFF3A7BFF), Color(0xFF19E3FF), Color(0x5519E3FF), Color(0xFF79AEBD), Color(0xFF19E3FF), Color(0xFF3A7BFF), Color(0xFF02101A), AeSvgs.KNOB_GLASS_CYAN)
     val SAX = AePal(Color(0xFFC8702A), Color(0xFFF2B84A), Color(0x55F2B84A), Color(0xFFC9A56A), Color(0xFFF2B84A), Color(0xFFC8702A), Color(0xFF1A0D04), AeSvgs.KNOB_GLASS_AMBER)
+
+    /** Same resolution the [pal] extension applies to a session, exposed for callers that only hold an instrument. */
+    fun of(i: AeInstrument): AePal = when (i) { AeInstrument.LEADS -> LEADS; AeInstrument.SAX -> SAX; else -> SYNTH }
 }
-val AeCtl.pal: AePal get() = when (s.instrument) { AeInstrument.LEADS -> AePals.LEADS; AeInstrument.SAX -> AePals.SAX; else -> AePals.SYNTH }
+val AeCtl.pal: AePal get() = AePals.of(s.instrument)

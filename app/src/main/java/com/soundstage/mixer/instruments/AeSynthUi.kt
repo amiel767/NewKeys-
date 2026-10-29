@@ -48,28 +48,20 @@ fun BoxScope.AeSynthUi(c: AeCtl, a: AeAnim) {
     Canvas(Modifier.at(375, 50, 250, 250)) { a.frame.intValue; drawOrb(a, y) }
 
     // page tabs
-    val tabShape = RoundedCornerShape(50)
-    Box(Modifier.at(318, 7, 364, 32).clip(tabShape).background(Color(0x10FFFFFF)).border(1.su(), Color(0x18FFFFFF), tabShape))
-    arrayOf("SOUND", "MOTION", "VOICE").forEachIndexed { i, t ->
-        val on = c.s.page == i
-        Box(Modifier.at(322 + i * 119, 10, 117, 26).clip(tabShape).then(if (on) Modifier.background(Brush.horizontalGradient(listOf(AeC.p1, AeC.p2))) else Modifier)
-            .clickable(remember { MutableInteractionSource() }, null) { c.s.page = i }, contentAlignment = Alignment.Center) {
-            AeT(t, 10, Color.White, spacing = 0.14f)
-        }
-    }
+    AePageTabs(c, arrayOf("SOUND", "MOTION", "VOICE"))
 
     when (c.s.page) {
         0 -> {
             Card(22, 54, 272, 286, "OSCILLATORS")
             Canvas(Modifier.at(36, 88, 240, 42)) { a.frame.intValue; drawWave(y(0), if (c.s.held.isEmpty()) 0f else a.t * 0.6f) }
             Canvas(Modifier.at(36, 136, 240, 42)) { a.frame.intValue; drawWave(y(1), if (c.s.held.isEmpty()) 0.3f else a.t * 0.6f + 0.3f) }
-            AeGlassKnob(c, 0, "Wave A", 36, 190, 42); AeGlassKnob(c, 1, "Wave B", 104, 190, 42); AeGlassKnob(c, 2, "Detune", 172, 190, 42); AeGlassKnob(c, 3, "Sub", 240, 190, 42)
-            AeGlassKnob(c, 4, "Noise", 36, 262, 42); AeGlassKnob(c, 5, "Unison", 104, 262, 42); AeGlassKnob(c, 6, "Spread", 172, 262, 42)
+            AeGlassKnob(c, 0, "Wave A", 40, 188, 46); AeGlassKnob(c, 1, "Wave B", 106, 188, 46); AeGlassKnob(c, 2, "Detune", 172, 188, 46); AeGlassKnob(c, 3, "Sub", 238, 188, 46)
+            AeGlassKnob(c, 4, "Noise", 40, 254, 46); AeGlassKnob(c, 5, "Unison", 106, 254, 46); AeGlassKnob(c, 6, "Spread", 172, 254, 46)
 
             Card(706, 54, 272, 196, "FILTER")
             arrayOf("LP", "HP", "BP", "NOTCH").forEachIndexed { i, t -> AeChip(c, 11, i, 4, t, 722 + i * 56, 82, 52) }
             Canvas(Modifier.at(720, 108, 250, 75).drag01 { px, py -> c.set(7, px); c.set(8, 1f - py) }) { a.frame.intValue; drawFilter(a, y) }
-            AeGlassKnob(c, 7, "Cutoff", 720, 192, 36); AeGlassKnob(c, 8, "Reso", 782, 192, 36); AeGlassKnob(c, 9, "Drive", 844, 192, 36); AeGlassKnob(c, 10, "Env", 906, 192, 36)
+            AeGlassKnob(c, 7, "Cutoff", 722, 188, 40); AeGlassKnob(c, 8, "Reso", 784, 188, 40); AeGlassKnob(c, 9, "Drive", 846, 188, 40); AeGlassKnob(c, 10, "Env", 908, 188, 40)
 
             Card(706, 256, 272, 84, "ENVELOPE")
             Canvas(Modifier.at(720, 282, 250, 50).drag01 { px, py ->
@@ -88,7 +80,7 @@ fun BoxScope.AeSynthUi(c: AeCtl, a: AeAnim) {
             Canvas(Modifier.at(682, 86, 280, 55)) { a.frame.intValue; drawLfo(0.1f * Math.pow(100.0, y(20).toDouble()).toFloat(), 0, y(21), a.t * 0.1f * Math.pow(100.0, y(20).toDouble()).toFloat()) }
             AeGlassKnob(c, 20, "Rate", 710, 226, 46); AeGlassKnob(c, 21, "Depth", 810, 226, 46)
             AeT("MACROS", 9, AeC.violet, Modifier.at(372, 296, 256, 12), spacing = 0.2f, weight = FontWeight.ExtraBold, align = TextAlign.Center)
-            AeGlassKnob(c, 22, "Color", 338, 308, 30); AeGlassKnob(c, 23, "Motion", 414, 308, 30); AeGlassKnob(c, 24, "Grit", 490, 308, 30); AeGlassKnob(c, 25, "Air", 566, 308, 30)
+            AeGlassKnob(c, 22, "Color", 338, 306, 38); AeGlassKnob(c, 23, "Motion", 414, 306, 38); AeGlassKnob(c, 24, "Grit", 490, 306, 38); AeGlassKnob(c, 25, "Air", 566, 306, 38)
         }
         else -> {
             Card(22, 54, 312, 286, "VOICE")
