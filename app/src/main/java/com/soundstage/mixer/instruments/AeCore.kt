@@ -11,7 +11,7 @@ import kotlin.math.roundToInt
 
 /** The Æther Instruments. [fxId] = id of the native Source in FxRegistry (6 organ, 14 synth, 15 leads, 16 sax). */
 enum class AeInstrument(val fxId: Int, val title: String, val paramCount: Int) {
-    ORGAN(6, "Æther Organ", 31), SYNTH(14, "Æther Synth", 33), LEADS(15, "Æther Leads", 33), SAX(16, "Æther Sax", 21);
+    ORGAN(6, "Æther Organ", 31), SYNTH(14, "Æther Synth", 33), LEADS(15, "Æther Leads", 33), SAX(16, "Æther Sax", 22);
     /** Parameters that switch instantly on a preset change (the others glide). */
     val discrete: IntArray get() = when (this) {
         ORGAN -> intArrayOf(18, 19, 20, 21, 22, 23, 24, 25)
@@ -44,6 +44,7 @@ object AeFmt {
     }
     private fun sax(i: Int, v: Float): String = when (i) {
         13 -> "%.1fHz".format(3.5f + v * 4f); 14 -> "${(v * 800).toInt()}ms"; 15 -> "${(v * v * 400).toInt()}ms"; 20 -> "${(-40 + v * 46).toInt()}dB"
+        21 -> "${(v * 100).toInt()}%"
         else -> pct(v)
     }
     private fun classic(inst: AeInstrument, i: Int, v: Float): String = if (inst == AeInstrument.ORGAN) {

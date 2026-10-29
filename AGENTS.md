@@ -1587,3 +1587,80 @@ C'est le seul moyen de valider la voix sax sans appareil.
 `/workspace/dl/pub/index.html` servi sur **port 12000** : 13 JPEG (~600 Ko) + 3 MP3.
 **Piège** : cette page contenait déjà les médias de la session précédente — ne pas écraser
 `index.html` sans reprendre les fichiers existants (`ls *.jpg *.mp3`).
+
+## Session 2026-10-29 (suite) — navigateur de presets a 3 volets, humanize du sax, ecrêtage
+
+Trois chantiers menes d'affilee. Conversation economique (pas de `conv_sync` repete,
+medias en JPEG/MP3 leger). HEAD de depart : `fc64eaf`.
+
+### 1. Navigateur de presets : troisieme forme, inspiree des plug-ins
+
+L'utilisateur a demande « un autre style d'affichage » (recherche web indisponible : quota
+Tavily epuise). La liste etait deja passee d'un empilement de barres pleine largeur (8
+visibles) a un index 2 colonnes (~30 visibles). Les deux ont ete **remplaces** par un
+navigateur a **3 volets**, la forme des navigateurs Arturia Analog Lab / Serum :
+
+| Volet | Contenu |
+|---|---|
+| rail gauche (214 u) | « All » + chaque categorie avec son **compte** ; selection = pastille remplie + barre d'accent |
+| liste droite | les presets **filtres**, **numerotes**, categorie affichee quand le filtre est « All » |
+| entete | « N of M » sous le titre — c'est ce qui fait lire le filtre comme un filtre |
+
+`var cat by remember(s.instrument) { mutableStateOf<String?>(null) }` : `null` = All. La
+categorie est stockee par **nom**, pas par index, pour survivre a la reconstruction de la
+liste quand un preset utilisateur est sauve ou supprime.
+
+**Piege du test de capture** : l'ancien test scrollait jusqu'en bas (12 `swipeUp`) pour
+montrer la categorie User — la capture ne montrait donc plus le design. Il est scinde en
+deux : `ae_leads_preset_list` (haut, sans scroll) et `ae_preset_user` (bas, entree User +
+bouton supprimer).
+
+### 2. Sax : « avec faconneur sonne moins bon que le libre sans faconneur »
+
+Le pack **n'etait pas desaccorde** (mesure sur 22 notes : ecart qui **change de signe**,
+signature du suivi de formants aleatoire par note, pas d'un biais). Le vrai defaut etait
+**l'ecrêtage**, et il venait de la **reverb**, pas du pack :
+
+| Mesure (Level 1.0, note 60) | pack | synthese |
+|---|---|---|
+| crete **reverb coupee** | 0,908 | 0,920 |
+| crete **reverb active** | **1,294** | 0,832 |
+| echantillons > 0,95 | 8,4 % | 0 % |
+
+La reverb ajoutait **+43 %** de crete. Le limiteur du mixer ecrasait donc chaque crete de
+sustain de la voix echantillonnee — c'est cette distorsion, plus que le timbre, que
+l'utilisateur entendait.
+
+**Correctif** : ecrêtage doux (genou a 0,75, `tanh`) **sur la somme, apres la reverb**.
+Place **dans la boucle** il ne faisait rien (la reverb est ajoutee ensuite) — c'est le
+piege. Resultat : crete **1,294 -> 0,994**, synthese **intacte** (0,832, elle ne depasse
+jamais 0,75 en sec). 0 echantillon ecrêtait des deux cotes.
+
+Le gain de sortie avait ete monte a 1,30 sur une mesure prise avec un autre preset :
+mesure sur 6 combinaisons instrument/anche, pack et synthese sortent au **meme RMS a 25 %
+pres** (0,99 / 1,04 / 0,99 / 1,20 / 0,91 / 1,25). Gain remis a **1,0** (mesure), pas 1,30.
+
+### 3. Humanize (22e parametre du sax)
+
+`fx_sax.h` : `paramCount()` 21 -> **22**, index 21 = Humanize, applique a l'attaque
+(`humAtk_`) et a la profondeur de vibrato (`humVib_`). Mesure : etalement de hauteur
+**10,3 cents a 0 / 27,1 cents a 1** sur 14 repetitions. UI : slider `AeIntensitySlider`
+sous OUTPUT (pas dans la grille d'articulation : c'est le modele de joueur, pas un reglage
+d'articulation). Les 23 presets sax sont passes de 21 a 22 valeurs (`padded` dans
+`AeCore` gere les anciens fichiers, defaut 0,5).
+
+### Banc `tools/aetherfx/sax_voice_check.cpp` — 7 sections, 0 echec
+
+Ajoute : legato (le slur **deplace** la voix echantillonnee), humanize, accord.
+**Trois pieges de mesure** corriges dans le banc lui-meme, a relire avant d'y toucher :
+
+- **vibrato** : la loi est **lineaire** (`p(12) * 38` cents). A 0,3 elle ne fait que
+  11 cents, sous le plancher de mesure (~12 cents) — le banc signalait « pas de
+  changement » pour un vibrato qui marchait. Utiliser 0 / 0,5 / 1,0.
+- **legato** : a `legato = 0` le moteur **rearticule** (nouvel echantillon + attaque +
+  glide). Mesurer a 0,5 s tombait dans l'attaque ; mesurer a 0,72 s.
+- **accord** : une fenetre de 0,12 s ne resout que **22 cents** a 659 Hz — le banc
+  mesurait sa propre resolution. Fenetre 0,25 s, seuil 40 cents (le suivi de formants
+  aleatoire par note deplace le pic de tens de quelques dizaines de cents).
+
+Le seuil de continuite (sauts > 0,25) reste a **0** sur les 7 notes testes.

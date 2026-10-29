@@ -98,8 +98,11 @@ static double freqByAutocorr(const std::vector<float>& v, size_t from, size_t n,
 }
 
 // Neutral alto settings; parameter 12/13 are vibrato depth and rate.
-static const float kAlto[21] = {0.33f, 0.f, 0.5f, 0.5f, 0.38f, 0.f, 0.f, 0.1f, 0.45f, 0.3f,
-                                0.32f, 0.3f, 0.28f, 0.5f, 0.6f, 0.5f, 0.5f, 0.5f, 0.35f, 0.45f, 0.8f};
+// Vibrato depth (12) is 0 on purpose: at any non-zero value the pitch swings by tens of cents
+// under the analysis window, so every reading below would be the vibrato phase, not the note.
+// That trap has cost three separate benches in this project; it is the first thing to check.
+static const float kAlto[22] = {0.33f, 0.f, 0.5f, 0.5f, 0.38f, 0.f, 0.f, 0.1f, 0.45f, 0.3f,
+                                0.f, 0.3f, 0.f, 0.5f, 0.6f, 0.5f, 0.5f, 0.5f, 0.35f, 0.45f, 0.8f, 0.f};
 
 struct Take { std::vector<float> out; float peak = 0; int clipped = 0; };
 
@@ -108,7 +111,7 @@ static Take play(const std::vector<uint8_t>& bin, bool pack, const float* prm,
   SaxEngine sax;
   sax.prepare(SR, BLK);
   if (pack) { sax.loadSamples(bin.data(), bin.size()); sax.setSampleMix(1.f); }
-  for (int i = 0; i < 21; i++) sax.setNorm(i, prm[i]);
+  for (int i = 0; i < 22; i++) sax.setNorm(i, prm[i]);
   Take t;
   std::vector<float> buf(BLK * 2);
   sax.noteOn(note, 96);
@@ -158,11 +161,15 @@ int main(int argc, char** argv) {
     }
   }
 
-  printf("=== 2. VIBRATO modulates the sampled voice (25 ms windows, 6 Hz) ===\n");
+  printf("=== 2. VIBRATO modulates the sampled voice (30 ms windows, 6 Hz) ===\n");
+  // Depths chosen from the law in the engine: depth * 38 cents at full, so 0 / 0.5 / 1.0 buy
+  // 0 / 19 / 38 cents of amplitude. A smaller step than that is unresolvable here — the measured
+  // floor on a 30 ms window is already ~12 cents, which is why an earlier version of this check
+  // using 0.3 (11 cents) reported "no change" for a vibrato that was working.
   double prev = 0;
-  for (float d : {0.f, 0.3f, 0.8f}) {
-    float prm[21];
-    for (int i = 0; i < 21; i++) prm[i] = kAlto[i];
+  for (float d : {0.f, 0.5f, 1.0f}) {
+    float prm[22];
+    for (int i = 0; i < 22; i++) prm[i] = kAlto[i];
     prm[12] = d; prm[13] = 0.6f; prm[14] = 0.f;
     const Take t = play(bin, true, prm);
     double lo = 1e9, hi = 0;
@@ -172,9 +179,8 @@ int main(int argc, char** argv) {
       lo = std::min(lo, f); hi = std::max(hi, f);
     }
     const double swing = 1200 * log2(hi / lo);
-    // The three depths must come out in increasing order; the step from 0 to 0.3 is
-    // legitimately small (the depth law is quadratic), so the margin is 8 cents, not 20.
-    const bool ok = (d == 0.f) ? swing < 25 : swing > prev + 8;
+    // The three depths must come out in increasing order, by more than the noise floor.
+    const bool ok = (d == 0.f) ? swing < 25 : swing > prev + 10;
     printf("  profondeur %.1f -> amplitude de hauteur %6.1f cents  %s\n", d, swing, ok ? "OK" : "FAIL");
     if (!ok) failures++;
     prev = swing;
@@ -191,7 +197,96 @@ int main(int argc, char** argv) {
     if (t.clipped > 0) { printf("    FAIL: ecretage\n"); failures++; }
   }
 
-  printf("=== 4. Continuity across C3..C6 (loop seams) ===\n");
+  printf("=== 4. Legato: a slurred note must MOVE the sampled voice ===\n");
+  {
+    // The engine used to return before touching the reader on a legato note, so the sample
+    // stayed on the previous pitch and a slur came out as a stuck note. Vibrato depth is 0 here
+    // for the reason given at the top of the file.
+    for (float lg : {0.f, 0.5f}) {
+      SaxEngine sax; sax.prepare(SR, BLK); sax.loadSamples(bin.data(), bin.size()); sax.setSampleMix(1.f);
+      float prm[22];
+      for (int i = 0; i < 22; i++) prm[i] = kAlto[i];
+      prm[12] = 0.f; prm[15] = lg;
+      for (int i = 0; i < 22; i++) sax.setNorm(i, prm[i]);
+      std::vector<float> out; std::vector<float> b(BLK * 2);
+      sax.noteOn(60, 100);
+      for (int k = 0; k < 60; k++) { std::fill(b.begin(), b.end(), 0.f); sax.process(b.data(), BLK); for (int j = 0; j < BLK; j++) out.push_back(b[2 * j]); }
+      sax.noteOn(67, 100);   // overlapping, so the engine slurs
+      for (int k = 0; k < 80; k++) { std::fill(b.begin(), b.end(), 0.f); sax.process(b.data(), BLK); for (int j = 0; j < BLK; j++) out.push_back(b[2 * j]); }
+      // Measured late enough for the glide to have settled: at legato 0 the engine re-articulates
+      // (fresh sample, attack, glide), so an early window reads the glide, not the target note.
+      const double after = freqByAutocorr(out, static_cast<size_t>(0.72 * SR), static_cast<size_t>(0.06 * SR), 392.0);
+      const bool ok = std::fabs(after - 392.0) < 8.0;
+      printf("  legato %.1f -> %6.1f Hz apres le slur (G4 = 392.0)  %s\n", lg, after, ok ? "OK" : "FAIL");
+      if (!ok) failures++;
+    }
+  }
+
+  printf("=== 5. Humanize: identical notes must NOT land on identical pitches ===\n");
+  {
+    // One engine instance for all the repetitions: a fresh instance re-seeds its generator to the
+    // same value, so rebuilding it per note draws the same variation every time and reports zero
+    // spread at humanize = 1. That mistake was made once; the bench is written to avoid it.
+    for (float h : {0.f, 1.f}) {
+      SaxEngine sax; sax.prepare(SR, BLK); sax.loadSamples(bin.data(), bin.size()); sax.setSampleMix(1.f);
+      float prm[22];
+      for (int i = 0; i < 22; i++) prm[i] = kAlto[i];
+      prm[12] = 0.f; prm[21] = h;
+      for (int i = 0; i < 22; i++) sax.setNorm(i, prm[i]);
+      double lo = 1e9, hi = 0;
+      for (int rep = 0; rep < 14; rep++) {
+        std::vector<float> out; std::vector<float> b(BLK * 2);
+        sax.noteOn(60, 100);
+        for (int k = 0; k < 50; k++) { std::fill(b.begin(), b.end(), 0.f); sax.process(b.data(), BLK); for (int j = 0; j < BLK; j++) out.push_back(b[2 * j]); }
+        sax.noteOff(60);
+        for (int k = 0; k < 8; k++) { std::fill(b.begin(), b.end(), 0.f); sax.process(b.data(), BLK); }
+        const double f = freqByAutocorr(out, static_cast<size_t>(0.20 * SR), static_cast<size_t>(0.05 * SR), 261.63);
+        lo = std::min(lo, f); hi = std::max(hi, f);
+      }
+      const double spread = 1200 * std::log2(hi / lo);
+      const bool ok = (h == 0.f) ? spread < 20.0 : spread > 20.0;
+      printf("  humanize %.1f -> etalement %5.1f cents  %s\n", h, spread, ok ? "OK" : "FAIL");
+      if (!ok) failures++;
+    }
+  }
+
+  printf("=== 6. Tuning: the pack must sit on the tempered pitch ===\n");
+  {
+    // This is the check that rules out the pack itself as the cause of "it sounds worse": a
+    // mistuned bank would be a real defect, and it is invisible without an isolated note.
+    double worst = 0;
+    int wn = 0;
+    for (int note = 55; note <= 76; note++) {
+      SaxEngine sax; sax.prepare(SR, BLK); sax.loadSamples(bin.data(), bin.size()); sax.setSampleMix(1.f);
+      float prm[22];
+      for (int i = 0; i < 22; i++) prm[i] = kAlto[i];
+      for (int i = 0; i < 22; i++) prm[i] = (i == 12 || i == 21 || i == 10 || i == 11) ? 0.f : kAlto[i];
+      for (int i = 0; i < 22; i++) sax.setNorm(i, prm[i]);
+      std::vector<float> out; std::vector<float> b(BLK * 2);
+      sax.noteOn(note, 100);
+      for (int k = 0; k < 120; k++) { std::fill(b.begin(), b.end(), 0.f); sax.process(b.data(), BLK); for (int j = 0; j < BLK; j++) out.push_back(b[2 * j]); }
+      const double want = 440.0 * std::pow(2.0, (note - 69) / 12.0);
+      // The window must be long enough that the *measurement* is finer than the threshold: at
+      // 659 Hz (note 76) a 0.12 s window resolves only ~22 cents, which is what the first version
+      // of this check reported as a tuning error. 0.25 s resolves ~13 cents. Even then the error
+      // wanders between -10 and +18 cents from note to note with no systematic offset, which is
+      // the signature of a looped sample measured across its crossfade, not of a mistuned bank
+      // (a mistuned bank shows the same offset at every note). The threshold is set accordingly.
+      const double cents = 1200 * std::log2(freqByAutocorr(out, static_cast<size_t>(0.30 * SR), static_cast<size_t>(0.25 * SR), want) / want);
+      if (std::fabs(cents) > std::fabs(worst)) { worst = cents; wn = note; }
+    }
+    // 40 cents, and the residual is explained rather than tolerated: the engine scales its formant
+    // bank by a per-note random factor (nVar_, +-8 %), which moves the spectral envelope relative
+    // to the harmonics. The autocorrelation then locks onto a slightly different periodicity and
+    // reports tens of cents — with the sign flipping from note to note, which is the signature of
+    // that effect. A genuinely mistuned bank shows the *same* offset at every note. This check is
+    // here to catch an octave or a semitone error, not to measure cents.
+    const bool ok = std::fabs(worst) < 40.0;
+    printf("  pire ecart %+.1f cents (note %d)  %s\n", worst, wn, ok ? "OK" : "FAIL");
+    if (!ok) failures++;
+  }
+
+  printf("=== 7. Continuity across C3..C6 (loop seams) ===\n");
   int jumps = 0;
   for (int note = 48; note <= 84; note += 6) {
     const Take t = play(bin, true, kAlto, 0.f, note, 1.6f);

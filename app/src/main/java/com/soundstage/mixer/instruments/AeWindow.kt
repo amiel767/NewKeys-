@@ -10,6 +10,8 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -174,22 +176,22 @@ private fun BoxScope.HeaderBtn(t: String, x: Number, y: Number, w: Number, h: Nu
 }
 
 /**
- * Preset browser: a compact two-column index, not a stack of full-width bars.
+ * Preset browser: a three-pane library, the layout professional instrument plug-ins use.
  *
- * The first version put one preset per row across the whole 944-unit panel, so a short name sat
- * in a 944-wide box with its category on a separate line: each entry was mostly empty and the
- * list showed about eight of ~150 presets at a time. It read as oversized because it was.
+ * The shape follows Arturia Analog Lab / Serum's browser rather than a two-column index:
  *
- * The shape here follows how a professional patch browser is built — a dense index, not a feed:
- *  - two columns, so the panel's width is used instead of being stretched by each row;
- *  - a 30-unit row (was ~40 with the extra padding), so twice as many presets fit;
- *  - the category is a header that spans both columns with a hairline rule and a count, not a
- *    full row of its own;
- *  - the selection is a left accent bar plus a tint, the way a highlighted entry reads in a
- *    patch list, instead of a bright block;
- *  - alternating rows carry a 2% fill so the eye can track a row across two columns;
- *  - the list fades at both edges and carries a scroll thumb, so it is obvious that more is
- *    below rather than the list looking like it ends at the panel edge.
+ *  - a *category rail* on the left lists the categories with their counts, so the whole
+ *    library is visible as a map and a category is one tap away instead of a long scroll;
+ *  - the *list* is the filtered result, one preset per row, numbered, so position in the
+ *    filtered set is legible;
+ *  - the *selection* is a highlighted row with a left accent bar and the category shown in
+ *    the row, so a filtered list still says where each preset comes from;
+ *  - a *count line* under the header states what the filter currently holds ("12 of 150"),
+ *    which is what makes a filter feel like a filter and not a missing list.
+ *
+ * The two earlier versions were a single stack of full-width bars (about eight visible) and a
+ * two-column index (~30 visible but with no way to reach a category directly). Both are gone:
+ * this one shows the categories and the presets at the same time.
  *
  * Picking a preset loads it and LEAVES THE LIST OPEN, so several can be auditioned in a row.
  * Tapping outside the panel closes it.
@@ -208,8 +210,13 @@ private fun BoxScope.PresetList(
     val base = m.factoryPresets(s.instrument).size
     val pal = AePals.of(s.instrument)
     val sh = RoundedCornerShape(18.su())
-    // Scrim: the whole stage, transparent, closing on tap. Sits under the panel so a
-    // tap on a preset still reaches it.
+    // null = "All". Stored as the category *name* rather than an index so it survives the list
+    // being rebuilt when a user preset is saved or deleted.
+    var cat by remember(s.instrument) { mutableStateOf<String?>(null) }
+    val cats = all.groupBy { it.category }.toList()
+    val shown = remember(all, cat) {
+        all.withIndex().filter { cat == null || it.value.category == cat }
+    }
     Box(Modifier.at(0, 0, AE_W, AE_H).clickable(remember { MutableInteractionSource() }, null, onClick = onDismiss))
     Box(
         Modifier.at(16, 48, 968, 396).clip(sh)
@@ -220,10 +227,10 @@ private fun BoxScope.PresetList(
                 drawLine(Color(0x66000000), Offset(14f, size.height - 1f), Offset(size.width - 14f, size.height - 1f), 1f)
             },
     ) {
-        Row(Modifier.at(18, 13, 600, 18), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.at(18, 13, 620, 18), verticalAlignment = Alignment.CenterVertically) {
             AeT("PRESETS", 11, AeC.mute, spacing = 0.18f)
-            AeT("${all.size}", 10, AeC.mute, Modifier.padding(start = 10.su()), font = AeFonts.mono)
             AeT(s.instrument.title, 10, pal.chipOn1, Modifier.padding(start = 10.su()), spacing = 0.1f)
+            AeT("${shown.size} of ${all.size}", 10, AeC.mute, Modifier.padding(start = 10.su()), font = AeFonts.mono)
         }
         Box(
             Modifier.at(786, 11, 166, 24).clip(RoundedCornerShape(50)).background(Color(0x1AFF5C7A))
@@ -232,72 +239,97 @@ private fun BoxScope.PresetList(
             contentAlignment = Alignment.Center,
         ) { AeT("Unload instrument", 10, Color(0xFFFFB3C0)) }
 
-        val grid = rememberLazyGridState()
-        LazyVerticalGrid(
-            state = grid,
-            columns = GridCells.Fixed(2),
-            modifier = Modifier.at(16, 42, 936, 340).testTag("aePresetList"),
-            horizontalArrangement = Arrangement.spacedBy(10.su()),
-            verticalArrangement = Arrangement.spacedBy(3.su()),
+        // ---- left rail: categories ----
+        val railW = 214
+        Box(Modifier.at(16, 42, railW, 340).background(Color(0x14000000)))
+        AeT("CATEGORY", 8, AeC.mute, Modifier.at(30, 50, 180, 10), spacing = 0.18f, weight = FontWeight.ExtraBold)
+        val rail = rememberLazyListState()
+        LazyColumn(
+            state = rail,
+            modifier = Modifier.at(24, 64, railW - 16, 314),
+            verticalArrangement = Arrangement.spacedBy(1.su()),
         ) {
-            var lastCat = ""
-            all.forEachIndexed { i, p ->
-                if (p.category != lastCat) {
-                    lastCat = p.category
-                    val user = p.category == AeUserStore.USER_CATEGORY
-                    val count = all.count { it.category == p.category }
-                    item(key = "hdr-$i-${p.category}", span = { GridItemSpan(maxLineSpan) }) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(top = if (i == 0) 2.su() else 12.su(), bottom = 3.su()),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            AeT(p.category.uppercase(), 9, if (user) AeC.gold else AeC.mute, spacing = 0.18f, weight = FontWeight.ExtraBold)
-                            Box(Modifier.padding(start = 10.su()).weight(1f).height(1.su()).background(Brush.horizontalGradient(listOf(Color(0x24FFFFFF), Color(0x00FFFFFF)))))
-                            AeT("$count", 9, AeC.mute, Modifier.padding(start = 10.su()), font = AeFonts.mono)
-                        }
-                    }
-                }
-                item(key = "p-$i") {
-                    val sel = i == s.preset
-                    Row(
-                        Modifier.fillMaxWidth().height(30.su()).clip(RoundedCornerShape(8.su()))
-                            .background(
-                                when {
-                                    sel -> Brush.horizontalGradient(listOf(pal.chipOn1.copy(alpha = 0.20f), Color(0x0A19E3FF)))
-                                    i % 2 == 0 -> Brush.horizontalGradient(listOf(Color(0x07FFFFFF), Color(0x03FFFFFF)))
-                                    else -> Brush.horizontalGradient(listOf(Color(0x00000000), Color(0x00000000)))
-                                }
-                            )
-                            .noRipple { onPick(i) },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(
-                            Modifier.padding(start = 4.su()).width(3.su()).height(16.su())
-                                .clip(RoundedCornerShape(2.su()))
-                                .background(if (sel) pal.chipOn1 else Color.Transparent),
+            item(key = "cat-all") { CatRow("All", all.size, cat == null, pal.chipOn1, true) { cat = null } }
+            items(cats.size, key = { "cat-$it" }) { i ->
+                val (name, list) = cats[i]
+                val user = name == AeUserStore.USER_CATEGORY
+                CatRow(name, list.size, cat == name, if (user) AeC.gold else pal.chipOn1, false) { cat = name }
+            }
+        }
+
+        // ---- right: the filtered presets ----
+        val grid = rememberLazyListState()
+        val listX = 16 + railW + 8
+        val listW = 936 - railW - 8
+        LazyColumn(
+            state = grid,
+            modifier = Modifier.at(listX, 50, listW, 332).testTag("aePresetList"),
+            verticalArrangement = Arrangement.spacedBy(1.su()),
+        ) {
+            itemsIndexed(shown, key = { _, e -> "p-${e.index}" }) { n, e ->
+                val i = e.index
+                val p = e.value
+                val sel = i == s.preset
+                Row(
+                    Modifier.fillMaxWidth().height(28.su()).clip(RoundedCornerShape(7.su()))
+                        .background(
+                            when {
+                                sel -> Brush.horizontalGradient(listOf(pal.chipOn1.copy(alpha = 0.22f), Color(0x0819E3FF)))
+                                n % 2 == 0 -> Brush.horizontalGradient(listOf(Color(0x07FFFFFF), Color(0x02FFFFFF)))
+                                else -> Brush.horizontalGradient(listOf(Color(0x00000000), Color(0x00000000)))
+                            }
                         )
-                        AeT(p.name, 11, if (sel) Color.White else AeC.tx, Modifier.padding(start = 9.su()).weight(1f))
-                        if (i >= base) Box(
-                            Modifier.padding(end = 7.su()).size(17.su()).clip(CircleShape).background(Color(0x1AFF5C7A))
-                                .clickable(remember { MutableInteractionSource() }, null) { onDeleteUser(i) },
-                            contentAlignment = Alignment.Center,
-                        ) { AeT("✕", 9, Color(0xFFFFB3C0)) }
-                    }
+                        .noRipple { onPick(i) },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        Modifier.padding(start = 4.su()).width(3.su()).height(15.su())
+                            .clip(RoundedCornerShape(2.su()))
+                            .background(if (sel) pal.chipOn1 else Color.Transparent),
+                    )
+                    AeT("${n + 1}", 9, if (sel) pal.chipOn1 else AeC.mute, Modifier.padding(start = 8.su(), end = 2.su()).width(20.su()), font = AeFonts.mono, align = TextAlign.End)
+                    AeT(p.name, 11, if (sel) Color.White else AeC.tx, Modifier.padding(start = 8.su()).weight(1f))
+                    if (cat == null) AeT(p.category, 9, AeC.mute, Modifier.padding(end = 6.su()), spacing = 0.04f)
+                    if (i >= base) Box(
+                        Modifier.padding(end = 6.su()).size(16.su()).clip(CircleShape).background(Color(0x1AFF5C7A))
+                            .clickable(remember { MutableInteractionSource() }, null) { onDeleteUser(i) },
+                        contentAlignment = Alignment.Center,
+                    ) { AeT("✕", 9, Color(0xFFFFB3C0)) }
                 }
             }
         }
-        // Scroll thumb: 150 presets in a 340-unit window needs a position cue, otherwise the
-        // panel reads as "the list ends here". Derived from the grid's own layout info.
+        // Scroll thumb for the preset list only; the category rail is short enough to read whole.
         val info = grid.layoutInfo
         val total = info.totalItemsCount
         if (total > 0 && info.visibleItemsInfo.size < total) {
             val frac = info.visibleItemsInfo.size.toFloat() / total
             val first = info.visibleItemsInfo.firstOrNull()?.index ?: 0
-            val track = 340f
+            val track = 332f
             val thumbH = (track * frac).coerceAtLeast(26f)
-            val y = 42f + (track - thumbH) * (first.toFloat() / total)
+            val y = 50f + (track - thumbH) * (first.toFloat() / total)
             Box(Modifier.at(958, y, 3, thumbH).clip(RoundedCornerShape(2.su())).background(Color(0x2EFFFFFF)))
         }
+    }
+}
+
+/** One row of the category rail: name, count, and the selected state as a filled pill. */
+@Composable
+private fun CatRow(name: String, count: Int, sel: Boolean, accent: Color, isAll: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().height(26.su()).clip(RoundedCornerShape(7.su()))
+            .background(if (sel) accent.copy(alpha = 0.18f) else Color.Transparent)
+            .noRipple(onClick),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.padding(start = 3.su()).width(2.5f.su()).height(14.su())
+                .clip(RoundedCornerShape(2.su()))
+                .background(if (sel) accent else Color.Transparent),
+        )
+        AeT(name.uppercase(), if (isAll) 9 else 8.5f, if (sel) Color.White else AeC.mute,
+            Modifier.padding(start = 8.su()).weight(1f), spacing = 0.12f,
+            weight = if (sel) FontWeight.ExtraBold else FontWeight.SemiBold)
+        AeT("$count", 9, if (sel) accent else AeC.mute, Modifier.padding(end = 9.su()), font = AeFonts.mono)
     }
 }
 

@@ -46,25 +46,25 @@ internal fun AeCardBox(x: Number, y: Number, w: Number, h: Number, title: String
 /**
  * LED fader: the mixer's rail and cap, live value bar. Drag anywhere on the track.
  *
- * Sized at 75% of the first version: at 44 units wide the five rails took most of the card and
- * read as the mixer's channel faders rather than as a level trim inside an instrument. The
- * groove is inset from the rail body, so the rail is drawn narrower than [FADER_W] and stays
- * centred on it.
+ * Only the *width* is slimmed (44 -> 34 units). The length is the original 160 with the
+ * original 40-unit cap: the first attempt shortened the throw to 120 and read as a stubby
+ * block rather than a fader, which is not what "make the rails thinner" asked for. The rail
+ * body is [RAIL_W], inset inside [FADER_W], so the cap is wider than its track the way a real
+ * fader's is.
  *
  * The value readout under the rail is gone on purpose: five numbers under five rails competed
  * with the rail LEDs for attention, and the LED height already carries the level.
  *
- * The cap travels inside [CAP_TOP]..[CAP_BOTTOM]: the groove (y 8..144 of the SVG track)
- * shrunk so the whole cap stays inside and never covers the value readout below. Everything
- * derives from [capCenterY], so the drawing and the drag cannot disagree.
+ * The cap travels inside [CAP_TOP]..[CAP_BOTTOM]. Everything derives from [capCenterY], so the
+ * drawing and the drag cannot disagree.
  */
-private const val FADER_H = 120f
-private const val FADER_W = 33f
-private const val CAP_H = 30f
+private const val FADER_H = 160f
+private const val FADER_W = 34f
+private const val CAP_H = 40f
 private const val CAP_W = CAP_H * (1327f / 1657f)  // FaderThumb is portrait
-private const val RAIL_W = 18f
+private const val RAIL_W = 16f
 private const val GROOVE_TOP = 8f
-private const val LABEL_TOP = 112f
+private const val LABEL_TOP = 145f
 private const val CAP_TOP = GROOVE_TOP + CAP_H / 2f
 private const val CAP_BOTTOM = LABEL_TOP - CAP_H / 2f
 private const val CAP_TRAVEL = CAP_BOTTOM - CAP_TOP
@@ -125,9 +125,9 @@ fun BoxScope.AeLeadsUi(c: AeCtl, a: AeAnim, samples: FloatArray? = null) {
                 val x = 36 + i * 108
                 AeT(names[i], 9, CYAN, Modifier.at(x, 82, 100, 12), weight = FontWeight.ExtraBold, spacing = 0.2f, align = TextAlign.Center)
                 Canvas(Modifier.at(x + 30, 96, 40, 20)) { drawWaveIcon(i) }
-                // Centred on the wave icon above it (icon centre x = x+50, rail 33 wide), and
-                // centred in the gap between the icon and the octave switch below.
-                AeFader(c, i, x + 33.5f, 137)
+                // Centred on the wave icon above it: the icon box is x+30..x+70, so x+50 is its
+                // axis, and the fader box is [FADER_W] wide from x+33.
+                AeFader(c, i, x + 33, 118)
                 // One octave switch per layer, the app's segmented toggle rather than three
                 // loose chips: "−1 0 +1" is a single setting with three positions.
                 AeSeg(listOf("−1", "0", "+1"), (c.v(5 + i) * 2f).roundToInt(), x + 3, 278, 102, CYAN, onSelect = { j -> c.set(5 + i, j / 2f) })

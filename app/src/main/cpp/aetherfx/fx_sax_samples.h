@@ -90,8 +90,8 @@ class SaxSampleReader {
     cur_ = best;
     decodeRegion();          // one pass, into the reusable buffer
     const float f = 440.f * std::pow(2.f, (note - 69) / 12.f);
-    const float rootF = 440.f * std::pow(2.f, (best->root - 69) / 12.f) * std::pow(2.f, best->tuneCents / 1200.f);
-    ratio_ = (rootF > 1e-6f) ? f / rootF : 1.f;
+    rootF_ = 440.f * std::pow(2.f, (best->root - 69) / 12.f) * std::pow(2.f, best->tuneCents / 1200.f);
+    ratio_ = (rootF_ > 1e-6f) ? f / rootF_ : 1.f;
     // Start a little way into the recorded attack, the way a sampler's sample-start offset
     // works. Measured on the pack: the region reaches only 8 % of its sustain RMS in the first
     // 5 ms and takes 127 ms to reach half its peak, against 28 ms for the synthesis — the
@@ -103,6 +103,21 @@ class SaxSampleReader {
     active_ = true;
     releasing_ = false;
     vel_ = velocity / 127.f;
+  }
+
+  /**
+   * Moves the *sounding* region to a new pitch, without re-attacking it.
+   *
+   * This is what makes legato audible. The engine used to return early on a legato note
+   * (it only moved its own oscillator), so at mix 1.0 — where the samples carry the voice —
+   * the pitch stayed on the previous note and a slur came out as a stuck note. Re-decoding
+   * is deliberately *not* done here: the region is chosen by the note number, and re-picking
+   * it would re-introduce the attack the slur must not have. The playhead keeps running, so
+   * the breath noise of the recording stays continuous across the slur.
+   */
+  void retarget(float f) {
+    if (!cur_) return;
+    ratio_ = (rootF_ > 1e-6f) ? f / rootF_ : 1.f;
   }
 
   void noteOff() { releasing_ = true; }
@@ -225,6 +240,7 @@ class SaxSampleReader {
   double pos_ = 0.0;
   float ratio_ = 1.f, pitchScale_ = 1.f, env_ = 0.f, vel_ = 1.f;
   uint32_t onset_ = 0;
+  float rootF_ = 440.f;
   bool active_ = false, releasing_ = false;
 };
 

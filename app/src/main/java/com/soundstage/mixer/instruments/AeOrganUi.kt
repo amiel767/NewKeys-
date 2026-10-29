@@ -116,9 +116,11 @@ fun BoxScope.AeOrganUi(c: AeCtl, a: AeAnim) {
         }
         arrayOf("STOP", "SLOW", "FAST").forEachIndexed { i, t -> AeT(t, 7, AeC.goldDim, Modifier.at(25 + i * 50 - 20, 23, 40, 10), AeFonts.plate, FontWeight.ExtraBold, align = TextAlign.Center) }
     }
-    // Slightly larger than the preview's 34: on the device the row read as too small under the
-    // labels, and the user asked for it. The spacing (70 units) still clears a 40-unit cap.
-    AeMetalKnob(c, 26, "CLICK", 640, 288, 44); AeMetalKnob(c, 28, "DRIVE", 716, 288, 44); AeMetalKnob(c, 27, "TONE", 792, 288, 44)
-    AeMetalKnob(c, 29, "SPACE", 868, 288, 44); AeMetalKnob(c, 30, "LEVEL", 944, 288, 44)
+    // Pulled down clear of the lower-manual panel, whose bottom edge is at y=292: the caps used
+    // to start at 288, so the top 4 units of each cap sat inside the panel. At y=298 the cap runs
+    // 298..342 and the engraved label ends near 355, leaving a 6-unit gap above and 5 below
+    // (the keyboard starts at 360). The 44-unit size the user asked for is kept.
+    AeMetalKnob(c, 26, "CLICK", 640, 298, 44); AeMetalKnob(c, 28, "DRIVE", 716, 298, 44); AeMetalKnob(c, 27, "TONE", 792, 298, 44)
+    AeMetalKnob(c, 29, "SPACE", 868, 298, 44); AeMetalKnob(c, 30, "LEVEL", 944, 298, 44)
     AeKeyboard(c, 52, 360, 896, 90)
 }

@@ -7,6 +7,7 @@
 // Params (21): 0 type (Soprano,Alto,Tenor,Bari) 1 finish (visual) 2 mouthpiece (Jazz,Classic,Rubber)
 // 3 reed (Soft,Medium,Hard) 4 breath 5 growl 6 subtone 7 grit 8 attack 9 click 10 scoop 11 fall
 // 12 vibrato depth 13 vibrato rate 14 vibrato delay 15 legato 16 room 17 room size 18 warm 19 bright 20 level
+// 21 humanize (adds a per-note random spread to pitch, attack, level and vibrato)
 #pragma once
 #include "fx_source.h"
 #include "fx_space.h"
@@ -16,7 +17,7 @@ namespace aetherfx {
 
 class SaxEngine : public SourceFx {
  public:
-  int paramCount() const override { return 21; }
+  int paramCount() const override { return 22; }
 
   void prepare(double sr, int maxBlock) override {
     sr_ = sr;
@@ -30,6 +31,7 @@ class SaxEngine : public SourceFx {
     scoopT_ = 0.f; fallT_ = 0.f; clickEnv_ = 0.f; relClickEnv_ = 0.f; biteT_ = 1.f;
     q_ = -1.f; rng_ = 0x2545F491u; nVar_ = 1.f; pitchScale_ = 1.f; afScale_ = 1.f;
     nGainJit_ = 1.f; vfJit_ = 1.f; clickJit_ = 1.f; fallStart_ = 440.f; fallEnd_ = 440.f;
+    hum_ = 0.f; humPitch_ = 1.f; humLevel_ = 1.f; humAtk_ = 1.f; humVib_ = 1.f;
     held_.clear(); note_ = -1; freq_ = 440.f; target_ = 440.f;
     for (auto& b : form_) b.reset();
     lpF_.reset(); nbF_.reset(); clickF_.reset(); warm_.reset(); bright_.reset();
@@ -42,13 +44,22 @@ class SaxEngine : public SourceFx {
     if (vel <= 0) { noteOff(note); return; }
     held_.push_back(note);
     const float f = static_cast<float>(440.0 * std::pow(2.0, (note - 69) / 12.0));
-    if (note_ >= 0 && p(15) > .12f) { target_ = f; note_ = note; return; }  // legato glide
+    if (note_ >= 0 && p(15) > .12f) {
+      // Legato slur: the oscillator glides and the *sample* is retargeted, not re-attacked.
+      // Without the retarget the sampled voice stayed on the previous note (the engine used to
+      // return before touching the reader), so a slur was a stuck note at mix 1.0.
+      target_ = f;
+      note_ = note;
+      smp_.retarget(f);
+      return;
+    }
     note_ = note; freq_ = f; target_ = f; vel_ = vel / 127.f;
     ampStage_ = 1; ampT_ = 0.f; ampLvl_ = 0.f; fallT_ = 0.f; biteT_ = 0.f;
     scoopT_ = p(10) > .02f ? 1.f : 0.f;
     clickEnv_ = 1.f;
     smp_.noteOn(note, vel);
     seed(f);
+    humanize();
     for (auto& b : form_) b.reset();
     lpF_.reset(); nbF_.reset();
   }
@@ -118,7 +129,7 @@ class SaxEngine : public SourceFx {
     // formants track the fingered pitch by ~10%, the anchor formant by ~5%.
     const float f1 = TY_f1[ty] * pitchScale_, f2 = f1 * 2.7f, af = TY_af[ty] * afScale_;
     const float vf = (1400.f - p(18) * 700.f) * vfJit_, vfg = 3.f + p(18) * 4.f;
-    const float att = .012f + std::pow(1.f - p(8), 2.f) * .14f * RD_ATT[rd];
+    const float att = (.012f + std::pow(1.f - p(8), 2.f) * .14f * RD_ATT[rd]) * humAtk_;
     const float growlHz = 38.f + p(5) * 14.f, growlD = p(5) * .55f;
     const float breathNoise = p(4) * .2f * RD_NG[rd] * (mp == 2 ? .7f : 1.f) * nGainJit_;
     const float gritK = 1.f + p(7) * 8.f + MP_GRIT[mp];
@@ -161,12 +172,12 @@ class SaxEngine : public SourceFx {
       const float vibGate = ampStage_ == 3 ? 0.f : (ampT_ > vibDelay || ampStage_ == 2 ? 1.f : 0.f);
       float vshape = sineTable().at(vibPh_);
       vshape = vshape > .2f ? .2f + (vshape - .2f) * .7f : vshape;  // asymmetric soft clip
-      const float vib = (vshape + sineTable().at(vibDriftPh_) * .5f) * vibDep * vibGate;
+      const float vib = (vshape + sineTable().at(vibDriftPh_) * .5f) * vibDep * humVib_ * vibGate;
       // ---- shared breath LFO ----
       breathLfoPh_ += static_cast<float>(bLfoRate * invSr); if (breathLfoPh_ >= 1.f) breathLfoPh_ -= 1.f;
       const float bLfo = sineTable().at(breathLfoPh_);
       // ---- reed oscillators: two detuned copies + optional sub ----
-      const float f = pitch * std::pow(2.f, (vib + bLfo * bPitchDepth) / 1200.f);
+      const float f = pitch * humPitch_ * std::pow(2.f, (vib + bLfo * bPitchDepth) / 1200.f);
       lastF = f;
       const float inc1 = f * invSr, inc2 = f * std::pow(2.f, 6.f / 1200.f) * invSr, incS = f * .5f * invSr;
       float mix = reed(ph_[0]) * .55f + reed(ph_[1]) * .35f;
@@ -228,11 +239,36 @@ class SaxEngine : public SourceFx {
         const float u = 1.f - biteT_ / .035f;
         x *= 1.f + u * u * (0.9f + p(7) * 0.6f);
       }
-      x *= p(20) * .8f;
-      io[2 * i] += x; io[2 * i + 1] += x;
+      // Output gain. This was 0.8, chosen when the synthesis alone carried the voice. Measured
+      // at Level 0.8 across six instrument/reed combinations, the pack and the synthesis come
+      // out at the same RMS within 25% (ratios 0.99, 1.04, 0.99, 1.20, 0.91, 1.25 — mean 1.06),
+      // so 1.0 is what matches them and 0.8 left the sampled voice about 15% quieter than the
+      // synth it replaces. A first correction to 1.30 overshot in the other direction (+38%).
+      x *= p(20) * 1.0f;
+      io[2 * i] += x * humLevel_; io[2 * i + 1] += x * humLevel_;
       peak = std::max(peak, std::fabs(x));
     }
     if (p(16) > 0.01f) rev_.process(io, n);
+    // ---- soft clip, on the SUM, after the reverb ----
+    // A real recording has a far higher crest factor than the additive voice, and the reverb is
+    // added on top of it: measured at Level 1.0, the pack alone reaches 0.91 dry but 1.29 once
+    // the room is added, with 8.4 % of its samples above 0.95, against 0.92 and 0 % for the
+    // synthesis. The mixer's limiter was therefore squashing every sustain peak of the sampled
+    // voice — that distortion, more than the timbre, is why it was judged worse than the plain
+    // synthesis. Placing the knee *after* the reverb is what makes it effective: inside the loop
+    // it did nothing, because the reverb is added afterwards.
+    //
+    // The knee starts at 0.75, so nothing the synthesis produces (peak 0.92 only with the room
+    // off) is touched in the dry path, and the pack's peaks are rounded rather than clipped.
+    // The alternative — lowering kSampleGain until the peaks match — would leave the pack 35 %
+    // quieter than the instrument it replaces.
+    for (int i = 0; i < n; ++i) {
+      for (int c = 0; c < 2; ++c) {
+        float& v = io[2 * i + c];
+        if (v > .75f) v = .75f + .25f * std::tanh((v - .75f) / .25f);
+        else if (v < -.75f) v = -.75f + .25f * std::tanh((v + .75f) / .25f);
+      }
+    }
     // Push the live pitch factor to the sample reader once per block, after the loop: bend,
     // vibrato, scoop and fall are computed inside it, and at mix 1.0 the samples ARE the
     // voice, so without this none of those controls could be heard.
@@ -360,6 +396,29 @@ class SaxEngine : public SourceFx {
     clickJit_ = r();
   }
 
+  /**
+   * Rolls the per-note human variation.
+   *
+   * At 0 the instrument is exact: every note has the same attack, level, intonation and
+   * vibrato, which is what makes a MIDI line sound machine-made. At 1 a player's spread is
+   * applied — up to 14 cents of intonation, 22 % of attack time, 1.8 dB of level and 30 % of
+   * vibrato depth, all drawn per note from the same generator [seed] uses, so it is
+   * deterministic for a given note sequence and does not drift between takes.
+   *
+   * The pitch spread is the one that matters most for a sax: players never land exactly on the
+   * tempered pitch, and a fixed offset per note is what the ear reads as "played" rather than
+   * "triggered". It is applied to the samples as well, through the same `f` the reader follows.
+   */
+  void humanize() {
+    hum_ = p(21);
+    if (hum_ < 1e-4f) { humPitch_ = 1.f; humLevel_ = 1.f; humAtk_ = 1.f; humVib_ = 1.f; return; }
+    auto r = [this]() { rng_ ^= rng_ << 13; rng_ ^= rng_ >> 17; rng_ ^= rng_ << 5; return static_cast<float>(static_cast<int32_t>(rng_)) * (1.0f / 2147483648.0f); };
+    humPitch_ = std::pow(2.f, ((.5f + r() * .5f) * 2.f - 1.f) * hum_ * 14.f / 1200.f);
+    humLevel_ = std::pow(10.f, ((.5f + r() * .5f) * 2.f - 1.f) * hum_ * 1.8f / 20.f);
+    humAtk_ = 1.f + ((.5f + r() * .5f) * 2.f - 1.f) * hum_ * .22f;
+    humVib_ = 1.f + ((.5f + r() * .5f) * 2.f - 1.f) * hum_ * .30f;
+  }
+
   double sr_ = 48000.0;
   float tbl_[1025] = {0};
   // Measured-table state. `measured_` is the "additive" correction: when on, the
@@ -385,6 +444,8 @@ class SaxEngine : public SourceFx {
   float freq_ = 440.f, target_ = 440.f, vel_ = 0.f, ampT_ = 0.f, ampLvl_ = 0.f, relT_ = 0.f, relR_ = .2f;
   float ph_[3] = {0, 0, 0}, vibPh_ = 0.f, vibDriftPh_ = 0.f, breathLfoPh_ = 0.f, growlPh_ = 0.f;
   float biteT_ = 1.f;
+  // Humanize: per-note spread (see humanize()).
+  float hum_ = 0.f, humPitch_ = 1.f, humLevel_ = 1.f, humAtk_ = 1.f, humVib_ = 1.f;
   float scoopT_ = 0.f, fallT_ = 0.f, clickEnv_ = 0.f, relClickEnv_ = 0.f;
   float q_ = -1.f, nVar_ = 1.f, pitchScale_ = 1.f, afScale_ = 1.f, nGainJit_ = 1.f, vfJit_ = 1.f, clickJit_ = 1.f;
   float fallStart_ = 440.f, fallEnd_ = 440.f;

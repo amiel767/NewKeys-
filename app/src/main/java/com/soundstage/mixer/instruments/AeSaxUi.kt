@@ -113,6 +113,10 @@ fun BoxScope.AeSaxUi(c: AeCtl, a: AeAnim) {
     Canvas(Modifier.at(38, 266, 180, 14)) { a.frame.intValue; drawSaxVu(a) }
     AeT("OUTPUT", 9, GOLD, Modifier.at(38, 286, 100, 12), AeFonts.plate, FontWeight.ExtraBold, 0.2f)
     AeGlassKnob(c, 20, "Level", 262, 250, 42)
+    // Humanize sits with OUTPUT rather than in the expression grid: it is not an articulation
+    // setting but the player model itself (per-note spread of pitch, attack, level and vibrato),
+    // and it reads as the counterpart of Level — how loud, and how human.
+    AeIntensitySlider(c, 21, 36, 310, 286, GOLD)
     AeCardBox(678, 54, 300, 286, "EXPRESSION · ARTICULATION · ROOM", GOLD, border, AeFonts.plate)
     listOf(4 to "Breath", 5 to "Growl", 6 to "Subtone", 7 to "Grit", 8 to "Attack", 9 to "Click", 10 to "Scoop", 11 to "Fall",
         12 to "V.Depth", 13 to "V.Rate", 14 to "V.Delay", 15 to "Legato", 16 to "Room", 17 to "Size", 18 to "Warm", 19 to "Bright")

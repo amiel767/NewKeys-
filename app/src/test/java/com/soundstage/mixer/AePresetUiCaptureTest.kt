@@ -75,24 +75,41 @@ class AePresetUiCaptureTest {
         composeTestRule.mainClock.advanceTimeBy(400)
     }
 
-    /** The list open on a fresh save: a "User" group header and a Delete on the entry. */
+    /**
+     * The browser as it opens: the category rail on the left, the numbered list on the right,
+     * the selected row carrying its accent bar. This is the state the design is about, so it is
+     * captured without scrolling.
+     */
     @Test
     fun ae_leads_preset_list() {
         val (context, manager) = open(AeInstrument.LEADS)
         manager.saveUserPreset(0, "My Lead")
         composeTestRule.mainClock.advanceTimeBy(200)
         val density = context.resources.displayMetrics.density
-        clickStage(753f, 23f, density)   // the preset chip in the header (now at x 640..866)
+        clickStage(753f, 23f, density)   // the preset chip in the header (x 640..866)
         composeTestRule.mainClock.advanceTimeBy(600)
-        // The User group sits at the very bottom of a 32-preset list, so scroll to it:
-        // a capture of the top would only show the factory groups and prove nothing
-        // about the feature being captured.
+        composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/ae_preset_list.png")
+    }
+
+    /**
+     * Scrolled to the bottom: the saved user preset, which is the only entry that carries a
+     * Delete button, plus the USER category in the rail. The rail does not scroll with the
+     * list, which is the point of the two panes.
+     */
+    @Test
+    fun ae_preset_user_entry() {
+        val (context, manager) = open(AeInstrument.LEADS)
+        manager.saveUserPreset(0, "My Lead")
+        composeTestRule.mainClock.advanceTimeBy(200)
+        val density = context.resources.displayMetrics.density
+        clickStage(753f, 23f, density)
+        composeTestRule.mainClock.advanceTimeBy(600)
         repeat(12) {
             composeTestRule.onNode(hasTestTag("aePresetList")).performTouchInput { swipeUp() }
             composeTestRule.mainClock.advanceTimeBy(60)
         }
         composeTestRule.mainClock.advanceTimeBy(400)
-        composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/ae_preset_list.png")
+        composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/ae_preset_user.png")
     }
 
     /**
