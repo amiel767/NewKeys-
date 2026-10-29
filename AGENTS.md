@@ -1413,6 +1413,18 @@ pour la synthèse, **une fois par période de boucle** (~95 ms).
 - **Piège de mesure** : un test de seuil `|x| < ε` déclenche sur le premier passage par zéro
   d'une note encore sonore (« release 1 ms »). Mesurer en **RMS fenêtré**.
 
+**Deux lectures de `retune` à ne pas confondre.** `ecart moyen +28,5 cents` est la dérive
+**de l'enregistrement** (le lecteur la compense : c'est ce que le champ stocke désormais).
+`regions dont tuneCents change de plus de 2 cents : 0` est la preuve que le champ est à jour.
+Comparer la dérive mesurée au champ stocké, jamais au zéro : un écart moyen non nul est normal.
+
+**Ne pas mesurer la justesse sur une mélodie rendue en continu.** Les fenêtres d'analyse
+chevauchent les notes suivantes et le résultat est faux (annoncé +100 cents sur un moteur
+juste). Mesurer **note isolée**, et lire les **trois pics** du spectre : sur ce sax, la
+fondamentale est souvent *plus faible* que l'harmonique 2 (mesuré : pic le plus fort à
++1206 cents, soit exactement une octave). Chiffres moteur, preset réel, vibrato inclus :
+synthèse +0,3 à +9 cents, pack +2 à +18 cents.
+
 ### Tests
 `AeManagerTest` **25** (dont 5 snapshots), `AetherSnapshotJsonTest` **5** (nouveau, Robolectric
 — `org.json` lève « not mocked » sur la JVM nue), `SnapshotLogicTest` **11**. 0 échec.
