@@ -19,10 +19,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -164,7 +169,7 @@ fun AeInstrumentsTabItem(selected: Boolean, onClick: () -> Unit, modifier: Modif
     }
 }
 
-/** Right-hand content of the tab: four cards (2 x 2). Tapping one loads it NOW (audio live) then calls [onOpen]. */
+/** Right-hand content of the tab: four cards (2 x 2). Tapping a card loads it NOW (audio live) then calls [onOpen]. */
 @Composable
 fun AeInstrumentsTabContent(manager: AeManager, strip: Int, onOpen: () -> Unit, modifier: Modifier = Modifier) {
     val all = listOf(AeInstrument.ORGAN, AeInstrument.SYNTH, AeInstrument.LEADS, AeInstrument.SAX)
@@ -173,7 +178,11 @@ fun AeInstrumentsTabContent(manager: AeManager, strip: Int, onOpen: () -> Unit, 
             Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 row.forEach { inst ->
                     val loaded = manager.sessions[strip]?.instrument == inst
-                    AeTile(inst, loaded, Modifier.weight(1f).fillMaxHeight(), onClick = { if (manager.load(strip, inst) != null) onOpen() }, onUnload = { manager.unload(strip) })
+                    AeTile(
+                        inst, loaded, Modifier.weight(1f).fillMaxHeight(),
+                        onClick = { if (manager.load(strip, inst) != null) onOpen() },
+                        onPower = { if (loaded) manager.unload(strip) else manager.load(strip, inst) },
+                    )
                 }
             }
         }
@@ -200,8 +209,38 @@ private fun AeSaxMini(modifier: Modifier) {
     }
 }
 
+/** On/off power symbol. Lit green when [on], a dim grey outline when off. */
 @Composable
-private fun AeTile(inst: AeInstrument, loaded: Boolean, modifier: Modifier, onClick: () -> Unit, onUnload: () -> Unit) {
+private fun AePowerIcon(on: Boolean, onClick: () -> Unit, size: Dp = 20.dp) {
+    val tint = if (on) Color(0xFF35E06A) else Color(0x59FFFFFF)
+    Box(
+        Modifier.size(size).clip(RoundedCornerShape(50))
+            .background(if (on) Color(0x2635E06A) else Color(0x14FFFFFF))
+            .border(1.dp, if (on) Color(0x9935E06A) else Color(0x33FFFFFF), RoundedCornerShape(50))
+            .clickable(remember { MutableInteractionSource() }, null, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.size(size * 0.58f)) {
+            val sw = this.size.minDimension * 0.15f
+            val r = this.size.minDimension * 0.34f
+            val c = Offset(this.size.width / 2f, this.size.height / 2f + sw * 0.6f)
+            drawArc(
+                color = tint, startAngle = -58f, sweepAngle = 296f, useCenter = false,
+                topLeft = Offset(c.x - r, c.y - r), size = Size(r * 2f, r * 2f),
+                style = Stroke(width = sw, cap = StrokeCap.Round),
+            )
+            drawLine(
+                color = tint,
+                start = Offset(c.x, c.y - r * 0.95f),
+                end = Offset(c.x, c.y - r * 0.35f),
+                strokeWidth = sw, cap = StrokeCap.Round,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AeTile(inst: AeInstrument, loaded: Boolean, modifier: Modifier, onClick: () -> Unit, onPower: () -> Unit) {
     val st = when (inst) {
         AeInstrument.ORGAN -> TileStyle(Color(0xFF4B2A17), Color(0xFF1B0E07), Color(0x55D9B36A), "TONEWHEEL", "Drawbars · Rotary · Percussion")
         AeInstrument.SYNTH -> TileStyle(Color(0xFF2B1A5E), Color(0xFF0C0A22), Color(0x668A7AFF), "POLYSYNTH", "Morph oscillators · Filter · Macros")
@@ -218,21 +257,11 @@ private fun AeTile(inst: AeInstrument, loaded: Boolean, modifier: Modifier, onCl
         // the bottom. Before, all three were absolutely placed in the box and collided.
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Chip(st.tag)
-                    // The state is a small green light, not a word: the card already reads as
-                    // selected from its border, and a chip the size of the title crowded it.
-                    if (loaded) Box(
-                        Modifier
-                            .size(9.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(Color(0xFF35E06A))
-                            .border(1.dp, Color(0x6600FF66), RoundedCornerShape(50)),
-                    )
-                }
-                if (loaded) Box(Modifier.clip(RoundedCornerShape(50)).background(Color(0x33FF5C7A)).clickable(remember { MutableInteractionSource() }, null, onClick = onUnload).padding(horizontal = 10.dp, vertical = 5.dp)) {
-                    Text("Unload", color = Color(0xFFFFB3C0), fontSize = 10.sp, lineHeight = 10.sp, fontWeight = FontWeight.Bold, fontFamily = AeFonts.ui)
-                }
+                Chip(st.tag)
+                // Power toggle at the card's top-right: green when the instrument holds the strip,
+                // grey when it does not. Tapping loads it (without opening the editor) or unloads
+                // it, so the rest of the card stays available for "open".
+                AePowerIcon(loaded, onClick = onPower)
             }
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 when (inst) {
