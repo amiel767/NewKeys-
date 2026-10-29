@@ -1386,3 +1386,50 @@ piano existant (`AePianoUi.kt`) sont la base : on les **affine**.
 
 Plan et chiffres : `tools/pianopack/README.md`.
 
+
+## Session 2026-10-29 — Æther : presets utilisateur, Intensity, liste par categorie, pitch bend
+
+Branche `main`, **aucun push**. Base `f68727c` (cartes Æther). Commit `7bf93a9`.
+
+### Sandbox reinitialise entre les sessions
+Le JDK et le `debug.keystore` **disparaissent** (comme `/tmp`). Restaurer :
+`sudo apt-get install -y openjdk-21-jdk-headless` (JAVA_HOME `/usr/lib/jvm/java-21-openjdk-amd64`)
+puis `keytool -genkeypair -keystore debug.keystore -storepass android -alias androiddebugkey
+-keypass android -keyalg RSA -validity 10000 -dname "CN=Android Debug,O=Android,C=US"`.
+Sans le keystore, `assembleDebug` echoue sur `validateSigningDebug` (**le natif compile deja** :
+ce n'est pas une regression). `debug.keystore` est gitignore.
+
+### Version Compose des tests differente
+`androidx.compose.ui.test.onNode` **n'est pas** une fonction d'import dans cette version :
+`composeTestRule.onNode(...)` est une **methode de membre**, aucun import. Idem `onRoot()`.
+`click`/`swipeUp`/`hasTestTag`/`isDialog` s'importent normalement.
+
+### Point 1 — presets utilisateur (`AeUserStore.kt`)
+JSON par instrument dans `SharedPreferences("aether_instruments")`, cle `user_<INSTRUMENT>`,
+forme `[{"n":..,"v":[..]}]`. Miroir **`SnapshotStateList`** : la liste ouverte doit se
+recomposer a la sauvegarde. `AeManager.presets()` = usine **+** utilisateur, donc un preset
+sauve s'indexe comme les autres ; `saveUserPreset` / `deleteUserPreset` (jamais un preset
+d'usine). UI : bouton disquette (`FloppyDiskIcon`) dans l'en-tete -> `NameSheet` (Dialog).
+
+### Point 3 — Intensity = parametre natif 32 (Leads et Synth)
+`kMaxParams` 32 -> **34**, `paramCount()` 33, `AeInstrument.SYNTH/LEADS` paramCount **33**.
+**Neutre a 0,5** : verifie sur hote (`/workspace/audit/intensity.cpp`, `g++ -O2`) — la sortie
+est identique au bit pres. Les presets anterieurs (32 valeurs) sont **completes a 0,5** au
+chargement (`AeManager.padded`), donc inchanges ; sans ca le 33e knob serait ignore.
+
+### Point 4 — liste par categorie
+En-tetes de categorie dans **une seule** `LazyColumn` (plus de filtre qui masquait tout).
+Choisir **laisse la liste ouverte** (audition) ; tap a l'exterieur ferme.
+`testTag("aePresetList")` pour faire defiler jusqu'au groupe `User` dans la capture.
+
+### Point 5 — pitch bend : Track Settings seule autorite
+`audio_engine.h/cpp` portent `mTrackBendRange[8]` (defaut **2**). Le shaper repoussait sa
+propre valeur a chaque mouvement de knob (`c.pitchSens = -1` puis re-push a 2), ce qui
+**annulait le reglage** et faisait diverger l'affiche et le son. Les 2 sites de reset
+relisent maintenant `mTrackBendRange`. Knob **Bend** (mort) retire de `AeSynthUi` ; le knob
+**Voices** garde son libelle (le brief de la session perdue le disait inutile, mais il est
+cable en natif — verifier avant de le retirer).
+
+### Captures
+`AePresetUiCaptureTest` : `ae_preset_list` (groupe User + Delete, mesure : or y≈384),
+`ae_preset_naming`, `ae_leads_intensity` (remplissage cyan 177,8 dp = 0,5×370 sous les chips).
