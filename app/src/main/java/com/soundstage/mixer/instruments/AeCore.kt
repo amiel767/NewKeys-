@@ -11,7 +11,7 @@ import kotlin.math.roundToInt
 
 /** The Æther Instruments. [fxId] = id of the native Source in FxRegistry (6 organ, 14 synth, 15 leads, 16 sax). */
 enum class AeInstrument(val fxId: Int, val title: String, val paramCount: Int) {
-    ORGAN(6, "Æther Organ", 31), SYNTH(14, "Æther Synth", 33), LEADS(15, "Æther Leads", 33), SAX(16, "Æther Sax", 22);
+    ORGAN(6, "Æther Organ", 31), SYNTH(14, "Æther Synth", 33), LEADS(15, "Æther Leads", 33), SAX(16, "Æther Sax", 23);
     /** Parameters that switch instantly on a preset change (the others glide). */
     val discrete: IntArray get() = when (this) {
         ORGAN -> intArrayOf(18, 19, 20, 21, 22, 23, 24, 25)
@@ -87,12 +87,10 @@ interface AeHost {
      * Load the sampled bank that goes with an instrument, if it has one. Only the sax does
      * today; every other instrument returns false and stays purely synthetic.
      *
-     * [mix] is how much of the output the samples carry. It defaults to 1, i.e. the samples
-     * alone: the sampled bank is what the user wants to hear, and blending it with the
-     * synthesis underneath made the sax sound like a detuned double rather than one
-     * instrument. A mix below 1 remains available for a diagnostic A/B.
+     * How much of the output the samples carry is parameter 22 (the Blend knob), pushed by the
+     * manager with the rest of the preset, not a separate argument here.
      */
-    fun loadBank(strip: Int, instrument: AeInstrument, type: Int, mix: Float = 1f): Boolean = false
+    fun loadBank(strip: Int, instrument: AeInstrument, type: Int): Boolean = false
 
     /** Mix of samples in the instrument output, 0 = pure synthesis. For the UI readback. */
     fun bankMix(strip: Int): Float = 0f

@@ -42,7 +42,7 @@ class AeManagerTest {
         /** Banks loaded, in order: strip to type. Records the call even when it fails. */
         val bankLoads = mutableListOf<Pair<Int, Int>>()
         var bankOk = true
-        override fun loadBank(strip: Int, instrument: AeInstrument, type: Int, mix: Float): Boolean {
+        override fun loadBank(strip: Int, instrument: AeInstrument, type: Int): Boolean {
             bankLoads += strip to type
             return bankOk && instrument == AeInstrument.SAX
         }

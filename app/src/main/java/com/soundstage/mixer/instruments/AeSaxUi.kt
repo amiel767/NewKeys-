@@ -110,9 +110,15 @@ fun BoxScope.AeSaxUi(c: AeCtl, a: AeAnim) {
     arrayOf("GOLD", "BLACK", "SILVER", "COPPER").forEachIndexed { i, t -> AeChip(c, 1, i, 4, t, 36 + i * 68, 126, 64) }
     arrayOf("JAZZ", "CLASSIC", "RUBBER").forEachIndexed { i, t -> AeChip(c, 2, i, 3, t, 36 + i * 90, 172, 86) }
     arrayOf("SOFT", "MEDIUM", "HARD").forEachIndexed { i, t -> AeChip(c, 3, i, 3, t, 36 + i * 90, 218, 86) }
-    Canvas(Modifier.at(38, 266, 180, 14)) { a.frame.intValue; drawSaxVu(a) }
+    // The meter stops short of the Blend knob: its hit box starts at x=185, so 140 leaves a gap
+    // while keeping the full 24 bars (the draw scales to whatever width it is given).
+    Canvas(Modifier.at(38, 266, 140, 14)) { a.frame.intValue; drawSaxVu(a) }
     AeT("OUTPUT", 9, GOLD, Modifier.at(38, 286, 100, 12), AeFonts.plate, FontWeight.ExtraBold, 0.2f)
     AeGlassKnob(c, 20, "Level", 262, 250, 42)
+    // Blend mixes the sampled pack under the synthesis (parameter 22). It sits beside Level
+    // because it is a voice-level setting, not an articulation: how much of the sound comes
+    // from the recording rather than the model.
+    AeGlassKnob(c, 22, "Blend", 196, 250, 42)
     // Humanize sits with OUTPUT rather than in the expression grid: it is not an articulation
     // setting but the player model itself (per-note spread of pitch, attack, level and vibrato),
     // and it reads as the counterpart of Level — how loud, and how human.

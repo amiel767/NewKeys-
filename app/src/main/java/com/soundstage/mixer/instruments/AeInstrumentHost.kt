@@ -87,17 +87,16 @@ object AeInstrumentHost : AeHost {
 
     override fun level(strip: Int): Float = NativeAudioBridge.safeFxStripPeak(strip)
 
-    override fun loadBank(strip: Int, instrument: AeInstrument, type: Int, mix: Float): Boolean {
+    override fun loadBank(strip: Int, instrument: AeInstrument, type: Int): Boolean {
         // Only the sax ships a bank today. `type` is the sax's first parameter, the same
         // value the engine reads to pick a formant set, so the two stay in step.
         if (instrument != AeInstrument.SAX) return false
         val name = AeBanks.fileFor(instrument, type) ?: return false
         val bytes = AeBanks.read(name) ?: return false
         val ok = NativeAudioBridge.safeLoadInstrumentBank(strip, bytes)
-        // The bank is the voice, not a layer on top of the synthesis: a mix of 1 makes the
-        // engine output the samples alone. The synthesis still runs underneath to cover the
-        // seams between regions, but it is weighted out of the sum.
-        if (ok) NativeAudioBridge.safeSetInstrumentSampleMix(strip, mix.coerceIn(0f, 1f))
+        // The mix is parameter 22 now (the Blend knob), pushed by the manager with the rest of
+        // the preset. Forcing it here as well would overwrite that value on every load, in
+        // whichever order the two happened to run.
         Log.d("AeInstrumentHost", "loadBank(strip=$strip, $name, ${bytes.size} o) -> $ok")
         return ok
     }

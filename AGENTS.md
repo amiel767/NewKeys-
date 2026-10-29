@@ -1664,3 +1664,54 @@ Ajoute : legato (le slur **deplace** la voix echantillonnee), humanize, accord.
   aleatoire par note deplace le pic de tens de quelques dizaines de cents).
 
 Le seuil de continuite (sauts > 0,25) reste a **0** sur les 7 notes testes.
+
+## Session 2026-10-29 — sax Æther : knob Blend (parametre 22)
+
+### Le pack etait charge mais **jamais mixe** (piege principal)
+`SaxEngine` portait un membre `sampleMix_` (defaut **0**) et un controle dedie
+`setSampleMix()` que **personne n'appelait**. `loadBank` (Kotlin) forcait bien le mix
+a **1,0** apres le chargement — mais **apres** que le manager ait pousse les 22
+parametres du preset, et il ne poussait rien dans le parametre. Resultat : le pack
+etait lu, decode, garde en memoire, et la sortie restait de la synthese pure.
+Symptome trompeur : l'instrument se lit « hybride » dans le code et se joue
+« synthetique » a l'oreille, sans erreur ni log d'echec.
+
+### Correctif : le mix est le **parametre 22**, source unique
+- `fx_sax.h` : `paramCount()` 22 -> **23** ; la boucle lit `p(22)` (plus `sampleMix_`) ;
+  `sampleMix()`/`setSampleMix()` ne sont plus qu'un **alias** de `p(22)` /
+  `setNorm(22, v)`. Le membre `sampleMix_` est **supprime** : garder deux copies
+  laissait le knob et le controle natif diverger.
+- `AeCore.kt` : `SAX(..., 23)` ; `loadBank` perd son argument `mix` (il etait inutilise
+  apres le retrait du forcage) — `fun loadBank(strip, instrument, type)`.
+- `AeInstrumentHost.kt` : plus de `safeSetInstrumentSampleMix` au chargement.
+- `FxRegistry.kt` : `FxParam("Blend", ..., 0.5f)` ajoute **apres Humanize**, et la liste
+  des presets sax passe de 21 a **23** valeurs (Humanize 0,35 puis Blend 0,5).
+- `AePresets.kt` : les 23 presets sax passent de 22 a **23** valeurs.
+- `AeSaxUi.kt` : knob `AeGlassKnob(c, 22, "Blend", ...)` a cote de Level ; le VU est
+  raccourci a 140 unites pour lui laisser son hit box (VU 38..178, Blend 185..249,
+  Level 251..315).
+
+### Piege : la liste du registre etait **positionnelle et incomplete**
+`FxRegistry.info(id).params.getOrNull(i)?.default` alimente les valeurs par defaut
+de la fenetre FX. La liste sax n'avait que **21** entrees pour **22** parametres :
+**Humanize (index 21) manquait**. Un `Blend` ajoute apres `Level` se serait donc
+retrouve a l'index **21**, en collision avec Humanize. Verifier les deux listes
+(parametres *et* presets) a chaque ajout, pas seulement `paramCount`.
+
+### Piege d'outillage : un `sed` trop large a corrompu un autre effet
+`sed 's/0\.7f)/0.5f)/g'` sur `FxRegistry.kt` a touche `FxPreset("Plate", ...)` d'un
+**autre** effet. Regle : n'editer `FxRegistry.kt` que par **tranche delimitee**
+(`FxInfo(16, ...)` -> prochain `FxInfo(`), jamais par regex sur tout le fichier.
+Restauration par `git checkout` puis re-application chirurgicale.
+
+### Verification (banc hote, sans Android)
+`tools/saxdemo/blendtest.cpp` (nouveau) : rend le meme preset a blend 0 / 0,5 / 1.
+`Late Night Tenor` : rms 0,324 (synth) / 0,252 (preset) / 0,350 (echantillon) ;
+ecart a blend 0 de **0,226** (0,5) et **0,451** (1,0) -> le parametre 22 agit.
+Demos regenerees avec le blend du preset : crete **<= 0,946**, plus d'ecretage
+(avant, mix force a 1,0 -> crete 0,987).
+`render.cpp` : boucle de parametres 22 -> **23**, `blend < 0` = « prendre la valeur
+du preset ». `gen_presets.py` : `float v[23]`.
+
+`MAX_PARAMS` Kotlin (32) et `kMaxParams` natif (34) couvrent tous deux l'index 22 :
+aucun des deux n'est a changer.

@@ -120,6 +120,15 @@ class SaxSampleReader {
     ratio_ = (rootF_ > 1e-6f) ? f / rootF_ : 1.f;
   }
 
+  /**
+   * Release time constant, in seconds. The engine stretches this while a fall is running, so
+   * the pitch descent is not cut short: at the 0.13 s default the note was already at -28 dB
+   * by the time the fall reached its target, so the fall was never actually heard.
+   *
+   * `relCoef_` is a per-*sample* coefficient (env -= env * relCoef_), hence the rate factor.
+   */
+  void setRelease(float seconds) { relCoef_ = 1.f / (std::max(.02f, seconds) * static_cast<float>(outRate_)); }
+
   void noteOff() { releasing_ = true; }
 
   void allNotesOff() { active_ = false; releasing_ = false; }
@@ -144,10 +153,10 @@ class SaxSampleReader {
     const double step = static_cast<double>(ratio_) * pitchScale_ * static_cast<double>(rate_) / outRate_;
     const double ls = cur_->loopStart, le = cur_->loopEnd;
     const double xf = std::min<double>(64.0, std::max(4.0, (le - ls) * 0.05));
-    // Attack 3.5 ms, release ~60 ms. The release used to be 1 ms, which is fine while the
-    // synthesis is mixed underneath (it carries its own, slow, release) but not once the
-    // samples carry the voice alone: cutting a note in a millisecond is a click, not a release.
-    const float att = 0.006f, rel = 1.6e-4f;
+    // Attack 3.5 ms. The release default is ~130 ms (relCoef_ = 1/0.13): 1 ms cut the note like
+    // a click once the samples carried the voice alone, but a longer one smeared the fall, so
+    // the engine shortens it for the duration of a fall (see setRelease).
+    const float att = 0.006f, rel = relCoef_;
     const uint32_t nf = static_cast<uint32_t>(buf_.size());
     for (int i = 0; i < n; ++i) {
       if (releasing_) { env_ -= env_ * rel; if (env_ < 1e-4f) { active_ = false; break; } }
@@ -239,6 +248,7 @@ class SaxSampleReader {
   const Region* cur_ = nullptr;
   double pos_ = 0.0;
   float ratio_ = 1.f, pitchScale_ = 1.f, env_ = 0.f, vel_ = 1.f;
+  float relCoef_ = 1.6e-4f;   // per-sample decay (1/(tau*rate)); 1.6e-4 = the original 0.13 s
   uint32_t onset_ = 0;
   float rootF_ = 440.f;
   bool active_ = false, releasing_ = false;

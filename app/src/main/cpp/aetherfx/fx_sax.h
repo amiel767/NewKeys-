@@ -17,7 +17,7 @@ namespace aetherfx {
 
 class SaxEngine : public SourceFx {
  public:
-  int paramCount() const override { return 22; }
+  int paramCount() const override { return 23; }
 
   void prepare(double sr, int maxBlock) override {
     sr_ = sr;
@@ -57,6 +57,9 @@ class SaxEngine : public SourceFx {
     ampStage_ = 1; ampT_ = 0.f; ampLvl_ = 0.f; fallT_ = 0.f; biteT_ = 0.f;
     scoopT_ = p(10) > .02f ? 1.f : 0.f;
     clickEnv_ = 1.f;
+    // A fall stretches the sample release; put it back so a note struck after a fallen one
+    // starts from the plain 130 ms release.
+    smp_.setRelease(.13f);
     smp_.noteOn(note, vel);
     seed(f);
     humanize();
@@ -75,6 +78,18 @@ class SaxEngine : public SourceFx {
     relR_ = fallT_ > 0.f ? .30f + p(11) * .36f : .1f + p(11) * .15f;
     fallStart_ = freq_;
     fallEnd_ = std::max(freq_ * std::pow(2.f, -p(11) * 4.5f / 12.f), 20.f);
+    // The fall gets its own duration, shorter than the amplitude release. It used to ride on
+    // relR_ (0.30..0.66 s), which is 3-5x the time the note stays audible: measured on a held
+    // D4, the pitch had moved only 0.4 semitone while the note was still at -6 dB and reached
+    // its -1.8 st target at -28 dB, by which point it is inaudible. That slow, unresolved
+    // descent is what read as "it detunes" rather than as a fall. A player drops the pitch in
+    // roughly 0.15-0.25 s; scale it a little with the interval so a deep fall takes longer.
+    fallDur_ = .14f + p(11) * .16f;
+    // Stretch the sample release to cover the fall, so the pitch descent is not truncated by
+    // the envelope. `1.7x` leaves a little sample at the end of the fall (the amplitude release
+    // below is longer and finishes the tail). Only when there IS a fall: otherwise the note
+    // keeps the plain 130 ms release.
+    smp_.setRelease(fallT_ > 0.f ? fallDur_ * 1.7f : .13f);
     relClickEnv_ = p(9) > .01f ? (fallT_ > 0.f ? p(9) * .12f : p(9) * .22f) : 0.f;
   }
   void allNotesOff() override {
@@ -101,10 +116,12 @@ class SaxEngine : public SourceFx {
    * With no pack loaded the reader is inactive and this has no effect.
    */
   // SourceFx hooks: the engine reaches the bank through these, so it never needs to
-  // know which source it holds.
+  // know which source it holds. The blend is parameter 22, so these two just read and
+  // write it: keeping a second copy in `sampleMix_` let the knob and the native control
+  // disagree.
   bool loadSampleBank(const uint8_t* bytes, size_t size) override { return smp_.load(bytes, size); }
-  float sampleMix() const override { return sampleMix_; }
-  void setSampleMix(float v) override { sampleMix_ = clamp01(v); }
+  float sampleMix() const override { return p(22); }
+  void setSampleMix(float v) override { setNorm(22, v); }
   bool hasSampleBank() const override { return smp_.loaded(); }
 
   /** Hand over a pack built by tools/saxpack/extract.py. Returns false if malformed. */
@@ -163,8 +180,11 @@ class SaxEngine : public SourceFx {
       pitch *= std::pow(2.f, bend_ * static_cast<float>(bendSemis_) / 12.f);
       if (scoopT_ > 0.f) { scoopT_ -= invSr / .1f; if (scoopT_ < 0.f) scoopT_ = 0.f; pitch *= std::pow(2.f, -p(10) * 3.f / 12.f * scoopT_); }
       if (fallT_ > 0.f) {
-        const float u = std::min(1.f, relT_ / std::max(1e-4f, relR_ * .9f));
-        pitch = fallStart_ * std::pow(fallEnd_ / fallStart_, u * u);
+        // Linear in pitch, not u^2: the squared curve spends its first half barely moving, so
+        // with the short duration the descent still sounded like a slow drift. Linear drops the
+        // pitch from the first block, which is what a fall sounds like.
+        const float u = std::min(1.f, relT_ / std::max(1e-4f, fallDur_));
+        pitch = fallStart_ * std::pow(fallEnd_ / fallStart_, u);
       }
       // ---- vibrato (delayed), with a slow drift and a soft-clipped shape ----
       vibPh_ += static_cast<float>(vibRate * invSr); if (vibPh_ >= 1.f) vibPh_ -= 1.f;
@@ -198,7 +218,15 @@ class SaxEngine : public SourceFx {
       x = form_[1].process(0, x);
       x = form_[2].process(0, x);
       x = form_[3].process(0, x);
-      lpF_.setLowpass(sr_, fallT_ > 0.f ? 700.f : lpBase, .9f);
+      // The fall also closes the tone down. It used to switch the cutoff to a fixed 700 Hz in a
+      // single sample, which is a click of brightness right at the release; glide it over the
+      // fall instead, and only as far as the fall has actually travelled.
+      float lpNow = lpBase;
+      if (fallT_ > 0.f) {
+        const float fu = std::min(1.f, relT_ / std::max(1e-4f, fallDur_));
+        lpNow = lpBase + (700.f - lpBase) * fu;
+      }
+      lpF_.setLowpass(sr_, lpNow, .9f);
       x = lpF_.process(0, x);
       // ---- growl AM (fast) and breath AM (slow) ----
       growlPh_ += static_cast<float>(growlHz * invSr); if (growlPh_ >= 1.f) growlPh_ -= 1.f;
@@ -207,10 +235,16 @@ class SaxEngine : public SourceFx {
       // Applied after the formant chain on purpose: the recorded sax already carries
       // its own formant, so running it through form_[0..3] would apply it twice.
       // The sample keeps its own envelope, hence the mix happens after `amp`.
-      if (sampleMix_ > .001f && smp_.active()) {
+      //
+      // Parameter 22 is the Blend knob. It used to be a separate native control
+      // (setSampleMix) that nothing called, so the pack was loaded and then never mixed
+      // in: the UI showed a "hybrid" instrument that played pure synthesis. Driving it
+      // from a parameter makes it a real, saved, preset-able control.
+      const float sampleMix = p(22);
+      if (sampleMix > .001f && smp_.active()) {
         float sm = 0.f;
         smp_.render(&sm, 1, kSampleGain);
-        x = x * (1.f - sampleMix_) + sm * sampleMix_;
+        x = x * (1.f - sampleMix) + sm * sampleMix;
       }
       // ---- key click: at note-on, and a shorter one at release when there is a fall ----
       // Both sit *after* the mix, not before it. They used to be summed into the synthesis
@@ -428,7 +462,6 @@ class SaxEngine : public SourceFx {
   int ty_ = 1;
   bool measured_ = true;
   SaxSampleReader smp_;
-  float sampleMix_ = 0.f;   // 0 = pure synthesis, 1 = pure samples
   // Level trim so a note played from the pack matches the synthesis it blends
   // with. Measured on the baritone at mix 1: synthesis 0.230 RMS, pack 0.0753,
   // so the pack sits 3.05x lower. The pack itself is normalised to a canonical
@@ -448,7 +481,7 @@ class SaxEngine : public SourceFx {
   float hum_ = 0.f, humPitch_ = 1.f, humLevel_ = 1.f, humAtk_ = 1.f, humVib_ = 1.f;
   float scoopT_ = 0.f, fallT_ = 0.f, clickEnv_ = 0.f, relClickEnv_ = 0.f;
   float q_ = -1.f, nVar_ = 1.f, pitchScale_ = 1.f, afScale_ = 1.f, nGainJit_ = 1.f, vfJit_ = 1.f, clickJit_ = 1.f;
-  float fallStart_ = 440.f, fallEnd_ = 440.f;
+  float fallStart_ = 440.f, fallEnd_ = 440.f, fallDur_ = .2f;
   uint32_t rng_ = 0x2545F491u;
 };
 
