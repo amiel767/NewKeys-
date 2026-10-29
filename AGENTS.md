@@ -1526,3 +1526,64 @@ cable en natif — verifier avant de le retirer).
 ### Captures
 `AePresetUiCaptureTest` : `ae_preset_list` (groupe User + Delete, mesure : or y≈384),
 `ae_preset_naming`, `ae_leads_intensity` (remplissage cyan 177,8 dp = 0,5×370 sous les chips).
+
+## Session 2026-10-29 (suite) — UI Æther resserrée + voix échantillonnée du sax façonnée
+
+Commit `fc64eaf`. Conversation parallèle `dde6dffb…` : **aucun nouvel événement** (son
+dernier travail est un ancêtre de HEAD). Mode économique : pas de `conv_sync` en boucle,
+médias publiés en **JPEG q76 (1200 px)** et **MP3 mono 80 kbit/s**, jamais de PNG.
+
+### UI — mesures sur captures, pas à l'œil
+
+- **Rails de leads** : largeur réduite, **affichage de niveau retiré** (vérifié : 0 px clair
+  dans la bande y262..280 sous les rails).
+- **`AeSeg`** : le pouce était décalé de 2 unités par segment (il débordait de 3 unités à
+  droite à l'index 1). Centrage corrigé. Creusé sans contour.
+- **`AePageTabs`** (nouveau, `AeControls.kt`) : géométrie d'en-tête **partagée** Synth + Leads,
+  x 264..532. Avant, les onglets Leads commençaient à 354 et la rangée Synth courait jusqu'à
+  682 **sous la disquette à 620** : c'est le chevauchement signalé. En-tête réordonné :
+  retour 10..40 | titre 58 | onglets 264..532 | disque 552..582 | préc 596..626 |
+  pastille preset 640..866 | suiv 880..910.
+- **Liste de presets** : refonte en **index compact à 2 colonnes** (30 unités/ligne au lieu de
+  ~40), en-têtes de catégorie à filet + compteur, sélection par **barre d'accent** à gauche
+  (plus de bloc lumineux), lignes alternées à 2 %, **vignette de défilement**. ~150 presets
+  lisibles au lieu d'une dizaine. Mesuré : 10 lignes à gauche / 5 à droite visibles, gouttière
+  centrale vide (2 colonnes réelles), barre d'accent à x 20..22.
+- **Knobs** : agrandis (sax 42, organ 44, leads 46-58, synth 38-50) avec **positions
+  recalculées**. La boîte tactile est bornée à `sz + 22` : au-delà elle dépasserait le pas le
+  plus serré des fenêtres (66 unités, synth) et deux knobs se partageraient une bande tactile.
+  Un audit par rectangles est **trompeur** : il faut filtrer par page rendue, sinon il
+  « détecte » des collisions entre des pages différentes.
+- **`AePals.of(instrument)`** : couleur résolue sans session (la pastille de preset en a besoin).
+
+### Sax — les samples SONT la voix (`sampleMix = 1.0`), donc trois défauts
+
+| Défaut | Cause | Correctif | Mesure |
+|---|---|---|---|
+| Bend / vibrato / scoop / fall **muets** | calculés dans la boucle, appliqués à la synthèse ; le mixage **remplace** toute la somme | `FxSaxSampleReader::setPitchScale()` poussé 1x/bloc | bend **+101,7 ¢** / **+200,1 ¢** (attendu 100/200) |
+| **Pas de clic d'anche** | le clic était **sommé avant** le mix → jeté | déplacé **après** le mixage | attaque/sustain **0,08x → 0,49x** |
+| **Attaque molle (127 ms)** | la région joue depuis la frame 0, mais l'enregistrement monte lentement (8 % du RMS sustain dans les 5 premières ms) | démarrage sur un **onset** trouvé 1x par région (45 % du RMS), borné au loopStart | niveau en **5 ms** |
+
+Vibrato monotone : **15,2 ¢ (0,0) → 31,2 ¢ (0,3) → 87,9 ¢ (0,8)**. Relâchement du lecteur
+ralenti (`3,5e-4 → 1,6e-4`) pour éviter le clic quand les samples portent la voix seule.
+
+### Piège de mesure (a coûté 3 passes) — mesurer une hauteur DANS une note de sax
+
+- Pic de **Goertzel** sur 25 ms : résolution ~40 Hz = **250 cents**, plus grossier que le
+  vibrato mesuré → annonçait 53 ¢ de « vibrato » à profondeur 0.
+- **Passages par zéro** sur un signal peu filtré : comptent l'**harmonique 2**, forte au sax
+  → lisaient exactement **le double** de la fréquence.
+- Méthode retenue : **autocorrélation** sur un signal filtré à **1,3·f0** (3 pôles, 18 dB/oct),
+  interpolation parabolique du pic. Bend retrouvé à 1,7 ¢ près.
+
+### Banc conservé : `tools/aetherfx/sax_voice_check.cpp`
+
+`g++ -O2 -std=c++17 -I app/src/main/cpp -o /tmp/svc tools/aetherfx/sax_voice_check.cpp`
+puis `./svc app/src/main/assets/saxpack/saxpack_alt.bin` → **TOUT PASSE (0 échec)**.
+C'est le seul moyen de valider la voix sax sans appareil.
+
+### Page de recette (légère)
+
+`/workspace/dl/pub/index.html` servi sur **port 12000** : 13 JPEG (~600 Ko) + 3 MP3.
+**Piège** : cette page contenait déjà les médias de la session précédente — ne pas écraser
+`index.html` sans reprendre les fichiers existants (`ls *.jpg *.mp3`).
