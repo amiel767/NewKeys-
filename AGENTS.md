@@ -1715,3 +1715,29 @@ du preset ». `gen_presets.py` : `float v[23]`.
 
 `MAX_PARAMS` Kotlin (32) et `kMaxParams` natif (34) couvrent tous deux l'index 22 :
 aucun des deux n'est a changer.
+
+### Env 2026-10-29 : le JDK se reinstaller, et la consomation de l'utilisateur n'est PAS le reseau du sandbox
+Piege de raisonnement, a ne pas refaire : « installer le JDK consomme les donnees
+mobiles de l'utilisateur » est **faux**. La consomation de l'utilisateur, c'est le
+**flux de la conversation** ; ce que le sandbox telecharge ne le touche pas.
+Ne pas refuser une installation lourde cote serveur pour ce motif — seulement pour
+la **RAM** (deux builds Gradle en parallele tuent la sandbox).
+
+Le chemin `/workspace/jdk/jdk21` n'existe plus apres un wipe. Installation verifiee :
+`sudo apt-get update && sudo apt-get install -y openjdk-21-jdk-headless unzip zip`
+-> `/usr/lib/jvm/java-21-openjdk-amd64` (JDK 21.0.12). Un `apt-get` sans `sudo`
+echoue avec `List directory /var/lib/apt/lists/partial is missing`.
+
+Avec ce JDK : `:app:compileDebugKotlin` **BUILD SUCCESSFUL** (3m03, seuls warnings
+`quadraticBezierTo`), et `:app:testDebugUnitTest --tests
+"com.soundstage.mixer.AeInstrumentCaptureTest" -Proborazzi.test.record=true`
+**BUILD SUCCESSFUL** (1m17) -> `app/src/test/screenshots/ae_sax_window.png`
+regenere (2750x1265, echelle 2,75 px/dp sur une scene logique 1000x460).
+
+Verifier une capture sans la regarder : **OCR** (`tesseract`, `sudo apt-get install
+-y tesseract-ocr`) sur un recadrage. `BLEND` et `LEVEL` sortent tous deux du groupe
+OUTPUT -> le knob est bien rendu. Un diff de pixels (15 134 px modifies sur x 38..236)
+confirme le changement, l'OCR confirme *quoi* a change.
+
+Lancer les builds longs en **arriere-plan** (`nohup ... &`) : le runtime coupe les
+commandes de premier plan a 1080 s.
