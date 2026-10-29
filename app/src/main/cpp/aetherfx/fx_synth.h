@@ -15,7 +15,7 @@ class SynthEngine : public SourceFx {
   };
 
  public:
-  int paramCount() const override { return 32; }
+  int paramCount() const override { return 33; }
   void prepare(double sr, int) override { sr_ = sr; reset(); }
   void reset() override {
     for (auto& v : v_) { v = Voice(); for (int u = 0; u < kU; ++u) { v.phA[u] = u * 0.123f; v.phB[u] = u * 0.071f; } }
@@ -51,6 +51,9 @@ class SynthEngine : public SourceFx {
   void allNotesOff() override { held_.clear(); for (auto& v : v_) if (v.on) { v.gate = false; v.stage = 4; } }
   void pitchBend(float b) override { bend_ = b; }
 
+  /** Voice-mode intensity (param 32, default 0.5 = neutral): glide scale, same rule as Leads. */
+  float intensityGlide() const { return 0.4f + 1.2f * p(32); }
+
   void process(float* io, int n) override {
     NoDenormals nd;
     // Silent early-out: no voice sounding (releases included) means the block is
@@ -74,7 +77,7 @@ class SynthEngine : public SourceFx {
     const int l1s = static_cast<int>(std::lround(p(18) * 3.f)), l1dst = static_cast<int>(std::lround(p(19) * 3.f));
     const float m1 = p(22), m2 = p(23), m3 = p(24), m4 = p(25);
     const int mode = static_cast<int>(std::lround(p(26) * 2.f));
-    const float glide = p(27) * 2.f, bendR = static_cast<float>(bendSemis_), tune = (p(30) - 0.5f) * 200.f, level = dbToLin(-24.f + 30.f * p(31)) * 0.25f;
+    const float glide = p(27) * 2.f * intensityGlide(), bendR = static_cast<float>(bendSemis_), tune = (p(30) - 0.5f) * 200.f, level = dbToLin(-24.f + 30.f * p(31)) * 0.25f;
     const float aAtt = 1.f / std::max(1.f, att * static_cast<float>(sr_)), cDec = 1.f - std::exp(static_cast<float>(-1.0 / (dec * sr_))), cRel = 1.f - std::exp(static_cast<float>(-1.0 / (rel * sr_)));
     const float gl = glide < 0.002f ? 1.f : 1.f - std::exp(static_cast<float>(-1.0 / (glide * sr_)));
     const float invSr = static_cast<float>(1.0 / sr_);

@@ -28,7 +28,7 @@ class LeadsEngine : public SourceFx {
   };
 
  public:
-  int paramCount() const override { return 32; }
+  int paramCount() const override { return 33; }
 
   void prepare(double sr, int maxBlock) override {
     sr_ = sr;
@@ -52,9 +52,10 @@ class LeadsEngine : public SourceFx {
     if (vel <= 0) { noteOff(note); return; }
     const int mode = static_cast<int>(std::lround(p(28) * 2.f));
     if (mode == 0) {  // poly: one voice per note, oldest stolen beyond kV
+      const int maxV = intensityVoices(kV);
       int idx = -1;
-      for (int i = 0; i < kV; ++i) if (!v_[i].on) { idx = i; break; }
-      if (idx < 0) { float best = 1e9f; for (int i = 0; i < kV; ++i) { const float a = v_[i].gate ? v_[i].age + 1e6f : v_[i].age; if (a < best) { best = a; idx = i; } } }
+      for (int i = 0; i < maxV; ++i) if (!v_[i].on) { idx = i; break; }
+      if (idx < 0) { float best = 1e9f; for (int i = 0; i < maxV; ++i) { const float a = v_[i].gate ? v_[i].age + 1e6f : v_[i].age; if (a < best) { best = a; idx = i; } } }
       Voice& v = v_[idx];
       const float prev = v.on ? v.pit : static_cast<float>(note);
       v.on = true; v.gate = true; v.note = note; v.vel = vel / 127.f; v.stage = 1; v.envT = 0.f;
@@ -85,6 +86,20 @@ class LeadsEngine : public SourceFx {
   void allNotesOff() override { held_.clear(); for (auto& v : v_) if (v.on) { v.gate = false; v.stage = 5; } }
   void pitchBend(float b) override { bend_ = b; }
 
+  /**
+   * Voice-mode intensity (param 32, default 0.5 = neutral).
+   *
+   * The chips pick WHICH allocator runs; intensity says how strongly it behaves.
+   * Mono/legato: glide time is scaled, so 0 is nearly instant and 1 is a long slide.
+   * Poly: the voice limit is scaled, so the mode can be thinned out or opened up.
+   * At 0.5 both factors are exactly 1, so every existing preset sounds unchanged.
+   */
+  float intensityGlide() const { return 0.4f + 1.2f * p(32); }
+  int intensityVoices(int want) const {
+    const int n = 1 + static_cast<int>(std::lround(p(32) * 2.f * static_cast<float>(want - 1)));
+    return n < 1 ? 1 : (n > want ? want : n);
+  }
+
   void process(float* io, int n) override {
     NoDenormals nd;
     bool any = false;
@@ -105,7 +120,7 @@ class LeadsEngine : public SourceFx {
     const float fc0 = 40.f * std::pow(500.f, p(18)), pk = std::min(18000.f, fc0 * std::pow(2.f, p(20) * 6.f));
     const float kfBase = .5f + p(19) * p(19) * 14.f;
     const int mode = static_cast<int>(std::lround(p(28) * 2.f));
-    const float glTime = p(29) * p(29) * 1.2f / 3.f;
+    const float glTime = p(29) * p(29) * 1.2f / 3.f * intensityGlide();
     const float gl = glTime < .002f ? 1.f : 1.f - std::exp(static_cast<float>(-1.0 / (glTime * sr_)));
     const float vibD = p(30) * 45.f, outG = p(31) * 1.1f;
     const float invSr = static_cast<float>(1.0 / sr_);

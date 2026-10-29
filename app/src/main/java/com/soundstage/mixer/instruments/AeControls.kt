@@ -256,6 +256,43 @@ fun AeKeyboard(c: AeCtl, x: Number, y: Number, w: Number, h: Number, octaves: In
     }
 }
 
+/**
+ * Voice-mode intensity slider, drawn under the Poly/Mono/Legato chips.
+ *
+ * It drives a real parameter ([idx]) rather than a UI-only value: the mode itself
+ * (which voice allocator runs) is what the chips pick, and intensity is how strongly
+ * that mode behaves — Mono/Legato glide and note priority for Leads, voice count and
+ * glide for the Synth. Placing it in the same card as the chips keeps the two together,
+ * which is where the user asked for it.
+ */
+@Composable
+fun AeIntensitySlider(c: AeCtl, idx: Int, x: Number, y: Number, w: Number, accent: Color) {
+    val sc = LocalAeScale.current
+    val v = c.v(idx)
+    fun fromX(px: Float) = (px / sc / w.toFloat()).coerceIn(0f, 1f)
+    Box(
+        Modifier.at(x, y, w, 34).pointerInput(idx) {
+            awaitEachGesture {
+                val d = awaitFirstDown(requireUnconsumed = false)
+                c.set(idx, fromX(d.position.x)); d.consume()
+                drag(d.id) { c.set(idx, fromX(it.position.x)); it.consume() }
+            }
+        },
+    ) {
+        AeT("INTENSITY", 8, AeC.mute, Modifier.at(0, 0, w, 10), spacing = 0.18f)
+        Canvas(Modifier.at(0, 14, w, 12)) {
+            val h = 5f * (size.width / w.toFloat())
+            val cy = size.height / 2f
+            drawRoundRect(Color(0x14FFFFFF), Offset(0f, cy - h / 2f), Size(size.width, h), CornerRadius(h / 2f))
+            drawRoundRect(Brush.horizontalGradient(listOf(accent.copy(alpha = 0.75f), accent)), Offset(0f, cy - h / 2f), Size(size.width * v, h), CornerRadius(h / 2f))
+            val kx = size.width * v
+            drawCircle(Color(0x33000000), h * 1.5f, Offset(kx, cy + 1.5f))
+            drawCircle(Color.White, h * 1.2f, Offset(kx, cy))
+            drawCircle(accent, h * 0.7f, Offset(kx, cy))
+        }
+    }
+}
+
 /** Colour language per instrument: synth violet, leads cyan LED, sax warm amber. */
 class AePal(val ring0: Color, val ring1: Color, val glow: Color, val label: Color, val chipOn0: Color, val chipOn1: Color, val chipText: Color, val knob: String)
 object AePals {

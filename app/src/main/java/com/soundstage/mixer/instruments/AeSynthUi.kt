@@ -93,9 +93,13 @@ fun BoxScope.AeSynthUi(c: AeCtl, a: AeAnim) {
         else -> {
             Card(22, 54, 312, 286, "VOICE")
             arrayOf("POLY", "MONO", "LEGATO").forEachIndexed { i, t -> AeChip(c, 26, i, 3, t, 38 + i * 90, 86, 84) }
-            AeGlassKnob(c, 27, "Glide", 54, 156, 50); AeGlassKnob(c, 28, "Voices", 166, 156, 50)
+            AeIntensitySlider(c, 32, 38, 126, 270, AeC.p2)
+            AeGlassKnob(c, 27, "Glide", 54, 190, 50); AeGlassKnob(c, 28, "Voices", 166, 190, 50)
             Card(666, 54, 312, 286, "PITCH · OUTPUT")
-            AeGlassKnob(c, 29, "Bend", 700, 100, 50); AeGlassKnob(c, 30, "Tune", 812, 100, 50); AeGlassKnob(c, 31, "Level", 756, 196, 56)
+            // No "Bend" knob here: it was a dead control (the range now comes from
+            // Track Settings, which is the single place the user edits it) and it
+            // displayed semitones, so it contradicted the Track Settings readout.
+            AeGlassKnob(c, 30, "Tune", 700, 130, 50); AeGlassKnob(c, 31, "Level", 812, 130, 50)
         }
     }
     AeKeyboard(c, 52, 360, 896, 90)

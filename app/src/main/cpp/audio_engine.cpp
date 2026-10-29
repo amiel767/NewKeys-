@@ -23,6 +23,10 @@ AudioEngine::AudioEngine() {
     // and the whole Æther FX path silently falls back to the legacy stereo mix.
     mSynthEngine.setMultiChannelEnabled(true);
     mSynthEngine.init(sampleRate);
+    // Track Settings default: 2 semitones (one whole tone), the same value the Kotlin
+    // model and the sources use. Without this the array is zero-initialised and a track
+    // would start with no bend at all until the user touched the setting.
+    for (auto &r : mTrackBendRange) r.store(2, std::memory_order_relaxed);
     mMasterDelay.init(sampleRate);
     mMasterReverb.init(sampleRate);
     mSoundGoodizer.init(sampleRate);
@@ -525,7 +529,7 @@ void AudioEngine::refreshTrackGens(int track) {
             for (int i = 0; i < c.n; ++i) mSynthEngine.setGen(track, c.gen[i], 0.0f);
             c.n = 0;
         }
-        if (c.pitchSens != -1) { mSynthEngine.setPitchBendSensitivity(track, 2); c.pitchSens = -1; }
+        if (c.pitchSens != -1) { mSynthEngine.setPitchBendSensitivity(track, mTrackBendRange[track].load(std::memory_order_relaxed)); c.pitchSens = -1; }
         return;
     }
     for (int i = 0; i < u.gens.n; ++i) {
@@ -539,7 +543,11 @@ void AudioEngine::refreshTrackGens(int track) {
         }
         if (!known && c.n < 16) { c.gen[c.n] = u.gens.gen[i]; c.val[c.n] = u.gens.val[i]; ++c.n; mSynthEngine.setGen(track, u.gens.gen[i], u.gens.val[i]); }
     }
-    if (c.pitchSens != u.perf.bendSemis) { c.pitchSens = u.perf.bendSemis; mSynthEngine.setPitchBendSensitivity(track, c.pitchSens); }
+    // Always the Track Settings value, never the shaper's own: the shaper's field is a
+    // leftover from when the guitar's Bend knob owned this, and using it meant moving any
+    // knob reset the range the user had chosen.
+    const int wantedSens = mTrackBendRange[track].load(std::memory_order_relaxed);
+    if (c.pitchSens != wantedSens) { c.pitchSens = wantedSens; mSynthEngine.setPitchBendSensitivity(track, c.pitchSens); }
 }
 
 void AudioEngine::setTrackInstrument(int track, int fxId) {
@@ -549,7 +557,7 @@ void AudioEngine::setTrackInstrument(int track, int fxId) {
         GenCache &c = mGenCache[track];
         for (int i = 0; i < c.n; ++i) mSynthEngine.setGen(track, c.gen[i], 0.0f);
         c.n = 0;
-        if (c.pitchSens != -1) { mSynthEngine.setPitchBendSensitivity(track, 2); c.pitchSens = -1; }
+        if (c.pitchSens != -1) { mSynthEngine.setPitchBendSensitivity(track, mTrackBendRange[track].load(std::memory_order_relaxed)); c.pitchSens = -1; }
         return;
     }
     refreshTrackGens(track);

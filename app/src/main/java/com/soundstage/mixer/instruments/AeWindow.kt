@@ -5,7 +5,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -23,13 +25,18 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import com.soundstage.mixer.ui.components.FloppyDiskIcon
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
@@ -52,6 +59,7 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
     val c = remember(s) { AeCtl(s, manager) }
     val a = remember(s) { AeAnim() }
     var list by remember { mutableStateOf(false) }
+    var naming by remember { mutableStateOf(false) }
     // One loop per open window. While anything is moving it runs at ~60 fps, and when the
     // instrument is idle it *sleeps on the note counter* instead of polling slowly: a slow
     // idle poll made the first key press wait for the next tick, which is what read as
@@ -90,10 +98,25 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
             val ns = RoundedCornerShape(10.su())
             Row(Modifier.at(686, 7, 210, 32).clip(ns).background(Color(0x14FFFFFF)).border(1.su(), Color(0x1CFFFFFF), ns).clickable(remember { MutableInteractionSource() }, null) { list = !list }.padding(horizontal = 12.su()),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                AeT(presets[s.preset].name, 12, AeC.tx); AeT(presets[s.preset].category, 10, AeC.mute, weight = FontWeight.SemiBold)
+                AeT(presets.getOrNull(s.preset)?.name ?: "", 12, AeC.tx); AeT(presets.getOrNull(s.preset)?.category ?: "", 10, AeC.mute, weight = FontWeight.SemiBold)
             }
             HeaderBtn("▶", 902, 8, 30, 30) { manager.loadPreset(strip, s.preset + 1) }
-            if (list) PresetList(manager, strip, s, onPick = { manager.loadPreset(strip, it); list = false }, onUnload = { list = false; onClose(); manager.unload(strip) })
+            // Save-to-disk, left of the preset chip and matching its height, so the two
+            // read as one control group. It opens the naming sheet; nothing is written
+            // until a name is confirmed.
+            SaveDiskBtn(620, 7) { naming = true }
+            if (naming) NameSheet(
+                initial = "My ${s.instrument.title.removePrefix("Æther ")}",
+                onCancel = { naming = false },
+                onConfirm = { manager.saveUserPreset(strip, it); naming = false },
+            )
+            if (list) PresetList(
+                m = manager, strip = strip, s = s,
+                onPick = { manager.loadPreset(strip, it) },
+                onDeleteUser = { manager.deleteUserPreset(s.instrument, it) },
+                onUnload = { list = false; onClose(); manager.unload(strip) },
+                onDismiss = { list = false },
+            )
         }
     }
 }
@@ -129,24 +152,116 @@ private fun BoxScope.HeaderBtn(t: String, x: Number, y: Number, w: Number, h: Nu
     Box(Modifier.at(x, y, w, h).clip(RoundedCornerShape(9.su())).background(Color(0x14FFFFFF)).clickable(remember { MutableInteractionSource() }, null, onClick = onClick), contentAlignment = Alignment.Center) { AeT(t, 12, AeC.tx) }
 }
 
+/**
+ * Preset browser. Presets are grouped under a header per category and shown as one
+ * continuous scrolling list: picking a category used to hide every other preset
+ * behind an isolation overlay, which read as "the list is empty". Now every preset
+ * stays visible and the category is a header, not a filter.
+ *
+ * Picking a preset loads it and LEAVES THE LIST OPEN, so the user can audition
+ * several in a row. Tapping outside the panel closes it.
+ */
 @Composable
-private fun BoxScope.PresetList(m: AeManager, strip: Int, s: AeSession, onPick: (Int) -> Unit, onUnload: () -> Unit) {
+private fun BoxScope.PresetList(
+    m: AeManager,
+    strip: Int,
+    s: AeSession,
+    onPick: (Int) -> Unit,
+    onDeleteUser: (Int) -> Unit,
+    onUnload: () -> Unit,
+    onDismiss: () -> Unit,
+) {
     val all = m.presets(s.instrument)
-    val cats = listOf("All") + all.map { it.category }.distinct()
-    var cat by remember { mutableStateOf("All") }
+    val base = m.factoryPresets(s.instrument).size
     val sh = RoundedCornerShape(18.su())
+    // Scrim: the whole stage, transparent, closing on tap. Sits under the panel so a
+    // tap on a preset still reaches it.
+    Box(Modifier.at(0, 0, AE_W, AE_H).clickable(remember { MutableInteractionSource() }, null, onClick = onDismiss))
     Box(Modifier.at(16, 48, 968, 396).clip(sh).background(Color(0xF40B0F1A)).border(1.su(), Color(0x22FFFFFF), sh)) {
-        LazyRow(Modifier.at(12, 12, 780, 26), horizontalArrangement = Arrangement.spacedBy(6.su())) {
-            items(cats) { k ->
-                val on = k == cat
-                Box(Modifier.clip(RoundedCornerShape(50)).background(if (on) Color.White else Color(0x10FFFFFF)).clickable(remember { MutableInteractionSource() }, null) { cat = k }.padding(horizontal = 12.su(), vertical = 6.su())) { AeT(k, 11, if (on) Color(0xFF0B0F1C) else AeC.tx) }
+        Box(Modifier.at(12, 12, 700, 26)) { AeT("PRESETS", 11, AeC.mute, spacing = 0.18f) }
+        Box(Modifier.at(800, 12, 156, 26).clip(RoundedCornerShape(50)).background(Color(0x33FF5C7A)).clickable(remember { MutableInteractionSource() }, null, onClick = onUnload), contentAlignment = Alignment.Center) { AeT("Unload instrument", 10, Color(0xFFFFB3C0)) }
+        LazyColumn(Modifier.at(12, 46, 944, 336).testTag("aePresetList")) {
+            var lastCat = ""
+            all.forEachIndexed { i, p ->
+                if (p.category != lastCat) {
+                    lastCat = p.category
+                    item(key = "hdr-$i-${p.category}") {
+                        Row(Modifier.fillMaxWidth().padding(top = 8.su(), bottom = 4.su()), verticalAlignment = Alignment.CenterVertically) {
+                            AeT(p.category, 10, if (p.category == AeUserStore.USER_CATEGORY) AeC.gold else AeC.mute, spacing = 0.16f)
+                            Box(Modifier.padding(start = 8.su()).weight(1f).height(1.su()).background(Color(0x14FFFFFF)))
+                        }
+                    }
+                }
+                item(key = "p-$i") {
+                    val isUser = i >= base
+                    Row(
+                        Modifier.fillMaxWidth().padding(bottom = 4.su()).clip(RoundedCornerShape(10.su()))
+                            .background(if (i == s.preset) Color(0x26FFFFFF) else Color(0x0CFFFFFF))
+                            .clickable(remember { MutableInteractionSource() }, null) { onPick(i) }
+                            .padding(horizontal = 12.su(), vertical = 8.su()),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AeT(p.name, 12, AeC.tx, Modifier.weight(1f))
+                        if (i == s.preset) AeT("●", 10, AeC.gold)
+                        if (isUser) Box(
+                            Modifier.padding(start = 10.su()).clip(RoundedCornerShape(50)).background(Color(0x22FF5C7A))
+                                .clickable(remember { MutableInteractionSource() }, null) { onDeleteUser(i) }
+                                .padding(horizontal = 10.su(), vertical = 4.su()),
+                        ) { AeT("Delete", 9, Color(0xFFFFB3C0)) }
+                    }
+                }
             }
         }
-        Box(Modifier.at(800, 12, 156, 26).clip(RoundedCornerShape(50)).background(Color(0x33FF5C7A)).clickable(remember { MutableInteractionSource() }, null, onClick = onUnload), contentAlignment = Alignment.Center) { AeT("Unload instrument", 10, Color(0xFFFFB3C0)) }
-        LazyVerticalGrid(GridCells.Fixed(4), Modifier.at(12, 48, 944, 336), verticalArrangement = Arrangement.spacedBy(6.su()), horizontalArrangement = Arrangement.spacedBy(6.su())) {
-            itemsIndexed(all) { i, p ->
-                if (cat == "All" || p.category == cat) Column(Modifier.clip(RoundedCornerShape(12.su())).background(if (i == s.preset) Color(0x26FFFFFF) else Color(0x0CFFFFFF))
-                    .clickable(remember { MutableInteractionSource() }, null) { onPick(i) }.padding(10.su())) { AeT(p.name, 12, AeC.tx); AeT(p.category, 10, AeC.mute, weight = FontWeight.Medium) }
+    }
+}
+
+/** Floppy button that saves the current knobs as a user preset. Same chrome as the header buttons. */
+@Composable
+private fun BoxScope.SaveDiskBtn(x: Number, y: Number, onClick: () -> Unit) {
+    val sh = RoundedCornerShape(10.su())
+    Box(
+        Modifier.at(x, y, 30, 32).clip(sh).background(Color(0x14FFFFFF)).border(1.su(), Color(0x1CFFFFFF), sh)
+            .clickable(remember { MutableInteractionSource() }, null, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { FloppyDiskIcon(isArmed = false, modifier = Modifier.size(16.su())) }
+}
+
+/**
+ * Small naming sheet for a user preset. It is a real [Dialog] so it sits above the
+ * stage and takes the keyboard; the confirm button is disabled on a blank name.
+ */
+@Composable
+private fun NameSheet(initial: String, onCancel: () -> Unit, onConfirm: (String) -> Unit) {
+    var text by remember { mutableStateOf(initial) }
+    Dialog(onDismissRequest = onCancel) {
+        val sh = RoundedCornerShape(16.dp)
+        Column(
+            Modifier.clip(sh).background(Color(0xFF151A26)).border(1.dp, Color(0x22FFFFFF), sh).padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Save preset", color = Color(0xFFF1F4FA), fontSize = 14.sp, lineHeight = 14.sp, fontWeight = FontWeight.Bold, fontFamily = AeFonts.ui)
+            Text("Stored under the User category.", color = Color(0xFF8D96AB), fontSize = 11.sp, lineHeight = 11.sp, fontFamily = AeFonts.ui)
+            Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Color(0xFF0B0F1A)).border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 10.dp)) {
+                BasicTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    singleLine = true,
+                    textStyle = TextStyle(color = Color(0xFFF1F4FA), fontSize = 14.sp, fontFamily = AeFonts.ui),
+                    cursorBrush = SolidColor(Color(0xFF8FB2E8)),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(
+                    Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(Color(0x14FFFFFF))
+                        .clickable(remember { MutableInteractionSource() }, null, onClick = onCancel).padding(vertical = 10.dp),
+                    contentAlignment = Alignment.Center,
+                ) { Text("Cancel", color = Color(0xFFC9D2E2), fontSize = 12.sp, lineHeight = 12.sp, fontWeight = FontWeight.Bold, fontFamily = AeFonts.ui) }
+                Box(
+                    Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(if (text.isBlank()) Color(0x3348A0FF) else Color(0xFF3E7BD6))
+                        .clickable(enabled = text.isNotBlank()) { onConfirm(text) }.padding(vertical = 10.dp),
+                    contentAlignment = Alignment.Center,
+                ) { Text("Save", color = Color.White, fontSize = 12.sp, lineHeight = 12.sp, fontWeight = FontWeight.Bold, fontFamily = AeFonts.ui) }
             }
         }
     }

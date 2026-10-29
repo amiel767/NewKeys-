@@ -13,7 +13,7 @@
 
 namespace aetherfx {
 
-constexpr int kMaxParams = 32;
+constexpr int kMaxParams = 34;
 constexpr double kPi = 3.14159265358979323846;
 
 inline float clamp01(float v) { return v < 0.f ? 0.f : (v > 1.f ? 1.f : v); }

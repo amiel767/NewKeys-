@@ -883,6 +883,7 @@ private:
      * here, so whichever one owns the channel honours the setting.
      */
     void setTrackPitchBendRange(int track, int semitones) {
+        if (track >= 0 && track < 8) mTrackBendRange[track].store(semitones, std::memory_order_relaxed);
         mSynthEngine.setPitchBendSensitivity(track, semitones);
         mFx.setInstrumentPitchBendRange(track, semitones);
     }
@@ -1031,6 +1032,11 @@ private:
         int pitchSens = -1;
     };
     GenCache mGenCache[8];
+    // Bend range the user set in Track Settings, per track. Track Settings is the single
+    // authority: a shaper used to push its own value here on every knob move (2 st, or the
+    // guitar's Bend knob), which silently undid the user's setting and is what made the
+    // displayed semitones disagree with what was heard.
+    std::array<std::atomic<int>, 8> mTrackBendRange;
     std::mutex mGenMutex;
 
     // Preserved parameters across stream reconnections (Jack plug/unplug, routing events)

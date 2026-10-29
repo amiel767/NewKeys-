@@ -10,7 +10,7 @@ import kotlin.math.roundToInt
 
 /** The Æther Instruments. [fxId] = id of the native Source in FxRegistry (6 organ, 14 synth, 15 leads, 16 sax). */
 enum class AeInstrument(val fxId: Int, val title: String, val paramCount: Int) {
-    ORGAN(6, "Æther Organ", 31), SYNTH(14, "Æther Synth", 32), LEADS(15, "Æther Leads", 32), SAX(16, "Æther Sax", 21);
+    ORGAN(6, "Æther Organ", 31), SYNTH(14, "Æther Synth", 33), LEADS(15, "Æther Leads", 33), SAX(16, "Æther Sax", 21);
     /** Parameters that switch instantly on a preset change (the others glide). */
     val discrete: IntArray get() = when (this) {
         ORGAN -> intArrayOf(18, 19, 20, 21, 22, 23, 24, 25)
@@ -133,12 +133,46 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
     /** Sax: CC2 = breath controller, CC11 = expression (level), CC1 = vibrato depth. */
     val ccSax = mutableMapOf(2 to 4, 11 to 20, 7 to 20, 1 to 12, 74 to 19, 91 to 16)
 
-    fun presets(i: AeInstrument): List<AePreset> = when (i) { AeInstrument.ORGAN -> AePresets.organ; AeInstrument.SYNTH -> AePresets.synth; AeInstrument.LEADS -> AePresets.leads; AeInstrument.SAX -> AePresets.sax }
+    fun factoryPresets(i: AeInstrument): List<AePreset> = when (i) { AeInstrument.ORGAN -> AePresets.organ; AeInstrument.SYNTH -> AePresets.synth; AeInstrument.LEADS -> AePresets.leads; AeInstrument.SAX -> AePresets.sax }
+
+    /**
+     * Factory presets followed by the user's own, so a saved preset indexes like any other.
+     *
+     * [AeUserStore] holds them in Compose snapshot state, so saving one recomposes the
+     * open list without any explicit invalidation.
+     */
+    fun presets(i: AeInstrument): List<AePreset> = factoryPresets(i) + AeUserStore.load(i)
 
     /** Value the session's current preset gives to [index], for the double-tap reset on a knob. */
     fun presetValue(strip: Int, index: Int): Float? {
         val s = sessions[strip] ?: return null
         return presets(s.instrument).getOrNull(s.preset)?.values?.getOrNull(index)
+    }
+
+    /**
+     * Grows a preset to the instrument's current parameter count, filling the new
+     * tail with 0.5. Presets were authored against an earlier count (32) and the
+     * voice-mode intensity is parameter 32: without this the extra knob would be
+     * missing from the session and every write to it would be silently dropped.
+     * 0.5 is the neutral value, so an old preset still sounds exactly as before.
+     */
+    private fun padded(inst: AeInstrument, v: FloatArray): FloatArray =
+        if (v.size == inst.paramCount) v else FloatArray(inst.paramCount) { if (it < v.size) v[it] else 0.5f }
+
+    /** Saves the session's CURRENT knob values as a named user preset and selects it. */
+    fun saveUserPreset(strip: Int, name: String) {
+        val s = sessions[strip] ?: return
+        val clean = name.trim().ifBlank { "My ${s.instrument.title.removePrefix("Æther ")}" }
+        val userIndex = AeUserStore.append(s.instrument, clean, s.values.toFloatArray())
+        s.preset = factoryPresets(s.instrument).size + userIndex
+    }
+
+    /** Deletes a user preset. Factory presets are never touched. */
+    fun deleteUserPreset(inst: AeInstrument, index: Int) {
+        val base = factoryPresets(inst).size
+        val ui = index - base
+        if (ui < 0) return
+        AeUserStore.delete(inst, ui)
     }
 
     /** Starts the instrument now (audio is live as soon as this returns true). Re-selecting the same one keeps its state. */
@@ -148,7 +182,7 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
         // Reopening an instrument restores what the user left: unloading a strip is not a reset,
         // so the knobs, the preset and the page come back exactly as they were.
         val saved = savedState.remove(strip to inst)
-        val init = saved?.values ?: presets(inst)[0].values
+        val init = padded(inst, saved?.values ?: presets(inst)[0].values)
         val s = AeSession(strip, inst, init)
         saved?.let { s.preset = it.preset; s.page = it.page }
         sessions[strip] = s
@@ -194,7 +228,7 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
         val list = presets(s.instrument)
         val n = ((index % list.size) + list.size) % list.size
         s.preset = n
-        val to = list[n].values
+        val to = padded(s.instrument, list[n].values)
         val from = s.values.toFloatArray()
         val disc = s.instrument.discrete
         disc.forEach { setParam(strip, it, to[it]) }

@@ -162,7 +162,10 @@ fun BoxScope.AeLeadsUi(c: AeCtl, a: AeAnim, samples: FloatArray? = null) {
         else -> {
             AeCardBox(22, 54, 420, 286, "VOICE MODE", CYAN, border)
             arrayOf("POLY", "MONO", "LEGATO").forEachIndexed { i, t -> AeChip(c, 28, i, 3, t, 38 + i * 128, 84, 120) }
-            AeGlassKnob(c, 29, "Glide", 70, 150, 56); AeGlassKnob(c, 30, "Vibrato", 190, 150, 56); AeGlassKnob(c, 31, "Level", 310, 150, 56)
+            // Intensity sits in the empty band under the mode chips: the card is 286 tall
+            // and the knobs end at 206, so this is the "de la place" the user pointed at.
+            AeIntensitySlider(c, 32, 38, 122, 370, CYAN)
+            AeGlassKnob(c, 29, "Glide", 70, 186, 56); AeGlassKnob(c, 30, "Vibrato", 190, 186, 56); AeGlassKnob(c, 31, "Level", 310, 186, 56)
             AeCardBox(458, 54, 520, 286, "PERFORMANCE", CYAN, border)
             AeT(if (c.s.held.isEmpty()) "—" else noteName(c.s.lastNote), 64, Color(0xFFD9FBFF), Modifier.at(474, 96, 200, 80), AeFonts.display, FontWeight.Light)
             Canvas(Modifier.at(690, 90, 270, 86)) { a.frame.intValue; drawVibViz(y, a.t, c.s.held.isNotEmpty()) }

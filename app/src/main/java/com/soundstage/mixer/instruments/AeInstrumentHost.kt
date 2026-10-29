@@ -17,6 +17,7 @@ fun initAetherInstruments(context: Context) {
     AeFonts.ui = FontFamily(Font(R.font.plus_jakarta_sans))
     AeFonts.display = FontFamily(Font(R.font.sora))
     AeBanks.app = context.applicationContext
+    AeUserStore.app = context.applicationContext
 }
 
 /**
