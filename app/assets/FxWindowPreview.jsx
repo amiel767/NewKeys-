@@ -689,25 +689,32 @@ function PresetRow({ fx, preset, custom, onPick }) {
    Elle occupe EXACTEMENT la place d'un logement : même hauteur, même largeur.
    ─────────────────────────────────────────────────────────────────────────── */
 /* ══ LA CORBEILLE, COUVERCLE OUVERT ════════════════════════════════════════
-   Le couvercle tourne autour de sa charniere (a droite) et s'ouvre a mesure
-   qu'on tire. `open` va de 0 (ferme) a 1 (grand ouvert).
+   Le couvercle bascule sur une charniere a GAUCHE et se releve vers la gauche,
+   comme un vrai couvercle. `open` va de 0 (ferme) a 1 (ouvert).
+   `smooth` coupe la transition pendant qu'on tire (le couvercle suit le doigt),
+   et la remet quand on relache, pour que le retour soit anime et non brutal.
    ─────────────────────────────────────────────────────────────────────────── */
-function TrashCan({ open, armed, size = 44 }) {
+function TrashCan({ open, armed, smooth = true, size = 44 }) {
   const col = armed ? "#FF8095" : "#98A2B6";
   return (
     <svg width={size} height={size} viewBox="0 0 48 48" fill="none"
          style={{ display: "block", overflow: "visible" }}>
-      <path d="M12.4 17h23.2l-2.3 21.4a3.2 3.2 0 0 1-3.2 2.9H17.9a3.2 3.2 0 0 1-3.2-2.9z"
-            fill={armed ? "rgba(255,128,149,.18)" : "rgba(255,255,255,.05)"}
-            stroke={col} strokeWidth="2.3" strokeLinejoin="round" />
-      <path d="M19.4 23.6v12.6M24 23.6v12.6M28.6 23.6v12.6" stroke={col} strokeWidth="1.7"
-            strokeLinecap="round" opacity=".5" />
-      <g style={{ transformBox: "view-box", transformOrigin: "37px 15px",
-                  transform: `rotate(${-open * 62}deg)`, transition: "transform .1s linear" }}>
-        <path d="M8.4 15h31.2" stroke={col} strokeWidth="2.7" strokeLinecap="round" />
-        <path d="M19.6 15v-3.3a2.2 2.2 0 0 1 2.2-2.2h4.4a2.2 2.2 0 0 1 2.2 2.2V15"
-              stroke={col} strokeWidth="2.3" strokeLinejoin="round" />
+      {/* le corps, legerement bombe, avec son col */}
+      <path d="M13.2 17.6h21.6l-2 20.6a3.1 3.1 0 0 1-3.1 2.8H18.3a3.1 3.1 0 0 1-3.1-2.8z"
+            fill={armed ? "rgba(255,128,149,.16)" : "rgba(255,255,255,.045)"}
+            stroke={col} strokeWidth="2.2" strokeLinejoin="round" />
+      <path d="M18.9 24v12.2M24 24v12.2M29.1 24v12.2" stroke={col} strokeWidth="1.6"
+            strokeLinecap="round" opacity=".42" />
+      {/* le couvercle : charniere a gauche, relevage vers la gauche */}
+      <g style={{ transformBox: "view-box", transformOrigin: "12.6px 16.4px",
+                  transform: `rotate(${-open * 38}deg) translateY(${-open * 1.6}px)`,
+                  transition: smooth ? "transform .3s cubic-bezier(.16,1,.3,1)" : "none" }}>
+        <path d="M9.4 16.4h29.2" stroke={col} strokeWidth="2.6" strokeLinecap="round" />
+        <path d="M20.2 16.4v-3a2.1 2.1 0 0 1 2.1-2.1h3.4a2.1 2.1 0 0 1 2.1 2.1v3"
+              stroke={col} strokeWidth="2.2" strokeLinejoin="round" />
       </g>
+      {/* le pivot, pour que l'ouverture se lise comme une articulation */}
+      <circle cx="12.6" cy="16.4" r="1.5" fill={col} opacity=".85" />
     </svg>
   );
 }
@@ -763,7 +770,7 @@ function FxCard({ fx, midi, on, onToggle, onOpen, onRemove, height }) {
                     justifyContent: "flex-start", paddingTop: 14, gap: 7, pointerEvents: "none",
                     opacity: prog, transform: `translateY(${prog * 10}px)`,
                     background: `linear-gradient(180deg, ${hx("#FF3B5C", .16 + prog * .3)}, transparent)` }}>
-        <TrashCan open={prog} armed={armed} />
+        <TrashCan open={prog} armed={armed} smooth={!drag.current} />
         <span style={{ fontSize: 8, fontWeight: 900, letterSpacing: ".16em", textTransform: "uppercase",
                        color: armed ? "#FF8095" : "#7C869C" }}>
           {armed ? "Release to delete" : "Swipe down"}
@@ -1028,7 +1035,37 @@ function FxPanel({ fx, vals, setVal, preset, custom, onPick, on, onToggle }) {
   );
 }
 
-/* ══ PANNEAU ARPEGGIATOR ═══════════════════════════════════════════════════ */
+/* ══ UN CHAMP NUMERIQUE ════════════════════════════════════════════════════
+   Deux fleches pour le pas a pas, et la valeur se tire verticalement pour les
+   grands ecarts. Un Stepper a clics seuls demandait 200 clics pour aller de 40
+   a 240 BPM.
+   ─────────────────────────────────────────────────────────────────────────── */
+function NumStep({ label, value, min, max, step = 1, unit = "", onChange, width = 40 }) {
+  const drag = useRef(null);
+  const btn = (t, fn) => (
+    <button onClick={fn} style={{ ...ghost({ width: 24, height: 24, display: "grid", placeItems: "center",
+             color: DIM, cursor: "pointer", borderRadius: 7, padding: 0, fontSize: 14, lineHeight: 1 }) }}>{t}</button>
+  );
+  const sens = (max - min) / 170;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      {label && <span style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".13em", textTransform: "uppercase",
+                               color: DIM, whiteSpace: "nowrap" }}>{label}</span>}
+      {btn("−", () => onChange(clamp(value - step, min, max)))}
+      <span onPointerDown={(e) => { drag.current = { y: e.clientY, v: value };
+                                    e.currentTarget.setPointerCapture(e.pointerId); }}
+            onPointerMove={(e) => { if (!drag.current) return;
+              onChange(clamp(Math.round(drag.current.v + (drag.current.y - e.clientY) * sens), min, max)); }}
+            onPointerUp={() => { drag.current = null; }}
+            style={{ minWidth: width, textAlign: "center", fontSize: 13, fontWeight: 800, fontFamily: MONO,
+                     color: INK, cursor: "ns-resize", touchAction: "none", userSelect: "none" }}>
+        {value}{unit}
+      </span>
+      {btn("+", () => onChange(clamp(value + step, min, max)))}
+    </div>
+  );
+}
+
 function ArpPanel({ p, set, cur }) {
   const setVel = (i, e) => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -1036,23 +1073,37 @@ function ArpPanel({ p, set, cur }) {
   };
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 9, height: "100%", minHeight: 0 }}>
-      <div style={{ height: 56, flex: "none", display: "flex", alignItems: "center", gap: 16, padding: "0 14px",
+      {/* Rangee du TEMPS : subdivision, style, puis BPM et Swing, puis le nombre
+          de pas. BPM et Swing vivent ici parce qu'ils gouvernent l'horloge de
+          l'arpege, comme la subdivision — pas les hauteurs, qui sont en dessous. */}
+      <div style={{ height: 60, flex: "none", display: "flex", alignItems: "center", gap: 14, padding: "0 14px",
                     ...well({ borderRadius: 13 }) }}>
-        <Knob label="Subdivision" value={p.sub / 3} size={44}
+        <Knob label="Subdivision" value={p.sub / 3} size={42}
               onChange={(v) => set((s) => ({ ...s, sub: Math.round(v * 3) }))} display={SUBS[p.sub]} />
         <span style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".13em", textTransform: "uppercase", color: DIM }}>Style</span>
         <Seg options={STYLES} value={p.style} onChange={(k) => set((s) => ({ ...s, style: k }))} />
-        <div style={{ flex: 1 }} />
-        <Stepper label="Steps" value={p.steps} min={1} max={16} onChange={(v) => set((s) => ({ ...s, steps: v }))} />
+        <div style={{ flex: 1, minWidth: 8 }} />
+        <div style={{ width: 1, height: 34, background: LINE, flex: "none" }} />
+        <NumStep label="BPM" value={p.bpm} min={40} max={240} onChange={(v) => set((s) => ({ ...s, bpm: v }))} />
+        <div style={{ width: 1, height: 34, background: LINE, flex: "none" }} />
+        <Knob label="Swing" value={p.swing} size={42} accent={IN1}
+              onChange={(v) => set((s) => ({ ...s, swing: v }))} display={`${Math.round(p.swing * 100)}%`} />
+        <div style={{ width: 1, height: 34, background: LINE, flex: "none" }} />
+        <NumStep label="Steps" value={p.steps} min={1} max={16} width={22}
+                 onChange={(v) => set((s) => ({ ...s, steps: v }))} />
       </div>
-      <div style={{ flex: 1, minHeight: 0, display: "flex", gap: 10, padding: "10px 12px", ...well({ borderRadius: 13 }) }}>
-        <div style={{ width: 42, flex: "none", display: "flex", flexDirection: "column", alignItems: "center",
-                      justifyContent: "space-between", color: DIM, fontSize: 17, fontWeight: 700 }}>
-          <span>+</span>
-          <span style={{ writingMode: "vertical-rl", transform: "rotate(180deg)", fontSize: 10, fontWeight: 700 }}>Velocity</span>
-          <span>−</span>
+
+      {/* Les hauteurs, pas a pas. La colonne « + Velocity − » a gauche est
+          retiree : les barres disent d'elles-memes ce qu'elles reglent. */}
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 8,
+                    padding: "10px 12px", ...well({ borderRadius: 13 }) }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "none" }}>
+          <span style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".13em", textTransform: "uppercase",
+                         color: DIM }}>Velocity</span>
+          <span style={{ fontSize: 9, color: MUTE }}>tirer verticalement · clic sur le numero pour activer</span>
+          <div style={{ flex: 1, height: 1, background: LINE }} />
         </div>
-        <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(16,1fr)", gap: 5, minWidth: 0 }}>
+        <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "repeat(16,1fr)", gap: 5, minWidth: 0 }}>
           {Array.from({ length: 16 }).map((_, i) => {
             const active = i < p.steps, eng = p.on[i];
             return (
@@ -1066,6 +1117,7 @@ function ArpPanel({ p, set, cur }) {
                   {active && (
                     <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: `${p.vel[i] * 100}%`,
                                   borderRadius: 7, background: eng ? "linear-gradient(180deg,#6F79AE,#4D5788)" : "#323A5C",
+                                  boxShadow: eng ? "inset 0 1px 0 rgba(255,255,255,.22)" : "none",
                                   filter: cur === i ? "brightness(1.4)" : "none", transition: "filter .06s" }}>
                       <div style={{ margin: "6px auto 0", width: 14, height: 5,
                                     borderTop: "2px solid rgba(255,255,255,.35)",
@@ -1074,7 +1126,7 @@ function ArpPanel({ p, set, cur }) {
                   )}
                 </div>
                 <button onClick={() => active && set((s) => ({ ...s, on: s.on.map((x, k) => (k === i ? !x : x)) }))}
-                        style={{ height: 34, width: "100%", borderRadius: 9, cursor: active ? "pointer" : "default",
+                        style={{ height: 32, width: "100%", borderRadius: 9, cursor: active ? "pointer" : "default",
                                  fontFamily: FONT, fontSize: 12.5, fontWeight: 800, opacity: active ? 1 : .35,
                                  border: `1px solid ${active && eng ? "rgba(255,255,255,.16)" : LINE}`,
                                  background: active && eng ? "linear-gradient(180deg,#6B75A8,#505A8C)" : "#1F2539",
@@ -1083,13 +1135,13 @@ function ArpPanel({ p, set, cur }) {
             );
           })}
         </div>
-      </div>
-      <div style={{ height: 16, flex: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
-        {Array.from({ length: 16 }).map((_, i) => (
-          <span key={i} style={{ width: cur === i ? 7 : 5, height: cur === i ? 7 : 5, borderRadius: 4,
-                                 background: cur === i ? IN1 : (i % 4 === 0 ? "#3E4658" : "#2A3040"),
-                                 boxShadow: cur === i ? `0 0 8px ${IN1}` : "none", transition: "all .08s" }} />
-        ))}
+        <div style={{ height: 12, flex: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+          {Array.from({ length: 16 }).map((_, i) => (
+            <span key={i} style={{ width: cur === i ? 7 : 5, height: cur === i ? 7 : 5, borderRadius: 4,
+                                   background: cur === i ? IN1 : (i % 4 === 0 ? "#3E4658" : "#2A3040"),
+                                   boxShadow: cur === i ? `0 0 8px ${IN1}` : "none", transition: "all .08s" }} />
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -1114,7 +1166,7 @@ function FxWindow() {
   });
   const [t, setT] = useState(0);
   const [arp, setArp] = useState(() => ({
-    sub: 2, style: "up", steps: 16,
+    sub: 2, style: "up", steps: 16, bpm: 120, swing: .12,
     vel: Array.from({ length: 16 }, (_, i) => (i % 4 === 0 ? 1 : i % 2 === 0 ? .78 : .62)),
     on: Array(16).fill(true),
   }));
