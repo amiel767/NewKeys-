@@ -35,7 +35,7 @@ class PianoSampleReader {
  public:
   struct Region {
     int root = 60;
-    int layer = 0;                    // 0 = PP .. 3 = FF
+    int layer = 0;                    // 0 = PP .. 4 = FF (5 couches dans la banque)
     uint32_t offset = 0, frames = 0, loopStart = 0, loopEnd = 0;
     float tuneCents = 0.f;
   };
@@ -87,7 +87,7 @@ class PianoSampleReader {
   /** Region la plus proche en hauteur, en preferant la couche demandee. */
   const Region* pick(int note, int velocity) const {
     if (regions_.empty()) return nullptr;
-    const int want = std::min(3, std::max(0, velocity * 4 / 128));
+    const int want = std::min(4, std::max(0, velocity * 5 / 128));
     const Region* best = nullptr;
     int bestCost = 1 << 30;
     for (const Region& g : regions_) {

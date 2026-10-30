@@ -17,6 +17,7 @@ Usage :
     python3 build.py --notes C2,C3,C4 --layers PP,Mp,MF,FF --out out/pack
 """
 import argparse
+import struct
 import json
 import os
 import sys
@@ -25,9 +26,12 @@ import numpy as np
 import soundfile as sf
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from measure import load_mono, sample_path, f0_nominal, fit_log_score  # noqa: E402
+from measure import load_mono, sample_path, f0_nominal, fit_log_score, midi_of  # noqa: E402
 
 RATE = 22050
+
+# Ordre des couches de la banque, du plus doux au plus fort.
+LAYERS = ["PP", "Mp", "Mf", "MF", "FF"]
 
 # IMA ADPCM, tables normalisees
 STEP = [7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41,
@@ -241,8 +245,35 @@ def main():
                   % (name, meta["dur_s"], "oui" if meta["loop_end"] else "non",
                      len(enc) / 1024), file=sys.stderr)
 
+    # Conteneur PIAP.  Le blob ADPCM seul n'est pas lisible par le moteur : il faut
+    # l'en-tete (28 o) + une fiche de 24 o par region + la charge utile.
+    recs = bytearray()
+    for m in index:
+        name = m["sample"]                      # "<couche> <note>.flac"
+        layer_name, note_name = name[:-5].split(None, 1)
+        rec = bytearray(24)
+        rec[0] = midi_of(note_name)
+        rec[1] = LAYERS.index(layer_name)
+        rec[2] = 127                            # velocite maximale de la couche
+        struct.pack_into("<I", rec, 4, m["offset"])
+        # 1 octet ADPCM = 2 nibbles = 2 echantillons = 1 frame stereo.
+        struct.pack_into("<I", rec, 8, m["n"])            # frames stereo
+        struct.pack_into("<I", rec, 12, m["loop_start"])
+        struct.pack_into("<I", rec, 16, m["loop_end"])
+        recs += rec
+
+    pcm_len = len(blob)
+    out = bytearray(28)
+    out[0:4] = b"PIAP"
+    struct.pack_into("<I", out, 4, 1)          # version
+    struct.pack_into("<I", out, 8, RATE)
+    struct.pack_into("<I", out, 12, n_regions)
+    struct.pack_into("<I", out, 16, pcm_len)
+    struct.pack_into("<I", out, 20, len(recs))
+    out += recs + blob
+
     with open(args.out + ".bin", "wb") as fh:
-        fh.write(blob)
+        fh.write(out)
     with open(args.out + ".json", "w") as fh:
         json.dump({"rate": RATE, "regions": index}, fh, indent=1)
     print("\n%d regions | pack %.2f Mo | PCM source %.2f Mo | ratio %.1f%%"
