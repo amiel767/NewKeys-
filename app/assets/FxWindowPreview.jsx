@@ -605,52 +605,54 @@ function Orb({ vals, palette, accent, fireRef }) {
   return <canvas ref={cvs} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block" }} />;
 }
 
-/* ══ LES PRESETS : une case, qui se deroule ════════════════════════════════
-   Avant : vingt chips sur une ligne, il fallait tirer horizontalement pour
-   trouver le vingtieme. Maintenant : une case fermee qui montre le preset
-   courant, et qui se deroule a la demande. Deux colonnes, defilement vertical.
+/* ══ LES PRESETS : une case compacte, dans la colonne de droite ═════════════
+   Elle s'etendait sur toute la largeur de la fenetre. Elle vit maintenant dans
+   la colonne des reglages (268 px), sous un intitule et deux fleches.
    ─────────────────────────────────────────────────────────────────────────── */
 function PresetRow({ fx, preset, custom, onPick }) {
   const [open, setOpen] = useState(false);
   const names = Object.keys(fx.presets || {});
   const i = Math.max(0, names.indexOf(preset));
   const step = (d) => onPick(names[(i + d + names.length) % names.length]);
+  const pal = fx.palettes && fx.palettes[preset];
+  const hue = `hsl(${(pal && pal.h) || 268},${(pal && pal.s) || 48}%,${(pal && pal.l) || 74}%)`;
+  const arrow = (d) => (
+    <button onClick={() => step(d)} style={{ ...ghost({ width: 24, height: 22, display: "grid",
+             placeItems: "center", color: DIM, cursor: "pointer", borderRadius: 7, flex: "none",
+             padding: 0 }) }}>
+      <Ico d={P.back} size={12} style={{ transform: d > 0 ? "rotate(180deg)" : "none" }} />
+    </button>
+  );
   return (
     <div style={{ position: "relative", flex: "none", zIndex: open ? 12 : 1 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>
         <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".15em", textTransform: "uppercase",
-                       color: MUTE, flex: "none", width: 52 }}>Presets</span>
-        <button onClick={() => step(-1)} style={{ ...ghost({ width: 26, height: 28, display: "grid",
-                 placeItems: "center", color: DIM, cursor: "pointer", borderRadius: 8, flex: "none" }) }}>
-          <Ico d={P.back} size={13} /></button>
-        <button onClick={() => setOpen((o) => !o)}
-                style={{ flex: 1, minWidth: 0, height: 28, borderRadius: 9, cursor: "pointer", padding: "0 11px",
-                         display: "flex", alignItems: "center", gap: 9, fontFamily: FONT,
-                         background: "linear-gradient(180deg,#0E1420,#0B0F18)",
-                         boxShadow: "inset 0 1px 0 rgba(255,255,255,.14), inset 0 3px 10px rgba(0,0,0,.62), inset 0 0 0 1px rgba(255,255,255,.04)",
-                         border: `1px solid ${open ? hx(ACC, .4) : "transparent"}`, textAlign: "left" }}>
-          <span style={{ width: 5, height: 5, borderRadius: 3, flex: "none",
-                         background: `hsl(${(fx.palettes && fx.palettes[preset] && fx.palettes[preset].h) || 268},`
-                                   + `${(fx.palettes && fx.palettes[preset] && fx.palettes[preset].s) || 48}%,`
-                                   + `${(fx.palettes && fx.palettes[preset] && fx.palettes[preset].l) || 74}%)` }} />
-          <span style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 800, color: INK, whiteSpace: "nowrap",
-                         overflow: "hidden", textOverflow: "ellipsis" }}>{preset}</span>
-          {custom && <span style={{ fontSize: 9, fontWeight: 800, color: "#F2C97D", flex: "none" }}>Custom</span>}
-          <span style={{ fontSize: 9.5, fontFamily: MONO, color: MUTE, flex: "none" }}>
-            {String(i + 1).padStart(2, "0")}/{names.length}</span>
-          <Ico d={P.down} size={13} style={{ color: MUTE, flex: "none",
-                transform: `rotate(${open ? 180 : 0}deg)`, transition: "transform .2s" }} />
-        </button>
-        <button onClick={() => step(1)} style={{ ...ghost({ width: 26, height: 28, display: "grid",
-                 placeItems: "center", color: DIM, cursor: "pointer", borderRadius: 8, flex: "none" }) }}>
-          <Ico d={P.back} size={13} style={{ transform: "rotate(180deg)" }} /></button>
+                       color: MUTE, flex: 1 }}>Presets</span>
+        {arrow(-1)}
+        {arrow(1)}
       </div>
+      <button onClick={() => setOpen((o) => !o)}
+              style={{ width: "100%", height: 30, borderRadius: 9, cursor: "pointer", padding: "0 10px",
+                       display: "flex", alignItems: "center", gap: 8, fontFamily: FONT, textAlign: "left",
+                       background: "linear-gradient(180deg,#0E1420,#0B0F18)",
+                       boxShadow: "inset 0 1px 0 rgba(255,255,255,.14), inset 0 3px 10px rgba(0,0,0,.62), inset 0 0 0 1px rgba(255,255,255,.04)",
+                       border: `1px solid ${open ? hx(ACC, .4) : "transparent"}` }}>
+        <span style={{ width: 6, height: 6, borderRadius: 3, flex: "none", background: hue,
+                       boxShadow: `0 0 6px ${hue}` }} />
+        <span style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 800, color: INK, whiteSpace: "nowrap",
+                       overflow: "hidden", textOverflow: "ellipsis" }}>{preset}</span>
+        {custom && <span style={{ fontSize: 9, fontWeight: 800, color: "#F2C97D", flex: "none" }}>Custom</span>}
+        <span style={{ fontSize: 9.5, fontFamily: MONO, color: MUTE, flex: "none" }}>
+          {String(i + 1).padStart(2, "0")}/{names.length}</span>
+        <Ico d={P.down} size={13} style={{ color: MUTE, flex: "none",
+              transform: `rotate(${open ? 180 : 0}deg)`, transition: "transform .2s" }} />
+      </button>
 
       {open && (
         <>
           <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 11 }} />
-          <div className="fxscroll" style={{ position: "absolute", left: 58, right: 32, top: 32, zIndex: 12,
-                        maxHeight: 208, overflowY: "auto", display: "grid", gridTemplateColumns: "1fr 1fr",
+          <div className="fxscroll" style={{ position: "absolute", left: 0, right: 0, top: 62, zIndex: 12,
+                        maxHeight: 196, overflowY: "auto", display: "grid", gridTemplateColumns: "1fr 1fr",
                         gap: 4, padding: 6, borderRadius: 12,
                         background: "linear-gradient(180deg,#1B2231,#10141D)",
                         border: `1px solid ${hx(ACC, .3)}`,
@@ -660,9 +662,9 @@ function PresetRow({ fx, preset, custom, onPick }) {
               const on = n === preset;
               return (
                 <button key={n} onClick={() => { onPick(n); setOpen(false); }}
-                        style={{ height: 30, borderRadius: 8, cursor: "pointer", padding: "0 10px",
-                                 display: "flex", alignItems: "center", gap: 8, fontFamily: FONT,
-                                 fontSize: 11.5, fontWeight: on ? 800 : 600, textAlign: "left",
+                        style={{ height: 28, borderRadius: 8, cursor: "pointer", padding: "0 9px",
+                                 display: "flex", alignItems: "center", gap: 7, fontFamily: FONT,
+                                 fontSize: 11, fontWeight: on ? 800 : 600, textAlign: "left",
                                  background: on ? `linear-gradient(90deg,${hx(ACC, .22)},rgba(255,255,255,.02))`
                                                 : "rgba(255,255,255,.03)",
                                  border: `1px solid ${on ? hx(ACC, .4) : "transparent"}`,
@@ -671,7 +673,7 @@ function PresetRow({ fx, preset, custom, onPick }) {
                                  background: on ? ACC : "#39415A" }} />
                   <span style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden",
                                  textOverflow: "ellipsis" }}>{n}</span>
-                  <span style={{ fontSize: 8.5, fontFamily: MONO, color: MUTE }}>
+                  <span style={{ fontSize: 8, fontFamily: MONO, color: MUTE }}>
                     {String(k + 1).padStart(2, "0")}</span>
                 </button>
               );
@@ -724,7 +726,7 @@ function FxCard({ fx, midi, on, onToggle, onOpen, onRemove, height }) {
                          background: "linear-gradient(180deg,#3A4152,#272C3B)",
                          border: "1px solid rgba(255,255,255,.16)",
                          boxShadow: "inset 0 1px 0 rgba(255,255,255,.14), 0 2px 4px rgba(0,0,0,.4)",
-                         color: "#AEB7C8", opacity: hot ? 1 : 0, transition: "opacity .15s, background .15s" }}
+                         color: "#C4CBDA", transition: "background .15s, color .15s" }}
                 onPointerEnter={(e) => { e.currentTarget.style.background = "linear-gradient(180deg,#5A2A38,#3A1B25)";
                                           e.currentTarget.style.color = "#FF8FA3"; }}
                 onPointerLeave={(e) => { e.currentTarget.style.background = "linear-gradient(180deg,#3A4152,#272C3B)";
@@ -894,60 +896,57 @@ function FxPanel({ fx, vals, setVal, preset, custom, onPick, on, onToggle }) {
   const sliders = fx.params.slice(4);
   const names = fx.presets ? Object.keys(fx.presets) : [];
   const pal = fx.palettes ? (fx.palettes[preset] || fx.palettes[names[0]]) : undefined;
+  const hue = `hsl(${(pal && pal.h) || 268},${(pal && pal.s) || 48}%,${(pal && pal.l) || 74}%)`;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10, height: "100%", minHeight: 0 }}>
-      <PresetRow fx={fx} preset={preset} custom={custom} onPick={onPick} />
-
-      <div style={{ flex: 1, minHeight: 0, display: "flex", gap: 12 }}>
-        <div onClick={() => fireRef.current()}
-             style={{ flex: "1 1 0", width: 0, minWidth: 0, position: "relative", borderRadius: 15, overflow: "hidden",
-                      cursor: fx.space ? "crosshair" : "default", ...well({ borderRadius: 15 }) }}>
-          {fx.space
-            ? <Orb vals={vals} palette={pal} accent={fx.accent} fireRef={fireRef} />
-            : <div style={{ height: "100%", display: "grid", placeItems: "center" }}>
-                <div style={{ width: "58%", height: "54%" }}>
-                  <MiniGraph type={fx.type} accent={fx.accent} on />
-                </div>
-              </div>}
-          <div style={{ position: "absolute", left: 11, top: 9, display: "flex", alignItems: "center", gap: 7,
-                        padding: "4px 9px", borderRadius: 8, background: "rgba(10,14,26,.55)",
-                        border: `1px solid ${LINE2}`, backdropFilter: "blur(6px)", pointerEvents: "none" }}>
-            <span style={{ width: 5, height: 5, borderRadius: 3,
-                           background: `hsl(${(pal && pal.h) || 268},${(pal && pal.s) || 48}%,${(pal && pal.l) || 74}%)`,
-                           boxShadow: `0 0 7px hsl(${(pal && pal.h) || 268},${(pal && pal.s) || 48}%,${(pal && pal.l) || 74}%)` }} />
-            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".09em", textTransform: "uppercase",
-                           color: "#C6CEE8" }}>{custom ? "Custom" : preset}</span>
-            {fx.space && <span style={{ fontSize: 10, fontFamily: MONO, color: MUTE }}>
-              {(.4 + get("decay") * 7.6).toFixed(1)} s</span>}
-          </div>
-          {fx.space && (
-            <div style={{ position: "absolute", left: 11, bottom: 8, fontSize: 8.5, fontWeight: 800,
-                          letterSpacing: ".1em", textTransform: "uppercase", color: MUTE, pointerEvents: "none" }}>
-              Touch the orb to re-fire
-            </div>
-          )}
-          {!on && <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center",
-                                background: "rgba(9,12,22,.66)", fontSize: 12, fontWeight: 800,
-                                letterSpacing: ".2em", color: MUTE, textTransform: "uppercase" }}>Bypassed</div>}
+    <div style={{ display: "flex", gap: 12, height: "100%", minHeight: 0 }}>
+      <div onClick={() => fireRef.current()}
+           style={{ flex: "1 1 0", width: 0, minWidth: 0, position: "relative", borderRadius: 15,
+                    overflow: "hidden", cursor: fx.space ? "crosshair" : "default", ...well({ borderRadius: 15 }) }}>
+        {fx.space
+          ? <Orb vals={vals} palette={pal} accent={fx.accent} fireRef={fireRef} />
+          : <div style={{ height: "100%", display: "grid", placeItems: "center" }}>
+              <div style={{ width: "58%", height: "54%" }}>
+                <MiniGraph type={fx.type} accent={fx.accent} on />
+              </div>
+            </div>}
+        <div style={{ position: "absolute", left: 11, top: 9, display: "flex", alignItems: "center", gap: 7,
+                      padding: "4px 9px", borderRadius: 8, background: "rgba(10,14,26,.55)",
+                      border: `1px solid ${LINE2}`, backdropFilter: "blur(6px)", pointerEvents: "none" }}>
+          <span style={{ width: 5, height: 5, borderRadius: 3, background: hue,
+                         boxShadow: `0 0 7px ${hue}` }} />
+          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".09em", textTransform: "uppercase",
+                         color: "#C6CEE8" }}>{custom ? "Custom" : preset}</span>
+          {fx.space && <span style={{ fontSize: 10, fontFamily: MONO, color: MUTE }}>
+            {(.4 + get("decay") * 7.6).toFixed(1)} s</span>}
         </div>
+        {fx.space && (
+          <div style={{ position: "absolute", left: 11, bottom: 8, fontSize: 8.5, fontWeight: 800,
+                        letterSpacing: ".1em", textTransform: "uppercase", color: MUTE, pointerEvents: "none" }}>
+            Touch the orb to re-fire
+          </div>
+        )}
+        {!on && <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center",
+                              background: "rgba(9,12,22,.66)", fontSize: 12, fontWeight: 800,
+                              letterSpacing: ".2em", color: MUTE, textTransform: "uppercase" }}>Bypassed</div>}
+      </div>
 
-        <div style={{ width: 268, flex: "none", display: "flex", flexDirection: "column", gap: 8, minHeight: 0 }}>
-          <div style={{ height: 94, flex: "none", display: "flex", alignItems: "center",
-                        justifyContent: "space-around", ...well({ borderRadius: 13 }) }}>
-            {knobs.map(([n, k, def, mn, mx, u]) => (
-              <Knob key={k} label={n} value={get(k)} accent={fx.accent} size={44}
-                    onChange={(v) => setVal(k, v)} onReset={() => setVal(k, def)}
-                    display={fmt(get(k), mn, mx, u)} />
-            ))}
-          </div>
-          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
-                        justifyContent: "space-evenly", padding: "8px 12px", ...well({ borderRadius: 13 }) }}>
-            {sliders.map(([n, k, def, mn, mx, u]) => (
-              <HSlider key={k} label={n} value={get(k)} accent={fx.accent}
-                       onChange={(v) => setVal(k, v)} onReset={() => setVal(k, def)}
-                       display={fmt(get(k), mn, mx, u)} />
-            ))}
-          </div>
+      <div style={{ width: 268, flex: "none", display: "flex", flexDirection: "column", gap: 8, minHeight: 0 }}>
+        <PresetRow fx={fx} preset={preset} custom={custom} onPick={onPick} />
+        <div style={{ height: 94, flex: "none", display: "flex", alignItems: "center",
+                      justifyContent: "space-around", ...well({ borderRadius: 13 }) }}>
+          {knobs.map(([n, k, def, mn, mx, u]) => (
+            <Knob key={k} label={n} value={get(k)} accent={fx.accent} size={44}
+                  onChange={(v) => setVal(k, v)} onReset={() => setVal(k, def)}
+                  display={fmt(get(k), mn, mx, u)} />
+          ))}
+        </div>
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
+                      justifyContent: "space-evenly", padding: "8px 12px", ...well({ borderRadius: 13 }) }}>
+          {sliders.map(([n, k, def, mn, mx, u]) => (
+            <HSlider key={k} label={n} value={get(k)} accent={fx.accent}
+                     onChange={(v) => setVal(k, v)} onReset={() => setVal(k, def)}
+                     display={fmt(get(k), mn, mx, u)} />
+          ))}
         </div>
       </div>
     </div>
