@@ -1,20 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { Scene } from "./FxSpacePreview.jsx";
 
 /* ═════════════════════════════════════════════════════════════════════════════
-   ÆTHER FX — fenêtre d'effets.
+   ÆTHER FX — fenêtre d'effets.  Écran 891 × 411.
 
-   RÉFÉRENCE : `fx-window-preview.html` (la fenêtre réellement branchée dans
-   l'app) pour la structure, et le système de matière du rail de fader
-   (`FaderRail.kt`) pour les surfaces. On suit, on n'invente pas.
-
-   ÉCRAN : 891 × 411, le cadre de l'app.
-
-   LES CLÉS DE PARAMÈTRES
-   `Scene` de FxSpacePreview lit `size decay pre damp width mix diff`. Les clés
-   internes de ce fichier sont EXACTEMENT celles-là, sinon un réglage bouge à
-   l'écran et pas dans la salle. C'est ce qui est arrivé avec « pre-delay » et
-   « diffuse », qui ne faisaient rien.
+   STRUCTURE : `fx-window-preview.html`, la fenêtre réellement branchée.
+   ORBE DE SPACE : `orb()` de cette même référence, porté tel quel. Il change
+     DÉJÀ de couleur — `hue = 268 - damp * 75`, du violet au bleu. On ne
+     réinvente pas, on porte.
+   POTARD ET BONNET : dessinés ici, inédits. La référence n'est pas recopiée.
    ═════════════════════════════════════════════════════════════════════════════ */
 
 const MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
@@ -64,34 +57,60 @@ const Ico = ({ d, size = 16, sw = 2, style }) => (
   </svg>
 );
 
-/* La disquette des Æther Instruments (`FloppyDiskIcon`, BottomBar.kt:936) :
-   corps à coin chanfreiné en haut à droite, volet, fenêtre du volet, étiquette. */
-function Floppy({ armed, size = 15, color = "#8E95A5" }) {
-  const w = size, h = size, c = w * .12, n = w * .22;
+/* ── la disquette : celle des Æther Instruments, avec son animation ───────── */
+function Floppy({ armed, size = 15 }) {
+  const w = 24, h = 24, c = w * .12, n = w * .22;
+  const body = armed ? "#FF2A55" : "#8E95A5";
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: "block", flex: "none" }}>
+    <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: "block", flex: "none", overflow: "visible" }}>
+      {armed && (
+        <path d={`M${c} 0 H${w - n} L${w} ${n} V${h - c} A${c} ${c} 0 0 1 ${w - c} ${h} H${c} A${c} ${c} 0 0 1 0 ${h - c} V${c} A${c} ${c} 0 0 1 ${c} 0 Z`}
+              fill="#FF2A55" style={{ animation: "flopPulse 1.6s ease-in-out infinite" }} />
+      )}
       <path d={`M${c} 0 H${w - n} L${w} ${n} V${h - c} A${c} ${c} 0 0 1 ${w - c} ${h} H${c} A${c} ${c} 0 0 1 0 ${h - c} V${c} A${c} ${c} 0 0 1 ${c} 0 Z`}
-            transform={`scale(${24 / w})`} fill={armed ? "#FF2A55" : color} />
+            fill={body} />
       <rect x={w * .21} y={0} width={w * .58} height={h * .38} rx={c * .25} fill="#0C101A" />
-      <rect x={w * .315} y={h * .084} width={w * .151} height={h * .209} rx="1" fill={armed ? "#FF2A55" : color} />
+      <rect x={w * .315} y={h * .084} width={w * .151} height={h * .209} rx="1" fill={body} />
       <rect x={w * .14} y={h * .58} width={w * .72} height={h * .40} rx={c * .4}
-            fill={armed ? "#FFB3BA" : "#ECEFF1"} opacity={.9} />
+            fill={armed ? "#FFB3BA" : "#ECEFF1"} opacity={.92} />
       <rect x={w * .24} y={h * .70} width={w * .52} height={h * .09} rx=".6" fill="#0C101A" opacity={.55} />
+      {armed && <rect x={w * .14} y={h * .58} width={w * .72} height={h * .40} rx={c * .4} fill="#fff"
+                     style={{ animation: "flopWrite 1.6s ease-out infinite" }} />}
     </svg>
   );
 }
 
 /* ── les effets ───────────────────────────────────────────────────────────── */
+/* Space : dix réglages. Les trois derniers sont nouveaux — Low Cut et High
+   Shelf sont des réglages de reverb qu'on attend, Mod l'ondulation stéréo.
+   Les presets portent DIX valeurs, dans l'ordre de `params`. */
 const AUDIO = [
   { id: 0, name: "Æther Space", type: "Reverb", fam: "Space", accent: "#A99AD8", icon: P.wave, space: true,
-    params: [["Size", "size", .62, 0, 100, " %"], ["Decay", "decay", .7, .4, 8, " s"],
-             ["Pre-delay", "pre", .2, 0, 120, " ms"], ["Damp", "damp", .45, 1, 12, " kHz"],
-             ["Width", "width", .8, 0, 100, " %"], ["Mix", "mix", .35, 0, 100, " %"],
-             ["Diffuse", "diff", .5, 0, 100, " %"]],
-    presets: { Hall: [.62, .7, .2, .45, .8, .35, .5], Plate: [.4, .5, .1, .7, .9, .3, .7],
-               Room: [.25, .3, .05, .5, .6, .25, .3], Cathedral: [.95, .95, .35, .3, 1, .45, .8],
-               Shimmer: [.7, .85, .25, .2, 1, .5, .9], Chamber: [.35, .4, .08, .55, .7, .28, .45],
-               Bloom: [.8, .8, .3, .35, .95, .42, 1], Infinite: [1, 1, .4, .25, 1, .6, .95] } },
+    params: [
+      ["Size", "size", .62, 0, 100, " %"], ["Decay", "decay", .7, .4, 8, " s"],
+      ["Pre-delay", "pre", .2, 0, 120, " ms"], ["Damp", "damp", .45, 1, 12, " kHz"],
+      ["Width", "width", .8, 0, 100, " %"], ["Mix", "mix", .35, 0, 100, " %"],
+      ["Diffuse", "diff", .5, 0, 100, " %"], ["Low Cut", "lowcut", .25, 20, 400, " Hz"],
+      ["Hi Shelf", "shelf", .55, -12, 6, " dB"], ["Mod", "mod", .3, 0, 100, " %"],
+    ],
+    presets: {
+      Hall:      [.62, .70, .20, .45, .80, .35, .50, .30, .50, .35],
+      Plate:     [.40, .50, .10, .70, .90, .30, .70, .35, .60, .25],
+      Room:      [.25, .30, .05, .50, .60, .25, .30, .20, .40, .15],
+      Cathedral: [.95, .95, .35, .30, 1.0, .45, .80, .45, .55, .55],
+      Shimmer:   [.70, .85, .25, .20, 1.0, .50, .90, .40, .70, .65],
+      Chamber:   [.35, .40, .08, .55, .70, .28, .45, .25, .45, .20],
+      Bloom:     [.80, .80, .30, .35, .95, .42, 1.0, .35, .65, .60],
+      Infinite:  [1.0, 1.0, .40, .25, 1.0, .60, .95, .50, .50, .70],
+      Ambience:  [.55, .88, .30, .60, .95, .28, .85, .40, .45, .45],
+      Spring:    [.30, .45, .02, .75, .55, .40, .25, .15, .70, .80],
+      "Dark Hall": [.78, .82, .28, .22, .85, .38, .65, .55, .35, .30],
+      "Bright Hall":[.60, .62, .16, .78, .88, .32, .55, .20, .68, .40],
+      "Vocal Plate":[.38, .46, .06, .66, .95, .30, .78, .42, .58, .20],
+      "Drum Room": [.28, .26, .01, .42, .70, .24, .35, .12, .46, .10],
+      "Chorus Verb":[.66, .74, .22, .58, 1.0, .40, .72, .30, .62, .85],
+      Gated:     [.44, .22, .00, .68, .60, .34, .30, .25, .52, .00],
+    } },
   { id: 1, name: "Æther Echo", type: "Delay", fam: "Space", accent: "#D4B06A", icon: P.sliders,
     params: [["Time", "time", .45, 20, 1200, " ms"], ["Feedback", "fb", .38, 0, 95, " %"],
              ["Tone", "tone", .55, 0, 100, " %"], ["Wow", "wow", .18, 0, 100, " %"],
@@ -131,18 +150,13 @@ const MAX_AUDIO = 3, MAX_MIDI = 1;
 const STYLES = [["up", "Up", P.up], ["down", "Down", P.dn], ["updown", "Up-Down", P.ud],
                 ["downup", "Down-Up", P.du], ["random", "Random", P.rnd], ["chord", "Chord", P.chd]];
 const SUBS = ["1/4", "1/8", "1/16", "1/32"];
-const fmt = ([, v, mn, mx, u]) => {
+const fmt = (v, mn, mx, u) => {
   const x = mn + v * (mx - mn);
   const d = Math.abs(x) < 10 && !Number.isInteger(mx - mn) ? x.toFixed(2) : Math.round(x);
   return `${d}${u}`;
 };
 
-/* ── les surfaces : la matière du rail de fader ───────────────────────────── */
-const railMat = (x = {}) => ({
-  background: `linear-gradient(180deg,${RAIL},#313443 10%,#373A4B 38%,#3A3C4F 60%,#3E4155 85%,${RAIL2})`,
-  boxShadow: `inset 0 1px 0 rgba(255,255,255,.16), inset 1px 0 0 rgba(255,255,255,.07),
-              inset -1px 0 0 rgba(0,0,0,.16), inset 0 -1px 0 rgba(255,255,255,.10), 0 3px 8px rgba(0,0,0,.45)`,
-  ...x });
+/* ── les surfaces ─────────────────────────────────────────────────────────── */
 const well = (x = {}) => ({ background: "linear-gradient(180deg,#0E1420,#0B0F18)",
   boxShadow: "inset 0 1px 0 rgba(255,255,255,.14), inset 0 3px 10px rgba(0,0,0,.62), inset 0 0 0 1px rgba(255,255,255,.04)",
   borderRadius: 12, ...x });
@@ -150,122 +164,175 @@ const ghost = (x = {}) => ({ background: `linear-gradient(180deg,${RAIL},#252839
   border: `1px solid ${LINE2}`, boxShadow: "inset 0 1px 0 rgba(255,255,255,.13), 0 2px 5px rgba(0,0,0,.35)",
   borderRadius: 10, ...x });
 
-/* ══ LE POTARD, PARTAGÉ PAR TOUS LES FX ════════════════════════════════════
-   Onze anneaux empilés, dans l'ordre où la lumière les touche :
-     ombre portée · collerette extérieure · chanfrein haut · corps (cône) ·
-     filet · cuvette (ombrage inversé) · rainure gravée · index lumineux ·
-     reflet de vitre · halo de l'index · ombre basse.
-   C'est la même construction que le rail : la lumière vient d'en haut à gauche.
+const CSS = `
+@keyframes flopPulse{0%,100%{opacity:0}45%{opacity:.5}}
+@keyframes flopWrite{0%{opacity:0}12%{opacity:.75}34%{opacity:0}}
+@keyframes fxCue{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.fxscroll::-webkit-scrollbar{width:5px;height:5px}
+.fxscroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.13);border-radius:3px}
+.fxscroll::-webkit-scrollbar-track{background:transparent}
+.fxscroll{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.13) transparent}
+`;
+
+/* Les dégradés partagés par tous les potards : définis une fois. */
+const KnobDefs = () => (
+  <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
+    <defs>
+      <radialGradient id="kBody" cx=".36" cy=".26" r=".88">
+        <stop offset="0" stopColor="#767D92" />
+        <stop offset=".32" stopColor="#525869" />
+        <stop offset=".70" stopColor="#373C4E" />
+        <stop offset="1" stopColor="#212538" />
+      </radialGradient>
+      <radialGradient id="kDome" cx=".40" cy=".22" r=".82">
+        <stop offset="0" stopColor="#959CB2" />
+        <stop offset=".45" stopColor="#565C70" />
+        <stop offset="1" stopColor="#282C3E" />
+      </radialGradient>
+      <linearGradient id="kGlass" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor="#fff" stopOpacity=".30" />
+        <stop offset=".5" stopColor="#fff" stopOpacity=".05" />
+        <stop offset="1" stopColor="#fff" stopOpacity="0" />
+      </linearGradient>
+      <linearGradient id="kSkirt" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor="#3E4356" />
+        <stop offset=".55" stopColor="#2A2E40" />
+        <stop offset="1" stopColor="#1A1E2E" />
+      </linearGradient>
+    </defs>
+  </svg>
+);
+
+/* ══ LE POTARD ═════════════════════════════════════════════════════════════
+   Dessin inédit. Un potard usiné, vu de trois quarts :
+     piste + valeur en arc · collerette cannelée · corps bombé · dôme usiné ·
+     anneau gravé · index lumineux · reflet de vitre · ombre basse.
+   La lumière vient d'en haut à gauche, comme le rail des pistes.
    ─────────────────────────────────────────────────────────────────────────── */
-function Knob({ label, value, onChange, display, accent = IN1, size = 48, onReset, onChangeStart }) {
+const gaugePt = (deg, r) => {
+  const a = deg * Math.PI / 180;
+  return [50 + r * Math.cos(a), 50 + r * Math.sin(a)];
+};
+const gaugeArc = (from, to, r) => {
+  const [x1, y1] = gaugePt(from, r), [x2, y2] = gaugePt(to, r);
+  const large = to - from > 180 ? 1 : 0;
+  return `M${x1.toFixed(2)} ${y1.toFixed(2)} A${r} ${r} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`;
+};
+
+function Knob({ label, value, onChange, display, accent = IN1, size = 46, onReset, onChangeStart }) {
   const drag = useRef(null);
   const [hot, setHot] = useState(false);
-  const ang = -140 + clamp(value, 0, 1) * 280;
+  const v = clamp(value, 0, 1);
+  const A0 = 135, SWEEP = 270;
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, width: size + 18 }}>
-      <div onPointerDown={(e) => { drag.current = { y: e.clientY, v: value };
-                                    e.currentTarget.setPointerCapture(e.pointerId); setHot(true); onChangeStart?.(); }}
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, width: size + 16 }}>
+      <div onPointerDown={(e) => { drag.current = { y: e.clientY, v };
+                                    e.currentTarget.setPointerCapture(e.pointerId);
+                                    setHot(true); onChangeStart?.(); }}
            onPointerMove={(e) => { if (!drag.current) return;
-             onChange(clamp(drag.current.v + (drag.current.y - e.clientY) / 150, 0, 1)); }}
+             onChange(clamp(drag.current.v + (drag.current.y - e.clientY) / 160, 0, 1)); }}
            onPointerUp={() => { drag.current = null; setHot(false); }}
            onDoubleClick={() => onReset && onReset()}
            style={{ width: size, height: size, position: "relative", cursor: "ns-resize", touchAction: "none" }}>
-        <div style={{ position: "absolute", left: "14%", right: "14%", bottom: -2, height: 5, borderRadius: "50%",
-                      background: "radial-gradient(ellipse, rgba(0,0,0,.6), transparent 72%)", filter: "blur(1.2px)" }} />
-        <div style={{ position: "absolute", inset: 0, borderRadius: "50%",
-                      background: `linear-gradient(160deg, ${RAIL2}, ${RAIL} 55%, #23263a)`,
-                      boxShadow: `0 3px 9px rgba(0,0,0,.62), inset 0 1px 0 rgba(255,255,255,.2)` }} />
-        <div style={{ position: "absolute", inset: "3%", borderRadius: "50%",
-                      background: "conic-gradient(from 210deg, rgba(255,255,255,.16), rgba(255,255,255,0) 28%, rgba(0,0,0,.2) 62%, rgba(255,255,255,.12))",
-                      opacity: .8 }} />
-        <div style={{ position: "absolute", inset: "7%", borderRadius: "50%",
-                      background: "radial-gradient(circle at 36% 24%, #4A4E64, #343850 42%, #23263A 82%, #1B1E2E)",
-                      boxShadow: "inset 0 1px 1px rgba(255,255,255,.16), inset 0 -2px 5px rgba(0,0,0,.5)" }} />
-        <div style={{ position: "absolute", inset: "19%", borderRadius: "50%",
-                      background: "radial-gradient(circle at 50% 118%, rgba(255,255,255,.07), rgba(0,0,0,.42) 72%)",
-                      boxShadow: "inset 0 1px 3px rgba(0,0,0,.65), inset 0 -1px 0 rgba(255,255,255,.07)" }} />
-        <div style={{ position: "absolute", inset: "23%", borderRadius: "50%",
-                      background: "radial-gradient(circle at 42% 22%, rgba(255,255,255,.05), rgba(0,0,0,.5) 78%)",
-                      boxShadow: "inset 0 2px 5px rgba(0,0,0,.7)" }} />
-        <div style={{ position: "absolute", left: "50%", top: "50%", width: size * .42, height: size * .42,
-                      marginLeft: -size * .21, marginTop: -size * .21, transform: `rotate(${ang}deg)`,
-                      borderRadius: "50%", pointerEvents: "none" }}>
-          <div style={{ position: "absolute", left: "50%", top: 0, width: Math.max(1.6, size * .038),
-                        height: size * .2, marginLeft: -Math.max(.8, size * .019), borderRadius: 2,
-                        background: accent, boxShadow: `0 0 6px ${hx(accent, .85)}, 0 0 12px ${hx(accent, .4)}` }} />
-        </div>
-        <div style={{ position: "absolute", inset: "5%", borderRadius: "50%", pointerEvents: "none",
-                      background: "linear-gradient(200deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.03) 26%, rgba(255,255,255,0) 46%)" }} />
-        {hot && <div style={{ position: "absolute", inset: "-3%", borderRadius: "50%", pointerEvents: "none",
-                              boxShadow: `0 0 0 1.5px ${hx(accent, .5)}, 0 0 14px ${hx(accent, .3)}` }} />}
+        <svg viewBox="0 0 100 100" width={size} height={size} style={{ display: "block", overflow: "visible" }}>
+          <path d={gaugeArc(A0, A0 + SWEEP, 45)} fill="none" stroke="rgba(255,255,255,.08)"
+                strokeWidth="2.6" strokeLinecap="round" />
+          {v > .012 && (
+            <path d={gaugeArc(A0, A0 + v * SWEEP, 45)} fill="none" stroke={accent}
+                  strokeWidth="2.6" strokeLinecap="round"
+                  style={{ filter: `drop-shadow(0 0 2.5px ${hx(accent, .85)})` }} />
+          )}
+          <ellipse cx="50" cy="94" rx="24" ry="4.5" fill="rgba(0,0,0,.5)" style={{ filter: "blur(2.4px)" }} />
+          <circle cx="50" cy="50" r="36" fill="url(#kSkirt)" />
+          <circle cx="50" cy="50" r="36" fill="none" stroke="#000" strokeOpacity=".8" strokeWidth="7"
+                  strokeDasharray="1.3 2.1" />
+          <circle cx="50" cy="50" r="36" fill="none" stroke="rgba(255,255,255,.12)" strokeWidth=".7" />
+          <circle cx="50" cy="50" r="30.5" fill="url(#kBody)" stroke="rgba(255,255,255,.22)" strokeWidth=".9" />
+          <circle cx="50" cy="50" r="30.5" fill="none" stroke="rgba(0,0,0,.45)" strokeWidth="1.6"
+                  strokeDasharray="30 200" strokeDashoffset="-30" />
+          <circle cx="50" cy="50" r="21" fill="url(#kDome)" stroke="rgba(0,0,0,.42)" strokeWidth=".7" />
+          <circle cx="50" cy="50" r="15.6" fill="none" stroke="rgba(255,255,255,.14)" strokeWidth=".8" />
+          <circle cx="50" cy="50" r="15.6" fill="none" stroke="rgba(0,0,0,.3)" strokeWidth=".5"
+                  strokeDasharray="14 200" strokeDashoffset="-14" />
+          <g transform={`rotate(${225 + v * SWEEP} 50 50)`}>
+            <rect x="48.8" y="14.5" width="2.4" height="12.5" rx="1.2" fill={accent}
+                  style={{ filter: `drop-shadow(0 0 3px ${hx(accent, .9)})` }} />
+            <rect x="48.8" y="14.5" width="2.4" height="4.5" rx="1.2" fill="#fff" opacity=".75" />
+          </g>
+          <ellipse cx="40.5" cy="35" rx="13.5" ry="7.5" transform="rotate(-33 40.5 35)"
+                   fill="url(#kGlass)" opacity=".7" />
+          {hot && <circle cx="50" cy="50" r="45.5" fill="none" stroke={hx(accent, .5)} strokeWidth="1.5" />}
+        </svg>
       </div>
-      <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase",
-                     color: hot ? INK : DIM, whiteSpace: "nowrap", maxWidth: size + 18,
+      <span style={{ fontSize: 7.5, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase",
+                     color: hot ? INK : DIM, whiteSpace: "nowrap", maxWidth: size + 16,
                      overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
-      <span style={{ fontSize: 9.5, fontFamily: MONO, color: hot ? INK : "#7E879C" }}>{display}</span>
+      <span style={{ fontSize: 9, fontFamily: MONO, color: hot ? INK : "#7E879C" }}>{display}</span>
     </div>
   );
 }
 
-/* ══ LE FADER, PARTAGÉ PAR TOUS LES FX ═════════════════════════════════════
-   Le rail des pistes, AMINCI — sa largeur, pas sa hauteur ni son échelle. Le
-   bonnet est celui des pistes (`FaderThumb`), redessiné avec ses vraies cotes :
-   ratio 1327/1657, LED à y=791 sur 1657, liseré latéral, reflet en haut.
+/* ══ LE FADER ══════════════════════════════════════════════════════════════
+   Rail : la matière de celui des pistes (`FaderRail.kt`), aminci — sa largeur
+   seulement. Bonnet : dessin inédit, en six plans — chanfrein haut, cannelures
+   verticales, inlay central, LED dans l'accent, chanfrein bas, ombre portée.
    ─────────────────────────────────────────────────────────────────────────── */
-const RAIL_W = 13, CAP_W = 26, CAP_H = 32;
+const RAIL_W = 13, CAP_W = 26, CAP_H = 30, TRAVEL = 84;
 
 function Fader({ label, value, onChange, display, accent = IN1, onReset, onChangeStart }) {
   const box = useRef(null);
   const drag = useRef(null);
   const [hot, setHot] = useState(false);
-  const travel = 74;
-  const capY = (1 - clamp(value, 0, 1)) * travel;
+  const v = clamp(value, 0, 1);
+  const capY = (1 - v) * TRAVEL;
   const setFrom = (clientY) => {
     const r = box.current.getBoundingClientRect();
-    onChange(clamp(1 - (clientY - r.top - CAP_H / 2) / travel, 0, 1));
+    onChange(clamp(1 - (clientY - r.top - CAP_H / 2) / TRAVEL, 0, 1));
   };
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, width: CAP_W + 16 }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, width: CAP_W + 8 }}>
       <div ref={box} onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId);
                                               setHot(true); onChangeStart?.(); setFrom(e.clientY); }}
            onPointerMove={(e) => { if (hot) setFrom(e.clientY); }}
            onPointerUp={() => setHot(false)}
            onDoubleClick={() => onReset && onReset()}
-           style={{ width: CAP_W, height: travel + CAP_H, position: "relative", cursor: "ns-resize", touchAction: "none" }}>
-        {/* le rail aminci : même matière que celui des pistes */}
-        <div style={{ position: "absolute", left: "50%", top: CAP_H / 2, height: travel, width: RAIL_W,
-                      marginLeft: -RAIL_W / 2, borderRadius: RAIL_W / 2, ...railMat({ borderRadius: RAIL_W / 2 }) }} />
-        <div style={{ position: "absolute", left: "50%", top: CAP_H / 2 + 3, height: travel - 6, width: RAIL_W - 7,
+           style={{ width: CAP_W, height: TRAVEL + CAP_H, position: "relative", cursor: "ns-resize", touchAction: "none" }}>
+        <div style={{ position: "absolute", left: "50%", top: CAP_H / 2, height: TRAVEL, width: RAIL_W,
+                      marginLeft: -RAIL_W / 2, borderRadius: RAIL_W / 2,
+                      background: `linear-gradient(180deg,${RAIL},#313443 10%,#373A4B 38%,#3A3C4F 60%,#3E4155 85%,${RAIL2})`,
+                      boxShadow: `inset 0 1px 0 rgba(255,255,255,.16), inset 1px 0 0 rgba(255,255,255,.07),
+                                  inset -1px 0 0 rgba(0,0,0,.16), inset 0 -1px 0 rgba(255,255,255,.1),
+                                  0 3px 8px rgba(0,0,0,.45)` }} />
+        <div style={{ position: "absolute", left: "50%", top: CAP_H / 2 + 3, height: TRAVEL - 6, width: RAIL_W - 7,
                       marginLeft: -(RAIL_W - 7) / 2, borderRadius: (RAIL_W - 7) / 2,
                       background: "linear-gradient(180deg,#07090F,#0C0F18)",
                       boxShadow: "inset 0 2px 5px rgba(0,0,0,.85)" }} />
-        {/* la partie parcourue, dans l'accent */}
         <div style={{ position: "absolute", left: "50%", bottom: CAP_H / 2 + 3, width: RAIL_W - 7,
-                      height: Math.max(0, travel - 6 - (travel * clamp(value, 0, 1))),
-                      marginLeft: -(RAIL_W - 7) / 2, borderRadius: (RAIL_W - 7) / 2,
-                      background: `linear-gradient(180deg,${hx(accent, .28)},${hx(accent, .85)})`,
-                      boxShadow: `0 0 8px ${hx(accent, .35)}` }} />
-        {/* le bonnet */}
+                      height: Math.max(0, (TRAVEL - 6) * v), marginLeft: -(RAIL_W - 7) / 2,
+                      borderRadius: (RAIL_W - 7) / 2,
+                      background: `linear-gradient(180deg,${hx(accent, .25)},${hx(accent, .9)})`,
+                      boxShadow: `0 0 8px ${hx(accent, .4)}` }} />
         <div style={{ position: "absolute", left: "50%", top: capY, width: CAP_W, height: CAP_H,
-                      marginLeft: -CAP_W / 2, borderRadius: 7, overflow: "hidden",
-                      background: `linear-gradient(180deg, #6E7488 0%, #565C70 18%, #43485C 52%, #383D50 78%, #2E3344 100%)`,
-                      boxShadow: hot ? `0 0 0 1.5px ${hx(accent, .6)}, 0 6px 13px rgba(0,0,0,.65)`
-                                     : "0 5px 11px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.24)",
-                      transition: hot ? "none" : "box-shadow .15s" }}>
-          <div style={{ position: "absolute", inset: 0,
-                        background: "linear-gradient(90deg, rgba(255,255,255,.16), rgba(255,255,255,0) 22%, rgba(0,0,0,0) 74%, rgba(0,0,0,.26))" }} />
-          <div style={{ position: "absolute", left: 0, right: 0, top: 0, height: "38%",
-                        background: "linear-gradient(180deg, rgba(255,255,255,.22), rgba(255,255,255,0))" }} />
-          <div style={{ position: "absolute", left: 4, right: 4, top: "58%", height: 2, borderRadius: 2,
-                        background: accent, opacity: .85, boxShadow: `0 0 6px ${hx(accent, .6)}` }} />
-          <div style={{ position: "absolute", left: 4, right: 4, bottom: 4, height: 1,
-                        background: "rgba(255,255,255,.1)" }} />
+                      marginLeft: -CAP_W / 2, borderRadius: 6,
+                      background: "linear-gradient(180deg,#828A9E 0%,#5C6376 11%,#414659 46%,#333849 82%,#282D3E 100%)",
+                      boxShadow: hot
+                        ? `0 0 0 1.5px ${hx(accent, .6)}, 0 7px 15px rgba(0,0,0,.68)`
+                        : "0 6px 13px rgba(0,0,0,.62), inset 0 1px 0 rgba(255,255,255,.3), inset 0 -1.5px 0 rgba(0,0,0,.45)" }}>
+          <div style={{ position: "absolute", inset: 0, borderRadius: 6,
+                        backgroundImage: "repeating-linear-gradient(90deg, rgba(255,255,255,.085) 0 1px, rgba(0,0,0,.17) 1px 3px)" }} />
+          <div style={{ position: "absolute", left: 2, right: 2, top: 1.5, height: 3.5, borderRadius: 2,
+                        background: "linear-gradient(180deg, rgba(255,255,255,.52), rgba(255,255,255,0))" }} />
+          <div style={{ position: "absolute", left: 3.5, right: 3.5, top: "47%", height: 3, borderRadius: 2,
+                        background: `linear-gradient(90deg,${hx(accent, .3)},${accent},${hx(accent, .3)})`,
+                        boxShadow: `0 0 7px ${hx(accent, .75)}, inset 0 0 2px rgba(255,255,255,.55)` }} />
+          <div style={{ position: "absolute", left: 2, right: 2, bottom: 1.5, height: 2.5, borderRadius: 2,
+                        background: "linear-gradient(180deg, rgba(0,0,0,.5), rgba(255,255,255,.1))" }} />
         </div>
       </div>
-      <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase",
-                     color: hot ? INK : DIM, whiteSpace: "nowrap", maxWidth: CAP_W + 16,
+      <span style={{ fontSize: 7.5, fontWeight: 800, letterSpacing: ".09em", textTransform: "uppercase",
+                     color: hot ? INK : DIM, whiteSpace: "nowrap", maxWidth: CAP_W + 8,
                      overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
-      <span style={{ fontSize: 9.5, fontFamily: MONO, color: hot ? INK : "#7E879C" }}>{display}</span>
+      <span style={{ fontSize: 9, fontFamily: MONO, color: hot ? INK : "#7E879C" }}>{display}</span>
     </div>
   );
 }
@@ -299,7 +366,7 @@ function Seg({ options, value, onChange, height = 34 }) {
                            color: on ? IN_TEXT : "#8791B5", display: "flex", alignItems: "center",
                            justifyContent: "center", gap: 6, fontSize: 11, fontWeight: 800,
                            fontFamily: FONT, transition: "all .18s" }}>
-            {ic && <Ico d={ic} size={14} />}{on && l}
+            {Ico && ic && <Ico d={ic} size={14} />}{on && l}
           </button>
         );
       })}
@@ -307,11 +374,179 @@ function Seg({ options, value, onChange, height = 34 }) {
   );
 }
 
+/* ══ L'ORBE DE SPACE ═══════════════════════════════════════════════════════
+   Porté de `orb()` de `fx-window-preview.html`. C'est l'orbe de l'app.
+   Il change de couleur tout seul : `hue = 268 - damp * 75`, du violet (Damp à 0)
+   au bleu (Damp à fond). Chaque réglage agit :
+     Size    → le rayon
+     Decay   → la longueur des tirets et la queue des comètes
+     Pre-delay → le silence avant la première ondulation
+     Damp    → la teinte
+     Width   → l'inclinaison des anneaux et leur précession
+     Mix     → la luminosité générale
+     Diffuse → la turbulence du courant de particules
+   ─────────────────────────────────────────────────────────────────────────── */
+function Orb({ vals, accent, fireRef }) {
+  const cvs = useRef(null);
+  const st = useRef({ t: 0, last: 0, flash: 0, motes: null });
+  const vref = useRef(vals); vref.current = vals;
+  useEffect(() => {
+    const c = cvs.current, ctx = c.getContext("2d");
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const rect = c.getBoundingClientRect();
+    c.width = Math.max(1, rect.width * dpr); c.height = Math.max(1, rect.height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const W = rect.width, H = rect.height;
+    const S = st.current;
+    if (!S.motes) S.motes = Array.from({ length: 70 }, () => ({ x: Math.random(), y: Math.random(), p: Math.random() * 6.28 }));
+    fireRef.current = () => { S.flash = 1; };
+    let raf;
+    const draw = (ts) => {
+      const dt = Math.min(.05, (ts - S.last) / 1000 || .016);
+      S.last = ts; S.t += dt;
+      const t = S.t, v = vref.current;
+      const sz = v.size ?? .62, dc = v.decay ?? .7, pd = v.pre ?? .2, dm = v.damp ?? .45,
+            wd = v.width ?? .8, mx = v.mix ?? .35, df = v.diff ?? .5;
+      const cx = W / 2, cy = H * .44;
+      const R = Math.min(W, H) * .155 * (.7 + sz * .8) * (1 + .03 * Math.sin(t * 2));
+      const hue = 268 - dm * 75;
+      const col = `hsl(${hue},48%,74%)`;
+      ctx.clearRect(0, 0, W, H);
+
+      let g = ctx.createRadialGradient(cx, cy, R * .3, cx, cy, R * 4.5);
+      g.addColorStop(0, `hsla(${hue},45%,36%,${.2 + .5 * mx})`);
+      g.addColorStop(1, "#0000");
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+      for (const m of S.motes) {
+        ctx.globalAlpha = .2 + .5 * Math.abs(Math.sin(t * 1.3 + m.p));
+        ctx.fillStyle = "#fff"; ctx.fillRect(m.x * W, m.y * H, 1.2, 1.2);
+      }
+
+      /* les ondulations : la cadence suit Size, le silence suit Pre-delay */
+      for (let w = 0; w < 3; w++) {
+        const u = (t * (.12 + sz * .2) + w / 3) % 1;
+        if (u < pd * .4) continue;
+        ctx.globalAlpha = (1 - u) * .4; ctx.strokeStyle = col; ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.arc(cx, cy, R * (1.1 + u * 5), 0, 6.2832); ctx.stroke();
+      }
+
+      /* anneau A : arcs en tirets — Decay en fait la longueur, Width la précession */
+      let rx = R * 1.75, ry = rx * (.3 + wd * .18), tl = -.35 + Math.sin(t * .25) * wd * .55;
+      ctx.globalAlpha = .3 + .5 * mx; ctx.strokeStyle = col; ctx.lineWidth = 2.2;
+      ctx.setLineDash([4 + dc * 36, 9]); ctx.lineDashOffset = -t * 30 * (.3 + wd);
+      ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, tl, 0, 6.2832); ctx.stroke(); ctx.setLineDash([]);
+
+      /* anneau B : courant de particules — Diffuse en fait la turbulence */
+      rx = R * 2.7; ry = rx * .36; tl = .25 + Math.cos(t * .2) * wd * .4;
+      const N = 22 + Math.round(sz * 14), L = 3 + Math.round(dc * 6);
+      for (let p = 0; p < N; p++) {
+        const an = t * (.25 + wd * .9) + p * 6.2832 / N;
+        for (let s = 0; s < L; s++) {
+          const aa = an - s * .08 * (.4 + dc), wob = Math.sin(aa * 5 + t * 3) * df * R * .45;
+          const ca = Math.cos(aa), sa = Math.sin(aa);
+          const X = (rx + wob) * ca, Y = (ry + wob * .4) * sa;
+          ctx.globalAlpha = (1 - s / L) * .85; ctx.fillStyle = s ? col : "#fff";
+          ctx.beginPath();
+          ctx.arc(cx + X * Math.cos(tl) - Y * Math.sin(tl),
+                  cy + X * Math.sin(tl) + Y * Math.cos(tl), 2.1 * (1 - s / L * .5), 0, 6.2832);
+          ctx.fill();
+        }
+      }
+
+      /* anneau C : comètes à longue queue + échos de la queue de réverbération */
+      rx = Math.min(R * 3.7, W * .46); ry = rx * .3; tl = -.6 + Math.sin(t * .17) * wd * .3;
+      for (let e = 0; e < 3; e++) {
+        ctx.globalAlpha = .05 + .25 * dc * (1 - e / 3); ctx.strokeStyle = col; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.ellipse(cx, cy, rx * (1 + e * .06), ry * (1 + e * .06), tl, 0, 6.2832); ctx.stroke();
+      }
+      for (let c2 = 0; c2 < 3; c2++) {
+        const an = -t * (.18 + wd * .6) + c2 * 2.094, T2 = 8 + Math.round(dc * 20);
+        for (let s = 0; s < T2; s++) {
+          const aa = an + s * .05, ca = Math.cos(aa), sa = Math.sin(aa);
+          ctx.globalAlpha = (1 - s / T2) * (.3 + .6 * mx); ctx.fillStyle = s ? col : "#fff";
+          ctx.beginPath();
+          ctx.arc(cx + rx * ca * Math.cos(tl) - ry * sa * Math.sin(tl),
+                  cy + rx * ca * Math.sin(tl) + ry * sa * Math.cos(tl), 3 * (1 - s / T2 * .6), 0, 6.2832);
+          ctx.fill();
+        }
+      }
+
+      if (S.flash > 0) {
+        ctx.globalAlpha = S.flash * .5; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(cx, cy, R * (1 + (1 - S.flash) * 1.7), 0, 6.2832); ctx.stroke();
+        S.flash = Math.max(0, S.flash - dt * 1.8);
+      }
+
+      /* la sphère */
+      ctx.globalAlpha = 1;
+      g = ctx.createRadialGradient(cx - R * .35, cy - R * .4, R * .1, cx, cy, R);
+      g.addColorStop(0, "#eee8ff"); g.addColorStop(.35, accent); g.addColorStop(1, "#1d1a38");
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, R, 0, 6.2832); ctx.fill();
+
+      ctx.save();
+      ctx.beginPath(); ctx.arc(cx, cy, R, 0, 6.2832); ctx.clip();
+      ctx.strokeStyle = "#fff"; ctx.lineWidth = .8;
+      for (let q = 0; q < 3; q++) {
+        ctx.globalAlpha = .1 + .1 * df;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, R * Math.abs(Math.cos(t * .4 * (.5 + wd) + q * 1.05)), R, 0, 0, 6.2832);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      ctx.globalAlpha = .08 + .4 * mx; ctx.strokeStyle = "#fff"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(cx, cy, R * 1.08, 0, 6.2832); ctx.stroke();
+      ctx.globalAlpha = 1;
+      raf = requestAnimationFrame(draw);
+    };
+    raf = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf);
+  }, [accent]);
+  return <canvas ref={cvs} style={{ width: "100%", height: "100%", display: "block" }} />;
+}
+
+/* ══ LA LISTE DE PRESETS : elle défile ═════════════════════════════════════ */
+function PresetRail({ fx, preset, custom, onPick }) {
+  const names = Object.keys(fx.presets || {});
+  return (
+    <div style={{ width: 148, flex: "none", display: "flex", flexDirection: "column", gap: 6, minHeight: 0 }}>
+      <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".15em", textTransform: "uppercase",
+                     color: MUTE, flex: "none" }}>Presets · {names.length}</span>
+      <div className="fxscroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex",
+                    flexDirection: "column", gap: 3, paddingRight: 3, ...well({ borderRadius: 10, padding: 4 }) }}>
+        {custom && (
+          <div style={{ height: 26, flex: "none", borderRadius: 7, display: "flex", alignItems: "center", gap: 7,
+                        padding: "0 9px", background: "rgba(242,201,125,.1)",
+                        border: "1px solid rgba(242,201,125,.3)" }}>
+            <span style={{ width: 4, height: 4, borderRadius: 2, background: "#F2C97D" }} />
+            <span style={{ fontSize: 11, fontWeight: 800, color: "#F2C97D" }}>Custom</span>
+          </div>
+        )}
+        {names.map((n, i) => {
+          const on = n === preset;
+          return (
+            <button key={n} onClick={() => onPick(n)}
+                    style={{ height: 26, flex: "none", borderRadius: 7, cursor: "pointer", textAlign: "left",
+                             display: "flex", alignItems: "center", gap: 7, padding: "0 9px",
+                             fontFamily: FONT, fontSize: 11, fontWeight: on ? 800 : 600,
+                             background: on ? `linear-gradient(90deg,${hx(ACC, .2)},rgba(255,255,255,.02))` : "transparent",
+                             border: `1px solid ${on ? hx(ACC, .34) : "transparent"}`,
+                             color: on ? INK : "#96A0B4" }}>
+              <span style={{ width: 3, height: 12, borderRadius: 2, flex: "none",
+                             background: on ? ACC : "transparent" }} />
+              <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{n}</span>
+              <span style={{ fontSize: 8.5, fontFamily: MONO, color: MUTE }}>{String(i + 1).padStart(2, "0")}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ══ LA CARTE ══════════════════════════════════════════════════════════════
-   Elle occupe EXACTEMENT la place d'un logement : même hauteur, même largeur,
-   même rayon. Ajouter un effet ne change donc rien à la géométrie du rack.
-   Style de `fx-window-preview.html` : type en petites capitales, nom en grand,
-   visuel au milieu, ligne de pied avec la LED.
+   Elle occupe EXACTEMENT la place d'un logement : même hauteur, même largeur.
    ─────────────────────────────────────────────────────────────────────────── */
 function FxCard({ fx, midi, on, onToggle, onOpen, onRemove, onSwipe, height }) {
   const [hot, setHot] = useState(false);
@@ -324,9 +559,8 @@ function FxCard({ fx, midi, on, onToggle, onOpen, onRemove, onSwipe, height }) {
   const pct = clamp(-dy / 90, 0, 1);
   return (
     <div style={{ position: "relative", flex: 1, minWidth: 0, height }}>
-      {/* la piste de suppression, révélée par le glissement */}
       <div style={{ position: "absolute", inset: 0, borderRadius: 16, overflow: "hidden",
-                    background: `linear-gradient(180deg, ${hx("#FF3B5C", .10 + pct * .5)}, ${hx("#FF3B5C", .04 + pct * .34)})`,
+                    background: `linear-gradient(180deg, ${hx("#FF3B5C", .1 + pct * .5)}, ${hx("#FF3B5C", .04 + pct * .34)})`,
                     boxShadow: "inset 0 0 0 1px rgba(255,59,92,.28)",
                     display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
@@ -348,16 +582,14 @@ function FxCard({ fx, midi, on, onToggle, onOpen, onRemove, onSwipe, height }) {
            onPointerUp={(e) => {
              if (!drag.current) return;
              const dt = Math.max(1, e.timeStamp - drag.current.t);
-             const v = -dy / dt;                        // px par ms
-             const flick = v > 0.55;                    // un geste bref suffit
+             const flick = (-dy / dt) > .55;
              drag.current = null;
              if (-dy > 74 || flick) onSwipe();
              else { setDy(0); setSwiping(false); }
            }}
            style={{ position: "absolute", inset: 0, borderRadius: 16, padding: 10, cursor: "pointer",
                     display: "flex", flexDirection: "column", gap: 7,
-                    transform: `translateY(${dy}px) scale(${1 - pct * .04})`,
-                    opacity: 1 - pct * .55,
+                    transform: `translateY(${dy}px) scale(${1 - pct * .04})`, opacity: 1 - pct * .55,
                     transition: drag.current ? "none" : "transform .42s cubic-bezier(.16,1,.3,1), opacity .3s",
                     background: `linear-gradient(180deg,${hot ? "#373E4C" : "#323845"},${hot ? "#252A37" : "#222733"})`,
                     border: `1px solid ${LINE2}`,
@@ -381,18 +613,15 @@ function FxCard({ fx, midi, on, onToggle, onOpen, onRemove, onSwipe, height }) {
             <Ico d={P.trash} size={11} />
           </button>
         </div>
-
         <div style={{ fontSize: 18, lineHeight: 1.05, fontWeight: 700, color: on ? INK : "#98A1B4",
                       whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fx.name}</div>
-
         <div style={{ flex: 1, minHeight: 0, borderRadius: 11, overflow: "hidden", position: "relative",
                       background: "#12161F", boxShadow: "inset 0 2px 7px rgba(0,0,0,.7), inset 0 0 0 1px rgba(255,255,255,.04)" }}>
           {fx.space
-            ? <Scene vals={vals} fireRef={fireRef} accent={ac} hover={false} />
+            ? <Orb vals={vals} accent={ac} fireRef={fireRef} />
             : midi ? <MiniSteps accent={ac} on={on} /> : <MiniGraph type={fx.type} accent={ac} on={on} />}
           {!on && <div style={{ position: "absolute", inset: 0, background: "rgba(10,13,20,.6)" }} />}
         </div>
-
         <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 9, fontWeight: 700,
                       color: DIM, flex: "none" }}>
           <span style={{ width: 8, height: 8, borderRadius: 4, flex: "none",
@@ -438,7 +667,6 @@ function MiniSteps({ accent, on }) {
   );
 }
 
-/* ══ LE LOGEMENT VIDE : un creux, rien d'autre que le « + » ════════════════ */
 function EmptySlot({ onAdd, height, label }) {
   return (
     <button onClick={onAdd} style={{ flex: 1, minWidth: 0, height, borderRadius: 16, cursor: "pointer",
@@ -460,7 +688,6 @@ function EmptySlot({ onAdd, height, label }) {
   );
 }
 
-/* ══ LA FEUILLE D'AJOUT ════════════════════════════════════════════════════ */
 function Catalog({ kind, onPick, onBack, full }) {
   const list = kind === "midi" ? MIDI : AUDIO;
   const fams = ["All", ...Array.from(new Set(list.map((f) => f.fam)))];
@@ -489,8 +716,7 @@ function Catalog({ kind, onPick, onBack, full }) {
                           color: INK, fontFamily: FONT, fontSize: 11 }} />
         </div>
       </div>
-
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "grid",
+      <div className="fxscroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "grid",
                     gridTemplateColumns: "1fr 1fr", gap: 9, alignContent: "start" }}>
         {shown.map((f, i) => {
           const on = i === sel;
@@ -538,60 +764,61 @@ function Catalog({ kind, onPick, onBack, full }) {
 }
 
 /* ══ LE PANNEAU D'UN EFFET ═════════════════════════════════════════════════
-   Un seul en-tête : celui de la fenêtre. La pastille de preset et la disquette
-   sont dans la barre de titre. Au centre : la salle vivante (Space) ou le
-   visuel, et la grille de réglages — knobs ET faders dans la MÊME case.
+   Presets à gauche (défilants) · orbe au centre · réglages à droite.
+   Les quatre premiers réglages sont des potards EN HAUT, les suivants des
+   faders EN BAS, sans partage de la case.
    ─────────────────────────────────────────────────────────────────────────── */
-function FxPanel({ fx, vals, setVal, preset, onPreset, onSave, dirty, on, onToggle }) {
+function FxPanel({ fx, vals, setVal, preset, custom, onPick, on, onToggle }) {
   const fireRef = useRef(() => {});
-  const names = fx.presets ? Object.keys(fx.presets) : [];
-  const idx = names.indexOf(preset);
-  const step = (d) => { const n = names[(idx + d + names.length) % names.length]; if (n) onPreset(n); };
   const get = (k) => vals[k] ?? .5;
   const knobs = fx.params.slice(0, 4);
   const faders = fx.params.slice(4);
+  const hue = 268 - get("damp") * 75;
   return (
     <div style={{ display: "flex", gap: 12, height: "100%", minHeight: 0 }}>
+      <PresetRail fx={fx} preset={preset} custom={custom} onPick={onPick} />
+
       <div onClick={() => fireRef.current()}
-           style={{ flex: "1 1 52%", minWidth: 0, position: "relative", borderRadius: 15, overflow: "hidden",
+           style={{ flex: "1 1 auto", minWidth: 0, position: "relative", borderRadius: 15, overflow: "hidden",
                     cursor: fx.space ? "crosshair" : "default", ...well({ borderRadius: 15 }) }}>
         {fx.space
-          ? <Scene vals={vals} fireRef={fireRef} accent={fx.accent} hover />
+          ? <Orb vals={vals} accent={fx.accent} fireRef={fireRef} />
           : <div style={{ height: "100%", display: "grid", placeItems: "center" }}>
-              <MiniGraph type={fx.type} accent={fx.accent} on />
+              <div style={{ width: "62%", height: "58%" }}><MiniGraph type={fx.type} accent={fx.accent} on /></div>
             </div>}
         <div style={{ position: "absolute", left: 11, top: 9, display: "flex", alignItems: "center", gap: 7,
                       padding: "4px 9px", borderRadius: 8, background: "rgba(10,14,26,.55)",
                       border: `1px solid ${LINE2}`, backdropFilter: "blur(6px)", pointerEvents: "none" }}>
-          <span style={{ width: 5, height: 5, borderRadius: 3, background: fx.accent, boxShadow: `0 0 7px ${fx.accent}` }} />
-          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".09em", textTransform: "uppercase", color: "#C6CEE8" }}>{preset}</span>
-          {fx.space && <span style={{ fontSize: 10, fontFamily: MONO, color: MUTE }}>{(.4 + get("decay") * 7.6).toFixed(1)} s</span>}
+          <span style={{ width: 5, height: 5, borderRadius: 3, background: `hsl(${hue},48%,74%)`,
+                         boxShadow: `0 0 7px hsl(${hue},48%,74%)` }} />
+          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".09em", textTransform: "uppercase",
+                         color: "#C6CEE8" }}>{custom ? "Custom" : preset}</span>
+          <span style={{ fontSize: 10, fontFamily: MONO, color: MUTE }}>{(.4 + get("decay") * 7.6).toFixed(1)} s</span>
         </div>
-        {fx.space && (
-          <div style={{ position: "absolute", left: 11, bottom: 8, fontSize: 8.5, fontWeight: 800,
-                        letterSpacing: ".1em", textTransform: "uppercase", color: MUTE, pointerEvents: "none" }}>
-            Touch the room to re-fire
-          </div>
-        )}
+        <div style={{ position: "absolute", left: 11, bottom: 8, fontSize: 8.5, fontWeight: 800,
+                      letterSpacing: ".1em", textTransform: "uppercase", color: MUTE, pointerEvents: "none" }}>
+          Touch the orb to re-fire
+        </div>
         {!on && <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center",
                               background: "rgba(9,12,22,.66)", fontSize: 12, fontWeight: 800,
                               letterSpacing: ".2em", color: MUTE, textTransform: "uppercase" }}>Bypassed</div>}
       </div>
 
-      <div style={{ flex: "1 1 48%", minWidth: 0, display: "flex", flexDirection: "column", gap: 9 }}>
-        <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "space-around",
-                      gap: 6, padding: "6px 4px", ...well({ borderRadius: 13 }) }}>
+      <div style={{ width: 244, flex: "none", display: "flex", flexDirection: "column", gap: 8, minHeight: 0 }}>
+        <div style={{ height: 100, flex: "none", display: "flex", alignItems: "center",
+                      justifyContent: "space-around", ...well({ borderRadius: 13 }) }}>
           {knobs.map(([n, k, def, mn, mx, u]) => (
-            <Knob key={k} label={n} value={get(k)} accent={fx.accent} size={48}
+            <Knob key={k} label={n} value={get(k)} accent={fx.accent} size={46}
                   onChange={(v) => setVal(k, v)} onReset={() => setVal(k, def)}
-                  onChangeStart={() => onPreset && dirty === false && onPreset("Custom")}
-                  display={fmt([n, get(k), mn, mx, u])} />
+                  display={fmt(get(k), mn, mx, u)} />
           ))}
+        </div>
+        <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "flex-start",
+                      justifyContent: "space-around", paddingTop: 8, ...well({ borderRadius: 13 }) }}>
           {faders.map(([n, k, def, mn, mx, u]) => (
             <Fader key={k} label={n} value={get(k)} accent={fx.accent}
                    onChange={(v) => setVal(k, v)} onReset={() => setVal(k, def)}
-                   onChangeStart={() => onPreset && dirty === false && onPreset("Custom")}
-                   display={fmt([n, get(k), mn, mx, u])} />
+                   display={fmt(get(k), mn, mx, u)} />
           ))}
         </div>
       </div>
@@ -616,7 +843,6 @@ function ArpPanel({ p, set, cur }) {
         <div style={{ flex: 1 }} />
         <Stepper label="Steps" value={p.steps} min={1} max={16} onChange={(v) => set((s) => ({ ...s, steps: v }))} />
       </div>
-
       <div style={{ flex: 1, minHeight: 0, display: "flex", gap: 10, padding: "10px 12px", ...well({ borderRadius: 13 }) }}>
         <div style={{ width: 42, flex: "none", display: "flex", flexDirection: "column", alignItems: "center",
                       justifyContent: "space-between", color: DIM, fontSize: 17, fontWeight: 700 }}>
@@ -656,7 +882,6 @@ function ArpPanel({ p, set, cur }) {
           })}
         </div>
       </div>
-
       <div style={{ height: 16, flex: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
         {Array.from({ length: 16 }).map((_, i) => (
           <span key={i} style={{ width: cur === i ? 7 : 5, height: cur === i ? 7 : 5, borderRadius: 4,
@@ -674,8 +899,7 @@ const HEAD = 46, PAD = 12, BODY_H = 411 - HEAD - PAD * 2;
 function FxWindow() {
   const [midi, setMidi] = useState(() => ({ fx: MIDI[0], on: true }));
   const [audio, setAudio] = useState(() => [{ fx: AUDIO[0], on: true }]);
-  const [vals, setVals] = useState(() => Object.fromEntries(
-    AUDIO[0].params.map(([, k, v]) => [k, v])));
+  const [vals, setVals] = useState(() => Object.fromEntries(AUDIO[0].params.map(([, k, v]) => [k, v])));
   const [preset, setPreset] = useState("Hall");
   const [custom, setCustom] = useState(false);
   const [view, setView] = useState(() => {
@@ -693,7 +917,6 @@ function FxWindow() {
     on: Array(16).fill(true),
   }));
 
-  /* Changer un réglage à la main fait passer le preset à Custom, tout de suite. */
   const setVal = (k, v) => {
     setVals((s) => ({ ...s, [k]: v }));
     if (!custom) { setCustom(true); setPreset("Custom"); }
@@ -701,11 +924,8 @@ function FxWindow() {
   const applyPreset = (n) => {
     const row = AUDIO[0].presets[n];
     if (row) setVals(Object.fromEntries(AUDIO[0].params.map(([, k], i) => [k, row[i]])));
-    setPreset(n); setCustom(n === "Custom");
+    setPreset(n); setCustom(false);
   };
-  const names = Object.keys(AUDIO[0].presets);
-  const idx = names.indexOf(preset);
-  const step = (d) => applyPreset(names[(idx + d + names.length) % names.length] || names[0]);
 
   useEffect(() => {
     const id = setInterval(() => setT((x) => x + 1), 110);
@@ -714,12 +934,8 @@ function FxWindow() {
   const cur = Math.floor(t / 2) % arp.steps;
 
   const inEffect = view.k === "effect";
-  const isSpace = inEffect && view.fx.space;
   const isArp = inEffect && view.fx.type === "arp";
-  const isMidiFx = inEffect && !view.fx.space && view.fx.type !== "arp";
-
-  /* UN SEUL EN-TÊTE. En mode rack il dit « Effects » ; dans un effet il dit son
-     nom. Le fil d'Ariane vit à gauche, les actions à droite. */
+  const isSpace = inEffect && !!view.fx.space;
   const title = inEffect ? view.fx.name : view.k === "catalog" ? "Add effect" : "Effects";
 
   return (
@@ -727,6 +943,8 @@ function FxWindow() {
                   fontFamily: FONT, color: INK, background: `linear-gradient(180deg,${WIN_T},${WIN_B})`,
                   border: `1px solid ${LINE2}`, boxShadow: "0 24px 50px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.08)",
                   userSelect: "none", WebkitFontSmoothing: "antialiased", display: "flex", flexDirection: "column" }}>
+      <style>{CSS}</style>
+      <KnobDefs />
       <div style={{ position: "absolute", inset: 0, backgroundImage: NOISE, opacity: .05, mixBlendMode: "overlay", pointerEvents: "none" }} />
 
       <div style={{ height: HEAD, flex: "none", display: "flex", alignItems: "center", gap: 10, padding: "0 12px",
@@ -738,43 +956,18 @@ function FxWindow() {
           <span style={{ width: 4, height: 24, borderRadius: 2, background: "#7F9BC7", flex: "none" }} />
         )}
         <span style={{ fontSize: 13, fontWeight: 900, letterSpacing: ".02em" }}>{title}</span>
-
-        {/* la pastille de preset : elle n'existe que dans un effet qui en a */}
-        {isSpace && (
-          <>
-            <button onClick={() => step(-1)} style={{ ...ghost({ width: 24, height: 24, display: "grid",
-                     placeItems: "center", color: DIM, cursor: "pointer", borderRadius: 8 }) }}>
-              <Ico d={P.back} size={12} /></button>
-            <div style={{ height: 26, minWidth: 152, display: "flex", alignItems: "center", justifyContent: "space-between",
-                          gap: 9, padding: "0 10px", ...well({ borderRadius: 8, height: 26 }) }}>
-              <span style={{ fontSize: 11, fontWeight: 800, color: custom ? "#F2C97D" : INK }}>{preset}</span>
-              <span style={{ fontSize: 9, fontFamily: MONO, color: MUTE }}>
-                {custom ? "custom" : `${idx + 1}/${names.length}`}
-              </span>
-            </div>
-            <button onClick={() => step(1)} style={{ ...ghost({ width: 24, height: 24, display: "grid",
-                     placeItems: "center", color: DIM, cursor: "pointer", borderRadius: 8 }) }}>
-              <Ico d={P.back} size={12} style={{ transform: "rotate(180deg)" }} /></button>
-          </>
-        )}
-
         <div style={{ flex: 1 }} />
-
         {view.k === "rack" && (
           <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", color: MUTE }}>
             {audio.length + (midi.fx ? 1 : 0)} / {MAX_AUDIO + MAX_MIDI}
           </span>
         )}
-
-        {/* la disquette : même icône que les Æther Instruments */}
         {isSpace && (
-          <button onClick={() => onSave && onSave(preset)} title="Save preset"
-                  style={{ ...ghost({ width: 28, height: 28, display: "grid", placeItems: "center",
-                           cursor: "pointer", opacity: custom ? 1 : .45 }) }}>
+          <button title="Save preset" style={{ ...ghost({ width: 28, height: 28, display: "grid", placeItems: "center",
+                   cursor: "pointer", opacity: custom ? 1 : .5 }) }}>
             <Floppy armed={custom} size={14} />
           </button>
         )}
-
         <button title="Close" style={{ ...ghost({ width: 28, height: 28, display: "grid", placeItems: "center",
                  color: DIM, cursor: "pointer" }) }}><Ico d={P.close} size={14} /></button>
       </div>
@@ -793,7 +986,6 @@ function FxWindow() {
                 : <EmptySlot key={"e" + i} height={BODY_H} label="Audio"
                              onAdd={() => setView({ k: "catalog", kind: "audio" })} />;
             })}
-            {/* le MIDI est à DROITE, après les audio */}
             {midi.fx
               ? <FxCard fx={midi.fx} midi height={BODY_H} on={midi.on}
                         onToggle={() => setMidi((m) => ({ ...m, on: !m.on }))}
@@ -816,9 +1008,9 @@ function FxWindow() {
         {inEffect && (
           isArp
             ? <ArpPanel p={arp} set={setArp} cur={cur} />
-            : <FxPanel fx={view.fx} vals={vals} setVal={setVal} preset={preset}
-                       onPreset={applyPreset} onSave={() => {}} dirty={custom}
-                       on={isSpace ? audio[0].on : (isMidiFx ? midi.on : true)}
+            : <FxPanel fx={view.fx} vals={vals} setVal={setVal} preset={preset} custom={custom}
+                       onPick={applyPreset}
+                       on={isSpace ? audio[0].on : midi.on}
                        onToggle={() => (isSpace ? setAudio((s) => s.map((x, k) => k === 0 ? { ...x, on: !x.on } : x))
                                                 : setMidi((m) => ({ ...m, on: !m.on })))} />
         )}
@@ -827,7 +1019,6 @@ function FxWindow() {
   );
 }
 
-/* ── habillage : l'écran de l'app, jamais agrandi ─────────────────────────── */
 export default function FxWindowPreview() {
   const [scale, setScale] = useState(1);
   useEffect(() => {
@@ -847,9 +1038,9 @@ export default function FxWindowPreview() {
           <FxWindow />
         </div>
       </div>
-      <div style={{ fontSize: 11.5, color: "#5B6580", textAlign: "center", maxWidth: 820, lineHeight: 1.65 }}>
-        Æther FX — écran 891 × 411. Un seul en-tête. MIDI à droite. Glisser une carte vers le haut pour
-        la supprimer. Knobs et faders dans la même case, dans la matière du rail des pistes.
+      <div style={{ fontSize: 11.5, color: "#5B6580", textAlign: "center", maxWidth: 840, lineHeight: 1.65 }}>
+        Æther FX — 891 × 411. L'orbe est celui de l'app, porté tel quel : il change de couleur avec Damp.
+        Presets défilants à gauche, potards en haut, faders en bas. Glisser une carte vers le haut la supprime.
       </div>
     </div>
   );
