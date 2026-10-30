@@ -125,3 +125,59 @@ penalise les partiels hors bande (`log(eps)`).
 python3 tools/pianopack/measure.py --all --out tools/pianopack/out/all_notes.json
 python3 tools/pianopack/fit_validate.py     # valide l'estimateur d'abord
 ```
+
+## 6. Decroissance : modele double (2026-10-29) — `decay2.py`
+
+Un T60 simple ne peut pas marcher sur cette banque. La decroissance d'un partiel
+de piano n'est **pas exponentielle** : les 2-3 cordes de l'unisson partent en
+phase, se depolarisent (chute rapide) puis se remettent en phase (queue lente).
+C'est l'**aftersound** decrit par Weinreich. Un ajustement simple tombe entre les
+deux regimes, et sa pente depend donc de la fenetre choisie -- d'ou les T60 qui
+oscillaient d'un facteur 40 d'un partiel au suivant.
+
+Modele retenu, estime par **pelage** (deux droites, pas d'optimisation non
+lineaire) : `e(t) = A1*exp(-t/tau1) + A2*exp(-t/tau2)`.
+
+### Valide
+
+- **tau1 (decroissance rapide)** : loi propre, **x0,59 par octave**,
+  soit **0,478 s a C4**. Les aigus meurent plus vite, comme attendu.
+- Modele valide sur synthetique : 3/4 cas a moins de 25 % (le seul echec est C2,
+  ou tau2 = 25 s depasse la duree du fichier : non mesurable, pas faux).
+
+### Non mesurable depuis cette banque (et pourquoi)
+
+- **tau2 (queue lente)** : les valeurs sont instables (946 s sur B-1, 3 236 s sur
+  B6). Deux causes, toutes deux dans les donnees, pas dans la methode :
+  dans les graves la queue depasse la duree du fichier ; dans les aigus le niveau
+  est passe sous le plancher de bruit. Seules 27/61 notes donnent un ajustement
+  a moins de 3 dB d'erreur.
+  Consequence pratique : **on ne mesure pas tau2, on le modelise.** L'aftersound
+  est un phenomene connu dont le rapport typique est 10-30x ; la queue de note
+  sera produite par le boost (resonance + release), pas lue dans les samples.
+- **Battement d'unisson** : mesure par `decay.py`, pas encore depouille.
+  Ordre de grandeur observe : 0,3-0,5 Hz dans le medium (soit ~10-20 cents entre
+  cordes), coherent avec un accord reel.
+
+### Recette
+
+```bash
+python3 tools/pianopack/decay2.py --validate                      # modele d'abord
+python3 tools/pianopack/decay2.py PP all tools/pianopack/out/decays.json
+python3 tools/pianopack/decay.py C3 PP out/beating.json           # battement
+```
+
+## 7. Ce que le boost doit produire (synthese des mesures)
+
+| Parametre | Source | Valeur |
+|---|---|---|
+| f0 par note | mesure | ±5 cents (courbe Railsback) |
+| Inharmonicite B | mesure, A0..F#5 | `2,29e-4 * 2^(0,1045*(midi-60)/12)` |
+| tau1 (chute rapide) | mesure | `0,478 s` a C4, x0,59 par octave |
+| tau2 (queue) | **a modeliser** | non mesurable (cf. 6) |
+| Transitoire | mesure | 93 ms median, 279 ms max |
+| Boucles | mesure | 27/62 notes raccordables |
+| Battement d'unisson | mesure partielle | 0,3-0,5 Hz (medium) |
+
+Les trois premiers sont prets a piloter le moteur. La queue de note, la resonance
+sympathique et le bruit de marteau restent a produire par le boost.
