@@ -36,10 +36,14 @@ const NOISE = `url("data:image/svg+xml;utf8,${encodeURIComponent(
 /* ── les icônes ───────────────────────────────────────────────────────────── */
 const P = {
   back: "M15 18l-6-6 6-6", close: ["M18 6L6 18", "M6 6l12 12"], plus: ["M12 5v14", "M5 12h14"],
-  power: ["M12 4.2v7.6", "M6.6 8.4a6.6 6.6 0 1 1 10.8 0"],
-  trash: ["M4.6 7.4h14.8", "M9.6 7.4V5.3a1 1 0 0 1 1-1h2.8a1 1 0 0 1 1 1v2.1",
-          "M6.6 7.4l.85 11.1a1.7 1.7 0 0 0 1.7 1.6h5.7a1.7 1.7 0 0 0 1.7-1.6l.85-11.1",
-          "M10.3 11.2v5.9", "M13.7 11.2v5.9"],
+  /* Power : un anneau presque ferme, ouvert en haut, avec une hampe courte.
+     Trace a la main sur un carre de 24, centre optique au milieu du cercle. */
+  power: ["M12 7.2v5.6", "M7.9 9.3a6.1 6.1 0 1 0 8.2 0"],
+  /* Corbeille : couvercle a deux extremites, anse, corps bombe qui se retrecit,
+     et deux nervures. Rien de plus : quatre traits lisibles. */
+  trash: ["M3.8 6.6h16.4", "M9.4 6.6V4.7a.9.9 0 0 1 .9-.9h3.4a.9.9 0 0 1 .9.9v1.9",
+          "M6.1 6.6l.78 12.4a1.8 1.8 0 0 0 1.8 1.7h6.64a1.8 1.8 0 0 0 1.8-1.7l.78-12.4",
+          "M10.2 10.6v6.2", "M13.8 10.6v6.2"],
   search: ["M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z", "M21 21l-4.3-4.3"],
   wave: "M2 12c2 0 2-4 4-4s2 8 4 8 2-8 4-8 2 4 4 4",
   sliders: ["M4 21v-7", "M4 10V3", "M12 21v-9", "M12 8V3", "M20 21v-5", "M20 12V3", "M1 14h6", "M9 8h6", "M17 16h6"],
@@ -107,10 +111,6 @@ const AUDIO = [
       Infinite:     [1.0, 1.0, .40, .25, 1.0, .60, .95, .50, .50, .70],
       Ambience:     [.55, .88, .30, .60, .95, .28, .85, .40, .45, .45],
       Spring:       [.30, .45, .02, .75, .55, .40, .25, .15, .70, .80],
-      Galaxy:       [.85, .90, .30, .30, 1.0, .50, .85, .45, .60, .70],
-      Nebula:       [.80, .88, .26, .30, .95, .46, .80, .40, .62, .60],
-      "Black Hole": [.70, 1.0, .50, .20, .90, .55, .50, .60, .30, .50],
-      Aurora:       [.75, .80, .22, .40, .95, .42, .70, .35, .55, .65],
       "Dark Hall":  [.78, .82, .28, .22, .85, .38, .65, .55, .35, .30],
       "Bright Hall":[.60, .62, .16, .78, .88, .32, .55, .20, .68, .40],
       "Vocal Plate":[.38, .46, .06, .66, .95, .30, .78, .42, .58, .20],
@@ -119,27 +119,42 @@ const AUDIO = [
       Gated:        [.44, .22, .00, .68, .60, .34, .30, .25, .52, .00],
     },
     palettes: {
-      Hall:          { h: 268, dh: 75, s: 48, l: 74, core: "#eee8ff", rim: "#1d1a38" },
-      Plate:         { h: 196, dh: 40, s: 62, l: 76, core: "#f0fbff", rim: "#0f2530" },
-      Room:          { h: 158, dh: 34, s: 34, l: 68, core: "#eafaf4", rim: "#12241f" },
-      Cathedral:     { h: 246, dh: 60, s: 56, l: 66, core: "#e9e4ff", rim: "#161034" },
-      Shimmer:       { h: 312, dh: 90, h2: 186, multi: true, s: 66, l: 76, core: "#fff0fb", rim: "#2a1030" },
-      Chamber:       { h: 172, dh: 40, s: 40, l: 70, core: "#eefffb", rim: "#0e2a28" },
-      Bloom:         { h: 328, dh: 70, h2: 268, multi: true, s: 58, l: 74, core: "#ffeef6", rim: "#2c1030" },
-      Infinite:      { h: 210, dh: 50, s: 30, l: 84, core: "#ffffff", rim: "#101a2e" },
-      Ambience:      { h: 224, dh: 44, s: 36, l: 64, core: "#e6ecff", rim: "#0d1424" },
-      Spring:        { h: 34, dh: 26, s: 62, l: 70, core: "#fff4e2", rim: "#2a1a0c" },
-      Galaxy:        { h: 280, dh: 90, h2: 190, multi: true, s: 72, l: 72, core: "#fff2ff", rim: "#0c0a26" },
-      Nebula:        { h: 318, dh: 70, h2: 232, multi: true, s: 68, l: 70, core: "#ffe6f4", rim: "#160a2a" },
-      "Black Hole":  { h: 30, dh: 20, h2: 268, multi: true, s: 74, l: 60, core: "#ffe6b0", rim: "#05050a" },
-      Aurora:        { h: 152, dh: 50, h2: 288, multi: true, s: 66, l: 72, core: "#e8fff4", rim: "#071c1e" },
-      "Dark Hall":   { h: 262, dh: 50, s: 34, l: 52, core: "#cfc4ee", rim: "#0a0818" },
-      "Bright Hall": { h: 46, dh: 30, s: 52, l: 80, core: "#fffaf0", rim: "#2a2410" },
-      "Vocal Plate": { h: 336, dh: 60, s: 54, l: 76, core: "#fff0f4", rim: "#2a0e1c" },
-      "Drum Room":   { h: 140, dh: 30, s: 22, l: 60, core: "#e8f0ea", rim: "#141c18" },
-      "Chorus Verb": { h: 184, dh: 40, h2: 300, multi: true, s: 60, l: 74, core: "#eaffff", rim: "#0c2430" },
-      Gated:         { h: 350, dh: 24, s: 62, l: 64, core: "#ffe9ec", rim: "#2a0a12" },
-    } },
+      /* Chaque preset emprunte ses couleurs a une nebuleuse reelle : la teinte
+         principale au coeur, la teinte secondaire aux volutes, et le bord sombre
+         a la poussiere. Ce sont des presets EXISTANTS — on ne fait que leur
+         donner des couleurs de reference. */
+      Hall:          { h: 268, dh: 75, s: 48, l: 74, core: "#eee8ff", rim: "#1d1a38" },  // Voile, bleu-violet
+      Plate:         { h: 196, dh: 40, s: 62, l: 76, core: "#f0fbff", rim: "#0f2530" },  // Pléiades, bleu pale
+      Room:          { h: 158, dh: 34, s: 34, l: 68, core: "#eafaf4", rim: "#12241f" },  // vert sourd
+      Cathedral:     { h: 246, dh: 60, s: 56, l: 66, core: "#e9e4ff", rim: "#161034" },  // indigo profond
+      Shimmer:       { h: 312, dh: 90, h2: 186, multi: true, s: 66, l: 76,
+                       core: "#fff0fb", rim: "#2a1030" },                                // Carène : magenta + cyan
+      Chamber:       { h: 172, dh: 40, s: 40, l: 70, core: "#eefffb", rim: "#0e2a28" },  // turquoise
+      Bloom:         { h: 328, dh: 70, h2: 268, multi: true, s: 58, l: 74,
+                       core: "#ffeef6", rim: "#2c1030" },                                // Rosette : rose + violet
+      Infinite:      { h: 210, dh: 50, s: 30, l: 84, core: "#ffffff", rim: "#101a2e" },  // blanc glacé
+      Ambience:      { h: 224, dh: 44, s: 36, l: 64, core: "#e6ecff", rim: "#0d1424" },  // bleu nuit
+      Spring:        { h: 34,  dh: 26, s: 62, l: 70, core: "#fff4e2", rim: "#2a1a0c" },  // ambre
+      /* Tête de Cheval : la lueur orange derriere la poussiere noire. */
+      "Dark Hall":   { h: 22,  dh: 16, h2: 268, multi: true, s: 68, l: 58,
+                       core: "#ffd9a8", rim: "#07050e" },
+      /* Nébuleuse du Crabe : soufre jaune et oxygene vert. */
+      "Bright Hall": { h: 48,  dh: 30, h2: 118, multi: true, s: 56, l: 74,
+                       core: "#fff8e2", rim: "#2a2410" },
+      /* Nébuleuse de l'Aigle (Piliers de la Création) : or et jade. */
+      "Vocal Plate": { h: 42,  dh: 26, h2: 152, multi: true, s: 52, l: 74,
+                       core: "#fff2dc", rim: "#241c0e" },
+      /* Nébuleuse de l'Hélice : oeil cyan dans un halo vert. */
+      "Drum Room":   { h: 186, dh: 40, h2: 138, multi: true, s: 46, l: 66,
+                       core: "#e8fbff", rim: "#0c2224" },
+      /* Nébuleuse du Papillon : cyan et magenta separes par la poussiere. */
+      "Chorus Verb": { h: 184, dh: 40, h2: 300, multi: true, s: 60, l: 74,
+                       core: "#eaffff", rim: "#0c2430" },
+      /* Nébuleuse de l'Homunculus : magenta profond et orange. */
+      Gated:         { h: 318, dh: 30, h2: 26, multi: true, s: 64, l: 62,
+                       core: "#ffe4f4", rim: "#26081c" },
+    },
+  },
   { id: 1, name: "Æther Echo", type: "Delay", fam: "Space", accent: "#D4B06A", icon: P.sliders,
     params: [["Time", "time", .45, 20, 1200, " ms"], ["Feedback", "fb", .38, 0, 95, " %"],
              ["Tone", "tone", .55, 0, 100, " %"], ["Wow", "wow", .18, 0, 100, " %"],
@@ -194,6 +209,11 @@ const ghost = (x = {}) => ({ background: `linear-gradient(180deg,${RAIL},#252839
   borderRadius: 10, ...x });
 
 const CSS = `
+/* LA CAUSE DU DEBORDEMENT. Une carte est un <div> (content-box) ; un logement
+   est un <button>, que le navigateur met en border-box. Le padding 10x2 et la
+   bordure 1x2 de la carte s'ajoutaient donc a sa hauteur : +22 px dans les deux
+   sens, et elle debordait du logement qu'elle remplacait. */
+.fxwin, .fxwin *{box-sizing:border-box}
 @keyframes flopPulse{0%,100%{opacity:0}45%{opacity:.5}}
 @keyframes flopWrite{0%{opacity:0}12%{opacity:.75}34%{opacity:0}}
 @keyframes fxCue{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
@@ -306,7 +326,7 @@ function Knob({ label, value, onChange, display, accent = IN1, size = 46, onRese
    seulement. Bonnet : dessin inédit, en six plans — chanfrein haut, cannelures
    verticales, inlay central, LED dans l'accent, chanfrein bas, ombre portée.
    ─────────────────────────────────────────────────────────────────────────── */
-const RAIL_H = 11, CAP_W = 20, CAP_H = 24;
+const RAIL_H = 11, CAP_D = 22;
 
 function HSlider({ label, value, onChange, display, accent = IN1, onReset, onChangeStart }) {
   const box = useRef(null);
@@ -315,7 +335,7 @@ function HSlider({ label, value, onChange, display, accent = IN1, onReset, onCha
   const v = clamp(value, 0, 1);
   const setFrom = (clientX) => {
     const r = box.current.getBoundingClientRect();
-    onChange(clamp((clientX - r.left - CAP_W / 2) / Math.max(1, r.width - CAP_W), 0, 1));
+    onChange(clamp((clientX - r.left - CAP_D / 2) / Math.max(1, r.width - CAP_D), 0, 1));
   };
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
@@ -327,7 +347,7 @@ function HSlider({ label, value, onChange, display, accent = IN1, onReset, onCha
            onPointerMove={(e) => { if (hot) setFrom(e.clientX); }}
            onPointerUp={() => setHot(false)}
            onDoubleClick={() => onReset && onReset()}
-           style={{ flex: 1, minWidth: 0, height: CAP_H, position: "relative",
+           style={{ flex: 1, minWidth: 0, height: CAP_D + 4, position: "relative",
                     cursor: "ew-resize", touchAction: "none" }}>
         <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: RAIL_H,
                       marginTop: -RAIL_H / 2, borderRadius: RAIL_H / 2,
@@ -344,24 +364,29 @@ function HSlider({ label, value, onChange, display, accent = IN1, onReset, onCha
                       borderRadius: (RAIL_H - 6) / 2,
                       background: `linear-gradient(90deg,${hx(accent, .25)},${hx(accent, .9)})`,
                       boxShadow: `0 0 8px ${hx(accent, .4)}` }} />
-        <div style={{ position: "absolute", top: 0, left: `calc(${v * 100}% - ${CAP_W / 2}px)`,
-                      width: CAP_W, height: CAP_H, borderRadius: 5,
-                      background: "linear-gradient(180deg,#828A9E 0%,#5C6376 11%,#414659 46%,#333849 82%,#282D3E 100%)",
+        {/* LE BONNET : un cercle bombe. Huit plans concentriques, lumiere en
+            haut a gauche comme le rail et les potards. Aucune rayure. */}
+        <div style={{ position: "absolute", top: 2, left: `calc(${v * 100}% - ${CAP_D / 2}px)`,
+                      width: CAP_D, height: CAP_D, borderRadius: "50%",
+                      background: "linear-gradient(160deg, #7C8397 0%, #5A6072 34%, #41465A 68%, #2E3344 100%)",
                       boxShadow: hot
-                        ? `0 0 0 1.5px ${hx(accent, .6)}, 0 7px 15px rgba(0,0,0,.68)`
-                        : "0 6px 13px rgba(0,0,0,.62), inset 0 1px 0 rgba(255,255,255,.3), inset 0 -1.5px 0 rgba(0,0,0,.45)" }}>
-          <div style={{ position: "absolute", inset: 0, borderRadius: 5,
-                        backgroundImage: "repeating-linear-gradient(90deg, rgba(255,255,255,.085) 0 1px, rgba(0,0,0,.17) 1px 3px)" }} />
-          <div style={{ position: "absolute", left: 2, right: 2, top: 1.5, height: 3.5, borderRadius: 2,
-                        background: "linear-gradient(180deg, rgba(255,255,255,.52), rgba(255,255,255,0))" }} />
-          <div style={{ position: "absolute", top: 3.5, bottom: 3.5, left: "47%", width: 3, borderRadius: 2,
-                        background: `linear-gradient(180deg,${hx(accent, .3)},${accent},${hx(accent, .3)})`,
-                        boxShadow: `0 0 7px ${hx(accent, .75)}, inset 0 0 2px rgba(255,255,255,.55)` }} />
-          <div style={{ position: "absolute", left: 2, right: 2, bottom: 1.5, height: 2.5, borderRadius: 2,
-                        background: "linear-gradient(180deg, rgba(0,0,0,.5), rgba(255,255,255,.1))" }} />
+                        ? `0 0 0 1.5px ${hx(accent, .65)}, 0 7px 15px rgba(0,0,0,.68)`
+                        : "0 6px 13px rgba(0,0,0,.62), inset 0 1px 0 rgba(255,255,255,.28), inset 0 -1.5px 0 rgba(0,0,0,.45)" }}>
+          <div style={{ position: "absolute", inset: "7%", borderRadius: "50%",
+                        background: "conic-gradient(from 210deg, rgba(255,255,255,.14), rgba(255,255,255,0) 30%, rgba(0,0,0,.2) 64%, rgba(255,255,255,.1))" }} />
+          <div style={{ position: "absolute", inset: "13%", borderRadius: "50%",
+                        background: "radial-gradient(circle at 36% 26%, #6C7387, #4B5164 44%, #333849 80%, #262B3B)" }} />
+          <div style={{ position: "absolute", inset: "28%", borderRadius: "50%",
+                        background: `radial-gradient(circle at 42% 30%, ${hx(accent, .55)}, ${hx(accent, .18)} 62%, rgba(0,0,0,.3))`,
+                        boxShadow: `inset 0 1px 2px rgba(0,0,0,.5), 0 0 9px ${hx(accent, .45)}` }} />
+          <div style={{ position: "absolute", inset: "38%", borderRadius: "50%",
+                        background: `radial-gradient(circle at 44% 32%, #fff, ${accent} 58%, ${hx(accent, .5)})`,
+                        boxShadow: `0 0 7px ${hx(accent, .8)}` }} />
+          <div style={{ position: "absolute", inset: "6%", borderRadius: "50%", pointerEvents: "none",
+                        background: "linear-gradient(200deg, rgba(255,255,255,.2) 0%, rgba(255,255,255,.04) 30%, rgba(255,255,255,0) 50%)" }} />
         </div>
       </div>
-      <span style={{ width: 46, flex: "none", textAlign: "right", fontSize: 9, fontFamily: MONO,
+      <span style={{ width: 44, flex: "none", textAlign: "right", fontSize: 9, fontFamily: MONO,
                      color: hot ? INK : "#7E879C" }}>{display}</span>
     </div>
   );
@@ -575,46 +600,85 @@ function Orb({ vals, palette, accent, fireRef }) {
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
   }, []);
-  return <canvas ref={cvs} style={{ width: "100%", height: "100%", display: "block" }} />;
+  /* Le canvas est en ABSOLU dans sa case : sinon sa largeur intrinseque (300 px
+     par defaut) force le flex item a grandir et la carte deborde du logement. */
+  return <canvas ref={cvs} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block" }} />;
 }
 
-/* ══ LES PRESETS : une rangee horizontale, elle defile ═════════════════════ */
+/* ══ LES PRESETS : une case, qui se deroule ════════════════════════════════
+   Avant : vingt chips sur une ligne, il fallait tirer horizontalement pour
+   trouver le vingtieme. Maintenant : une case fermee qui montre le preset
+   courant, et qui se deroule a la demande. Deux colonnes, defilement vertical.
+   ─────────────────────────────────────────────────────────────────────────── */
 function PresetRow({ fx, preset, custom, onPick }) {
+  const [open, setOpen] = useState(false);
   const names = Object.keys(fx.presets || {});
+  const i = Math.max(0, names.indexOf(preset));
+  const step = (d) => onPick(names[(i + d + names.length) % names.length]);
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: "none", minWidth: 0 }}>
-      <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".15em", textTransform: "uppercase", color: MUTE }}>
-        Presets · {names.length}
-      </span>
-      <div className="fxscroll" style={{ display: "flex", gap: 5, overflowX: "auto", overflowY: "hidden",
-                    paddingBottom: 5, paddingTop: 1 }}>
-        {custom && (
-          <span style={{ height: 27, flex: "none", borderRadius: 9, display: "flex", alignItems: "center", gap: 6,
-                         padding: "0 11px", background: "rgba(242,201,125,.12)",
-                         border: "1px solid rgba(242,201,125,.34)", fontSize: 11, fontWeight: 800,
-                         color: "#F2C97D" }}>
-            <span style={{ width: 4, height: 4, borderRadius: 2, background: "#F2C97D" }} />Custom
-          </span>
-        )}
-        {names.map((n, i) => {
-          const on = n === preset && !custom;
-          return (
-            <button key={n} onClick={() => onPick(n)}
-                    style={{ height: 27, flex: "none", borderRadius: 9, cursor: "pointer", padding: "0 11px",
-                             display: "flex", alignItems: "center", gap: 7, fontFamily: FONT,
-                             fontSize: 11, fontWeight: on ? 800 : 600, whiteSpace: "nowrap",
-                             background: on ? `linear-gradient(180deg,${hx(ACC, .22)},${hx(ACC, .08)})`
-                                            : "rgba(255,255,255,.04)",
-                             border: `1px solid ${on ? hx(ACC, .42) : LINE}`,
-                             color: on ? INK : "#96A0B4", transition: "all .18s" }}>
-              <span style={{ width: 3, height: 11, borderRadius: 2,
-                             background: on ? ACC : "transparent" }} />
-              {n}
-              <span style={{ fontSize: 8.5, fontFamily: MONO, color: MUTE }}>{String(i + 1).padStart(2, "0")}</span>
-            </button>
-          );
-        })}
+    <div style={{ position: "relative", flex: "none", zIndex: open ? 12 : 1 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".15em", textTransform: "uppercase",
+                       color: MUTE, flex: "none", width: 52 }}>Presets</span>
+        <button onClick={() => step(-1)} style={{ ...ghost({ width: 26, height: 28, display: "grid",
+                 placeItems: "center", color: DIM, cursor: "pointer", borderRadius: 8, flex: "none" }) }}>
+          <Ico d={P.back} size={13} /></button>
+        <button onClick={() => setOpen((o) => !o)}
+                style={{ flex: 1, minWidth: 0, height: 28, borderRadius: 9, cursor: "pointer", padding: "0 11px",
+                         display: "flex", alignItems: "center", gap: 9, fontFamily: FONT,
+                         background: "linear-gradient(180deg,#0E1420,#0B0F18)",
+                         boxShadow: "inset 0 1px 0 rgba(255,255,255,.14), inset 0 3px 10px rgba(0,0,0,.62), inset 0 0 0 1px rgba(255,255,255,.04)",
+                         border: `1px solid ${open ? hx(ACC, .4) : "transparent"}`, textAlign: "left" }}>
+          <span style={{ width: 5, height: 5, borderRadius: 3, flex: "none",
+                         background: `hsl(${(fx.palettes && fx.palettes[preset] && fx.palettes[preset].h) || 268},`
+                                   + `${(fx.palettes && fx.palettes[preset] && fx.palettes[preset].s) || 48}%,`
+                                   + `${(fx.palettes && fx.palettes[preset] && fx.palettes[preset].l) || 74}%)` }} />
+          <span style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 800, color: INK, whiteSpace: "nowrap",
+                         overflow: "hidden", textOverflow: "ellipsis" }}>{preset}</span>
+          {custom && <span style={{ fontSize: 9, fontWeight: 800, color: "#F2C97D", flex: "none" }}>Custom</span>}
+          <span style={{ fontSize: 9.5, fontFamily: MONO, color: MUTE, flex: "none" }}>
+            {String(i + 1).padStart(2, "0")}/{names.length}</span>
+          <Ico d={P.down} size={13} style={{ color: MUTE, flex: "none",
+                transform: `rotate(${open ? 180 : 0}deg)`, transition: "transform .2s" }} />
+        </button>
+        <button onClick={() => step(1)} style={{ ...ghost({ width: 26, height: 28, display: "grid",
+                 placeItems: "center", color: DIM, cursor: "pointer", borderRadius: 8, flex: "none" }) }}>
+          <Ico d={P.back} size={13} style={{ transform: "rotate(180deg)" }} /></button>
       </div>
+
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 11 }} />
+          <div className="fxscroll" style={{ position: "absolute", left: 58, right: 32, top: 32, zIndex: 12,
+                        maxHeight: 208, overflowY: "auto", display: "grid", gridTemplateColumns: "1fr 1fr",
+                        gap: 4, padding: 6, borderRadius: 12,
+                        background: "linear-gradient(180deg,#1B2231,#10141D)",
+                        border: `1px solid ${hx(ACC, .3)}`,
+                        boxShadow: "0 18px 40px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.08)",
+                        animation: "fxCue .16s ease-out" }}>
+            {names.map((n, k) => {
+              const on = n === preset;
+              return (
+                <button key={n} onClick={() => { onPick(n); setOpen(false); }}
+                        style={{ height: 30, borderRadius: 8, cursor: "pointer", padding: "0 10px",
+                                 display: "flex", alignItems: "center", gap: 8, fontFamily: FONT,
+                                 fontSize: 11.5, fontWeight: on ? 800 : 600, textAlign: "left",
+                                 background: on ? `linear-gradient(90deg,${hx(ACC, .22)},rgba(255,255,255,.02))`
+                                                : "rgba(255,255,255,.03)",
+                                 border: `1px solid ${on ? hx(ACC, .4) : "transparent"}`,
+                                 color: on ? INK : "#96A0B4" }}>
+                  <span style={{ width: 4, height: 4, borderRadius: 2, flex: "none",
+                                 background: on ? ACC : "#39415A" }} />
+                  <span style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden",
+                                 textOverflow: "ellipsis" }}>{n}</span>
+                  <span style={{ fontSize: 8.5, fontFamily: MONO, color: MUTE }}>
+                    {String(k + 1).padStart(2, "0")}</span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -631,7 +695,8 @@ function FxCard({ fx, midi, on, onToggle, onOpen, onRemove, height }) {
   const ac = fx.accent || ACC;
   return (
     <div onClick={onOpen} onPointerEnter={() => setHot(true)} onPointerLeave={() => setHot(false)}
-         style={{ flex: 1, minWidth: 0, height, borderRadius: 16, padding: 10, cursor: "pointer",
+         style={{ flex: "0 0 calc((100% - 30px) / 4)", minWidth: 0, height, borderRadius: 16, padding: 10,
+                  overflow: "hidden", cursor: "pointer",
                   display: "flex", flexDirection: "column", gap: 7,
                   transform: hot ? "translateY(-3px)" : "none",
                   transition: "transform .18s cubic-bezier(.2,.9,.3,1)",
@@ -643,23 +708,34 @@ function FxCard({ fx, midi, on, onToggle, onOpen, onRemove, height }) {
                        color: on ? ac : DIM, flex: 1, whiteSpace: "nowrap", overflow: "hidden",
                        textOverflow: "ellipsis" }}>{fx.type}</span>
         <button onClick={(e) => { e.stopPropagation(); onToggle(); }} title="Engage / Bypass"
-                style={{ width: 22, height: 22, borderRadius: 7, border: 0, cursor: "pointer", padding: 0,
+                style={{ width: 22, height: 22, borderRadius: 7, cursor: "pointer", padding: 0,
                          display: "grid", placeItems: "center", flex: "none",
-                         background: on ? `linear-gradient(180deg,${IN1},${IN2})` : "rgba(255,255,255,.07)",
-                         color: on ? IN_TEXT : MUTE }}>
+                         background: on ? `linear-gradient(180deg,${IN1},${IN2})`
+                                        : "linear-gradient(180deg,#343B4C,#232837)",
+                         border: `1px solid ${on ? "transparent" : "rgba(255,255,255,.14)"}`,
+                         boxShadow: on ? "0 0 8px rgba(199,217,249,.35)"
+                                       : "inset 0 1px 0 rgba(255,255,255,.12), 0 2px 4px rgba(0,0,0,.4)",
+                         color: on ? IN_TEXT : "#8E97AC" }}>
           <Ico d={P.power} size={12} sw={2.1} />
         </button>
         <button onClick={(e) => { e.stopPropagation(); onRemove(); }} title="Remove"
-                style={{ width: 22, height: 22, borderRadius: 7, border: 0, cursor: "pointer", padding: 0,
+                style={{ width: 22, height: 22, borderRadius: 7, cursor: "pointer", padding: 0,
                          display: "grid", placeItems: "center", flex: "none",
-                         background: "rgba(255,255,255,.05)", color: MUTE, opacity: hot ? 1 : 0,
-                         transition: "opacity .15s" }}>
+                         background: "linear-gradient(180deg,#3A4152,#272C3B)",
+                         border: "1px solid rgba(255,255,255,.16)",
+                         boxShadow: "inset 0 1px 0 rgba(255,255,255,.14), 0 2px 4px rgba(0,0,0,.4)",
+                         color: "#AEB7C8", opacity: hot ? 1 : 0, transition: "opacity .15s, background .15s" }}
+                onPointerEnter={(e) => { e.currentTarget.style.background = "linear-gradient(180deg,#5A2A38,#3A1B25)";
+                                          e.currentTarget.style.color = "#FF8FA3"; }}
+                onPointerLeave={(e) => { e.currentTarget.style.background = "linear-gradient(180deg,#3A4152,#272C3B)";
+                                          e.currentTarget.style.color = "#AEB7C8"; }}>
           <Ico d={P.trash} size={12} sw={1.9} />
         </button>
       </div>
       <div style={{ fontSize: 18, lineHeight: 1.05, fontWeight: 700, color: on ? INK : "#98A1B4",
                     whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fx.name}</div>
-      <div style={{ flex: 1, minHeight: 0, borderRadius: 11, overflow: "hidden", position: "relative",
+      <div style={{ flex: 1, minHeight: 0, minWidth: 0, borderRadius: 11, overflow: "hidden",
+                    position: "relative",
                     background: "#12161F", boxShadow: "inset 0 2px 7px rgba(0,0,0,.7), inset 0 0 0 1px rgba(255,255,255,.04)" }}>
         {fx.space
           ? <Orb vals={vals} palette={pal} accent={ac} fireRef={fireRef} />
@@ -712,7 +788,7 @@ function MiniSteps({ accent, on }) {
 
 function EmptySlot({ onAdd, height, label }) {
   return (
-    <button onClick={onAdd} style={{ flex: 1, minWidth: 0, height, borderRadius: 16, cursor: "pointer",
+    <button onClick={onAdd} style={{ flex: "0 0 calc((100% - 30px) / 4)", minWidth: 0, height, borderRadius: 16, cursor: "pointer",
              border: "none", padding: 0, fontFamily: FONT, position: "relative",
              background: "linear-gradient(180deg,#0E1420,#0B0F18)",
              boxShadow: "inset 0 7px 16px rgba(0,0,0,.75), inset 0 0 0 1px rgba(255,255,255,.05), inset 3px 0 7px rgba(0,0,0,.4), inset -3px 0 7px rgba(0,0,0,.4)" }}>
@@ -824,7 +900,7 @@ function FxPanel({ fx, vals, setVal, preset, custom, onPick, on, onToggle }) {
 
       <div style={{ flex: 1, minHeight: 0, display: "flex", gap: 12 }}>
         <div onClick={() => fireRef.current()}
-             style={{ flex: "1 1 auto", minWidth: 0, position: "relative", borderRadius: 15, overflow: "hidden",
+             style={{ flex: "1 1 0", width: 0, minWidth: 0, position: "relative", borderRadius: 15, overflow: "hidden",
                       cursor: fx.space ? "crosshair" : "default", ...well({ borderRadius: 15 }) }}>
           {fx.space
             ? <Orb vals={vals} palette={pal} accent={fx.accent} fireRef={fireRef} />
@@ -991,7 +1067,7 @@ function FxWindow() {
   const title = inEffect ? view.fx.name : view.k === "catalog" ? "Add effect" : "Effects";
 
   return (
-    <div data-shot="fxwin" style={{ position: "relative", width: 891, height: 411, borderRadius: 20, overflow: "hidden",
+    <div data-shot="fxwin" className="fxwin" style={{ position: "relative", width: 891, height: 411, borderRadius: 20, overflow: "hidden",
                   fontFamily: FONT, color: INK, background: `linear-gradient(180deg,${WIN_T},${WIN_B})`,
                   border: `1px solid ${LINE2}`, boxShadow: "0 24px 50px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.08)",
                   userSelect: "none", WebkitFontSmoothing: "antialiased", display: "flex", flexDirection: "column" }}>
