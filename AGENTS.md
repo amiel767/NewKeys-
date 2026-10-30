@@ -1336,6 +1336,58 @@ Le script suit desormais **plusieurs conversations** via une table `PEERS` :
   degrade. Format **AVIF** (SSIM ≥ 0,985 a la taille d'affichage).
 - Les **strings restent proceduraux** dans le HTML : 6 images pretes mais slots non branches.
 
+## Session 2026-10-29 — Æther Piano (instrument #17, 9 presets)
+
+### Le piano est un INSTRUMENT, pas un effet
+`FX_PIANO_AE = 17`, `Kind::Source`, `FX_COUNT = 18`. **Ne pas confondre avec
+`FX_PIANO = 5`**, qui est le *shaper* (le rendu visuel `scenePiano` de
+`FxInstrumentScenes.kt` est le sien, pas celui de l'instrument — ne pas le
+supprimer en croyant nettoyer du code mort). Comme Organ/Synth/Leads/Sax, le
+piano est **retire des choix FX** (`AE_RETIRED_INSTRUMENT_IDS` = {6,14,15,16,17})
+et se charge via l'onglet Æther.
+
+### Le partage sample / moteur (mesure, pas choix esthetique)
+`tools/pianopack/README.md` sections 8 et 9 :
+- La banque **n'est pas bouclable** : correlation max **0,66..0,83** (seuil utile
+  > 0,90). Les partiels d'un piano decroissent a des vitesses differentes, donc
+  le timbre change entre deux points — aucun point stationnaire a recoller.
+  **Aucune region n'est bouclee** ; chaque region fait 2,5 s et la queue est
+  produite par le moteur.
+- **tau1 est mesure** (0,478 s a C4, x0,59 par octave) et pilote la queue.
+- **tau2 est modelise** : non mesurable dans les samples (la queue depasse le
+  fichier dans les graves, passe sous le bruit dans les aigus).
+- **B est mesure** : `B = 2,29e-4 * 2^(0,1045*(midi-60)/12)`. Les resonateurs du
+  moteur sont accordes avec elle : c'est ce qui separe un piano d'un orgue.
+
+### Pieges verifies
+- **`SourceFx` impose `process(float* io, int n)`** (entrelace), `prepare(sr, mb)`,
+  `reset()`, `paramCount()`. J'ai d'abord ecrit `render(outL,outR,n)` : signature
+  inexistante, la classe n'heritait de rien d'utilisable. **Lire `fx_core.h`
+  avant d'ecrire un moteur** (le contrat n'est pas celui qu'on suppose).
+- **Decodage de region : cacher, pas decoder par note.** Le lecteur sax decode a
+  chaque `noteOn` dans un tampon unique (acceptable en monophonique). Un piano
+  polyphonique qui repete une note redécoderait tout : LRU de 10 regions dans
+  `PianoSampleReader::decoded()`. Decoder paresseusement serait **quadratique**
+  (le predicteur ADPCM doit rejouer depuis le debut de la region).
+- **Pas d'AVIF dans l'UI.** `minSdk = 26` ; le decodage AVIF de `BitmapFactory`
+  arrive a l'**API 31**. Les 30 AVIF de `assets/instruments/` ne sont consommes
+  que par les previews HTML. La vignette de la tuile est **dessinee en Canvas**
+  (`drawPianoMini`), sinon elle serait vide sur un tiers des appareils.
+- **Le ratio de compression est 25 %, pas 6,2 %.** Le 6,2 % comparait au FLAC
+  (deja 50 % du PCM). Toute estimation de poids anterieure est a x4.
+- **Filtre anti-repliement obligatoire** avant decimation 44,1 -> 22,05 kHz :
+  l'interpolation lineaire seule replie tout ce qui depasse 11 kHz dans
+  l'audible. Un SNR global ne le voit pas. Controle : 0,01 % d'energie > 11 kHz.
+  Mesurer **par canal** : une FFT sur le signal entrelace L/R double la frequence
+  apparente et fait croire a 50 % d'energie haute.
+
+### Le pack
+`app/src/main/assets/pianopack/piano.bin` : **196 regions, 6,56 Mo, 62 notes
+(A#2..G6)**, SNR ADPCM 20,1 dB. Format `PIAP` : en-tete + 24 o/region + ADPCM
+4 bits **stereo entrelace** (le pack sax est mono, le piano non).
+Regenerable : `python3 tools/pianopack/build.py --jobs jobs.txt --out out/pack`
+(le cache de la banque, 57 Mo, vit dans `tools/pianopack/cache/`).
+
 ## Session 2026-10-29 — UI Æther (faders, segments, power, nommage), snapshots, sax samples-only
 
 ### 1. Faders Leads = rail du mixer
@@ -1480,6 +1532,58 @@ piano existant (`AePianoUi.kt`) sont la base : on les **affine**.
 Plan et chiffres : `tools/pianopack/README.md`.
 
 
+## Session 2026-10-29 — Æther Piano (instrument #17, 9 presets)
+
+### Le piano est un INSTRUMENT, pas un effet
+`FX_PIANO_AE = 17`, `Kind::Source`, `FX_COUNT = 18`. **Ne pas confondre avec
+`FX_PIANO = 5`**, qui est le *shaper* (le rendu visuel `scenePiano` de
+`FxInstrumentScenes.kt` est le sien, pas celui de l'instrument — ne pas le
+supprimer en croyant nettoyer du code mort). Comme Organ/Synth/Leads/Sax, le
+piano est **retire des choix FX** (`AE_RETIRED_INSTRUMENT_IDS` = {6,14,15,16,17})
+et se charge via l'onglet Æther.
+
+### Le partage sample / moteur (mesure, pas choix esthetique)
+`tools/pianopack/README.md` sections 8 et 9 :
+- La banque **n'est pas bouclable** : correlation max **0,66..0,83** (seuil utile
+  > 0,90). Les partiels d'un piano decroissent a des vitesses differentes, donc
+  le timbre change entre deux points — aucun point stationnaire a recoller.
+  **Aucune region n'est bouclee** ; chaque region fait 2,5 s et la queue est
+  produite par le moteur.
+- **tau1 est mesure** (0,478 s a C4, x0,59 par octave) et pilote la queue.
+- **tau2 est modelise** : non mesurable dans les samples (la queue depasse le
+  fichier dans les graves, passe sous le bruit dans les aigus).
+- **B est mesure** : `B = 2,29e-4 * 2^(0,1045*(midi-60)/12)`. Les resonateurs du
+  moteur sont accordes avec elle : c'est ce qui separe un piano d'un orgue.
+
+### Pieges verifies
+- **`SourceFx` impose `process(float* io, int n)`** (entrelace), `prepare(sr, mb)`,
+  `reset()`, `paramCount()`. J'ai d'abord ecrit `render(outL,outR,n)` : signature
+  inexistante, la classe n'heritait de rien d'utilisable. **Lire `fx_core.h`
+  avant d'ecrire un moteur** (le contrat n'est pas celui qu'on suppose).
+- **Decodage de region : cacher, pas decoder par note.** Le lecteur sax decode a
+  chaque `noteOn` dans un tampon unique (acceptable en monophonique). Un piano
+  polyphonique qui repete une note redécoderait tout : LRU de 10 regions dans
+  `PianoSampleReader::decoded()`. Decoder paresseusement serait **quadratique**
+  (le predicteur ADPCM doit rejouer depuis le debut de la region).
+- **Pas d'AVIF dans l'UI.** `minSdk = 26` ; le decodage AVIF de `BitmapFactory`
+  arrive a l'**API 31**. Les 30 AVIF de `assets/instruments/` ne sont consommes
+  que par les previews HTML. La vignette de la tuile est **dessinee en Canvas**
+  (`drawPianoMini`), sinon elle serait vide sur un tiers des appareils.
+- **Le ratio de compression est 25 %, pas 6,2 %.** Le 6,2 % comparait au FLAC
+  (deja 50 % du PCM). Toute estimation de poids anterieure est a x4.
+- **Filtre anti-repliement obligatoire** avant decimation 44,1 -> 22,05 kHz :
+  l'interpolation lineaire seule replie tout ce qui depasse 11 kHz dans
+  l'audible. Un SNR global ne le voit pas. Controle : 0,01 % d'energie > 11 kHz.
+  Mesurer **par canal** : une FFT sur le signal entrelace L/R double la frequence
+  apparente et fait croire a 50 % d'energie haute.
+
+### Le pack
+`app/src/main/assets/pianopack/piano.bin` : **196 regions, 6,56 Mo, 62 notes
+(A#2..G6)**, SNR ADPCM 20,1 dB. Format `PIAP` : en-tete + 24 o/region + ADPCM
+4 bits **stereo entrelace** (le pack sax est mono, le piano non).
+Regenerable : `python3 tools/pianopack/build.py --jobs jobs.txt --out out/pack`
+(le cache de la banque, 57 Mo, vit dans `tools/pianopack/cache/`).
+
 ## Session 2026-10-29 — Æther : presets utilisateur, Intensity, liste par categorie, pitch bend
 
 Branche `main`, **aucun push**. Base `f68727c` (cartes Æther). Commit `7bf93a9`.
@@ -1526,6 +1630,58 @@ cable en natif — verifier avant de le retirer).
 ### Captures
 `AePresetUiCaptureTest` : `ae_preset_list` (groupe User + Delete, mesure : or y≈384),
 `ae_preset_naming`, `ae_leads_intensity` (remplissage cyan 177,8 dp = 0,5×370 sous les chips).
+
+## Session 2026-10-29 — Æther Piano (instrument #17, 9 presets)
+
+### Le piano est un INSTRUMENT, pas un effet
+`FX_PIANO_AE = 17`, `Kind::Source`, `FX_COUNT = 18`. **Ne pas confondre avec
+`FX_PIANO = 5`**, qui est le *shaper* (le rendu visuel `scenePiano` de
+`FxInstrumentScenes.kt` est le sien, pas celui de l'instrument — ne pas le
+supprimer en croyant nettoyer du code mort). Comme Organ/Synth/Leads/Sax, le
+piano est **retire des choix FX** (`AE_RETIRED_INSTRUMENT_IDS` = {6,14,15,16,17})
+et se charge via l'onglet Æther.
+
+### Le partage sample / moteur (mesure, pas choix esthetique)
+`tools/pianopack/README.md` sections 8 et 9 :
+- La banque **n'est pas bouclable** : correlation max **0,66..0,83** (seuil utile
+  > 0,90). Les partiels d'un piano decroissent a des vitesses differentes, donc
+  le timbre change entre deux points — aucun point stationnaire a recoller.
+  **Aucune region n'est bouclee** ; chaque region fait 2,5 s et la queue est
+  produite par le moteur.
+- **tau1 est mesure** (0,478 s a C4, x0,59 par octave) et pilote la queue.
+- **tau2 est modelise** : non mesurable dans les samples (la queue depasse le
+  fichier dans les graves, passe sous le bruit dans les aigus).
+- **B est mesure** : `B = 2,29e-4 * 2^(0,1045*(midi-60)/12)`. Les resonateurs du
+  moteur sont accordes avec elle : c'est ce qui separe un piano d'un orgue.
+
+### Pieges verifies
+- **`SourceFx` impose `process(float* io, int n)`** (entrelace), `prepare(sr, mb)`,
+  `reset()`, `paramCount()`. J'ai d'abord ecrit `render(outL,outR,n)` : signature
+  inexistante, la classe n'heritait de rien d'utilisable. **Lire `fx_core.h`
+  avant d'ecrire un moteur** (le contrat n'est pas celui qu'on suppose).
+- **Decodage de region : cacher, pas decoder par note.** Le lecteur sax decode a
+  chaque `noteOn` dans un tampon unique (acceptable en monophonique). Un piano
+  polyphonique qui repete une note redécoderait tout : LRU de 10 regions dans
+  `PianoSampleReader::decoded()`. Decoder paresseusement serait **quadratique**
+  (le predicteur ADPCM doit rejouer depuis le debut de la region).
+- **Pas d'AVIF dans l'UI.** `minSdk = 26` ; le decodage AVIF de `BitmapFactory`
+  arrive a l'**API 31**. Les 30 AVIF de `assets/instruments/` ne sont consommes
+  que par les previews HTML. La vignette de la tuile est **dessinee en Canvas**
+  (`drawPianoMini`), sinon elle serait vide sur un tiers des appareils.
+- **Le ratio de compression est 25 %, pas 6,2 %.** Le 6,2 % comparait au FLAC
+  (deja 50 % du PCM). Toute estimation de poids anterieure est a x4.
+- **Filtre anti-repliement obligatoire** avant decimation 44,1 -> 22,05 kHz :
+  l'interpolation lineaire seule replie tout ce qui depasse 11 kHz dans
+  l'audible. Un SNR global ne le voit pas. Controle : 0,01 % d'energie > 11 kHz.
+  Mesurer **par canal** : une FFT sur le signal entrelace L/R double la frequence
+  apparente et fait croire a 50 % d'energie haute.
+
+### Le pack
+`app/src/main/assets/pianopack/piano.bin` : **196 regions, 6,56 Mo, 62 notes
+(A#2..G6)**, SNR ADPCM 20,1 dB. Format `PIAP` : en-tete + 24 o/region + ADPCM
+4 bits **stereo entrelace** (le pack sax est mono, le piano non).
+Regenerable : `python3 tools/pianopack/build.py --jobs jobs.txt --out out/pack`
+(le cache de la banque, 57 Mo, vit dans `tools/pianopack/cache/`).
 
 ## Session 2026-10-29 (suite) — UI Æther resserrée + voix échantillonnée du sax façonnée
 
@@ -1587,6 +1743,58 @@ C'est le seul moyen de valider la voix sax sans appareil.
 `/workspace/dl/pub/index.html` servi sur **port 12000** : 13 JPEG (~600 Ko) + 3 MP3.
 **Piège** : cette page contenait déjà les médias de la session précédente — ne pas écraser
 `index.html` sans reprendre les fichiers existants (`ls *.jpg *.mp3`).
+
+## Session 2026-10-29 — Æther Piano (instrument #17, 9 presets)
+
+### Le piano est un INSTRUMENT, pas un effet
+`FX_PIANO_AE = 17`, `Kind::Source`, `FX_COUNT = 18`. **Ne pas confondre avec
+`FX_PIANO = 5`**, qui est le *shaper* (le rendu visuel `scenePiano` de
+`FxInstrumentScenes.kt` est le sien, pas celui de l'instrument — ne pas le
+supprimer en croyant nettoyer du code mort). Comme Organ/Synth/Leads/Sax, le
+piano est **retire des choix FX** (`AE_RETIRED_INSTRUMENT_IDS` = {6,14,15,16,17})
+et se charge via l'onglet Æther.
+
+### Le partage sample / moteur (mesure, pas choix esthetique)
+`tools/pianopack/README.md` sections 8 et 9 :
+- La banque **n'est pas bouclable** : correlation max **0,66..0,83** (seuil utile
+  > 0,90). Les partiels d'un piano decroissent a des vitesses differentes, donc
+  le timbre change entre deux points — aucun point stationnaire a recoller.
+  **Aucune region n'est bouclee** ; chaque region fait 2,5 s et la queue est
+  produite par le moteur.
+- **tau1 est mesure** (0,478 s a C4, x0,59 par octave) et pilote la queue.
+- **tau2 est modelise** : non mesurable dans les samples (la queue depasse le
+  fichier dans les graves, passe sous le bruit dans les aigus).
+- **B est mesure** : `B = 2,29e-4 * 2^(0,1045*(midi-60)/12)`. Les resonateurs du
+  moteur sont accordes avec elle : c'est ce qui separe un piano d'un orgue.
+
+### Pieges verifies
+- **`SourceFx` impose `process(float* io, int n)`** (entrelace), `prepare(sr, mb)`,
+  `reset()`, `paramCount()`. J'ai d'abord ecrit `render(outL,outR,n)` : signature
+  inexistante, la classe n'heritait de rien d'utilisable. **Lire `fx_core.h`
+  avant d'ecrire un moteur** (le contrat n'est pas celui qu'on suppose).
+- **Decodage de region : cacher, pas decoder par note.** Le lecteur sax decode a
+  chaque `noteOn` dans un tampon unique (acceptable en monophonique). Un piano
+  polyphonique qui repete une note redécoderait tout : LRU de 10 regions dans
+  `PianoSampleReader::decoded()`. Decoder paresseusement serait **quadratique**
+  (le predicteur ADPCM doit rejouer depuis le debut de la region).
+- **Pas d'AVIF dans l'UI.** `minSdk = 26` ; le decodage AVIF de `BitmapFactory`
+  arrive a l'**API 31**. Les 30 AVIF de `assets/instruments/` ne sont consommes
+  que par les previews HTML. La vignette de la tuile est **dessinee en Canvas**
+  (`drawPianoMini`), sinon elle serait vide sur un tiers des appareils.
+- **Le ratio de compression est 25 %, pas 6,2 %.** Le 6,2 % comparait au FLAC
+  (deja 50 % du PCM). Toute estimation de poids anterieure est a x4.
+- **Filtre anti-repliement obligatoire** avant decimation 44,1 -> 22,05 kHz :
+  l'interpolation lineaire seule replie tout ce qui depasse 11 kHz dans
+  l'audible. Un SNR global ne le voit pas. Controle : 0,01 % d'energie > 11 kHz.
+  Mesurer **par canal** : une FFT sur le signal entrelace L/R double la frequence
+  apparente et fait croire a 50 % d'energie haute.
+
+### Le pack
+`app/src/main/assets/pianopack/piano.bin` : **196 regions, 6,56 Mo, 62 notes
+(A#2..G6)**, SNR ADPCM 20,1 dB. Format `PIAP` : en-tete + 24 o/region + ADPCM
+4 bits **stereo entrelace** (le pack sax est mono, le piano non).
+Regenerable : `python3 tools/pianopack/build.py --jobs jobs.txt --out out/pack`
+(le cache de la banque, 57 Mo, vit dans `tools/pianopack/cache/`).
 
 ## Session 2026-10-29 (suite) — navigateur de presets a 3 volets, humanize du sax, ecrêtage
 
@@ -1664,6 +1872,58 @@ Ajoute : legato (le slur **deplace** la voix echantillonnee), humanize, accord.
   aleatoire par note deplace le pic de tens de quelques dizaines de cents).
 
 Le seuil de continuite (sauts > 0,25) reste a **0** sur les 7 notes testes.
+
+## Session 2026-10-29 — Æther Piano (instrument #17, 9 presets)
+
+### Le piano est un INSTRUMENT, pas un effet
+`FX_PIANO_AE = 17`, `Kind::Source`, `FX_COUNT = 18`. **Ne pas confondre avec
+`FX_PIANO = 5`**, qui est le *shaper* (le rendu visuel `scenePiano` de
+`FxInstrumentScenes.kt` est le sien, pas celui de l'instrument — ne pas le
+supprimer en croyant nettoyer du code mort). Comme Organ/Synth/Leads/Sax, le
+piano est **retire des choix FX** (`AE_RETIRED_INSTRUMENT_IDS` = {6,14,15,16,17})
+et se charge via l'onglet Æther.
+
+### Le partage sample / moteur (mesure, pas choix esthetique)
+`tools/pianopack/README.md` sections 8 et 9 :
+- La banque **n'est pas bouclable** : correlation max **0,66..0,83** (seuil utile
+  > 0,90). Les partiels d'un piano decroissent a des vitesses differentes, donc
+  le timbre change entre deux points — aucun point stationnaire a recoller.
+  **Aucune region n'est bouclee** ; chaque region fait 2,5 s et la queue est
+  produite par le moteur.
+- **tau1 est mesure** (0,478 s a C4, x0,59 par octave) et pilote la queue.
+- **tau2 est modelise** : non mesurable dans les samples (la queue depasse le
+  fichier dans les graves, passe sous le bruit dans les aigus).
+- **B est mesure** : `B = 2,29e-4 * 2^(0,1045*(midi-60)/12)`. Les resonateurs du
+  moteur sont accordes avec elle : c'est ce qui separe un piano d'un orgue.
+
+### Pieges verifies
+- **`SourceFx` impose `process(float* io, int n)`** (entrelace), `prepare(sr, mb)`,
+  `reset()`, `paramCount()`. J'ai d'abord ecrit `render(outL,outR,n)` : signature
+  inexistante, la classe n'heritait de rien d'utilisable. **Lire `fx_core.h`
+  avant d'ecrire un moteur** (le contrat n'est pas celui qu'on suppose).
+- **Decodage de region : cacher, pas decoder par note.** Le lecteur sax decode a
+  chaque `noteOn` dans un tampon unique (acceptable en monophonique). Un piano
+  polyphonique qui repete une note redécoderait tout : LRU de 10 regions dans
+  `PianoSampleReader::decoded()`. Decoder paresseusement serait **quadratique**
+  (le predicteur ADPCM doit rejouer depuis le debut de la region).
+- **Pas d'AVIF dans l'UI.** `minSdk = 26` ; le decodage AVIF de `BitmapFactory`
+  arrive a l'**API 31**. Les 30 AVIF de `assets/instruments/` ne sont consommes
+  que par les previews HTML. La vignette de la tuile est **dessinee en Canvas**
+  (`drawPianoMini`), sinon elle serait vide sur un tiers des appareils.
+- **Le ratio de compression est 25 %, pas 6,2 %.** Le 6,2 % comparait au FLAC
+  (deja 50 % du PCM). Toute estimation de poids anterieure est a x4.
+- **Filtre anti-repliement obligatoire** avant decimation 44,1 -> 22,05 kHz :
+  l'interpolation lineaire seule replie tout ce qui depasse 11 kHz dans
+  l'audible. Un SNR global ne le voit pas. Controle : 0,01 % d'energie > 11 kHz.
+  Mesurer **par canal** : une FFT sur le signal entrelace L/R double la frequence
+  apparente et fait croire a 50 % d'energie haute.
+
+### Le pack
+`app/src/main/assets/pianopack/piano.bin` : **196 regions, 6,56 Mo, 62 notes
+(A#2..G6)**, SNR ADPCM 20,1 dB. Format `PIAP` : en-tete + 24 o/region + ADPCM
+4 bits **stereo entrelace** (le pack sax est mono, le piano non).
+Regenerable : `python3 tools/pianopack/build.py --jobs jobs.txt --out out/pack`
+(le cache de la banque, 57 Mo, vit dans `tools/pianopack/cache/`).
 
 ## Session 2026-10-29 — sax Æther : knob Blend (parametre 22)
 
