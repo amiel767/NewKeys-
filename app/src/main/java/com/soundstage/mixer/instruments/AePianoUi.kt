@@ -1,6 +1,7 @@
 package com.soundstage.mixer.instruments
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -14,9 +15,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
+import com.soundstage.mixer.R
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.exp
@@ -132,6 +136,17 @@ fun BoxScope.AePianoUi(c: AeCtl, a: AeAnim) {
     val border = Color(0x2AE3C48A)
     Box(Modifier.fillMaxSize().background(Brush.radialGradient(
         listOf(Color(0xFF2A1C10), Color(0xFF120B06), Color(0xFF050302)), radius = 820f)))
+    // The preset's own photograph, not a single shared drawing: each model has its own
+    // instrument, and that difference is most of what tells them apart at a glance.
+    // WebP rather than the AVIF the previews use — AVIF needs API 31 and the app ships
+    // minSdk 26, where it would decode to nothing.
+    Image(
+        painter = painterResource(pianoPlate(c)),
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+        modifier = Modifier.at(22, 54, 300, 286),
+    )
+    // Fallback line-art, kept underneath: it fills the frame if a plate is ever missing.
     Canvas(Modifier.fillMaxSize()) { a.frame.intValue; drawPianoHero(340f, 44f, 320f, 300f, a.t) }
 
     AeCardBox(22, 54, 300, 286, "", BRASS, border)
@@ -163,6 +178,24 @@ fun BoxScope.AePianoUi(c: AeCtl, a: AeAnim) {
     AeT("boite · cordes · etouffoirs", 9, Color(0x99E3C48A), Modifier.at(704, 258, 220, 12), AeFonts.plate)
 
     AeKeyboard(c, 52, 360, 896, 90)
+}
+
+/** Photograph of the model behind the session's current preset. */
+private fun pianoPlate(c: AeCtl): Int {
+    val list = c.m.presets(AeInstrument.PIANO)
+    val name = list.getOrNull(c.s.preset)?.name ?: "Studio"
+    return when (name) {
+        "Felt" -> R.drawable.piano_felt
+        "Studio" -> R.drawable.piano_studio
+        "Bright" -> R.drawable.piano_bright
+        "Mellow" -> R.drawable.piano_mellow
+        "Dark" -> R.drawable.piano_dark
+        "Upright" -> R.drawable.piano_upright
+        "Lady D" -> R.drawable.piano_lady
+        "Honky" -> R.drawable.piano_honky
+        "Electric" -> R.drawable.piano_electric
+        else -> R.drawable.piano_studio
+    }
 }
 
 /**
