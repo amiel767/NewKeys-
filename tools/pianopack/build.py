@@ -30,6 +30,9 @@ from measure import load_mono, sample_path, f0_nominal, fit_log_score, midi_of  
 
 RATE = 22050
 
+# Duree de queue conservee apres le point de boucle.
+TAIL_S = 1.0
+
 # Ordre des couches de la banque, du plus doux au plus fort.
 LAYERS = ["PP", "Mp", "Mf", "MF", "FF"]
 
@@ -123,51 +126,43 @@ def resample(x, sr, target):
 
 
 def loop_region(m, sr, f0, xfade=None):
-    """Point et longueur de boucle, valides par le saut de couture.
+    """Point et longueur de boucle, par continuite de phase.
 
-    Le seuil de correlation seul est trop strict : mesure sur la banque, il ne
-    retient que 27/62 notes.  On accepte donc corr > 0,90 mais on EXIGE que le
-    crossfade ramene le saut sous 3x le plus grand pas interne (99,9e
-    percentile).  Une boucle raccordable a l'oreille, pas seulement correlee.
+    L'ancienne version cherchait une longueur libre maximisee par correlation : elle
+    ne retenait que la moitie des notes, les autres tombant sur une troncature a
+    2,5 s.  Le sustain s'arretait net — le piano sonnait comme un jouet.
+
+    Ici la longueur vaut un nombre ENTIER de periodes de f0 mesure : revenir de
+    t0+L a t0 retombe sur la meme phase, donc le raccord est continu par
+    construction.  Il ne reste qu'a choisir t0 et L, en gardant le plus petit saut.
+
+    Le saut est juge par rapport au niveau local (RMS de la boucle), pas au plus
+    grand pas interne ni a l'enveloppe : c'est la mesure qui correspond au clic
+    entendu.  Un pas fin (P/6) et une plage de longueurs large (0,15 a 0,62 s)
+    trouvent un raccord exact la ou un pas grossier en laissait passer.
     """
-    P = max(int(sr / f0), 8)
-    W = max(2 * P, 64)
-    env = np.sqrt(np.convolve(m * m, np.ones(W) / W, "same")) + 1e-9
-    z = m / env
-    X = xfade if xfade else max(int(0.012 * sr), 8)
-    t0 = max(int(0.30 * sr), 10 * P)
-    if t0 + int(1.0 * sr) >= len(m):
-        t0 = max(int(0.15 * sr), 6 * P)
-    if t0 + int(0.4 * sr) >= len(m):
+    P = max(int(round(sr / f0)), 8)
+    lo = max(int(0.45 * sr), 8 * P)
+    hi = min(int(1.30 * sr), len(m) - int(0.6 * sr))
+    if hi - lo < 8 * P:
         return None, None
-    ref = z[t0:t0 + 4 * P]
-    if len(ref) < 2 * P:
-        return None, None
+    step = max(P // 6, 1)
     best = None
-    Lmin = max(8 * P, int(0.12 * sr))
-    for L in range(Lmin, min(int(1.5 * sr), len(m) - t0 - 4 * P), max(P // 2, 4)):
-        seg = z[t0 + L:t0 + L + 4 * P]
-        if len(seg) < len(ref):
-            break
-        c = float(np.dot(ref, seg) / (np.linalg.norm(ref) * np.linalg.norm(seg) + 1e-12))
-        if c <= 0.90:
+    for cand in np.arange(0.15, 0.62, 0.02):
+        L = max(8, int(round(cand * sr / P))) * P
+        if lo + L + 2 >= len(m):
             continue
-        # saut de couture apres crossfade
-        Xc = min(X, L // 2)
-        if Xc > 1:
-            w = np.linspace(1.0, 0.0, Xc)
-            tail = m[t0 + L - Xc:t0 + L]
-            head = m[t0:t0 + Xc]
-            blended = tail * w + head * (1 - w)
-            jump = abs(blended[-1] - blended[0])
-            if jump < 3.0 * np.percentile(np.abs(np.diff(m[t0:t0 + L])), 99.9):
-                return t0, L
-        if best is None:
-            best = (t0, L, c)
-    return (best[0], best[1]) if best else (None, None)
+        for t0 in range(lo, min(hi, len(m) - L - 1), step):
+            rms = float(np.sqrt(np.mean(m[t0:t0 + L] ** 2))) + 1e-9
+            score = abs(m[t0] - m[t0 + L - 1]) / rms
+            if best is None or score < best[0]:
+                best = (score, t0, L)
+    if best is None:
+        return None, None
+    return best[1], best[2]
 
 
-def build_region(name, xfade_ms=12.0):
+def build_region(name):
     """Renvoie (pcm_stereo_int16, meta) pour une region."""
     x, sr = sf.read(sample_path(name), always_2d=True)
     if x.shape[1] == 1:
@@ -183,25 +178,17 @@ def build_region(name, xfade_ms=12.0):
         seg = x[:keep].copy()
         loop_start = loop_end = 0
     else:
-        end = min(len(x), t0 + L)
+        # Marge de queue APRES la boucle : au relachement le moteur sort de la
+        # boucle et joue cette queue, au lieu de couper net sur le raccord.
+        end = min(len(x), t0 + L + int(TAIL_S * sr))
         seg = x[:end].copy()
         loop_start = t0
-        loop_end = end
+        loop_end = t0 + L          # la queue apres loop_end n'est PAS dans la boucle
 
     seg = resample(seg[:, 0], sr, RATE), resample(seg[:, 1], sr, RATE)
     seg = np.stack(seg, axis=1)
     ls = int(loop_start * RATE / sr) if loop_start else 0
     le = int(loop_end * RATE / sr) if loop_end else 0
-
-    if ls and le > ls:
-        X = max(int(xfade_ms / 1000.0 * RATE), 2)
-        X = min(X, (le - ls) // 2)
-        if X > 1:
-            # poids plein a l'index 0 : c'est ce qui annule le saut de couture
-            w = np.linspace(1.0, 0.0, X)
-            a = seg[ls - X:ls].copy()
-            b = seg[le - X:le].copy()
-            seg[ls - X:ls] = a * w[:, None] + b * (1.0 - w)[:, None]
 
     pcm = np.clip(np.round(seg * 32767.0), -32768, 32767).astype(np.int16)
     meta = {"sample": name, "f0": round(f0, 3), "B": B,

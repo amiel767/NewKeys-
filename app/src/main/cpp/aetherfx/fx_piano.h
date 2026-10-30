@@ -211,12 +211,17 @@ class PianoResonators {
 class PianoVoice {
  public:
   void start(const int16_t* pcm, uint32_t frames, int root, float tuneCents,
-             int note, float velocity, float sr) {
+             int note, float velocity, float sr, float packRate,
+             uint32_t loopStart, uint32_t loopEnd) {
     pcm_ = pcm; frames_ = frames; pos_ = 0.0;
+    loopStart_ = loopStart; loopEnd_ = loopEnd;
+    if (loopEnd_ <= loopStart_ || loopEnd_ > frames) loopStart_ = loopEnd_ = 0;
     const float rootF = 440.f * std::pow(2.f, (root - 69) / 12.f)
                         * std::pow(2.f, tuneCents / 1200.f);
     const float f = 440.f * std::pow(2.f, (note - 69) / 12.f);
-    ratio_ = (rootF > 1e-6f) ? f / rootF : 1.f;
+    // packRate/sr : le pack est a 22050 Hz et la sortie a 44100.  Sans ce facteur
+    // chaque note sort une octave trop haut — c'est le son de jouet.
+    ratio_ = (rootF > 1e-6f) ? f / rootF * (packRate / sr) : 1.f;
     note_ = note; vel_ = velocity;
     active_ = true; releasing_ = false;
     // tau1 mesure : 0,478 s a C4, x0,59 par octave.
@@ -243,6 +248,11 @@ class PianoVoice {
     if (!active_ || !pcm_) return;
     const float atk = 1.f / (0.004f * sr);
     for (int i = 0; i < n; ++i) {
+      // Tant que la touche est tenue, on tourne dans la boucle ; au relachement on
+      // la quitte et on joue la queue enregistree, qui porte la decroissance reelle.
+      if (loopEnd_ > loopStart_ && !releasing_ && pos_ >= loopEnd_) {
+        pos_ -= (loopEnd_ - loopStart_);
+      }
       const uint32_t i0 = static_cast<uint32_t>(pos_);
       const uint32_t i1 = i0 + 1;
       if (i1 >= frames_) { active_ = false; break; }
@@ -286,6 +296,7 @@ class PianoVoice {
   double pos_ = 0.0;
   float ratio_ = 1.f, vel_ = 1.f;
   float env_ = 0.f, rel_ = 0.f, age_ = 0.f, tau1_ = 0.5f;
+  uint32_t loopStart_ = 0, loopEnd_ = 0;
   int note_ = -1;
   bool active_ = false, releasing_ = false;
   PianoResonators res_;
@@ -338,7 +349,9 @@ class PianoEngine : public SourceFx {
     // et le choix de couche n'a plus de sens.
     const float v = std::pow(static_cast<float>(vel) / 127.f, 1.f - p(9) * 0.7f);
     voices_[slot].start(pcm->data(), static_cast<uint32_t>(pcm->size() / 2),
-                        g->root, g->tuneCents, note, v, sr_);
+                        g->root, g->tuneCents, note, v, sr_,
+                        static_cast<float>(reader_.rate()),
+                        g->loopStart, g->loopEnd);
   }
 
   void noteOff(int note) override {
