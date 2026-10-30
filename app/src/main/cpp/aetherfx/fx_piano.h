@@ -215,7 +215,7 @@ class PianoVoice {
  public:
   void start(const int16_t* pcm, uint32_t frames, int root, float tuneCents,
              int note, float velocity, float sr, float packRate,
-             uint32_t loopStart, uint32_t loopEnd) {
+             uint32_t loopStart, uint32_t loopEnd, float mic, float space) {
     pcm_ = pcm; frames_ = frames; pos_ = 0.0;
     loopStart_ = loopStart; loopEnd_ = loopEnd;
     if (loopEnd_ <= loopStart_ || loopEnd_ > frames) loopStart_ = loopEnd_ = 0;
@@ -233,9 +233,15 @@ class PianoVoice {
     // d'ou la base divisee d'autant : 0,255 s a C4 donne ~8,5 dB/s.
     // Sans ce calage, une note tenue restait a niveau constant — une corde de
     // guitare, pas un piano.
-    tau1_ = 0.255f * std::pow(0.833f, static_cast<float>(note - 60) / 12.f);
+    // SPACE est la taille de la piece : une grande salle nourrit la corde, donc
+    // allonge la decroissance.  Sans lui, les neuf modeles decroissaient tous en
+    // 0,17 s et ne se distinguaient plus.
+    tau1_ = 0.255f * std::pow(0.833f, static_cast<float>(note - 60) / 12.f) * (0.25f + 2.60f * space);
     // One-pole a 2 kHz : la charniere du shelf.
-    shelfA_ = 1.f - std::exp(-2.f * static_cast<float>(M_PI) * 2000.f / sr);
+    // MIC deplace la charniere du shelf : 2000 Hz ferme (charniere basse, timbre
+    // sombre) a 4200 Hz ouvert.  Le reglage etait annonce mais jamais lu.
+    const float micHz = 2000.f + mic * 2200.f;
+    shelfA_ = 1.f - std::exp(-2.f * static_cast<float>(M_PI) * micHz / sr);
     lpL_ = lpR_ = 0.f;
     res_.setRate(sr);
     res_.tune(f, inharmonicityOf(note));
@@ -261,7 +267,8 @@ class PianoVoice {
     // une rampe de 4 ms l'efface et le piano perd son attaque.
     const float atk = 1.f / (0.0005f * sr);
     // bright 0 -> -6 dB d'aigus, bright 1 -> +6 dB.
-    const float shelfG = std::exp2((bright - 0.5f) * 2.0f);
+    // Plage +-12 dB (etait +-6) : a +-6 les quatre reglages d'aigu se confondaient.
+    const float shelfG = std::exp2((bright - 0.5f) * 4.0f);
     for (int i = 0; i < n; ++i) {
       // Tant que la touche est tenue, on tourne dans la boucle ; au relachement on
       // la quitte et on joue la queue enregistree, qui porte la decroissance reelle.
@@ -377,7 +384,8 @@ class PianoEngine : public SourceFx {
                         g->root, g->tuneCents, note, v, sr_,
                         static_cast<float>(reader_.rate()),
                         loopsOn_ ? g->loopStart : 0u,
-                        loopsOn_ ? g->loopEnd : 0u);
+                        loopsOn_ ? g->loopEnd : 0u,
+                        p(4), p(5));
   }
 
   void noteOff(int note) override {
@@ -421,7 +429,10 @@ class PianoEngine : public SourceFx {
     // HAMMER et LID agissent tous deux sur le haut du spectre : un marteau plus dur
     // et un couvercle plus ouvert eclairent le timbre, ce sont bien deux reglages.
     const float body = p(2), width = p(6);
-    const float bright = std::min(1.f, p(1) * (0.55f + 0.9f * p(0)) + p(3) * 0.25f);
+    const float mic = p(4);
+    // HAMMER, TONE, LID et MIC sont quatre facons d'eclairer le timbre ; MIC
+    // etait annonce mais jamais lu, et les trois autres se confondaient.
+    const float bright = std::min(1.f, p(1) * (0.55f + 0.9f * p(0)) + p(3) * 0.25f + (p(4) - 0.5f) * 0.6f);
     const float rel = 0.25f + p(8) * 5.0f;
     // Pas de parametre de maintien dans le contrat : on garde une valeur fixe.
     const float hold = 0.5f;
