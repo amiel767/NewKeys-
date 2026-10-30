@@ -36,7 +36,10 @@ const NOISE = `url("data:image/svg+xml;utf8,${encodeURIComponent(
 /* ── les icônes ───────────────────────────────────────────────────────────── */
 const P = {
   back: "M15 18l-6-6 6-6", close: ["M18 6L6 18", "M6 6l12 12"], plus: ["M12 5v14", "M5 12h14"],
-  power: ["M12 2v9", "M18.36 6.64a9 9 0 1 1-12.73 0"], trash: ["M4 7h16", "M9 7V4h6v3", "M6 7l1 13h10l1-13"],
+  power: ["M12 4.2v7.6", "M6.6 8.4a6.6 6.6 0 1 1 10.8 0"],
+  trash: ["M4.6 7.4h14.8", "M9.6 7.4V5.3a1 1 0 0 1 1-1h2.8a1 1 0 0 1 1 1v2.1",
+          "M6.6 7.4l.85 11.1a1.7 1.7 0 0 0 1.7 1.6h5.7a1.7 1.7 0 0 0 1.7-1.6l.85-11.1",
+          "M10.3 11.2v5.9", "M13.7 11.2v5.9"],
   search: ["M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z", "M21 21l-4.3-4.3"],
   wave: "M2 12c2 0 2-4 4-4s2 8 4 8 2-8 4-8 2 4 4 4",
   sliders: ["M4 21v-7", "M4 10V3", "M12 21v-9", "M12 8V3", "M20 21v-5", "M20 12V3", "M1 14h6", "M9 8h6", "M17 16h6"],
@@ -94,22 +97,48 @@ const AUDIO = [
       ["Hi Shelf", "shelf", .55, -12, 6, " dB"], ["Mod", "mod", .3, 0, 100, " %"],
     ],
     presets: {
-      Hall:      [.62, .70, .20, .45, .80, .35, .50, .30, .50, .35],
-      Plate:     [.40, .50, .10, .70, .90, .30, .70, .35, .60, .25],
-      Room:      [.25, .30, .05, .50, .60, .25, .30, .20, .40, .15],
-      Cathedral: [.95, .95, .35, .30, 1.0, .45, .80, .45, .55, .55],
-      Shimmer:   [.70, .85, .25, .20, 1.0, .50, .90, .40, .70, .65],
-      Chamber:   [.35, .40, .08, .55, .70, .28, .45, .25, .45, .20],
-      Bloom:     [.80, .80, .30, .35, .95, .42, 1.0, .35, .65, .60],
-      Infinite:  [1.0, 1.0, .40, .25, 1.0, .60, .95, .50, .50, .70],
-      Ambience:  [.55, .88, .30, .60, .95, .28, .85, .40, .45, .45],
-      Spring:    [.30, .45, .02, .75, .55, .40, .25, .15, .70, .80],
-      "Dark Hall": [.78, .82, .28, .22, .85, .38, .65, .55, .35, .30],
+      Hall:         [.62, .70, .20, .45, .80, .35, .50, .30, .50, .35],
+      Plate:        [.40, .50, .10, .70, .90, .30, .70, .35, .60, .25],
+      Room:         [.25, .30, .05, .50, .60, .25, .30, .20, .40, .15],
+      Cathedral:    [.95, .95, .35, .30, 1.0, .45, .80, .45, .55, .55],
+      Shimmer:      [.70, .85, .25, .20, 1.0, .50, .90, .40, .70, .65],
+      Chamber:      [.35, .40, .08, .55, .70, .28, .45, .25, .45, .20],
+      Bloom:        [.80, .80, .30, .35, .95, .42, 1.0, .35, .65, .60],
+      Infinite:     [1.0, 1.0, .40, .25, 1.0, .60, .95, .50, .50, .70],
+      Ambience:     [.55, .88, .30, .60, .95, .28, .85, .40, .45, .45],
+      Spring:       [.30, .45, .02, .75, .55, .40, .25, .15, .70, .80],
+      Galaxy:       [.85, .90, .30, .30, 1.0, .50, .85, .45, .60, .70],
+      Nebula:       [.80, .88, .26, .30, .95, .46, .80, .40, .62, .60],
+      "Black Hole": [.70, 1.0, .50, .20, .90, .55, .50, .60, .30, .50],
+      Aurora:       [.75, .80, .22, .40, .95, .42, .70, .35, .55, .65],
+      "Dark Hall":  [.78, .82, .28, .22, .85, .38, .65, .55, .35, .30],
       "Bright Hall":[.60, .62, .16, .78, .88, .32, .55, .20, .68, .40],
       "Vocal Plate":[.38, .46, .06, .66, .95, .30, .78, .42, .58, .20],
-      "Drum Room": [.28, .26, .01, .42, .70, .24, .35, .12, .46, .10],
+      "Drum Room":  [.28, .26, .01, .42, .70, .24, .35, .12, .46, .10],
       "Chorus Verb":[.66, .74, .22, .58, 1.0, .40, .72, .30, .62, .85],
-      Gated:     [.44, .22, .00, .68, .60, .34, .30, .25, .52, .00],
+      Gated:        [.44, .22, .00, .68, .60, .34, .30, .25, .52, .00],
+    },
+    palettes: {
+      Hall:          { h: 268, dh: 75, s: 48, l: 74, core: "#eee8ff", rim: "#1d1a38" },
+      Plate:         { h: 196, dh: 40, s: 62, l: 76, core: "#f0fbff", rim: "#0f2530" },
+      Room:          { h: 158, dh: 34, s: 34, l: 68, core: "#eafaf4", rim: "#12241f" },
+      Cathedral:     { h: 246, dh: 60, s: 56, l: 66, core: "#e9e4ff", rim: "#161034" },
+      Shimmer:       { h: 312, dh: 90, h2: 186, multi: true, s: 66, l: 76, core: "#fff0fb", rim: "#2a1030" },
+      Chamber:       { h: 172, dh: 40, s: 40, l: 70, core: "#eefffb", rim: "#0e2a28" },
+      Bloom:         { h: 328, dh: 70, h2: 268, multi: true, s: 58, l: 74, core: "#ffeef6", rim: "#2c1030" },
+      Infinite:      { h: 210, dh: 50, s: 30, l: 84, core: "#ffffff", rim: "#101a2e" },
+      Ambience:      { h: 224, dh: 44, s: 36, l: 64, core: "#e6ecff", rim: "#0d1424" },
+      Spring:        { h: 34, dh: 26, s: 62, l: 70, core: "#fff4e2", rim: "#2a1a0c" },
+      Galaxy:        { h: 280, dh: 90, h2: 190, multi: true, s: 72, l: 72, core: "#fff2ff", rim: "#0c0a26" },
+      Nebula:        { h: 318, dh: 70, h2: 232, multi: true, s: 68, l: 70, core: "#ffe6f4", rim: "#160a2a" },
+      "Black Hole":  { h: 30, dh: 20, h2: 268, multi: true, s: 74, l: 60, core: "#ffe6b0", rim: "#05050a" },
+      Aurora:        { h: 152, dh: 50, h2: 288, multi: true, s: 66, l: 72, core: "#e8fff4", rim: "#071c1e" },
+      "Dark Hall":   { h: 262, dh: 50, s: 34, l: 52, core: "#cfc4ee", rim: "#0a0818" },
+      "Bright Hall": { h: 46, dh: 30, s: 52, l: 80, core: "#fffaf0", rim: "#2a2410" },
+      "Vocal Plate": { h: 336, dh: 60, s: 54, l: 76, core: "#fff0f4", rim: "#2a0e1c" },
+      "Drum Room":   { h: 140, dh: 30, s: 22, l: 60, core: "#e8f0ea", rim: "#141c18" },
+      "Chorus Verb": { h: 184, dh: 40, h2: 300, multi: true, s: 60, l: 74, core: "#eaffff", rim: "#0c2430" },
+      Gated:         { h: 350, dh: 24, s: 62, l: 64, core: "#ffe9ec", rim: "#2a0a12" },
     } },
   { id: 1, name: "Æther Echo", type: "Delay", fam: "Space", accent: "#D4B06A", icon: P.sliders,
     params: [["Time", "time", .45, 20, 1200, " ms"], ["Feedback", "fb", .38, 0, 95, " %"],
@@ -277,62 +306,63 @@ function Knob({ label, value, onChange, display, accent = IN1, size = 46, onRese
    seulement. Bonnet : dessin inédit, en six plans — chanfrein haut, cannelures
    verticales, inlay central, LED dans l'accent, chanfrein bas, ombre portée.
    ─────────────────────────────────────────────────────────────────────────── */
-const RAIL_W = 13, CAP_W = 26, CAP_H = 30, TRAVEL = 84;
+const RAIL_H = 11, CAP_W = 20, CAP_H = 24;
 
-function Fader({ label, value, onChange, display, accent = IN1, onReset, onChangeStart }) {
+function HSlider({ label, value, onChange, display, accent = IN1, onReset, onChangeStart }) {
   const box = useRef(null);
   const drag = useRef(null);
   const [hot, setHot] = useState(false);
   const v = clamp(value, 0, 1);
-  const capY = (1 - v) * TRAVEL;
-  const setFrom = (clientY) => {
+  const setFrom = (clientX) => {
     const r = box.current.getBoundingClientRect();
-    onChange(clamp(1 - (clientY - r.top - CAP_H / 2) / TRAVEL, 0, 1));
+    onChange(clamp((clientX - r.left - CAP_W / 2) / Math.max(1, r.width - CAP_W), 0, 1));
   };
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, width: CAP_W + 8 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
+      <span style={{ width: 52, flex: "none", fontSize: 7.5, fontWeight: 800, letterSpacing: ".08em",
+                     textTransform: "uppercase", color: hot ? INK : DIM, whiteSpace: "nowrap",
+                     overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
       <div ref={box} onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId);
-                                              setHot(true); onChangeStart?.(); setFrom(e.clientY); }}
-           onPointerMove={(e) => { if (hot) setFrom(e.clientY); }}
+                                              setHot(true); onChangeStart?.(); setFrom(e.clientX); }}
+           onPointerMove={(e) => { if (hot) setFrom(e.clientX); }}
            onPointerUp={() => setHot(false)}
            onDoubleClick={() => onReset && onReset()}
-           style={{ width: CAP_W, height: TRAVEL + CAP_H, position: "relative", cursor: "ns-resize", touchAction: "none" }}>
-        <div style={{ position: "absolute", left: "50%", top: CAP_H / 2, height: TRAVEL, width: RAIL_W,
-                      marginLeft: -RAIL_W / 2, borderRadius: RAIL_W / 2,
+           style={{ flex: 1, minWidth: 0, height: CAP_H, position: "relative",
+                    cursor: "ew-resize", touchAction: "none" }}>
+        <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: RAIL_H,
+                      marginTop: -RAIL_H / 2, borderRadius: RAIL_H / 2,
                       background: `linear-gradient(180deg,${RAIL},#313443 10%,#373A4B 38%,#3A3C4F 60%,#3E4155 85%,${RAIL2})`,
                       boxShadow: `inset 0 1px 0 rgba(255,255,255,.16), inset 1px 0 0 rgba(255,255,255,.07),
                                   inset -1px 0 0 rgba(0,0,0,.16), inset 0 -1px 0 rgba(255,255,255,.1),
                                   0 3px 8px rgba(0,0,0,.45)` }} />
-        <div style={{ position: "absolute", left: "50%", top: CAP_H / 2 + 3, height: TRAVEL - 6, width: RAIL_W - 7,
-                      marginLeft: -(RAIL_W - 7) / 2, borderRadius: (RAIL_W - 7) / 2,
+        <div style={{ position: "absolute", left: 3, right: 3, top: "50%", height: RAIL_H - 6,
+                      marginTop: -(RAIL_H - 6) / 2, borderRadius: (RAIL_H - 6) / 2,
                       background: "linear-gradient(180deg,#07090F,#0C0F18)",
                       boxShadow: "inset 0 2px 5px rgba(0,0,0,.85)" }} />
-        <div style={{ position: "absolute", left: "50%", bottom: CAP_H / 2 + 3, width: RAIL_W - 7,
-                      height: Math.max(0, (TRAVEL - 6) * v), marginLeft: -(RAIL_W - 7) / 2,
-                      borderRadius: (RAIL_W - 7) / 2,
-                      background: `linear-gradient(180deg,${hx(accent, .25)},${hx(accent, .9)})`,
+        <div style={{ position: "absolute", left: 3, top: "50%", height: RAIL_H - 6,
+                      marginTop: -(RAIL_H - 6) / 2, width: `calc(${v * 100}% - 6px)`,
+                      borderRadius: (RAIL_H - 6) / 2,
+                      background: `linear-gradient(90deg,${hx(accent, .25)},${hx(accent, .9)})`,
                       boxShadow: `0 0 8px ${hx(accent, .4)}` }} />
-        <div style={{ position: "absolute", left: "50%", top: capY, width: CAP_W, height: CAP_H,
-                      marginLeft: -CAP_W / 2, borderRadius: 6,
+        <div style={{ position: "absolute", top: 0, left: `calc(${v * 100}% - ${CAP_W / 2}px)`,
+                      width: CAP_W, height: CAP_H, borderRadius: 5,
                       background: "linear-gradient(180deg,#828A9E 0%,#5C6376 11%,#414659 46%,#333849 82%,#282D3E 100%)",
                       boxShadow: hot
                         ? `0 0 0 1.5px ${hx(accent, .6)}, 0 7px 15px rgba(0,0,0,.68)`
                         : "0 6px 13px rgba(0,0,0,.62), inset 0 1px 0 rgba(255,255,255,.3), inset 0 -1.5px 0 rgba(0,0,0,.45)" }}>
-          <div style={{ position: "absolute", inset: 0, borderRadius: 6,
+          <div style={{ position: "absolute", inset: 0, borderRadius: 5,
                         backgroundImage: "repeating-linear-gradient(90deg, rgba(255,255,255,.085) 0 1px, rgba(0,0,0,.17) 1px 3px)" }} />
           <div style={{ position: "absolute", left: 2, right: 2, top: 1.5, height: 3.5, borderRadius: 2,
                         background: "linear-gradient(180deg, rgba(255,255,255,.52), rgba(255,255,255,0))" }} />
-          <div style={{ position: "absolute", left: 3.5, right: 3.5, top: "47%", height: 3, borderRadius: 2,
-                        background: `linear-gradient(90deg,${hx(accent, .3)},${accent},${hx(accent, .3)})`,
+          <div style={{ position: "absolute", top: 3.5, bottom: 3.5, left: "47%", width: 3, borderRadius: 2,
+                        background: `linear-gradient(180deg,${hx(accent, .3)},${accent},${hx(accent, .3)})`,
                         boxShadow: `0 0 7px ${hx(accent, .75)}, inset 0 0 2px rgba(255,255,255,.55)` }} />
           <div style={{ position: "absolute", left: 2, right: 2, bottom: 1.5, height: 2.5, borderRadius: 2,
                         background: "linear-gradient(180deg, rgba(0,0,0,.5), rgba(255,255,255,.1))" }} />
         </div>
       </div>
-      <span style={{ fontSize: 7.5, fontWeight: 800, letterSpacing: ".09em", textTransform: "uppercase",
-                     color: hot ? INK : DIM, whiteSpace: "nowrap", maxWidth: CAP_W + 8,
-                     overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
-      <span style={{ fontSize: 9, fontFamily: MONO, color: hot ? INK : "#7E879C" }}>{display}</span>
+      <span style={{ width: 46, flex: "none", textAlign: "right", fontSize: 9, fontFamily: MONO,
+                     color: hot ? INK : "#7E879C" }}>{display}</span>
     </div>
   );
 }
@@ -375,21 +405,23 @@ function Seg({ options, value, onChange, height = 34 }) {
 }
 
 /* ══ L'ORBE DE SPACE ═══════════════════════════════════════════════════════
-   Porté de `orb()` de `fx-window-preview.html`. C'est l'orbe de l'app.
-   Il change de couleur tout seul : `hue = 268 - damp * 75`, du violet (Damp à 0)
-   au bleu (Damp à fond). Chaque réglage agit :
-     Size    → le rayon
-     Decay   → la longueur des tirets et la queue des comètes
-     Pre-delay → le silence avant la première ondulation
-     Damp    → la teinte
-     Width   → l'inclinaison des anneaux et leur précession
-     Mix     → la luminosité générale
-     Diffuse → la turbulence du courant de particules
+   Porte de `orb()` de `fx-window-preview.html`. Chaque preset porte sa PROPRE
+   PALETTE : c'est elle qui donne sa couleur a l'orbe, pas un accent unique.
+   Les palettes `multi` melangent DEUX teintes — c'est le cocktail : Galaxy et
+   Nebula melangent violet et cyan, Black Hole melange orange et violet, Aurora
+   vert et violet, Shimmer magenta et cyan, Bloom rose et violet.
+   Tout est lisse : changer de preset fait GLISSER la teinte, la taille et les
+   sept reglages vers leur nouvelle valeur au lieu de sauter.
    ─────────────────────────────────────────────────────────────────────────── */
-function Orb({ vals, accent, fireRef }) {
+const LERP_KEYS = ["size", "decay", "pre", "damp", "width", "mix", "diff"];
+const easeTo = (cur, target, dt, speed) => cur + (target - cur) * Math.min(1, dt * speed);
+
+function Orb({ vals, palette, accent, fireRef }) {
   const cvs = useRef(null);
-  const st = useRef({ t: 0, last: 0, flash: 0, motes: null });
+  const st = useRef({ t: 0, last: 0, flash: 0, motes: null, sm: null, pal: null });
   const vref = useRef(vals); vref.current = vals;
+  const pref = useRef(palette); pref.current = palette;
+
   useEffect(() => {
     const c = cvs.current, ctx = c.getContext("2d");
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -399,23 +431,62 @@ function Orb({ vals, accent, fireRef }) {
     const W = rect.width, H = rect.height;
     const S = st.current;
     if (!S.motes) S.motes = Array.from({ length: 70 }, () => ({ x: Math.random(), y: Math.random(), p: Math.random() * 6.28 }));
+    if (!S.sm) { S.sm = {}; for (const k of LERP_KEYS) S.sm[k] = vref.current[k] ?? .5; }
+    const base = pref.current || { h: 268, dh: 75, s: 48, l: 74, core: "#eee8ff", rim: "#1d1a38" };
+    if (!S.pal) S.pal = { h: base.h, dh: base.dh ?? 0, s: base.s ?? 48, l: base.l ?? 74, h2: base.h2 ?? base.h,
+                          multi: base.multi ? 1 : 0 };
     fireRef.current = () => { S.flash = 1; };
+
+    /* Melanger deux teintes en DEGRES fait traverser le cercle chromatique a
+       l'envers : 30 (orange) et 268 (violet) donnent 149, un vert. On melange
+       donc en RVB — c'est ce qui donne un vrai cocktail et non un vert. */
+    const toRgb = (h, sat, lig) => {
+      const a = sat / 100 * Math.min(lig / 100, 1 - lig / 100);
+      const f = (n) => {
+        const k = (n + h / 30) % 12;
+        return Math.round(255 * (lig / 100 - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))));
+      };
+      return [f(0), f(8), f(4)];
+    };
+    const mix = (c1, c2, u, alpha) => {
+      const r = Math.round(c1[0] + (c2[0] - c1[0]) * u);
+      const g = Math.round(c1[1] + (c2[1] - c1[1]) * u);
+      const b = Math.round(c1[2] + (c2[2] - c1[2]) * u);
+      return `rgba(${r},${g},${b},${alpha})`;
+    };
+    const colAt = (u, alpha) => {
+      const p = S.pal;
+      const A = toRgb(p.h, p.s, p.l), B = toRgb(p.h2, p.s, p.l);
+      return mix(A, B, p.multi * u, alpha);
+    };
+
     let raf;
     const draw = (ts) => {
       const dt = Math.min(.05, (ts - S.last) / 1000 || .016);
       S.last = ts; S.t += dt;
-      const t = S.t, v = vref.current;
-      const sz = v.size ?? .62, dc = v.decay ?? .7, pd = v.pre ?? .2, dm = v.damp ?? .45,
-            wd = v.width ?? .8, mx = v.mix ?? .35, df = v.diff ?? .5;
-      const cx = W / 2, cy = H * .44;
-      const R = Math.min(W, H) * .155 * (.7 + sz * .8) * (1 + .03 * Math.sin(t * 2));
-      const hue = 268 - dm * 75;
-      const col = `hsl(${hue},48%,74%)`;
+      const t = S.t;
+
+      /* tout glisse vers sa cible : c'est ce qui rend le changement fluide */
+      const pv = vref.current, sm = S.sm;
+      for (const k of LERP_KEYS) sm[k] = easeTo(sm[k], pv[k] ?? sm[k], dt, 4.2);
+      const pt = pref.current || base, pp = S.pal;
+      pp.h = easeTo(pp.h, pt.h, dt, 3.0);
+      pp.dh = easeTo(pp.dh, pt.dh ?? 0, dt, 3.0);
+      pp.s = easeTo(pp.s, pt.s ?? 48, dt, 3.0);
+      pp.l = easeTo(pp.l, pt.l ?? 74, dt, 3.0);
+      pp.h2 = easeTo(pp.h2, pt.h2 ?? pt.h, dt, 3.0);
+      pp.multi = easeTo(pp.multi, pt.multi ? 1 : 0, dt, 2.6);
+
+      const sz = sm.size, dc = sm.decay, pd = sm.pre, wd = sm.width, mx = sm.mix, df = sm.diff;
+      const cx = W / 2, cy = H * .45;
+      /* la taille : bornee pour que les anneaux ne sortent JAMAIS de la case */
+      const R = Math.min(W * .135, H * .115) * (.78 + sz * .62) * (1 + .03 * Math.sin(t * 2));
+      const CORE = pt.core || "#eee8ff", RIM = pt.rim || "#1d1a38";
       ctx.clearRect(0, 0, W, H);
 
-      let g = ctx.createRadialGradient(cx, cy, R * .3, cx, cy, R * 4.5);
-      g.addColorStop(0, `hsla(${hue},45%,36%,${.2 + .5 * mx})`);
-      g.addColorStop(1, "#0000");
+      let g = ctx.createRadialGradient(cx, cy, R * .3, cx, cy, R * 4.2);
+      g.addColorStop(0, colAt(.4, .18 + .48 * mx));
+      g.addColorStop(1, "rgba(0,0,0,0)");
       ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
 
       for (const m of S.motes) {
@@ -423,51 +494,50 @@ function Orb({ vals, accent, fireRef }) {
         ctx.fillStyle = "#fff"; ctx.fillRect(m.x * W, m.y * H, 1.2, 1.2);
       }
 
-      /* les ondulations : la cadence suit Size, le silence suit Pre-delay */
       for (let w = 0; w < 3; w++) {
         const u = (t * (.12 + sz * .2) + w / 3) % 1;
         if (u < pd * .4) continue;
-        ctx.globalAlpha = (1 - u) * .4; ctx.strokeStyle = col; ctx.lineWidth = 1.6;
-        ctx.beginPath(); ctx.arc(cx, cy, R * (1.1 + u * 5), 0, 6.2832); ctx.stroke();
+        ctx.globalAlpha = (1 - u) * .4; ctx.strokeStyle = colAt(.15, 1); ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.arc(cx, cy, R * (1.1 + u * 4.2), 0, 6.2832); ctx.stroke();
       }
 
-      /* anneau A : arcs en tirets — Decay en fait la longueur, Width la précession */
       let rx = R * 1.75, ry = rx * (.3 + wd * .18), tl = -.35 + Math.sin(t * .25) * wd * .55;
-      ctx.globalAlpha = .3 + .5 * mx; ctx.strokeStyle = col; ctx.lineWidth = 2.2;
+      ctx.globalAlpha = .3 + .5 * mx; ctx.strokeStyle = colAt(.3, 1); ctx.lineWidth = 2.2;
       ctx.setLineDash([4 + dc * 36, 9]); ctx.lineDashOffset = -t * 30 * (.3 + wd);
       ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, tl, 0, 6.2832); ctx.stroke(); ctx.setLineDash([]);
 
-      /* anneau B : courant de particules — Diffuse en fait la turbulence */
       rx = R * 2.7; ry = rx * .36; tl = .25 + Math.cos(t * .2) * wd * .4;
       const N = 22 + Math.round(sz * 14), L = 3 + Math.round(dc * 6);
       for (let p = 0; p < N; p++) {
         const an = t * (.25 + wd * .9) + p * 6.2832 / N;
-        for (let s = 0; s < L; s++) {
-          const aa = an - s * .08 * (.4 + dc), wob = Math.sin(aa * 5 + t * 3) * df * R * .45;
+        for (let k = 0; k < L; k++) {
+          const aa = an - k * .08 * (.4 + dc), wob = Math.sin(aa * 5 + t * 3) * df * R * .45;
           const ca = Math.cos(aa), sa = Math.sin(aa);
           const X = (rx + wob) * ca, Y = (ry + wob * .4) * sa;
-          ctx.globalAlpha = (1 - s / L) * .85; ctx.fillStyle = s ? col : "#fff";
+          ctx.globalAlpha = (1 - k / L) * .85;
+          ctx.fillStyle = k ? colAt(p / N, 1) : "#fff";
           ctx.beginPath();
           ctx.arc(cx + X * Math.cos(tl) - Y * Math.sin(tl),
-                  cy + X * Math.sin(tl) + Y * Math.cos(tl), 2.1 * (1 - s / L * .5), 0, 6.2832);
+                  cy + X * Math.sin(tl) + Y * Math.cos(tl), 2.1 * (1 - k / L * .5), 0, 6.2832);
           ctx.fill();
         }
       }
 
-      /* anneau C : comètes à longue queue + échos de la queue de réverbération */
-      rx = Math.min(R * 3.7, W * .46); ry = rx * .3; tl = -.6 + Math.sin(t * .17) * wd * .3;
+      /* borne : les anneaux restent dans la case */
+      rx = Math.min(R * 3.7, W * .30); ry = rx * .30; tl = -.6 + Math.sin(t * .17) * wd * .3;
       for (let e = 0; e < 3; e++) {
-        ctx.globalAlpha = .05 + .25 * dc * (1 - e / 3); ctx.strokeStyle = col; ctx.lineWidth = 1;
+        ctx.globalAlpha = .05 + .25 * dc * (1 - e / 3); ctx.strokeStyle = colAt(.6, 1); ctx.lineWidth = 1;
         ctx.beginPath(); ctx.ellipse(cx, cy, rx * (1 + e * .06), ry * (1 + e * .06), tl, 0, 6.2832); ctx.stroke();
       }
-      for (let c2 = 0; c2 < 3; c2++) {
-        const an = -t * (.18 + wd * .6) + c2 * 2.094, T2 = 8 + Math.round(dc * 20);
-        for (let s = 0; s < T2; s++) {
-          const aa = an + s * .05, ca = Math.cos(aa), sa = Math.sin(aa);
-          ctx.globalAlpha = (1 - s / T2) * (.3 + .6 * mx); ctx.fillStyle = s ? col : "#fff";
+      for (let q = 0; q < 3; q++) {
+        const an = -t * (.18 + wd * .6) + q * 2.094, T2 = 8 + Math.round(dc * 20);
+        for (let k = 0; k < T2; k++) {
+          const aa = an + k * .05, ca = Math.cos(aa), sa = Math.sin(aa);
+          ctx.globalAlpha = (1 - k / T2) * (.3 + .6 * mx);
+          ctx.fillStyle = k ? colAt(q / 3, 1) : "#fff";
           ctx.beginPath();
           ctx.arc(cx + rx * ca * Math.cos(tl) - ry * sa * Math.sin(tl),
-                  cy + rx * ca * Math.sin(tl) + ry * sa * Math.cos(tl), 3 * (1 - s / T2 * .6), 0, 6.2832);
+                  cy + rx * ca * Math.sin(tl) + ry * sa * Math.cos(tl), 3 * (1 - k / T2 * .6), 0, 6.2832);
           ctx.fill();
         }
       }
@@ -478,10 +548,12 @@ function Orb({ vals, accent, fireRef }) {
         S.flash = Math.max(0, S.flash - dt * 1.8);
       }
 
-      /* la sphère */
+      /* la sphere : le coeur clair, la teinte au milieu, le bord sombre */
       ctx.globalAlpha = 1;
       g = ctx.createRadialGradient(cx - R * .35, cy - R * .4, R * .1, cx, cy, R);
-      g.addColorStop(0, "#eee8ff"); g.addColorStop(.35, accent); g.addColorStop(1, "#1d1a38");
+      g.addColorStop(0, CORE);
+      g.addColorStop(.38, colAt(.55, 1));
+      g.addColorStop(1, RIM);
       ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, R, 0, 6.2832); ctx.fill();
 
       ctx.save();
@@ -502,40 +574,42 @@ function Orb({ vals, accent, fireRef }) {
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [accent]);
+  }, []);
   return <canvas ref={cvs} style={{ width: "100%", height: "100%", display: "block" }} />;
 }
 
-/* ══ LA LISTE DE PRESETS : elle défile ═════════════════════════════════════ */
-function PresetRail({ fx, preset, custom, onPick }) {
+/* ══ LES PRESETS : une rangee horizontale, elle defile ═════════════════════ */
+function PresetRow({ fx, preset, custom, onPick }) {
   const names = Object.keys(fx.presets || {});
   return (
-    <div style={{ width: 148, flex: "none", display: "flex", flexDirection: "column", gap: 6, minHeight: 0 }}>
-      <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".15em", textTransform: "uppercase",
-                     color: MUTE, flex: "none" }}>Presets · {names.length}</span>
-      <div className="fxscroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex",
-                    flexDirection: "column", gap: 3, paddingRight: 3, ...well({ borderRadius: 10, padding: 4 }) }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: "none", minWidth: 0 }}>
+      <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".15em", textTransform: "uppercase", color: MUTE }}>
+        Presets · {names.length}
+      </span>
+      <div className="fxscroll" style={{ display: "flex", gap: 5, overflowX: "auto", overflowY: "hidden",
+                    paddingBottom: 5, paddingTop: 1 }}>
         {custom && (
-          <div style={{ height: 26, flex: "none", borderRadius: 7, display: "flex", alignItems: "center", gap: 7,
-                        padding: "0 9px", background: "rgba(242,201,125,.1)",
-                        border: "1px solid rgba(242,201,125,.3)" }}>
-            <span style={{ width: 4, height: 4, borderRadius: 2, background: "#F2C97D" }} />
-            <span style={{ fontSize: 11, fontWeight: 800, color: "#F2C97D" }}>Custom</span>
-          </div>
+          <span style={{ height: 27, flex: "none", borderRadius: 9, display: "flex", alignItems: "center", gap: 6,
+                         padding: "0 11px", background: "rgba(242,201,125,.12)",
+                         border: "1px solid rgba(242,201,125,.34)", fontSize: 11, fontWeight: 800,
+                         color: "#F2C97D" }}>
+            <span style={{ width: 4, height: 4, borderRadius: 2, background: "#F2C97D" }} />Custom
+          </span>
         )}
         {names.map((n, i) => {
-          const on = n === preset;
+          const on = n === preset && !custom;
           return (
             <button key={n} onClick={() => onPick(n)}
-                    style={{ height: 26, flex: "none", borderRadius: 7, cursor: "pointer", textAlign: "left",
-                             display: "flex", alignItems: "center", gap: 7, padding: "0 9px",
-                             fontFamily: FONT, fontSize: 11, fontWeight: on ? 800 : 600,
-                             background: on ? `linear-gradient(90deg,${hx(ACC, .2)},rgba(255,255,255,.02))` : "transparent",
-                             border: `1px solid ${on ? hx(ACC, .34) : "transparent"}`,
-                             color: on ? INK : "#96A0B4" }}>
-              <span style={{ width: 3, height: 12, borderRadius: 2, flex: "none",
+                    style={{ height: 27, flex: "none", borderRadius: 9, cursor: "pointer", padding: "0 11px",
+                             display: "flex", alignItems: "center", gap: 7, fontFamily: FONT,
+                             fontSize: 11, fontWeight: on ? 800 : 600, whiteSpace: "nowrap",
+                             background: on ? `linear-gradient(180deg,${hx(ACC, .22)},${hx(ACC, .08)})`
+                                            : "rgba(255,255,255,.04)",
+                             border: `1px solid ${on ? hx(ACC, .42) : LINE}`,
+                             color: on ? INK : "#96A0B4", transition: "all .18s" }}>
+              <span style={{ width: 3, height: 11, borderRadius: 2,
                              background: on ? ACC : "transparent" }} />
-              <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{n}</span>
+              {n}
               <span style={{ fontSize: 8.5, fontFamily: MONO, color: MUTE }}>{String(i + 1).padStart(2, "0")}</span>
             </button>
           );
@@ -548,89 +622,58 @@ function PresetRail({ fx, preset, custom, onPick }) {
 /* ══ LA CARTE ══════════════════════════════════════════════════════════════
    Elle occupe EXACTEMENT la place d'un logement : même hauteur, même largeur.
    ─────────────────────────────────────────────────────────────────────────── */
-function FxCard({ fx, midi, on, onToggle, onOpen, onRemove, onSwipe, height }) {
+function FxCard({ fx, midi, on, onToggle, onOpen, onRemove, height }) {
   const [hot, setHot] = useState(false);
-  const [dy, setDy] = useState(0);
-  const [swiping, setSwiping] = useState(false);
   const fireRef = useRef(() => {});
-  const drag = useRef(null);
   const vals = Object.fromEntries((fx.params || []).map(([, k, v]) => [k, v]));
+  const first = fx.presets ? Object.keys(fx.presets)[0] : null;
+  const pal = fx.palettes ? fx.palettes[first] : undefined;
   const ac = fx.accent || ACC;
-  const pct = clamp(-dy / 90, 0, 1);
   return (
-    <div style={{ position: "relative", flex: 1, minWidth: 0, height }}>
-      <div style={{ position: "absolute", inset: 0, borderRadius: 16, overflow: "hidden",
-                    background: `linear-gradient(180deg, ${hx("#FF3B5C", .1 + pct * .5)}, ${hx("#FF3B5C", .04 + pct * .34)})`,
-                    boxShadow: "inset 0 0 0 1px rgba(255,59,92,.28)",
-                    display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
-                      opacity: .45 + pct * .55, transform: `scale(${.9 + pct * .14})` }}>
-          <Ico d={P.trash} size={20} sw={2} style={{ color: "#FF7A90" }} />
-          <span style={{ fontSize: 8, fontWeight: 900, letterSpacing: ".16em", textTransform: "uppercase",
-                         color: "#FF7A90" }}>{pct > .82 ? "Release" : "Swipe up"}</span>
-        </div>
+    <div onClick={onOpen} onPointerEnter={() => setHot(true)} onPointerLeave={() => setHot(false)}
+         style={{ flex: 1, minWidth: 0, height, borderRadius: 16, padding: 10, cursor: "pointer",
+                  display: "flex", flexDirection: "column", gap: 7,
+                  transform: hot ? "translateY(-3px)" : "none",
+                  transition: "transform .18s cubic-bezier(.2,.9,.3,1)",
+                  background: `linear-gradient(180deg,${hot ? "#373E4C" : "#323845"},${hot ? "#252A37" : "#222733"})`,
+                  border: `1px solid ${LINE2}`,
+                  boxShadow: "0 8px 16px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.11)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+        <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".16em", textTransform: "uppercase",
+                       color: on ? ac : DIM, flex: 1, whiteSpace: "nowrap", overflow: "hidden",
+                       textOverflow: "ellipsis" }}>{fx.type}</span>
+        <button onClick={(e) => { e.stopPropagation(); onToggle(); }} title="Engage / Bypass"
+                style={{ width: 22, height: 22, borderRadius: 7, border: 0, cursor: "pointer", padding: 0,
+                         display: "grid", placeItems: "center", flex: "none",
+                         background: on ? `linear-gradient(180deg,${IN1},${IN2})` : "rgba(255,255,255,.07)",
+                         color: on ? IN_TEXT : MUTE }}>
+          <Ico d={P.power} size={12} sw={2.1} />
+        </button>
+        <button onClick={(e) => { e.stopPropagation(); onRemove(); }} title="Remove"
+                style={{ width: 22, height: 22, borderRadius: 7, border: 0, cursor: "pointer", padding: 0,
+                         display: "grid", placeItems: "center", flex: "none",
+                         background: "rgba(255,255,255,.05)", color: MUTE, opacity: hot ? 1 : 0,
+                         transition: "opacity .15s" }}>
+          <Ico d={P.trash} size={12} sw={1.9} />
+        </button>
       </div>
-      <div onClick={() => { if (!swiping && dy === 0) onOpen(); }}
-           onPointerEnter={() => setHot(true)} onPointerLeave={() => setHot(false)}
-           onPointerDown={(e) => { drag.current = { y: e.clientY, t: e.timeStamp }; setSwiping(false); }}
-           onPointerMove={(e) => {
-             if (!drag.current) return;
-             const d = e.clientY - drag.current.y;
-             if (d < 0) { setDy(d); setSwiping(true); e.currentTarget.setPointerCapture(e.pointerId); }
-             else if (d > 12) { drag.current = null; }
-           }}
-           onPointerUp={(e) => {
-             if (!drag.current) return;
-             const dt = Math.max(1, e.timeStamp - drag.current.t);
-             const flick = (-dy / dt) > .55;
-             drag.current = null;
-             if (-dy > 74 || flick) onSwipe();
-             else { setDy(0); setSwiping(false); }
-           }}
-           style={{ position: "absolute", inset: 0, borderRadius: 16, padding: 10, cursor: "pointer",
-                    display: "flex", flexDirection: "column", gap: 7,
-                    transform: `translateY(${dy}px) scale(${1 - pct * .04})`, opacity: 1 - pct * .55,
-                    transition: drag.current ? "none" : "transform .42s cubic-bezier(.16,1,.3,1), opacity .3s",
-                    background: `linear-gradient(180deg,${hot ? "#373E4C" : "#323845"},${hot ? "#252A37" : "#222733"})`,
-                    border: `1px solid ${LINE2}`,
-                    boxShadow: "0 8px 16px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.11)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".16em", textTransform: "uppercase",
-                         color: on ? ac : DIM, flex: 1, whiteSpace: "nowrap", overflow: "hidden",
-                         textOverflow: "ellipsis" }}>{fx.type}</span>
-          <button onClick={(e) => { e.stopPropagation(); onToggle(); }} title="Engage / Bypass"
-                  style={{ width: 20, height: 20, borderRadius: 6, border: 0, cursor: "pointer",
-                           display: "grid", placeItems: "center", flex: "none",
-                           background: on ? `linear-gradient(180deg,${IN1},${IN2})` : "rgba(255,255,255,.07)",
-                           color: on ? IN_TEXT : MUTE }}>
-            <Ico d={P.power} size={11} sw={2.4} />
-          </button>
-          <button onClick={(e) => { e.stopPropagation(); onRemove(); }} title="Remove"
-                  style={{ width: 20, height: 20, borderRadius: 6, border: 0, cursor: "pointer",
-                           display: "grid", placeItems: "center", flex: "none",
-                           background: "rgba(255,255,255,.05)", color: MUTE, opacity: hot ? 1 : 0,
-                           transition: "opacity .15s" }}>
-            <Ico d={P.trash} size={11} />
-          </button>
-        </div>
-        <div style={{ fontSize: 18, lineHeight: 1.05, fontWeight: 700, color: on ? INK : "#98A1B4",
-                      whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fx.name}</div>
-        <div style={{ flex: 1, minHeight: 0, borderRadius: 11, overflow: "hidden", position: "relative",
-                      background: "#12161F", boxShadow: "inset 0 2px 7px rgba(0,0,0,.7), inset 0 0 0 1px rgba(255,255,255,.04)" }}>
-          {fx.space
-            ? <Orb vals={vals} accent={ac} fireRef={fireRef} />
-            : midi ? <MiniSteps accent={ac} on={on} /> : <MiniGraph type={fx.type} accent={ac} on={on} />}
-          {!on && <div style={{ position: "absolute", inset: 0, background: "rgba(10,13,20,.6)" }} />}
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 9, fontWeight: 700,
-                      color: DIM, flex: "none" }}>
-          <span style={{ width: 8, height: 8, borderRadius: 4, flex: "none",
-                         background: on ? "#C9D2E6" : "#2A3040",
-                         boxShadow: on ? "0 0 7px rgba(201,210,230,.6)" : "inset 0 1px 2px rgba(0,0,0,.8)" }} />
-          <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {midi ? "MIDI effect" : (fx.presets ? Object.keys(fx.presets)[0] : fx.type)}
-          </span>
-        </div>
+      <div style={{ fontSize: 18, lineHeight: 1.05, fontWeight: 700, color: on ? INK : "#98A1B4",
+                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fx.name}</div>
+      <div style={{ flex: 1, minHeight: 0, borderRadius: 11, overflow: "hidden", position: "relative",
+                    background: "#12161F", boxShadow: "inset 0 2px 7px rgba(0,0,0,.7), inset 0 0 0 1px rgba(255,255,255,.04)" }}>
+        {fx.space
+          ? <Orb vals={vals} palette={pal} accent={ac} fireRef={fireRef} />
+          : midi ? <MiniSteps accent={ac} on={on} /> : <MiniGraph type={fx.type} accent={ac} on={on} />}
+        {!on && <div style={{ position: "absolute", inset: 0, background: "rgba(10,13,20,.6)" }} />}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 9, fontWeight: 700,
+                    color: DIM, flex: "none" }}>
+        <span style={{ width: 8, height: 8, borderRadius: 4, flex: "none",
+                       background: on ? "#C9D2E6" : "#2A3040",
+                       boxShadow: on ? "0 0 7px rgba(201,210,230,.6)" : "inset 0 1px 2px rgba(0,0,0,.8)" }} />
+        <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {midi ? "MIDI effect" : (first || fx.type)}
+        </span>
       </div>
     </div>
   );
@@ -772,54 +815,63 @@ function FxPanel({ fx, vals, setVal, preset, custom, onPick, on, onToggle }) {
   const fireRef = useRef(() => {});
   const get = (k) => vals[k] ?? .5;
   const knobs = fx.params.slice(0, 4);
-  const faders = fx.params.slice(4);
-  const hue = 268 - get("damp") * 75;
+  const sliders = fx.params.slice(4);
+  const names = fx.presets ? Object.keys(fx.presets) : [];
+  const pal = fx.palettes ? (fx.palettes[preset] || fx.palettes[names[0]]) : undefined;
   return (
-    <div style={{ display: "flex", gap: 12, height: "100%", minHeight: 0 }}>
-      <PresetRail fx={fx} preset={preset} custom={custom} onPick={onPick} />
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, height: "100%", minHeight: 0 }}>
+      <PresetRow fx={fx} preset={preset} custom={custom} onPick={onPick} />
 
-      <div onClick={() => fireRef.current()}
-           style={{ flex: "1 1 auto", minWidth: 0, position: "relative", borderRadius: 15, overflow: "hidden",
-                    cursor: fx.space ? "crosshair" : "default", ...well({ borderRadius: 15 }) }}>
-        {fx.space
-          ? <Orb vals={vals} accent={fx.accent} fireRef={fireRef} />
-          : <div style={{ height: "100%", display: "grid", placeItems: "center" }}>
-              <div style={{ width: "62%", height: "58%" }}><MiniGraph type={fx.type} accent={fx.accent} on /></div>
-            </div>}
-        <div style={{ position: "absolute", left: 11, top: 9, display: "flex", alignItems: "center", gap: 7,
-                      padding: "4px 9px", borderRadius: 8, background: "rgba(10,14,26,.55)",
-                      border: `1px solid ${LINE2}`, backdropFilter: "blur(6px)", pointerEvents: "none" }}>
-          <span style={{ width: 5, height: 5, borderRadius: 3, background: `hsl(${hue},48%,74%)`,
-                         boxShadow: `0 0 7px hsl(${hue},48%,74%)` }} />
-          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".09em", textTransform: "uppercase",
-                         color: "#C6CEE8" }}>{custom ? "Custom" : preset}</span>
-          <span style={{ fontSize: 10, fontFamily: MONO, color: MUTE }}>{(.4 + get("decay") * 7.6).toFixed(1)} s</span>
+      <div style={{ flex: 1, minHeight: 0, display: "flex", gap: 12 }}>
+        <div onClick={() => fireRef.current()}
+             style={{ flex: "1 1 auto", minWidth: 0, position: "relative", borderRadius: 15, overflow: "hidden",
+                      cursor: fx.space ? "crosshair" : "default", ...well({ borderRadius: 15 }) }}>
+          {fx.space
+            ? <Orb vals={vals} palette={pal} accent={fx.accent} fireRef={fireRef} />
+            : <div style={{ height: "100%", display: "grid", placeItems: "center" }}>
+                <div style={{ width: "58%", height: "54%" }}>
+                  <MiniGraph type={fx.type} accent={fx.accent} on />
+                </div>
+              </div>}
+          <div style={{ position: "absolute", left: 11, top: 9, display: "flex", alignItems: "center", gap: 7,
+                        padding: "4px 9px", borderRadius: 8, background: "rgba(10,14,26,.55)",
+                        border: `1px solid ${LINE2}`, backdropFilter: "blur(6px)", pointerEvents: "none" }}>
+            <span style={{ width: 5, height: 5, borderRadius: 3,
+                           background: `hsl(${(pal && pal.h) || 268},${(pal && pal.s) || 48}%,${(pal && pal.l) || 74}%)`,
+                           boxShadow: `0 0 7px hsl(${(pal && pal.h) || 268},${(pal && pal.s) || 48}%,${(pal && pal.l) || 74}%)` }} />
+            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".09em", textTransform: "uppercase",
+                           color: "#C6CEE8" }}>{custom ? "Custom" : preset}</span>
+            {fx.space && <span style={{ fontSize: 10, fontFamily: MONO, color: MUTE }}>
+              {(.4 + get("decay") * 7.6).toFixed(1)} s</span>}
+          </div>
+          {fx.space && (
+            <div style={{ position: "absolute", left: 11, bottom: 8, fontSize: 8.5, fontWeight: 800,
+                          letterSpacing: ".1em", textTransform: "uppercase", color: MUTE, pointerEvents: "none" }}>
+              Touch the orb to re-fire
+            </div>
+          )}
+          {!on && <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center",
+                                background: "rgba(9,12,22,.66)", fontSize: 12, fontWeight: 800,
+                                letterSpacing: ".2em", color: MUTE, textTransform: "uppercase" }}>Bypassed</div>}
         </div>
-        <div style={{ position: "absolute", left: 11, bottom: 8, fontSize: 8.5, fontWeight: 800,
-                      letterSpacing: ".1em", textTransform: "uppercase", color: MUTE, pointerEvents: "none" }}>
-          Touch the orb to re-fire
-        </div>
-        {!on && <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center",
-                              background: "rgba(9,12,22,.66)", fontSize: 12, fontWeight: 800,
-                              letterSpacing: ".2em", color: MUTE, textTransform: "uppercase" }}>Bypassed</div>}
-      </div>
 
-      <div style={{ width: 244, flex: "none", display: "flex", flexDirection: "column", gap: 8, minHeight: 0 }}>
-        <div style={{ height: 100, flex: "none", display: "flex", alignItems: "center",
-                      justifyContent: "space-around", ...well({ borderRadius: 13 }) }}>
-          {knobs.map(([n, k, def, mn, mx, u]) => (
-            <Knob key={k} label={n} value={get(k)} accent={fx.accent} size={46}
-                  onChange={(v) => setVal(k, v)} onReset={() => setVal(k, def)}
-                  display={fmt(get(k), mn, mx, u)} />
-          ))}
-        </div>
-        <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "flex-start",
-                      justifyContent: "space-around", paddingTop: 8, ...well({ borderRadius: 13 }) }}>
-          {faders.map(([n, k, def, mn, mx, u]) => (
-            <Fader key={k} label={n} value={get(k)} accent={fx.accent}
-                   onChange={(v) => setVal(k, v)} onReset={() => setVal(k, def)}
-                   display={fmt(get(k), mn, mx, u)} />
-          ))}
+        <div style={{ width: 268, flex: "none", display: "flex", flexDirection: "column", gap: 8, minHeight: 0 }}>
+          <div style={{ height: 94, flex: "none", display: "flex", alignItems: "center",
+                        justifyContent: "space-around", ...well({ borderRadius: 13 }) }}>
+            {knobs.map(([n, k, def, mn, mx, u]) => (
+              <Knob key={k} label={n} value={get(k)} accent={fx.accent} size={44}
+                    onChange={(v) => setVal(k, v)} onReset={() => setVal(k, def)}
+                    display={fmt(get(k), mn, mx, u)} />
+            ))}
+          </div>
+          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
+                        justifyContent: "space-evenly", padding: "8px 12px", ...well({ borderRadius: 13 }) }}>
+            {sliders.map(([n, k, def, mn, mx, u]) => (
+              <HSlider key={k} label={n} value={get(k)} accent={fx.accent}
+                       onChange={(v) => setVal(k, v)} onReset={() => setVal(k, def)}
+                       display={fmt(get(k), mn, mx, u)} />
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -919,7 +971,7 @@ function FxWindow() {
 
   const setVal = (k, v) => {
     setVals((s) => ({ ...s, [k]: v }));
-    if (!custom) { setCustom(true); setPreset("Custom"); }
+    if (!custom) setCustom(true);      // on garde le preset choisi : sa palette reste
   };
   const applyPreset = (n) => {
     const row = AUDIO[0].presets[n];
@@ -981,7 +1033,6 @@ function FxWindow() {
                 ? <FxCard key={a.fx.id} fx={a.fx} height={BODY_H} on={a.on}
                           onToggle={() => setAudio((s) => s.map((x, k) => k === i ? { ...x, on: !x.on } : x))}
                           onOpen={() => setView({ k: "effect", fx: a.fx })}
-                          onSwipe={() => setAudio((s) => s.filter((_, k) => k !== i))}
                           onRemove={() => setAudio((s) => s.filter((_, k) => k !== i))} />
                 : <EmptySlot key={"e" + i} height={BODY_H} label="Audio"
                              onAdd={() => setView({ k: "catalog", kind: "audio" })} />;
@@ -990,7 +1041,6 @@ function FxWindow() {
               ? <FxCard fx={midi.fx} midi height={BODY_H} on={midi.on}
                         onToggle={() => setMidi((m) => ({ ...m, on: !m.on }))}
                         onOpen={() => setView({ k: "effect", fx: midi.fx })}
-                        onSwipe={() => setMidi({ fx: null, on: true })}
                         onRemove={() => setMidi({ fx: null, on: true })} />
               : <EmptySlot height={BODY_H} label="MIDI" onAdd={() => setView({ k: "catalog", kind: "midi" })} />}
           </div>
@@ -1039,8 +1089,8 @@ export default function FxWindowPreview() {
         </div>
       </div>
       <div style={{ fontSize: 11.5, color: "#5B6580", textAlign: "center", maxWidth: 840, lineHeight: 1.65 }}>
-        Æther FX — 891 × 411. L'orbe est celui de l'app, porté tel quel : il change de couleur avec Damp.
-        Presets défilants à gauche, potards en haut, faders en bas. Glisser une carte vers le haut la supprime.
+        Æther FX — 891 × 411. L'orbe est celui de l'app ; chaque preset porte sa palette, et tout glisse
+        au changement. Presets en haut, potards et sliders à droite, orbe au centre.
       </div>
     </div>
   );
