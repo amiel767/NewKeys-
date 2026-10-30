@@ -2016,3 +2016,40 @@ suivant. Regles :
 - Une commande par etape, pas trois. Pas de `ls -la` repete.
 - Les gros artefacts (JSON de mesure, packs) s ecrivent sur disque et se
   consultent par agregats, pas en entier dans le terminal.
+
+## Session 2026-10-30 — pack piano : trois bugs silencieux + demo refrain
+
+Le pack piano etait **committe illisible**. Trois defauts, tous invisibles au test
+unitaire et au build, trouves en ecrivant le generateur de demo (`demo_piano.cpp`).
+
+1. **`build.py` n'ecrivait que le blob ADPCM.** `fx_piano.h::load()` exige
+   l'en-tete `PIAP` (28 o) + une fiche de 24 o par region + la charge utile.
+   Le fichier committe commencait par les donnees : `load()` renvoyait `false`,
+   l'instrument etait muet. Corrige : `build.py` assemble le conteneur.
+2. **Le champ `frames` valait `bytes // 2`.** 1 octet ADPCM = 2 nibbles =
+   2 echantillons = **1 frame stereo** : c'etait la moitie de la region. Le champ
+   correct est `n` (frames du JSON).
+3. **`pick()` mappait la velocite sur 4 couches** (`velocity * 4 / 128`,
+   `min(3, ...)`) alors que la banque en a **5** (`PP, Mp, Mf, MF, FF`) :
+   la couche la plus forte n'etait **jamais** jouee. Corrige en `* 5 / 128`,
+   `min(4, ...)`.
+
+**Garde-fou** : `PianoPackFormatTest` parse l'asset reel (magic, 196 regions,
+fiches `count*24`, `offset + frames <= pcmLen`, 5 couches presentes, etendue de
+hauteur). Verifier le pack par le moteur, pas par Gradle : les trois bugs
+passaient `assembleDebug`.
+
+### Demo : `tools/aetherfx/demo_piano.cpp`
+
+Joue le refrain publie de *Can You Feel The Love Tonight* sur les 9 presets
+d'affilee (basse tenue sous chaque phrase). `demo_encode.py` mesure et encode en
+MP3, `reduce.py` reduit une capture de moitie.
+
+**Piege de mesure** : le centroide spectral brut vaut ~5,5 kHz pour les 9 presets,
+ce qui ferait conclure a un timbre identique. C'est le **bruit de quantification
+ADPCM** qui domine. Mesurer la **fraction d'energie > 5 kHz sur le sustain**
+(fenetre apres 0,3 s : l'attaque est large bande et identique partout).
+
+Resultat de cette mesure : 8 presets sur 9 dans 4,7-5,3 %, **Studio seul a 0,1 %**
+— et il sature (crete 1,75, 46 393 echantillons ecretes). Les presets ne sont donc
+pas assez differencies et le gain de Studio est trop haut. **A revoir.**
