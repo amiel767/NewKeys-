@@ -1762,3 +1762,27 @@ Cette conversation est **dediee aux designs de test** : les prototypes vivent su
 des branches isolees, jamais sur `main`. `main` reste la branche de la conversation
 parallele `9c93aa402a634cdfa4a1fbf759935777` (Æther Piano). Veille : `conv_sync.py`
 avec `--conv 9c93aa402a634cdfa4a1fbf759935777`.
+
+Harness : `tools/design/preview.py` (`serve <dir> [port]` / `shot <url> <out.png>`),
+rendu JSX : `node tools/jsxref/render.mjs` (ajouter le preview a `PREVIEWS`).
+
+### FxModes — nouvelle fenetre FX (analyse, 2026-10-30)
+
+Sources recues via un partage DeepSeek (`r.jina.ai` renvoie le markdown ; le lien
+direct est bloque par CloudFront) : `app/assets/FxModesPreview.jsx` (47,7 Ko) et
+`app/assets/FxModes.kt` (68,7 Ko). Rendu : `tools/jsxref/out/fxmodes.png`.
+
+Conception : **un** emplacement MIDI par piste (Arpeggiator / Octave Up / Easy
+Chord / Sequencer / Chord Sequencer) + jusqu'a **3** effets audio. Les **16 pas
+sont toujours visibles** — le nombre de pas ne fait qu'allumer les N premiers, le
+reste reste grise. Les notes se saisissent **par le clavier de l'app**
+(`FxController.onKeyPlayed(note)`), pas par un mini-clavier dans l'editeur. Le
+**Swing est global** (barre du mixer), pas duplique dans la fenetre.
+
+**Piege a corriger avant tout import** : le fichier declare
+`class FxController` dans le package `com.soundstage.mixer.fx` — **le meme** que le
+`FxController(strip: Int)` existant. C'est une collision de compilation, pas un
+avertissement. Renommer (p. ex. `FxModesController`). `enum class Quality` existe
+aussi (`com.aetherkeys.sheets.model`) mais dans un autre package. `object FM`
+redouble `AppColors` : decider si le design reste autonome ou s'aligne sur le chrome
+de l'app. Aucun codec de persistance (le depot a deja `FxPersistence.kt`).
