@@ -688,70 +688,145 @@ function PresetRow({ fx, preset, custom, onPick }) {
 /* ══ LA CARTE ══════════════════════════════════════════════════════════════
    Elle occupe EXACTEMENT la place d'un logement : même hauteur, même largeur.
    ─────────────────────────────────────────────────────────────────────────── */
+/* ══ LA CORBEILLE, COUVERCLE OUVERT ════════════════════════════════════════
+   Le couvercle tourne autour de sa charniere (a droite) et s'ouvre a mesure
+   qu'on tire. `open` va de 0 (ferme) a 1 (grand ouvert).
+   ─────────────────────────────────────────────────────────────────────────── */
+function TrashCan({ open, armed, size = 44 }) {
+  const col = armed ? "#FF8095" : "#98A2B6";
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none"
+         style={{ display: "block", overflow: "visible" }}>
+      <path d="M12.4 17h23.2l-2.3 21.4a3.2 3.2 0 0 1-3.2 2.9H17.9a3.2 3.2 0 0 1-3.2-2.9z"
+            fill={armed ? "rgba(255,128,149,.18)" : "rgba(255,255,255,.05)"}
+            stroke={col} strokeWidth="2.3" strokeLinejoin="round" />
+      <path d="M19.4 23.6v12.6M24 23.6v12.6M28.6 23.6v12.6" stroke={col} strokeWidth="1.7"
+            strokeLinecap="round" opacity=".5" />
+      <g style={{ transformBox: "view-box", transformOrigin: "37px 15px",
+                  transform: `rotate(${-open * 62}deg)`, transition: "transform .1s linear" }}>
+        <path d="M8.4 15h31.2" stroke={col} strokeWidth="2.7" strokeLinecap="round" />
+        <path d="M19.6 15v-3.3a2.2 2.2 0 0 1 2.2-2.2h4.4a2.2 2.2 0 0 1 2.2 2.2V15"
+              stroke={col} strokeWidth="2.3" strokeLinejoin="round" />
+      </g>
+    </svg>
+  );
+}
+
+/* ══ LA CARTE ══════════════════════════════════════════════════════════════
+   Elle occupe EXACTEMENT la place d'un logement : meme largeur, meme hauteur.
+   Pour supprimer : on glisse vers le BAS. La carte descend en suivant le doigt,
+   decouvre une corbeille dont le couvercle s'ouvre, et au relachement — si le
+   geste a depasse 92 px ou s'il est vif — la carte sort par le bas.
+   ─────────────────────────────────────────────────────────────────────────── */
 function FxCard({ fx, midi, on, onToggle, onOpen, onRemove, height }) {
   const [hot, setHot] = useState(false);
+  const [dy, setDy] = useState(0);
+  const [leaving, setLeaving] = useState(false);
+  const drag = useRef(null);
+  const moved = useRef(false);
   const fireRef = useRef(() => {});
   const vals = Object.fromEntries((fx.params || []).map(([, k, v]) => [k, v]));
   const first = fx.presets ? Object.keys(fx.presets)[0] : null;
   const pal = fx.palettes ? fx.palettes[first] : undefined;
   const ac = fx.accent || ACC;
+
+  const prog = clamp(dy / 118, 0, 1);
+  const armed = prog > .6;
+
+  const down = (e) => { drag.current = { y: e.clientY, t: e.timeStamp }; moved.current = false; setHot(true); };
+  const move = (e) => {
+    if (!drag.current || leaving) return;
+    const d = e.clientY - drag.current.y;
+    if (d > 2) {
+      moved.current = true; setDy(d);
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
+    } else if (d < -10) { drag.current = null; setDy(0); }
+  };
+  const up = (e) => {
+    if (!drag.current) return;
+    const dt = Math.max(1, e.timeStamp - drag.current.t);
+    const v = dy / dt;                       // pixels par milliseconde, vers le bas
+    drag.current = null;
+    if (dy > 92 || v > .5) {
+      setLeaving(true);
+      setTimeout(onRemove, 320);
+    } else setDy(0);
+  };
+
   return (
-    <div onClick={onOpen} onPointerEnter={() => setHot(true)} onPointerLeave={() => setHot(false)}
-         style={{ flex: "0 0 calc((100% - 30px) / 4)", minWidth: 0, height, borderRadius: 16, padding: 10,
-                  overflow: "hidden", cursor: "pointer",
-                  display: "flex", flexDirection: "column", gap: 7,
-                  transform: hot ? "translateY(-3px)" : "none",
-                  transition: "transform .18s cubic-bezier(.2,.9,.3,1)",
-                  background: `linear-gradient(180deg,${hot ? "#373E4C" : "#323845"},${hot ? "#252A37" : "#222733"})`,
-                  border: `1px solid ${LINE2}`,
-                  boxShadow: "0 8px 16px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.11)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-        <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".16em", textTransform: "uppercase",
-                       color: on ? ac : DIM, flex: 1, whiteSpace: "nowrap", overflow: "hidden",
-                       textOverflow: "ellipsis" }}>{fx.type}</span>
-        <button onClick={(e) => { e.stopPropagation(); onToggle(); }} title="Engage / Bypass"
-                style={{ width: 22, height: 22, borderRadius: 7, cursor: "pointer", padding: 0,
-                         display: "grid", placeItems: "center", flex: "none",
-                         background: on ? `linear-gradient(180deg,${IN1},${IN2})`
-                                        : "linear-gradient(180deg,#343B4C,#232837)",
-                         border: `1px solid ${on ? "transparent" : "rgba(255,255,255,.14)"}`,
-                         boxShadow: on ? "0 0 8px rgba(199,217,249,.35)"
-                                       : "inset 0 1px 0 rgba(255,255,255,.12), 0 2px 4px rgba(0,0,0,.4)",
-                         color: on ? IN_TEXT : "#8E97AC" }}>
-          <Ico d={P.power} size={12} sw={2.1} />
-        </button>
-        <button onClick={(e) => { e.stopPropagation(); onRemove(); }} title="Remove"
-                style={{ width: 22, height: 22, borderRadius: 7, cursor: "pointer", padding: 0,
-                         display: "grid", placeItems: "center", flex: "none",
-                         background: "linear-gradient(180deg,#3A4152,#272C3B)",
-                         border: "1px solid rgba(255,255,255,.16)",
-                         boxShadow: "inset 0 1px 0 rgba(255,255,255,.14), 0 2px 4px rgba(0,0,0,.4)",
-                         color: "#C4CBDA", transition: "background .15s, color .15s" }}
-                onPointerEnter={(e) => { e.currentTarget.style.background = "linear-gradient(180deg,#5A2A38,#3A1B25)";
-                                          e.currentTarget.style.color = "#FF8FA3"; }}
-                onPointerLeave={(e) => { e.currentTarget.style.background = "linear-gradient(180deg,#3A4152,#272C3B)";
-                                          e.currentTarget.style.color = "#AEB7C8"; }}>
-          <Ico d={P.trash} size={12} sw={1.9} />
-        </button>
-      </div>
-      <div style={{ fontSize: 18, lineHeight: 1.05, fontWeight: 700, color: on ? INK : "#98A1B4",
-                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fx.name}</div>
-      <div style={{ flex: 1, minHeight: 0, minWidth: 0, borderRadius: 11, overflow: "hidden",
-                    position: "relative",
-                    background: "#12161F", boxShadow: "inset 0 2px 7px rgba(0,0,0,.7), inset 0 0 0 1px rgba(255,255,255,.04)" }}>
-        {fx.space
-          ? <Orb vals={vals} palette={pal} accent={ac} fireRef={fireRef} />
-          : midi ? <MiniSteps accent={ac} on={on} /> : <MiniGraph type={fx.type} accent={ac} on={on} />}
-        {!on && <div style={{ position: "absolute", inset: 0, background: "rgba(10,13,20,.6)" }} />}
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 9, fontWeight: 700,
-                    color: DIM, flex: "none" }}>
-        <span style={{ width: 8, height: 8, borderRadius: 4, flex: "none",
-                       background: on ? "#C9D2E6" : "#2A3040",
-                       boxShadow: on ? "0 0 7px rgba(201,210,230,.6)" : "inset 0 1px 2px rgba(0,0,0,.8)" }} />
-        <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {midi ? "MIDI effect" : (first || fx.type)}
+    <div style={{ flex: "0 0 calc((100% - 30px) / 4)", minWidth: 0, height, position: "relative",
+                  borderRadius: 16, overflow: "hidden" }}>
+      {/* la corbeille, revelee par le haut. Elle descend un peu, en suivant le
+          doigt, et son couvercle s'ouvre avec la progression. */}
+      <div style={{ position: "absolute", left: 0, right: 0, top: 0, height: 150,
+                    display: "flex", flexDirection: "column", alignItems: "center",
+                    justifyContent: "flex-start", paddingTop: 14, gap: 7, pointerEvents: "none",
+                    opacity: prog, transform: `translateY(${prog * 10}px)`,
+                    background: `linear-gradient(180deg, ${hx("#FF3B5C", .16 + prog * .3)}, transparent)` }}>
+        <TrashCan open={prog} armed={armed} />
+        <span style={{ fontSize: 8, fontWeight: 900, letterSpacing: ".16em", textTransform: "uppercase",
+                       color: armed ? "#FF8095" : "#7C869C" }}>
+          {armed ? "Release to delete" : "Swipe down"}
         </span>
+      </div>
+
+      <div onClick={() => { if (!moved.current && dy === 0 && !leaving) onOpen(); }}
+           onPointerEnter={() => setHot(true)} onPointerLeave={() => setHot(false)}
+           onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
+           style={{ position: "absolute", inset: 0, borderRadius: 16, padding: 10, cursor: "pointer",
+                    display: "flex", flexDirection: "column", gap: 7, touchAction: "pan-x",
+                    transform: leaving ? `translateY(${height + 30}px) scale(.94)`
+                                       : `translateY(${dy}px) scale(${1 - prog * .03})`,
+                    opacity: leaving ? 0 : 1 - prog * .18,
+                    transition: drag.current ? "none"
+                              : leaving ? "transform .3s cubic-bezier(.4,0,.7,.3), opacity .3s"
+                                        : "transform .42s cubic-bezier(.16,1,.3,1), opacity .3s",
+                    background: `linear-gradient(180deg,${hot ? "#373E4C" : "#323845"},${hot ? "#252A37" : "#222733"})`,
+                    border: `1px solid ${LINE2}`,
+                    boxShadow: `0 ${8 + prog * 10}px ${16 + prog * 14}px rgba(0,0,0,${.5 + prog * .2}),
+                                inset 0 1px 0 rgba(255,255,255,.11)` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".16em", textTransform: "uppercase",
+                         color: on ? ac : DIM, flex: 1, whiteSpace: "nowrap", overflow: "hidden",
+                         textOverflow: "ellipsis" }}>{fx.type}</span>
+          {/* LE BOUTON ENGAGE : creuse dans la matiere. Eteint, c'est un puits —
+              ombre en haut, lumiere en bas, glyphe en retrait. Allume, le puits
+              s'eclaire et le glyphe ressort. */}
+          <button onClick={(e) => { e.stopPropagation(); onToggle(); }} title="Engage / Bypass"
+                  style={{ width: 24, height: 24, borderRadius: 8, cursor: "pointer", padding: 0,
+                           display: "grid", placeItems: "center", flex: "none",
+                           background: on ? `linear-gradient(180deg,${hx(ac, .34)},${hx(ac, .1)})`
+                                          : "linear-gradient(180deg,#1B2130,#232A3A)",
+                           border: "none",
+                           boxShadow: on
+                             ? `inset 0 2px 5px rgba(0,0,0,.6), inset 0 -1px 0 rgba(255,255,255,.16),
+                                0 0 10px ${hx(ac, .3)}`
+                             : `inset 0 2px 5px rgba(0,0,0,.72), inset 0 -1px 0 rgba(255,255,255,.1),
+                                0 1px 0 rgba(255,255,255,.05)`,
+                           color: on ? ac : "#6B7488",
+                           textShadow: on ? `0 0 8px ${hx(ac, .7)}` : "0 1px 0 rgba(0,0,0,.5)" }}>
+            <Ico d={P.power} size={13} sw={2.2} />
+          </button>
+        </div>
+        <div style={{ fontSize: 18, lineHeight: 1.05, fontWeight: 700, color: on ? INK : "#98A1B4",
+                      whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fx.name}</div>
+        <div style={{ flex: 1, minHeight: 0, minWidth: 0, borderRadius: 11, overflow: "hidden",
+                      position: "relative",
+                      background: "#12161F", boxShadow: "inset 0 2px 7px rgba(0,0,0,.7), inset 0 0 0 1px rgba(255,255,255,.04)" }}>
+          {fx.space
+            ? <Orb vals={vals} palette={pal} accent={ac} fireRef={fireRef} />
+            : midi ? <MiniSteps accent={ac} on={on} /> : <MiniGraph type={fx.type} accent={ac} on={on} />}
+          {!on && <div style={{ position: "absolute", inset: 0, background: "rgba(10,13,20,.6)" }} />}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 9, fontWeight: 700,
+                      color: DIM, flex: "none" }}>
+          <span style={{ width: 8, height: 8, borderRadius: 4, flex: "none",
+                         background: on ? "#C9D2E6" : "#2A3040",
+                         boxShadow: on ? "0 0 7px rgba(201,210,230,.6)" : "inset 0 1px 2px rgba(0,0,0,.8)" }} />
+          <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {midi ? "MIDI effect" : (first || fx.type)}
+          </span>
+        </div>
       </div>
     </div>
   );
