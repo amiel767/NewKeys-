@@ -414,27 +414,48 @@ function Stepper({ value, min, max, onChange, label }) {
    TAILLE DE POLICE est calculee : on connait la largeur disponible et le
    libelle le plus long, donc on choisit la plus grande taille qui tient.
    ─────────────────────────────────────────────────────────────────────────── */
-function Seg({ options, value, onChange, height = 34, grow = false, width, fs }) {
+/* ══ LE TOGGLE SEGMENTE ════════════════════════════════════════════════════
+   Porte de `SegmentedToggle` de l'app
+   (`com.aetherkeys.sheets.ui.components.Components.kt:91`) : conteneur arrondi
+   12, fond `#CC0F141D`, bordure 1 px blanc a 8 %, padding 3 ; pouce arrondi 9
+   en degrade `#38445E -> #2B3650` deplace par un ressort ; libelles 12 sp bold
+   (`#F1F4FA` actif, `Mute` inactif).
+   `iconOnly` n'affiche que le schema, sans mot : c'est ce qu'on veut pour les
+   modes, ou le dessin dit tout. La taille de police est calculee d'apres la
+   largeur disponible et le libelle le plus long.
+   ─────────────────────────────────────────────────────────────────────────── */
+function Segmented({ options, value, onChange, height = 34, grow = false, width, fs, iconOnly = false }) {
+  const count = Math.max(1, options.length);
   const longest = Math.max(1, ...options.map(([, l]) => (l || "").length));
-  // largeur d'un caractere en gras ~0,60 em ; 16 px de marge interne par segment
-  const fit = width ? (width / options.length - 16) / (0.60 * longest) : 11.5;
+  const segW = width ? width / count : 0;
+  const fit = width ? (segW - 12) / (0.60 * longest) : 11.5;
   const size = fs ?? clamp(Math.round(fit * 10) / 10, 8.5, 11.5);
+  const idx = Math.max(0, options.findIndex(([k]) => k === value));
   return (
-    <div style={{ display: "flex", gap: 2, padding: 3, borderRadius: 11, background: "#0B0F18",
-                  border: `1px solid ${LINE}`, boxShadow: "inset 0 2px 6px rgba(0,0,0,.55)",
-                  width: grow ? "100%" : undefined }}>
+    <div style={{ position: "relative", display: "flex", height, boxSizing: "border-box",
+                  padding: 3, borderRadius: 12, background: "#CC0F141D",
+                  border: "1px solid rgba(255,255,255,.08)",
+                  width: grow ? "100%" : (width ? width + 8 : undefined), flex: grow ? "1 1 0" : "none",
+                  minWidth: 0 }}>
+      {/* le pouce : il glisse sur un ressort, comme dans l'app */}
+      <div style={{ position: "absolute", top: 3, bottom: 3, left: 3, borderRadius: 9,
+                    width: `calc((100% - 6px) / ${count})`,
+                    background: "linear-gradient(180deg,#38445E,#2B3650)",
+                    transform: `translateX(${idx * 100}%)`,
+                    transition: "transform .3s cubic-bezier(.34,1.4,.64,1)" }} />
       {options.map(([k, l, ic]) => {
-        const on = value === k;
+        const on = k === value;
         return (
           <button key={k} onClick={() => onChange(k)} title={l}
-                  style={{ height, flex: grow ? "1 1 0" : undefined, minWidth: grow ? 0 : 44,
-                           borderRadius: 8, border: 0, cursor: "pointer", padding: "0 9px",
-                           background: on ? `linear-gradient(180deg,${IN1},${IN2})` : "transparent",
-                           color: on ? IN_TEXT : "#7E88A6", display: "flex", alignItems: "center",
-                           justifyContent: "center", gap: 5, fontSize: size, fontWeight: on ? 800 : 700,
+                  style={{ flex: grow ? "1 1 0" : undefined, width: grow ? 0 : (width ? segW : undefined),
+                           minWidth: grow ? 0 : (width ? 0 : 44), position: "relative", zIndex: 1,
+                           border: 0, cursor: "pointer", background: "transparent", padding: 0,
+                           color: on ? "#F1F4FA" : MUTE, display: "flex", alignItems: "center",
+                           justifyContent: "center", gap: 5, fontSize: size, fontWeight: 800,
                            fontFamily: FONT, whiteSpace: "nowrap", overflow: "hidden",
-                           transition: "all .18s" }}>
-            {Ico && ic && <Ico d={ic} size={Math.max(11, size + 2)} />}{l}
+                           transition: "color .2s" }}>
+            {iconOnly && ic ? <Ico d={ic} size={22} />
+                            : <>{ic && <Ico d={ic} size={13} />}{l}</>}
           </button>
         );
       })}
@@ -1084,51 +1105,32 @@ function ArpPanel({ p, set, cur }) {
     const r = e.currentTarget.getBoundingClientRect();
     set((s) => ({ ...s, vel: s.vel.map((x, k) => (k === i ? clamp(1 - (e.clientY - r.top) / r.height, .08, 1) : x)) }));
   };
-  // L'instruction ne se montre qu'a la PREMIERE utilisation : ensuite elle
-  // disparait et ne revient plus. Elle est discrete, posee sur la grille.
+  // L'instruction ne se montre qu'a la PREMIERE utilisation, en ANGLAIS.
   const [hint, setHint] = useState(() => {
     try { return !localStorage.getItem("fxarp_seen"); } catch (_) { return true; }
   });
-  const done = () => {
+  const seen = () => {
     if (!hint) return;
     setHint(false);
     try { localStorage.setItem("fxarp_seen", "1"); } catch (_) {}
   };
-  const subOptions = SUBS.map((l, i) => [i, l]);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 9, height: "100%", minHeight: 0 }}>
-      {/* Rangee 1 : le TEMPS. Subdivision en toggle, puis BPM, Swing et Steps,
-          tous sur la MEME ligne et centres sur la meme hauteur. Swing se regle
-          au +/-, comme BPM : un potard pour un pourcentage etait un detour. */}
-      <div style={{ height: 58, flex: "none", display: "flex", alignItems: "center", gap: 12, padding: "0 14px",
+      {/* UNE SEULE barre : la subdivision et les modes y sont, en toggles.
+          Aucun intitule — ni « Subdivision », ni « Mode ». Les modes ne montrent
+          que leur schema. BPM et Swing sont montes dans l'en-tete, a gauche du X. */}
+      <div style={{ height: 52, flex: "none", display: "flex", alignItems: "center", gap: 10, padding: "0 12px",
                     ...well({ borderRadius: 13 }) }}>
-        <span style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".13em", textTransform: "uppercase",
-                       color: DIM, flex: "none" }}>Subdivision</span>
-        <Seg options={subOptions} value={p.sub} onChange={(k) => set((s) => ({ ...s, sub: k }))}
-             height={30} width={196} />
-        <div style={{ flex: 1, minWidth: 6 }} />
-        <div style={{ width: 1, height: 32, background: LINE, flex: "none" }} />
-        <NumStep label="BPM" value={p.bpm} min={40} max={240} width={34} fs={12.5}
-                 onChange={(v) => set((s) => ({ ...s, bpm: v }))} />
-        <div style={{ width: 1, height: 32, background: LINE, flex: "none" }} />
-        <NumStep label="Swing" value={p.swing} min={0} max={80} unit="%" width={38} fs={12.5}
-                 onChange={(v) => set((s) => ({ ...s, swing: v }))} />
-        <div style={{ width: 1, height: 32, background: LINE, flex: "none" }} />
-        <NumStep label="Steps" value={p.steps} min={1} max={16} width={20} fs={12.5}
+        <Segmented options={SUBS.map((l, i) => [i, l])} value={p.sub} height={34} width={188}
+                   onChange={(k) => set((s) => ({ ...s, sub: k }))} />
+        <Segmented options={STYLES} value={p.style} height={34} grow iconOnly
+                   onChange={(k) => set((s) => ({ ...s, style: k }))} />
+        <div style={{ width: 1, height: 30, background: LINE, flex: "none" }} />
+        <NumStep label="Steps" value={p.steps} min={1} max={16} width={20} fs={12}
                  onChange={(v) => set((s) => ({ ...s, steps: v }))} />
       </div>
 
-      {/* Rangee 2 : le MODE, en toggle pleine largeur — meme materiau. */}
-      <div style={{ height: 46, flex: "none", display: "flex", alignItems: "center", gap: 12, padding: "0 14px",
-                    ...well({ borderRadius: 13 }) }}>
-        <span style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".13em", textTransform: "uppercase",
-                       color: DIM, flex: "none" }}>Mode</span>
-        <Seg options={STYLES} value={p.style} onChange={(k) => set((s) => ({ ...s, style: k }))}
-             height={32} grow width={700} />
-      </div>
-
-      {/* Les hauteurs, pas a pas. AUCUN texte : ni intitule, ni mode d'emploi.
-          Les barres disent d'elles-memes ce qu'elles reglent. */}
+      {/* Les hauteurs, pas a pas. AUCUN texte sur la grille. */}
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 8,
                     padding: "10px 12px", position: "relative", ...well({ borderRadius: 13 }) }}>
         <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "repeat(16,1fr)", gap: 5, minWidth: 0 }}>
@@ -1136,7 +1138,7 @@ function ArpPanel({ p, set, cur }) {
             const active = i < p.steps, eng = p.on[i];
             return (
               <div key={i} style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
-                <div onPointerDown={(e) => { if (!active) return; done(); e.currentTarget.setPointerCapture(e.pointerId); setVel(i, e); }}
+                <div onPointerDown={(e) => { if (!active) return; seen(); e.currentTarget.setPointerCapture(e.pointerId); setVel(i, e); }}
                      onPointerMove={(e) => { if (active && e.buttons) setVel(i, e); }}
                      style={{ flex: 1, borderRadius: 8, position: "relative", overflow: "hidden", touchAction: "none",
                               cursor: active ? "ns-resize" : "default",
@@ -1153,7 +1155,7 @@ function ArpPanel({ p, set, cur }) {
                     </div>
                   )}
                 </div>
-                <button onClick={() => { if (!active) return; done();
+                <button onClick={() => { if (!active) return; seen();
                                          set((s) => ({ ...s, on: s.on.map((x, k) => (k === i ? !x : x)) })); }}
                         style={{ height: 32, width: "100%", borderRadius: 9, cursor: active ? "pointer" : "default",
                                  fontFamily: FONT, fontSize: 12.5, fontWeight: 800, opacity: active ? 1 : .35,
@@ -1171,7 +1173,7 @@ function ArpPanel({ p, set, cur }) {
                                    boxShadow: cur === i ? `0 0 8px ${IN1}` : "none", transition: "all .08s" }} />
           ))}
         </div>
-        {/* la seule instruction, et SEULEMENT a la premiere utilisation */}
+        {/* la seule instruction, SEULEMENT a la premiere utilisation, en anglais */}
         {hint && (
           <div style={{ position: "absolute", left: "50%", bottom: 40, transform: "translateX(-50%)",
                         padding: "6px 12px", borderRadius: 9, pointerEvents: "none",
@@ -1179,7 +1181,7 @@ function ArpPanel({ p, set, cur }) {
                         fontSize: 10, fontWeight: 700, letterSpacing: ".04em", color: "#AEB7CC",
                         whiteSpace: "nowrap", boxShadow: "0 8px 20px rgba(0,0,0,.6)",
                         animation: "fxCue .2s ease-out" }}>
-            Glissez une barre pour la velocite · touchez un numero pour l'activer
+            Drag a bar to set velocity · tap a number to toggle it
           </div>
         )}
       </div>
@@ -1261,6 +1263,16 @@ function FxWindow() {
                    cursor: "pointer", opacity: custom ? 1 : .5 }) }}>
             <Floppy armed={custom} size={14} />
           </button>
+        )}
+        {isArp && (
+          <>
+            <div style={{ width: 1, height: 24, background: LINE, flex: "none" }} />
+            <NumStep label="BPM" value={arp.bpm} min={40} max={240} width={32} fs={12}
+                     onChange={(v) => setArp((s) => ({ ...s, bpm: v }))} />
+            <NumStep label="Swing" value={arp.swing} min={0} max={80} unit="%" width={36} fs={12}
+                     onChange={(v) => setArp((s) => ({ ...s, swing: v }))} />
+            <div style={{ width: 1, height: 24, background: LINE, flex: "none" }} />
+          </>
         )}
         <button title="Close" style={{ ...ghost({ width: 28, height: 28, display: "grid", placeItems: "center",
                  color: DIM, cursor: "pointer" }) }}><Ico d={P.close} size={14} /></button>
