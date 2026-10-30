@@ -180,7 +180,11 @@ class PianoResonators {
       const float q = 34.f / (1.f + 0.55f * n);
       const float w = 2.f * static_cast<float>(M_PI) * std::min(fn, 9000.f) / rate_;
       const float r = std::exp(-w / (2.f * q));
-      b0_[i] = (1.f - r) * 0.5f;
+      // Normalise a gain de crete UNITE.  Avec le facteur 0,5 d'origine, chaque
+      // mode ne pouvait qu'attenuer (creux de -6 dB) : RESONANCE ne faisait
+      // qu'assombrir, et les modes ne sonnaient jamais.  Mesure : -0,9 dB dans le
+      // grave au lieu d'une vraie resonance.
+      b0_[i] = 1.f - r;
       a1_[i] = 2.f * r * std::cos(w);
       a2_[i] = -r * r;
       x1_[i] = x2_[i] = y1_[i] = y2_[i] = 0.f;
@@ -215,7 +219,7 @@ class PianoVoice {
  public:
   void start(const int16_t* pcm, uint32_t frames, int root, float tuneCents,
              int note, float velocity, float sr, float packRate,
-             uint32_t loopStart, uint32_t loopEnd, float mic, float space) {
+             uint32_t loopStart, uint32_t loopEnd, float mic, float space, float tine) {
     pcm_ = pcm; frames_ = frames; pos_ = 0.0;
     loopStart_ = loopStart; loopEnd_ = loopEnd;
     if (loopEnd_ <= loopStart_ || loopEnd_ > frames) loopStart_ = loopEnd_ = 0;
@@ -244,14 +248,17 @@ class PianoVoice {
     shelfA_ = 1.f - std::exp(-2.f * static_cast<float>(M_PI) * micHz / sr);
     lpL_ = lpR_ = 0.f;
     res_.setRate(sr);
-    res_.tune(f, inharmonicityOf(note));
+    res_.tune(f, inharmonicityOf(note, tine));
     res_.reset();
     env_ = 0.f; rel_ = 0.f; age_ = 0.f;
   }
 
-  /** B mesuree : 2,29e-4 * 2^(0,1045*(midi-60)/12). */
-  static float inharmonicityOf(int note) {
-    return 2.29e-4f * std::pow(2.f, 0.1045f * static_cast<float>(note - 60) / 12.f);
+  /** B mesuree : 2,29e-4 * 2^(0,1045*(midi-60)/12).  tine multiplie B : une tine
+   *  de piano electrique est une barre frappee, pas une corde, donc ses partiels
+   *  sont nettement inharmoniques — c'est ce qui « sonne electrique ». */
+  static float inharmonicityOf(int note, float tine) {
+    return 2.29e-4f * std::pow(2.f, 0.1045f * static_cast<float>(note - 60) / 12.f)
+           * (1.f + 24.f * tine);
   }
 
   void release() { releasing_ = true; }
@@ -261,7 +268,9 @@ class PianoVoice {
   float age() const { return age_; }
 
   void render(float* outL, float* outR, int n, float sr,
-              float body, float bright, float width, float releaseSec, float sustainHold) {
+              float body, float bright, float width, float releaseSec, float sustainHold,
+              bool tine) {
+    tine_ = tine;
     if (!active_ || !pcm_) return;
     // 0,5 ms et non 4 : le transitoire de marteau vit dans les 2 premieres ms,
     // une rampe de 4 ms l'efface et le piano perd son attaque.
@@ -298,8 +307,14 @@ class PianoVoice {
       const float mono = (sL + sR) * 0.5f;
       const float res = res_.process(mono) * body;
 
-      float mL = sL + res * 0.85f;
-      float mR = sR + res * 0.85f;
+      // En mode tine, l'echantillon (un piano acoustique) s'efface au profit des
+      // resonateurs accordes sur la tine : c'est la barre frappee qu'on entend,
+      // pas la corde enregistree.  Sans ce basculement, changer B ne s'entendait
+      // pas — les partiels mesures restaient ceux de l'echantillon.
+      const float smp = tine_ ? 0.35f : 1.f;
+      const float rg  = tine_ ? 3.20f : 0.85f;
+      float mL = sL * smp + res * rg;
+      float mR = sR * smp + res * rg;
 
       const float mid = (mL + mR) * 0.5f;
       const float sid = (mL - mR) * 0.5f * width;
@@ -328,6 +343,7 @@ class PianoVoice {
   uint32_t loopStart_ = 0, loopEnd_ = 0;
   // Shelf aigu par canal : c'est lui qui rend TONE/HAMMER/LID audibles.
   float lpL_ = 0.f, lpR_ = 0.f, shelfA_ = 0.25f;
+  bool tine_ = false;
   int note_ = -1;
   bool active_ = false, releasing_ = false;
   PianoResonators res_;
@@ -380,12 +396,14 @@ class PianoEngine : public SourceFx {
     // Courbe de velocite : sans elle, toutes les couches sonnent au meme niveau
     // et le choix de couche n'a plus de sens.
     const float v = std::pow(static_cast<float>(vel) / 127.f, 1.f - p(9) * 0.7f);
+    // MODEL est enfin lu : index 8 = Electric, dont la corde devient une tine.
+    const float tine = (std::lround(p(11) * 8.f) >= 8.f) ? 1.f : 0.f;
     voices_[slot].start(pcm->data(), static_cast<uint32_t>(pcm->size() / 2),
                         g->root, g->tuneCents, note, v, sr_,
                         static_cast<float>(reader_.rate()),
                         loopsOn_ ? g->loopStart : 0u,
                         loopsOn_ ? g->loopEnd : 0u,
-                        p(4), p(5));
+                        p(4), p(5), tine);
   }
 
   void noteOff(int note) override {
@@ -430,6 +448,7 @@ class PianoEngine : public SourceFx {
     // et un couvercle plus ouvert eclairent le timbre, ce sont bien deux reglages.
     const float body = p(2), width = p(6);
     const float mic = p(4);
+    const float tine = (std::lround(p(11) * 8.f) >= 8.f) ? 1.f : 0.f;
     // HAMMER, TONE, LID et MIC sont quatre facons d'eclairer le timbre ; MIC
     // etait annonce mais jamais lu, et les trois autres se confondaient.
     const float bright = std::min(1.f, p(1) * (0.55f + 0.9f * p(0)) + p(3) * 0.25f + (p(4) - 0.5f) * 0.6f);
@@ -438,7 +457,7 @@ class PianoEngine : public SourceFx {
     const float hold = 0.5f;
     for (auto& v : voices_) {
       if (!v.active()) continue;
-      v.render(tmpL_.data(), tmpR_.data(), n, sr_, body, bright, width, rel, hold);
+      v.render(tmpL_.data(), tmpR_.data(), n, sr_, body, bright, width, rel, hold, tine > 0.5f);
     }
     const float lvl = p(7) * (0.6f + 0.4f * p(5));
     // Passe-haut a 5 Hz (R = 1 - 2*pi*fc/sr), sur le signal d'instrument et non sur la
