@@ -13,7 +13,7 @@ dst = sys.argv[2]
 im = Image.open(src).convert("RGB")
 w, h = im.size
 im = im.resize((w // 2, h // 2), Image.LANCZOS)
-im.save(dst, "PNG", optimize=True)
+im.save(dst, "JPEG", quality=86, optimize=True, progressive=True)
 print("%-26s %4dx%-5d -> %4dx%-5d  %6.0f Ko -> %5.0f Ko"
       % (os.path.basename(dst), w, h, w // 2, h // 2,
          os.path.getsize(src) / 1024, os.path.getsize(dst) / 1024))

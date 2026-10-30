@@ -25,7 +25,7 @@ for src, dst in PAIRS:
     d = os.path.join(PUB, dst)
     subprocess.run([sys.executable, "tools/aetherfx/reduce.py", s, d], check=True)
 
-shutil.copy("/tmp/demo/piano.mp3", os.path.join(PUB, "can_you_feel_the_love_tonight_9_pianos.mp3"))
-print("MP3 %.0f Ko" % (os.path.getsize(os.path.join(PUB, "can_you_feel_the_love_tonight_9_pianos.mp3")) / 1024))
+shutil.copy("/tmp/demo/piano.mp3", os.path.join(PUB, "joyeux_anniversaire_9_pianos.mp3"))
+print("MP3 %.0f Ko" % (os.path.getsize(os.path.join(PUB, "joyeux_anniversaire_9_pianos.mp3")) / 1024))
 print("total dossier %.0f Ko" % (sum(
     os.path.getsize(os.path.join(PUB, f)) for f in os.listdir(PUB)) / 1024))

@@ -1,228 +1,241 @@
 package com.soundstage.mixer.instruments
 
+import android.content.Context
+import android.graphics.BitmapFactory
+import android.util.LruCache
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import com.soundstage.mixer.R
-import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.exp
+import kotlinx.coroutines.delay
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.sin
-
-private val BRASS = Color(0xFFE3C48A)
-
-/**
- * Piano scene: the harp seen from the player's side. Strings are drawn straight
- * with the bass crossing over the treble, and the whole thing is tilted so the
- * strings run away from the viewer. That crossover is the piano's silhouette --
- * without it the harp reads as a harp, not a piano.
- */
-private fun DrawScope.drawPianoHero(x: Float, y: Float, w: Float, h: Float, phase: Float) {
-    val body = Path().apply {
-        moveTo(x, y + h)
-        lineTo(x + w * 0.02f, y + h * 0.30f)
-        lineTo(x + w * 0.30f, y)
-        lineTo(x + w, y + h * 0.10f)
-        lineTo(x + w * 0.98f, y + h)
-        close()
-    }
-    drawPath(body, Brush.linearGradient(
-        listOf(Color(0xFF3A2415), Color(0xFF160C06)), start = Offset(x, y), end = Offset(x + w, y + h)))
-    drawPath(body, Color(0x2AE3C48A), style = Stroke(width = 1.5f))
-
-    // The pinblock: a darker band the strings terminate on.
-    drawRect(Color(0xFF0B0603), topLeft = Offset(x + w * 0.02f, y + h * 0.06f), size = Size(w * 0.96f, h * 0.16f))
-    for (k in 0 until 22) {
-        val px = x + w * (0.05f + 0.9f * k / 21f)
-        drawLine(Color(0x66E3C48A), Offset(px, y + h * 0.07f), Offset(px, y + h * 0.21f), strokeWidth = 1f)
-    }
-
-    // Strings: bass at the left, crossing the treble before the bridge.
-    for (k in 0 until 30) {
-        val u = k / 29f
-        val bx = x + w * (0.03f + 0.94f * u)
-        val bx2 = x + w * (0.03f + 0.94f * u)
-        val by = y + h * (0.22f + 0.55f * u)
-        // the bass strings start low and rise, so they cross the treble line
-        val cy = y + h * (0.22f + 0.55f * (1f - u))
-        val wob = sin(phase * (6f + u * 20f) + u * 30f) * (1.6f * (1f - abs(u - 0.5f)))
-        val p = Path().apply {
-            moveTo(bx, by)
-            quadraticBezierTo(bx2 + wob * 3f, (by + cy) * 0.5f, x + w * (0.90f - 0.06f * u), cy)
-        }
-        val shade = Color(0xFFB9C4D0).copy(alpha = 0.20f + 0.35f * (1f - u))
-        drawPath(p, shade, style = Stroke(width = 0.8f + (1f - u) * 1.1f))
-    }
-
-    // Hammers sitting under the strings, one row.
-    for (k in 0 until 12) {
-        val u = k / 11f
-        val hx = x + w * (0.10f + 0.80f * u)
-        val hy = y + h * (0.80f + 0.10f * u)
-        drawLine(Color(0xFF2A1A0E), Offset(hx, hy), Offset(hx, hy - h * 0.10f), strokeWidth = 3f)
-        drawCircle(Color(0xFF6E5A3E), radius = 3f, center = Offset(hx, hy - h * 0.11f))
-    }
-
-    // Soundboard glow, brightest where the treble strings are (short strings, more energy).
-    drawCircle(
-        brush = Brush.radialGradient(
-            listOf(Color(0x33FFE2B0), Color.Transparent),
-            center = Offset(x + w * 0.72f, y + h * 0.45f), radius = h * 0.7f),
-        radius = h * 0.7f, center = Offset(x + w * 0.72f, y + h * 0.45f))
-}
+import kotlin.math.roundToInt
+import kotlin.random.Random
 
 /**
- * Hammer-head bar: a felt strip whose deformation follows the note envelope.
- * Each key lights the felt above it, so a chord is visible as a moving ridge.
+ * Æther Piano — 9 modèles, chacun une scène (photo) et un caractère sonore.
+ *
+ * Ordre des paramètres (12) : 0 HAMMER, 1 TONE, 2 RESONANCE, 3 LID, 4 MIC, 5 SPACE,
+ * 6 WIDTH, 7 LEVEL, 8 RELEASE, 9 VELOCITY, 10 PEDAL NOISE, 11 MODEL (discret : le
+ * moteur l'arrondit).
+ *
+ * Images : res/drawable-nodpi/ae_piano_<id>.webp, id = felt studio bright mellow
+ * dark upright lady honky electric.
  */
-private fun DrawScope.drawHammerBar(a: AeAnim, x: Float, y: Float, w: Float, h: Float, n: Int) {
-    val n0 = max(8, n)
-    for (k in 0 until n0) {
-        val u = k / (n0 - 1f)
-        val e = a.pianoE[k % a.pianoE.size]
-        val px = x + w * u
-        val lift = e * h * 0.55f
-        drawLine(
-            Color(0xFFE8DCC4).copy(alpha = 0.10f + 0.55f * e),
-            Offset(px, y + h), Offset(px, y + h - lift), strokeWidth = w / n0 * 0.8f)
-    }
+class AePianoModel(
+    val id: String,
+    val name: String,
+    val tag: String,
+    val dark: Boolean,
+    val acc: Color,
+    val petals: List<Color>,
+    val ptype: AePType,
+    d: FloatArray,
+    idx: Int,
+) {
+    val values: FloatArray = d + (idx / 8f)
 }
 
-/**
- * String decay display: the aftersound model made visible. Two slopes are drawn
- * because the engine models two: the fast initial drop (tau1, measured) and the
- * slow aftersound (tau2, modelled). A single line would misrepresent the model.
- */
-private fun DrawScope.drawDecayCurves(x: Float, y: Float, w: Float, h: Float, body: Float, rel: Float, phase: Float) {
-    drawRect(Color(0x33000000), topLeft = Offset(x, y), size = Size(w, h))
-    val tau1 = 0.45f + (1f - body) * 0.35f
-    for (k in 0 until 2) {
-        val p = Path()
-        for (i in 0..64) {
-            val t = i / 64f
-            val px = x + w * t
-            val amp = if (k == 0) exp(-t * 3.2f / tau1 * 0.5f)
-            else exp(-t * 0.55f) * (0.35f + 0.65f * rel)
-            val py = y + h - h * amp * (0.9f + 0.1f * sin(phase * 2f + k))
-            if (i == 0) p.moveTo(px, py) else p.lineTo(px, py)
-        }
-        drawPath(p, if (k == 0) Color(0xCCE3C48A) else Color(0x88B9C4D0),
-            style = Stroke(width = if (k == 0) 1.6f else 1.1f))
-    }
-}
+private fun col(h: Long) = Color(0xFF000000 or h)
 
-/** The 12-parameter face. Same grid as the sax so the two windows feel like one family. */
-@Composable
-fun BoxScope.AePianoUi(c: AeCtl, a: AeAnim) {
-    val border = Color(0x2AE3C48A)
-    Box(Modifier.fillMaxSize().background(Brush.radialGradient(
-        listOf(Color(0xFF2A1C10), Color(0xFF120B06), Color(0xFF050302)), radius = 820f)))
-    // The preset's own photograph, not a single shared drawing: each model has its own
-    // instrument, and that difference is most of what tells them apart at a glance.
-    // WebP rather than the AVIF the previews use — AVIF needs API 31 and the app ships
-    // minSdk 26, where it would decode to nothing.
-    Image(
-        painter = painterResource(pianoPlate(c)),
-        contentDescription = null,
-        contentScale = ContentScale.Crop,
-        modifier = Modifier.at(22, 54, 300, 286),
+object AePianoModels {
+    val all = listOf(
+        AePianoModel("felt", "Felt", "Soft felt hammers · warm & round", false, col(0xE9A8B8), listOf(col(0xF7C6D3), col(0xFBE0E6), col(0xF2A9BD)), AePType.PETAL, floatArrayOf(0.25f, 0.08f, 0.70f, 0.50f, 0.50f, 0.45f, 0.50f, 0.80f, 0.50f, 0.50f, 0.40f), 0),
+        AePianoModel("studio", "Studio", "Concert grand · balanced & clear", false, col(0x4F9FE6), listOf(col(0xFFFFFF), col(0xCFE6FF), col(0x9CCAF5)), AePType.SPARK, floatArrayOf(0.55f, 0.40f, 0.50f, 0.70f, 0.45f, 0.35f, 0.60f, 0.78f, 0.45f, 0.55f, 0.30f), 1),
+        AePianoModel("bright", "Bright", "Crisp attack · sparkling top", false, col(0xE8A812), listOf(col(0xFFE9A8), col(0xFFD166), col(0xFFF3C9)), AePType.LEAF, floatArrayOf(0.85f, 0.50f, 0.35f, 0.90f, 0.35f, 0.30f, 0.70f, 0.66f, 0.40f, 0.60f, 0.25f), 2),
+        AePianoModel("mellow", "Mellow", "Warm mids · rounded highs", true, col(0xFF9A5A), listOf(col(0xFFB27A), col(0xFF8A5C), col(0xFFD0A0)), AePType.PETAL, floatArrayOf(0.30f, 0.20f, 0.62f, 0.55f, 0.55f, 0.50f, 0.50f, 0.78f, 0.55f, 0.45f, 0.40f), 3),
+        AePianoModel("dark", "Dark", "Deep bass · cinematic night", true, col(0x8A9BFF), listOf(col(0xAEBCFF), col(0x7F8FE8), col(0xDFE6FF)), AePType.STAR, floatArrayOf(0.20f, 0.05f, 0.78f, 0.40f, 0.60f, 0.70f, 0.70f, 0.72f, 0.65f, 0.40f, 0.45f), 4),
+        AePianoModel("upright", "Upright", "Wooden upright · intimate", true, col(0xD9A15A), listOf(col(0xE8C58F), col(0xD9A15A), col(0xFFF1D6)), AePType.DUST, floatArrayOf(0.50f, 0.38f, 0.70f, 0.45f, 0.30f, 0.25f, 0.40f, 0.78f, 0.35f, 0.50f, 0.60f), 5),
+        AePianoModel("lady", "Lady D", "Parlor grand · close & golden", true, col(0xE0A25A), listOf(col(0xFFD9A0), col(0xF2B866), col(0xFFF0D0)), AePType.SPARK, floatArrayOf(0.35f, 0.20f, 0.35f, 0.60f, 0.25f, 0.20f, 0.45f, 0.78f, 0.45f, 0.50f, 0.30f), 6),
+        AePianoModel("honky", "Honky", "Detuned old upright · vintage", false, col(0xB8863C), listOf(col(0xA8743A), col(0xC89A5A), col(0x8A5A28)), AePType.LEAF, floatArrayOf(0.70f, 0.45f, 0.40f, 0.50f, 0.30f, 0.30f, 0.50f, 0.74f, 0.35f, 0.60f, 0.70f), 7),
+        AePianoModel("electric", "Electric Keys", "Tine keys · tremolo & neon", true, col(0xFF6AD5), listOf(col(0xFF8BE0), col(0x7BE0FF), col(0xC9A0FF)), AePType.NEON, floatArrayOf(0.50f, 0.58f, 0.30f, 0.60f, 0.40f, 0.40f, 0.70f, 0.74f, 0.40f, 0.50f, 0.20f), 8),
     )
-    // Fallback line-art, kept underneath: it fills the frame if a plate is ever missing.
-    Canvas(Modifier.fillMaxSize()) { a.frame.intValue; drawPianoHero(340f, 44f, 320f, 300f, a.t) }
-
-    AeCardBox(22, 54, 300, 286, "", BRASS, border)
-    AeT("PIANO", 9, BRASS, Modifier.at(38, 62, 200, 12), AeFonts.plate, FontWeight.ExtraBold, 0.2f)
-    AeT("sample + boost", 9, Color(0x99E3C48A), Modifier.at(38, 74, 220, 12), AeFonts.plate)
-
-    // Decay model, then the hammer bar: the two things that change with every preset.
-    Canvas(Modifier.at(38, 96, 268, 46)) { a.frame.intValue; drawDecayCurves(0f, 0f, size.width, size.height, c.v(2), c.v(4), a.t) }
-    Canvas(Modifier.at(38, 150, 268, 44)) { a.frame.intValue; drawHammerBar(a, 0f, 0f, size.width, size.height, 34) }
-    AeT("DECAY", 9, BRASS, Modifier.at(38, 90, 100, 12), AeFonts.plate, FontWeight.ExtraBold, 0.2f)
-    AeT("HAMMER", 9, BRASS, Modifier.at(38, 144, 100, 12), AeFonts.plate, FontWeight.ExtraBold, 0.2f)
-
-    AeGlassKnob(c, 0, "Hammer", 66, 218, 40)
-    AeGlassKnob(c, 1, "Tone", 150, 218, 40)
-    AeGlassKnob(c, 2, "Body", 234, 218, 40)
-    AeGlassKnob(c, 3, "Sustain", 66, 292, 40)
-    AeGlassKnob(c, 4, "Release", 150, 292, 40)
-    AeGlassKnob(c, 5, "Lid", 234, 292, 40)
-
-    AeCardBox(678, 54, 300, 286, "TONE · SPACE · VOICING", BRASS, border, AeFonts.plate)
-    AeGlassKnob(c, 6, "Space", 704, 86, 38)
-    AeGlassKnob(c, 7, "Width", 786, 86, 38)
-    AeGlassKnob(c, 8, "Tune", 868, 86, 38)
-    AeGlassKnob(c, 9, "Vel", 704, 164, 38)
-    AeGlassKnob(c, 10, "Symp", 786, 164, 38)
-    AeGlassKnob(c, 11, "Level", 868, 164, 38)
-    Canvas(Modifier.at(704, 226, 262, 16)) { a.frame.intValue; drawHammerBar(a, 0f, 0f, size.width, size.height, 24) }
-    AeT("SYMPATHETIC", 9, BRASS, Modifier.at(704, 246, 160, 12), AeFonts.plate, FontWeight.ExtraBold, 0.2f)
-    AeT("boite · cordes · etouffoirs", 9, Color(0x99E3C48A), Modifier.at(704, 258, 220, 12), AeFonts.plate)
-
-    AeKeyboard(c, 52, 360, 896, 90)
 }
 
-/** Photograph of the model behind the session's current preset. */
-private fun pianoPlate(c: AeCtl): Int {
-    val list = c.m.presets(AeInstrument.PIANO)
-    val name = list.getOrNull(c.s.preset)?.name ?: "Studio"
-    return when (name) {
-        "Felt" -> R.drawable.piano_felt
-        "Studio" -> R.drawable.piano_studio
-        "Bright" -> R.drawable.piano_bright
-        "Mellow" -> R.drawable.piano_mellow
-        "Dark" -> R.drawable.piano_dark
-        "Upright" -> R.drawable.piano_upright
-        "Lady D" -> R.drawable.piano_lady
-        "Honky" -> R.drawable.piano_honky
-        "Electric" -> R.drawable.piano_electric
-        else -> R.drawable.piano_studio
+/** Choisir un modèle = charger un preset (les potards glissent, MODEL bascule d'un coup). */
+val AePianoPresets: List<AePreset> = AePianoModels.all.map { AePreset(it.name, "Piano", it.values) }
+
+/**
+ * Une scene de piano : l'image, et la luminance de sa bande haute.
+ *
+ * La luminance est mesuree a l'ouverture, une fois par modele. C'est elle qui
+ * choisit la couleur des textes : le drapeau `dark` ecrit a la main peut ne pas
+ * correspondre a la photo, alors qu'une mesure garantit le contraste.
+ */
+class AePianoPlate(val bitmap: ImageBitmap, val topLuma: Float)
+
+object AePianoAssets {
+    private val cache = LruCache<String, AePianoPlate>(4)
+
+    fun plate(ctx: Context, id: String): AePianoPlate? {
+        val name = "ae_piano_$id"
+        cache.get(name)?.let { return it }
+        val rid = ctx.resources.getIdentifier(name, "drawable", ctx.packageName)
+        if (rid == 0) return null
+        val bm = BitmapFactory.decodeResource(ctx.resources, rid) ?: return null
+        // Luminance relative (Rec. 709) du tiers haut : c'est la que vivent le titre,
+        // le nom du modele et la liste des modeles.
+        val band = max(1, bm.height / 3)
+        val px = IntArray(bm.width * band)
+        bm.getPixels(px, 0, bm.width, 0, 0, bm.width, band)
+        var acc = 0.0
+        for (p in px) {
+            acc += 0.2126 * ((p shr 16) and 0xFF) + 0.7152 * ((p shr 8) and 0xFF) + 0.0722 * (p and 0xFF)
+        }
+        val luma = (acc / (px.size * 255.0)).toFloat()
+        return AePianoPlate(bm.asImageBitmap(), luma).also { cache.put(name, it) }
+    }
+}
+
+private class K(val label: String, val idx: Int, val fmt: (Float) -> String)
+private fun pc(v: Float) = "${(v * 100).toInt()}%"
+private fun db(v: Float) = "${(-40 + v * 46).toInt()}dB"
+
+private val PK = listOf(
+    K("Hardness", 0, ::pc),
+    K("Tone", 1) { "${((it - .5f) * 16).toInt()}dB" },
+    K("Resonance", 2, ::pc),
+    K("Lid", 3) { if (it < .33f) "Closed" else if (it < .66f) "Half" else "Open" },
+    K("Mic", 4) { if (it < .33f) "Close" else if (it < .66f) "Room" else "Hall" },
+    K("Space", 5, ::pc),
+    K("Width", 6, ::pc),
+    K("Level", 7, ::db),
+)
+private val PSL = listOf(
+    K("Release", 8) { "${(50 + it * 450).toInt()}ms" },
+    K("Velocity", 9) { if (it < .4f) "Soft" else if (it < .6f) "Linear" else "Hard" },
+    K("Pedal noise", 10, ::pc),
+)
+
+/** Aperçu de carte : la scène Felt, recadrée au centre. */
+@Composable
+fun AePianoCardPreview(modifier: Modifier) {
+    val ctx = LocalContext.current
+    val bmp = remember { AePianoAssets.plate(ctx, "felt")?.bitmap }
+    Canvas(modifier.clip(RoundedCornerShape(12.dp))) {
+        bmp?.let {
+            val sc = max(size.width / it.width, size.height / it.height)
+            val dw = it.width * sc
+            val dh = it.height * sc
+            drawImage(
+                it,
+                dstOffset = IntOffset(((size.width - dw) / 2f).roundToInt(), ((size.height - dh) / 2f).roundToInt()),
+                dstSize = IntSize(dw.roundToInt(), dh.roundToInt()),
+            )
+        }
     }
 }
 
 /**
- * Tile thumbnail: the harp seen from the side, strings converging on the pinblock.
- * Drawn rather than loaded from an asset: the AVIF previews need API 31 to decode
- * and the app ships minSdk 26, so a bitmap here would be blank on a third of devices.
+ * La fenêtre Piano : scène plein cadre (photo + particules), liste des modèles à
+ * gauche, carte de verre des potards à droite, clavier en bas.
+ *
+ * [procedural] reste faux : la scène du piano est une photographie, sans ciel ni eau.
+ * L'eau appartient à Strings.
  */
-fun DrawScope.drawPianoMini() {
-    val w = size.width; val h = size.height
-    val body = Path().apply {
-        moveTo(w * 0.06f, h * 0.92f)
-        lineTo(w * 0.10f, h * 0.16f)
-        lineTo(w * 0.88f, h * 0.04f)
-        lineTo(w * 0.94f, h * 0.92f)
-        close()
+@Composable
+fun BoxScope.AePianoUi(c: AeCtl, manager: AeManager, strip: Int, onClose: () -> Unit) {
+    val s = manager.sessions[strip] ?: return
+    val ctx = LocalContext.current
+    val dens = LocalDensity.current.density
+    val model = AePianoModels.all[s.preset.coerceIn(0, AePianoModels.all.size - 1)]
+    val plate = remember(model.id) { AePianoAssets.plate(ctx, model.id) }
+    val th = rememberAeThemeFromLuma(plate?.topLuma, model.acc)
+    val baseNow by rememberUpdatedState(48)
+    var lastTouch by remember { mutableLongStateOf(System.nanoTime()) }
+    var hidden by remember { mutableStateOf(false) }
+    var base by remember { mutableIntStateOf(48) }
+    val scene = remember(s) { AeSceneRuntime(procedural = false) }
+
+    LaunchedEffect(model.id) {
+        scene.setBackground(plate?.bitmap)
+        scene.particles.type = model.ptype
+        scene.particles.colors = model.petals
     }
-    drawPath(body, Brush.linearGradient(listOf(Color(0xFF4A3018), Color(0xFF160C06))))
-    drawPath(body, Color(0x55E3C48A), style = Stroke(width = 1.2f))
-    for (k in 0 until 14) {
-        val u = k / 13f
-        drawLine(
-            Color(0xFFC8D2DE).copy(alpha = 0.25f + 0.4f * (1f - u)),
-            Offset(w * (0.14f + 0.66f * u), h * (0.22f + 0.10f * u)),
-            Offset(w * (0.14f + 0.66f * u), h * (0.80f + 0.06f * u)),
-            strokeWidth = 0.7f + (1f - u) * 0.9f)
+    LaunchedEffect(s) {
+        var last = System.nanoTime()
+        var seen = s.noteEvents
+        while (true) {
+            delay(if (s.held.isNotEmpty()) 33L else 45L)
+            val now = System.nanoTime()
+            val dt = min(0.1f, (now - last) / 1e9f)
+            last = now
+            manager.pollLevel(s.strip)
+            hidden = (now - lastTouch) > 6_000_000_000L
+            if (s.noteEvents != seen) {
+                seen = s.noteEvents
+                val ux = 0.3f + ((s.lastNote - baseNow) / 36f).coerceIn(0f, 1f) * 0.4f
+                scene.waves.drop(ux, 0.8f, 0.5f * (0.5f + 0.9f * 0.78f))
+                scene.particles.spawn(2, scene.w.toFloat(), scene.h.toFloat(), scene.dp, ux * scene.w, scene.h * 0.45f, true)
+            }
+            if (Random.nextFloat() < dt * scene.particles.ambientRate) {
+                scene.particles.spawn(1, scene.w.toFloat(), scene.h.toFloat(), scene.dp)
+            }
+            scene.update(dt)
+        }
     }
-    drawCircle(Brush.radialGradient(listOf(Color(0x44FFE2B0), Color.Transparent),
-        center = Offset(w * 0.62f, h * 0.42f), radius = h * 0.8f),
-        radius = h * 0.8f, center = Offset(w * 0.62f, h * 0.42f))
+    val ui by animateFloatAsState(if (hidden) 0f else 1f, label = "ui")
+
+    Box(
+        Modifier.fillMaxSize().pointerInput(Unit) {
+            awaitPointerEventScope {
+                while (true) {
+                    awaitPointerEvent(PointerEventPass.Initial)
+                    lastTouch = System.nanoTime()
+                }
+            }
+        },
+    ) {
+        Canvas(Modifier.fillMaxSize().onSizeChanged { scene.resize(it.width, it.height, dens) }) {
+            scene.frame
+            scene.draw(this)
+            scene.particles.draw(this)
+        }
+        AeStage(Modifier.fillMaxSize()) {
+            AeT("ÆTHER PIANO", 10, th.ink2, Modifier.at(24, 24, 200, 12), AeFonts.display, FontWeight.Normal, 0.3f)
+            AeT("PIANO", 10, th.ink, Modifier.at(300, 12, 400, 12), AeFonts.display, FontWeight.Light, 0.42f, TextAlign.Center)
+            AeT(model.name.uppercase(), 30, th.ink, Modifier.at(300, 24, 400, 38), AeFonts.display, FontWeight.ExtraLight, 0.2f, TextAlign.Center)
+            AeT(model.tag, 11, th.ink2, Modifier.at(300, 66, 400, 14), AeFonts.display, FontWeight.Light, 0.14f, TextAlign.Center)
+            AeIconBtn(th, 2, 954, 14, onClose)
+            Box(Modifier.fillMaxSize().graphicsLayer { alpha = ui }) {
+                AeModelList(th, AePianoModels.all.map { it.name }, s.preset, 28, 100) { manager.loadPreset(s.strip, it) }
+                AeGlassCard(th, 694, 54, 280, 286)
+                PK.forEachIndexed { j, k ->
+                    AeLightKnob(th, c.v(k.idx), k.label, k.fmt(c.v(k.idx)), 704 + (j % 4) * 62, 74 + (j / 4) * 70) { c.set(k.idx, it) }
+                }
+                PSL.forEachIndexed { j, k -> AeLightSlider(th, c.v(k.idx), k.label, 708, 222 + j * 24) { c.set(k.idx, it) } }
+                AeGlassKeyboard(c, th, base, 150, 396, 700, 52)
+                AeSmallBtn(th, "−", 108, 410, 28, 28) { base = (base - 12).coerceAtLeast(24) }
+                AeSmallBtn(th, "+", 864, 410, 28, 28) { base = (base + 12).coerceAtMost(60) }
+            }
+        }
+    }
 }

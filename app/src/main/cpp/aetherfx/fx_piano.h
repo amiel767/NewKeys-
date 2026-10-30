@@ -82,7 +82,8 @@ class PianoSampleReader {
   void clear() { regions_.clear(); pcm_.clear(); cache_.clear(); rate_ = 22050; }
   bool loaded() const { return !regions_.empty(); }
   int rate() const { return rate_; }
-  size_t regionCount() const { return regions_.size(); }
+
+    size_t regionCount() const { return regions_.size(); }
 
   /** Region la plus proche en hauteur, en preferant la couche demandee. */
   const Region* pick(int note, int velocity) const {
@@ -174,7 +175,9 @@ class PianoResonators {
       const float n = static_cast<float>(i + 1);
       const float fn = n * f0 * std::sqrt(1.f + B * n * n);
       // Q decroissant avec l'harmonique : les aigus s'amortissent plus vite
-      const float q = 260.f / (1.f + 0.85f * n);
+      // Q large : a 260 la bande etait si etroite que le resonateur etait a peine
+      // excite par le signal, donc RESONANCE ne s'entendait pas.
+      const float q = 34.f / (1.f + 0.55f * n);
       const float w = 2.f * static_cast<float>(M_PI) * std::min(fn, 9000.f) / rate_;
       const float r = std::exp(-w / (2.f * q));
       b0_[i] = (1.f - r) * 0.5f;
@@ -224,8 +227,16 @@ class PianoVoice {
     ratio_ = (rootF > 1e-6f) ? f / rootF * (packRate / sr) : 1.f;
     note_ = note; vel_ = velocity;
     active_ = true; releasing_ = false;
-    // tau1 mesure : 0,478 s a C4, x0,59 par octave.
-    tau1_ = 0.478f * std::pow(0.59f, static_cast<float>(note - 60) / 12.f);
+    // Constante de decroissance, calee sur la decroissance MESUREE des sources :
+    // mediane ~8,6 dB/s dans le grave, ~8,4 a C4, ~12,9 une octave plus haut.
+    // Le facteur (1 + 6*sustainHold) du rendu multiplie tau par 4 (hold = 0,5),
+    // d'ou la base divisee d'autant : 0,255 s a C4 donne ~8,5 dB/s.
+    // Sans ce calage, une note tenue restait a niveau constant — une corde de
+    // guitare, pas un piano.
+    tau1_ = 0.255f * std::pow(0.833f, static_cast<float>(note - 60) / 12.f);
+    // One-pole a 2 kHz : la charniere du shelf.
+    shelfA_ = 1.f - std::exp(-2.f * static_cast<float>(M_PI) * 2000.f / sr);
+    lpL_ = lpR_ = 0.f;
     res_.setRate(sr);
     res_.tune(f, inharmonicityOf(note));
     res_.reset();
@@ -246,7 +257,11 @@ class PianoVoice {
   void render(float* outL, float* outR, int n, float sr,
               float body, float bright, float width, float releaseSec, float sustainHold) {
     if (!active_ || !pcm_) return;
-    const float atk = 1.f / (0.004f * sr);
+    // 0,5 ms et non 4 : le transitoire de marteau vit dans les 2 premieres ms,
+    // une rampe de 4 ms l'efface et le piano perd son attaque.
+    const float atk = 1.f / (0.0005f * sr);
+    // bright 0 -> -6 dB d'aigus, bright 1 -> +6 dB.
+    const float shelfG = std::exp2((bright - 0.5f) * 2.0f);
     for (int i = 0; i < n; ++i) {
       // Tant que la touche est tenue, on tourne dans la boucle ; au relachement on
       // la quitte et on joue la queue enregistree, qui porte la decroissance reelle.
@@ -275,18 +290,25 @@ class PianoVoice {
 
       const float mono = (sL + sR) * 0.5f;
       const float res = res_.process(mono) * body;
-      const float hi = mono - res * 0.35f;
 
-      sL = (sL + res * 0.85f) * amp;
-      sR = (sR + res * 0.85f) * amp;
-      const float mid = (sL + sR) * 0.5f;
-      const float sid = (sL - sR) * 0.5f * width;
-      sL = mid + sid; sR = mid - sid;
-      sL = sL * (1.f - bright * 0.35f) + hi * amp * bright * 0.5f;
-      sR = sR * (1.f - bright * 0.35f) + hi * amp * bright * 0.5f;
+      float mL = sL + res * 0.85f;
+      float mR = sR + res * 0.85f;
 
-      outL[i] += sL * vel_;
-      outR[i] += sR * vel_;
+      const float mid = (mL + mR) * 0.5f;
+      const float sid = (mL - mR) * 0.5f * width;
+      mL = mid + sid;
+      mR = mid - sid;
+
+      // Shelf aigu a 2 kHz, +/-6 dB selon la brillance. L'ancien remelange
+      // mono/hi ne deplacait le centroide que de 1 % : les presets sonnaient
+      // identiques. Ici l'inclinaison du spectre est franche.
+      lpL_ += (mL - lpL_) * shelfA_;
+      lpR_ += (mR - lpR_) * shelfA_;
+      mL = lpL_ + (mL - lpL_) * shelfG;
+      mR = lpR_ + (mR - lpR_) * shelfG;
+
+      outL[i] += mL * amp * vel_;
+      outR[i] += mR * amp * vel_;
     }
   }
 
@@ -297,6 +319,8 @@ class PianoVoice {
   float ratio_ = 1.f, vel_ = 1.f;
   float env_ = 0.f, rel_ = 0.f, age_ = 0.f, tau1_ = 0.5f;
   uint32_t loopStart_ = 0, loopEnd_ = 0;
+  // Shelf aigu par canal : c'est lui qui rend TONE/HAMMER/LID audibles.
+  float lpL_ = 0.f, lpR_ = 0.f, shelfA_ = 0.25f;
   int note_ = -1;
   bool active_ = false, releasing_ = false;
   PianoResonators res_;
@@ -304,11 +328,12 @@ class PianoVoice {
 
 // ---------------------------------------------------------------------------
 // Moteur.  12 parametres :
-//   0 HAMMER  durete de marteau      6 SPACE  piece
-//   1 TONE    brillance              7 WIDTH  largeur stereo
-//   2 BODY    couplage resonateurs   8 TUNE   accord fin (cents)
-//   3 SUSTAIN maintien               9 VEL    sensibilite velocite
-//   4 RELEASE longueur de queue     10 SYMP   resonance sympathique
+//   0 HAMMER  durete de marteau      6 WIDTH  largeur stereo
+//   1 TONE    brillance              7 LEVEL  niveau
+//   2 RESONANCE couplage resonateurs 8 RELEASE longueur de queue
+//   3 LID     couvercle (haut)       9 VEL    sensibilite velocite
+//   4 MIC     (non traite)          10 PEDAL  (non traite)
+//   5 SPACE   piece                 11 MODEL  choix du modele (ignore ici)
 //   5 LID     couvercle (niveau HF) 11 LEVEL  niveau
 // ---------------------------------------------------------------------------
 class PianoEngine : public SourceFx {
@@ -351,7 +376,8 @@ class PianoEngine : public SourceFx {
     voices_[slot].start(pcm->data(), static_cast<uint32_t>(pcm->size() / 2),
                         g->root, g->tuneCents, note, v, sr_,
                         static_cast<float>(reader_.rate()),
-                        g->loopStart, g->loopEnd);
+                        loopsOn_ ? g->loopStart : 0u,
+                        loopsOn_ ? g->loopEnd : 0u);
   }
 
   void noteOff(int note) override {
@@ -359,6 +385,11 @@ class PianoEngine : public SourceFx {
   }
 
   void allNotesOff() override { for (auto& v : voices_) v.kill(); }
+
+  /** Boucle de sustain active ou non.  Une boucle courte module l'amplitude a sa
+   *  frequence de repetition ; la couper supprime la modulation, au prix d'une note
+   *  qui s'arrete a la fin de la queue enregistree. */
+  void setLoopsEnabled(bool on) { loopsOn_ = on; }
 
   bool loadSampleBank(const uint8_t* bytes, size_t size) override {
     return reader_.load(bytes, size);
@@ -382,25 +413,47 @@ class PianoEngine : public SourceFx {
     std::fill(tmpL_.begin(), tmpL_.begin() + n, 0.f);
     std::fill(tmpR_.begin(), tmpR_.begin() + n, 0.f);
 
-    const float body = p(2), bright = p(1), width = p(7);
-    const float rel = 0.25f + p(4) * 5.0f;
-    const float hold = p(3);
+    // Ordre des parametres (contrat de l'interface) : 0 HAMMER, 1 TONE,
+    // 2 RESONANCE, 3 LID, 4 MIC, 5 SPACE, 6 WIDTH, 7 LEVEL, 8 RELEASE,
+    // 9 VELOCITY, 10 PEDAL NOISE, 11 MODEL.
+    // MIC et PEDAL NOISE ne sont pas encore traites ; MODEL est reserve au choix
+    // discret du modele, que le moteur ignore pour l'instant.
+    // HAMMER et LID agissent tous deux sur le haut du spectre : un marteau plus dur
+    // et un couvercle plus ouvert eclairent le timbre, ce sont bien deux reglages.
+    const float body = p(2), width = p(6);
+    const float bright = std::min(1.f, p(1) * (0.55f + 0.9f * p(0)) + p(3) * 0.25f);
+    const float rel = 0.25f + p(8) * 5.0f;
+    // Pas de parametre de maintien dans le contrat : on garde une valeur fixe.
+    const float hold = 0.5f;
     for (auto& v : voices_) {
       if (!v.active()) continue;
       v.render(tmpL_.data(), tmpR_.data(), n, sr_, body, bright, width, rel, hold);
     }
-    const float lvl = p(11) * (0.6f + 0.4f * p(5));
+    const float lvl = p(7) * (0.6f + 0.4f * p(5));
+    // Passe-haut a 5 Hz (R = 1 - 2*pi*fc/sr), sur le signal d'instrument et non sur la
+    // sortie : le tampon de sortie peut deja porter le mix d'autres sources.
+    const float R = 1.f - 6.2831853f * 5.f / sr_;
     for (int i = 0; i < n; ++i) {
-      io[i * 2] += tmpL_[i] * lvl;
-      io[i * 2 + 1] += tmpR_[i] * lvl;
+      const float yl = tmpL_[i] - dcxL_ + R * dcyL_;
+      dcxL_ = tmpL_[i]; dcyL_ = yl;
+      const float yr = tmpR_[i] - dcxR_ + R * dcyR_;
+      dcxR_ = tmpR_[i]; dcyR_ = yr;
+      io[i * 2] += yl * lvl;
+      io[i * 2 + 1] += yr * lvl;
     }
     setMeter(0, std::min(1.f, std::abs(tmpL_[0]) + std::abs(tmpR_[0])));
   }
 
  private:
+  bool loopsOn_ = true;
   PianoSampleReader reader_;
   PianoVoice voices_[kVoices];
   std::vector<float> tmpL_, tmpR_;
+  // Bloqueur de continu, un par canal. La source est propre (DC -0,00004) mais la somme
+  // des voix et la resonance en font apparaitre : mesure -0,08 sur une prise, soit 5,8 %
+  // de la reserve de crete perdus en polarisation, et 80 % de l'energie sous 20 Hz.
+  // Un piano ne produit rien sous 27 Hz (A0).
+  float dcxL_ = 0.f, dcyL_ = 0.f, dcxR_ = 0.f, dcyR_ = 0.f;
   float sr_ = 44100.f;
 };
 

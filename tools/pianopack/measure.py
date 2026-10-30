@@ -35,15 +35,27 @@ CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache")
 NOTE_BASE = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 
 
+# La banque nomme les fichiers avec la convention **Roland** : le do central est
+# "C3".  La notation scientifique l'appelle C4.  Mesure du contenu des fichiers
+# (pic fondamental par FFT) : "C2" porte 130 Hz, "C3" porte 262 Hz, "A#2" porte
+# 233 Hz — soit exactement +1 octave par rapport a la notation scientifique.
+#
+# Sans ce decalage, chaque region recevait un root 12 demi-tons trop bas et le
+# moteur transposait TOUT une octave trop haut : le piano sonnait maigre et
+# criard, « comme une guitare ».  Mesure avant correction : note 60 demandee
+# (C4 = 261,6 Hz) sortait a 525 Hz.
+BANK_OCTAVE_OFFSET = 12
+
+
 def midi_of(note):
-    """'C#3' -> 49.  La banque note le la le plus grave A0 (MIDI 21)."""
+    """'C3' -> 60.  Convention Roland de la banque (do central = C3)."""
     if len(note) > 1 and note[1] in "#b":
         step = NOTE_BASE[note[0]] + (1 if note[1] == "#" else -1)
         octave = int(note[2:])
     else:
         step = NOTE_BASE[note[0]]
         octave = int(note[1:])
-    return 12 * (octave + 1) + step
+    return 12 * (octave + 1) + step + BANK_OCTAVE_OFFSET
 
 
 def f0_nominal(note):

@@ -935,9 +935,12 @@ fun BottomBar(
 @Composable
 fun FloppyDiskIcon(
     isArmed: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    tint: Color? = null
 ) {
-    val diskColor = if (isArmed) Color(0xFFFF2A55) else Color(0xFF8E95A5)
+    // `tint` lets a caller that draws on a photograph keep the disk legible; the default
+    // stays the bottom-bar grey.
+    val diskColor = when { isArmed -> Color(0xFFFF2A55); tint != null -> tint; else -> Color(0xFF8E95A5) }
     val innerCutoutColor = Color(0xFF0C101A)
     val labelColor = if (isArmed) Color(0xFFFFB3BA) else Color(0xFFECEFF1)
 

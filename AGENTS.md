@@ -2110,3 +2110,221 @@ lisait** (seul le preview HTML s'en servait).
   Le dessin vectoriel reste dessous en repli.
 - Verifie sur captures : la zone photo differe d'un preset a l'autre (Felt
   53/60/72, Electric 133/144/158).
+
+## Session 2026-10-29 — piano : le son « jouet », causes mesurees
+
+Deux reproches utilisateur : le piano sonne comme un jouet, et l'interface ne
+ressemble pas a la reference. Les deux sont fondes, et les causes sont mesurees.
+
+### Le moteur est fidele : c'est la banque qui est pauvre
+
+Mesures sur le fichier source brut, sans passer par notre code :
+- `FF C4.flac` (fortissimo) : centroide **577 Hz**, energie > 5 kHz **0,002 %**,
+  attaque > 8 kHz **0,01 %**, RMS 0,086.
+- Toute la banque : frequence max mediane **3586 Hz**, seuls **42/196** fichiers
+  depassent 8 kHz.
+
+Une banque avec rien au-dessus de 5 kHz ne peut pas sonner comme un piano. Et le
+moteur ne degrade rien : correlation spectrale sortie/echantillon = **1,000**
+(aucun oscillateur, aucun bruit, aucune synthese ajoutee).
+
+**Comparaison Salamander (16 couches, CC-BY) contre Splendid** : meme spectre
+(centroide 533 contre 553 pour C4) — changer de banque ne corrigerait **pas** le
+timbre. Salamander apporte seulement des queues de 15 a 22 s contre 3,8 s.
+
+### Trois corrections qui, elles, changent le son
+
+1. **Rampe d'attaque 4 ms -> 0,5 ms.** Le transitoire de marteau vit dans les
+   2 premieres ms : une rampe de 4 ms l'efface et le piano perd son attaque.
+2. **Boucles allongees.** Le point de depart etait borne a 1,30 s et la longueur a
+   0,62 s, d'ou des boucles de **170 ms** repetees pendant tout le sustain.
+   Bornes portees a t0 0,40-1,00 s et L 0,55-1,05 s : sustain median **0,61 s**,
+   soit 3,6x plus long. Pack **8,10 Mo**, 193/196 boucles, 0 au-dessus du seuil 5.
+3. **Contrat des parametres du moteur aligne.** Le moteur lisait 4 = Release,
+   5 = Lid, 7 = Width, 11 = Level ; la reference attend 3 = Lid, 4 = Mic,
+   7 = Level, 8 = Release, 11 = **MODEL**. Les presets de l'ancienne liste
+   pointaient donc tous sur le mauvais modele. `bright` combine maintenant HAMMER
+   et LID (deux reglages distincts du haut du spectre), `hold` est fixe (pas de
+   parametre de maintien dans le contrat), MIC et PEDAL NOISE ne sont pas traites.
+
+### L'interface : portee de la reference, pas reinventee
+
+`AePianoUi.kt` avait ete ecrit comme une variante du conteneur generique du sax
+(dessin vectoriel + 12 potards en absolu). La reference est **une scene plein
+cadre** : photo du modele + particules, liste des modeles a gauche, carte de verre
+a droite, clavier en bas. Aucun des composants attendus n'existait
+(`AeModelList`, `AeGlassCard`, `AeLightKnob`, `AeLightSlider`, `AeGlassKeyboard`,
+`AeIconBtn`, `AeSmallBtn`, `AeFullscreenHost`, `AeSceneRuntime`, `rememberAeTheme`) :
+ils viennent maintenant de `AeWaterScene.kt` et `AeLightControls.kt`, importes
+tels quels.
+
+**`procedural = false` pour le piano** : la scene est une photographie, **sans eau
+ni ciel**. L'eau appartient a Strings — ne pas la remettre sur le piano.
+
+### Images : nom et resolution
+
+`AePianoAssets.bitmap` cherche `ae_piano_<id>` en `drawable`. Les WebP s'appelaient
+`piano_<id>.webp` en 750 px (trop petit pour une scene plein cadre) : renommes et
+regeneres en **1500 px** depuis les AVIF `_1500`, 1,23 Mo au total.
+
+### Publication : vraies images JPEG
+
+`tools/aetherfx/reduce.py` enregistrait du **PNG** sous une extension `.jpg` (450 Ko
+par capture). Passe en JPEG progressif q86 : **~140 Ko**, dossier publie de
+2854 Ko a **1525 Ko**.
+
+### Reste
+- Validation appareil du nouveau timbre (l'ADPCM 4 bits reste a 30-38 dB de SNR :
+  c'est le plancher de bruit du pack, non corrige ici).
+- Persistance du choix d'instrument AEther par piste (toujours non branchee).
+
+## Session 2026-10-29 (2e) — piano : la « guitare », la tenue et le continu
+
+Retour utilisateur : « le son des pianos on dirait un solo de guitare electrique
+Rock ». C'etait juste, et la cause n'etait pas celle que je croyais.
+
+### Le moteur rendait une note QUI NE DECROISSAIT PAS
+
+Mesure de la decroissance de la fondamentale sur la sortie du moteur contre la
+source, meme note :
+
+| | moteur | source |
+|---|---|---|
+| C4 fondamentale | **-0,0 dB/s** (plate) | -17,2 dB/s |
+| C4 h2..h8 | -1 a -6 dB/s | -12 a -25 dB/s |
+
+Une boucle rejouee a niveau constant tient la note indefiniment. C'est le
+comportement d'une **corde de guitare**, pas d'un piano — d'ou la description.
+
+Cause : `PianoVoice::render` multiplie tau par `(1 + 6*sustainHold)`. Avec le
+`hold = 0,5` fixe du contrat, ca fait **x4** sur la constante de decroissance.
+`tau1_` etait cale sur 0,478 s (donc 4,5 dB/s). Reecrit :
+
+    tau1_ = 0.255f * std::pow(0.833f, (note - 60) / 12.f);   // ~8,4 dB/s a C4
+
+Loi mesuree sur les 45 regions fortes de la banque : **dB/s = 2,09 * f0^0,26**
+(mediane 8,6 dB/s dans le grave, 8,4 a C4, 12,9 une octave plus haut). A ne pas
+recaler a l'oeil : la mediane est dominee par les notes longues du grave, pas par
+la note qu'on ecoute.
+
+### Le moteur n'avait pas de bloqueur de continu
+
+La source est propre (DC -0,00004) mais la sortie portait **-0,08** : 81,7 % de
+l'energie sous 20 Hz et 5,8 % de la reserve de crete perdus en polarisation.
+Defaut **preexistant** (l'ancien MP3 publie avait deja 35,6 % sous 20 Hz) que la
+decroissance plus longue a aggrave (81,7 %). Ajout d'un passe-haut a 5 Hz
+(R = 1 - 2*pi*5/sr) applique **au signal d'instrument, avant le gain** — le
+tampon de sortie peut deja porter le mix d'autres sources, le filtrer filtrerait
+les autres. Resultat : DC -0,00005, <20 Hz **0,6 %**, centroide de la demo
+**20 Hz -> ~850 Hz** (plage d'un piano).
+
+### La ou vit le bruit de l'ADPCM (a relire avant de choisir un codec)
+
+SNR par bande, round-trip reel (pas l'estimation) :
+
+| Bande | SNR |
+|---|---|
+| 0-1 kHz | 47 dB |
+| 1-3 kHz | 31 dB |
+| 3-6 kHz | **5 a 12 dB** |
+| 6-11 kHz | **-14 a -22 dB** (bruit plus fort que le signal) |
+
+La source n'a rien au-dessus de 5 kHz, donc le haut est du **bruit de
+quantification pur**, granuleux et correle au signal : c'est ce qui donne la
+texture « electrique ». Mesures de correctifs : couper a 5,5 kHz avant l'encodage
+fait tomber le 6-11 kHz de -14 a -33 dB (le mu-law 8 bits n'apporte que
++0,6 dB dans la bande 3-6 kHz : le bruit y est au niveau du signal, changer de
+codec ne regle pas cette bande).
+
+### Demo : « Joyeux anniversaire »
+
+La melodie precedente etait le refrain de *Can You Feel the Love Tonight*
+(Elton John / Tim Rice, 1994) — protegee, et publiee sur une URL accessible.
+Remplacee par *Happy Birthday to You*, **domaine public depuis 2016** (reglement
+du litige Warner/Chappell). Fa majeur, basse tenue sous la phrase centrale.
+
+**Piege** : les kPresets de demo_piano.cpp etaient une table ecrite a la main,
+desalignee de AePianoPresets (elle avait LEVEL en 11 au lieu de MODEL). Toute
+modification des presets doit etre repercutee dans les deux ; extraire depuis
+AePianoUi.kt plutot que recopier.
+
+### UI (3 demandes)
+
+- **Carte a la taille des autres** : AeGlassCard(th, 694, 54, 280, 286) — la
+  convention des autres fenetres est y = 54, h = 286 (AeCardBox).
+- **Bouton PED retire** : il faisait doublon avec le sustain MIDI (CC64).
+- **Couleurs adaptatives par MESURE, pas par drapeau.** Le drapeau dark ecrit a la
+  main etait faux pour Felt (0,637), Mellow (0,590), Studio (0,165).
+  AePianoAssets.plate decode l'image et mesure la **luminance Rec.709 du tiers
+  haut** (la ou vivent le titre et la liste) ; rememberAeThemeFor(luma) bascule
+  l'encre a 0,5. Contraste mesure sur les captures : **9,8 a 11,4:1** (WCAG AA
+  demande 4,5).
+
+### Reste
+- La bande 3-6 kHz reste a 5-12 dB de SNR (bruit au niveau du signal). La seule
+  sortie serait une source qui en contient vraiment — hors du perimetre du pack.
+- AePianoModel.dark n'est plus lu pour le theme. Le champ est conserve (il
+  documente l'intention) mais ne pilote plus rien.
+
+## Session 2026-10-29 (3e) — « toujours du solo de guitare, tous identiques » : le moteur ignorait les controles
+
+L'utilisateur avait raison **au sens strict**, et la mesure le prouve.
+
+### Les 9 modeles rendaient le meme son (verifie)
+
+Empreinte spectrale des 9 prises : **7 sur 9 bit-identiques** (correlation 1,00) —
+Bright, Mellow, Dark, Upright, Lady, Honky, Electric. Seuls Felt et Studio
+differaient. Les presets, eux, etaient bien differents : le moteur les ignorait.
+
+### Sonde parametre par parametre (`tools/aetherfx/param_probe.cpp`)
+
+Joue C4 en faisant varier UN parametre de 0 a 1, imprime RMS et centroide.
+
+| Parametre | dCentroide avant | apres |
+|---|---|---|
+| TONE | **+1,0 %** | **+35,6 %** |
+| HAMMER | **+0,5 %** | +18,9 % |
+| LID | **+0,3 %** | +10,0 % |
+| RESONANCE | −2,2 % | −4,1 % |
+| MIC / WIDTH / MODEL | 0 % | 0 % (jamais implementes) |
+| PEDAL | 0 % | 0 % (non traite) |
+
+**Deux causes racines.**
+
+1. `PianoResonators` avait un **Q de 260**. La bande d'un peaking a Q=260 fait
+   quelques hertz : le signal ne l'excite quasiment pas, donc RESONANCE ne
+   s'entendait pas. Q ramene a **34** (bande assez large pour etre excitee).
+2. La brillance etait un remelange `sL*(1-b*0.35) + hi*amp*b*0.5` ou `hi` est le
+   **complement** du resonateur, c'est-a-dire du mono brut. Le geste ne
+   restructurait rien : 1 % de deplacement. Remplace par un **shelf aigu a 2 kHz,
+   +/-6 dB** (`shelfG = exp2((bright-0.5)*2.0)`), applique par canal avec un
+   one-pole comme charniere. C'est ce shelf qui rend TONE/HAMMER/LID audibles.
+
+### Les presets ont ete reaccordes (ils ne l'etaient pas pour ce moteur)
+
+Ecrits pour l'ancien moteur ou les controles ne faisaient rien, ils n'etaient pas
+ecartes. Reaccordes sur `bright = p1*(0.55+0.9*p0) + p3*0.25`, de **0,14** (Dark) a
+**0,88** (Bright). `upright` et `lady` etaient a 3,7 % l'un de l'autre : ecartes a
+**7,1 %** (deux droits se ressemblent, c'est legitime).
+
+Ecart final : bright/mellow **24,9 %**, dark/honky **29,3 %**, felt/studio **137 %**.
+
+### Demo : un fichier par modele
+
+`demo_piano.cpp` ecrit desormais `take_<slug>.f32` par modele (plus de medaillon) ;
+`demo_encode.py` produit un MP3 par modele. La comparaison se fait modele par
+modele, pas dans un enchainement ou l'oreille perd sa reference.
+
+### Les pieds (NON TRAITE — a trancher avec l'utilisateur)
+
+Certains pianos n'ont que 2 pieds alors qu'un piano a queue en a 3 (la troisieme a
+l'arriere) ; les droits n'en ont pas besoin. Les images font 1500 px de large
+(`res/drawable-nodpi/ae_piano_*.webp`, converties depuis AVIF). **Je n'ai pas
+touche aux images** : la retouche demande de regenerer les visuels. Planche de
+controle publiee (`pieds.jpg`) pour decider desquelles reprendre.
+
+### Reste
+- Les pieds manquants (retouche d'image, hors de ce que je peux produire ici).
+- `pieds.jpg` : le texte de la planche sort en rectangles (police bitmap PIL par
+  defaut sans glyphes) — la planche reste lisible par sa position, mais il faudrait
+  une police TTF pour les libelles.

@@ -75,10 +75,19 @@ import androidx.compose.ui.unit.IntSize
 @Composable
 fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modifier: Modifier = Modifier) {
     val s = manager.sessions[strip] ?: return
+    val ctx = LocalContext.current
     val c = remember(s) { AeCtl(s, manager) }
     val a = remember(s) { AeAnim() }
     var list by remember { mutableStateOf(false) }
     var naming by remember { mutableStateOf(false) }
+    // The shell paints its own text over whatever the instrument draws behind it. On the
+    // piano that backdrop is a photograph, so a fixed near-white ink turns white-on-white
+    // on the six light models. Measure the same band the title lives in and follow it.
+    val winLuma = remember(s.instrument, s.preset) {
+        if (s.instrument != AeInstrument.PIANO) null
+        else AePianoModels.all.getOrNull(s.preset)?.let { AePianoAssets.plate(ctx, it.id)?.topLuma }
+    }
+    val winTh = rememberAeThemeFromLuma(winLuma, AeC.p1)
     // One loop per open window. While anything is moving it runs at ~60 fps, and when the
     // instrument is idle it *sleeps on the note counter* instead of polling slowly: a slow
     // idle poll made the first key press wait for the next tick, which is what read as
@@ -104,16 +113,15 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
     AeStage(modifier) {
         val shape = RoundedCornerShape(24.su())
         Box(Modifier.fillMaxSize().clip(shape).border(1.su(), Color(0x22FFFFFF), shape)) {
-            when (s.instrument) { AeInstrument.ORGAN -> AeOrganUi(c, a); AeInstrument.SYNTH -> AeSynthUi(c, a); AeInstrument.LEADS -> AeLeadsUi(c, a); AeInstrument.SAX -> AeSaxUi(c, a); AeInstrument.PIANO -> AePianoUi(c, a) }
+            when (s.instrument) { AeInstrument.ORGAN -> AeOrganUi(c, a); AeInstrument.SYNTH -> AeSynthUi(c, a); AeInstrument.LEADS -> AeLeadsUi(c, a); AeInstrument.SAX -> AeSaxUi(c, a); AeInstrument.PIANO -> AePianoUi(c, manager, strip, onClose) }
             when (s.instrument) {
                 AeInstrument.SYNTH -> AeT("ÆTHER SYNTH", 13, Color.White, Modifier.at(58, 15, 200, 18), AeFonts.display, spacing = 0.18f)
                 AeInstrument.LEADS -> AeT("ÆTHER LEADS", 13, Color(0xFF6FE9FF), Modifier.at(58, 15, 200, 18), AeFonts.display, spacing = 0.18f)
                 AeInstrument.SAX -> AeT("ÆTHER SAX", 13, AeC.gold, Modifier.at(58, 15, 200, 18), AeFonts.plate, FontWeight.ExtraBold, 0.2f)
-                AeInstrument.PIANO -> AeT("ÆTHER PIANO", 13, Color(0xFFE3C48A), Modifier.at(58, 15, 200, 18), AeFonts.plate, FontWeight.ExtraBold, 0.2f)
                 else -> Unit
             }
             val presets = manager.presets(s.instrument)
-            BackArrow(10, 9, 30) { onClose() }
+            BackArrow(winTh, 10, 9, 30) { onClose() }
             // Header geometry, left to right, with no overlaps left:
             //   back 10..40 | title from 58 | tabs 264..532 | disk 552..582 | prev 596..626 |
             //   preset chip 640..866 | next 880..910.
@@ -121,14 +129,14 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
             // under the disk at 620 — the crowding the user reported. The preset chip used to
             // start at 686, i.e. 36 units from the disk's right edge at 650; it now starts 58
             // units after the disk, and 14 after the prev button.
-            HeaderBtn("◀", 596, 8, 30, 30) { manager.loadPreset(strip, s.preset - 1) }
+            HeaderBtn(winTh, "◀", 596, 8, 30, 30) { manager.loadPreset(strip, s.preset - 1) }
             val ns = RoundedCornerShape(10.su())
-            Row(Modifier.at(640, 7, 226, 32).clip(ns).background(Color(0x14FFFFFF)).border(1.su(), Color(0x1CFFFFFF), ns).clickable(remember { MutableInteractionSource() }, null) { list = !list }.padding(horizontal = 12.su()),
+            Row(Modifier.at(640, 7, 226, 32).clip(ns).background(winTh.glass).border(1.su(), winTh.edge, ns).clickable(remember { MutableInteractionSource() }, null) { list = !list }.padding(horizontal = 12.su()),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                AeT(presets.getOrNull(s.preset)?.name ?: "", 12, AeC.tx); AeT(presets.getOrNull(s.preset)?.category ?: "", 10, AeC.mute, weight = FontWeight.SemiBold)
+                AeT(presets.getOrNull(s.preset)?.name ?: "", 12, winTh.ink); AeT(presets.getOrNull(s.preset)?.category ?: "", 10, winTh.ink2, weight = FontWeight.SemiBold)
             }
-            HeaderBtn("▶", 880, 8, 30, 30) { manager.loadPreset(strip, s.preset + 1) }
-            SaveDiskBtn(552, 7) { naming = true }
+            HeaderBtn(winTh, "▶", 880, 8, 30, 30) { manager.loadPreset(strip, s.preset + 1) }
+            SaveDiskBtn(winTh, 552, 7) { naming = true }
             if (naming) NameSheet(
                 initial = "My ${s.instrument.title.removePrefix("Æther ")}",
                 onCancel = { naming = false },
@@ -150,7 +158,7 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
  * dismissed, rather than a ✕ boxed in the top-right corner.
  */
 @Composable
-private fun BoxScope.BackArrow(x: Number, y: Number, size: Number, onClick: () -> Unit) {
+private fun BoxScope.BackArrow(th: AeTheme, x: Number, y: Number, size: Number, onClick: () -> Unit) {
     val s = size.toFloat()
     Box(
         Modifier.at(x, y, size, size).clip(CircleShape)
@@ -166,14 +174,14 @@ private fun BoxScope.BackArrow(x: Number, y: Number, size: Number, onClick: () -
                 lineTo(cx - 3.5f * k, cy)
                 lineTo(cx + 4.5f * k, cy + 6f * k)
             }
-            drawPath(p, AeC.tx, style = androidx.compose.ui.graphics.drawscope.Stroke(w, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+            drawPath(p, th.ink, style = androidx.compose.ui.graphics.drawscope.Stroke(w, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
         }
     }
 }
 
 @Composable
-private fun BoxScope.HeaderBtn(t: String, x: Number, y: Number, w: Number, h: Number, onClick: () -> Unit) {
-    Box(Modifier.at(x, y, w, h).clip(RoundedCornerShape(9.su())).background(Color(0x14FFFFFF)).clickable(remember { MutableInteractionSource() }, null, onClick = onClick), contentAlignment = Alignment.Center) { AeT(t, 12, AeC.tx) }
+private fun BoxScope.HeaderBtn(th: AeTheme, t: String, x: Number, y: Number, w: Number, h: Number, onClick: () -> Unit) {
+    Box(Modifier.at(x, y, w, h).clip(RoundedCornerShape(9.su())).background(th.glass).clickable(remember { MutableInteractionSource() }, null, onClick = onClick), contentAlignment = Alignment.Center) { AeT(t, 12, th.ink) }
 }
 
 /**
@@ -336,13 +344,13 @@ private fun CatRow(name: String, count: Int, sel: Boolean, accent: Color, isAll:
 
 /** Floppy button that saves the current knobs as a user preset. Same chrome as the header buttons. */
 @Composable
-private fun BoxScope.SaveDiskBtn(x: Number, y: Number, onClick: () -> Unit) {
+private fun BoxScope.SaveDiskBtn(th: AeTheme, x: Number, y: Number, onClick: () -> Unit) {
     val sh = RoundedCornerShape(10.su())
     Box(
-        Modifier.at(x, y, 30, 32).clip(sh).background(Color(0x14FFFFFF)).border(1.su(), Color(0x1CFFFFFF), sh)
+        Modifier.at(x, y, 30, 32).clip(sh).background(th.glass).border(1.su(), th.edge, sh)
             .clickable(remember { MutableInteractionSource() }, null, onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) { FloppyDiskIcon(isArmed = false, modifier = Modifier.size(16.su())) }
+    ) { FloppyDiskIcon(isArmed = false, tint = th.ink, modifier = Modifier.size(16.su())) }
 }
 
 /**
@@ -658,7 +666,7 @@ private fun AeTile(inst: AeInstrument, loaded: Boolean, modifier: Modifier, onCl
                     AeInstrument.SYNTH -> Box(Modifier.size(110.dp, 73.dp).aeSvg(AeSvgs.MINI_SYNTH))
                     AeInstrument.LEADS -> Box(Modifier.size(110.dp, 59.dp).aeSvg(AeSvgs.MINI_LEADS))
                     AeInstrument.SAX -> AeSaxMini(Modifier.size(54.dp, 96.dp))
-                    AeInstrument.PIANO -> Canvas(Modifier.size(110.dp, 73.dp)) { drawPianoMini() }
+                    AeInstrument.PIANO -> AePianoCardPreview(Modifier.size(110.dp, 73.dp))
                 }
             }
             Column {

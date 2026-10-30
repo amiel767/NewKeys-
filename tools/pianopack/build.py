@@ -31,7 +31,7 @@ from measure import load_mono, sample_path, f0_nominal, fit_log_score, midi_of  
 RATE = 22050
 
 # Duree de queue conservee apres le point de boucle.
-TAIL_S = 1.0
+TAIL_S = 0.6
 
 # Ordre des couches de la banque, du plus doux au plus fort.
 LAYERS = ["PP", "Mp", "Mf", "MF", "FF"]
@@ -142,13 +142,13 @@ def loop_region(m, sr, f0, xfade=None):
     trouvent un raccord exact la ou un pas grossier en laissait passer.
     """
     P = max(int(round(sr / f0)), 8)
-    lo = max(int(0.45 * sr), 8 * P)
-    hi = min(int(1.30 * sr), len(m) - int(0.6 * sr))
+    lo = max(int(0.40 * sr), 8 * P)
+    hi = min(int(1.00 * sr), len(m) - int(0.6 * sr))
     if hi - lo < 8 * P:
         return None, None
     step = max(P // 6, 1)
     best = None
-    for cand in np.arange(0.15, 0.62, 0.02):
+    for cand in np.arange(0.55, 1.05, 0.05):
         L = max(8, int(round(cand * sr / P))) * P
         if lo + L + 2 >= len(m):
             continue
