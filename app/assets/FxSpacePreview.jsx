@@ -234,7 +234,7 @@ function Slider({ p, v, onChange, accent, compact }) {
    Le dessin suit l'ordre réel d'une reverb : la source émet, l'énergie s'étale
    le long du sol, atteint les murs, puis remonte. La brume marque l'absorption.
    ─────────────────────────────────────────────────────────────────────────── */
-function Scene({ vals, fireRef, accent, hover }) {
+export function Scene({ vals, fireRef, accent, hover }) {
   const cvs = useRef(null);
   const st = useRef({ rings: [], motes: [], t: 0, last: 0, next: 0.4, flash: 0, wall: 0 });
   const vref = useRef(vals);
