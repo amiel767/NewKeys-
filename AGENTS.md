@@ -1741,3 +1741,18 @@ confirme le changement, l'OCR confirme *quoi* a change.
 
 Lancer les builds longs en **arriere-plan** (`nohup ... &`) : le runtime coupe les
 commandes de premier plan a 1080 s.
+
+
+## Mode economique de conversation (regle, 2026-10-29)
+
+La consommation de l utilisateur = le flux de conversation renvoye a chaque tour,
+PAS le reseau du sandbox. Une sortie de terminal de 10 Ko coute a chaque tour
+suivant. Regles :
+
+- Ecrire les scripts avec l editeur de fichiers, jamais par heredoc : un heredoc
+  renvoie tout le script dans la sortie.
+- Toujours filtrer : rediriger vers un log et ne montrer que `tail -3`, ou
+  `| tail -5`. Jamais de listing complet ni de tableau de 60 lignes.
+- Une commande par etape, pas trois. Pas de `ls -la` repete.
+- Les gros artefacts (JSON de mesure, packs) s ecrivent sur disque et se
+  consultent par agregats, pas en entier dans le terminal.
