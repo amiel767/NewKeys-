@@ -408,20 +408,33 @@ function Stepper({ value, min, max, onChange, label }) {
   );
 }
 
-function Seg({ options, value, onChange, height = 34 }) {
+/* ══ LE TOGGLE SEGMENTE ════════════════════════════════════════════════════
+   Meme matiere que les autres segmented de l'app : piste creusee, pouce qui
+   glisse. Les segments partagent la largeur a parts egales (`grow`), et la
+   TAILLE DE POLICE est calculee : on connait la largeur disponible et le
+   libelle le plus long, donc on choisit la plus grande taille qui tient.
+   ─────────────────────────────────────────────────────────────────────────── */
+function Seg({ options, value, onChange, height = 34, grow = false, width, fs }) {
+  const longest = Math.max(1, ...options.map(([, l]) => (l || "").length));
+  // largeur d'un caractere en gras ~0,60 em ; 16 px de marge interne par segment
+  const fit = width ? (width / options.length - 16) / (0.60 * longest) : 11.5;
+  const size = fs ?? clamp(Math.round(fit * 10) / 10, 8.5, 11.5);
   return (
     <div style={{ display: "flex", gap: 2, padding: 3, borderRadius: 11, background: "#0B0F18",
-                  border: `1px solid ${LINE}`, boxShadow: "inset 0 2px 6px rgba(0,0,0,.55)" }}>
+                  border: `1px solid ${LINE}`, boxShadow: "inset 0 2px 6px rgba(0,0,0,.55)",
+                  width: grow ? "100%" : undefined }}>
       {options.map(([k, l, ic]) => {
         const on = value === k;
         return (
           <button key={k} onClick={() => onChange(k)} title={l}
-                  style={{ height, minWidth: on ? 92 : 38, borderRadius: 8, border: 0, cursor: "pointer",
+                  style={{ height, flex: grow ? "1 1 0" : undefined, minWidth: grow ? 0 : 44,
+                           borderRadius: 8, border: 0, cursor: "pointer", padding: "0 9px",
                            background: on ? `linear-gradient(180deg,${IN1},${IN2})` : "transparent",
-                           color: on ? IN_TEXT : "#8791B5", display: "flex", alignItems: "center",
-                           justifyContent: "center", gap: 6, fontSize: 11, fontWeight: 800,
-                           fontFamily: FONT, transition: "all .18s" }}>
-            {Ico && ic && <Ico d={ic} size={14} />}{on && l}
+                           color: on ? IN_TEXT : "#7E88A6", display: "flex", alignItems: "center",
+                           justifyContent: "center", gap: 5, fontSize: size, fontWeight: on ? 800 : 700,
+                           fontFamily: FONT, whiteSpace: "nowrap", overflow: "hidden",
+                           transition: "all .18s" }}>
+            {Ico && ic && <Ico d={ic} size={Math.max(11, size + 2)} />}{l}
           </button>
         );
       })}
@@ -1040,7 +1053,7 @@ function FxPanel({ fx, vals, setVal, preset, custom, onPick, on, onToggle }) {
    grands ecarts. Un Stepper a clics seuls demandait 200 clics pour aller de 40
    a 240 BPM.
    ─────────────────────────────────────────────────────────────────────────── */
-function NumStep({ label, value, min, max, step = 1, unit = "", onChange, width = 40 }) {
+function NumStep({ label, value, min, max, step = 1, unit = "", onChange, width = 40, fs = 13 }) {
   const drag = useRef(null);
   const btn = (t, fn) => (
     <button onClick={fn} style={{ ...ghost({ width: 24, height: 24, display: "grid", placeItems: "center",
@@ -1057,7 +1070,7 @@ function NumStep({ label, value, min, max, step = 1, unit = "", onChange, width 
             onPointerMove={(e) => { if (!drag.current) return;
               onChange(clamp(Math.round(drag.current.v + (drag.current.y - e.clientY) * sens), min, max)); }}
             onPointerUp={() => { drag.current = null; }}
-            style={{ minWidth: width, textAlign: "center", fontSize: 13, fontWeight: 800, fontFamily: MONO,
+            style={{ minWidth: width, textAlign: "center", fontSize: fs, fontWeight: 800, fontFamily: MONO,
                      color: INK, cursor: "ns-resize", touchAction: "none", userSelect: "none" }}>
         {value}{unit}
       </span>
@@ -1071,44 +1084,59 @@ function ArpPanel({ p, set, cur }) {
     const r = e.currentTarget.getBoundingClientRect();
     set((s) => ({ ...s, vel: s.vel.map((x, k) => (k === i ? clamp(1 - (e.clientY - r.top) / r.height, .08, 1) : x)) }));
   };
+  // L'instruction ne se montre qu'a la PREMIERE utilisation : ensuite elle
+  // disparait et ne revient plus. Elle est discrete, posee sur la grille.
+  const [hint, setHint] = useState(() => {
+    try { return !localStorage.getItem("fxarp_seen"); } catch (_) { return true; }
+  });
+  const done = () => {
+    if (!hint) return;
+    setHint(false);
+    try { localStorage.setItem("fxarp_seen", "1"); } catch (_) {}
+  };
+  const subOptions = SUBS.map((l, i) => [i, l]);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 9, height: "100%", minHeight: 0 }}>
-      {/* Rangee du TEMPS : subdivision, style, puis BPM et Swing, puis le nombre
-          de pas. BPM et Swing vivent ici parce qu'ils gouvernent l'horloge de
-          l'arpege, comme la subdivision — pas les hauteurs, qui sont en dessous. */}
-      <div style={{ height: 60, flex: "none", display: "flex", alignItems: "center", gap: 14, padding: "0 14px",
+      {/* Rangee 1 : le TEMPS. Subdivision en toggle, puis BPM, Swing et Steps,
+          tous sur la MEME ligne et centres sur la meme hauteur. Swing se regle
+          au +/-, comme BPM : un potard pour un pourcentage etait un detour. */}
+      <div style={{ height: 58, flex: "none", display: "flex", alignItems: "center", gap: 12, padding: "0 14px",
                     ...well({ borderRadius: 13 }) }}>
-        <Knob label="Subdivision" value={p.sub / 3} size={42}
-              onChange={(v) => set((s) => ({ ...s, sub: Math.round(v * 3) }))} display={SUBS[p.sub]} />
-        <span style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".13em", textTransform: "uppercase", color: DIM }}>Style</span>
-        <Seg options={STYLES} value={p.style} onChange={(k) => set((s) => ({ ...s, style: k }))} />
-        <div style={{ flex: 1, minWidth: 8 }} />
-        <div style={{ width: 1, height: 34, background: LINE, flex: "none" }} />
-        <NumStep label="BPM" value={p.bpm} min={40} max={240} onChange={(v) => set((s) => ({ ...s, bpm: v }))} />
-        <div style={{ width: 1, height: 34, background: LINE, flex: "none" }} />
-        <Knob label="Swing" value={p.swing} size={42} accent={IN1}
-              onChange={(v) => set((s) => ({ ...s, swing: v }))} display={`${Math.round(p.swing * 100)}%`} />
-        <div style={{ width: 1, height: 34, background: LINE, flex: "none" }} />
-        <NumStep label="Steps" value={p.steps} min={1} max={16} width={22}
+        <span style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".13em", textTransform: "uppercase",
+                       color: DIM, flex: "none" }}>Subdivision</span>
+        <Seg options={subOptions} value={p.sub} onChange={(k) => set((s) => ({ ...s, sub: k }))}
+             height={30} width={196} />
+        <div style={{ flex: 1, minWidth: 6 }} />
+        <div style={{ width: 1, height: 32, background: LINE, flex: "none" }} />
+        <NumStep label="BPM" value={p.bpm} min={40} max={240} width={34} fs={12.5}
+                 onChange={(v) => set((s) => ({ ...s, bpm: v }))} />
+        <div style={{ width: 1, height: 32, background: LINE, flex: "none" }} />
+        <NumStep label="Swing" value={p.swing} min={0} max={80} unit="%" width={38} fs={12.5}
+                 onChange={(v) => set((s) => ({ ...s, swing: v }))} />
+        <div style={{ width: 1, height: 32, background: LINE, flex: "none" }} />
+        <NumStep label="Steps" value={p.steps} min={1} max={16} width={20} fs={12.5}
                  onChange={(v) => set((s) => ({ ...s, steps: v }))} />
       </div>
 
-      {/* Les hauteurs, pas a pas. La colonne « + Velocity − » a gauche est
-          retiree : les barres disent d'elles-memes ce qu'elles reglent. */}
+      {/* Rangee 2 : le MODE, en toggle pleine largeur — meme materiau. */}
+      <div style={{ height: 46, flex: "none", display: "flex", alignItems: "center", gap: 12, padding: "0 14px",
+                    ...well({ borderRadius: 13 }) }}>
+        <span style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".13em", textTransform: "uppercase",
+                       color: DIM, flex: "none" }}>Mode</span>
+        <Seg options={STYLES} value={p.style} onChange={(k) => set((s) => ({ ...s, style: k }))}
+             height={32} grow width={700} />
+      </div>
+
+      {/* Les hauteurs, pas a pas. AUCUN texte : ni intitule, ni mode d'emploi.
+          Les barres disent d'elles-memes ce qu'elles reglent. */}
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 8,
-                    padding: "10px 12px", ...well({ borderRadius: 13 }) }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "none" }}>
-          <span style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".13em", textTransform: "uppercase",
-                         color: DIM }}>Velocity</span>
-          <span style={{ fontSize: 9, color: MUTE }}>tirer verticalement · clic sur le numero pour activer</span>
-          <div style={{ flex: 1, height: 1, background: LINE }} />
-        </div>
+                    padding: "10px 12px", position: "relative", ...well({ borderRadius: 13 }) }}>
         <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "repeat(16,1fr)", gap: 5, minWidth: 0 }}>
           {Array.from({ length: 16 }).map((_, i) => {
             const active = i < p.steps, eng = p.on[i];
             return (
               <div key={i} style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
-                <div onPointerDown={(e) => { if (!active) return; e.currentTarget.setPointerCapture(e.pointerId); setVel(i, e); }}
+                <div onPointerDown={(e) => { if (!active) return; done(); e.currentTarget.setPointerCapture(e.pointerId); setVel(i, e); }}
                      onPointerMove={(e) => { if (active && e.buttons) setVel(i, e); }}
                      style={{ flex: 1, borderRadius: 8, position: "relative", overflow: "hidden", touchAction: "none",
                               cursor: active ? "ns-resize" : "default",
@@ -1125,7 +1153,8 @@ function ArpPanel({ p, set, cur }) {
                     </div>
                   )}
                 </div>
-                <button onClick={() => active && set((s) => ({ ...s, on: s.on.map((x, k) => (k === i ? !x : x)) }))}
+                <button onClick={() => { if (!active) return; done();
+                                         set((s) => ({ ...s, on: s.on.map((x, k) => (k === i ? !x : x)) })); }}
                         style={{ height: 32, width: "100%", borderRadius: 9, cursor: active ? "pointer" : "default",
                                  fontFamily: FONT, fontSize: 12.5, fontWeight: 800, opacity: active ? 1 : .35,
                                  border: `1px solid ${active && eng ? "rgba(255,255,255,.16)" : LINE}`,
@@ -1142,6 +1171,17 @@ function ArpPanel({ p, set, cur }) {
                                    boxShadow: cur === i ? `0 0 8px ${IN1}` : "none", transition: "all .08s" }} />
           ))}
         </div>
+        {/* la seule instruction, et SEULEMENT a la premiere utilisation */}
+        {hint && (
+          <div style={{ position: "absolute", left: "50%", bottom: 40, transform: "translateX(-50%)",
+                        padding: "6px 12px", borderRadius: 9, pointerEvents: "none",
+                        background: "rgba(10,14,26,.86)", border: `1px solid ${LINE2}`,
+                        fontSize: 10, fontWeight: 700, letterSpacing: ".04em", color: "#AEB7CC",
+                        whiteSpace: "nowrap", boxShadow: "0 8px 20px rgba(0,0,0,.6)",
+                        animation: "fxCue .2s ease-out" }}>
+            Glissez une barre pour la velocite · touchez un numero pour l'activer
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1166,7 +1206,7 @@ function FxWindow() {
   });
   const [t, setT] = useState(0);
   const [arp, setArp] = useState(() => ({
-    sub: 2, style: "up", steps: 16, bpm: 120, swing: .12,
+    sub: 2, style: "up", steps: 16, bpm: 120, swing: 12,
     vel: Array.from({ length: 16 }, (_, i) => (i % 4 === 0 ? 1 : i % 2 === 0 ? .78 : .62)),
     on: Array(16).fill(true),
   }));
