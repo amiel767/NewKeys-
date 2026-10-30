@@ -2053,3 +2053,60 @@ ADPCM** qui domine. Mesurer la **fraction d'energie > 5 kHz sur le sustain**
 Resultat de cette mesure : 8 presets sur 9 dans 4,7-5,3 %, **Studio seul a 0,1 %**
 — et il sature (crete 1,75, 46 393 echantillons ecretes). Les presets ne sont donc
 pas assez differencies et le gain de Studio est trop haut. **A revoir.**
+
+## Session 2026-10-30 (suite) — le piano « son de jouet » : causes mesurees
+
+Retour utilisateur : « le son d'un jouet pour enfants ». Trois causes independantes,
+chacune suffisante a elle seule, toutes mesurees hors Android.
+
+### 1. Octave fausse : le pack est a 22050 Hz, la sortie a 44100
+`PianoVoice::start` calculait `ratio_ = f / rootF` sans tenir compte du **taux du
+pack**. Le moteur lisait donc le pack deux fois trop vite : **une octave trop haut**
+sur tout le clavier. `PianoSampleReader::rate_` etait lu et stocke, jamais utilise.
+Corrige : `ratio_ = f / rootF * (packRate / sr)`, avec `packRate` passe a `start`.
+Preuve : `tools/aetherfx/pitch_check.cpp`, C4 mesurait **1048 Hz** pour 261,6
+attendu ; apres correction **0/6 notes fausses**, erreur 0,3 %.
+
+### 2. Les boucles existaient dans le pack, mais le moteur ne les jouait pas
+`loopStart`/`loopEnd` etaient parses puis ignores : chaque note etait un **one-shot
+coupe net** a la fin de la region. Corrige : la voix tourne dans la boucle tant que
+la touche est tenue (`pos_ -= loopEnd_ - loopStart_` quand `pos_ >= loopEnd_`), et
+la quitte au relachement pour jouer la queue enregistree — c'est elle qui porte la
+vraie decroissance. Le build conserve donc `TAIL_S = 1.0` s **apres** `loop_end`.
+
+### 3. Le detecteur de boucle ne retenait que la moitie des notes
+L'ancien `loop_region` cherchait une longueur libre maximisee par correlation, puis
+exigeait un crossfade. Resultat : **103 regions sur 196 sans boucle**, tronquees a
+2,5 s — le sustain s'arretait net. Reecrit : la longueur vaut un **nombre entier de
+periodes de f0 mesure** (retour de `t0+L` a `t0` => meme phase, continuite par
+construction), et on garde le plus petit saut parmi plusieurs longueurs (0,15..0,62 s)
+avec un pas fin (P/6). **196/196 bouclees**, raccord median **0,15**, aucune au-dela
+de 5. Pack 8,46 Mo (budget 10 Mo).
+
+Piege : `loop_end` doit rester le **point de boucle**, pas la fin du segment. Les
+confondre fait sauter la decroissance a chaque tour.
+
+### Deux pieges de mesure qui ont coute plusieurs passes
+- **Une recherche de pic se trompe d'octave.** Sur un piano le 2e harmonique est
+  souvent plus fort que la fondamentale : chercher le max du spectre donne 2x, 4x
+  ou une harmonique, et les ratios en puissances de 2 le trahissent. Utiliser un
+  **spectre de produit harmonique** (produit du spectre par ses versions x2..x4).
+- **Comparer deux scripts qui normalisent differemment fait conclure faux.** Le
+  build jugeait le raccord sur l'enveloppe, l'inspecteur sur les plus grands pas
+  internes : le meme pack paraissait avoir 48 mauvaises boucles ou 0 selon l'outil.
+  Aligner la metrique avant de conclure. La bonne reference est le **RMS local** :
+  juger contre les plus grands pas surestime d'un facteur ~4, l'ADPCM gonflant les
+  grands pas avec son bruit.
+
+### Interface : la photo du modele, pas un dessin unique
+L'ecart avec le preview etait la : le JSX affiche une **photographie par instrument**
+(fond WebGL), la scene Kotlin dessinait un seul dessin vectoriel partage par les 9
+presets. Les 30 AVIF etaient bien embarques (4,4 Mo) mais **aucun code Kotlin ne les
+lisait** (seul le preview HTML s'en servait).
+- **AVIF exige l'API 31** ; l'app a `minSdk 26` : un AVIF y decode en **rien**, sans
+  erreur. Converti en **WebP** (decodable depuis longtemps, **aucune dependance**).
+  9 fichiers = **0,29 Mo**, plus legers que les AVIF.
+- `pianoPlate(c)` choisit le drawable sur `c.m.presets(PIANO)[c.s.preset].name`.
+  Le dessin vectoriel reste dessous en repli.
+- Verifie sur captures : la zone photo differe d'un preset a l'autre (Felt
+  53/60/72, Electric 133/144/158).
