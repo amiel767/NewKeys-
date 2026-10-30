@@ -11,13 +11,15 @@ import kotlin.math.roundToInt
 
 /** The Æther Instruments. [fxId] = id of the native Source in FxRegistry (6 organ, 14 synth, 15 leads, 16 sax). */
 enum class AeInstrument(val fxId: Int, val title: String, val paramCount: Int) {
-    ORGAN(6, "Æther Organ", 31), SYNTH(14, "Æther Synth", 33), LEADS(15, "Æther Leads", 33), SAX(16, "Æther Sax", 23);
+    ORGAN(6, "Æther Organ", 31), SYNTH(14, "Æther Synth", 33), LEADS(15, "Æther Leads", 33), SAX(16, "Æther Sax", 23),
+    PIANO(17, "Æther Piano", 12);
     /** Parameters that switch instantly on a preset change (the others glide). */
     val discrete: IntArray get() = when (this) {
         ORGAN -> intArrayOf(18, 19, 20, 21, 22, 23, 24, 25)
         SYNTH -> intArrayOf(11, 18, 19, 26)
         LEADS -> intArrayOf(5, 6, 7, 8, 9, 17, 28)
         SAX -> intArrayOf(0, 1, 2, 3)
+        PIANO -> intArrayOf(8)
     }
 }
 
@@ -34,6 +36,7 @@ object AeFmt {
     fun format(inst: AeInstrument, i: Int, v: Float): String = when (inst) {
         AeInstrument.LEADS -> leads(i, v)
         AeInstrument.SAX -> sax(i, v)
+        AeInstrument.PIANO -> piano(i, v)
         else -> classic(inst, i, v)
     }
     private fun leads(i: Int, v: Float): String = when (i) {
@@ -45,6 +48,12 @@ object AeFmt {
     private fun sax(i: Int, v: Float): String = when (i) {
         13 -> "%.1fHz".format(3.5f + v * 4f); 14 -> "${(v * 800).toInt()}ms"; 15 -> "${(v * v * 400).toInt()}ms"; 20 -> "${(-40 + v * 46).toInt()}dB"
         21 -> "${(v * 100).toInt()}%"
+        else -> pct(v)
+    }
+    private fun piano(i: Int, v: Float): String = when (i) {
+        4 -> "%.2fs".format(0.25f + v * 5f)          // RELEASE : la queue modelisee
+        8 -> "${((v - 0.5f) * 20).toInt()}ct"        // TUNE
+        11 -> "${(-40 + v * 46).toInt()}dB"          // LEVEL
         else -> pct(v)
     }
     private fun classic(inst: AeInstrument, i: Int, v: Float): String = if (inst == AeInstrument.ORGAN) {
@@ -136,8 +145,10 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
     val ccLeads = mutableMapOf(74 to 18, 71 to 19, 73 to 12, 72 to 16, 91 to 25, 1 to 30, 7 to 31, 5 to 29)
     /** Sax: CC2 = breath controller, CC11 = expression (level), CC1 = vibrato depth. */
     val ccSax = mutableMapOf(2 to 4, 11 to 20, 7 to 20, 1 to 12, 74 to 19, 91 to 16)
+    // Piano : cutoff et volume sur le CC attendu, sustain sur 64, reverb sur 91.
+    val ccPiano = mutableMapOf(74 to 1, 1 to 1, 7 to 11, 91 to 6, 5 to 4, 64 to 3)
 
-    fun factoryPresets(i: AeInstrument): List<AePreset> = when (i) { AeInstrument.ORGAN -> AePresets.organ; AeInstrument.SYNTH -> AePresets.synth; AeInstrument.LEADS -> AePresets.leads; AeInstrument.SAX -> AePresets.sax }
+    fun factoryPresets(i: AeInstrument): List<AePreset> = when (i) { AeInstrument.ORGAN -> AePresets.organ; AeInstrument.SYNTH -> AePresets.synth; AeInstrument.LEADS -> AePresets.leads; AeInstrument.SAX -> AePresets.sax; AeInstrument.PIANO -> AePresets.piano }
 
     /**
      * Factory presets followed by the user's own, so a saved preset indexes like any other.
@@ -311,7 +322,7 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
         val s = sessions[channel] ?: return false
         if (cc == 64) { setSustain(channel, value >= 64); return true }
         if (cc == 1 && s.instrument == AeInstrument.ORGAN) { setParam(channel, 25, if (value > 63) 1f else 0.5f); return true }
-        val map = when (s.instrument) { AeInstrument.ORGAN -> ccOrgan; AeInstrument.SYNTH -> ccSynth; AeInstrument.LEADS -> ccLeads; AeInstrument.SAX -> ccSax }
+        val map = when (s.instrument) { AeInstrument.ORGAN -> ccOrgan; AeInstrument.SYNTH -> ccSynth; AeInstrument.LEADS -> ccLeads; AeInstrument.SAX -> ccSax; AeInstrument.PIANO -> ccPiano }
         val idx = map[cc] ?: return false
         setParam(channel, idx, value / 127f); return true
     }

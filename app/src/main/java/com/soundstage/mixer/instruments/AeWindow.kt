@@ -104,11 +104,12 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
     AeStage(modifier) {
         val shape = RoundedCornerShape(24.su())
         Box(Modifier.fillMaxSize().clip(shape).border(1.su(), Color(0x22FFFFFF), shape)) {
-            when (s.instrument) { AeInstrument.ORGAN -> AeOrganUi(c, a); AeInstrument.SYNTH -> AeSynthUi(c, a); AeInstrument.LEADS -> AeLeadsUi(c, a); AeInstrument.SAX -> AeSaxUi(c, a) }
+            when (s.instrument) { AeInstrument.ORGAN -> AeOrganUi(c, a); AeInstrument.SYNTH -> AeSynthUi(c, a); AeInstrument.LEADS -> AeLeadsUi(c, a); AeInstrument.SAX -> AeSaxUi(c, a); AeInstrument.PIANO -> AePianoUi(c, a) }
             when (s.instrument) {
                 AeInstrument.SYNTH -> AeT("ÆTHER SYNTH", 13, Color.White, Modifier.at(58, 15, 200, 18), AeFonts.display, spacing = 0.18f)
                 AeInstrument.LEADS -> AeT("ÆTHER LEADS", 13, Color(0xFF6FE9FF), Modifier.at(58, 15, 200, 18), AeFonts.display, spacing = 0.18f)
                 AeInstrument.SAX -> AeT("ÆTHER SAX", 13, AeC.gold, Modifier.at(58, 15, 200, 18), AeFonts.plate, FontWeight.ExtraBold, 0.2f)
+                AeInstrument.PIANO -> AeT("ÆTHER PIANO", 13, Color(0xFFE3C48A), Modifier.at(58, 15, 200, 18), AeFonts.plate, FontWeight.ExtraBold, 0.2f)
                 else -> Unit
             }
             val presets = manager.presets(s.instrument)
@@ -482,7 +483,7 @@ fun AeInstrumentsTabItem(selected: Boolean, onClick: () -> Unit, modifier: Modif
 /** Right-hand content of the tab: four cards (2 x 2). Tapping a card loads it NOW (audio live) then calls [onOpen]. */
 @Composable
 fun AeInstrumentsTabContent(manager: AeManager, strip: Int, onOpen: () -> Unit, modifier: Modifier = Modifier) {
-    val all = listOf(AeInstrument.ORGAN, AeInstrument.SYNTH, AeInstrument.LEADS, AeInstrument.SAX)
+    val all = listOf(AeInstrument.ORGAN, AeInstrument.SYNTH, AeInstrument.LEADS, AeInstrument.SAX, AeInstrument.PIANO)
     Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         all.chunked(2).forEach { row ->
             Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -633,6 +634,7 @@ private fun AeTile(inst: AeInstrument, loaded: Boolean, modifier: Modifier, onCl
         AeInstrument.SYNTH -> TileStyle(Color(0xFF2B1A5E), Color(0xFF0C0A22), Color(0x668A7AFF), "POLYSYNTH", "Morph oscillators · Filter · Macros")
         AeInstrument.LEADS -> TileStyle(Color(0xFF08283A), Color(0xFF050912), Color(0x5519E3FF), "LED MONO LEAD", "Sine · Square · Saw · Super · Soft")
         AeInstrument.SAX -> TileStyle(Color(0xFF4A2A10), Color(0xFF120905), Color(0x66F2B84A), "BREATH SAXOPHONE", "Soprano · Alto · Tenor · Baritone")
+        AeInstrument.PIANO -> TileStyle(Color(0xFF2A1C10), Color(0xFF0C0704), Color(0x66E3C48A), "HYBRID GRAND", "Felt · Studio · Upright · Electric")
     }
     val sh = RoundedCornerShape(20.dp)
     Box(
@@ -656,6 +658,7 @@ private fun AeTile(inst: AeInstrument, loaded: Boolean, modifier: Modifier, onCl
                     AeInstrument.SYNTH -> Box(Modifier.size(110.dp, 73.dp).aeSvg(AeSvgs.MINI_SYNTH))
                     AeInstrument.LEADS -> Box(Modifier.size(110.dp, 59.dp).aeSvg(AeSvgs.MINI_LEADS))
                     AeInstrument.SAX -> AeSaxMini(Modifier.size(54.dp, 96.dp))
+                    AeInstrument.PIANO -> Canvas(Modifier.size(110.dp, 73.dp)) { drawPianoMini() }
                 }
             }
             Column {

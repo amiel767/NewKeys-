@@ -31,10 +31,13 @@ object AeBanks {
     private val cache = HashMap<String, ByteArray>()
     /** Bank file per instrument type (0 soprano, 1 alto, 2 tenor, 3 baritone), empty = none. */
     private val saxFiles = arrayOf("saxpack_sop.bin", "saxpack_alt.bin", "saxpack_ten.bin", "saxpack_bar.bin")
+    /** Le piano n'a qu'une banque : le pack construit par tools/pianopack (4,17 Mo, 107 regions). */
+    private val pianoFile = "pianopack/piano.bin"
 
     /** The bank belonging to an instrument, or null when it has none (organ, synth, leads). */
     fun fileFor(instrument: AeInstrument, saxType: Int): String? = when (instrument) {
         AeInstrument.SAX -> saxFiles[saxType.coerceIn(0, 3)]
+        AeInstrument.PIANO -> pianoFile
         else -> null
     }
 
@@ -42,9 +45,12 @@ object AeBanks {
         cache[name]?.let { return it }
         val ctx = app ?: return null
         return try {
-            ctx.assets.open("saxpack/$name").use { it.readBytes() }.also { cache[name] = it }
+            // Les banques sax vivent dans saxpack/, le piano dans pianopack/ : le chemin
+            // vient de fileFor(), pas d'un prefixe code en dur.
+            val path = if (name.contains("/")) name else "saxpack/$name"
+            ctx.assets.open(path).use { it.readBytes() }.also { cache[name] = it }
         } catch (e: Throwable) {
-            Log.e("AeBanks", "Cannot read asset saxpack/$name: ${e.message}")
+            Log.e("AeBanks", "Cannot read asset bank $name: ${e.message}")
             null
         }
     }
@@ -88,9 +94,10 @@ object AeInstrumentHost : AeHost {
     override fun level(strip: Int): Float = NativeAudioBridge.safeFxStripPeak(strip)
 
     override fun loadBank(strip: Int, instrument: AeInstrument, type: Int): Boolean {
-        // Only the sax ships a bank today. `type` is the sax's first parameter, the same
-        // value the engine reads to pick a formant set, so the two stay in step.
-        if (instrument != AeInstrument.SAX) return false
+        // Sax and piano ship a bank. `type` is the sax's first parameter, the same value the
+        // engine reads to pick a formant set, so the two stay in step; the piano has a single
+        // bank and ignores it.
+        if (instrument != AeInstrument.SAX && instrument != AeInstrument.PIANO) return false
         val name = AeBanks.fileFor(instrument, type) ?: return false
         val bytes = AeBanks.read(name) ?: return false
         val ok = NativeAudioBridge.safeLoadInstrumentBank(strip, bytes)

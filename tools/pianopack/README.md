@@ -228,3 +228,15 @@ python3 tools/pianopack/inventory.py                       # couches disponibles
 python3 tools/pianopack/build.py --jobs jobs.txt --out out/pack
 python3 tools/pianopack/verify_pack.py out/pack
 ```
+
+## 9. Pack final retenu (2026-10-29)
+
+Le pack retenu fait **196 regions, 6,56 Mo, 62 notes (A#2..G6)**, SNR ADPCM
+median **20,1 dB**. C'est le jeu complet du cache de la banque, pas un
+sous-echantillonnage : toutes les notes jouables ont leur region.
+
+Le pack 30 notes (107 regions, 4,17 Mo) reste constructible et suffit si l'espace
+compte : la couverture passe alors a A#2..F6 et l'ecart entre deux regions monte
+a un demi-ton, ce qui rend la transposition audible sur les aigus.
+
+Chemin dans l'APK : \`assets/pianopack/piano.bin\` (+ \`.json\` pour reference).

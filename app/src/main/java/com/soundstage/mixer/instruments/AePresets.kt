@@ -117,6 +117,19 @@ object AePresets {
         AePreset("Dream Lead", "Ambient", floatArrayOf(0.8f, 0f, 0f, 0.25f, 0.7f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.4f, 0.3f, 0f, 0.3f, 0.8f, 0.8f, 0f, 0.55f, 0.1f, 0.2f, 0.4f, 0.3f, 0.3f, 0.5f, 0.6f, 0.45f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f)),
         AePreset("Air Sine", "Ambient", floatArrayOf(0.8f, 0f, 0f, 0f, 0.2f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.35f, 0f, 0.3f, 0.8f, 0.6f, 0f, 0.8f, 0.1f, 0.2f, 0.4f, 0.3f, 0.2f, 0.5f, 0.5f, 0f, 0.6f, 0.5f, 0.1f, 0.25f, 0.75f)),
     )
+
+    val piano: List<AePreset> = listOf(
+        AePreset("Felt", "Felt", floatArrayOf(0.15f, 0.22f, 0.62f, 0.45f, 0.55f, 0.25f, 0.40f, 0.60f, 0.50f, 0.55f, 0.20f, 0.80f)),
+        AePreset("Studio", "Studio", floatArrayOf(0.55f, 0.58f, 0.50f, 0.35f, 0.38f, 0.55f, 0.28f, 0.55f, 0.50f, 0.60f, 0.25f, 0.80f)),
+        AePreset("Bright", "Studio", floatArrayOf(0.80f, 0.85f, 0.38f, 0.28f, 0.30f, 0.75f, 0.22f, 0.50f, 0.50f, 0.65f, 0.30f, 0.78f)),
+        AePreset("Mellow", "Mellow", floatArrayOf(0.22f, 0.30f, 0.70f, 0.55f, 0.60f, 0.30f, 0.42f, 0.62f, 0.50f, 0.50f, 0.20f, 0.80f)),
+        AePreset("Dark", "Mellow", floatArrayOf(0.18f, 0.15f, 0.75f, 0.60f, 0.65f, 0.18f, 0.45f, 0.60f, 0.50f, 0.48f, 0.15f, 0.80f)),
+        AePreset("Upright", "Upright", floatArrayOf(0.45f, 0.45f, 0.58f, 0.42f, 0.45f, 0.40f, 0.35f, 0.45f, 0.50f, 0.58f, 0.35f, 0.78f)),
+        AePreset("Lady D", "Concert", floatArrayOf(0.62f, 0.70f, 0.52f, 0.38f, 0.42f, 0.65f, 0.32f, 0.62f, 0.50f, 0.62f, 0.28f, 0.80f)),
+        AePreset("Honky", "Honky", floatArrayOf(0.60f, 0.62f, 0.45f, 0.35f, 0.35f, 0.50f, 0.25f, 0.50f, 0.50f, 0.60f, 0.55f, 0.76f)),
+        AePreset("Electric", "Electric", floatArrayOf(0.35f, 0.40f, 0.30f, 0.50f, 0.70f, 0.35f, 0.55f, 0.70f, 0.50f, 0.52f, 0.10f, 0.80f)),
+    )
+
     val sax: List<AePreset> = listOf(
         AePreset("Jazz Ballad Alto", "Jazz", floatArrayOf(0.33f, 0f, 0.5f, 0.5f, 0.38f, 0f, 0f, 0.1f, 0.45f, 0.3f, 0.32f, 0.3f, 0.28f, 0.5f, 0.6f, 0.5f, 0.4f, 0.5f, 0.62f, 0.5f, 0.75f, 0.35f, 0.5f)),
         AePreset("Cool Jazz Alto", "Jazz", floatArrayOf(0.33f, 0.67f, 0.5f, 0.5f, 0.3f, 0f, 0f, 0.1f, 0.45f, 0.3f, 0.25f, 0.25f, 0.22f, 0.5f, 0.5f, 0.5f, 0.45f, 0.6f, 0.6f, 0.42f, 0.75f, 0.35f, 0.5f)),
