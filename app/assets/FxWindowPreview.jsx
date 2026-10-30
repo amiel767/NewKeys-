@@ -1,43 +1,37 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { SpaceWindow, W as SPACE_W, H as SPACE_H } from "./FxSpacePreview.jsx";
 
 /* ═════════════════════════════════════════════════════════════════════════════
-   ÆTHER FX — nouvelle fenêtre d'effets.
+   ÆTHER FX — fenêtre d'effets.
 
-   LES SLOTS (v3)
-   Des logements VERTICAUX avec un petit aperçu de l'effet, pas des creux
-   horizontaux. Un logement vide n'affiche rien d'autre qu'un « + » à
-   l'intérieur : pas de tuile Add en bas, c'est le logement lui-même qui appelle.
-   Le slot MIDI est détaché du slot audio, à droite, séparé par un filet.
+   ÉCRAN STANDARD
+   Le cadre de référence est celui de l'app : 891 × 411, comme tous les JSX du
+   dépôt (MixerPreview, TrackSettingsPreview, FxSpacePreview…). C'est la taille du
+   téléphone. Pas de mise à l'échelle « tablette ».
 
-   L'ORBE VIVANTE (Æther Space)
-   Une sphère semi-3D : des points répartis sur la sphère, projetés en
-   perspective, tournent lentement ; un halo radial au centre donne la matière ;
-   une onde parcourt la surface à chaque émission. Tous les réglages la pilotent :
-     Size  → rayon de la sphère          Decay → vitesse d'extinction de l'onde
-     Pre   → retard de l'onde            Damp  → chute d'amplitude avec la latitude
-     Width → aplatissement horizontal    Mix   → énergie de l'onde
-     Diffuse → dispersion des points (le flou de la surface)
+   ÆTHER SPACE : LE VRAI PANNEAU, IMPORTÉ
+   Le panneau violet n'est pas redessiné : `SpaceWindow` est IMPORTÉ de
+   FxSpacePreview.jsx et rendu tel quel, à sa taille native 891 × 411. Une seule
+   source, donc aucune dérive possible entre les deux maquettes.
 
-   L'ARPPEGIATEUR
-   Adapté du JSX DeepSeek (app/assets/ArpChordPreview.jsx) à la fenêtre, et
-   aligné sur les VRAIS paramètres du registre : ArpParams(sub, style, steps,
-   vel, on) avec ArpStyle(Up, Down, Up-Down, Down-Up, Random, Chord) et
-   Subdivisions 1/4, 1/8, 1/16, 1/32. Rien d'inventé.
+   LES SLOTS
+   Des logements verticaux COURTS, côte à côte. Un logement VIDE montre un creux
+   (lèvre basse éclairée, ombre portée en haut) avec un « + » au centre. Un
+   logement REMPLI n'est pas un creux : c'est une CARTE posée, avec sa matière
+   propre, sa tranche éclairée, et une ombre portée SOUS elle. Les deux états se
+   lisent donc immédiatement : creux = vide, carte = occupé.
 
-   LA LISTE MIDI
-   Les 5 vrais effets (FxModes.kt → MidiType) : Arpeggiator, Octave Up,
-   Easy Chord, Sequencer, Chord Sequencer, avec leur vrai descripteur.
-
-   MISE À L'ÉCHELLE
-   La fenêtre se dessine à une largeur de référence puis s'ajuste : la maquette
-   montre un écran standard (pas un onglet), et la fenêtre prend proprement la
-   taille du panneau déclaré par l'effet.
+   LA LISTE D'EFFETS
+   Moderne, minimale, professionnelle : pas de rail de catégories, pas de
+   numérotation, pas de colonnes. Une grille de cartes larges avec un glyphe, le
+   nom, le type et une ligne d'explication. La sélection est un liseré d'accent
+   et un fond qui se relève. Quelques effets seulement : on peut se permettre
+   l'aération.
    ═════════════════════════════════════════════════════════════════════════════ */
 
 const MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
 const FONT = "Space Grotesk, Inter, system-ui, -apple-system, sans-serif";
 
-/* ── AppColors.kt ──────────────────────────────────────────────────────────── */
 const ACC = "#8FB2E8", ACC_DEEP = "#7FA3DD";
 const INK = "#E9EDF5", SOFT = "#DCE2EE", MUTE = "#8690A4", DIM = "#6F7A90";
 const PANEL_T = "#232C3E", PANEL_B = "#1A2230";
@@ -46,7 +40,6 @@ const BTN_T = "#2F3850", BTN_B = "#252D40";
 const BG_T = "#141B27", BG_B = "#0F141D";
 const LINE = "rgba(255,255,255,.06)", LINE2 = "rgba(255,255,255,.1)";
 const ACC_TEXT = "#0F1726";
-const AMBER = "#D8A24A";
 
 const NOISE = `url("data:image/svg+xml;utf8,${encodeURIComponent(
   "<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'>" +
@@ -61,52 +54,26 @@ const hx = (c, a) => {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 };
 
-/* ── les effets audio réels (FxRegistry.kt, FxKind.EFFECT) ─────────────────── */
+/* ── les effets réels ─────────────────────────────────────────────────────── */
 const AUDIO_FX = [
-  { id: 0,  name: "Æther Space",   type: "Reverb",     cat: "Time",     pw: 7, w: 857, h: 437, note: "Size, Decay, Pre-delay, Damp, Width, Mix, Diffuse", orb: true },
-  { id: 1,  name: "Æther Echo",    type: "Delay",      cat: "Time",     pw: 4, w: 760, h: 400, note: "Feedback, Tone, Wow, Mix" },
-  { id: 2,  name: "Prism Tone",    type: "Equalizer",  cat: "Tone",     pw: 4, w: 800, h: 408, note: "Low, Mid, High, Mid Q" },
-  { id: 3,  name: "Iron Grip",     type: "Compressor", cat: "Dynamics", pw: 5, w: 820, h: 412, note: "Ratio, Knee, Attack, Release, Makeup" },
-  { id: 4,  name: "Solar Ceiling", type: "Maximizer",  cat: "Dynamics", pw: 3, w: 700, h: 394, note: "Amount, Ceiling, Release" },
-  { id: 10, name: "Æther Amp",     type: "Amp",        cat: "Drive",    pw: 6, w: 820, h: 412, note: "Drive, Bass, Mid, Treble, Presence, Level" },
-  { id: 11, name: "Æther Bass",    type: "Amp",        cat: "Drive",    pw: 6, w: 820, h: 412, note: "Drive, Body, Mid, Treble, Presence, Level" },
-  { id: 13, name: "Æther Voices",  type: "Voice",      cat: "Pitch",    pw: 5, w: 780, h: 406, note: "Voices, Detune, Formant, Width, Mix" },
+  { id: 0,  name: "Æther Space",   type: "Reverb",     cat: "Time",     pw: 7, w: 891, h: 411, note: "Size, Decay, Pre-delay, Damp, Width, Mix, Diffuse", space: true, glyph: ["M12 3a9 9 0 1 0 9 9", "M12 3v9h9", "M3 12a9 9 0 0 0 9 9"] },
+  { id: 1,  name: "Æther Echo",    type: "Delay",      cat: "Time",     pw: 4, w: 891, h: 411, note: "Feedback, Tone, Wow, Mix", glyph: ["M3 12h4l3-7 4 14 3-7h4"] },
+  { id: 2,  name: "Prism Tone",    type: "Equalizer",  cat: "Tone",     pw: 4, w: 891, h: 411, note: "Low, Mid, High, Mid Q", glyph: ["M4 21v-7", "M4 10V3", "M12 21v-9", "M12 8V3", "M20 21v-5", "M20 12V3", "M1 14h6", "M9 8h6", "M17 16h6"] },
+  { id: 3,  name: "Iron Grip",     type: "Compressor", cat: "Dynamics", pw: 5, w: 891, h: 411, note: "Ratio, Knee, Attack, Release, Makeup", glyph: ["M4 20L20 4", "M4 4h6", "M4 4v6", "M20 20h-6", "M20 20v-6"] },
+  { id: 4,  name: "Solar Ceiling", type: "Maximizer",  cat: "Dynamics", pw: 3, w: 891, h: 411, note: "Amount, Ceiling, Release", glyph: ["M3 20h18", "M7 20v-6", "M12 20V7", "M17 20v-9"] },
+  { id: 10, name: "Æther Amp",     type: "Amp",        cat: "Drive",    pw: 6, w: 891, h: 411, note: "Drive, Bass, Mid, Treble, Presence, Level", glyph: ["M6 8h12l2 12H4L6 8z", "M9 8V5h6v3", "M8 14h8"] },
+  { id: 11, name: "Æther Bass",    type: "Amp",        cat: "Drive",    pw: 6, w: 891, h: 411, note: "Drive, Body, Mid, Treble, Presence, Level", glyph: ["M4 16c3 0 3-8 6-8s3 8 6 8 3-6 4-6"] },
+  { id: 13, name: "Æther Voices",  type: "Voice",      cat: "Pitch",    pw: 5, w: 891, h: 411, note: "Voices, Detune, Formant, Width, Mix", glyph: ["M12 4a3 3 0 1 0 0 6 3 3 0 0 0 0-6z", "M6 20v-2a6 6 0 0 1 12 0v2"] },
 ];
-/* ── les 5 effets MIDI réels (FxModes.kt → MidiType) ──────────────────────── */
 const MIDI_FX = [
-  { id: 101, name: "Arpeggiator",     type: "Arp",     cat: "Pattern", pw: 5, w: 880, h: 452, note: "Subdivision, Style, Steps, Velocity per step, Hold", arp: true },
-  { id: 102, name: "Sequencer",       type: "Seq",     cat: "Pattern", pw: 4, w: 880, h: 456, note: "Subdivision, Steps, notes per step" },
-  { id: 103, name: "Easy Chord",      type: "Easy",    cat: "Harmony", pw: 1, w: 720, h: 400, note: "One note plays a programmed chord" },
-  { id: 104, name: "Chord Sequencer", type: "Chords",  cat: "Harmony", pw: 6, w: 900, h: 460, note: "Key, Scale, progression" },
-  { id: 105, name: "Octave Up",       type: "Octave",  cat: "Pitch",   pw: 1, w: 640, h: 372, note: "Adds an octave above every note" },
+  { id: 101, name: "Arpeggiator",     type: "Arp",     cat: "Pattern", pw: 5, w: 891, h: 411, note: "Turns held notes into a pattern", arp: true, glyph: ["M3 18V9", "M8 18V5", "M13 18v-6", "M18 18V7", "M21 18V4"] },
+  { id: 102, name: "Sequencer",       type: "Seq",     cat: "Pattern", pw: 4, w: 891, h: 411, note: "One note plays a sequence of notes", glyph: ["M3 6h4v4H3z", "M10 6h4v4h-4z", "M17 6h4v4h-4z", "M3 14h4v4H3z", "M10 14h4v4h-4z"] },
+  { id: 103, name: "Easy Chord",      type: "Easy",    cat: "Harmony", pw: 1, w: 891, h: 411, note: "One note plays a programmed chord", glyph: ["M12 3v10", "M12 13a4 4 0 1 0 0 8 4 4 0 0 0 0-8z", "M12 3l5 3"] },
+  { id: 104, name: "Chord Sequencer", type: "Chords",  cat: "Harmony", pw: 6, w: 891, h: 411, note: "Plays a chord progression", glyph: ["M4 20V6", "M4 6l16-2v14", "M9 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4z", "M17 12a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"] },
+  { id: 105, name: "Octave Up",       type: "Octave",  cat: "Pitch",   pw: 1, w: 891, h: 411, note: "Adds an octave above every note", glyph: ["M12 4l6 7h-4v9h-4v-9H6l6-7z"] },
 ];
-
 const MAX_AUDIO = 3, MAX_MIDI = 1;
 
-/* ── Æther Space : positions réelles (FxGeometry.kt / FxKnobBoxes[0]) ──────── */
-const SPACE_W = 825, SPACE_H = 343;
-const SPACE_KNOBS = [
-  { k: "size",  name: "Size",      x: 387.8, y: 53.8,  d: 54.8, def: 0.62 },
-  { k: "decay", name: "Decay",     x: 614.1, y: 84.4,  d: 54.8, def: 0.70 },
-  { k: "pre",   name: "Pre-delay", x: 665.3, y: 153.1, d: 64.0, def: 0.20 },
-  { k: "damp",  name: "Damp",      x: 513.4, y: 208.2, d: 54.8, def: 0.45 },
-  { k: "width", name: "Width",     x: 262.3, y: 208.2, d: 54.8, def: 0.80 },
-  { k: "mix",   name: "Mix",       x: 105.7, y: 153.1, d: 54.8, def: 0.35 },
-  { k: "diff",  name: "Diffuse",   x: 161.6, y: 84.4,  d: 54.8, def: 0.50 },
-];
-const spaceFmt = (k, v) => {
-  const r = k === "decay" ? 0.4 + v * 7.6 : k === "damp" ? 1 + v * 11 : k === "pre" ? v * 120 : v * 100;
-  if (k === "decay") return r.toFixed(2) + " s";
-  if (k === "damp") return r.toFixed(1) + " kHz";
-  if (k === "pre") return Math.round(r) + " ms";
-  return Math.round(r) + " %";
-};
-
-/* ── Arp : vrais domaines (FxModes.kt) ─────────────────────────────────────── */
-const SUBS = [["1/4", 1], ["1/8", 2], ["1/16", 4], ["1/32", 8]];
-const ARP_STYLES = [["Up", "Up"], ["Down", "Down"], ["UpDown", "Up-Down"], ["DownUp", "Down-Up"], ["Random", "Random"], ["Chord", "Chord"]];
-
-/* ── icônes, style Lucide ──────────────────────────────────────────────────── */
 const Ico = ({ d, size = 16, sw = 2 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
        strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" style={{ display: "block", flex: "none" }}>
@@ -121,10 +88,9 @@ const IC = {
   grid: ["M3 3h7v7H3z", "M14 3h7v7h-7z", "M14 14h7v7h-7z", "M3 14h7v7H3z"],
   midi: ["M9 18V5l12-2v13", "M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z", "M18 19a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"],
   wave: "M2 12c2 0 2-4 4-4s2 8 4 8 2-8 4-8 2 4 4 4",
-  sliders: ["M4 21v-7", "M4 10V3", "M12 21v-9", "M12 8V3", "M20 21v-5", "M20 12V3",
-            "M1 14h6", "M9 8h6", "M17 16h6"],
+  sliders: ["M4 21v-7", "M4 10V3", "M12 21v-9", "M12 8V3", "M20 21v-5", "M20 12V3", "M1 14h6", "M9 8h6", "M17 16h6"],
   play: ["M8 5.5l10 6.5-10 6.5z"], rand: ["M4 7h4l8 10h4", "M4 17h4l2-2.5", "M14 9.5L16 7h4", "M18 5l2 2-2 2", "M18 15l2 2-2 2"],
-  hold: ["M12 3v18", "M5 7h14", "M5 17h14"],
+  hold: ["M12 3v18", "M5 7h14", "M5 17h14"], check: ["M20 6L9 17l-5-5"],
 };
 
 const win = (x = {}) => ({ background: `linear-gradient(180deg,${PANEL_T},${PANEL_B})`, ...x });
@@ -133,598 +99,202 @@ const well = (x = {}) => ({ background: `linear-gradient(180deg,${WELL_A},${WELL
 const btn = (x = {}) => ({ background: `linear-gradient(180deg,${BTN_T},${BTN_B})`, border: `1px solid ${LINE2}`,
   boxShadow: "inset 0 1px 0 rgba(255,255,255,.1), 0 2px 5px rgba(0,0,0,.35)", ...x });
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   L'ORBE VIVANTE — sphère semi-3D
-   Des points sont répartis sur une sphère (spirale de Fibonacci, donc régulière),
-   tournent autour de l'axe vertical, et sont projetés en perspective. Une onde
-   parcourt la surface : son rayon croît avec le temps, son amplitude décroît
-   selon Decay et la latitude selon Damp. Un halo radial donne la matière, un
-   reflet en haut à gauche donne la lumière, et l'ombre en bas donne le volume.
-   ────────────────────────────────────────────────────────────────────────────── */
-function LivingOrb({ vals, size = 260, onPulse }) {
-  const cvs = useRef(null);
-  const S = useRef({ t: 0, last: 0, next: 0.6, waves: [], spin: 0, flash: 0 });
-  const vref = useRef(vals); vref.current = vals;
-
-  useEffect(() => {
-    const c = cvs.current, ctx = c.getContext("2d");
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    c.width = size * dpr; c.height = size * dpr;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    const N = 460;
-    const pts = [];
-    const GA = Math.PI * (3 - Math.sqrt(5));
-    for (let i = 0; i < N; i++) {
-      const y = 1 - (i / (N - 1)) * 2;
-      const r = Math.sqrt(Math.max(0, 1 - y * y));
-      const th = GA * i;
-      pts.push({ x: Math.cos(th) * r, y, z: Math.sin(th) * r, lat: Math.abs(y) });
-    }
-    if (onPulse) onPulse.current = () => { S.current.waves.push({ t: 0 }); S.current.flash = 1; };
-
-    let raf;
-    const draw = (ts) => {
-      const dt = Math.min(0.05, (ts - S.current.last) / 1000 || 0.016);
-      S.current.last = ts; S.current.t += dt;
-      const v = vref.current;
-      const st = S.current;
-
-      st.next -= dt;
-      if (st.next <= 0) { st.waves.push({ t: 0 }); st.flash = 1; st.next = 1.1 + Math.random() * 0.9; }
-      st.flash = Math.max(0, st.flash - dt * 1.8);
-      st.spin += dt * 0.16;
-
-      const cx = size / 2, cy = size / 2;
-      const R = size * (0.14 + v.size * 0.30);     // Size → rayon
-      const flat = 1 - v.width * 0.22;             // Width → aplatissement
-      const tau = 0.7 + v.decay * 3.2;             // Decay → extinction
-      st.waves = st.waves.filter((w) => { w.t += dt; return w.t < tau; });
-
-      ctx.clearRect(0, 0, size, size);
-
-      /* halo extérieur : la lumière que l'orbe rend */
-      const halo = ctx.createRadialGradient(cx, cy, R * 0.6, cx, cy, R * 2.5);
-      halo.addColorStop(0, hx(ACC, 0.16 + v.mix * 0.16));
-      halo.addColorStop(0.55, hx(ACC, 0.05));
-      halo.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = halo; ctx.fillRect(0, 0, size, size);
-
-      /* les points, triés par profondeur pour que l'avant recouvre l'arrière */
-      const proj = pts.map((p, i) => {
-        const a = st.spin;
-        const x = p.x * Math.cos(a) - p.z * Math.sin(a);
-        const z = p.x * Math.sin(a) + p.z * Math.cos(a);
-        const persp = 1 + z * 0.28;
-        return { sx: cx + x * R * flat * persp, sy: cy + p.y * R * persp, z, lat: p.lat, i };
-      }).sort((a, b) => a.z - b.z);
-
-      /* l'onde : elle part du pôle et descend ; l'amplitude dépend de Damp */
-      let amp = 0;
-      for (const w of st.waves) {
-        const prog = w.t / tau;
-        amp = Math.max(amp, Math.pow(1 - prog, 1.8) * (0.35 + v.mix * 0.9));
-      }
-      const wavePhase = st.waves.length ? st.waves[st.waves.length - 1].t / tau : 1;
-
-      for (const p of proj) {
-        const front = 1 - Math.abs(p.lat - wavePhase * 1.1) / 0.42;
-        const wave = front > 0 ? front * amp * (1 - v.damp * 0.7 * p.lat) : 0;
-        const depth = (p.z + 1) / 2;                    // 0 derrière, 1 devant
-        const scatter = 0.5 + v.diff * 0.5;
-        const a = (0.10 + depth * 0.55) * scatter + wave * 0.55;
-        const rad = (0.9 + depth * 1.5) * (1 + wave * 0.9);
-        ctx.beginPath();
-        ctx.arc(p.sx, p.sy, rad, 0, 6.2832);
-        ctx.fillStyle = `rgba(${190 + wave * 55},${205 + wave * 40},255,${clamp(a, 0, 0.95)})`;
-        ctx.fill();
-      }
-
-      /* la source : un point chaud au centre, il pulse à chaque émission */
-      const pulse = st.flash;
-      const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * (0.5 + pulse * 0.5));
-      core.addColorStop(0, `rgba(232,238,255,${0.55 + pulse * 0.4})`);
-      core.addColorStop(0.4, hx(ACC, 0.22 + pulse * 0.3));
-      core.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = core;
-      ctx.beginPath(); ctx.arc(cx, cy, R * (0.5 + pulse * 0.5), 0, 6.2832); ctx.fill();
-
-      /* lumière en haut à gauche, ombre en bas : c'est ce qui fait le volume */
-      const sh = ctx.createRadialGradient(cx - R * 0.4, cy - R * 0.45, 0, cx, cy, R * 1.25);
-      sh.addColorStop(0, "rgba(255,255,255,.13)");
-      sh.addColorStop(0.5, "rgba(255,255,255,0)");
-      sh.addColorStop(1, "rgba(0,0,0,.34)");
-      ctx.fillStyle = sh;
-      ctx.beginPath(); ctx.arc(cx, cy, R * 1.15, 0, 6.2832); ctx.fill();
-
-      raf = requestAnimationFrame(draw);
-    };
-    raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
-  }, [size]);
-
-  return <canvas ref={cvs} style={{ width: size, height: size, display: "block" }} />;
-}
-
-/* ══ UN SLOT VERTICAL avec aperçu ════════════════════════════════════════════
-   Le logement est vertical : l'aperçu occupe le haut, le nom et les commandes
-   le bas. Vide, il ne montre qu'un « + » au centre, qui ouvre la liste.
+/* ══ LOGEMENT VIDE = CREUX ═══════════════════════════════════════════════════
+   Un creux se lit par sa lèvre basse éclairée (la lumière vient du haut, donc
+   le bord inférieur la renvoie) et par l'ombre portée à l'intérieur du bord
+   haut. Un logement REMPLI n'utilise pas ce composant : il porte une carte.
    ─────────────────────────────────────────────────────────────────────────── */
-function VerticalSlot({ height = 200, children, filled, onAdd, accent = ACC }) {
+function EmptySlot({ height = 190, onAdd, label }) {
   return (
-    <div style={{ position: "relative", height, width: "100%", borderRadius: 14, padding: 3,
-                  background: "linear-gradient(180deg,rgba(0,0,0,.5),rgba(255,255,255,.035))",
+    <div style={{ position: "relative", height, width: "100%", borderRadius: 15, padding: 3,
+                  background: "linear-gradient(180deg,rgba(0,0,0,.52),rgba(255,255,255,.04))",
                   boxShadow: "0 1px 0 rgba(255,255,255,.05)" }}>
-      <div style={{ position: "absolute", inset: 3, borderRadius: 11,
-                    background: "linear-gradient(180deg,#05080E,#0A0E18)",
-                    boxShadow: "inset 0 5px 12px rgba(0,0,0,.85), inset 0 -1px 0 rgba(255,255,255,.055), inset 2px 0 5px rgba(0,0,0,.5), inset -2px 0 5px rgba(0,0,0,.5)" }} />
-      <div style={{ position: "absolute", left: 6, right: 6, bottom: 3.5, height: 1.4, borderRadius: 1,
-                    background: `linear-gradient(90deg,transparent,${filled ? hx(accent, .34) : "rgba(255,255,255,.14)"},transparent)`,
-                    filter: "blur(.3px)" }} />
-      {!filled ? (
-        <button onClick={onAdd} style={{ position: "absolute", inset: 6, borderRadius: 11, cursor: "pointer",
-                 display: "grid", placeItems: "center", border: "none", background: "transparent", padding: 0 }}>
-          <div style={{ width: 44, height: 44, borderRadius: 14, display: "grid", placeItems: "center",
-                        color: MUTE, background: "linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.02))",
-                        border: `1px dashed ${hx(accent, .34)}` }}>
-            <Ico d={IC.plus} size={20} sw={2.4} />
-          </div>
-        </button>
-      ) : (
-        <div style={{ position: "absolute", inset: 6, borderRadius: 11, display: "flex",
-                      flexDirection: "column", overflow: "hidden" }}>{children}</div>
-      )}
-    </div>
-  );
-}
-
-/* ── l'aperçu d'un effet : une vignette dessinée, propre à son type ────────── */
-function FxThumb({ fx, vals, big }) {
-  const h = big ? 96 : 64;
-  return (
-    <div style={{ position: "relative", height: h, flex: "none", overflow: "hidden",
-                  background: `radial-gradient(ellipse at 50% 30%, ${hx(ACC, .12)}, rgba(6,9,16,.9) 72%)`,
-                  borderBottom: `1px solid ${LINE}` }}>
-      {fx.orb ? <OrbThumb vals={vals} h={h} />
-        : fx.arp ? <ArpThumb h={h} />
-        : <BarsThumb fx={fx} h={h} />}
-      <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 22,
-                    background: "linear-gradient(0deg,rgba(6,9,16,.95),transparent)" }} />
-    </div>
-  );
-}
-function OrbThumb({ vals, h }) {
-  const c = useRef(null);
-  useEffect(() => {
-    const cv = c.current, ctx = cv.getContext("2d");
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = cv.clientWidth, H = h;
-    cv.width = w * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const cx = w / 2, cy = H / 2, R = H * (0.16 + vals.size * 0.26);
-    ctx.clearRect(0, 0, w, H);
-    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 2);
-    g.addColorStop(0, hx(ACC, .3)); g.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, R * 2, 0, 6.2832); ctx.fill();
-    for (let i = 0; i < 90; i++) {
-      const a = i * 2.399, y = 1 - (i / 89) * 2, r = Math.sqrt(Math.max(0, 1 - y * y));
-      const x = Math.cos(a) * r * (1 - vals.width * .22);
-      ctx.beginPath(); ctx.arc(cx + x * R, cy + y * R, 1, 0, 6.2832);
-      ctx.fillStyle = `rgba(200,214,255,${0.2 + ((y + 1) / 2) * 0.5})`; ctx.fill();
-    }
-  }, [h, vals.size, vals.width]);
-  return <canvas ref={c} style={{ width: "100%", height: h, display: "block" }} />;
-}
-function ArpThumb({ h }) {
-  const steps = [0.9, 0.5, 0.7, 0.4, 0.95, 0.55, 0.75, 0.45, 0.88, 0.52, 0.68, 0.42, 0.92, 0.5, 0.72, 0.48];
-  return (
-    <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: h, padding: "8px 9px 10px" }}>
-      {steps.map((s, i) => (
-        <div key={i} style={{ flex: 1, height: `${s * 100}%`, borderRadius: 2,
-                              background: i % 4 === 0 ? ACC : hx(ACC, .42) }} />
-      ))}
-    </div>
-  );
-}
-function BarsThumb({ fx, h }) {
-  const seed = (fx.id * 37) % 7;
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 3, height: h, padding: "10px 12px" }}>
-      {Array.from({ length: fx.pw * 4 }, (_, i) => {
-        const v = 0.25 + ((i * 13 + seed * 7) % 10) / 14;
-        return <div key={i} style={{ flex: 1, height: `${v * 100}%`, borderRadius: 2,
-                                     background: hx(ACC, 0.2 + v * 0.5) }} />;
-      })}
-    </div>
-  );
-}
-
-/* ── la carte posée dans le logement vertical ──────────────────────────────── */
-function FxCard({ fx, on, onToggle, onOpen, onRemove, vals }) {
-  return (
-    <div onClick={onOpen} title="Open" style={{ flex: 1, display: "flex", flexDirection: "column",
-                  cursor: "pointer", position: "relative",
-                  background: on ? `linear-gradient(180deg,${hx(ACC, .10)},transparent 55%)` : "transparent",
-                  border: `1px solid ${on ? hx(ACC, .32) : "rgba(255,255,255,.05)"}`, borderRadius: 11,
-                  overflow: "hidden" }}>
-      <FxThumb fx={fx} vals={vals} />
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 5, padding: "9px 10px 10px" }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 6, minWidth: 0 }}>
-          <span style={{ fontSize: 12.5, fontWeight: 800, color: on ? INK : MUTE, whiteSpace: "nowrap",
-                         overflow: "hidden", textOverflow: "ellipsis" }}>{fx.name}</span>
-          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".09em", textTransform: "uppercase",
-                         color: on ? ACC : DIM, flex: "none" }}>{fx.type}</span>
+      <div style={{ position: "absolute", inset: 3, borderRadius: 12,
+                    background: "linear-gradient(180deg,#04070C,#090D16)",
+                    boxShadow: "inset 0 6px 14px rgba(0,0,0,.9), inset 0 -1px 0 rgba(255,255,255,.06), inset 3px 0 6px rgba(0,0,0,.55), inset -3px 0 6px rgba(0,0,0,.55)" }} />
+      <div style={{ position: "absolute", left: 8, right: 8, bottom: 3.5, height: 1.4, borderRadius: 1,
+                    background: "linear-gradient(90deg,transparent,rgba(255,255,255,.15),transparent)", filter: "blur(.3px)" }} />
+      <button onClick={onAdd} style={{ position: "absolute", inset: 6, borderRadius: 12, cursor: "pointer",
+               display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 9,
+               border: "none", background: "transparent", padding: 0, fontFamily: FONT }}>
+        <div style={{ width: 42, height: 42, borderRadius: 13, display: "grid", placeItems: "center", color: MUTE,
+                      background: "linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.02))",
+                      border: `1px dashed ${hx(ACC, .32)}`,
+                      boxShadow: "inset 0 1px 0 rgba(255,255,255,.07)" }}>
+          <Ico d={IC.plus} size={19} sw={2.4} />
         </div>
-        <span style={{ fontSize: 10, color: DIM, lineHeight: 1.45, overflow: "hidden",
-                       display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{fx.note}</span>
-        <div style={{ flex: 1 }} />
-        <div style={{ display: "flex", gap: 6 }}>
-          <button onClick={(e) => { e.stopPropagation(); onToggle(); }} title="Engage / Bypass"
-                  style={{ flex: 1, height: 26, borderRadius: 8, cursor: "pointer", display: "grid",
-                           placeItems: "center", border: `1px solid ${on ? hx(ACC, .5) : LINE2}`,
-                           background: on ? `linear-gradient(180deg,#C7D9F9,${ACC_DEEP})` : `linear-gradient(180deg,${BTN_T},${BTN_B})`,
-                           color: on ? ACC_TEXT : DIM }}>
-            <Ico d={IC.power} size={13} sw={2.3} />
-          </button>
-          <button onClick={(e) => { e.stopPropagation(); onRemove(); }} title="Remove"
-                  style={{ ...btn({ width: 26, height: 26, borderRadius: 8, display: "grid", placeItems: "center",
-                           color: DIM, cursor: "pointer" }) }}>
-            <Ico d={IC.trash} size={13} />
-          </button>
-        </div>
-      </div>
+        {label && (
+          <span style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".14em", color: "#454E66",
+                         textTransform: "uppercase" }}>{label}</span>
+        )}
+      </button>
     </div>
   );
 }
 
-/* ══ LE PANNEAU ÆTHER SPACE : les 7 potards réels + l'orbe au centre ═════════ */
-function SpaceKnob({ k, name, x, y, d, v, onChange }) {
-  const drag = useRef(null);
-  const [hot, setHot] = useState(false);
-  const ang = -135 + v * 270;
-  const r = d / 2, R = r - 4, circ = 2 * Math.PI * R, arc = circ * 0.75;
-  return (
-    <div style={{ position: "absolute", left: x - r, top: y - r, width: d, height: d }}>
-      <div onPointerDown={(e) => { drag.current = { y: e.clientY, v }; setHot(true); e.currentTarget.setPointerCapture?.(e.pointerId); }}
-           onPointerMove={(e) => { if (drag.current) onChange(clamp(drag.current.v + (drag.current.y - e.clientY) / 180, 0, 1)); }}
-           onPointerUp={() => { drag.current = null; setHot(false); }}
-           onPointerCancel={() => { drag.current = null; setHot(false); }}
-           style={{ width: d, height: d, position: "relative", cursor: "ns-resize", touchAction: "none" }}>
-        <svg width={d} height={d} style={{ display: "block", transform: "rotate(135deg)" }}>
-          <circle cx={r} cy={r} r={R} fill="none" stroke="rgba(255,255,255,.06)" strokeWidth={3}
-                  strokeDasharray={`${arc} ${circ}`} strokeLinecap="round" />
-          <circle cx={r} cy={r} r={R} fill="none" stroke={ACC} strokeWidth={3}
-                  strokeDasharray={`${arc * v} ${circ}`} strokeLinecap="round"
-                  style={{ filter: hot ? `drop-shadow(0 0 4px ${ACC})` : "none" }} />
-        </svg>
-        <div style={{ position: "absolute", inset: 9, borderRadius: "50%",
-                      background: "radial-gradient(circle at 50% 16%, #333D5E 0%, #232B45 42%, #141828 100%)",
-                      border: `1px solid ${hot ? hx(ACC, .5) : "rgba(255,255,255,.09)"}`,
-                      boxShadow: `inset 0 1px 0 rgba(255,255,255,.13), inset 0 -3px 8px rgba(0,0,0,.5), 0 4px 10px rgba(0,0,0,.5)${hot ? `, 0 0 16px ${hx(ACC, .33)}` : ""}`,
-                      display: "grid", placeItems: "center" }}>
-          <div style={{ width: 2.6, height: d * 0.25, borderRadius: 2,
-                        background: `linear-gradient(180deg,#C7D9F9,${ACC_DEEP})`,
-                        transform: `rotate(${ang}deg) translateY(-${d * 0.115}px)`, transformOrigin: "50% 100%",
-                        boxShadow: `0 0 7px ${hx(ACC, .66)}` }} />
-        </div>
-      </div>
-      <div style={{ position: "absolute", top: d + 2, left: -20, right: -20, textAlign: "center",
-                    fontSize: 9, fontWeight: 700, letterSpacing: ".07em", color: DIM, textTransform: "uppercase" }}>{name}</div>
-      <div style={{ position: "absolute", top: d + 14, left: -20, right: -20, textAlign: "center",
-                    fontSize: 11, fontWeight: 700, color: INK, fontFamily: MONO }}>{spaceFmt(k, v)}</div>
-    </div>
-  );
-}
-
-function SpacePanel({ vals, onChange, scale, pulseRef }) {
-  return (
-    <div style={{ width: SPACE_W * scale, height: SPACE_H * scale, position: "relative" }}>
-      <div style={{ width: SPACE_W, height: SPACE_H, transform: `scale(${scale})`, transformOrigin: "top left",
-                    position: "absolute", left: 0, top: 0, borderRadius: 14, ...well({ borderRadius: 14,
-                    position: "absolute", overflow: "hidden" }) }}>
-        <div style={{ position: "absolute", inset: 0,
-                      background: `radial-gradient(ellipse at 47% 38%, ${hx(ACC, .07)}, transparent 62%)` }} />
-        {/* l'orbe au centre exact de l'ellipse : le vide prend son sens */}
-        <div style={{ position: "absolute", left: 385 - 150, top: 130 - 150 }}>
-          <LivingOrb vals={vals} size={300} onPulse={pulseRef} />
-        </div>
-        {SPACE_KNOBS.map((kn) => (
-          <SpaceKnob key={kn.k} {...kn} v={vals[kn.k]} onChange={onChange(kn.k)} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ══ LE PANNEAU ARPEGGIATOR ══════════════════════════════════════════════════
-   Adapté du JSX DeepSeek à la fenêtre, et calé sur les vrais ArpParams :
-   sub (Subdivisions 1/4..1/32), style (ArpStyle), steps, vel[], on[].
+/* ══ LOGEMENT REMPLI = CARTE ═════════════════════════════════════════════════
+   Une carte de haute qualité, pas un creux : trois plans empilés (la tranche
+   basse, le corps, la lumière du haut), un liseré de séparation net, un reflet
+   diagonal, et une ombre portée SOUS la carte — c'est elle qui donne le
+   décollement. L'accent ne teinte que ce qui est engagé.
    ─────────────────────────────────────────────────────────────────────────── */
-function ArpPanel({ a, set, scale }) {
-  const W = 830, H = 400;
-  const [held, setHeld] = useState(() => new Set([48, 52, 55]));
-  const [step, setStep] = useState(-1);
-
-  useEffect(() => {
-    let raf, t0 = performance.now();
-    const tick = (ts) => {
-      const beats = (ts - t0) / 500;                 // ~120 BPM
-      const per = SUBS.find(([k]) => k === a.sub)?.[1] ?? 2;
-      setStep(Math.floor(beats * per) % a.steps);
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [a.sub, a.steps]);
-
-  const notes = useMemo(() => [...held].sort((x, y) => x - y), [held]);
-  const seq = useMemo(() => {
-    if (!notes.length) return [];
-    const up = [...notes];
-    const dn = [...notes].reverse();
-    const ud = up.length < 2 ? up : [...up, ...dn.slice(1, -1)];
-    switch (a.style) {
-      case "Down": return dn;
-      case "UpDown": return ud;
-      case "DownUp": return [...ud].reverse();
-      case "Random": { const r = [...up]; for (let i = r.length - 1; i > 0; i--) { const j = (i * 7 + 3) % (i + 1); [r[i], r[j]] = [r[j], r[i]]; } return r; }
-      case "Chord": return [up];
-      default: return up;
-    }
-  }, [notes, a.style]);
-
-  const toggle = (m) => setHeld((s) => { const n = new Set(s); n.has(m) ? n.delete(m) : n.add(m); return n; });
-  const setVel = (i, e) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    const v = clamp(1 - (e.clientY - r.top) / r.height, 0.05, 1);
-    set((s) => ({ ...s, vel: s.vel.map((x, k) => (k === i ? v : x)), on: s.on.map((x, k) => (k === i ? true : x)) }));
-  };
-  const nm = (m) => ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"][m % 12] + (Math.floor(m / 12) - 1);
-
-  const Label = ({ children }) => (
-    <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: 1.2, color: MUTE, marginBottom: 4 }}>{children}</div>
-  );
-  const Seg = ({ options, value, onChange, h = 24, fs = 11 }) => (
-    <div style={{ position: "relative", display: "flex", padding: 2, borderRadius: 8,
-                  background: "rgba(0,0,0,.35)", border: `1px solid ${LINE}` }}>
-      <div style={{ position: "absolute", top: 2, bottom: 2, left: 2, width: `calc((100% - 4px) / ${options.length})`,
-                    borderRadius: 6, background: `linear-gradient(180deg,${BTN_T},${BTN_B})`,
-                    boxShadow: "0 1px 4px rgba(0,0,0,.4)",
-                    transform: `translateX(${Math.max(0, options.findIndex((o) => o[0] === value)) * 100}%)`,
-                    transition: "transform .25s cubic-bezier(.3,1.3,.5,1)" }} />
-      {options.map(([k, l]) => (
-        <button key={String(k)} onClick={() => onChange(k)}
-                style={{ position: "relative", flex: 1, height: h, border: 0, background: "transparent",
-                         cursor: "pointer", fontSize: fs, fontWeight: 700, fontFamily: FONT, padding: 0,
-                         color: value === k ? INK : MUTE, transition: "color .2s" }}>{l}</button>
-      ))}
-    </div>
-  );
-
+function FxCard({ fx, on, onToggle, onOpen, onRemove, height }) {
+  const [hot, setHot] = useState(false);
+  const lift = hot ? 2 : 0;
   return (
-    <div style={{ width: W * scale, height: H * scale, position: "relative" }}>
-      <div style={{ width: W, height: H, transform: `scale(${scale})`, transformOrigin: "top left",
-                    position: "absolute", left: 0, top: 0, display: "flex", gap: 10 }}>
-        {/* colonne des réglages */}
-        <div style={{ width: 252, flex: "none", display: "flex", flexDirection: "column", gap: 9,
-                      ...well({ borderRadius: 12, padding: 11 }) }}>
-          <div>
-            <Label>SUBDIVISION</Label>
-            <Seg options={SUBS.map(([k]) => [k, k])} value={a.sub} onChange={(v) => set((s) => ({ ...s, sub: v }))} />
-          </div>
-          <div>
-            <Label>STYLE</Label>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 5 }}>
-              {ARP_STYLES.map(([k, l]) => (
-                <button key={k} onClick={() => set((s) => ({ ...s, style: k }))}
-                        style={{ height: 26, borderRadius: 8, cursor: "pointer", fontFamily: FONT,
-                                 fontSize: 10, fontWeight: 800, padding: 0,
-                                 border: `1px solid ${a.style === k ? hx(ACC, .5) : LINE}`,
-                                 background: a.style === k ? hx(ACC, .18) : "rgba(255,255,255,.035)",
-                                 color: a.style === k ? ACC : DIM }}>{l}</button>
-              ))}
+    <div onClick={onOpen} onPointerEnter={() => setHot(true)} onPointerLeave={() => setHot(false)}
+         style={{ position: "relative", height, width: "100%", cursor: "pointer",
+                  transform: `translateY(${-lift}px)`,
+                  transition: "transform .16s cubic-bezier(.3,1.3,.5,1)" }}>
+      {/* l'ombre portée SOUS la carte : c'est ce qui la décolle du fond */}
+      <div style={{ position: "absolute", left: 5, right: 5, bottom: -7, height: 16, borderRadius: "50%",
+                    background: "radial-gradient(ellipse at 50% 0%, rgba(0,0,0,.62), rgba(0,0,0,0) 72%)",
+                    filter: "blur(1px)", transition: "opacity .16s", opacity: hot ? 0.85 : 1 }} />
+      {/* la tranche : le bord inférieur de la carte, éclairé */}
+      <div style={{ position: "absolute", inset: 0, top: 4, borderRadius: 14,
+                    background: "linear-gradient(180deg,#39425C,#232A3D)",
+                    boxShadow: "0 2px 0 rgba(255,255,255,.05)" }} />
+      {/* le corps */}
+      <div style={{ position: "absolute", inset: 0, borderRadius: 14, overflow: "hidden",
+                    background: "linear-gradient(180deg,#2A3348 0%,#212938 52%,#1A2130 100%)",
+                    border: `1px solid ${on ? hx(ACC, .38) : "rgba(255,255,255,.09)"}`,
+                    boxShadow: on
+                      ? `inset 0 1px 0 rgba(255,255,255,.14), inset 0 -14px 26px rgba(0,0,0,.34), 0 0 0 1px ${hx(ACC, .1)}`
+                      : "inset 0 1px 0 rgba(255,255,255,.11), inset 0 -14px 26px rgba(0,0,0,.34)" }}>
+        {/* reflet diagonal : la lumière du haut qui glisse sur la matière */}
+        <div style={{ position: "absolute", left: -30, right: -30, top: -50, height: 90,
+                      background: "linear-gradient(180deg,rgba(255,255,255,.11),rgba(255,255,255,0))",
+                      transform: "rotate(-9deg)", pointerEvents: "none" }} />
+        {/* teinte d'accent, seulement si la carte est engagée */}
+        {on && <div style={{ position: "absolute", inset: 0, pointerEvents: "none",
+                             background: `radial-gradient(ellipse at 50% 0%, ${hx(ACC, .13)}, transparent 62%)` }} />}
+
+        <div style={{ position: "relative", height: "100%", display: "flex", flexDirection: "column",
+                      padding: 12 }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 9 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 11, flex: "none", display: "grid", placeItems: "center",
+                          color: on ? SOFT : MUTE,
+                          background: on
+                            ? `radial-gradient(circle at 50% 20%, ${hx(ACC, .3)}, #161C2B 76%)`
+                            : "radial-gradient(circle at 50% 20%, rgba(255,255,255,.09), #161C2B 76%)",
+                          border: `1px solid ${on ? hx(ACC, .35) : "rgba(255,255,255,.08)"}`,
+                          boxShadow: "inset 0 1px 0 rgba(255,255,255,.12), 0 2px 6px rgba(0,0,0,.45)" }}>
+              <Ico d={fx.glyph} size={17} sw={2} />
+            </div>
+            <div style={{ minWidth: 0, flex: 1, paddingTop: 1 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: on ? INK : "#98A2B6",
+                            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fx.name}</div>
+              <div style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".13em", textTransform: "uppercase",
+                            color: on ? ACC : DIM, marginTop: 2 }}>{fx.type}</div>
             </div>
           </div>
-          <div>
-            <Label>STEPS</Label>
-            <Seg options={[["8", 8], ["12", 12], ["16", 16]]} value={a.steps}
-                 onChange={(v) => set((s) => ({ ...s, steps: v, vel: Array.from({ length: v }, (_, i) => s.vel[i] ?? 0.6), on: Array.from({ length: v }, (_, i) => s.on[i] ?? true) }))} />
+
+          <div style={{ marginTop: 9, fontSize: 10, lineHeight: 1.5, color: "#78829A",
+                        display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+            {fx.note}
           </div>
+
           <div style={{ flex: 1 }} />
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button onClick={() => set((s) => ({ ...s, hold: !s.hold }))}
-                    style={{ ...btn({ flex: 1, height: 30, borderRadius: 9, cursor: "pointer", fontFamily: FONT,
-                             fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center",
-                             justifyContent: "center", gap: 6,
-                             color: a.hold ? ACC_TEXT : DIM,
-                             background: a.hold ? `linear-gradient(180deg,#C7D9F9,${ACC_DEEP})` : `linear-gradient(180deg,${BTN_T},${BTN_B})` }) }}>
-              <Ico d={IC.hold} size={13} /> {a.hold ? "Hold on" : "Hold off"}
+
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={(e) => { e.stopPropagation(); onToggle(); }} title="Engage / Bypass"
+                    style={{ flex: 1, height: 26, borderRadius: 8, cursor: "pointer", display: "grid",
+                             placeItems: "center", border: `1px solid ${on ? hx(ACC, .5) : "rgba(255,255,255,.1)"}`,
+                             background: on ? `linear-gradient(180deg,#C7D9F9,${ACC_DEEP})` : "linear-gradient(180deg,#2F3850,#252D40)",
+                             color: on ? ACC_TEXT : DIM,
+                             boxShadow: on ? `0 0 12px ${hx(ACC, .3)}, inset 0 1px 0 rgba(255,255,255,.4)` : "inset 0 1px 0 rgba(255,255,255,.08)",
+                             transition: "all .2s cubic-bezier(.3,1.4,.5,1)" }}>
+              <Ico d={IC.power} size={13} sw={2.3} />
+            </button>
+            <button onClick={(e) => { e.stopPropagation(); onRemove(); }} title="Remove"
+                    style={{ width: 26, height: 26, borderRadius: 8, display: "grid", placeItems: "center",
+                             color: DIM, cursor: "pointer", background: "linear-gradient(180deg,#2F3850,#252D40)",
+                             border: "1px solid rgba(255,255,255,.1)",
+                             boxShadow: "inset 0 1px 0 rgba(255,255,255,.08)" }}>
+              <Ico d={IC.trash} size={13} />
             </button>
           </div>
         </div>
-
-        {/* touches tenues + séquenceur de pas */}
-        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 9 }}>
-          <div style={{ ...well({ borderRadius: 12, padding: "8px 10px 10px" }) }}>
-            <div style={{ display: "flex", alignItems: "center", height: 16, marginBottom: 5 }}>
-              <Label>HELD NOTES · TAP THE KEYS</Label>
-              <div style={{ flex: 1 }} />
-              <span style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 800, color: ACC }}>
-                {notes.map(nm).join("  ") || "—"}
-              </span>
-            </div>
-            <MiniKeys held={held} seq={seq} step={step} onToggle={toggle} />
-          </div>
-
-          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
-                        ...well({ borderRadius: 12, padding: "8px 10px 10px" }) }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-              <Label>STEPS · DRAG A BAR TO SET VELOCITY</Label>
-              <div style={{ flex: 1 }} />
-              <button onClick={() => set((s) => ({ ...s, vel: s.vel.map(() => 0.3 + Math.random() * 0.7), on: s.on.map(() => true) }))}
-                      style={{ ...btn({ height: 22, padding: "0 9px", borderRadius: 7, cursor: "pointer",
-                               color: DIM, fontSize: 10, fontWeight: 800, fontFamily: FONT,
-                               display: "inline-flex", alignItems: "center", gap: 5 }) }}>
-                <Ico d={IC.rand} size={11} /> Random
-              </button>
-            </div>
-            <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: `repeat(${a.steps}, 1fr)`, gap: 3 }}>
-              {Array.from({ length: a.steps }, (_, i) => {
-                const cur = step === i;
-                const on = a.on[i];
-                return (
-                  <div key={i} style={{ display: "flex", flexDirection: "column", gap: 3, borderRadius: 6,
-                                        background: cur ? "rgba(255,255,255,.07)" : "transparent", padding: 2 }}>
-                    <div style={{ textAlign: "center", fontFamily: MONO, fontSize: 8.5, fontWeight: 800,
-                                  color: cur ? ACC : i % 4 === 0 ? MUTE : "#3E4657" }}>{i + 1}</div>
-                    <div style={{ textAlign: "center", fontFamily: MONO, fontSize: 8.5, fontWeight: 800,
-                                  height: 11, color: on ? (cur ? AMBER : SOFT) : "#39415200",
-                                  whiteSpace: "nowrap", overflow: "hidden" }}>
-                      {on && seq.length ? nm(seq[i % seq.length]) : ""}
-                    </div>
-                    <div onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); setVel(i, e); }}
-                         onPointerMove={(e) => { if (e.buttons) setVel(i, e); }}
-                         style={{ flex: 1, minHeight: 18, borderRadius: 5, background: "#0A0E16",
-                                  position: "relative", overflow: "hidden", touchAction: "none", cursor: "ns-resize" }}>
-                      <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: `${a.vel[i] * 100}%`,
-                                    background: on ? (cur ? AMBER : ACC) : "#2B3447", transition: "background .08s" }} />
-                    </div>
-                    <button onClick={() => set((s) => ({ ...s, on: s.on.map((x, k) => (k === i ? !x : x)) }))}
-                            style={{ height: 17, borderRadius: 5, border: 0, cursor: "pointer", fontFamily: MONO,
-                                     fontSize: 8.5, fontWeight: 800, padding: 0,
-                                     background: on ? hx(ACC, .22) : "rgba(255,255,255,.04)",
-                                     color: on ? ACC : MUTE }}>{on ? "ON" : "—"}</button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );
 }
 
-/* ── Mini clavier, du JSX DeepSeek ─────────────────────────────────────────── */
-function MiniKeys({ held, seq, step, onToggle, from = 48, octaves = 2 }) {
-  const whites = [], blacks = [];
-  for (let m = from; m < from + 12 * octaves; m++) ([1, 3, 6, 8, 10].includes(m % 12) ? blacks : whites).push(m);
-  const litNote = seq.length && step >= 0 ? seq[step % seq.length] : null;
-  const Wn = whites.length;
-  return (
-    <div style={{ position: "relative", height: 46, display: "flex", gap: 1 }}>
-      {whites.map((m) => {
-        const isHeld = held.has(m), isLit = litNote === m;
-        return (
-          <div key={m} onClick={() => onToggle(m)}
-               style={{ flex: 1, borderRadius: "0 0 4px 4px", cursor: "pointer", position: "relative",
-                        background: isLit ? AMBER : isHeld ? ACC : "#DCE2EE",
-                        transition: "background .08s" }} />
-        );
-      })}
-      {blacks.map((m) => {
-        const idx = whites.filter((x) => x < m).length;
-        const isHeld = held.has(m), isLit = litNote === m;
-        return (
-          <div key={m} onClick={() => onToggle(m)}
-               style={{ position: "absolute", left: `${((idx - 0.3) / Wn) * 100}%`, width: `${(0.6 / Wn) * 100}%`,
-                        top: 0, height: "62%", borderRadius: "0 0 3px 3px", cursor: "pointer",
-                        background: isLit ? AMBER : isHeld ? ACC : "#1A2130", transition: "background .08s" }} />
-        );
-      })}
-    </div>
-  );
-}
-
-/* ══ LA LISTE D'EFFETS ═══════════════════════════════════════════════════════
-   Texture reprise de AeWindow.kt → PresetList / CatRow (le navigateur de presets
-   d'Æther Space) : panneau #151B29 → #0A0E17, rail de catégories, lignes de 28
-   avec barre d'accent, sélection en dégradé d'accent 22 %.
+/* ══ LA LISTE D'EFFETS — moderne, minimale, professionnelle ══════════════════
+   Une grille de cartes larges : glyphe, nom, type, explication. Pas de rail de
+   catégories, pas de numéros, pas de colonnes de métadonnées. La sélection est
+   un liseré d'accent net et un fond qui se relève légèrement.
    ─────────────────────────────────────────────────────────────────────────── */
-function CatalogPage({ kind, onPick, onBack, full }) {
+function CatalogPage({ kind, onPick, onBack, full, selRef }) {
   const list = kind === "midi" ? MIDI_FX : AUDIO_FX;
-  const cats = [...new Set(list.map((f) => f.cat))];
-  const [cat, setCat] = useState(null);
   const [sel, setSel] = useState(0);
-  const shown = cat ? list.filter((f) => f.cat === cat) : list;
-
-  const CatRow = ({ label, count, on, isAll, onClick }) => (
-    <div onClick={onClick} style={{ height: 26, borderRadius: 7, cursor: "pointer", display: "flex",
-         alignItems: "center", background: on ? hx(ACC, .18) : "transparent" }}>
-      <div style={{ marginLeft: 3, width: 2.5, height: 14, borderRadius: 2, background: on ? ACC : "transparent" }} />
-      <span style={{ marginLeft: 8, flex: 1, fontSize: isAll ? 9 : 8.5, fontWeight: on ? 800 : 600,
-                     letterSpacing: ".12em", textTransform: "uppercase", color: on ? "#FFFFFF" : MUTE }}>{label}</span>
-      <span style={{ marginRight: 9, fontSize: 9, fontFamily: MONO, color: on ? ACC : MUTE }}>{count}</span>
-    </div>
-  );
+  selRef.current = sel;
+  const cols = 2;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 2px 9px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "0 1px 11px" }}>
         <button onClick={onBack} style={{ ...btn({ width: 26, height: 26, borderRadius: 8, display: "grid",
                  placeItems: "center", color: MUTE, cursor: "pointer" }) }}>
           <Ico d={IC.chevronLeft} size={13} />
         </button>
-        <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".18em", color: MUTE, textTransform: "uppercase" }}>
-          {kind === "midi" ? "MIDI" : "AUDIO"}
+        <span style={{ fontSize: 12.5, fontWeight: 800 }}>Add {kind === "midi" ? "MIDI" : "audio"} effect</span>
+        <span style={{ fontSize: 9.5, color: MUTE, letterSpacing: ".09em", textTransform: "uppercase", fontWeight: 700 }}>
+          {kind === "midi" ? "one per track" : `up to ${MAX_AUDIO} per track`}
         </span>
-        <span style={{ fontSize: 10, color: ACC, letterSpacing: ".1em", textTransform: "uppercase", fontWeight: 700 }}>
-          {kind === "midi" ? "One per track" : `Up to ${MAX_AUDIO} per track`}
-        </span>
-        <span style={{ fontSize: 10, color: MUTE, fontFamily: MONO }}>{shown.length} of {list.length}</span>
         <div style={{ flex: 1 }} />
+        {full && <span style={{ fontSize: 9.5, color: ACC, fontWeight: 700 }}>limit reached</span>}
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, borderRadius: 18, overflow: "hidden", position: "relative",
-                    background: "linear-gradient(180deg,#151B29,#0A0E17)",
-                    boxShadow: "inset 0 0 0 1px rgba(255,255,255,.04), 0 10px 30px rgba(0,0,0,.45)" }}>
-        <div style={{ position: "absolute", left: 14, right: 14, top: 0, height: 1, background: "rgba(255,255,255,.15)" }} />
-        <div style={{ position: "absolute", left: 14, right: 14, bottom: 0, height: 1, background: "rgba(0,0,0,.4)" }} />
-
-        <div style={{ display: "flex", height: "100%", padding: 14, gap: 10 }}>
-          <div style={{ width: 214, flex: "none", display: "flex", flexDirection: "column" }}>
-            <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".18em", color: MUTE,
-                           textTransform: "uppercase", padding: "0 0 6px 12px" }}>Category</span>
-            <div style={{ flex: 1, background: "rgba(0,0,0,.08)", borderRadius: 10, padding: "7px 6px", overflowY: "auto" }}>
-              <CatRow label="All" count={list.length} on={cat === null} isAll onClick={() => { setCat(null); setSel(0); }} />
-              {cats.map((c) => (
-                <CatRow key={c} label={c} count={list.filter((f) => f.cat === c).length} on={cat === c}
-                        onClick={() => { setCat(c); setSel(0); }} />
-              ))}
-            </div>
-          </div>
-
-          <div style={{ flex: 1, minWidth: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 1 }}>
-            {shown.map((f, i) => {
-              const on = i === sel;
-              return (
-                <div key={f.id} onClick={() => setSel(i)} onDoubleClick={() => onPick(f)}
-                     style={{ height: 28, borderRadius: 7, display: "flex", alignItems: "center", flex: "none",
-                              cursor: "pointer",
-                              background: on ? `linear-gradient(90deg,${hx(ACC, .22)},rgba(25,227,255,.03))`
-                                             : i % 2 === 0 ? "linear-gradient(90deg,rgba(255,255,255,.028),rgba(255,255,255,.008))"
-                                             : "transparent" }}>
-                  <div style={{ marginLeft: 4, width: 3, height: 15, borderRadius: 2, background: on ? ACC : "transparent" }} />
-                  <span style={{ marginLeft: 8, width: 20, textAlign: "right", fontSize: 9, fontFamily: MONO,
-                                 color: on ? ACC : MUTE }}>{i + 1}</span>
-                  <span style={{ marginLeft: 8, flex: 1, fontSize: 11, fontWeight: on ? 700 : 500,
-                                 color: on ? "#FFFFFF" : INK, whiteSpace: "nowrap", overflow: "hidden",
-                                 textOverflow: "ellipsis" }}>{f.name}</span>
-                  <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase",
-                                 color: on ? ACC : DIM, marginRight: 8 }}>{f.type}</span>
-                  {cat === null && <span style={{ fontSize: 9, color: MUTE, marginRight: 8 }}>{f.cat}</span>}
-                  {!full && (
-                    <button onClick={(e) => { e.stopPropagation(); onPick(f); }}
-                            style={{ ...btn({ width: 22, height: 22, borderRadius: 7, display: "grid",
-                                     placeItems: "center", color: MUTE, cursor: "pointer", marginRight: 6 }) }}>
-                      <Ico d={IC.plus} size={11} sw={2.5} />
-                    </button>
-                  )}
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", paddingRight: 3,
+                    display: "grid", gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 9, alignContent: "start" }}>
+        {list.map((f, i) => {
+          const on = i === sel;
+          return (
+            <div key={f.id} onClick={() => setSel(i)} onDoubleClick={() => !full && onPick(f)}
+                 onPointerEnter={() => setSel(i)}
+                 style={{ position: "relative", height: 68, borderRadius: 13, cursor: "pointer",
+                          display: "flex", alignItems: "center", gap: 11, padding: "0 12px",
+                          background: on
+                            ? `linear-gradient(180deg,${hx(ACC, .13)},rgba(255,255,255,.015)), linear-gradient(180deg,#252E42,#1C2433)`
+                            : "linear-gradient(180deg,#20283A,#1A2130)",
+                          border: `1px solid ${on ? hx(ACC, .45) : "rgba(255,255,255,.07)"}`,
+                          boxShadow: on
+                            ? `inset 0 1px 0 rgba(255,255,255,.12), 0 6px 16px rgba(0,0,0,.45), 0 0 0 1px ${hx(ACC, .08)}`
+                            : "inset 0 1px 0 rgba(255,255,255,.07), 0 3px 9px rgba(0,0,0,.32)",
+                          transition: "all .16s cubic-bezier(.3,1.2,.5,1)" }}>
+              <div style={{ width: 36, height: 36, borderRadius: 11, flex: "none", display: "grid", placeItems: "center",
+                            color: on ? SOFT : MUTE,
+                            background: on
+                              ? `radial-gradient(circle at 50% 20%, ${hx(ACC, .3)}, #141A28 76%)`
+                              : "radial-gradient(circle at 50% 20%, rgba(255,255,255,.08), #141A28 76%)",
+                            border: `1px solid ${on ? hx(ACC, .34) : "rgba(255,255,255,.07)"}`,
+                            boxShadow: "inset 0 1px 0 rgba(255,255,255,.1), 0 2px 6px rgba(0,0,0,.4)" }}>
+                <Ico d={f.glyph} size={17} sw={1.9} />
+              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 800, color: on ? INK : "#A8B2C6" }}>{f.name}</span>
+                  <span style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase",
+                                 color: on ? ACC : DIM }}>{f.type}</span>
                 </div>
-              );
-            })}
-          </div>
-        </div>
+                <div style={{ fontSize: 10, color: "#7C869C", marginTop: 3, whiteSpace: "nowrap",
+                              overflow: "hidden", textOverflow: "ellipsis" }}>{f.note}</div>
+              </div>
+              <div style={{ width: 30, height: 30, borderRadius: 10, flex: "none", display: "grid", placeItems: "center",
+                            color: full ? "#3E4658" : on ? ACC_TEXT : DIM,
+                            background: full ? "rgba(255,255,255,.03)"
+                              : on ? `linear-gradient(180deg,#C7D9F9,${ACC_DEEP})` : "rgba(255,255,255,.045)",
+                            border: `1px solid ${on && !full ? "transparent" : "rgba(255,255,255,.08)"}`,
+                            boxShadow: on && !full ? `0 3px 10px ${hx(ACC, .3)}` : "none",
+                            transition: "all .16s" }}>
+                <Ico d={full ? IC.check : IC.plus} size={14} sw={2.4} />
+              </div>
+            </div>
+          );
+        })}
       </div>
+
     </div>
   );
 }
@@ -734,7 +304,9 @@ function Handle({ pos, onDown }) {
     cursor: pos.right !== undefined ? "ew-resize" : "nwse-resize" }} />;
 }
 
-/* ══ LA FENÊTRE ══════════════════════════════════════════════════════════════ */
+/* ══ LA FENÊTRE ══════════════════════════════════════════════════════════════
+   Cadre de référence : 891 × 411, celui de l'app.
+   ─────────────────────────────────────────────────────────────────────────── */
 function FxWindow() {
   const [audio, setAudio] = useState([AUDIO_FX[0]]);
   const [midi, setMidi] = useState([]);
@@ -743,66 +315,32 @@ function FxWindow() {
     const h = (typeof location !== "undefined" ? location.hash : "").replace("#", "");
     if (h === "midi") return { k: "catalog", kind: "midi" };
     if (h === "audio") return { k: "catalog", kind: "audio" };
-    if (h === "arp") return { k: "effect", fx: MIDI_FX[0] };
-    if (h === "effect") return { k: "effect", fx: AUDIO_FX[0] };
+    if (h === "space") return { k: "effect", fx: AUDIO_FX[0] };
     return { k: "rack" };
   });
-  const [vals, setVals] = useState(() => Object.fromEntries(SPACE_KNOBS.map((k) => [k.k, k.def])));
-  const [arp, setArp] = useState({
-    sub: "1/16", style: "Up", steps: 16, hold: false,
-    vel: [1, .62, .78, .62, .95, .62, .78, .62, .88, .62, .78, .62, .92, .62, .78, .62],
-    on: Array(16).fill(true),
-  });
-  const [size, setSize] = useState({ w: 880, h: 452 });
-  const [auto, setAuto] = useState(true);
   const drag = useRef(null);
-  const pulse = useRef(() => {});
+  const catalogSel = useRef(0);
 
   const engaged = (f) => on[f.id] !== false;
   const toggle = (f) => setOn((s) => ({ ...s, [f.id]: s[f.id] === false }));
-  const setKnob = (k) => (v) => setVals((s) => ({ ...s, [k]: v }));
-
-  useEffect(() => {
-    if (view.k === "effect") setSize({ w: view.fx.w, h: view.fx.h });
-    else if (view.k === "catalog") setSize({ w: 880, h: 430 });
-    else setSize({ w: 880, h: 452 });
-    setAuto(true);
-  }, [view]);
-
-  useEffect(() => {
-    const move = (e) => {
-      if (!drag.current) return;
-      setAuto(false);
-      const { x0, y0, w0, h0, ax, ay } = drag.current;
-      setSize({ w: ax ? clamp(w0 + (e.clientX - x0), 560, 1100) : w0,
-                h: ay ? clamp(h0 + (e.clientY - y0), 340, 680) : h0 });
-    };
-    const up = () => (drag.current = null);
-    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
-    return () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
-  }, []);
-  const startDrag = (ax, ay) => (e) => { drag.current = { x0: e.clientX, y0: e.clientY, w0: size.w, h0: size.h, ax, ay }; };
-
   const pick = (f) => {
     if (view.k === "catalog" && view.kind === "midi") setMidi([f]);
     else if (view.k === "catalog" && audio.length < MAX_AUDIO) setAudio((a) => [...a, f]);
     setView({ k: "effect", fx: f });
   };
 
-  const HEAD = 48, FOOT = 46, PAD = 14;
-  const bodyH = size.h - HEAD - FOOT - PAD * 2;
-  const isSpace = view.k === "effect" && view.fx.orb;
-  const isArp = view.k === "effect" && view.fx.arp;
-  const panelScale = isSpace ? clamp(Math.min((size.w - PAD * 2) / SPACE_W, bodyH / SPACE_H), 0.4, 1.6)
-    : isArp ? clamp(Math.min((size.w - PAD * 2) / 830, bodyH / 400), 0.4, 1.6) : 1;
-  /* Hauteur de logement : la colonne audio en tient trois, la MIDI un seul. */
-  const slotH = clamp(bodyH, 150, 340);
+  const HEAD = 46, FOOT = 44, PAD = 12;
+  const bodyH = 411 - HEAD - FOOT - PAD * 2;
+  const cardH = clamp(bodyH - 20, 150, 240);
+  /* Space est dessine a sa taille native 891 x 411 : on le met a l'echelle du
+     corps de la fenetre, la plus grande qui tienne dans les deux sens. */
+  const spaceScale = Math.min((891 - PAD * 2) / 891, bodyH / 411);
 
   return (
-    <div data-shot="fxwin" style={{ position: "relative", width: size.w, height: size.h, borderRadius: 22,
+    <div data-shot="fxwin" style={{ position: "relative", width: 891, height: 411, borderRadius: 20,
                   overflow: "hidden", fontFamily: FONT, color: INK, ...win(), border: `1px solid ${LINE2}`,
                   boxShadow: "0 26px 64px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.06)",
-                  userSelect: "none", WebkitFontSmoothing: "antialiased", transition: "width .22s, height .22s" }}>
+                  userSelect: "none", WebkitFontSmoothing: "antialiased" }}>
       <div style={{ position: "absolute", inset: 0, backgroundImage: NOISE, opacity: .028, pointerEvents: "none" }} />
 
       {/* EN-TÊTE */}
@@ -826,9 +364,7 @@ function FxWindow() {
           {view.k === "effect" ? view.fx.type : "Track 3"}
         </span>
         <div style={{ flex: 1 }} />
-        <span style={{ fontSize: 9.5, fontFamily: MONO, color: MUTE }}>{Math.round(size.w)}×{Math.round(size.h)}</span>
-        <button onClick={() => setAuto(true)} style={{ ...btn({ height: 22, padding: "0 9px", borderRadius: 7,
-                 color: auto ? ACC : MUTE, fontSize: 10, fontWeight: 800, fontFamily: FONT, cursor: "pointer" }) }}>Auto</button>
+        <span style={{ fontSize: 9.5, fontFamily: MONO, color: MUTE }}>891×411</span>
         <button style={{ ...btn({ width: 26, height: 26, borderRadius: 8, display: "grid", placeItems: "center",
                  color: MUTE, cursor: "pointer" }) }}><Ico d={IC.close} size={14} /></button>
       </div>
@@ -837,14 +373,14 @@ function FxWindow() {
       <div style={{ position: "absolute", left: PAD, right: PAD, top: HEAD + PAD, height: bodyH, overflow: "hidden" }}>
 
         {view.k === "rack" && (
-          <div style={{ display: "flex", gap: 12, height: "100%" }}>
-            {/* SLOT AUDIO : logements verticaux côte à côte */}
+          <div style={{ display: "flex", gap: 11, height: "100%" }}>
+            {/* SLOT AUDIO */}
             <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 3 }}>
-                <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".15em", textTransform: "uppercase", color: MUTE }}>
+                <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".16em", textTransform: "uppercase", color: MUTE }}>
                   Slot Audio
                 </span>
-                <span style={{ fontSize: 9.5, fontFamily: MONO, color: audio.length >= MAX_AUDIO ? ACC : MUTE }}>
+                <span style={{ fontSize: 9, fontFamily: MONO, color: audio.length >= MAX_AUDIO ? ACC : MUTE }}>
                   {audio.length}/{MAX_AUDIO}
                 </span>
                 <div style={{ flex: 1, height: 1, background: LINE }} />
@@ -852,84 +388,84 @@ function FxWindow() {
               <div style={{ flex: 1, display: "flex", gap: 9, minHeight: 0 }}>
                 {Array.from({ length: MAX_AUDIO }, (_, i) => {
                   const f = audio[i];
-                  return f ? (
-                    <div key={f.id} style={{ flex: 1, minWidth: 0 }}>
-                      <VerticalSlot height={slotH} filled>
-                        <FxCard fx={f} on={engaged(f)} vals={vals} onToggle={() => toggle(f)}
-                                onOpen={() => setView({ k: "effect", fx: f })}
-                                onRemove={() => setAudio((a) => a.filter((x) => x.id !== f.id))} />
-                      </VerticalSlot>
-                    </div>
-                  ) : (
-                    <div key={"e" + i} style={{ flex: 1, minWidth: 0 }}>
-                      <VerticalSlot height={slotH} onAdd={() => setView({ k: "catalog", kind: "audio" })} />
+                  return (
+                    <div key={f ? f.id : "e" + i} style={{ flex: 1, minWidth: 0 }}>
+                      {f
+                        ? <FxCard fx={f} height={cardH} on={engaged(f)} onToggle={() => toggle(f)}
+                                  onOpen={() => setView({ k: "effect", fx: f })}
+                                  onRemove={() => setAudio((a) => a.filter((x) => x.id !== f.id))} />
+                        : <EmptySlot height={cardH} label="Empty" onAdd={() => setView({ k: "catalog", kind: "audio" })} />}
                     </div>
                   );
                 })}
               </div>
             </div>
 
-            {/* séparateur : les deux groupes sont détachés */}
+            {/* séparateur */}
             <div style={{ width: 1, flex: "none", position: "relative",
                           background: `linear-gradient(180deg,transparent,${LINE2} 18%,${LINE2} 82%,transparent)` }}>
               <div style={{ position: "absolute", left: -3, top: "50%", marginTop: -3, width: 7, height: 7,
                             borderRadius: 4, background: "#2A3244", border: `1px solid ${LINE2}` }} />
             </div>
 
-            {/* SLOT MIDI : un seul logement vertical */}
-            <div style={{ flex: "0 0 30%", display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+            {/* SLOT MIDI */}
+            <div style={{ flex: "0 0 27%", display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 3 }}>
-                <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".15em", textTransform: "uppercase", color: MUTE }}>
+                <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".16em", textTransform: "uppercase", color: MUTE }}>
                   Slot MIDI
                 </span>
-                <span style={{ fontSize: 9.5, fontFamily: MONO, color: midi.length >= MAX_MIDI ? ACC : MUTE }}>
+                <span style={{ fontSize: 9, fontFamily: MONO, color: midi.length >= MAX_MIDI ? ACC : MUTE }}>
                   {midi.length}/{MAX_MIDI}
                 </span>
                 <div style={{ flex: 1, height: 1, background: LINE }} />
               </div>
-              {midi.length ? (
-                <VerticalSlot height={slotH} filled>
-                  <FxCard fx={midi[0]} on={engaged(midi[0])} vals={vals} onToggle={() => toggle(midi[0])}
+              {midi.length
+                ? <FxCard fx={midi[0]} height={cardH} on={engaged(midi[0])} onToggle={() => toggle(midi[0])}
                           onOpen={() => setView({ k: "effect", fx: midi[0] })}
                           onRemove={() => setMidi([])} />
-                </VerticalSlot>
-              ) : (
-                <VerticalSlot height={slotH} onAdd={() => setView({ k: "catalog", kind: "midi" })} />
-              )}
+                : <EmptySlot height={cardH} label="Empty" onAdd={() => setView({ k: "catalog", kind: "midi" })} />}
             </div>
           </div>
         )}
 
         {view.k === "catalog" && (
           <CatalogPage kind={view.kind} onPick={pick} onBack={() => setView({ k: "rack" })}
+                       selRef={catalogSel}
                        full={view.kind === "audio" && audio.length >= MAX_AUDIO} />
         )}
 
+        {/* LE PANNEAU DE L'EFFET : celui de Space est le vrai, importé tel quel */}
         {view.k === "effect" && (
-          <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            {isSpace ? <SpacePanel vals={vals} onChange={setKnob} scale={panelScale} pulseRef={pulse} />
-              : isArp ? <ArpPanel a={arp} set={setArp} scale={panelScale} />
-              : (
-                <div style={{ width: "100%", height: "100%", borderRadius: 16, ...well({ borderRadius: 16,
-                              display: "grid", placeItems: "center", position: "relative", overflow: "hidden" }) }}>
-                  <div style={{ position: "absolute", inset: 0,
-                                background: `radial-gradient(ellipse at 50% 0%, ${hx(ACC, .1)}, transparent 68%)` }} />
-                  <div style={{ textAlign: "center", position: "relative" }}>
-                    <div style={{ width: 46, height: 46, margin: "0 auto 10px", borderRadius: 14, display: "grid",
-                                  placeItems: "center", color: SOFT,
-                                  background: `radial-gradient(circle at 50% 22%, ${hx(ACC, .23)}, #141A28 78%)`,
-                                  border: `1px solid ${hx(ACC, .33)}` }}>
-                      <Ico d={IC.sliders} size={21} sw={1.9} />
-                    </div>
-                    <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 4 }}>{view.fx.name}</div>
-                    <div style={{ fontSize: 11, color: DIM, maxWidth: 360, lineHeight: 1.6 }}>{view.fx.note}</div>
-                    <div style={{ marginTop: 12, fontSize: 10, color: MUTE, fontFamily: MONO }}>
-                      {view.fx.pw} parameters · panel {view.fx.w}×{view.fx.h}
-                    </div>
-                  </div>
+          view.fx.space ? (
+            <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center" }}>
+              <div style={{ width: 891 * spaceScale, height: 411 * spaceScale, position: "relative" }}>
+                <div style={{ width: 891, height: 411, transform: `scale(${spaceScale})`, transformOrigin: "top left",
+                              position: "absolute", left: 0, top: 0, borderRadius: 20, overflow: "hidden",
+                              boxShadow: "0 12px 34px rgba(0,0,0,.5)" }}>
+                  <SpaceWindow />
                 </div>
-              )}
-          </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ width: "100%", height: "100%", borderRadius: 16, ...well({ borderRadius: 16,
+                          display: "grid", placeItems: "center", position: "relative", overflow: "hidden" }) }}>
+              <div style={{ position: "absolute", inset: 0,
+                            background: `radial-gradient(ellipse at 50% 0%, ${hx(ACC, .1)}, transparent 68%)` }} />
+              <div style={{ textAlign: "center", position: "relative" }}>
+                <div style={{ width: 46, height: 46, margin: "0 auto 10px", borderRadius: 14, display: "grid",
+                              placeItems: "center", color: SOFT,
+                              background: `radial-gradient(circle at 50% 22%, ${hx(ACC, .23)}, #141A28 78%)`,
+                              border: `1px solid ${hx(ACC, .33)}` }}>
+                  <Ico d={view.fx.glyph} size={21} sw={1.9} />
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 4 }}>{view.fx.name}</div>
+                <div style={{ fontSize: 11, color: DIM, maxWidth: 360, lineHeight: 1.6 }}>{view.fx.note}</div>
+                <div style={{ marginTop: 12, fontSize: 10, color: MUTE, fontFamily: MONO }}>
+                  {view.fx.pw} parameters
+                </div>
+              </div>
+            </div>
+          )
         )}
       </div>
 
@@ -937,69 +473,72 @@ function FxWindow() {
       <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: FOOT, display: "flex",
                     alignItems: "center", gap: 9, padding: "0 12px", borderTop: `1px solid ${LINE}`,
                     background: "linear-gradient(0deg,rgba(255,255,255,.026),transparent)" }}>
-        <button style={{ ...btn({ height: 28, padding: "0 11px", borderRadius: 9, display: "inline-flex",
-                 alignItems: "center", gap: 6, color: INK, fontSize: 11, fontWeight: 800, fontFamily: FONT, cursor: "pointer" }) }}>
-          <Ico d={IC.drag} size={13} /> Reorder
-        </button>
-        <span style={{ fontSize: 10, color: MUTE }}>{audio.length} audio · {midi.length} MIDI</span>
-        <div style={{ flex: 1 }} />
-        <button style={{ ...btn({ height: 28, padding: "0 14px", borderRadius: 9, border: 0,
-                 background: `linear-gradient(180deg,#C7D9F9,${ACC_DEEP})`, color: ACC_TEXT, fontSize: 11,
-                 fontWeight: 900, fontFamily: FONT, cursor: "pointer", boxShadow: `0 3px 12px ${hx(ACC, .27)}` }) }}>
-          Done
-        </button>
+        {view.k === "catalog" ? (
+          <>
+            <span style={{ fontSize: 10, color: MUTE }}>
+              {view.kind === "midi" ? "One MIDI effect per track." : `Up to ${MAX_AUDIO} audio effects per track.`}
+            </span>
+            <div style={{ flex: 1 }} />
+            <button onClick={() => setView({ k: "rack" })} style={{ ...btn({ height: 27, padding: "0 13px",
+                     borderRadius: 9, color: MUTE, fontSize: 11, fontWeight: 800, fontFamily: FONT, cursor: "pointer" }) }}>
+              Cancel
+            </button>
+            <button onClick={() => pick((view.kind === "midi" ? MIDI_FX : AUDIO_FX)[catalogSel.current])}
+                    style={{ ...btn({ height: 27, padding: "0 17px", borderRadius: 9, border: 0,
+                             background: `linear-gradient(180deg,#C7D9F9,${ACC_DEEP})`, color: ACC_TEXT, fontSize: 11,
+                             fontWeight: 900, fontFamily: FONT, cursor: "pointer",
+                             boxShadow: `0 3px 12px ${hx(ACC, .27)}` }) }}>
+              Add to track
+            </button>
+          </>
+        ) : (
+          <>
+            <button style={{ ...btn({ height: 27, padding: "0 11px", borderRadius: 9, display: "inline-flex",
+                     alignItems: "center", gap: 6, color: INK, fontSize: 11, fontWeight: 800, fontFamily: FONT, cursor: "pointer" }) }}>
+              <Ico d={IC.drag} size={13} /> Reorder
+            </button>
+            <span style={{ fontSize: 10, color: MUTE }}>{audio.length} audio · {midi.length} MIDI</span>
+            <div style={{ flex: 1 }} />
+            <button style={{ ...btn({ height: 27, padding: "0 15px", borderRadius: 9, border: 0,
+                     background: `linear-gradient(180deg,#C7D9F9,${ACC_DEEP})`, color: ACC_TEXT, fontSize: 11,
+                     fontWeight: 900, fontFamily: FONT, cursor: "pointer", boxShadow: `0 3px 12px ${hx(ACC, .27)}` }) }}>
+              Done
+            </button>
+          </>
+        )}
       </div>
 
-      <Handle pos={{ right: 0, top: HEAD, bottom: FOOT, width: 7 }} onDown={startDrag(true, false)} />
-      <Handle pos={{ right: 0, bottom: 0, width: 18, height: 18 }} onDown={startDrag(true, true)} />
+      <Handle pos={{ right: 0, top: HEAD, bottom: FOOT, width: 7 }} onDown={(e) => (drag.current = e)} />
+      <Handle pos={{ right: 0, bottom: 0, width: 18, height: 18 }} onDown={(e) => (drag.current = e)} />
       <div style={{ position: "absolute", right: 4, bottom: 4, width: 9, height: 9, pointerEvents: "none",
                     borderRight: `2px solid ${DIM}`, borderBottom: `2px solid ${DIM}`, borderRadius: 2, opacity: .6 }} />
     </div>
   );
 }
 
-/* ── habillage : un écran STANDARD (pas un onglet), aux proportions du device ─ */
+/* ── habillage : l'écran de l'app, 891 × 411, mis à l'échelle pour la fenêtre ─ */
 export default function FxWindowPreview() {
   const [scale, setScale] = useState(1);
   useEffect(() => {
-    const fit = () => setScale(clamp(Math.min((window.innerWidth - 60) / 1000, (window.innerHeight - 150) / 700), 0.3, 1.4));
+    const fit = () => setScale(Math.min(1, clamp(Math.min((window.innerWidth - 60) / 891, (window.innerHeight - 130) / 411), 0.35, 1)));
     fit(); window.addEventListener("resize", fit);
     return () => window.removeEventListener("resize", fit);
   }, []);
   return (
     <div style={{ minHeight: "100vh", background: `radial-gradient(ellipse at 50% 0%, ${BG_T}, #0A0E16 70%)`,
                   display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                  gap: 14, padding: 20, boxSizing: "border-box", fontFamily: FONT }}>
-      <div style={{ width: 1000 * scale, height: 700 * scale, position: "relative" }}>
-        <div data-shot="fxpage" style={{ width: 1000, height: 700, transform: `scale(${scale})`, transformOrigin: "top left",
-                      position: "absolute", left: 0, top: 0, borderRadius: 26, overflow: "hidden",
-                      background: `linear-gradient(180deg,${BG_T},${BG_B})`, padding: 20, boxSizing: "border-box",
-                      display: "flex", alignItems: "flex-start", justifyContent: "center",
+                  gap: 14, padding: 16, boxSizing: "border-box", fontFamily: FONT }}>
+      <div style={{ width: 891 * scale, height: 411 * scale, position: "relative" }}>
+        <div data-shot="fxpage" style={{ width: 891, height: 411, transform: `scale(${scale})`, transformOrigin: "top left",
+                      position: "absolute", left: 0, top: 0, borderRadius: 20, overflow: "hidden",
+                      background: `linear-gradient(180deg,${BG_T},${BG_B})`, padding: 0, boxSizing: "border-box",
                       boxShadow: "0 34px 90px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.06)" }}>
-          <div style={{ position: "absolute", inset: 0, overflow: "hidden", opacity: .5 }}>
-            <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 74,
-                          background: "linear-gradient(180deg,rgba(255,255,255,.03),rgba(0,0,0,.35))",
-                          borderTop: "1px solid rgba(255,255,255,.05)" }} />
-            <div style={{ position: "absolute", left: 18, right: 18, top: 40, bottom: 84, display: "flex", gap: 9 }}>
-              {Array.from({ length: 8 }, (_, i) => (
-                <div key={i} style={{ flex: 1, borderRadius: 10, display: "flex", flexDirection: "column",
-                                      alignItems: "center", justifyContent: "flex-end", gap: 6, paddingBottom: 8,
-                                      background: "linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.012))",
-                                      border: "1px solid rgba(255,255,255,.045)" }}>
-                  <div style={{ width: 4, height: `${40 + ((i * 37) % 55)}%`, borderRadius: 3,
-                                background: `linear-gradient(180deg,${hx(ACC, .5)},${hx(ACC_DEEP, .2)})` }} />
-                  <div style={{ width: 26, height: 8, borderRadius: 3, background: "rgba(255,255,255,.09)" }} />
-                </div>
-              ))}
-            </div>
-          </div>
-          <div style={{ position: "relative" }}><FxWindow /></div>
+          <FxWindow />
         </div>
       </div>
-      <div style={{ fontSize: 11.5, color: "#5B6580", textAlign: "center", maxWidth: 820, lineHeight: 1.65 }}>
-        Æther FX — écran standard. Slots verticaux avec aperçu · un logement vide n'affiche qu'un « + » ·
-        Slot Audio ({MAX_AUDIO} max) | Slot MIDI ({MAX_MIDI}, détaché). Toucher une carte ouvre son panneau ;
-        l'orbe d'Æther Space réagit à tous les réglages ; l'Arpeggiator suit les vrais paramètres.
+      <div style={{ fontSize: 11.5, color: "#5B6580", textAlign: "center", maxWidth: 800, lineHeight: 1.65 }}>
+        Æther FX — écran {SPACE_W} × {SPACE_H}, celui de l'app. Slots verticaux courts : creux quand vides,
+        carte posée avec ombre portée quand remplis. Space est le vrai panneau, importé de FxSpacePreview.jsx.
       </div>
     </div>
   );

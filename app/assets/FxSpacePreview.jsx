@@ -43,7 +43,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
      Diff   → flou des anneaux
    ═════════════════════════════════════════════════════════════════════════════ */
 
-const W = 891, H = 411;
+export const W = 891, H = 411;
 const MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
 const FONT = "Space Grotesk, Inter, system-ui, -apple-system, sans-serif";
 
@@ -421,7 +421,7 @@ function Scene({ vals, fireRef, accent, hover }) {
 }
 
 /* ── la fenêtre ────────────────────────────────────────────────────────────── */
-function SpaceWindow() {
+export function SpaceWindow() {
   const [vals, setVals] = useState(() => toVals("Hall"));
   const [preset, setPreset] = useState("Hall");
   const [tab, setTab] = useState("Settings");
