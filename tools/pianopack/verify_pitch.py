@@ -194,6 +194,65 @@ def self_test():
     return ok
 
 
+def check_roundtrip(path, samples=("FF A#2.flac", "PP A0.flac", "Mp G3.flac")):
+    """Le pack sur disque se decode-t-il en ce que l'encodeur a recu ?
+
+    C'est le controle qui aurait attrape le pire bug du pack : l'encodeur
+    utilisait UN predicteur sur le flux stereo entrelace, alors que le moteur en
+    utilise UN PAR CANAL.  Le flux etait donc indecodable — SNR mesure -7 dB,
+    correlation 0,01 — et le piano sonnait comme un vieil enregistrement.  Le sax
+    n'a jamais eu ce defaut parce qu'il est mono : un seul canal, donc un seul
+    predicteur des deux cotes.
+
+    On compare ici la region telle qu'elle est ecrite dans le pack, decodee par
+    le decodeur du moteur, avec la sortie de `build_region` — l'entree exacte de
+    l'encodeur.  Un bon ADPCM 4 bits a 22 kHz donne 25-35 dB.
+    """
+    import json
+    from build import build_region
+    if not os.path.exists(path):
+        print("pack absent, aller-retour non verifie")
+        return True
+    json_path = path[:-4] + ".json" if path.endswith(".bin") else path + ".json"
+    if not os.path.exists(json_path):
+        print("index absent, aller-retour non verifie")
+        return True
+    J = json.load(open(json_path))
+    raw = open(path, "rb").read()
+    rate, count, pcm_len, rec_len = struct.unpack("<IIII", raw[8:24])
+    pcm = raw[28 + rec_len:28 + rec_len + pcm_len]
+
+    snrs = []
+    for name in samples:
+        idx = next((k for k, r in enumerate(J["regions"]) if r["sample"] == name), None)
+        if idx is None:
+            continue
+        try:
+            ref, _ = build_region(name)
+        except Exception:
+            continue
+        rec = raw[28 + idx * 24:28 + (idx + 1) * 24]
+        off, frames = struct.unpack("<II", rec[4:12])
+        dec = decode(pcm, off, frames)
+        a = (ref[:, 0].astype(np.float64) + ref[:, 1]) / 2 / 32768.0
+        b = (dec[0::2].astype(np.float64) + dec[1::2]) / 2 / 32768.0
+        m = min(len(a), len(b))
+        a, b = a[:m], b[:m]
+        snr = 10 * np.log10((a ** 2).sum() / (((a - b) ** 2).sum() + 1e-12))
+        snrs.append(snr)
+
+    if not snrs:
+        print("aucune region comparable, aller-retour non verifie")
+        return True
+    med = float(np.median(snrs))
+    print("aller-retour encodeur -> decodeur du moteur : SNR median %.1f dB" % med)
+    if med < 20.0:
+        print("  ECHEC : le flux du pack ne se decode pas (attendu > 20 dB).")
+        print("  Verifier que l'encodeur utilise un predicteur PAR CANAL.")
+        return False
+    return True
+
+
 def check_convention():
     """La banque nomme le do central « C3 » (convention Roland).
 
@@ -221,6 +280,8 @@ def main():
     if not check_convention():
         ok = False
     if not self_test():
+        ok = False
+    if not check_roundtrip(path):
         ok = False
 
     raw = open(path, "rb").read()

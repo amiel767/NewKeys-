@@ -48,12 +48,29 @@ INDEX = [-1, -1, -1, -1, 2, 4, 6, 8, -1, -1, -1, -1, 2, 4, 6, 8]
 
 
 def adpcm_encode(xi):
-    """xi : int16. Renvoie les nibbles (2 par octet) et le SNR de controle."""
-    pred, idx = 0, 0
-    nib = np.empty(len(xi), np.uint8)
-    for i in range(len(xi)):
-        st = STEP[idx]
-        d = int(xi[i]) - pred
+    """xi : int16 entrelace L/R. Renvoie les nibbles (2 par octet).
+
+    Un etat de predicteur PAR CANAL.  C'est le point qui a coute le plus cher :
+    le moteur decode avec un predicteur par canal (`fx_piano.h`, `predL`/`predR`),
+    donc un encodeur a predicteur unique lui donne un flux indecodable.  Mesure
+    sur une region, decodee par le moteur :
+
+        predicteur unique  : SNR -13,9 dB, correlation du canal G 0,15
+        predicteur/canal   : SNR +33,0 dB, correlation du canal G 0,9996
+
+    Un SNR negatif signifie que la forme d'onde est detruite : c'est ce qui
+    faisait sonner le piano comme un vieil enregistrement.  Le sax n'a jamais eu
+    ce probleme parce qu'il est MONO — un seul canal, donc un seul predicteur des
+    deux cotes.  La stereo du piano est ce qui a revele l'ecart.
+    """
+    n = len(xi)
+    pred = [0, 0]
+    idx = [0, 0]
+    nib = np.empty(n, np.uint8)
+    for i in range(n):
+        ch = i & 1                      # 0 = gauche, 1 = droite
+        st = STEP[idx[ch]]
+        d = int(xi[i]) - pred[ch]
         code = 0
         if d < 0:
             code = 8
@@ -73,24 +90,27 @@ def adpcm_encode(xi):
             dl += st >> 1
         if code & 1:
             dl += st >> 2
-        pred = pred - dl if code & 8 else pred + dl
-        pred = 32767 if pred > 32767 else (-32768 if pred < -32768 else pred)
-        idx = min(88, max(0, idx + INDEX[code & 7]))
+        pred[ch] = pred[ch] - dl if code & 8 else pred[ch] + dl
+        pred[ch] = 32767 if pred[ch] > 32767 else (-32768 if pred[ch] < -32768 else pred[ch])
+        idx[ch] = min(88, max(0, idx[ch] + INDEX[code & 7]))
         nib[i] = code
-    out = np.empty((len(nib) + 1) // 2, np.uint8)
+    out = np.empty((n + 1) // 2, np.uint8)
     out[:] = nib[0::2]
-    if len(nib) > 1:
-        out[:len(nib) // 2] |= nib[1::2] << 4
+    if n > 1:
+        out[:n // 2] |= nib[1::2] << 4
     return out
 
 
 def adpcm_decode(packed, n):
-    pred, idx = 0, 0
+    """Inverse de [adpcm_encode] : un predicteur par canal, comme le moteur."""
+    pred = [0, 0]
+    idx = [0, 0]
     out = np.empty(n, np.int16)
     for i in range(n):
+        ch = i & 1
         b = int(packed[i >> 1])
         code = (b & 0xF) if (i & 1) == 0 else (b >> 4)
-        st = STEP[idx]
+        st = STEP[idx[ch]]
         dl = st >> 3
         if code & 4:
             dl += st
@@ -98,10 +118,10 @@ def adpcm_decode(packed, n):
             dl += st >> 1
         if code & 1:
             dl += st >> 2
-        pred = pred - dl if code & 8 else pred + dl
-        pred = 32767 if pred > 32767 else (-32768 if pred < -32768 else pred)
-        idx = min(88, max(0, idx + INDEX[code & 7]))
-        out[i] = pred
+        pred[ch] = pred[ch] - dl if code & 8 else pred[ch] + dl
+        pred[ch] = 32767 if pred[ch] > 32767 else (-32768 if pred[ch] < -32768 else pred[ch])
+        idx[ch] = min(88, max(0, idx[ch] + INDEX[code & 7]))
+        out[i] = pred[ch]
     return out
 
 
