@@ -2328,3 +2328,49 @@ controle publiee (`pieds.jpg`) pour decider desquelles reprendre.
 - `pieds.jpg` : le texte de la planche sort en rectangles (police bitmap PIL par
   defaut sans glyphes) — la planche reste lisible par sa position, mais il faudrait
   une police TTF pour les libelles.
+
+## Session 2026-10-29 — Piano : la melodie etait juste, les presets non
+
+Reprise de la question « Joyeux Anniversaire sonne faux ». **La hauteur n'a jamais
+ete fausse.** Le MP3 servi datait du 30/10 12:04, le correctif du pack de 14:52 :
+l'audio ecoute venait de l'ancien pack casse. Apres correctif, C4 = 263 Hz et les
+raies sont les harmoniques exactes de la hauteur demandee (h1 present partout).
+
+**Piege de mesure, a ne pas rouvrir** : un piano a h2 dominante. Un detecteur de
+hauteur naif (YIN mal initialise, « plus basse raie > 30 % du max », correlation)
+annonce l'octave au-dessus. Trois methodes successives ont menti avant la bonne :
+mesurer l'amplitude a **k x f0** pour k=1..8 et exiger h1 present.
+
+### PianoForge.hpp (`app/assets/PianoForge.hpp`, analyse dans `tools/pianoforge/`)
+
+Header de reference (YIN, Thiran, sinc de Kaiser, convolution partitionnee), compile
+sans avertissement, vise 0,20 cent. Deux bugs mesures, une ligne chacun :
+- **boucle** : `L = reps * llround(period)` raccorde deux phases differentes des que
+  `sr/f0` n'est pas entier (C4 : 183,47 -> 183). 9/15 -> **15/15**, saut a la couture
+  5,35 x le RMS -> **0,069 x**. Corriger en arrondissant `reps * period`.
+- **gain** : aucune reserve de crete, 1 voix ecrete (peak 1,12), 10 voix 2,96. Le
+  « soft clip » sature a 6,7 donc ne borne rien. `kHeadroom = 0,30` + `tanh` :
+  1 voix 0,384, 10 voix **0,921**, 0 ecretage.
+
+### Moteur de l'app : 4 knobs morts, aucun controle de decroissance
+
+Mesure par balayage 0/1 en dB par bande (`process()` ne lit que p(0,1,2,3,5,6,7,8,9)) :
+- **MIC, PEDAL NOISE, MODEL = 0,0 dB** — jamais lus. MIC etait en plus un no-op par
+  construction : deplacer la charniere d'un shelf dont le gain vaut 1 ne change rien.
+- **HAMMER, TONE, LID** = le meme reglage d'aigu a trois profondeurs (l'axe `bright`).
+- **aucun parametre ne touchait T60** : 0,17 s pour les 9 modeles.
+- Le resonateur normalisait chaque mode a `b0 = (1-r)*0,5` -> gain de crete 0,5, donc
+  **il ne pouvait qu'attenuer**. RESONANCE assombrissait au lieu de faire sonner.
+
+Correctifs (mesures a l'appui) :
+- MIC entre dans l'axe aigu, shelf elargi a +-12 dB (a +-6 les 4 reglages se
+  confondaient) ; SPACE porte la decroissance `(0,25 + 2,60*space)` ; resonateur
+  normalise a l'unite ; MODEL lit l'index 8 = Electric -> **TINE** (B x25, echantillon
+  x0,35 au profit des resonateurs x3,2 ; -5,3 dB medium / +3,9 dB aigu).
+- 9 presets retouches : centroide 955..1528 Hz (**x1,60** au lieu de x1,19), axe
+  aigu/grave -6,3..+4,2 dB, T60 0,13..0,21 s (x1,6).
+
+**Limite assumee** : les 9 modeles restent **un seul piano acoustique** (la banque
+n'a qu'une source, SplendidGrandPiano, 5 couches de velocite). « Dark » ou « Mellow »
+sont le meme instrument filtre. Pour de vrais instruments differents il faut d'autres
+banques (GregSullivan pour l'Electric, cf. `tools/pianopack/README.md`).
