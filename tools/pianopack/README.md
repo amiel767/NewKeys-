@@ -181,3 +181,50 @@ python3 tools/pianopack/decay.py C3 PP out/beating.json           # battement
 
 Les trois premiers sont prets a piloter le moteur. La queue de note, la resonance
 sympathique et le bruit de marteau restent a produire par le boost.
+
+## 8. Le pack, construit et mesure (2026-10-29) — `build.py` / `verify_pack.py`
+
+Le pack reel : **30 notes x <=4 couches = 107 regions, 4,17 Mo**.
+Stereo, 22 050 Hz, ADPCM 4 bits. **Sous le budget de 10 Mo avec 2,4x de marge.**
+
+| Grandeur | Valeur mesuree |
+|---|---|
+| Poids du pack | **4,17 Mo** (PCM source 16,68 Mo, ratio 25 %) |
+| SNR ADPCM | 19,4 dB median, 16,9 dB min |
+| Poids par couche | PP 1,03 · Mp 1,20 · Mf 0,57 · MF 0,84 · FF 1,09 Mo |
+| Energie >11 kHz | 0,01 % (filtre anti-repliement verifie) |
+
+### Correction : le ratio n est pas 6,2 %
+
+Le 6,2 % du README portait sur le **FLAC compresse** (deja 50 % du PCM), donc il
+surestimait la compression d ADPCM d un facteur 4. Le vrai ratio, PCM 16 bits vers
+ADPCM 4 bits, est **25 %**. Les estimations de poids des sections 2 et 5 sont donc
+a multiplier par 4 : le pack de 46 regions pese ~5,5 Mo, pas 1,4 Mo.
+
+### La banque n est PAS bouclable (mesure)
+
+Correlation maximale a enveloppe normalisee : **0,66 a 0,83** sur PP/MF C3 et C2.
+Le seuil utile est > 0,90. Raison : les partiels d un piano decroissent a des
+vitesses differentes, donc le timbre change entre deux points eloignes -- il n y a
+pas de section stationnaire a recoller. Conclusion : **aucune region n est bouclee**,
+on garde 2,5 s et **la queue est produite par le boost**. C est le meme partage que
+pour tau2 (section 6) : le sustain appartient au moteur, pas au sample.
+
+### Bug attrape avant de figer le pack
+
+Le reechantillonnage 44,1 -> 22,05 kHz etait une interpolation lineaire **sans
+filtre anti-repliement** : tout ce qui depasse 11 kHz se repliait dans la bande
+audible. Un SNR global ne le voit pas (l erreur est faible), mais le bruit ajoute
+s entend. Corrige par un FIR fenetre-sinc de 257 taps ; controle : 0,01 % d energie
+au-dessus de 11 kHz.
+
+Piege de mesure associe : calculer la FFT sur le signal **entrelace L/R** double la
+frequence apparente et fait croire a 50 % d energie haute. Toujours mesurer par canal.
+
+### Recette
+
+```bash
+python3 tools/pianopack/inventory.py                       # couches disponibles
+python3 tools/pianopack/build.py --jobs jobs.txt --out out/pack
+python3 tools/pianopack/verify_pack.py out/pack
+```

@@ -1,0 +1,254 @@
+#!/usr/bin/env python3
+"""Construit le pack piano : troncature + boucle + 22 kHz stereo + ADPCM 4 bits.
+
+C'est l'etape qui transforme les mesures en asset. Le poids final depend de
+quatre leviers, chacun mesure :
+
+  1. troncature : on garde l'attaque (fin du transitoire + marge) puis une boucle,
+     au lieu des 8 s moyennes de la source.
+  2. boucle : la fin du fichier est remplacee par un retour au point de boucle.
+  3. taux : 22,05 kHz suffit (99,9 % de l'energie sous 4 kHz, mesure).
+  4. ADPCM 4 bits : ratio mesure ~6,2 % du PCM 16 bits.
+
+Le stereo est conserve : correlation L/R mesuree +0,02 a +0,34, ce sont deux
+micros, pas un mono duplique.
+
+Usage :
+    python3 build.py --notes C2,C3,C4 --layers PP,Mp,MF,FF --out out/pack
+"""
+import argparse
+import json
+import os
+import sys
+
+import numpy as np
+import soundfile as sf
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from measure import load_mono, sample_path, f0_nominal, fit_log_score  # noqa: E402
+
+RATE = 22050
+
+# IMA ADPCM, tables normalisees
+STEP = [7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41,
+        45, 50, 55, 60, 66, 73, 80, 88, 97, 107, 118, 130, 143, 157, 173, 190,
+        209, 230, 253, 279, 307, 337, 371, 408, 449, 494, 544, 598, 658, 724,
+        796, 876, 963, 1060, 1166, 1282, 1411, 1552, 1707, 1878, 2066, 2272,
+        2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871, 5358, 5894, 6484, 7132,
+        7845, 8630, 9493, 10442, 11487, 12635, 13899, 15289, 16818, 18500, 20350,
+        22385, 24623, 27086, 29794, 32767]
+INDEX = [-1, -1, -1, -1, 2, 4, 6, 8, -1, -1, -1, -1, 2, 4, 6, 8]
+
+
+def adpcm_encode(xi):
+    """xi : int16. Renvoie les nibbles (2 par octet) et le SNR de controle."""
+    pred, idx = 0, 0
+    nib = np.empty(len(xi), np.uint8)
+    for i in range(len(xi)):
+        st = STEP[idx]
+        d = int(xi[i]) - pred
+        code = 0
+        if d < 0:
+            code = 8
+            d = -d
+        if d >= st:
+            code |= 4
+            d -= st
+        if d >= st // 2:
+            code |= 2
+            d -= st // 2
+        if d >= st // 4:
+            code |= 1
+        dl = st >> 3
+        if code & 4:
+            dl += st
+        if code & 2:
+            dl += st >> 1
+        if code & 1:
+            dl += st >> 2
+        pred = pred - dl if code & 8 else pred + dl
+        pred = 32767 if pred > 32767 else (-32768 if pred < -32768 else pred)
+        idx = min(88, max(0, idx + INDEX[code & 7]))
+        nib[i] = code
+    out = np.empty((len(nib) + 1) // 2, np.uint8)
+    out[:] = nib[0::2]
+    if len(nib) > 1:
+        out[:len(nib) // 2] |= nib[1::2] << 4
+    return out
+
+
+def adpcm_decode(packed, n):
+    pred, idx = 0, 0
+    out = np.empty(n, np.int16)
+    for i in range(n):
+        b = int(packed[i >> 1])
+        code = (b & 0xF) if (i & 1) == 0 else (b >> 4)
+        st = STEP[idx]
+        dl = st >> 3
+        if code & 4:
+            dl += st
+        if code & 2:
+            dl += st >> 1
+        if code & 1:
+            dl += st >> 2
+        pred = pred - dl if code & 8 else pred + dl
+        pred = 32767 if pred > 32767 else (-32768 if pred < -32768 else pred)
+        idx = min(88, max(0, idx + INDEX[code & 7]))
+        out[i] = pred
+    return out
+
+
+def lowpass(x, sr, cutoff):
+    """FIR fenetre-sinc (Hamming). Sans lui, decimer 44,1 -> 22,05 replie tout
+    ce qui depasse 11 kHz dans la bande audible : bruit audible ajoute, invisible
+    sur un simple SNR global."""
+    n = 257
+    fc = cutoff / sr
+    k = np.arange(n) - (n - 1) / 2.0
+    h = 2 * fc * np.sinc(2 * fc * k) * np.hamming(n)
+    h /= h.sum()
+    return np.convolve(x, h, mode="same")
+
+
+def resample(x, sr, target):
+    if sr == target:
+        return x
+    x = lowpass(x, sr, 0.45 * target)
+    n = int(round(len(x) * target / sr))
+    return np.interp(np.linspace(0, len(x) - 1, n), np.arange(len(x)), x)
+
+
+def loop_region(m, sr, f0, xfade=None):
+    """Point et longueur de boucle, valides par le saut de couture.
+
+    Le seuil de correlation seul est trop strict : mesure sur la banque, il ne
+    retient que 27/62 notes.  On accepte donc corr > 0,90 mais on EXIGE que le
+    crossfade ramene le saut sous 3x le plus grand pas interne (99,9e
+    percentile).  Une boucle raccordable a l'oreille, pas seulement correlee.
+    """
+    P = max(int(sr / f0), 8)
+    W = max(2 * P, 64)
+    env = np.sqrt(np.convolve(m * m, np.ones(W) / W, "same")) + 1e-9
+    z = m / env
+    X = xfade if xfade else max(int(0.012 * sr), 8)
+    t0 = max(int(0.30 * sr), 10 * P)
+    if t0 + int(1.0 * sr) >= len(m):
+        t0 = max(int(0.15 * sr), 6 * P)
+    if t0 + int(0.4 * sr) >= len(m):
+        return None, None
+    ref = z[t0:t0 + 4 * P]
+    if len(ref) < 2 * P:
+        return None, None
+    best = None
+    Lmin = max(8 * P, int(0.12 * sr))
+    for L in range(Lmin, min(int(1.5 * sr), len(m) - t0 - 4 * P), max(P // 2, 4)):
+        seg = z[t0 + L:t0 + L + 4 * P]
+        if len(seg) < len(ref):
+            break
+        c = float(np.dot(ref, seg) / (np.linalg.norm(ref) * np.linalg.norm(seg) + 1e-12))
+        if c <= 0.90:
+            continue
+        # saut de couture apres crossfade
+        Xc = min(X, L // 2)
+        if Xc > 1:
+            w = np.linspace(1.0, 0.0, Xc)
+            tail = m[t0 + L - Xc:t0 + L]
+            head = m[t0:t0 + Xc]
+            blended = tail * w + head * (1 - w)
+            jump = abs(blended[-1] - blended[0])
+            if jump < 3.0 * np.percentile(np.abs(np.diff(m[t0:t0 + L])), 99.9):
+                return t0, L
+        if best is None:
+            best = (t0, L, c)
+    return (best[0], best[1]) if best else (None, None)
+
+
+def build_region(name, xfade_ms=12.0):
+    """Renvoie (pcm_stereo_int16, meta) pour une region."""
+    x, sr = sf.read(sample_path(name), always_2d=True)
+    if x.shape[1] == 1:
+        x = np.repeat(x, 2, axis=1)
+    mono = x.mean(axis=1)
+    f0n = f0_nominal(name.split(" ", 1)[1].rsplit(".", 1)[0])
+    f0, B = fit_log_score(mono, sr, f0n)
+
+    t0, L = loop_region(mono, sr, f0)
+    if t0 is None:
+        # pas de boucle : on garde 2,5 s (borne haute), la fin est un fade
+        keep = min(len(x), int(2.5 * sr))
+        seg = x[:keep].copy()
+        loop_start = loop_end = 0
+    else:
+        end = min(len(x), t0 + L)
+        seg = x[:end].copy()
+        loop_start = t0
+        loop_end = end
+
+    seg = resample(seg[:, 0], sr, RATE), resample(seg[:, 1], sr, RATE)
+    seg = np.stack(seg, axis=1)
+    ls = int(loop_start * RATE / sr) if loop_start else 0
+    le = int(loop_end * RATE / sr) if loop_end else 0
+
+    if ls and le > ls:
+        X = max(int(xfade_ms / 1000.0 * RATE), 2)
+        X = min(X, (le - ls) // 2)
+        if X > 1:
+            # poids plein a l'index 0 : c'est ce qui annule le saut de couture
+            w = np.linspace(1.0, 0.0, X)
+            a = seg[ls - X:ls].copy()
+            b = seg[le - X:le].copy()
+            seg[ls - X:ls] = a * w[:, None] + b * (1.0 - w)[:, None]
+
+    pcm = np.clip(np.round(seg * 32767.0), -32768, 32767).astype(np.int16)
+    meta = {"sample": name, "f0": round(f0, 3), "B": B,
+            "rate": RATE, "n": int(pcm.shape[0]),
+            "loop_start": ls, "loop_end": le,
+            "dur_s": round(pcm.shape[0] / RATE, 3)}
+    return pcm, meta
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--notes", default="C2,C3,C4")
+    ap.add_argument("--layers", default="PP,Mp,MF,FF")
+    ap.add_argument("--jobs", help="fichier 'couche note' par ligne (prioritaire)")
+    ap.add_argument("--out", default="out/pack")
+    args = ap.parse_args()
+
+    os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
+    index, blob, n_regions = [], bytearray(), 0
+    total_raw = 0
+    if args.jobs:
+        pairs = [tuple(l.split(None, 1)) for l in open(args.jobs).read().split("\n") if l.strip()]
+        jobs = ["%s %s.flac" % (L, n) for L, n in pairs]
+    else:
+        jobs = ["%s %s.flac" % (L, n)
+                for n in args.notes.split(",") for L in args.layers.split(",")]
+    for name in jobs:
+            try:
+                pcm, meta = build_region(name)
+            except Exception as e:
+                print("  %-12s ECHEC %s" % (name, e), file=sys.stderr)
+                continue
+            enc = adpcm_encode(pcm.reshape(-1))
+            total_raw += pcm.size * 2
+            meta["offset"] = len(blob)
+            meta["bytes"] = len(enc)
+            index.append(meta)
+            blob.extend(enc.tobytes())
+            n_regions += 1
+            print("  %-12s %5.2fs  boucle %s  %5.0f Ko"
+                  % (name, meta["dur_s"], "oui" if meta["loop_end"] else "non",
+                     len(enc) / 1024), file=sys.stderr)
+
+    with open(args.out + ".bin", "wb") as fh:
+        fh.write(blob)
+    with open(args.out + ".json", "w") as fh:
+        json.dump({"rate": RATE, "regions": index}, fh, indent=1)
+    print("\n%d regions | pack %.2f Mo | PCM source %.2f Mo | ratio %.1f%%"
+          % (n_regions, len(blob) / 1048576, total_raw / 1048576,
+             100.0 * len(blob) / max(total_raw, 1)), file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()
