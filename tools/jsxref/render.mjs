@@ -19,6 +19,7 @@ const PREVIEWS = [
   { file: "SoundfontsPreview.jsx", name: "soundfonts", w: 891, h: 411 },
   { file: "SettingsPreview.jsx", name: "settings", w: 891, h: 411 },
   { file: "SetlistsPreview.jsx", name: "setlists", w: 891, h: 411 },
+  { file: "FxModesPreview.jsx", name: "fxmodes", w: 891, h: 411 },
 ];
 
 // The previews scale the 891 x 411 device frame to fit the window
