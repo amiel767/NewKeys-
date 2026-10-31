@@ -417,7 +417,7 @@ function Stepper({ value, min, max, onChange, label }) {
 /* ══ LE TOGGLE SEGMENTE ════════════════════════════════════════════════════
    Porte de `SegmentedToggle` de l'app
    (`com.aetherkeys.sheets.ui.components.Components.kt:91`) : conteneur arrondi
-   12, fond `#CC0F141D`, bordure 1 px blanc a 8 %, padding 3 ; pouce arrondi 9
+   12, fond `rgba(15,20,29,.8)`, bordure 1 px blanc a 8 %, padding 3 ; pouce arrondi 9
    en degrade `#38445E -> #2B3650` deplace par un ressort ; libelles 12 sp bold
    (`#F1F4FA` actif, `Mute` inactif).
    `iconOnly` n'affiche que le schema, sans mot : c'est ce qu'on veut pour les
@@ -433,7 +433,7 @@ function Segmented({ options, value, onChange, height = 34, grow = false, width,
   const idx = Math.max(0, options.findIndex(([k]) => k === value));
   return (
     <div style={{ position: "relative", display: "flex", height, boxSizing: "border-box",
-                  padding: 3, borderRadius: 12, background: "#CC0F141D",
+                  padding: 3, borderRadius: 12, background: "rgba(15,20,29,.8)",
                   border: "1px solid rgba(255,255,255,.08)",
                   width: grow ? "100%" : (width ? width + 8 : undefined), flex: grow ? "1 1 0" : "none",
                   minWidth: 0 }}>
