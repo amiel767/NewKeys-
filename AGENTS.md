@@ -2501,3 +2501,22 @@ est ainsi toujours du cote oppose a l'encre. Mesure apres correction : contraste
 `AePianoCaptureTest` : 5/5 PASS (plus de crash). `AeCardsCaptureTest` : 2/2.
 `AeManagerTest` + `AetherSnapshotJsonTest` : **30/30 PASS**. `assembleDebug` OK,
 APK 67,9 Mo, `piano.bin` (8,2 Mo) + `electric.bin` (1,6 Mo) embarques.
+
+### Demo `/piano/` : les MP3 doivent etre regeneres apres tout changement moteur
+
+`/workspace/dl/pub/piano/*.mp3` (9 fichiers, un par modele) sont **rendus hors app**
+par un banc C++ (`/tmp/render_piano.cpp`, non versionne) qui joue « Joyeux
+anniversaire » sur `PianoEngine`, puis encode en MP3 (lameenc, 128 kb/s).
+Le banc se reconstruit avec `g++ -O2 -std=c++17 -I app/src/main/cpp` — `aetherfx`
+est header-only, donc pas d'Android.
+
+**Piege** : ces MP3 sont des **artefacts**, pas des sources. Ils ne se regenerent
+pas tout seuls. Apres le correctif `paramCount` 12 -> 16, l'ancien `electric.mp3`
+(01:09) jouait encore l'ancien son — la page mentait. Toujours regenerer les 9
+quand le moteur change, et verifier par `md5sum` qu'ils **different** entre eux.
+
+Le banc doit pousser **16** parametres : les 15 du preset + MODEL (index 15). Un
+banc a 12 ou 15 parametres reproduit exactement le bug corrige.
+
+Le serveur de recette sert `/workspace/dl/pub` sur 12000 et 12001 (`setsid nohup
+python3 -m http.server`). Il **ne survit pas** a un redemarrage du sandbox.
