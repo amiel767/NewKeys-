@@ -2783,3 +2783,75 @@ post-merge a echoue sur `JAVA_HOME is set to an invalid directory`. Reinstaller
 5m56**. Release **v194**, APK 60,1 Mo.
 Verification finale : `ls-remote` -> `588ec5354eea60828de718a59b1a598c5e222509`
 = HEAD local = `target_commitish` de la release. Les trois coincident.
+
+## Session 2026-10-31 (suite) — la fenetre FX etait INVISIBLE : l'hote n'avait jamais ete ecrit
+
+Retour utilisateur sur appareil : « la fenetre est invisible ». Ce n'etait pas un
+probleme de rendu ni de theme.
+
+### Cause racine : le detachement a supprime le montage sans ecrire l'hote
+
+Le commit `37ab7f2` (« Fenetre FX detachee ») a retire `FxOverlay` du `when
+(uiState.activePopup)` de `MixerScreen`, en laissant un commentaire qui dit
+explicitement que rien n'est monte « on purpose ». Le contrat
+(`FxWindowState` / `FxWindowActions`) etait ecrit, la fenetre aussi — **mais
+l'adaptateur mixer -> contrat n'a jamais ete ecrit**. `FxWindow(` n'avait
+**aucun appelant** dans `app/src/main/java` : la seule construction de
+`FxWindowState` etait dans `FxDetachedCaptureTest`.
+
+Consequence : appuyer sur FX appelait bien `openEffectsForTrack` -> `ActivePopup.EFFECTS`,
+et ce `when` ne montait rien. Ecran vide, aucune erreur, aucun log.
+
+**Pourquoi les captures ne l'ont pas vu** : `FxDetachedCaptureTest` monte
+`FxWindow` **directement**, sans passer par l'hote. Le harnais prouvait que la
+fenetre s'affiche *si on l'appelle* ; il ne prouvait pas qu'on l'appelle. Un test
+qui court-circuite le chemin reel ne peut pas attraper un chemin reel manquant.
+
+### Correctif : `ui/fx/FxDesignHost.kt` (nouveau)
+
+C'est l'adaptateur que le contrat annoncait. Il traduit les deux vocabulaires —
+ids de moteur et tableaux de 32 flottants d'un cote, `FxInfoD` et valeurs de
+maquette de l'autre — et **la fenetre ne change pas d'une ligne**.
+
+Points de conception :
+- `FxDesign.SPACE` a **le meme id (0)** que l'effet Space du moteur : un seul
+  emplacement porte les deux, et le rack est donc reellement sonore.
+- `FxDesign.ARP` (id 101) **n'a pas de contrepartie native** : il s'installe dans
+  l'emplacement MIDI et vit a l'ecran. Assumé, documente.
+- Space a **10 reglages** de maquette, le moteur **7**. Les trois derniers (Low
+  Cut, Hi Shelf, Mod) se reglent et se memorisent, mais ne partent pas au moteur.
+  `engineParamCount()` garde la frontiere.
+- **Persistance debouncee.** `controller.save()` ecrit dans les
+  SharedPreferences : l'appeler a chaque `setValue` ecrivait 60 fois par seconde
+  pendant un drag. Un compteur `revision` alimente un `snapshotFlow` +
+  `collectLatest` + `delay(500)`, comme le faisait `FxOverlay`.
+- `beginSave()` reste **vide** : la feuille de nommage n'existe pas encore dans la
+  fenetre detachee. Le bouton est rendu et cliquable, mais n'ouvre rien.
+
+### Montage
+
+`MixerScreen`, `ActivePopup.EFFECTS` monte `FxDesignHost(trackId, onClose)` avec
+`fillMaxSize().zIndex(130f)`. La fenetre garde la taille de la maquette
+(`rememberFitScale` ne depasse jamais 1) et est centree.
+
+### Test garde-fou : `FxHostCaptureTest`
+
+Monte **`FxDesignHost`**, c'est-a-dire le chemin reel, et verifie deux choses :
+la capture existe, et elle pese **plus de 20 Ko**. Un ecran noir vide tombe bien
+en dessous — c'est le garde-fou contre exactement la regression constatee. Le test
+passe sans pont natif : le moteur refuse les effets, donc le rack reste vide, mais
+**la fenetre doit etre la**.
+
+### Verification (pixels)
+
+Capture `fx_host.png` (2450x1130, echelle 2,7497 px/unite) : fenetre visible
+**unites x 17..873, y 8..403** — centree, a la taille de la maquette. Le rack
+montre ses **quatre emplacements vides** avec cadre pointille et `+`. L'en-tete
+porte le titre a gauche et le bouton de fermeture a droite.
+
+### Environnement : le wipe se repete
+
+Le JDK a encore disparu **pendant** cette session (deux fois). `restore_env.sh`
+(nouveau, racine du depot) reinstalle `openjdk-21-jdk-headless`, regenere
+`debug.keystore` et exporte les variables. `Pillow` disparait aussi : `pip install
+Pillow` avant toute mesure de pixels.
