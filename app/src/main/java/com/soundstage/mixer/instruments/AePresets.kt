@@ -117,6 +117,9 @@ object AePresets {
         AePreset("Dream Lead", "Ambient", floatArrayOf(0.8f, 0f, 0f, 0.25f, 0.7f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.4f, 0.3f, 0f, 0.3f, 0.8f, 0.8f, 0f, 0.55f, 0.1f, 0.2f, 0.4f, 0.3f, 0.3f, 0.5f, 0.6f, 0.45f, 0.5f, 0.5f, 0.1f, 0.15f, 0.75f)),
         AePreset("Air Sine", "Ambient", floatArrayOf(0.8f, 0f, 0f, 0f, 0.2f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.3f, 0.35f, 0f, 0.3f, 0.8f, 0.6f, 0f, 0.8f, 0.1f, 0.2f, 0.4f, 0.3f, 0.2f, 0.5f, 0.5f, 0f, 0.6f, 0.5f, 0.1f, 0.25f, 0.75f)),
     )
+
+    val piano: List<AePreset> = AePianoPresets
+
     val sax: List<AePreset> = listOf(
         AePreset("Jazz Ballad Alto", "Jazz", floatArrayOf(0.33f, 0f, 0.5f, 0.5f, 0.38f, 0f, 0f, 0.1f, 0.45f, 0.3f, 0.32f, 0.3f, 0.28f, 0.5f, 0.6f, 0.5f, 0.4f, 0.5f, 0.62f, 0.5f, 0.75f, 0.35f, 0.5f)),
         AePreset("Cool Jazz Alto", "Jazz", floatArrayOf(0.33f, 0.67f, 0.5f, 0.5f, 0.3f, 0f, 0f, 0.1f, 0.45f, 0.3f, 0.25f, 0.25f, 0.22f, 0.5f, 0.5f, 0.5f, 0.45f, 0.6f, 0.6f, 0.42f, 0.75f, 0.35f, 0.5f)),

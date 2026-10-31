@@ -12,6 +12,7 @@
 #include "fx_grip.h"
 #include "fx_leads.h"
 #include "fx_organ.h"
+#include "fx_piano.h"
 #include "fx_registry.h"
 #include "fx_sax.h"
 #include "fx_shaper.h"
@@ -44,6 +45,7 @@ inline std::unique_ptr<Effect> makeInstrument(int id, bool = false) {
     case FX_SYNTH: return std::make_unique<SynthEngine>();
     case FX_LEADS: return std::make_unique<LeadsEngine>();
     case FX_SAX_AE: return std::make_unique<SaxEngine>();
+    case FX_PIANO_AE: return std::make_unique<PianoEngine>();
     default: return nullptr;
   }
 }

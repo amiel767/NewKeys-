@@ -34,3 +34,7 @@ tools/fxcompare/report.png
 
 # saxpack : sortie regenerable (la banque source fait 105 Mo)
 tools/saxpack/out/
+
+# Packs generes (l asset app/src/main/assets/ est la source de verite)
+tools/pianopack/out/pack*.bin
+tools/pianopack/out/pack*.json

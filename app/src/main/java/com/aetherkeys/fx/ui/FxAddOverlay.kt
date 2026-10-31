@@ -254,7 +254,7 @@ private val FAMS_INSTRUMENT = listOf("All", "Keys", "Guitar", "Winds", "Strings"
  * real track instruments loaded from the soundfont window's Æther Instruments tab, not FX
  * entries. They keep their ids in FxRegistry (note routing and persistence still resolve them).
  */
-private val AE_RETIRED_INSTRUMENT_IDS = setOf(6, 14, 15, 16)
+private val AE_RETIRED_INSTRUMENT_IDS = setOf(6, 14, 15, 16, 17)
 
 /**
  * `CAT2`, `ICK` and `INSTR` from the preview: per-effect family, description and icon.

@@ -10,10 +10,10 @@ enum FxId { FX_SPACE = 0, FX_ECHO = 1, FX_TONE = 2, FX_GRIP = 3, FX_CEILING = 4,
   // Æther Instruments added in the final package: Leads and Sax are SOURCES (they replace the
   // soundfont, exactly like the Organ and the Synth) but they are NOT listed in the FX rack any
   // more: they load from the soundfont window's Æther tab, like the other two.
-  FX_LEADS = 15, FX_SAX_AE = 16, FX_COUNT = 17 };
+  FX_LEADS = 15, FX_SAX_AE = 16, FX_PIANO_AE = 17, FX_COUNT = 18 };
 // Effects live in the 6 track slots (8 on the master). Shapers modify the track's soundfont. Sources replace the soundfont. One instrument (shaper or source) per track; none on the master.
 enum class Kind { Effect, Shaper, Source };
-inline Kind kindOf(int id) { return (id == FX_ORGAN || id == FX_SYNTH || id == FX_LEADS || id == FX_SAX_AE) ? Kind::Source : (id == FX_PIANO || id == FX_SAX || id == FX_STRINGS || id == FX_GUITAR || id == FX_BRASS) ? Kind::Shaper : Kind::Effect; }
+inline Kind kindOf(int id) { return (id == FX_ORGAN || id == FX_SYNTH || id == FX_LEADS || id == FX_SAX_AE || id == FX_PIANO_AE) ? Kind::Source : (id == FX_PIANO || id == FX_SAX || id == FX_STRINGS || id == FX_GUITAR || id == FX_BRASS) ? Kind::Shaper : Kind::Effect; }
 enum class Curve { Linear, FreqLog, RatioStep };
 
 struct ParamDesc { const char* name; float min, max; const char* unit; int decimals; float def; Curve curve; bool ui = false; };  // ui = visual only, not sent to the audio engine
@@ -398,6 +398,21 @@ inline const EffectInfo& info(int id) {
        {"Soprano Pop", {0.0f, 0.0f, 0.0f, 0.5f, 0.3f, 0.0f, 0.0f, 0.12f, 0.7f, 0.3f, 0.25f, 0.25f, 0.25f, 0.5f, 0.5f, 0.5f, 0.35f, 0.5f, 0.5f, 0.68f, 0.75f}},
        {"Latin Alto", {0.33f, 0.0f, 0.0f, 0.5f, 0.3f, 0.0f, 0.0f, 0.1f, 0.7f, 0.4f, 0.2f, 0.25f, 0.22f, 0.5f, 0.5f, 0.5f, 0.3f, 0.5f, 0.5f, 0.62f, 0.75f}},
       }};
+    v[FX_PIANO_AE] = {"Aether Piano", "Instrument",
+      {
+       {"Hammer", 0.0f, 100.0f, " %", 0, 0.45f, C::Linear, false},
+       {"Tone", 0.0f, 100.0f, " %", 0, 0.50f, C::Linear, false},
+       {"Body", 0.0f, 100.0f, " %", 0, 0.55f, C::Linear, false},
+       {"Sustain", 0.0f, 100.0f, " %", 0, 0.35f, C::Linear, false},
+       {"Release", 0.0f, 100.0f, " %", 0, 0.40f, C::Linear, false},
+       {"Lid", 0.0f, 100.0f, " %", 0, 0.50f, C::Linear, false},
+       {"Space", 0.0f, 100.0f, " %", 0, 0.30f, C::Linear, false},
+       {"Width", 0.0f, 100.0f, " %", 0, 0.50f, C::Linear, false},
+       {"Tune", 0.0f, 100.0f, " %", 0, 0.50f, C::Linear, false},
+       {"Vel", 0.0f, 100.0f, " %", 0, 0.55f, C::Linear, false},
+       {"Symp", 0.0f, 100.0f, " %", 0, 0.25f, C::Linear, false},
+       {"Level", 0.0f, 100.0f, " %", 0, 0.80f, C::Linear, false}},
+      {}};
     return v;
   }();
   return all[id >= 0 && id < FX_COUNT ? id : FX_SPACE];

@@ -11,13 +11,20 @@ import kotlin.math.roundToInt
 
 /** The Æther Instruments. [fxId] = id of the native Source in FxRegistry (6 organ, 14 synth, 15 leads, 16 sax). */
 enum class AeInstrument(val fxId: Int, val title: String, val paramCount: Int) {
-    ORGAN(6, "Æther Organ", 31), SYNTH(14, "Æther Synth", 33), LEADS(15, "Æther Leads", 33), SAX(16, "Æther Sax", 23);
+    ORGAN(6, "Æther Organ", 31), SYNTH(14, "Æther Synth", 33), LEADS(15, "Æther Leads", 33), SAX(16, "Æther Sax", 23),
+    // 16 et non 12 : le moteur en attend 16 (fx_piano.h, kParams).  Avec 12,
+    // `padded()` tronquait les indices 12..15 — donc AMP DRIVE, PUNCH et surtout
+    // MODEL.  Le mode « tine » n'atteignait jamais le moteur, et l'electrique
+    // jouait la banque acoustique : c'est pourquoi il ne sonnait pas electrique.
+    PIANO(17, "Æther Piano", 16);
     /** Parameters that switch instantly on a preset change (the others glide). */
     val discrete: IntArray get() = when (this) {
         ORGAN -> intArrayOf(18, 19, 20, 21, 22, 23, 24, 25)
         SYNTH -> intArrayOf(11, 18, 19, 26)
         LEADS -> intArrayOf(5, 6, 7, 8, 9, 17, 28)
         SAX -> intArrayOf(0, 1, 2, 3)
+        // 15 = MODEL : le timbre doit basculer d'un coup, pas glisser.
+        PIANO -> intArrayOf(8, 15)
     }
 }
 
@@ -34,6 +41,7 @@ object AeFmt {
     fun format(inst: AeInstrument, i: Int, v: Float): String = when (inst) {
         AeInstrument.LEADS -> leads(i, v)
         AeInstrument.SAX -> sax(i, v)
+        AeInstrument.PIANO -> piano(i, v)
         else -> classic(inst, i, v)
     }
     private fun leads(i: Int, v: Float): String = when (i) {
@@ -45,6 +53,12 @@ object AeFmt {
     private fun sax(i: Int, v: Float): String = when (i) {
         13 -> "%.1fHz".format(3.5f + v * 4f); 14 -> "${(v * 800).toInt()}ms"; 15 -> "${(v * v * 400).toInt()}ms"; 20 -> "${(-40 + v * 46).toInt()}dB"
         21 -> "${(v * 100).toInt()}%"
+        else -> pct(v)
+    }
+    private fun piano(i: Int, v: Float): String = when (i) {
+        4 -> "%.2fs".format(0.25f + v * 5f)          // RELEASE : la queue modelisee
+        8 -> "${((v - 0.5f) * 20).toInt()}ct"        // TUNE
+        11 -> "${(-40 + v * 46).toInt()}dB"          // LEVEL
         else -> pct(v)
     }
     private fun classic(inst: AeInstrument, i: Int, v: Float): String = if (inst == AeInstrument.ORGAN) {
@@ -90,7 +104,7 @@ interface AeHost {
      * How much of the output the samples carry is parameter 22 (the Blend knob), pushed by the
      * manager with the rest of the preset, not a separate argument here.
      */
-    fun loadBank(strip: Int, instrument: AeInstrument, type: Int): Boolean = false
+    fun loadBank(strip: Int, instrument: AeInstrument, type: Int, model: Int = -1): Boolean = false
 
     /** Mix of samples in the instrument output, 0 = pure synthesis. For the UI readback. */
     fun bankMix(strip: Int): Float = 0f
@@ -136,8 +150,10 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
     val ccLeads = mutableMapOf(74 to 18, 71 to 19, 73 to 12, 72 to 16, 91 to 25, 1 to 30, 7 to 31, 5 to 29)
     /** Sax: CC2 = breath controller, CC11 = expression (level), CC1 = vibrato depth. */
     val ccSax = mutableMapOf(2 to 4, 11 to 20, 7 to 20, 1 to 12, 74 to 19, 91 to 16)
+    // Piano : cutoff et volume sur le CC attendu, sustain sur 64, reverb sur 91.
+    val ccPiano = mutableMapOf(74 to 1, 1 to 1, 7 to 11, 91 to 6, 5 to 4, 64 to 3)
 
-    fun factoryPresets(i: AeInstrument): List<AePreset> = when (i) { AeInstrument.ORGAN -> AePresets.organ; AeInstrument.SYNTH -> AePresets.synth; AeInstrument.LEADS -> AePresets.leads; AeInstrument.SAX -> AePresets.sax }
+    fun factoryPresets(i: AeInstrument): List<AePreset> = when (i) { AeInstrument.ORGAN -> AePresets.organ; AeInstrument.SYNTH -> AePresets.synth; AeInstrument.LEADS -> AePresets.leads; AeInstrument.SAX -> AePresets.sax; AeInstrument.PIANO -> AePresets.piano }
 
     /**
      * Factory presets followed by the user's own, so a saved preset indexes like any other.
@@ -195,8 +211,11 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
         // not a replacement: the synthesis stays underneath and covers the sample seams.
         // The bank is optional, so a failure here must not abort the load.
         val type = (init.firstOrNull() ?: 0f).let { (it * 3f).roundToInt() }
-        s.bankLoaded = host.loadBank(strip, inst, type)
-        if (s.bankLoaded) s.bankType = type
+        s.bankLoaded = host.loadBank(strip, inst, type, s.preset)
+        // bankType identifie la BANQUE chargee : le type de sax, ou le modele pour le
+        // piano (0 acoustique, 8 electrique).  Confondre les deux ferait croire au
+        // piano qu'il a deja la bonne banque.
+        if (s.bankLoaded) s.bankType = if (inst == AeInstrument.PIANO) (if (s.preset == 8) 8 else 0) else type
         return s
     }
 
@@ -223,6 +242,16 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
             if (t != s.bankType) {
                 s.bankLoaded = host.loadBank(strip, s.instrument, t)
                 s.bankType = if (s.bankLoaded) t else -1
+            }
+        }
+        // Piano : le modele « Electric » est une AUTRE banque, pas un reglage du
+        // piano acoustique.  Changer de modele recharge donc l'echantillon quand on
+        // entre ou sort de l'electrique.
+        if (s.instrument == AeInstrument.PIANO && s.bankType != s.preset) {
+            val want = if (s.preset == 8) 8 else 0
+            if (want != s.bankType) {
+                s.bankLoaded = host.loadBank(strip, s.instrument, 0, s.preset)
+                s.bankType = if (s.bankLoaded) want else -1
             }
         }
     }
@@ -311,7 +340,7 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
         val s = sessions[channel] ?: return false
         if (cc == 64) { setSustain(channel, value >= 64); return true }
         if (cc == 1 && s.instrument == AeInstrument.ORGAN) { setParam(channel, 25, if (value > 63) 1f else 0.5f); return true }
-        val map = when (s.instrument) { AeInstrument.ORGAN -> ccOrgan; AeInstrument.SYNTH -> ccSynth; AeInstrument.LEADS -> ccLeads; AeInstrument.SAX -> ccSax }
+        val map = when (s.instrument) { AeInstrument.ORGAN -> ccOrgan; AeInstrument.SYNTH -> ccSynth; AeInstrument.LEADS -> ccLeads; AeInstrument.SAX -> ccSax; AeInstrument.PIANO -> ccPiano }
         val idx = map[cc] ?: return false
         setParam(channel, idx, value / 127f); return true
     }

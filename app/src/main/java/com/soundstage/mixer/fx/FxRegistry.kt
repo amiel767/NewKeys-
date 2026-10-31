@@ -30,7 +30,7 @@ object FxRegistry {
     const val MAX_PARAMS = 32
     const val STRIP_MASTER = 15  // strips: 0..7 soundfont tracks, 8 drum channel, 9 tonic pad, 10 drum-pad sampler
     val effectIds = listOf(0, 1, 2, 3, 4, 10, 11, 13)
-    val instrumentIds = listOf(5, 6, 7, 8, 9, 12, 14, 15, 16)
+    val instrumentIds = listOf(5, 6, 7, 8, 9, 12, 14, 15, 16, 17)
 
     val all: List<FxInfo> = listOf(
         FxInfo(0, "Æther Space", "Reverb", FxKind.EFFECT,

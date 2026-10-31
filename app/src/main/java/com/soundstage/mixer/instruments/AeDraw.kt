@@ -25,6 +25,9 @@ class AeAnim {
     private val spareParts = ArrayList<FloatArray>()
     val pulses = ArrayList<FloatArray>()
     val frame = mutableIntStateOf(0)
+    /** Piano : 34 niveaux d'enveloppe (un par touche affichee) et un temps propre. */
+    val pianoE = FloatArray(34)
+    var pianoT = 0f
 
     private fun spawnPart(x: Float, y: Float, vx: Float, vy: Float, life: Float, r: Float) {
         val p = if (spareParts.isNotEmpty()) spareParts.removeAt(spareParts.size - 1) else FloatArray(6)
@@ -36,6 +39,12 @@ class AeAnim {
         t += dt; lv += (s.level - lv) * 0.4f
         val held = s.held.isNotEmpty()
         fcm += ((if (held) 1f else 0f) - fcm) * 0.18f
+        if (s.instrument == AeInstrument.PIANO) {
+            val dtc = if (dt > 0f && dt < 0.1f) dt else 0.016f
+            s.held.keys.forEach { pianoE[((it - 36) % pianoE.size + pianoE.size) % pianoE.size] = 1f }
+            val rel = 2.2f - s.values[3] * 1.6f
+            for (k in pianoE.indices) pianoE[k] *= exp(-dtc * rel)
+        }
         if (s.instrument == AeInstrument.ORGAN) {
             for (k in 0 until 24) gAct[k] *= 0.9f
             s.held.keys.forEach { gAct[((it - 36) % 24 + 24) % 24] = 1f }
