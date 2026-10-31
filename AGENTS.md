@@ -516,6 +516,33 @@ toutes les installations suivantes — le tuer puis `dpkg --configure -a`.
   plus haute frequence a score egal. Et **le banc doit se tester sur des sinus**
   avant de juger le moteur.
 
+## Piano : reglages, packs, mesure (regles durables)
+
+- **`PianoStudio::set()` a un garde PAR FAMILLE de reglages.** Les regrouper sous
+  celui du micro etait un bug mesure : sur un moteur **vivant**, bouger DRIVE,
+  PUNCH, TONE, PRESENCE, SPACE ou WIDTH ne faisait **rien** tant que le micro ne
+  bougeait pas aussi (DRIVE 0 -> 1 restait a 0,0140 au lieu de passer de 0,0114 a
+  0,0181). Un moteur **neuf** entre toujours dans la branche (`cPos_ = -1`) : un
+  banc a une seule passe **masque** le bug. Toujours tester les deux chemins.
+- **Un pack se normalise PAR COUCHE, pas par region.** Une cible RMS unique pour
+  toutes les regions ecrase la dynamique : toutes les couches sortent au meme
+  niveau et le piano n'a plus de nuance. La cible doit dependre de la couche
+  (viser le rapport du pack acoustique, ~19 dB de la couche faible a la forte).
+- **Le `volume=` du SFZ doit etre applique.** L'ignorer laisse passer les niveaux
+  bruts des enregistrements. Mais il ne corrige pas tout : sur la banque
+  Wurlitzer la dynamique de la **source** est **inversee** (mesure d'attaque : pp
+  0,51 contre ff 0,19) et les volumes SFZ sont quasi egaux (-4,87 / -5,25 dB).
+  La dynamique doit etre retablie dans le build.
+- **Decoder un pack ADPCM : un predicteur PAR CANAL, nibbles par paires.** Les
+  nibbles sont (pair = gauche, impair = droite) *dans l'octet*, pas alternes par
+  echantillon. Un decodeur a predicteur unique sort un sinus a 0,035 RMS a 0,85 :
+  **valider tout decodeur sur un sinus d'amplitude connue avant de mesurer un
+  pack**. Trois mesures ont ete faussees par ce seul bug.
+- **« Ca sature » ne se diagnostique pas a l'oeil.** Sur Felt : aucun ecretage
+  (crete 0,22), aucune discontinuite (saut/RMS 0,58, le plus bas des 9), HNR le
+  **meilleur** (16,3 dB), queue la plus propre. Le moteur est **lineaire** (la
+  serie harmonique decroit sans harmoniques ajoutees). Mesurer avant de corriger.
+
 ## Historique des sessions (index)
 Le detail est dans `docs/archive/AGENTS-history.md` (**non charge automatiquement**).
 Ne lire que ce dont on a besoin :
@@ -555,3 +582,4 @@ grep -n -A 40 "cache de regions" docs/archive/AGENTS-history.md
 - Session 2026-10-31 — pack piano dense (Salamander) + sonie egalisee
 - Session 2026-10-31 — fill de blues + BUG de cache : les notes repetees jouaient le mauvais echantillon
 - Session 2026-10-31 (suite) — marteau, bruit de touche, reverb : trois causes mesurees
+- Session 2026-10-31 (2e) — electrique : pack normalise par couche + garde de `set()` ; Felt raffine

@@ -67,6 +67,32 @@ def build_region(rec, samples_dir):
         seg = x[:min(len(x), t0 + L + int(TAIL_S * sr))].copy()
         ls, le = int(t0 * RATE / sr), int((t0 + L) * RATE / sr)
     seg = np.stack([resample(seg[:, 0], sr, RATE), resample(seg[:, 1], sr, RATE)], axis=1)
+    # Le SFZ porte un `volume=` (dB) PAR REGION.  C'est lui qui equilibre les
+    # couches : les enregistrements sont captures a des niveaux volontairement
+    # incoherents (mesure : pp 0,43 contre ff 0,13, soit une dynamique INVERSEE de
+    # +6,6 dB) et c'est ce champ qui les remet dans l'ordre.  L'ignorer faisait
+    # sortir un piano ou jouer doucement sonnait plus fort que jouer fort.
+    vol_db = float(rec.get("volume", 0.0))
+    seg = seg * (10.0 ** (vol_db / 20.0))
+    # Dynamique par couche.  Les enregistrements de cette banque sont captures a
+    # niveau INVERSE : mesure d'attaque, pp 0,51 contre ff 0,19 (+8,6 dB).  Le
+    # `volume` du SFZ ne le corrige pas (pp -4,87 dB contre ff -5,25 : 0,4 dB
+    # d'ecart), et un piano ou jouer doucement sonne plus fort que jouer fort est
+    # inutilisable.  On retablit donc la dynamique ICI, en visant le rapport du
+    # pack acoustique (couche 0 a 0,11, couche 4 a 1,0, soit +19 dB).
+    lay = int(rec["_layer"])
+    # La cible depend de la COUCHE.  Normaliser chaque region a une cible unique
+    # ecrase la dynamique : toutes les couches sortent au meme RMS et le piano
+    # n'a plus de nuance.  On vise le rapport du pack acoustique (couche 0 basse,
+    # couche 4 pleine), en gardant la reserve de crete.
+    dyn_db = -19.0 * (1.0 - lay / 4.0) if lay < 4 else 0.0
+    target = 0.09 * (10.0 ** (dyn_db / 20.0))
+    r = float(np.sqrt(np.mean(seg ** 2))) + 1e-9
+    g = target / r
+    peak = float(np.max(np.abs(seg))) * g
+    if peak > 0.90:
+        g *= 0.90 / peak
+    seg = seg * g
     pcm = np.clip(np.round(seg * 32767.0), -32768, 32767).astype(np.int16)
     return pcm, ls, le, tune
 
@@ -84,6 +110,7 @@ def main():
         layer = r.get("group_label", "").lower()
         if layer not in LAYER_OF:
             continue
+        r["_layer"] = LAYER_OF[layer]
         try:
             pcm, ls, le, tune = build_region(r, args.samples)
         except Exception as e:  # noqa: BLE001

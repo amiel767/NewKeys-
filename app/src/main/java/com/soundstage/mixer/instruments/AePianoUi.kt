@@ -79,7 +79,7 @@ private fun col(h: Long) = Color(0xFF000000 or h)
 
 object AePianoModels {
     val all = listOf(
-        AePianoModel("felt", "Felt", "Soft felt hammers · warm & round", false, col(0xE9A8B8), listOf(col(0xF7C6D3), col(0xFBE0E6), col(0xF2A9BD)), AePType.PETAL, floatArrayOf(0.15f, 0.05f, 0.50f, 0.30f, 0.30f, 0.55f, 0.50f, 0.66f, 0.30f, 0.50f, 0.40f, 0.30f, 0.35f, 0.10f, 0.45f), 0),
+        AePianoModel("felt", "Felt", "Soft felt hammers · warm & round", false, col(0xE9A8B8), listOf(col(0xF7C6D3), col(0xFBE0E6), col(0xF2A9BD)), AePType.PETAL, floatArrayOf(0.15f, 0.05f, 0.50f, 0.30f, 0.42f, 0.32f, 0.50f, 0.70f, 0.30f, 0.50f, 0.40f, 0.30f, 0.35f, 0.10f, 0.45f), 0),
         AePianoModel("studio", "Studio", "Concert grand · balanced & clear", false, col(0x4F9FE6), listOf(col(0xFFFFFF), col(0xCFE6FF), col(0x9CCAF5)), AePType.SPARK, floatArrayOf(0.55f, 0.45f, 0.50f, 0.65f, 0.55f, 0.40f, 0.60f, 0.84f, 0.45f, 0.55f, 0.30f, 0.45f, 0.45f, 0.25f, 0.55f), 1),
         AePianoModel("bright", "Bright", "Crisp attack · sparkling top", false, col(0xE8A812), listOf(col(0xFFE9A8), col(0xFFD166), col(0xFFF3C9)), AePType.LEAF, floatArrayOf(0.90f, 0.90f, 0.25f, 0.95f, 0.80f, 0.15f, 0.70f, 0.89f, 0.35f, 0.60f, 0.25f, 0.80f, 0.20f, 0.30f, 0.70f), 2),
         AePianoModel("mellow", "Mellow", "Warm mids · rounded highs", true, col(0xFF9A5A), listOf(col(0xFFB27A), col(0xFF8A5C), col(0xFFD0A0)), AePType.PETAL, floatArrayOf(0.25f, 0.15f, 0.60f, 0.40f, 0.20f, 0.70f, 0.50f, 0.58f, 0.60f, 0.45f, 0.40f, 0.25f, 0.75f, 0.15f, 0.30f), 3),

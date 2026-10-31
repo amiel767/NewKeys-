@@ -483,6 +483,11 @@ class PianoStudio {
    */
   void set(float pos, float dist, float lid, float drive, float bass, float mid, float treb,
            float pres, float punch, float space, float width) {
+    // Chaque famille de reglages a SON propre garde.  Les regrouper sous celui du
+    // micro etait un bug mesure : une fois le preset pose, bouger DRIVE, PUNCH,
+    // TONE, PRESENCE, SPACE ou WIDTH ne faisait plus rien tant que le micro ne
+    // bougeait pas aussi (moteur vivant : DRIVE 0 -> 1 restait a 0,0140 au lieu de
+    // passer de 0,0114 a 0,0181).
     if (std::fabs(pos - cPos_) > 0.002f || std::fabs(dist - cDist_) > 0.002f ||
         std::fabs(lid - cLid_) > 0.002f) {
       cPos_ = pos; cDist_ = dist; cLid_ = lid;
@@ -497,29 +502,36 @@ class PianoStudio {
       }
       air_[0].setHighShelf(sr_, 9000, air);
       air_[1].setHighShelf(sr_, 9000, air);
-      const int key = static_cast<int>(std::lround(drive * 4.f));
-      if (key != chKey_) {
-        chKey_ = key;
-        // Ampli a lampes : chaque cran durcit la pente et rabote le grave, ce qui
-        // « punch » le rendu au lieu de simplement l'ecraser.
-        const float g = 1.f + key * 1.1f;
-        for (int ch2 = 0; ch2 < 2; ++ch2) drive_[ch2].setLowpass(sr_, 12000.f - key * 2600.f, 0.7 + key * 0.12f);
-        driveG_ = g;
-        // Compensation : sans elle, saturer faisait simplement baisser le niveau de
-        // 9 dB au lieu de durcir le timbre.  g^-0,7 rend le gain unitaire a petit
-        // signal tout en ecrasant les cretes.
-        driveC_ = std::pow(g, -0.7f);
-      }
+    }
+    const int key = static_cast<int>(std::lround(drive * 4.f));
+    if (key != chKey_) {
+      chKey_ = key;
+      // Ampli a lampes : chaque cran durcit la pente et rabote le grave, ce qui
+      // « punch » le rendu au lieu de simplement l'ecraser.
+      const float g = 1.f + key * 1.1f;
+      for (int ch2 = 0; ch2 < 2; ++ch2) drive_[ch2].setLowpass(sr_, 12000.f - key * 2600.f, 0.7 + key * 0.12f);
+      driveG_ = g;
+      // Compensation : sans elle, saturer faisait simplement baisser le niveau de
+      // 9 dB au lieu de durcir le timbre.  g^-0,7 rend le gain unitaire a petit
+      // signal tout en ecrasant les cretes.
+      driveC_ = std::pow(g, -0.7f);
+    }
+    if (std::fabs(bass - cBass_) > 0.002f || std::fabs(mid - cMid_) > 0.002f ||
+        std::fabs(treb - cTreb_) > 0.002f) {
+      cBass_ = bass; cMid_ = mid; cTreb_ = treb;
       for (int ch2 = 0; ch2 < 2; ++ch2) {
         tone_[ch2].setLowShelf(sr_, 180, (bass - 0.5f) * 20.f);
         tone_[ch2].setPeaking(sr_, 750, 0.8, (mid - 0.5f) * 16.f);
         tone_[ch2].setHighShelf(sr_, 3200, (treb - 0.5f) * 20.f);
       }
-      for (int ch2 = 0; ch2 < 2; ++ch2) pres_[ch2].setHighShelf(sr_, 5500, (pres - 0.5f) * 12.f);
-      punchAmt_ = punch;
-      spaceAmt_ = space;
-      widthAmt_ = width;
     }
+    if (std::fabs(pres - cPres_) > 0.002f) {
+      cPres_ = pres;
+      for (int ch2 = 0; ch2 < 2; ++ch2) pres_[ch2].setHighShelf(sr_, 5500, (pres - 0.5f) * 12.f);
+    }
+    punchAmt_ = punch;
+    spaceAmt_ = space;
+    widthAmt_ = width;
   }
 
   /** Un bloc stereo : mem -> ampli -> tone -> compresseur -> largeur. */
@@ -585,6 +597,7 @@ class PianoStudio {
   float envF_ = 0.f, envS_ = 0.f, driveG_ = 1.f, driveC_ = 1.f;
   float punchAmt_ = 0.5f, spaceAmt_ = 0.3f, widthAmt_ = 1.f;
   float cPos_ = -1.f, cDist_ = -1.f, cLid_ = -1.f;
+  float cBass_ = -1.f, cMid_ = -1.f, cTreb_ = -1.f, cPres_ = -1.f;
   int cf_ = -1, chKey_ = -1;
 };
 
