@@ -615,3 +615,68 @@ grep -n -A 40 "cache de regions" docs/archive/AGENTS-history.md
 - Session 2026-10-31 — fill de blues + BUG de cache : les notes repetees jouaient le mauvais echantillon
 - Session 2026-10-31 (suite) — marteau, bruit de touche, reverb : trois causes mesurees
 - Session 2026-10-31 (2e) — electrique : pack normalise par couche + garde de `set()` ; Felt raffine
+
+## Session 2026-10-31 — pourquoi les 6 defauts ont ete « vus » apres correction
+
+**La cause n'etait pas le code : l'APK teste ne contenait aucun correctif.**
+Verifie par marqueurs entre `origin/main` et le commit local :
+
+| Marqueur | `origin/main` (b717038, teste) | commit local |
+|---|---|---|
+| `x *= p(20) * 0.5f` (sax) | **absent** (encore `* 1.0f`) | present |
+| `noteOwnedBySource_` (notes bloquees) | **0 occurrence** | 4 |
+| cache piano en `shared_ptr` | **0** | present |
+
+Le commit des correctifs n'etait **pas pousse** : l'appareil a donc teste la version
+d'avant, ou le Blend sax valait encore 0,5, ou `soundfontPaused` etait relu a chaque
+evenement (notes bloquees) et ou le cache de regions du piano etait un `vector`.
+**Toujours verifier `git merge-base --is-ancestor <commit> origin/main` avant de
+conclure qu'un correctif ne marche pas.**
+
+### Le lien SoundFont (167 Mo) — mesure, et pourquoi il ne sert pas
+
+`S90 FULL GRAND` (JSF, Polyphone, EMU8000) : 205 echantillons, 167 Mo de PCM,
+1 seul preset, **aucune boucle** (`loopEnd == loopStart`), 10,5 s par note.
+
+| Echantillon | centroide | energie > 5 kHz |
+|---|---|---|
+| #0 (grave) | 229 Hz | 0,06 % |
+| #60 | 421 Hz | 0,18 % |
+| #120 | 452 Hz | 0,16 % |
+| #200 (aigu) | 1334 Hz | 4,42 % |
+
+Deux raisons de ne pas l'utiliser, dans cet ordre :
+
+1. **Aucune licence.** Le fichier n'a ni `ICOP` ni `ICMT` de copyright — seulement
+   « by JSF ». Meme classe de probleme que les fichiers Telegram : impossible a
+   embarquer.
+2. **Pas meilleur.** Centroide 229-1334 Hz et presque rien au-dessus de 5 kHz :
+   c'est exactement le profil de la banque deja utilisee (SplendidGrandPiano,
+   centroide 502 Hz). 167 Mo pour aucun gain de timbre, et **sans boucles** — donc
+   le meme probleme que Salamander (714 Mo, aucun `smpl`).
+
+**Regle** : une banque lourde n'est pas une meilleure banque. Mesurer le centroide et
+la fraction d'energie > 5 kHz **avant** de parler de taille. Le levier reel reste la
+densite de notes racines, pas le poids.
+
+## Session 2026-10-31 — UI Æther Piano (verre, disquette, en-tete)
+
+- **`AeGlassPanel`** (`AeLightControls.kt`) remplace `AeGlassCard` (supprime) : le
+  panneau floute la **photo de fond** au lieu d'un aplat opaque choisi d'apres l'encre.
+  Le flou est un sous-echantillonnage 1/18 redessine en bilineaire, **pas** un
+  RenderEffect : l'API 31 est requise, et un flou en modificateur frere flouterait
+  aussi la fenetre posee dessus. La photo est mappee en cover-fit **puis translatee**
+  de l'offset du panneau, sinon le flou montre une copie entiere compressee.
+- **Case d'affichage du preset retiree** de l'en-tete (le nom vit deja dans la
+  fenetre et le navigateur) ; ce qui reste est le bouton d'ouverture du navigateur.
+- **Disquette conditionnelle** : `AeManager.isModified(strip)` compare les valeurs au
+  preset selectionne (`false` pendant le glissement de 420 ms, sinon clignotement).
+  Elle n'apparait que si un reglage a bouge. Agrandie 30x32 -> 34x34 + relief.
+- **Sax, attaque** : le pack avait une attaque **plus molle** que la synthese qu'il
+  remplace (0,39x contre 0,43x d'attaque/sustain) — un echantillon sans morsure
+  d'anche se lit « synthetique ». Morsure portee de 35 ms/+0,9 a **30 ms/+2,6**.
+  Resultat : 0,48 / 0,82 / 0,99 / 1,45 (alto/sop/ten/baryton), crete max 0,775,
+  **0 ecrete**.
+- **Echecs de banc PRÉEXISTANTS** (defauts du pack, pas des regressions) : soprano
+  +193,9 cents (note 57), tenor +91,9 cents (note 72), humanize tenor 38 cents a 0,
+  continuite baryton 7846 sauts. Verifier contre l'ancien binaire avant de conclure.
