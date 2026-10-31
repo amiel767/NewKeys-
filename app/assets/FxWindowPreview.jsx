@@ -12,6 +12,12 @@ import { useEffect, useRef, useState } from "react";
 
 const MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
 const FONT = "Space Grotesk, Inter, system-ui, -apple-system, sans-serif";
+/* La police des titres. C'est CINZEL, celle que l'app porte deja dans
+   `app/src/main/res/font/cinzel.ttf` et que `initAetherInstruments` assigne aux
+   instruments Æther : le titre de la fenetre parle donc la meme langue que le
+   reste de l'app. Le repli est un serif, pour que le titre reste stylise meme si
+   la fonte ne charge pas. */
+const TITLE_FONT = "Cinzel, Georgia, 'Times New Roman', serif";
 
 const WIN_T = "#1F2635", WIN_B = "#131925";
 const INK = "#DFE4EE", DIM = "#8D96AB", MUTE = "#5F6880";
@@ -209,6 +215,8 @@ const ghost = (x = {}) => ({ background: `linear-gradient(180deg,${RAIL},#252839
   borderRadius: 10, ...x });
 
 const CSS = `
+/* Cinzel : le fichier est pose a cote de la page, servi par le meme serveur. */
+@font-face{font-family:Cinzel;src:url("cinzel.ttf") format("truetype");font-display:swap}
 /* LA CAUSE DU DEBORDEMENT. Une carte est un <div> (content-box) ; un logement
    est un <button>, que le navigateur met en border-box. Le padding 10x2 et la
    bordure 1x2 de la carte s'ajoutaient donc a sa hauteur : +22 px dans les deux
@@ -475,7 +483,7 @@ function Segmented({ options, value, onChange, height = 34, grow = false, width,
 const LERP_KEYS = ["size", "decay", "pre", "damp", "width", "mix", "diff"];
 const easeTo = (cur, target, dt, speed) => cur + (target - cur) * Math.min(1, dt * speed);
 
-function Orb({ vals, palette, accent, fireRef, live = true }) {
+function Orb({ vals, palette, accent, fireRef, live = true, scale = 1 }) {
   const cvs = useRef(null);
   const st = useRef({ t: 0, last: 0, flash: 0, drawn: 0, spd: 1, motes: null, sm: null, pal: null });
   const vref = useRef(vals); vref.current = vals;
@@ -553,7 +561,9 @@ function Orb({ vals, palette, accent, fireRef, live = true }) {
       const sz = sm.size, dc = sm.decay, pd = sm.pre, wd = sm.width, mx = sm.mix, df = sm.diff;
       const cx = W / 2, cy = H * .45;
       /* la taille : bornee pour que les anneaux ne sortent JAMAIS de la case */
-      const R = Math.min(W * .135, H * .115) * (.78 + sz * .62) * (1 + .03 * Math.sin(t * 2));
+      /* tout le dessin derive de R : le reduire suffit a reduire l'orbe entier,
+         anneaux et particules compris. */
+      const R = Math.min(W * .135, H * .115) * (.78 + sz * .62) * (1 + .03 * Math.sin(t * 2)) * scale;
       const CORE = pt.core || "#eee8ff", RIM = pt.rim || "#1d1a38";
       ctx.clearRect(0, 0, W, H);
 
@@ -778,7 +788,7 @@ function TrashCan({ open, armed, smooth = true, size = 44 }) {
    decouvre une corbeille dont le couvercle s'ouvre, et au relachement — si le
    geste a depasse 92 px ou s'il est vif — la carte sort par le bas.
    ─────────────────────────────────────────────────────────────────────────── */
-function FxCard({ fx, midi, on, onToggle, onOpen, onRemove, height }) {
+function FxCard({ fx, midi, on, onToggle, onOpen, onRemove, height, presetName, liveVals, livePalette }) {
   const [hot, setHot] = useState(false);
   const [dy, setDy] = useState(0);
   const [leaving, setLeaving] = useState(false);
@@ -787,7 +797,10 @@ function FxCard({ fx, midi, on, onToggle, onOpen, onRemove, height }) {
   const fireRef = useRef(() => {});
   const vals = Object.fromEntries((fx.params || []).map(([, k, v]) => [k, v]));
   const first = fx.presets ? Object.keys(fx.presets)[0] : null;
-  const pal = fx.palettes ? fx.palettes[first] : undefined;
+  /* Le preset AFFICHE : c'est celui qui est actif, pas le premier de la liste.
+     Son nom va au pied de la carte, sa palette a l'orbe. */
+  const shown = presetName || first;
+  const pal = livePalette || (fx.palettes ? fx.palettes[shown] : undefined);
   const ac = fx.accent || ACC;
 
   const prog = clamp(dy / 118, 0, 1);
@@ -874,7 +887,7 @@ function FxCard({ fx, midi, on, onToggle, onOpen, onRemove, height }) {
                       position: "relative",
                       background: "#12161F", boxShadow: "inset 0 2px 7px rgba(0,0,0,.7), inset 0 0 0 1px rgba(255,255,255,.04)" }}>
           {fx.space
-            ? <Orb vals={vals} palette={pal} accent={ac} fireRef={fireRef} live={on} />
+            ? <Orb vals={liveVals || vals} palette={pal} accent={ac} fireRef={fireRef} live={on} scale={.78} />
             : midi ? <MiniSteps accent={ac} on={on} /> : <MiniGraph type={fx.type} accent={ac} on={on} />}
           <div style={{ position: "absolute", inset: 0, background: "rgba(10,13,20,.34)",
                         opacity: on ? 0 : 1, transition: "opacity .45s cubic-bezier(.4,0,.2,1)",
@@ -886,7 +899,7 @@ function FxCard({ fx, midi, on, onToggle, onOpen, onRemove, height }) {
                          background: on ? "#C9D2E6" : "#2A3040",
                          boxShadow: on ? "0 0 7px rgba(201,210,230,.6)" : "inset 0 1px 2px rgba(0,0,0,.8)" }} />
           <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {midi ? "MIDI effect" : (first || fx.type)}
+            {midi ? "MIDI effect" : (shown || fx.type)}
           </span>
         </div>
       </div>
@@ -1278,7 +1291,18 @@ function FxWindow() {
         ) : (
           <span style={{ width: 4, height: 24, borderRadius: 2, background: "#7F9BC7", flex: "none" }} />
         )}
-        <span style={{ fontSize: 13, fontWeight: 900, letterSpacing: ".02em" }}>{title}</span>
+        {inEffect ? (
+          /* Le titre d'une page : grand, en Cinzel, et VOLONTAIREMENT pose de
+             travers — un demi-degre de rotation et 3 px de descente. Bien aligne
+             il se lisait comme un libelle d'interface ; decale il se lit comme
+             une enseigne. */
+          <span style={{ fontFamily: TITLE_FONT, fontSize: 27, fontWeight: 700, lineHeight: 1,
+                         letterSpacing: ".03em", color: INK, whiteSpace: "nowrap",
+                         transform: "translateY(3px) rotate(-1.2deg)",
+                         textShadow: "0 2px 14px rgba(0,0,0,.6)" }}>{title}</span>
+        ) : (
+          <span style={{ fontSize: 13, fontWeight: 900, letterSpacing: ".02em" }}>{title}</span>
+        )}
         <div style={{ flex: 1 }} />
         {view.k === "rack" && (
           <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", color: MUTE }}>
@@ -1312,6 +1336,9 @@ function FxWindow() {
               const a = audio[i];
               return a
                 ? <FxCard key={a.fx.id} fx={a.fx} height={BODY_H} on={a.on}
+                          presetName={i === 0 ? preset : undefined}
+                          liveVals={i === 0 ? vals : undefined}
+                          livePalette={i === 0 && a.fx.palettes ? (a.fx.palettes[preset] || a.fx.palettes[Object.keys(a.fx.presets)[0]]) : undefined}
                           onToggle={() => setAudio((s) => s.map((x, k) => k === i ? { ...x, on: !x.on } : x))}
                           onOpen={() => setView({ k: "effect", fx: a.fx })}
                           onRemove={() => setAudio((s) => s.filter((_, k) => k !== i))} />
