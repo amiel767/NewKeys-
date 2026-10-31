@@ -1786,3 +1786,50 @@ avertissement. Renommer (p. ex. `FxModesController`). `enum class Quality` exist
 aussi (`com.aetherkeys.sheets.model`) mais dans un autre package. `object FM`
 redouble `AppColors` : decider si le design reste autonome ou s'aligne sur le chrome
 de l'app. Aucun codec de persistance (le depot a deja `FxPersistence.kt`).
+
+## Session 2026-10-31 — fenetre FX (branche `design/tests`) : fidelite mesuree a la maquette
+
+Branche isolee `design/tests`, **aucun push**. Maquette = `app/assets/FxWindowPreview.jsx`,
+capturee dans `/tmp/mock_*.png` par `tools/fxcompare/shoot_mock.mjs` (Playwright, hash
+`#rack` / `#audio` / `#arp` / `#space`). Le rendu Compose est capture par
+`FxDetachedCaptureTest` (package `com.aetherkeys.fx`).
+
+### Le piege de sortie qui a coute trois passes
+`recordRoborazziDebug` ecrit les PNG dans **`app/app/src/test/screenshots/`** quand le
+repertoire de travail du test est le module : ils paraissent « non produits ». Toujours
+`find . -name "fx_*.png"` apres la capture, et `rm -rf app/app` ensuite. Et
+`-Proborazzi.test.record=true` sur `testDebugUnitTest` ne suffit pas : utiliser la tache
+`recordRoborazziDebug`. La tache se **saute** si elle est UP-TO-DATE → `--rerun-tasks`.
+
+### La mesure qui tranche : ecart de luminance, pas l'oeil
+Comparer les deux a **891x411** (la maquette fait 1736x800 = 1,948x, la capture 2450x1130
+= 2,7497x). Ecart moyen par bandes de 40 px : c'est ce qui a localise chaque defaut.
+
+| Vue | Avant | Apres |
+|---|---|---|
+| rack | 17,6-23,2 | **8,7** |
+| space | 12,5 | **10,1** |
+| arp | 18,7 | **9,8** |
+| catalog | — | **7,3** |
+
+### Cinq defauts trouves par la mesure, invisibles au code
+1. **Liseré de carte** : un `linearGradient` blanc sur **14 %** de la hauteur donnait un
+   haut de carte a 68 la ou la maquette en donne 50. Le liseré fait **1 px**
+   (`offset .012`), pas une bande.
+2. **Puits translucides** (`Color(0x0AFFFFFF)`) : la maquette utilise
+   `linear-gradient(180deg,#0E1420,#0B0F18)` **opaque** (`well()`). Un blanc translucide
+   sur le degrade du panneau lit « plat » — c'est la meme lecon que `glassRow`.
+3. **`FxMiniSteps` pendait du HAUT** : sans `verticalAlignment = Alignment.Bottom`, le
+   motif de barres se lit a l'envers (171 de luminance la ou la maquette en donne 22).
+   `fillMaxHeight(v)` ancre le sommet, pas la base.
+4. **Halo de l'orbe** : `createRadialGradient` a un **rayon interne** (`R*.3`) — le halo
+   est plat au centre puis decroit. Un `radialGradient` partant du centre est trop faible
+   sur cette couronne.
+5. **BPM/Swing de l'arp** : montes dans l'**en-tete** de la fenetre, pas dans la page.
+   L'etat `ArpState` vit donc dans `FxWindow` et est passe a `FxEffectPage` — deux
+   composants lisent le meme etat.
+
+### Ce qui n'est PAS un defaut
+L'orbe a une phase animee : son ecart de pixel est intrinsequement non nul. Comparer les
+**profils** (pic 224 maquette / 222 rendu, meme position) et non l'ecart brut. Le
+`FxRegistry.info(id)` borne et les palettes par preset restent inchanges.
