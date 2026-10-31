@@ -2759,3 +2759,27 @@ banc a 12 ou 15 parametres reproduit exactement le bug corrige.
 
 Le serveur de recette sert `/workspace/dl/pub` sur 12000 et 12001 (`setsid nohup
 python3 -m http.server`). Il **ne survit pas** a un redemarrage du sandbox.
+
+### 2026-10-31 — push de `design/tests` + release v194
+
+Feu vert explicite de l'utilisateur : **push et lancement du workflow autorises**
+(la regle « jamais de workflow sans accord » est levee pour cette demande).
+
+**Merge de `origin/main` avant push.** `design/tests` etait base sur `23a9f42` ;
+`origin/main` avait avance jusqu'a `b717038` (28 commits, surtout Æther Piano).
+Chevauchement reel sur **4 fichiers** : `AGENTS.md`, `aetherfx/fx_registry.h`,
+`aetherkeys/fx/FxRegistry.kt`, `soundstage/mixer/fx/FxRegistry.kt`.
+Les trois derniers ont fusionne **automatiquement** (les deux cotes ajoutaient des
+entrees distinctes : PIANO cote piano, LEADS/SAX_AE cote FX). Seul `AGENTS.md`
+conflictait, en **deux** blocs purement additifs -> resolution en gardant les deux
+cotes. `:app:compileDebugKotlin` -> **BUILD SUCCESSFUL** apres merge (3m11).
+
+**Le JDK a encore disparu** pendant l'operation (wipe sandbox) : le premier build
+post-merge a echoue sur `JAVA_HOME is set to an invalid directory`. Reinstaller
+`openjdk-21-jdk-headless` puis relancer — le wipe ne touche pas le depot.
+
+**Workflow** : `release.yml` est `workflow_dispatch` uniquement. Lance avec
+`gh workflow run release.yml --ref design/tests`. Run `41212541450`, **success en
+5m56**. Release **v194**, APK 60,1 Mo.
+Verification finale : `ls-remote` -> `588ec5354eea60828de718a59b1a598c5e222509`
+= HEAD local = `target_commitish` de la release. Les trois coincident.
