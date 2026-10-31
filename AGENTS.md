@@ -2735,3 +2735,66 @@ fondamentales, +167 % de couches) pour +42 % de poids.
 Le changement moteur (`layerCount_` deduit du pack) reste necessaire : sans lui,
 le 5 en dur ne couvrirait que 5 des 8 couches, et 3 couches sur 8 ne seraient
 jamais jouees.
+
+## Session 2026-10-31 — fill de blues + BUG de cache : les notes repetees jouaient le mauvais echantillon
+
+### Le bug (moteur, pas le banc)
+
+`PianoSampleReader::decoded()` renvoyait le mauvais region sur un **cache hit** :
+
+```cpp
+std::rotate(cache_.begin(), cache_.begin() + i, cache_.begin() + i + 1);
+return &cache_.back().second;      // <- renvoie l'AUTRE region
+```
+
+`rotate(first, middle, last)` fait tourner `[first, last)` pour que `middle`
+devienne le premier element. Avec `first = begin`, l'element touche part vers
+**l'avant**, pas vers l'arriere. La fonction renvoyant `&cache_.back()`, un hit
+rendait donc la region qui etait **deja en queue**, c'est-a-dire la mauvaise.
+
+**Symptome mesure** : toute note rejouee dans la fenetre de cache sortait
+transposee. A4 mesurait **525,4 Hz au lieu de 440** (+307 cents = exactement les
+3 demi-tons qui separent les fondamentales du pack). Les notes dont la region
+etait deja en queue etaient justes — d'ou 6 echecs sur 12, en alternance.
+
+**Correctif** : `rotate(cache_.begin() + i, cache_.begin() + i + 1, cache_.end())`
+(deplace le hit vers la queue, la ou l'appelant le lit). Verifie : **12/12**.
+
+**Pourquoi ca ne se voyait pas** : le banc precedent jouait une **seule note par
+preset**. Un cache de 10 regions n'etait jamais sollicite, donc le bug ne pouvait
+pas apparaitre. Il faut **rejouer des notes** pour le declencher — c'est-a-dire
+exactement ce que fait l'app des qu'on joue un morceau.
+
+### Deux pieges de banc, tous les deux corriges
+
+1. **Le produit harmonique classique (multiplication) se trompe d'octave.** Sur un
+   sinus avec 2e harmonique, il annoncait **la moitie** de la frequence (le produit
+   s'effondre des qu'un harmonique manque, et le bruit decide). Remplace par une
+   **somme normalisee** des harmoniques 1..8, plus un departage : a score quasi
+   egal, la frequence la plus **haute** gagne (une sous-octave explique aussi bien
+   un spectre a harmoniques pairs).
+2. **Le banc doit se tester lui-meme.** `verify` commence par trois sinus
+   synthetiques. Sans ce garde-fou, j'ai cru le moteur faux alors que c'etait
+   l'analyseur — deux passes perdues.
+
+### Le fill
+
+`tools/aetherfx/demo_blues.cpp` : **turnaround chromatique descendant**
+`C5 B4 A#4 A4 G#4 G4 F#4 F4 E4 D#4 D4 C4` — 12 croches, **exactement une octave**,
+atterrissage sur la tonique tenue. Huit mesures de blues en do a 96 BPM : boogie
+shuffle (main gauche ecrite note a note), le fill, le shuffle, le fill.
+
+La demo verifie **deux fois** la justesse : note isolee (moteur neuf ET moteur
+reutilise, cote a cote) puis **la progression entiere dans un seul moteur, dans
+l'ordre**. C'est la seconde qui attrape le bug de cache. Resultat : 12/12,
+ecart max **+14 cents**.
+
+**Piege d'affichage** : `noteName` renvoyait un `static char buf` — deux appels
+dans le meme `printf` s'aliasaient et affichaient « C5 .. C5 » pour un fill C5->C4.
+Un `std::string` par appel.
+
+### Page de recoute
+
+`/workspace/dl/pub/blues/` (port 12000) : 9 MP3 (128 kb/s, ~344 Ko chacun),
+un par modele, tous **distincts** (verifie par md5). Genere par
+`tools/aetherfx/blues_page.py`.

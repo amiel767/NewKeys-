@@ -121,7 +121,13 @@ class PianoSampleReader {
     const size_t key = static_cast<size_t>(g - regions_.data());
     for (size_t i = 0; i < cache_.size(); ++i) {
       if (cache_[i].first == key) {
-        std::rotate(cache_.begin(), cache_.begin() + i, cache_.begin() + i + 1);
+        // Move the hit to the BACK, which is where the caller reads it from.  The
+        // previous rotate(begin, begin + i, begin + i + 1) moved it to the FRONT
+        // instead, so &cache_.back() returned a DIFFERENT region and the voice
+        // played the wrong sample: any repeated root came out shifted by the
+        // interval to whatever region was last.  Measured as +307 cents on A4
+        // (three semitones, the spacing between the pack's roots).
+        std::rotate(cache_.begin() + i, cache_.begin() + i + 1, cache_.end());
         return &cache_.back().second;
       }
     }
