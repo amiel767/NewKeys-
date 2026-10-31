@@ -40,7 +40,8 @@ from pathlib import Path
 # default: it owns the work in flight (Æther Piano/Strings), the others are kept so a
 # switch back is a flag, not archaeology.
 PEERS = [
-    ("CLONE2", "f0aa78669e1640bca4708537876e5ce2"),  # Æther Piano + Strings, AVIF assets
+    ("CLONE5", "9c93aa402a634cdfa4a1fbf759935777"),  # Econome 2: pack piano dense + effets
+    ("CLONE2", "f0aa78669e1640bca4708537876e5ce2"),  # AEther Piano + Strings, AVIF assets
     ("PEER1", "dde6dffb48c5475a931918c2e3ff38f9"),   # FX / mixer engine (older axis)
 ]
 DEFAULT_CONV = PEERS[0][1]
