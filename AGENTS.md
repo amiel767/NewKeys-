@@ -1967,3 +1967,32 @@ l'ombre dessinée dans le `drawBehind` est **rognée aux bords de la case** et n
 dépasse donc jamais. Il faut un `drawBehind` **avant** le `.clip()` pour l'ombre, et
 un second après pour le fond et le liseré. Mesure après correction : sous la case la
 luminance descend à **17** puis remonte à 37 sur ~5 unités — c'est le dégradé d'ombre.
+
+### Correction 2026-10-30 (2) — alignement rail/bonnet, rail -30 %, knob neumorphique
+
+**1. Les bonnets n'étaient pas sur les rails.** Cause exacte, mesurée : dans la bande
+du slider, le **rail** était ancré en haut (pas d'`align`, donc `TopStart`) alors que le
+**bonnet** était en `CenterStart`. Sur une bande de 26 dp avec un rail de 12,6 dp,
+l'écart vaut une demi-différence de hauteur. Correctif : **même ancre pour les deux**
+(`Alignment.CenterStart`). Mesure après : rail centre v 238,5, bonnet centre v 238,5.
+
+**2. Rails amaigris de 30 %** : `RAIL_T` 18 -> **12,6** dp. Mesure : le rail fait
+**12 unités** sur la capture (v 233..244), contre 18 avant.
+
+**3. Knob neumorphique 3D détaillé** (`FxKnob`, Canvas pur, 7 couches). La règle du
+neumorphisme est le **contraste socle-creusé / corps-bombé** : même lumière haut-gauche,
+donc ombre sombre en bas-droite et reflet clair en haut-gauche, inversés entre le creux
+et le bombé. Couches : puits (ombre interne en haut, reflet interne en bas) -> piste de
+valeur (double arc, halo + trait dégradé) -> anneau d'appui (arête claire 186°..354° et
+sombre 8°..172°, en arcs et non en cercle : la lumière n'éclaire qu'un côté) -> corps en
+dégradé **linéaire diagonal** (pas radial : c'est ce qui fait « rouler » la lumière) ->
+collerette (gorge sombre + arête claire) -> dôme (radial, bombé en sens inverse) ->
+index en **fente creusée** (ombre puis lèvre claire décalée de 7°) + bille d'accent avec
+son propre reflet.
+
+**Piège de structure du bonnet** : dans `MasterSliderV2`, la boîte EXTÉRIEURE garde son
+empreinte couchée et seule la boîte INTÉRIEURE passe par `swapAxes()`. Transposer les
+deux décalait le bonnet de ~26 unités. Recopier la structure du master telle quelle.
+
+**Piège d'import** : `androidx.compose.ui.geometry.Size` — le knob d'origine écrivait le
+nom complet, ma réécriture utilisait `Size(...)` nu : 8 erreurs « Unresolved reference ».
