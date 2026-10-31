@@ -78,7 +78,7 @@ object FxRegistry {
                 FxPreset("Doubler", listOf(0.02f, 0.8f, 0.04f, 0.7f, 0.06f, 0.5f, 0.08f, 0.3f, 0.1f, 0.9f, 0.1f, 0.3f)),
                 FxPreset("Pulse", listOf(0.1f, 0.9f, 0.2f, 0.9f, 0.3f, 0.9f, 0.4f, 0.9f, 0.55f, 0.7f, 0f, 0.3f)),
             )),
-        FxInfo(2, "Prism Tone", "Equalizer", FxKind.EFFECT,
+        FxInfo(2, "Aether Sculpt", "Equalizer", FxKind.EFFECT,
             listOf(
                 FxParam("Low freq", 20f, 20000f, "Hz", 0, 0.15f, FxCurve.FREQ_LOG, false),
                 FxParam("Low", -12f, 12f, "dB", 1, 0.62f, FxCurve.LINEAR, false),
@@ -117,7 +117,7 @@ object FxRegistry {
                 FxPreset("Drum Bus", listOf(0.5f, 0.4f, 0.2f, 0.25f, 0.3f, 0.45f)),
                 FxPreset("Parallel", listOf(0.6f, 0.8f, 0.1f, 0.4f, 0.2f, 0.5f)),
             )),
-        FxInfo(4, "Solar Ceiling", "Maximizer", FxKind.EFFECT,
+        FxInfo(4, "Goodizer", "Maximizer", FxKind.EFFECT,
             listOf(
                 FxParam("Amount", 0f, 100f, "%", 0, 0.5f, FxCurve.LINEAR, false),
                 FxParam("Ceiling", -6f, 0f, "dB", 1, 0.92f, FxCurve.LINEAR, false),

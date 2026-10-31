@@ -54,7 +54,7 @@ inline const EffectInfo& info(int id) {
        {"Ambient", E({.2f, .7f, .4f, .6f, .62f, .5f, .85f, .4f}, .7f, .45f, .35f, .4f)}, {"Dub", E({.3f, .9f, .5f, .75f, .7f, .55f, .9f, .4f}, .78f, .3f, .5f, .35f)},
        {"Doubler", E({.02f, .8f, .04f, .7f, .06f, .5f, .08f, .3f}, .1f, .9f, .1f, .3f)}, {"Pulse", E({.1f, .9f, .2f, .9f, .3f, .9f, .4f, .9f}, .55f, .7f, 0, .3f)}}};
     auto Q = [](float l, float m, float h, float mf = .5f, float q = .4f, float o = .5f) { return std::vector<float>{.15f, l, mf, m, q, .85f, h, o}; };
-    v[FX_TONE] = {"Prism Tone", "Equalizer",
+    v[FX_TONE] = {"Aether Sculpt", "Equalizer",
       {{"Low freq", 20, 20000, "Hz", 0, .15f, C::FreqLog}, {"Low", -12, 12, "dB", 1, .62f, C::Linear}, {"Mid freq", 20, 20000, "Hz", 0, .5f, C::FreqLog},
        {"Mid", -12, 12, "dB", 1, .45f, C::Linear}, {"Mid Q", .3f, 4, "", 1, .4f, C::Linear}, {"High freq", 20, 20000, "Hz", 0, .85f, C::FreqLog},
        {"High", -12, 12, "dB", 1, .7f, C::Linear}, {"Output", -12, 12, "dB", 1, .5f, C::Linear}},
@@ -65,7 +65,7 @@ inline const EffectInfo& info(int id) {
        {"Release", 10, 1000, "ms", 0, .52f, C::Linear}, {"Knee", 0, 24, "dB", 0, .4f, C::Linear}, {"Makeup", 0, 24, "dB", 1, .4f, C::Linear}},
       {{"Glue", {.55f, .2f, .35f, .6f, .6f, .3f}}, {"Gentle", {.4f, 0, .25f, .5f, .7f, .2f}}, {"Punch", {.5f, .6f, .6f, .3f, .3f, .5f}}, {"Limit", {.7f, 1, .05f, .2f, .1f, .6f}},
        {"Vocal Leveler", {.45f, .4f, .3f, .55f, .8f, .35f}}, {"Drum Bus", {.5f, .4f, .2f, .25f, .3f, .45f}}, {"Parallel", {.6f, .8f, .1f, .4f, .2f, .5f}}}};
-    v[FX_CEILING] = {"Solar Ceiling", "Maximizer",
+    v[FX_CEILING] = {"Goodizer", "Maximizer",
       {{"Amount", 0, 100, "%", 0, .5f, C::Linear}, {"Ceiling", -6, 0, "dB", 1, .92f, C::Linear}, {"Release", 10, 500, "ms", 0, .4f, C::Linear},
        {"Width", 0, 100, "%", 0, .3f, C::Linear}, {"Mix", 0, 100, "%", 0, 1, C::Linear}, {"Output", -12, 12, "dB", 1, .5f, C::Linear}},
       {{"Transparent", {.3f, .95f, .6f, .2f, 1, .5f}}, {"Loud", {.75f, .9f, .35f, .4f, 1, .55f}}, {"Punch", {.6f, .9f, .2f, .2f, .9f, .55f}}, {"Wide", {.5f, .92f, .5f, .8f, 1, .5f}},

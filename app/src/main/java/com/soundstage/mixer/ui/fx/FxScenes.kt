@@ -213,7 +213,7 @@ enum class LabelAlign { LEFT, CENTER, RIGHT }
  * The effects 0..4 are painted by `bg()`; the instruments (5..14) are painted by
  * their own scene functions. `.x2` is declared twice in the reference (a slate
  * grid at line 54, a red amp face at line 104) and the later rule wins in CSS:
- * ref-02-prism-tone.png samples (180,26,43), so the red face is the one to keep.
+ * ref-02-aether-sculpt.png samples (180,26,43), so the red face is the one to keep.
  */
 internal val PANEL_BG: Map<Int, Color> = mapOf(
     0 to Color(0xFF0F1120),
@@ -231,7 +231,7 @@ internal val PANEL_BG: Map<Int, Color> = mapOf(
 /**
  * Per-effect text colour, from the `color` of the same `.xN` rule that gives the
  * panel its background. The port had `#DFE4EE` / `#E6EAF3` hard-coded for every
- * readout, so solar (`.x4`, background `#efe9db`) painted cream text on cream and
+ * readout, so goodizer (`.x4`, background `#efe9db`) painted cream text on cream and
  * the page looked empty. `.x4` declares `#2a241b`; ids 7/8/9 have no rule of their
  * own and fall back to the `#st` colour the preview inherits from `body`.
  */
@@ -670,7 +670,7 @@ private fun DrawScope.sceneEq(v: FloatArray, t: Float, tm: TextMeasurer) {
     }
 
     // `if(!m)`: the OUT fader at the far right of the curve. The port had no fader
-    // at all — `sceneEq` stopped at the band dots — so prism-tone rendered with a
+    // at all — `sceneEq` stopped at the band dots — so aether-sculpt rendered with a
     // bare right edge. Geometry and colours are the preview's `eq()` block.
     run {
         val fx = 752f; val ty = 26f; val by = 232f

@@ -1,4 +1,4 @@
-// Solar Ceiling: maximizer = drive + lookahead limiter (min-filter then box average => ceiling is guaranteed) + gentle colour.
+// Goodizer: maximizer = drive + lookahead limiter (min-filter then box average => ceiling is guaranteed) + gentle colour.
 // lookaheadMs = 0 for tracks (zero latency), ~1 ms for the master (latency is reported).
 #pragma once
 #include "fx_core.h"

@@ -1,4 +1,4 @@
-// Prism Tone: 3-band EQ (low shelf, parametric mid, high shelf) + output trim. Minimum phase, zero latency.
+// Aether Sculpt: 3-band EQ (low shelf, parametric mid, high shelf) + output trim. Minimum phase, zero latency.
 #pragma once
 #include "fx_core.h"
 

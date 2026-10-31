@@ -85,8 +85,8 @@ class FxWindowCaptureTest {
      * One test per effect: `setContent` may only be called once per test.
      */
     private val tags = listOf(
-        0 to "space", 1 to "echo", 2 to "prism-tone", 3 to "iron-grip",
-        4 to "solar-ceiling", 5 to "piano", 6 to "organ", 7 to "sax",
+        0 to "space", 1 to "echo", 2 to "aether-sculpt", 3 to "iron-grip",
+        4 to "goodizer", 5 to "piano", 6 to "organ", 7 to "sax",
         8 to "strings", 9 to "guitar", 10 to "amp", 11 to "bass",
         12 to "brass", 13 to "voices", 14 to "synth",
     )
@@ -101,13 +101,13 @@ class FxWindowCaptureTest {
     fun fx_window_space() = captureEffect(0, "space")
 
     @Test
-    fun fx_window_prism_tone() = captureEffect(2, "prism-tone")
+    fun fx_window_aether_sculpt() = captureEffect(2, "aether-sculpt")
 
     @Test
     fun fx_window_iron_grip() = captureEffect(3, "iron-grip")
 
     @Test
-    fun fx_window_solar_ceiling() = captureEffect(4, "solar-ceiling")
+    fun fx_window_goodizer() = captureEffect(4, "goodizer")
 
     @Test
     fun fx_window_piano() = captureEffect(5, "piano")
