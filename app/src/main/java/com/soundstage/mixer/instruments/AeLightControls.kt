@@ -118,23 +118,6 @@ fun AeLightSlider(th: AeTheme, value: Float, label: String, x: Number, y: Number
     }
 }
 
-/** kind: 0 enter full screen, 1 leave full screen, 2 close. */
-@Composable
-fun AeIconBtn(th: AeTheme, kind: Int, x: Number, y: Number, onClick: () -> Unit) {
-    Box(Modifier.at(x, y, 32, 32).clip(CircleShape).background(th.glass).border(1.su(), th.edge, CircleShape).clickable(remember { MutableInteractionSource() }, null, onClick = onClick)) {
-        Canvas(Modifier.fillMaxSize()) {
-            val u = size.width / 32f; val p = Path()
-            fun seg(vararg v: Float) { p.moveTo(v[0] * u, v[1] * u); var i = 2; while (i < v.size) { p.lineTo(v[i] * u, v[i + 1] * u); i += 2 } }
-            when (kind) {
-                0 -> { seg(10f, 14f, 10f, 10f, 14f, 10f); seg(22f, 14f, 22f, 10f, 18f, 10f); seg(10f, 18f, 10f, 22f, 14f, 22f); seg(22f, 18f, 22f, 22f, 18f, 22f) }
-                1 -> { seg(14f, 10f, 14f, 14f, 10f, 14f); seg(18f, 10f, 18f, 14f, 22f, 14f); seg(14f, 22f, 14f, 18f, 10f, 18f); seg(18f, 22f, 18f, 18f, 22f, 18f) }
-                else -> { seg(11f, 11f, 21f, 21f); seg(21f, 11f, 11f, 21f) }
-            }
-            drawPath(p, th.ink, style = Stroke(1.6f * u, cap = StrokeCap.Round, join = StrokeJoin.Round))
-        }
-    }
-}
-
 @Composable
 fun AeSmallBtn(th: AeTheme, label: String, x: Number, y: Number, w: Number, h: Number, on: Boolean = false, onClick: () -> Unit) {
     val sh = RoundedCornerShape(50)

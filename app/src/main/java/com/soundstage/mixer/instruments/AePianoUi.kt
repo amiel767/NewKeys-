@@ -172,7 +172,7 @@ fun AePianoCardPreview(modifier: Modifier) {
  * L'eau appartient à Strings.
  */
 @Composable
-fun BoxScope.AePianoUi(c: AeCtl, manager: AeManager, strip: Int, onClose: () -> Unit) {
+fun BoxScope.AePianoUi(c: AeCtl, manager: AeManager, strip: Int) {
     val s = manager.sessions[strip] ?: return
     val ctx = LocalContext.current
     val dens = LocalDensity.current.density
@@ -230,11 +230,10 @@ fun BoxScope.AePianoUi(c: AeCtl, manager: AeManager, strip: Int, onClose: () -> 
             scene.particles.draw(this)
         }
         AeStage(Modifier.fillMaxSize()) {
-            AeT("ÆTHER PIANO", 10, th.ink2, Modifier.at(24, 24, 200, 12), AeFonts.display, FontWeight.Normal, 0.3f)
+            AeT("ÆTHER PIANO", 10, th.ink2, Modifier.at(24, 44, 200, 12), AeFonts.display, FontWeight.Normal, 0.3f)
             AeT("PIANO", 10, th.ink, Modifier.at(300, 12, 400, 12), AeFonts.display, FontWeight.Light, 0.42f, TextAlign.Center)
             AeT(model.name.uppercase(), 30, th.ink, Modifier.at(300, 24, 400, 38), AeFonts.display, FontWeight.ExtraLight, 0.2f, TextAlign.Center)
             AeT(model.tag, 11, th.ink2, Modifier.at(300, 66, 400, 14), AeFonts.display, FontWeight.Light, 0.14f, TextAlign.Center)
-            AeIconBtn(th, 2, 954, 14, onClose)
             Box(Modifier.fillMaxSize().graphicsLayer { alpha = ui }) {
                 // Fond de verre derriere la colonne de gauche, le meme que la carte des
                 // potards. La liste s'affiche en encre suivant la photo : sur les 6 modeles

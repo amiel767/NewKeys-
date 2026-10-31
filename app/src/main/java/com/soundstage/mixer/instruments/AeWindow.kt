@@ -113,7 +113,7 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
     AeStage(modifier) {
         val shape = RoundedCornerShape(24.su())
         Box(Modifier.fillMaxSize().clip(shape).border(1.su(), Color(0x22FFFFFF), shape)) {
-            when (s.instrument) { AeInstrument.ORGAN -> AeOrganUi(c, a); AeInstrument.SYNTH -> AeSynthUi(c, a); AeInstrument.LEADS -> AeLeadsUi(c, a); AeInstrument.SAX -> AeSaxUi(c, a); AeInstrument.PIANO -> AePianoUi(c, manager, strip, onClose) }
+            when (s.instrument) { AeInstrument.ORGAN -> AeOrganUi(c, a); AeInstrument.SYNTH -> AeSynthUi(c, a); AeInstrument.LEADS -> AeLeadsUi(c, a); AeInstrument.SAX -> AeSaxUi(c, a); AeInstrument.PIANO -> AePianoUi(c, manager, strip) }
             when (s.instrument) {
                 AeInstrument.SYNTH -> AeT("ÆTHER SYNTH", 13, Color.White, Modifier.at(58, 15, 200, 18), AeFonts.display, spacing = 0.18f)
                 AeInstrument.LEADS -> AeT("ÆTHER LEADS", 13, Color(0xFF6FE9FF), Modifier.at(58, 15, 200, 18), AeFonts.display, spacing = 0.18f)
@@ -122,21 +122,22 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
             }
             val presets = manager.presets(s.instrument)
             BackArrow(winTh, 10, 9, 30) { onClose() }
-            // Header geometry, left to right, with no overlaps left:
-            //   back 10..40 | title from 58 | tabs 264..532 | disk 552..582 | prev 596..626 |
-            //   preset chip 640..866 | next 880..910.
-            // The tabs used to start at 354 (Leads) or 318 (Synth) and the Synth row ran to 682,
-            // under the disk at 620 — the crowding the user reported. The preset chip used to
-            // start at 686, i.e. 36 units from the disk's right edge at 650; it now starts 58
-            // units after the disk, and 14 after the prev button.
-            HeaderBtn(winTh, "◀", 596, 8, 30, 30) { manager.loadPreset(strip, s.preset - 1) }
+            // Header geometry, left to right:
+            //   back 10..40 | title from 58 | disk 604..634 | prev 642..672 |
+            //   preset chip 680..920 | next 928..958.
+            // The piano draws its model name centred at x 500 and the longest one, "ELECTRIC",
+            // reaches 595 at 30 sp with the 0.2 em tracking. The disk button used to sit at 552
+            // and covered it. 604 leaves 9 units of clearance; the group then steps right in
+            // 8-unit gaps so it reads as one block instead of four scattered chips. The piano's
+            // own X at 954 is gone: the back arrow at 10 already closes the window.
+            HeaderBtn(winTh, "◀", 642, 8, 30, 30) { manager.loadPreset(strip, s.preset - 1) }
             val ns = RoundedCornerShape(10.su())
-            Row(Modifier.at(640, 7, 226, 32).clip(ns).background(winTh.glass).border(1.su(), winTh.edge, ns).clickable(remember { MutableInteractionSource() }, null) { list = !list }.padding(horizontal = 12.su()),
+            Row(Modifier.at(680, 7, 240, 32).clip(ns).background(winTh.glass).border(1.su(), winTh.edge, ns).clickable(remember { MutableInteractionSource() }, null) { list = !list }.padding(horizontal = 12.su()),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                 AeT(presets.getOrNull(s.preset)?.name ?: "", 12, winTh.ink); AeT(presets.getOrNull(s.preset)?.category ?: "", 10, winTh.ink2, weight = FontWeight.SemiBold)
             }
-            HeaderBtn(winTh, "▶", 880, 8, 30, 30) { manager.loadPreset(strip, s.preset + 1) }
-            SaveDiskBtn(winTh, 552, 7) { naming = true }
+            HeaderBtn(winTh, "▶", 928, 8, 30, 30) { manager.loadPreset(strip, s.preset + 1) }
+            SaveDiskBtn(winTh, 604, 7) { naming = true }
             if (naming) NameSheet(
                 initial = "My ${s.instrument.title.removePrefix("Æther ")}",
                 onCancel = { naming = false },
