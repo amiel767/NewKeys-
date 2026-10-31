@@ -613,11 +613,13 @@ class PianoEngine : public SourceFx {
     // HAMMER et LID agissent tous deux sur le haut du spectre : un marteau plus dur
     // et un couvercle plus ouvert eclairent le timbre, ce sont bien deux reglages.
     const float body = p(2), width = p(6);
-    const float mic = p(4);
     const float tine = (std::lround(p(15) * 8.f) >= 8.f) ? 1.f : 0.f;
     // HAMMER, TONE, LID et MIC sont quatre facons d'eclairer le timbre ; MIC
     // etait annonce mais jamais lu, et les trois autres se confondaient.
-    const float bright = std::min(1.f, p(1) * (0.55f + 0.9f * p(0)) + p(3) * 0.25f + (p(4) - 0.5f) * 0.6f);
+    // MIC ne figure plus ici : c'est desormais une POSITION, traitee par l'etage
+    // studio.  L'y laisser faisait que deplacer le micro changeait aussi la
+    // brillance des cordes, donc deux effets pour un seul reglage.
+    const float bright = std::min(1.f, p(1) * (0.55f + 0.9f * p(0)) + p(3) * 0.25f);
     const float rel = 0.25f + p(8) * 5.0f;
     // Pas de parametre de maintien dans le contrat : on garde une valeur fixe.
     const float hold = 0.5f;
