@@ -18,6 +18,7 @@ The raw dump goes to tools/.conv_peek/<CONV_ID>.json (gitignored).
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import os
 import sys
@@ -56,8 +57,33 @@ def fetch_all(cid: str) -> list[dict]:
     return items
 
 
+def _blocks(msg: object) -> str:
+    """Texte d'un `llm_message`, dont `content` est une liste de blocs typés.
+
+    Les messages de l'agent vivent sous `llm_message`, pas sous `message`/`content` :
+    sans ce cas, `--last` saute les MessageEvent et rend la derniere ACTION (une
+    commande shell), ce qui n'est pas le dernier message affiche.
+    """
+    if isinstance(msg, str):
+        try:
+            msg = ast.literal_eval(msg)
+        except (ValueError, SyntaxError):
+            return msg
+    if not isinstance(msg, dict):
+        return ""
+    out = []
+    for b in msg.get("content") or []:
+        if isinstance(b, dict) and b.get("type") == "text":
+            out.append(b.get("text", ""))
+        elif isinstance(b, str):
+            out.append(b)
+    return "\n".join(x for x in out if x)
+
+
 def text_of(ev: dict) -> str:
     """Best-effort plain text of an event, without pulling in huge blobs."""
+    if ev.get("kind") == "MessageEvent":
+        return _blocks(ev.get("llm_message"))
     parts: list[str] = []
     for key in ("message", "content", "text", "thought", "args", "action"):
         v = ev.get(key)
@@ -88,11 +114,15 @@ def main() -> None:
     ap.add_argument("--last", action="store_true")
     ap.add_argument("--grep")
     ap.add_argument("--maxchars", type=int, default=4000)
+    ap.add_argument("--dump", action="store_true", help="write the full stream to tools/.conv_peek/")
     a = ap.parse_args()
 
     evs = fetch_all(a.cid)
-    OUT.mkdir(exist_ok=True)
-    (OUT / f"{a.cid}.json").write_text(json.dumps(evs, ensure_ascii=False))
+    # Le dump integral d'un long flux fait ~90 Mo.  Il n'est ecrit que sur demande
+    # explicite : le consulter en ligne ne doit rien laisser sur le disque.
+    if a.dump:
+        OUT.mkdir(exist_ok=True)
+        (OUT / f"{a.cid}.json").write_text(json.dumps(evs, ensure_ascii=False))
 
     if a.grep:
         for i, ev in enumerate(evs):
@@ -103,14 +133,18 @@ def main() -> None:
         return
 
     if a.last:
+        # Le dernier MESSAGE, pas la derniere action : un agent finit presque
+        # toujours par une commande, donc filtrer par texte seul rend la commande.
         for ev in reversed(evs):
+            if ev.get("kind") != "MessageEvent" or ev.get("source") != "agent":
+                continue
             t = text_of(ev)
             if t.strip():
                 print(t[: a.maxchars])
                 break
         return
 
-    print(f"events: {len(evs)}  bytes: {(OUT / f'{a.cid}.json').stat().st_size}")
+    print(f"events: {len(evs)}  (dump non ecrit ; --dump pour le conserver)")
     if evs:
         for k in ("kind", "event", "type"):
             if k in evs[0]:
