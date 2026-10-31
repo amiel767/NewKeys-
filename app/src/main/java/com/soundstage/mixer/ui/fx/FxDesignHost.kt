@@ -144,14 +144,13 @@ private class FxDesignModel(private val controller: FxController) {
             if (slot >= slotIds.size || id < 0) return@forEachIndexed
             val design = designForEngine(id) ?: return@forEachIndexed
             slotIds[slot] = design.id
+            // `engaged` est indexe par id de design, pas par slot : c'est lui que
+            // le rack lit pour allumer ou griser la carte.
             engaged[design.id] = !controller.bypassed.getOrElse(slot) { false }
             presets[design.id] = controller.presetNames.getOrNull(slot)
                 ?: design.presets.keys.firstOrNull()
             val v = vals(design.id)
             controller.params.getOrNull(slot)?.forEachIndexed { i, x -> if (i < v.size) v[i] = x }
-            // Un emplacement du moteur qui porte un effet adopté doit rester
-            // allumé : `engaged` est indexé par id de design, pas par slot.
-            engaged[design.id] = !controller.bypassed.getOrElse(slot) { false }
         }
     }
 
