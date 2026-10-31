@@ -33,6 +33,12 @@ object AeFxIcons {
     const val STEP_PREV = "M15 18l-6-6 6-6"
     const val STEP_NEXT = "M9 6l6 6-6 6"
     const val POWER = "M15.4 14.2a13 13 0 1 0 17.2 0|M24 9.5v10.6"
+    const val WAVE = "M2 12c2 0 2-4 4-4s2 8 4 8 2-8 4-8 2 4 4 4"
+    const val SLIDERS = "M4 21v-7|M4 10V3|M12 21v-9|M12 8V3|M20 21v-5|M20 12V3|M1 14h6|M9 8h6|M17 16h6"
+    const val ARP_UP = "M3 19h4v-4h4v-4h4V7h4"
+    const val ARP_DOWN = "M3 5h4v4h4v4h4v4h4"
+    const val ARP_UPDOWN = "M3 18l4-6 5-6 5 6 4 6"
+    const val ARP_RANDOM = "M3 14l4-6 4 8 4-10 5 8"
 }
 
 /**

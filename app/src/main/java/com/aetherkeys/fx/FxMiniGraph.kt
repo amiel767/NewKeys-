@@ -7,11 +7,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -25,7 +24,7 @@ import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.unit.dp
 
 /**
- * La vignette d'une carte.
+ * La vignette d'une carte qui n'a pas d'orbe.
  *
  * Les courbes sont celles de la maquette, mot pour mot, tracées dans un cadre
  * 56 × 44 étiré à la boîte (`preserveAspectRatio="none"`). Le trait porte
@@ -47,11 +46,6 @@ private val STEP_HEIGHTS = listOf(
 
 @Composable
 fun FxMiniGraph(type: String, accent: Color, on: Boolean) {
-    // Un effet MIDI montre ses pas, pas une courbe.
-    if (type.equals("MIDI", ignoreCase = true) || type.equals("Arp", ignoreCase = true)) {
-        FxMiniSteps(accent, on)
-        return
-    }
     val d = GRAPHS[type] ?: GRAPHS.getValue("Equalizer")
     val ink = if (on) accent else FxC.mute
     Canvas(Modifier.fillMaxSize()) {
@@ -76,11 +70,16 @@ fun FxMiniGraph(type: String, accent: Color, on: Boolean) {
     }
 }
 
+/** La vignette d'un effet MIDI : ses pas, pas une courbe. */
 @Composable
-private fun FxMiniSteps(accent: Color, on: Boolean) {
+fun FxMiniSteps(accent: Color, on: Boolean) {
     Row(
         Modifier.fillMaxSize().padding(8.dp),
         horizontalArrangement = Arrangement.spacedBy(3.dp),
+        // Les barres POUSSENT DU BAS : sans cet alignement elles pendent du haut
+        // et le motif se lit a l'envers (mesure : 171 de luminance la ou la
+        // maquette en donne 22).
+        verticalAlignment = Alignment.Bottom,
     ) {
         STEP_HEIGHTS.forEach { v ->
             Box(

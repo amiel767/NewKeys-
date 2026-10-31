@@ -36,8 +36,8 @@ object AeFxSvg {
             """<defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">""" +
             """<stop offset="0" stop-color="$top"/><stop offset="1" stop-color="$bot"/></linearGradient>""" +
             """<linearGradient id="hl" x1="0" y1="0" x2="0" y2="1">""" +
-            """<stop offset="0" stop-color="#FFFFFF" stop-opacity=".10"/>""" +
-            """<stop offset=".14" stop-color="#FFFFFF" stop-opacity="0"/></linearGradient></defs>""" +
+            """<stop offset="0" stop-color="#FFFFFF" stop-opacity=".11"/>""" +
+            """<stop offset=".012" stop-color="#FFFFFF" stop-opacity="0"/></linearGradient></defs>""" +
             """<rect x=".5" y=".5" width="208" height="340" rx="15.5" fill="url(#bg)" """ +
             """stroke="#FFFFFF" stroke-opacity=".13"/>""" +
             """<rect x=".5" y=".5" width="208" height="340" rx="15.5" fill="url(#hl)"/></svg>"""
@@ -111,9 +111,13 @@ object AeFxSvg {
     fun emptySlot(): String =
         """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 209 341" width="209" height="341"><defs>""" +
             """<linearGradient id="f" x1="0" y1="0" x2="0" y2="1">""" +
-            """<stop offset="0" stop-color="#FFFFFF" stop-opacity=".035"/>""" +
-            """<stop offset="1" stop-color="#FFFFFF" stop-opacity=".012"/></linearGradient></defs>""" +
+            """<stop offset="0" stop-color="#0E1420"/><stop offset="1" stop-color="#0B0F18"/>""" +
+            """</linearGradient>""" +
+            """<linearGradient id="s" x1="0" y1="0" x2="0" y2="1">""" +
+            """<stop offset="0" stop-color="#000000" stop-opacity=".75"/>""" +
+            """<stop offset=".3" stop-color="#000000" stop-opacity="0"/></linearGradient></defs>""" +
             """<rect x="1" y="1" width="207" height="339" rx="15" fill="url(#f)"/>""" +
+            """<rect x="1" y="1" width="207" height="339" rx="15" fill="url(#s)"/>""" +
             """<rect x="1" y="1" width="207" height="339" rx="15" fill="none" """ +
             """stroke="#FFFFFF" stroke-opacity=".14" stroke-width="1.4" stroke-dasharray="7 6"/>""" +
             """<g stroke="#8D96AB" stroke-opacity=".85" stroke-width="2.4" stroke-linecap="round">""" +
@@ -148,6 +152,50 @@ object AeFxSvg {
             """<path d="M18 10v-2.6a1.6 1.6 0 0 1 1.6-1.6h4.8a1.6 1.6 0 0 1 1.6 1.6V10" """ +
             """fill="none" stroke="#7A2E40" stroke-width="2"/></g></svg>"""
     }
+
+    /** Puits encastré d'une vignette : deux ombres internes, sans fond opaque. */
+    fun insetWell(): String =
+        """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="none" """ +
+            """width="100" height="100"><defs>""" +
+            """<linearGradient id="i" x1="0" y1="0" x2="0" y2="1">""" +
+            """<stop offset="0" stop-color="#000000" stop-opacity=".70"/>""" +
+            """<stop offset=".28" stop-color="#000000" stop-opacity="0"/></linearGradient></defs>""" +
+            """<rect x="0" y="0" width="100" height="100" rx="11" fill="url(#i)"/>""" +
+            """<rect x=".5" y=".5" width="99" height="99" rx="11" fill="none" """ +
+            """stroke="#FFFFFF" stroke-opacity=".04"/></svg>"""
+
+    /** Le cadre pointillé du `+` d'un emplacement libre. */
+    fun dashedBox(): String =
+        """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="40" height="40">""" +
+            """<rect x="1" y="1" width="38" height="38" rx="12" fill="#FFFFFF" fill-opacity=".04" """ +
+            """stroke="#8FB2E8" stroke-opacity=".30" stroke-width="1" stroke-dasharray="4 3"/></svg>"""
+
+    /** La carte d'un effet dans le catalogue. */
+    fun catalogCard(): String =
+        """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="none" """ +
+            """width="100" height="100"><defs>""" +
+            """<linearGradient id="c" x1="0" y1="0" x2="0" y2="1">""" +
+            """<stop offset="0" stop-color="#20283A"/><stop offset="1" stop-color="#1A2130"/></linearGradient>""" +
+            """<linearGradient id="l" x1="0" y1="0" x2="0" y2="1">""" +
+            """<stop offset="0" stop-color="#FFFFFF" stop-opacity=".06"/>""" +
+            """<stop offset=".4" stop-color="#FFFFFF" stop-opacity="0"/></linearGradient></defs>""" +
+            """<rect x=".5" y=".5" width="99" height="99" rx="12.5" fill="url(#c)" """ +
+            """stroke="#FFFFFF" stroke-opacity=".07"/>""" +
+            """<rect x=".5" y=".5" width="99" height="99" rx="12.5" fill="url(#l)"/></svg>"""
+
+    /** Le champ du preset : un puits avec un liseré haut clair. */
+    fun presetField(): String =
+        """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="none" """ +
+            """width="100" height="100"><defs>""" +
+            """<linearGradient id="p" x1="0" y1="0" x2="0" y2="1">""" +
+            """<stop offset="0" stop-color="#0E1420"/><stop offset="1" stop-color="#0B0F18"/></linearGradient>""" +
+            """<linearGradient id="h" x1="0" y1="0" x2="0" y2="1">""" +
+            """<stop offset="0" stop-color="#000000" stop-opacity=".62"/>""" +
+            """<stop offset=".45" stop-color="#000000" stop-opacity="0"/></linearGradient></defs>""" +
+            """<rect x="0" y="0" width="100" height="100" rx="9" fill="url(#p)"/>""" +
+            """<rect x="0" y="0" width="100" height="100" rx="9" fill="url(#h)"/>""" +
+            """<rect x=".5" y=".5" width="99" height="99" rx="9" fill="none" """ +
+            """stroke="#FFFFFF" stroke-opacity=".14"/></svg>"""
 }
 
 /**

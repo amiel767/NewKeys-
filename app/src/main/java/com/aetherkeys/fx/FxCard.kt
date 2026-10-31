@@ -38,41 +38,49 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Une carte d'effet : le type, le bouton engage, le nom, la vignette, le preset.
+ * Une carte d'effet, telle que la maquette la dessine.
  *
- * Elle se tire VERS LE BAS pour la supprimer : la corbeille se révèle derrière
- * la carte, et son couvercle s'ouvre avec la progression. C'est le geste de la
- * maquette — pas de bouton « supprimer », qui serait un geste de plus à viser.
+ * CE QUI COMPTE, ET QUE LA PREMIÈRE VERSION AVAIT RATÉ :
+ *
+ * 1. LA CARTE EST CLAIRE. `#323845` en haut, `#222733` en bas. La première
+ *    version utilisait un fond sombre — elle se lisait comme un trou, pas comme
+ *    une carte posée sur la fenêtre.
+ * 2. LA VIGNETTE EST GRANDE. Elle prend TOUT l'espace restant entre le nom et le
+ *    pied (`weight(1f)`). C'est elle qu'on regarde : pour Space c'est l'orbe,
+ *    pour l'Arpeggiator ses pas, pour les autres la courbe.
+ * 3. LE PIED MONTRE LE PRESET. Une pastille, puis le nom du preset — pas le type,
+ *    qui est déjà écrit en haut.
+ *
+ * La carte se tire VERS LE BAS pour la supprimer : la corbeille se révèle
+ * derrière, couvercle ouvert, et s'arme au-delà de 60 % de la course.
  */
 @Composable
 fun FxCard(
-    info: FxInfo,
-    accent: Color,
-    on: Boolean,
+    info: FxInfoD,
     presetName: String?,
+    vals: List<Float>,
+    palette: FxPalette?,
+    on: Boolean,
     onToggle: () -> Unit,
     onOpen: () -> Unit,
     onRemove: () -> Unit,
-    dragging: Boolean = true,
 ) {
     var dy by remember { mutableFloatStateOf(0f) }
     var hot by remember { mutableStateOf(false) }
     var leaving by remember { mutableStateOf(false) }
-    // 118 unités de course : c'est la valeur de la maquette.
+    // 118 unités de course : la valeur de la maquette.
     val prog = (dy / 118f).coerceIn(0f, 1f)
     val armed = prog > .6f
 
     val settle by animateFloatAsState(
-        targetValue = if (dragging) dy else 0f,
+        targetValue = dy,
         animationSpec = spring(dampingRatio = .9f, stiffness = 380f),
         label = "cardDy",
     )
-    val p = if (dragging) prog else (settle / 118f).coerceIn(0f, 1f)
+    val p = (settle / 118f).coerceIn(0f, 1f)
 
-    Box(
-        Modifier.width(FxGeo.CARD_W.dp).fillMaxHeight().clip(RoundedCornerShape(16.dp)),
-    ) {
-        // La corbeille, révélée par le haut.
+    Box(Modifier.width(FxGeo.CARD_W.dp).fillMaxHeight().clip(RoundedCornerShape(16.dp))) {
+        // La corbeille, révélée par le haut. Elle suit le doigt.
         Box(
             Modifier.fillMaxWidth().height(150.dp).padding(top = 14.dp)
                 .graphicsLayer { alpha = p; translationY = p * 10f },
@@ -110,20 +118,19 @@ fun FxCard(
                 }
                 .clickableNoRipple { if (dy < 2f && !leaving) onOpen() },
         ) {
-            // ── le type et le bouton engage ────────────────────────────────
+            // ── le type, à gauche ; le bouton engage, à droite ──────────────
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     info.type.uppercase(),
-                    color = if (on) accent else FxC.dim,
+                    color = if (on) info.accent else FxC.dim,
                     fontSize = 8.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.5.sp,
-                    maxLines = 1,
-                    modifier = Modifier.weight(1f),
+                    maxLines = 1, modifier = Modifier.weight(1f),
                 )
-                FxPowerButton(on = on, accent = accent, onClick = onToggle)
+                FxPowerButton(on = on, accent = info.accent, onClick = onToggle)
             }
             Spacer(Modifier.height(7.dp))
 
-            // ── le nom ────────────────────────────────────────────────────
+            // ── le nom ─────────────────────────────────────────────────────
             Text(
                 info.name,
                 color = if (on) FxC.ink else Color(0xFF98A1B4),
@@ -131,12 +138,16 @@ fun FxCard(
             )
             Spacer(Modifier.height(7.dp))
 
-            // ── la vignette ───────────────────────────────────────────────
+            // ── LA VIGNETTE : elle prend tout l'espace qui reste ────────────
             Box(
                 Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(11.dp))
                     .background(Color(0xFF12161F)),
             ) {
-                FxMiniGraph(info.type, accent, on)
+                when {
+                    info.space -> FxOrb(vals = vals, palette = palette, live = on, scale = .78f)
+                    info.kind == FxKindD.MIDI -> FxMiniSteps(info.accent, on)
+                    else -> FxMiniGraph(info.type, info.accent, on)
+                }
                 // Le voile qui éteint la vignette quand l'effet est contourné.
                 Box(
                     Modifier.fillMaxWidth().fillMaxHeight()
@@ -145,7 +156,7 @@ fun FxCard(
             }
             Spacer(Modifier.height(7.dp))
 
-            // ── la pastille d'état et le preset ───────────────────────────
+            // ── le pied : la pastille d'état, puis le preset ─────────────────
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier.size(8.dp).clip(CircleShape)
@@ -153,7 +164,7 @@ fun FxCard(
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    presetName ?: info.type,
+                    if (info.kind == FxKindD.MIDI) "MIDI effect" else (presetName ?: info.type),
                     color = FxC.dim, fontSize = 9.sp, fontWeight = FontWeight.Bold, maxLines = 1,
                 )
             }

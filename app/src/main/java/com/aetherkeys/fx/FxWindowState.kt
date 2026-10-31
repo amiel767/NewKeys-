@@ -1,7 +1,5 @@
 package com.aetherkeys.fx
 
-import androidx.compose.ui.graphics.Color
-
 /**
  * Le contrat de la fenêtre FX.
  *
@@ -18,34 +16,36 @@ import androidx.compose.ui.graphics.Color
 
 /** Un emplacement occupé. */
 data class FxSlotState(
-    val info: FxInfo,
+    val info: FxInfoD,
     /** Engagé ou contourné. */
     val on: Boolean,
-    /** Le preset affiché au pied de la carte, `null` s'il n'y en a pas. */
+    /** Le preset affiché au pied de la carte. */
     val presetName: String?,
-    /** La couleur de l'effet, résolue par l'hôte. */
-    val accent: Color,
+    /** Les valeurs courantes des réglages, dans l'ordre de [FxInfoD.params]. */
+    val values: List<Float> = emptyList(),
+    /** La palette de l'orbe, quand l'effet en a une. */
+    val palette: FxPalette? = null,
 )
 
 /**
  * Tout ce que la fenêtre a besoin de savoir.
  *
- * [slots] fait TOUJOURS la longueur de [FxGeo.SLOTS] : une entrée `null` est un
- * emplacement libre. Une liste plus courte que quatre afficherait moins de
- * cases, ce qui casserait la grille.
+ * [slots] fait TOUJOURS la longueur de [FxDesign.SLOTS] : une entrée `null` est
+ * un emplacement libre. Une liste plus courte afficherait moins de cases, ce qui
+ * casserait la grille.
  */
 data class FxWindowState(
     val slots: List<FxSlotState?>,
     /** Les effets qu'on peut ajouter. `null` quand le catalogue est fermé. */
-    val catalog: List<FxInfo>? = null,
+    val catalog: List<FxInfoD>? = null,
     /** L'effet dont la page est ouverte, `null` si on est sur le rack. */
-    val openEffect: FxInfo? = null,
-    /** Les valeurs courantes des paramètres de [openEffect]. */
-    val values: List<Float> = emptyList(),
+    val openEffect: FxInfoD? = null,
     /** Vrai dès qu'un réglage a bougé : c'est ce qui allume le bouton Save. */
     val custom: Boolean = false,
-    /** La couleur d'un effet, par son identifiant. */
-    val accentOf: (Int) -> Color = { FxC.acc },
+    /** Le preset actif de l'effet ouvert. */
+    val presetName: String? = null,
+    /** Les presets utilisateur, par effet. */
+    val userPresets: Map<Int, List<String>> = emptyMap(),
 ) {
     /** Le catalogue est-il ouvert ? */
     val catalogOpen: Boolean get() = catalog != null
@@ -62,8 +62,8 @@ interface FxWindowActions {
     /** Ouvrir la page d'un effet déjà installé, par son identifiant. */
     fun open(effectId: Int)
 
-    /** Ouvrir le catalogue pour ajouter un effet. */
-    fun openCatalog()
+    /** Ouvrir le catalogue pour ajouter un effet audio ou MIDI. */
+    fun openCatalog(kind: FxKindD)
 
     /** Installer un effet du catalogue dans le premier emplacement libre. */
     fun add(effectId: Int)
@@ -74,8 +74,11 @@ interface FxWindowActions {
     /** Engager ou contourner un effet. */
     fun toggle(slot: Int)
 
-    /** Régler un paramètre de l'effet ouvert. */
+    /** Régler un paramètre de l'effet ouvert, par son index. */
     fun setValue(index: Int, value: Float)
+
+    /** Choisir un preset de l'effet ouvert. */
+    fun pickPreset(name: String)
 
     /** Ouvrir la feuille de nommage d'un preset utilisateur. */
     fun beginSave()
