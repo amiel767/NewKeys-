@@ -63,8 +63,52 @@ static std::vector<uint8_t> read_file(const char* path) {
                               std::istreambuf_iterator<char>());
 }
 
+// Iterative radix-2 FFT, so the centroid costs n log n instead of n^2.
+static void fft(std::vector<std::complex<double>>& a) {
+  const size_t n = a.size();
+  for (size_t i = 1, j = 0; i < n; ++i) {
+    size_t bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) std::swap(a[i], a[j]);
+  }
+  for (size_t len = 2; len <= n; len <<= 1) {
+    const double ang = -2 * M_PI / len;
+    const std::complex<double> wl(std::cos(ang), std::sin(ang));
+    for (size_t i = 0; i < n; i += len) {
+      std::complex<double> w(1, 0);
+      for (size_t k = 0; k < len / 2; ++k) {
+        const std::complex<double> u = a[i + k], v = a[i + k + len / 2] * w;
+        a[i + k] = u + v;
+        a[i + k + len / 2] = u - v;
+        w *= wl;
+      }
+    }
+  }
+}
+
 struct Stats { double peak = 0, rms = 0, centroid = 0, hf = 0, lk = 0;
-               double band[5] = {0, 0, 0, 0, 0}; };
+               double band[5] = {0, 0, 0, 0, 0}; double noise = 0; };
+
+// The bank carries nothing above ~6 kHz, so any output energy up there is codec
+// noise.  Measured against the 0-3 kHz band, it is the one honest quality figure:
+// lower is better, and it does not depend on how loud the preset is.
+static double noise_floor(const std::vector<float>& mono) {
+  size_t n = 1;
+  while (n * 2 <= mono.size() && n < (1u << 16)) n <<= 1;
+  std::vector<std::complex<double>> buf(n);
+  for (size_t i = 0; i < n; ++i)
+    buf[i] = mono[i] * (0.5 - 0.5 * std::cos(2 * M_PI * i / (n - 1)));
+  fft(buf);
+  double sig = 0, noise = 0;
+  for (size_t k = 1; k < n / 2; ++k) {
+    const double f = k * static_cast<double>(SR) / n;
+    const double p = std::norm(buf[k]);
+    if (f < 3000) sig += p;
+    else if (f >= 6000 && f < 11000) noise += p;
+  }
+  return 10 * std::log10((noise + 1e-30) / (sig + 1e-30));
+}
 
 // K-weighted loudness (ITU-R BS.1770 pre-filter).  Plain RMS is dominated by the
 // bass of a piano and rates two patches that sound equally loud 3 dB apart, so
@@ -95,30 +139,6 @@ static double k_weight(const std::vector<float>& x) {
     acc += y2 * y2;
   }
   return 10 * std::log10(acc / std::max<size_t>(x.size(), 1) + 1e-30);
-}
-
-// Iterative radix-2 FFT, so the centroid costs n log n instead of n^2.
-static void fft(std::vector<std::complex<double>>& a) {
-  const size_t n = a.size();
-  for (size_t i = 1, j = 0; i < n; ++i) {
-    size_t bit = n >> 1;
-    for (; j & bit; bit >>= 1) j ^= bit;
-    j ^= bit;
-    if (i < j) std::swap(a[i], a[j]);
-  }
-  for (size_t len = 2; len <= n; len <<= 1) {
-    const double ang = -2 * M_PI / len;
-    const std::complex<double> wl(std::cos(ang), std::sin(ang));
-    for (size_t i = 0; i < n; i += len) {
-      std::complex<double> w(1, 0);
-      for (size_t k = 0; k < len / 2; ++k) {
-        const std::complex<double> u = a[i + k], v = a[i + k + len / 2] * w;
-        a[i + k] = u + v;
-        a[i + k + len / 2] = u - v;
-        w *= wl;
-      }
-    }
-  }
 }
 
 static Stats analyse(const std::vector<float>& mono) {
@@ -152,6 +172,7 @@ static Stats analyse(const std::vector<float>& mono) {
   s.centroid = den > 0 ? num / den : 0;
   s.hf = den > 0 ? 10 * std::log10((hi + 1e-30) / den) : -99;
   s.lk = k_weight(mono);
+  s.noise = noise_floor(mono);
   return s;
 }
 
@@ -234,8 +255,8 @@ int main(int argc, char** argv) {
   double targetLk = 0.0;
 
   if (!retune)
-    std::printf("%-14s %6s %6s %6s %8s %7s %8s %8s\n",
-                "preset", "peak", "rms", "crest", "centHz", "hf%", "taildB", "rel40s");
+    std::printf("%-14s %6s %6s %8s %8s\n",
+                "preset", "peak", "rms", "centHz", "noise");
 
   // Velocity timbre check: hold LEVEL and SPACE fixed so the comparison is purely
   // about which sample the reader chose.
@@ -324,8 +345,8 @@ int main(int argc, char** argv) {
     const double crest = 20 * std::log10(s.peak / (s.rms + 1e-12) + 1e-12);
 
     if (!retune) {
-      std::printf("%-14s %6.3f %6.3f %6.1f %8.0f %7.1f %8.1f %8.2f%s\n",
-                  p.name.c_str(), s.peak, s.rms, crest, s.centroid, s.hf, tail, rel40,
+      std::printf("%-14s %6.3f %6.3f %8.0f %8.1f%s\n",
+                  p.name.c_str(), s.peak, s.rms, s.centroid, s.noise,
                   s.peak > 0.999 ? "  CLIP" : "");
       continue;
     }

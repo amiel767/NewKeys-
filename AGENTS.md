@@ -2686,3 +2686,52 @@ Si un pack plus leger est souhaite un jour : reduire a **4-5 couches reparties s
 la plage** coute 3-4 dB (mesure `layers.py`), garder les 3 du haut coute 31 dB.
 **Couper doit se faire dans les couches qui se ressemblent, jamais dans celles qui
 portent la dynamique.**
+
+### La bonne passe : 22,05 kHz, 8 couches, 11,65 Mo (2026-10-31)
+
+**Deux notes precedentes de ce fichier etaient fausses.** Corrigees par la mesure.
+
+**Faux n°1 — « la banque n'a que 0,0 % d'energie au-dessus de 3 kHz ».** C'etait un
+**arrondi trompeur** a 2 decimales. Mesure fine (`bandwidth.py`, en dB) :
+
+| note | >6 kHz | >11 kHz |
+|---|---|---|
+| C4v16 | -48,1 dB | -82,9 dB |
+| A5v16 | -45,4 dB | -71,3 dB |
+| C7v16 | -42,8 dB | -63,6 dB |
+
+Il y a bien du contenu, mais **45 a 50 dB sous le signal**.
+
+**Faux n°2 — « 44,1 kHz donne +10 dB de SNR ».** Ce chiffre venait du SNR
+**pleine bande**, gonfle par la region 11-22 kHz qui est vide. Mesure par bande, a
+codec egal (`codec.py`) :
+
+| bande | 22,05 kHz | 44,1 kHz |
+|---|---|---|
+| 0-1 kHz | **45,1** | 41,7 |
+| 1-2 kHz | 31,3 | 31,4 |
+| 2-3 kHz | **21,1** | 11,1 |
+| 3-6 kHz | **0,9** | -2,9 |
+
+**Le 22,05 kHz est meilleur ou egal partout ou le piano vit**, et deux fois plus
+petit. Le quantifieur 4 bits n'a que 16 pas a repartir : plus le taux est haut,
+plus chaque pas doit couvrir de bande, et plus le bruit monte **dans l'audible**.
+
+**Le compromis, assume** : a 44,1 kHz le plancher de bruit en 6-11 kHz est **6 dB
+plus bas** (mesure sur le rendu moteur, `mastering.cpp` colonne `noise`). Cette
+bande est **45 dB sous le signal** — c'est la ou vivent les 232 regions x ~12,5 %
+du poids. On echange 6 dB inaudibles contre **+10 dB dans la bande de presence** et
+11,7 Mo.
+
+**8 couches confirmees.** Mesure spectrale des deux packs construits
+(`p8` 8 couches / `p16` 16 couches, meme taux) : centroide, hf, crete, sonie
+**identiques**. Garder 16 couches double la taille pour rien.
+
+**Resultat** : 232 regions (29 fondamentales x 8 couches), **22,05 kHz**,
+**11,65 Mo** — contre 23,3 Mo. Le pack precedent (avant cette session) faisait
+8,2 Mo mais avec **46 regions seulement** ; celui-ci double la densite (+50 % de
+fondamentales, +167 % de couches) pour +42 % de poids.
+
+Le changement moteur (`layerCount_` deduit du pack) reste necessaire : sans lui,
+le 5 en dur ne couvrirait que 5 des 8 couches, et 3 couches sur 8 ne seraient
+jamais jouees.

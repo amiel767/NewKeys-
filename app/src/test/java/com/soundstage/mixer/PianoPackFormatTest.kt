@@ -34,7 +34,7 @@ class PianoPackFormatTest {
         val count = buf.getInt(12)
         val pcmLen = buf.getInt(16)
         val recLen = buf.getInt(20)
-        assertEquals("taux du pack", 44100, rate)
+        assertEquals("taux du pack", 22050, rate)
         assertEquals("régions", 232, count)
         assertEquals("taille des fiches", count * 24, recLen)
         assertTrue("en-tête + fiches + charge utile", 28 + recLen + pcmLen <= bytes.size)
@@ -57,7 +57,10 @@ class PianoPackFormatTest {
             layers += layer
         }
         // The engine scales its velocity mapping to the pack's layer count.  It used to
-        // hardcode 5, so 11 of this pack's layers would never have been played.
+        // hardcode 5, which left 3 of this pack's 8 layers unplayed.
+        // The rate is 22.05 kHz on purpose: the bank carries nothing above ~6 kHz,
+        // and at 44.1 kHz the 4-bit quantiser measured WORSE in the presence band
+        // (2-3 kHz: 11.1 dB against 21.1 dB) for twice the size.
         assertEquals("couches couvertes", (0 until 8).toSet(), layers)
         assertEquals("toutes les régions bouclées", count, looped)
         // 29 roots, 3 semitones apart: no note is more than 1.5 semitones from its sample.
