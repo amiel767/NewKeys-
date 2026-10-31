@@ -63,7 +63,8 @@ static std::vector<uint8_t> read_file(const char* path) {
                               std::istreambuf_iterator<char>());
 }
 
-struct Stats { double peak = 0, rms = 0, centroid = 0, hf = 0, lk = 0; };
+struct Stats { double peak = 0, rms = 0, centroid = 0, hf = 0, lk = 0;
+               double band[5] = {0, 0, 0, 0, 0}; };
 
 // K-weighted loudness (ITU-R BS.1770 pre-filter).  Plain RMS is dominated by the
 // bass of a piano and rates two patches that sound equally loud 3 dB apart, so
@@ -135,13 +136,19 @@ static Stats analyse(const std::vector<float>& mono) {
     buf[i] = mono[i] * (0.5 - 0.5 * std::cos(2 * M_PI * i / (n - 1)));
   fft(buf);
   double num = 0, den = 0, hi = 0;
+  const double edges[6] = {0, 300, 800, 2000, 4000, 8000};
+  double bandE[5] = {0, 0, 0, 0, 0};
   for (size_t k = 1; k < n / 2; ++k) {
     const double p = std::norm(buf[k]);
     const double f = k * static_cast<double>(SR) / n;
     num += f * p;
     den += p;
     if (f >= 4000) hi += p;
+    for (int b = 0; b < 5; ++b)
+      if (f >= edges[b] && f < edges[b + 1]) bandE[b] += p;
   }
+  for (int b = 0; b < 5; ++b)
+    s.band[b] = den > 0 ? 10 * std::log10((bandE[b] + 1e-30) / den) : -99;
   s.centroid = den > 0 ? num / den : 0;
   s.hf = den > 0 ? 10 * std::log10((hi + 1e-30) / den) : -99;
   s.lk = k_weight(mono);
@@ -216,6 +223,10 @@ int main(int argc, char** argv) {
   const int stress[] = {36, 43, 48, 52, 55, 60, 64, 67, 72, 76};
   const bool retune = (argc > 3 && std::string(argv[3]) == "retune");
   const bool stressMode = (argc > 3 && std::string(argv[3]) == "stress");
+  // Does velocity change the TIMBRE, or only the level?  If only the level, the
+  // soft layers are redundant and can be dropped.  Each take is normalised to the
+  // same RMS first, so what is left is the timbre alone.
+  const bool velMode = (argc > 3 && std::string(argv[3]) == "vel");
   // Target programme RMS.  Resolved below as the QUIETEST preset at its designed
   // LEVEL: equal loudness must not be bought with a boost, because LEVEL also
   // feeds the drive stage and the mixer strip already owns absolute gain.  So the
@@ -225,6 +236,34 @@ int main(int argc, char** argv) {
   if (!retune)
     std::printf("%-14s %6s %6s %6s %8s %7s %8s %8s\n",
                 "preset", "peak", "rms", "crest", "centHz", "hf%", "taildB", "rel40s");
+
+  // Velocity timbre check: hold LEVEL and SPACE fixed so the comparison is purely
+  // about which sample the reader chose.
+  if (velMode) {
+    PianoSampleReader probe;                       // same pack, for layer lookup
+    probe.load(bin.data(), bin.size());
+    std::vector<float> flat = gPresets[1].v;      // Studio: the neutral preset
+    flat[7] = 0.8f;                                // LEVEL
+    flat[5] = 0.4f;                                // SPACE, so lvl is constant
+    std::printf("each take normalised to equal RMS, so what differs is the timbre\n\n");
+    std::printf("%-4s %5s | %6s %6s %6s %6s %6s | %7s\n",
+                "vel", "layer", "0-300", "300-8", "0.8-2k", "2-4k", "4-8k", "centHz");
+    for (int vel : {8, 24, 40, 56, 72, 88, 104, 120}) {
+      std::vector<float> mono;
+      double t = 0, rr = 0;
+      render(eng, flat, 60, vel, 0.5, mono, t, rr);
+      Stats s = analyse(mono);
+      // Normalise to a common RMS so the level does not mask the timbre.
+      for (float& x : mono) x = static_cast<float>(x / (s.rms + 1e-12) * 0.05);
+      Stats n = analyse(mono);
+      const double crest = 20 * std::log10(n.peak / (n.rms + 1e-12) + 1e-12);
+      const auto* g = probe.pick(60, vel);
+      std::printf("%-4d %5d | %6.1f %6.1f %6.1f %6.1f %6.1f | %7.0f\n", vel,
+                  g ? g->layer : -1, n.band[0], n.band[1], n.band[2], n.band[3],
+                  n.band[4], n.centroid);
+    }
+    return 0;
+  }
 
   // LEVEL is applied as a plain output multiply, after every other stage, so the
   // value that hits the target loudness is exact in one step.  A bisection here
