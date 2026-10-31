@@ -17,6 +17,7 @@
 //     d'un orgue qui joue la meme note.
 
 #include <cmath>
+#include "fx_space.h"
 #include <cstring>
 #include <vector>
 #include <algorithm>
@@ -219,7 +220,8 @@ class PianoVoice {
  public:
   void start(const int16_t* pcm, uint32_t frames, int root, float tuneCents,
              int note, float velocity, float sr, float packRate,
-             uint32_t loopStart, uint32_t loopEnd, float mic, float space, float tine) {
+             uint32_t loopStart, uint32_t loopEnd, float mic, float space, float tine,
+             float hammer) {
     pcm_ = pcm; frames_ = frames; pos_ = 0.0;
     loopStart_ = loopStart; loopEnd_ = loopEnd;
     if (loopEnd_ <= loopStart_ || loopEnd_ > frames) loopStart_ = loopEnd_ = 0;
@@ -251,6 +253,13 @@ class PianoVoice {
     res_.tune(f, inharmonicityOf(note, tine));
     res_.reset();
     env_ = 0.f; rel_ = 0.f; age_ = 0.f;
+    // Marteau : impulsion de bruit tres courte (2 ms) au moment de la frappe.  C'est
+    // elle qui donne le « tac » percussif ; l'echantillon ne la porte pas assez,
+    // surtout dans les graves ou l'attaque est noyee dans le corps de la corde.
+    hammerAmt_ = 0.25f * hammer * (0.35f + 0.65f * velocity);
+    hammerEnv_ = 1.f;
+    hammerDecay_ = std::exp(-1.f / (0.0018f * sr));
+    hammerNoise_.s = 0x2545F491u ^ (static_cast<uint32_t>(note) * 2654435761u);
   }
 
   /** B mesuree : 2,29e-4 * 2^(0,1045*(midi-60)/12).  tine multiplie B : une tine
@@ -331,6 +340,14 @@ class PianoVoice {
 
       outL[i] += mL * amp * vel_;
       outR[i] += mR * amp * vel_;
+      if (hammerEnv_ > 1e-4f) {
+        // Bruit de marteau : large bande, donc il apporte aussi le claquement du
+        // mecanisme que la banque a perdu a l'encodage.
+        const float hn = hammerNoise_.next() * hammerEnv_ * hammerAmt_;
+        outL[i] += hn;
+        outR[i] += hn * 0.92f;
+        hammerEnv_ *= hammerDecay_;
+      }
     }
   }
 
@@ -344,24 +361,171 @@ class PianoVoice {
   // Shelf aigu par canal : c'est lui qui rend TONE/HAMMER/LID audibles.
   float lpL_ = 0.f, lpR_ = 0.f, shelfA_ = 0.25f;
   bool tine_ = false;
+  float hammerAmt_ = 0.f, hammerEnv_ = 0.f, hammerDecay_ = 0.f;
+  Noise hammerNoise_;
   int note_ = -1;
   bool active_ = false, releasing_ = false;
   PianoResonators res_;
 };
 
 // ---------------------------------------------------------------------------
-// Moteur.  12 parametres :
-//   0 HAMMER  durete de marteau      6 WIDTH  largeur stereo
-//   1 TONE    brillance              7 LEVEL  niveau
-//   2 RESONANCE couplage resonateurs 8 RELEASE longueur de queue
-//   3 LID     couvercle (haut)       9 VEL    sensibilite velocite
-//   4 MIC     (non traite)          10 PEDAL  (non traite)
-//   5 SPACE   piece                 11 MODEL  choix du modele (ignore ici)
-//   5 LID     couvercle (niveau HF) 11 LEVEL  niveau
+// Etage studio : c'est lui qui enleve le cote « sec ».
+//
+// Le rendu des cordes sortait droit au fader.  Un piano enregistre passe toujours
+// par un micro (qui a une position et une distance), souvent par un ampli, et
+// toujours par un compresseur.  Ces trois etages existaient deja ailleurs dans le
+// projet (`fx_shaper.h` pour la forme, `fx_amp.h` pour l'ampli guitare) : on les
+// reprend ici, adaptes au piano et branches dans la meme classe, donc sans saut
+// d'echantillon entre les etages.
+// ---------------------------------------------------------------------------
+class PianoStudio {
+ public:
+  void prepare(double sr) {
+    sr_ = static_cast<float>(sr);
+    // Cablage du micro : le corps est un peaking grave, la proximite un shelf,
+    // l'axe une pente d'aigus, le couvercle une coupure.  mem_ applique le
+    // phenomene de proximite (shelf grave) et la perte d'aigus.
+    for (int ch = 0; ch < 2; ++ch) { mem_[ch].setLowShelf(sr, 210, 0); mem_[ch].setHighShelf(sr, 3800, 0); }
+    air_[0].setHighShelf(sr, 9000, 0); air_[1].setHighShelf(sr, 9000, 0);
+    pre_.setHighpass(sr, 28, 0.7);
+    rev_.prepare(sr, 1024);
+    // Espace : un piano de concert est toujours pris dans une piece.  Sans ce
+    // mixage la note s'arrete net, c'est le « sec » signale.
+    static const float kRev[7] = {0.62f, 0.52f, 0.16f, 0.42f, 0.75f, 0.30f, 0.55f};
+    for (int i = 0; i < 7; ++i) rev_.setNorm(i, kRev[i]);
+    // Compresseur : detecteur a deux constantes (attaque / relachement).
+    reset();
+  }
+
+  void reset() {
+    for (auto& b : mem_) b.reset();
+    for (auto& b : air_) b.reset();
+    for (int i = 0; i < 2; ++i) { drive_[i].reset(); tone_[i].reset(); pres_[i].reset(); }
+    pre_.reset(); rev_.reset();
+    envF_ = 0.f; envS_ = 0.f; cf_ = -1; chKey_ = -1;
+  }
+
+  /**
+   * Position et distance du micro, drive d'ampli, punch, piece.
+   *
+   * Tout est recalcule seulement quand un reglage bouge : les Biquad ont un
+   * cout de calcul par echantillon, pas par bloc.
+   */
+  void set(float pos, float dist, float lid, float drive, float bass, float mid, float treb,
+           float pres, float punch, float space, float width) {
+    if (std::fabs(pos - cPos_) > 0.002f || std::fabs(dist - cDist_) > 0.002f ||
+        std::fabs(lid - cLid_) > 0.002f) {
+      cPos_ = pos; cDist_ = dist; cLid_ = lid;
+      // Le micro tourne autour du piano.  Sous le couvercle (0) : grave renforce et
+      // aigus amortis.  Face aux cordes (1) : brillant, peu de corps.
+      const float prox = (1.f - pos) * 9.f;                    // phenomene de proximite
+      const float air  = (pos - 0.5f) * 10.f;                  // axe du micro
+      const float damp = -dist * 7.f - (1.f - lid) * 5.f;      // distance + couvercle ferme
+      for (int ch = 0; ch < 2; ++ch) {
+        mem_[ch].setLowShelf(sr_, 210, prox);
+        mem_[ch].setHighShelf(sr_, 3800, damp);
+      }
+      air_[0].setHighShelf(sr_, 9000, air);
+      air_[1].setHighShelf(sr_, 9000, air);
+      const int key = static_cast<int>(std::lround(drive * 4.f));
+      if (key != chKey_) {
+        chKey_ = key;
+        // Ampli a lampes : chaque cran durcit la pente et rabote le grave, ce qui
+        // « punch » le rendu au lieu de simplement l'ecraser.
+        const float g = 1.f + key * 1.1f;
+        for (int ch2 = 0; ch2 < 2; ++ch2) drive_[ch2].setLowpass(sr_, 12000.f - key * 2600.f, 0.7 + key * 0.12f);
+        driveG_ = g;
+        // Compensation : sans elle, saturer faisait simplement baisser le niveau de
+        // 9 dB au lieu de durcir le timbre.  g^-0,7 rend le gain unitaire a petit
+        // signal tout en ecrasant les cretes.
+        driveC_ = std::pow(g, -0.7f);
+      }
+      for (int ch2 = 0; ch2 < 2; ++ch2) {
+        tone_[ch2].setLowShelf(sr_, 180, (bass - 0.5f) * 20.f);
+        tone_[ch2].setPeaking(sr_, 750, 0.8, (mid - 0.5f) * 16.f);
+        tone_[ch2].setHighShelf(sr_, 3200, (treb - 0.5f) * 20.f);
+      }
+      for (int ch2 = 0; ch2 < 2; ++ch2) pres_[ch2].setHighShelf(sr_, 5500, (pres - 0.5f) * 12.f);
+      punchAmt_ = punch;
+      spaceAmt_ = space;
+      widthAmt_ = width;
+    }
+  }
+
+  /** Un bloc stereo : mem -> ampli -> tone -> compresseur -> largeur. */
+  void process(float* io, int n) {
+    if (n <= 0) return;
+    // Punch = formateur de transitoire, pas compresseur.  L'attaque d'un piano
+    // dure moins de 5 ms : un compresseur a 8 ms de constante la laisse passer et
+    // n'agit que sur la tenue, donc il ne « punch » rien.  On separe donc les deux
+    // enveloppes : une rapide (l'attaque) et une lente (le corps), et le reglage
+    // dose l'ecart.  Positif = attaque mise en avant (punch), negatif = attaque
+    // arrondie (adoucir).  C'est le meme reglage dans les deux sens.
+    const float aFast = 1.f - std::exp(-1.f / (0.0008f * sr_));
+    const float aSlow = 1.f - std::exp(-1.f / (0.060f * sr_));
+    for (int i = 0; i < n; ++i) {
+      float l = io[2 * i], r = io[2 * i + 1];
+      l = pre_.process(0, l); r = pre_.process(1, r);
+      l = mem_[0].process(0, l); r = mem_[1].process(1, r);
+      l = air_[0].process(0, l); r = air_[1].process(1, r);
+      if (driveG_ > 1.001f) {                       // ampli : saturation douce + rabotage
+        l = drive_[0].process(0, std::tanh(driveG_ * l) * driveC_);
+        r = drive_[1].process(1, std::tanh(driveG_ * r) * driveC_);
+      }
+      l = tone_[0].process(0, l); r = tone_[1].process(1, r);
+      l = pres_[0].process(0, l); r = pres_[1].process(1, r);
+      // Deux enveloppes sur le canal le plus fort : un seul detecteur pour les deux
+      // canaux, sinon l'image stereo pompe.
+      const float pk = std::max(std::fabs(l), std::fabs(r));
+      envF_ += aFast * (pk - envF_);
+      envS_ += aSlow * (pk - envS_);
+      // Rapport d'attaque : > 1 pendant le transitoire, ~1 pendant la tenue.
+      const float ratio = envF_ / std::max(envS_, 1e-4f);
+      // tanh borne la correction : sans lui un transitoire franc donnait +30 dB.
+      // Centre neutre : 0,5 ne change RIEN, 0 adoucit l'attaque, 1 la met en avant.
+      // Un reglage qui n'a pas de position neutre oblige a deviner sa valeur de repos.
+      const float shape = std::tanh((ratio - 1.f) * (punchAmt_ - 0.5f) * 2.6f);
+      l *= 1.f + shape; r *= 1.f + shape;
+      if (widthAmt_ != 1.f) { const float m = 0.5f * (l + r), s = 0.5f * (l - r) * widthAmt_; l = m + s; r = m - s; }
+      // Limiteur doux : la somme des voix atteignait 1,21 en crete, donc l'etage
+      // studio (qui peut ajouter du punch) sortait au-dela de 1.  tanh borne sans
+      // creer d'harmoniques audibles sous 0,8.
+      io[2 * i] = std::tanh(l); io[2 * i + 1] = std::tanh(r);
+    }
+    // Reverb en dernier : elle doit entendre le compresseur, sinon elle pompe.
+    if (spaceAmt_ > 0.01f) {
+      rev_.setNorm(5, 0.10f + 0.55f * spaceAmt_);
+      rev_.process(io, n);
+    }
+  }
+
+  float space() const { return spaceAmt_; }
+  void setSpace(float v) { spaceAmt_ = v; }
+
+ private:
+  float sr_ = 44100.f;
+  Biquad mem_[2], air_[2], pre_, tone_[2], drive_[2], pres_[2];
+  SpaceReverb rev_;
+  float envF_ = 0.f, envS_ = 0.f, driveG_ = 1.f, driveC_ = 1.f;
+  float punchAmt_ = 0.5f, spaceAmt_ = 0.3f, widthAmt_ = 1.f;
+  float cPos_ = -1.f, cDist_ = -1.f, cLid_ = -1.f;
+  int cf_ = -1, chKey_ = -1;
+};
+
+// ---------------------------------------------------------------------------
+// Moteur.  16 parametres :
+//   0 HAMMER  durete de marteau      8 RELEASE longueur de queue
+//   1 TONE    brillance              9 VEL    sensibilite velocite
+//   2 RESONANCE couplage resonateurs 10 PEDAL  bruit de pedale
+//   3 LID     couvercle              11 DIST   distance du micro
+//   4 MIC POS position du micro      12 DRIVE  ampli
+//   5 SPACE   piece                  13 PUNCH  formateur de transitoire
+//   6 WIDTH   largeur stereo         14 AMP EQ basse/mid/aigu (macro)
+//   7 LEVEL   niveau                 15 MODEL  choix du modele (Kotlin l'ajoute en dernier)
 // ---------------------------------------------------------------------------
 class PianoEngine : public SourceFx {
  public:
-  static constexpr int kParams = 12;
+  static constexpr int kParams = 16;
   static constexpr int kVoices = 12;
 
   int paramCount() const override { return kParams; }
@@ -370,11 +534,13 @@ class PianoEngine : public SourceFx {
     sr_ = static_cast<float>(sr);
     tmpL_.assign(static_cast<size_t>(std::max(maxBlock, 64)), 0.f);
     tmpR_.assign(static_cast<size_t>(std::max(maxBlock, 64)), 0.f);
+    studio_.prepare(sr);
     reset();
   }
 
   void reset() override {
     for (auto& v : voices_) v.kill();
+    studio_.reset();
     setMeter(0, 0.f);
   }
 
@@ -397,13 +563,13 @@ class PianoEngine : public SourceFx {
     // et le choix de couche n'a plus de sens.
     const float v = std::pow(static_cast<float>(vel) / 127.f, 1.f - p(9) * 0.7f);
     // MODEL est enfin lu : index 8 = Electric, dont la corde devient une tine.
-    const float tine = (std::lround(p(11) * 8.f) >= 8.f) ? 1.f : 0.f;
+    const float tine = (std::lround(p(15) * 8.f) >= 8.f) ? 1.f : 0.f;
     voices_[slot].start(pcm->data(), static_cast<uint32_t>(pcm->size() / 2),
                         g->root, g->tuneCents, note, v, sr_,
                         static_cast<float>(reader_.rate()),
                         loopsOn_ ? g->loopStart : 0u,
                         loopsOn_ ? g->loopEnd : 0u,
-                        p(4), p(5), tine);
+                        p(4), p(5), tine, p(0));
   }
 
   void noteOff(int note) override {
@@ -425,9 +591,7 @@ class PianoEngine : public SourceFx {
 
   void process(float* io, int n) override {
     NoDenormals nd;
-    bool any = false;
-    for (auto& v : voices_) if (v.active()) { any = true; break; }
-    if (!any || !reader_.loaded() || n <= 0) {
+    if (!reader_.loaded() || n <= 0) {
       std::fill(io, io + 2 * n, 0.f);
       setMeter(0, 0.f);
       return;
@@ -438,6 +602,8 @@ class PianoEngine : public SourceFx {
     }
     std::fill(tmpL_.begin(), tmpL_.begin() + n, 0.f);
     std::fill(tmpR_.begin(), tmpR_.begin() + n, 0.f);
+    bool any = false;
+    for (auto& v : voices_) if (v.active()) { any = true; break; }
 
     // Ordre des parametres (contrat de l'interface) : 0 HAMMER, 1 TONE,
     // 2 RESONANCE, 3 LID, 4 MIC, 5 SPACE, 6 WIDTH, 7 LEVEL, 8 RELEASE,
@@ -448,7 +614,7 @@ class PianoEngine : public SourceFx {
     // et un couvercle plus ouvert eclairent le timbre, ce sont bien deux reglages.
     const float body = p(2), width = p(6);
     const float mic = p(4);
-    const float tine = (std::lround(p(11) * 8.f) >= 8.f) ? 1.f : 0.f;
+    const float tine = (std::lround(p(15) * 8.f) >= 8.f) ? 1.f : 0.f;
     // HAMMER, TONE, LID et MIC sont quatre facons d'eclairer le timbre ; MIC
     // etait annonce mais jamais lu, et les trois autres se confondaient.
     const float bright = std::min(1.f, p(1) * (0.55f + 0.9f * p(0)) + p(3) * 0.25f + (p(4) - 0.5f) * 0.6f);
@@ -459,17 +625,26 @@ class PianoEngine : public SourceFx {
       if (!v.active()) continue;
       v.render(tmpL_.data(), tmpR_.data(), n, sr_, body, bright, width, rel, hold, tine > 0.5f);
     }
+    // Etage studio : micro -> ampli -> tone -> compresseur -> espace.  Il tourne
+    // meme sans voix active, sinon la queue de reverb serait coupee net.
+    studio_.set(p(4), p(11), p(3), p(12), p(14), p(14), p(14), p(14), p(13), p(5), p(6));
+    if (any) {
+      for (int i = 0; i < n; ++i) { io[2 * i] = tmpL_[i]; io[2 * i + 1] = tmpR_[i]; }
+    } else {
+      std::fill(io, io + 2 * n, 0.f);
+    }
+    studio_.process(io, n);
     const float lvl = p(7) * (0.6f + 0.4f * p(5));
     // Passe-haut a 5 Hz (R = 1 - 2*pi*fc/sr), sur le signal d'instrument et non sur la
     // sortie : le tampon de sortie peut deja porter le mix d'autres sources.
     const float R = 1.f - 6.2831853f * 5.f / sr_;
     for (int i = 0; i < n; ++i) {
-      const float yl = tmpL_[i] - dcxL_ + R * dcyL_;
-      dcxL_ = tmpL_[i]; dcyL_ = yl;
-      const float yr = tmpR_[i] - dcxR_ + R * dcyR_;
-      dcxR_ = tmpR_[i]; dcyR_ = yr;
-      io[i * 2] += yl * lvl;
-      io[i * 2 + 1] += yr * lvl;
+      const float yl = io[i * 2] - dcxL_ + R * dcyL_;
+      dcxL_ = io[i * 2]; dcyL_ = yl;
+      const float yr = io[i * 2 + 1] - dcxR_ + R * dcyR_;
+      dcxR_ = io[i * 2 + 1]; dcyR_ = yr;
+      io[i * 2] = yl * lvl;
+      io[i * 2 + 1] = yr * lvl;
     }
     setMeter(0, std::min(1.f, std::abs(tmpL_[0]) + std::abs(tmpR_[0])));
   }
@@ -479,6 +654,7 @@ class PianoEngine : public SourceFx {
   PianoSampleReader reader_;
   PianoVoice voices_[kVoices];
   std::vector<float> tmpL_, tmpR_;
+  PianoStudio studio_;
   // Bloqueur de continu, un par canal. La source est propre (DC -0,00004) mais la somme
   // des voix et la resonance en font apparaitre : mesure -0,08 sur une prise, soit 5,8 %
   // de la reserve de crete perdus en polarisation, et 80 % de l'energie sous 20 Hz.
