@@ -2855,3 +2855,34 @@ Le JDK a encore disparu **pendant** cette session (deux fois). `restore_env.sh`
 (nouveau, racine du depot) reinstalle `openjdk-21-jdk-headless`, regenere
 `debug.keystore` et exporte les variables. `Pillow` disparait aussi : `pip install
 Pillow` avant toute mesure de pixels.
+
+### Capture dans l'app reelle (`FxInAppCaptureTest`, 2026-10-31)
+
+`FxHostCaptureTest` monte l'hote ; il ne prouve pas encore que le **mixer** l'atteint.
+`FxInAppCaptureTest` monte le vrai `MixerScreen` et ouvre la popup par
+`viewModel.openEffectsForTrack(1)` — l'appel exact du bouton FX d'une piste. C'est
+le seul montage qui couvre la chaine complete : bouton -> ViewModel -> popup -> hote.
+
+Mesure sur `fx_in_app.png` (2340x1080, 2,75 px/dp) :
+- bord haut de fenetre a **8 dp** sur toute la largeur (attendu 8, centrage de
+  `rememberFitScale` sur 393 dp de haut) ;
+- largeur **808 dp** contre 817 attendus — l'ecart est aux **coins arrondis**,
+  pas un defaut de taille ;
+- le **scrim** fonctionne : les coins du mixer passent de 47,9 a 15,0 de luminance ;
+- la zone modifiee couvre tout l'ecran (le scrim), donc un diff avec `full_mixer.png`
+  ne delimite PAS la fenetre : mesurer les bords par transition de luminance.
+
+**Deuxieme capture** : un tap reel (`performTouchInput { click(...) }`) sur le premier
+emplacement vide ouvre le catalogue (`fx_in_app_catalog.png`). C'est ce qui separe
+« la fenetre est dessinee » de « la fenetre repond » — la premiere capture ne
+prouverait pas la seconde.
+
+**Piege d'import** (deux passes perdues) : `performTouchInput` **et** `click`
+s'importent **separement** (`androidx.compose.ui.test.performTouchInput` /
+`...test.click`) ; `Offset` vient de `androidx.compose.ui.geometry`. Un import
+manquant donne « Unresolved reference 'click' », pas une erreur de compilation
+explicite sur l'import.
+
+**Piege de mesure** : ne pas conclure « la grille du catalogue est vide » sur un
+rendu ASCII trop grossier. Le catalogue de design ne contient que **deux** effets
+audio et **un** MIDI ; les cartes sont en haut a gauche, pas reparties sur la page.
