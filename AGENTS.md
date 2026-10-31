@@ -2374,3 +2374,77 @@ Correctifs (mesures a l'appui) :
 n'a qu'une source, SplendidGrandPiano, 5 couches de velocite). « Dark » ou « Mellow »
 sont le meme instrument filtre. Pour de vrais instruments differents il faut d'autres
 banques (GregSullivan pour l'Electric, cf. `tools/pianopack/README.md`).
+
+## Session 2026-10-29 (suite) — Piano : etage studio, marteau, vraie banque electrique
+
+Question posee : « Forge a servi a quelque chose ? » et « c'est tres sec, ajoute micro,
+ampli, marteau ».  Les deux reponses, mesurees.
+
+### Forge : oui, mais pas comme moteur
+
+Ce qu'il a apporte : la CONFIRMATION que la hauteur du moteur est juste (0,20 cent),
+donc l'arret de la chasse a un bug de hauteur inexistant ; deux garde-fous mesures
+(boucle `reps * period` a arrondir, headroom avant saturation) ; et la validation de
+l'architecture banque -> region -> voix -> resonance.
+
+Ce qu'il n'apporte pas : il lui faut des WAV 16 bits en RAM.  Le porter tel quel =
+~30 Mo de RAM et un pipeline d'import a ecrire, pour un moteur dont les idees sont
+deja reprises.  **Ne pas relancer ce portage sans une raison nouvelle.**
+
+### Le « sec » : le piano n'avait AUCUN etage studio
+
+`fx_piano.h` sortait droit au fader.  `fx_amp.h` (ampli guitare) et `fx_shaper.h`
+(le « shaper piano ») existaient deja mais n'etaient PAS branches sur le piano : le
+shaper piano a 9 parametres dont le traitement reel est EQ + saturation + reverb, et
+son MIC est une CHAINE de caracteres ("Close"/"Room"/"Hall"), pas une position.
+
+Ajoute dans `fx_piano.h` : `class PianoStudio` (dans le meme fichier, donc pas de saut
+d'echantillon entre etages).  16 parametres desormais :
+
+| # | Param | Effet mesure |
+|---|---|---|
+| 4 | MIC POS | tourne le micro : aigu/grave -10,9 -> -5,9 dB |
+| 11 | DIST | proximite (grave) / distance (amorti) |
+| 12 | DRIVE | ampli a lampes ; compensation `g^-0,7` OBLIGATOIRE |
+| 13 | PUNCH | formateur de transitoire, **neutre a 0,5** |
+| 14 | AMP EQ | macro basse/mid/aigu |
+| 15 | MODEL | **dernier** : Kotlin l'ajoute (`d + idx/8f`) |
+
+Mesure du « sec » (energie apres relachement) : **-23,5 dB -> -7,6 dB** (espace 0,35)
+-> -4,4 dB (0,8).  C'est la correction.
+
+### Deux pieges mesures
+
+1. **Un compresseur NE PUNCH PAS un piano.**  L'attaque dure moins de 5 ms : un
+   compresseur a 8 ms de constante la laisse passer et n'agit que sur la tenue.  Le
+   premier essai MONTAT le facteur de crete (17,5 -> 21,5 dB).  Il faut un
+   **formateur de transitoire** a deux enveloppes (0,8 ms / 60 ms) — c'est ce qui
+   donne attaque +4,8 dB a 1,0 et -6,0 dB a 0,0.
+2. **La compensation de gain d'un saturateur.**  Sans elle, « saturer » faisait
+   simplement BAISSER de 9 dB au lieu de durcir.  `g^-0,7` rend le gain unitaire a
+   petit signal tout en ecrasant les cretes : 1,21 -> 0,41.
+
+Ajouts aussi : **marteau** (impulsion de bruit de 2 ms, contenu aigu de l'attaque
+2,0 % -> 6,6 %) et **limiteur doux final** (la somme des voix atteignait 1,21).
+
+### MIC ne fait plus qu'une chose
+
+MIC alimentait l'etage studio (position) ET l'axe aigu des cordes.  Deplacer le micro
+changeait donc deux choses.  La brillance ne vient plus que de TONE/HAMMER/LID.
+
+### Vraie banque electrique (le modele 8 n'est plus un filtre)
+
+Un moteur ne transforme pas un Steinway en tine : l'inharmonicite d'une corde
+(B ~ 1e-4) et celle d'une barre frappee (B ~ 1e-2) n'ont pas la meme loi.
+
+- Banque : **GregSullivan.E-Pianos / Wurlitzer EP200**, CC-BY 3.0 (attribution
+  obligatoire : `tools/pianopack/ATTRIBUTION.md`).
+- `tools/pianopack/build_electric.py` reutilise les briques de `build.py` ; seul le
+  plan de regions change (source SFZ, pas une arborescence par couche).
+- 48 regions, 4 couches (pp/mp/f/ff), **1,58 Mo**.  Mesure : peak 0,351, rms 0,096,
+  0 ecretage, centroide **839 Hz** contre 502 pour l'acoustique.
+- Cablage : `fileFor(instrument, saxType, model)` choisit la banque ; `bankType`
+  identifie la banque chargee (type sax, ou 0/8 piano) ; changer de modele recharge.
+
+**Regle** : les 8 autres modeles restent des reglages sur la MEME banque acoustique.
+Pour de vrais instruments distincts il faut d'autres banques, pas d'autres reglages.
