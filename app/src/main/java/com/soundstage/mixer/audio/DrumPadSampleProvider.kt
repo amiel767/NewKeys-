@@ -11,7 +11,17 @@ import kotlin.math.sin
  */
 object DrumPadSampleProvider {
 
-    private val sampleCache = java.util.concurrent.ConcurrentHashMap<String, ShortArray>()
+    /**
+     * Cache borne.  Un ConcurrentHashMap nu ne libere jamais : chaque pad ecoute
+     * gardait ses PCM pour toute la vie du processus, et un kit de 16 pads stereo
+     * 44,1 kHz pese plusieurs Mo.  Un LinkedHashMap en mode acces, synchronise,
+     * evince la plus ancienne entree au-dela de [kCacheEntries].
+     */
+    private const val kCacheEntries = 24
+    private val sampleCache = object : LinkedHashMap<String, ShortArray>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ShortArray>?): Boolean =
+            size > kCacheEntries
+    }
 
     fun getOrGeneratePadPcm(context: Context, pad: DrumPadItem): ShortArray {
         val sampleFile = when {
@@ -22,8 +32,7 @@ object DrumPadSampleProvider {
         }
 
         if (sampleFile != null && sampleFile.exists()) {
-            val cached = sampleCache[sampleFile.absolutePath]
-            if (cached != null) return cached
+            synchronized(sampleCache) { sampleCache[sampleFile.absolutePath] }?.let { return it }
             try {
                 val decoded = kotlinx.coroutines.runBlocking { AudioDecoder.decodeAudioFile(sampleFile) }
                 if (decoded != null) {
@@ -32,7 +41,7 @@ object DrumPadSampleProvider {
                     for (i in decoded.pcmData.indices) {
                         shorts[i] = (decoded.pcmData[i].coerceIn(-1.0f, 1.0f) * 32767f).toInt().toShort()
                     }
-                    sampleCache[sampleFile.absolutePath] = shorts
+                    synchronized(sampleCache) { sampleCache[sampleFile.absolutePath] = shorts }
                     return shorts
                 }
             } catch (_: Exception) {}

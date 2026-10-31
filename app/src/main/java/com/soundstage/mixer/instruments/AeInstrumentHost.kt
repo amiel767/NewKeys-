@@ -55,6 +55,17 @@ object AeBanks {
         else -> null
     }
 
+    /**
+     * Libere une banque du cache Kotlin.  La banque est DEJA copiee cote natif au
+     * chargement, donc le tableau Kotlin ne sert plus : le garder faisait tenir
+     * piano.bin (12 Mo) et les 4 packs sax (7 Mo) en memoire pour toute la session,
+     * en plus de la copie native.  Appele quand un instrument est decharge.
+     */
+    fun release(name: String) { cache.remove(name) }
+
+    /** Purge tout le cache (changement de setlist, memoire basse). */
+    fun releaseAll() { cache.clear() }
+
     fun read(name: String): ByteArray? {
         cache[name]?.let { return it }
         val ctx = app ?: return null
@@ -123,6 +134,10 @@ object AeInstrumentHost : AeHost {
     }
 
     override fun bankMix(strip: Int): Float = NativeAudioBridge.safeInstrumentSampleMix(strip)
+
+    override fun releaseBank(instrument: AeInstrument, type: Int, model: Int) {
+        AeBanks.fileFor(instrument, type, model)?.let { AeBanks.release(it) }
+    }
 }
 
 /**

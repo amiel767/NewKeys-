@@ -243,11 +243,11 @@ private fun BoxScope.PresetList(
             AeT("${shown.size} of ${all.size}", 10, AeC.mute, Modifier.padding(start = 10.su()), font = AeFonts.mono)
         }
         Box(
-            Modifier.at(786, 11, 166, 24).clip(RoundedCornerShape(50)).background(Color(0x1AFF5C7A))
-                .border(1.su(), Color(0x33FF5C7A), RoundedCornerShape(50))
+            Modifier.at(842, 12, 110, 21).clip(RoundedCornerShape(50)).background(Color(0x12FF5C7A))
+                .border(1.su(), Color(0x26FF5C7A), RoundedCornerShape(50))
                 .noRipple(onUnload),
             contentAlignment = Alignment.Center,
-        ) { AeT("Unload instrument", 10, Color(0xFFFFB3C0)) }
+        ) { AeT("Unload", 9.5f, Color(0xCCFFB3C0)) }
 
         // ---- left rail: categories ----
         val railW = 214
@@ -326,7 +326,7 @@ private fun BoxScope.PresetList(
 @Composable
 private fun CatRow(name: String, count: Int, sel: Boolean, accent: Color, isAll: Boolean, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().height(26.su()).clip(RoundedCornerShape(7.su()))
+        Modifier.fillMaxWidth().height(22.su()).clip(RoundedCornerShape(6.su()))
             .background(if (sel) accent.copy(alpha = 0.18f) else Color.Transparent)
             .noRipple(onClick),
         verticalAlignment = Alignment.CenterVertically,
@@ -493,8 +493,12 @@ fun AeInstrumentsTabItem(selected: Boolean, onClick: () -> Unit, modifier: Modif
 @Composable
 fun AeInstrumentsTabContent(manager: AeManager, strip: Int, onOpen: () -> Unit, modifier: Modifier = Modifier) {
     val all = listOf(AeInstrument.ORGAN, AeInstrument.SYNTH, AeInstrument.LEADS, AeInstrument.SAX, AeInstrument.PIANO)
+    // Deux rangees (3 + 2) et non trois (2 + 2 + 1) : en trois rangees chaque carte
+    // ne recevait que ~117 unites de haut alors que son contenu (pastille, visuel,
+    // titre, sous-titre) en demande ~148.  Le visuel se faisait ecraser et la carte
+    // se lisait « petite » alors que la place existait.
     Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        all.chunked(2).forEach { row ->
+        all.chunked(3).forEach { row ->
             Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 row.forEach { inst ->
                     val loaded = manager.sessions[strip]?.instrument == inst
@@ -504,9 +508,9 @@ fun AeInstrumentsTabContent(manager: AeManager, strip: Int, onOpen: () -> Unit, 
                         onPower = { if (loaded) manager.unload(strip) else manager.load(strip, inst) },
                     )
                 }
-                // La 5e carte est seule sur sa ligne : sans cet emplacement vide elle prend
-                // toute la largeur et devient une bande, deux fois plus large que les autres.
-                repeat(2 - row.size) { Spacer(Modifier.weight(1f)) }
+                // La 2e rangee n'a que deux cartes : sans emplacement vide la derniere
+                // s'etale sur la largeur de deux.
+                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }

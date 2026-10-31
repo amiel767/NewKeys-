@@ -278,7 +278,12 @@ class SaxEngine : public SourceFx {
       // out at the same RMS within 25% (ratios 0.99, 1.04, 0.99, 1.20, 0.91, 1.25 — mean 1.06),
       // so 1.0 is what matches them and 0.8 left the sampled voice about 15% quieter than the
       // synth it replaces. A first correction to 1.30 overshot in the other direction (+38%).
-      x *= p(20) * 1.0f;
+      // 0,5 et non 1,0.  Mesure au Level 0,75 (le defaut des 23 presets), tampon
+      // remis a zero a chaque bloc comme dans le moteur : la crete AVANT le clipper
+      // vaut 1,34 a gain 1,0, soit au-dessus du genou de 0,75, et 15 a 22 % des
+      // echantillons etaient ecrases en permanence.  C'est le « buzz » a chaque note.
+      // A 0,5 la crete retombe a 0,67 et plus rien n'est ecrete.
+      x *= p(20) * 0.5f;
       io[2 * i] += x * humLevel_; io[2 * i + 1] += x * humLevel_;
       peak = std::max(peak, std::fabs(x));
     }

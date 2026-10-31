@@ -116,26 +116,34 @@ class PianoSampleReader {
    * Decoder paresseusement dans la boucle de rendu serait quadratique : le
    * predicteur doit rejouer depuis le debut de la region a chaque acces.
    */
-  const std::vector<int16_t>* decoded(const Region* g) {
+  /**
+   * PCM stereo entrelace d'une region, decode une fois et garde.
+   *
+   * Rend un shared_ptr et non un pointeur nu : la voix garde ainsi sa region
+   * vivante meme si le cache evince l'entree.  Avec un pointeur nu, `erase`
+   * detruisait le vecteur pendant qu'une note tenue le lisait encore — memoire
+   * liberee, donc une note qui sort « une autre note » au hasard de ce qui a
+   * reecrit le bloc.
+   */
+  std::shared_ptr<const std::vector<int16_t>> decoded(const Region* g) {
     if (!g) return nullptr;
     const size_t key = static_cast<size_t>(g - regions_.data());
     for (size_t i = 0; i < cache_.size(); ++i) {
       if (cache_[i].first == key) {
-        // Move the hit to the BACK, which is where the caller reads it from.  The
-        // previous rotate(begin, begin + i, begin + i + 1) moved it to the FRONT
-        // instead, so &cache_.back() returned a DIFFERENT region and the voice
-        // played the wrong sample: any repeated root came out shifted by the
-        // interval to whatever region was last.  Measured as +307 cents on A4
-        // (three semitones, the spacing between the pack's roots).
+        // Le coup se deplace en QUEUE, la ou l'appelant le lit.  L'ancien
+        // rotate(begin, begin+i, begin+i+1) le mettait en TETE, donc
+        // &cache_.back() rendait une AUTRE region et la voix jouait le mauvais
+        // echantillon : +307 cents mesure sur A4 (trois demi-tons, l'ecart entre
+        // les racines du pack).
         std::rotate(cache_.begin() + i, cache_.begin() + i + 1, cache_.end());
-        return &cache_.back().second;
+        return cache_.back().second;
       }
     }
-    std::vector<int16_t> out(static_cast<size_t>(g->frames) * 2);
-    decodeRegion(*g, out.data());
+    auto out = std::make_shared<std::vector<int16_t>>(static_cast<size_t>(g->frames) * 2);
+    decodeRegion(*g, out->data());
     if (cache_.size() >= kCacheSlots) cache_.erase(cache_.begin());
-    cache_.emplace_back(key, std::move(out));
-    return &cache_.back().second;
+    cache_.emplace_back(key, out);
+    return out;
   }
 
  private:
@@ -169,7 +177,7 @@ class PianoSampleReader {
 
   std::vector<Region> regions_;
   std::vector<uint8_t> pcm_;
-  std::vector<std::pair<size_t, std::vector<int16_t>>> cache_;
+  std::vector<std::pair<size_t, std::shared_ptr<const std::vector<int16_t>>>> cache_;
   int rate_ = 22050;
   int layerCount_ = 1;   // nombre de couches reellement presentes dans le pack
 };
@@ -232,7 +240,13 @@ class PianoResonators {
 // ---------------------------------------------------------------------------
 class PianoVoice {
  public:
-  void start(const int16_t* pcm, uint32_t frames, int root, float tuneCents,
+  /** Bend courant, lisse.  Le piano ne l'avait pas du tout : `pitchBend` tombait
+   *  dans l'implementation vide de SourceFx, donc la roue ne faisait rien sur un
+   *  instrument Æther, ou sautait par demi-ton quand le moteur reaccordait la voix. */
+  void setBend(float b, int semis) { bendTarget_ = b * static_cast<float>(semis); }
+
+  void start(const std::shared_ptr<const std::vector<int16_t>>& pcm, uint32_t frames,
+             int root, float tuneCents,
              int note, float velocity, float sr, float packRate,
              uint32_t loopStart, uint32_t loopEnd, float mic, float space, float tine,
              float hammer, float touch) {
@@ -267,6 +281,8 @@ class PianoVoice {
     res_.tune(f, inharmonicityOf(note, tine));
     res_.reset();
     env_ = 0.f; rel_ = 0.f; age_ = 0.f;
+    bendNow_ = bendTarget_;
+    bendCoef_ = 1.f - std::exp(-1.f / (0.012f * sr));
     // Marteau : impulsion de bruit au moment de la frappe.  Elle n'est pas blanche.
     // Le bruit blanc pur donnait un « tsss » metallique : une frappe reelle est un
     // « toc » dont l'energie est centree sur la resonance du marteau, entre 1,5 et
@@ -315,7 +331,7 @@ class PianoVoice {
     // Le laisser courir ferait entendre un « clic » isole apres la note eteinte.
     touchEnv_ = 0.f;
   }
-  void kill() { active_ = false; touchEnv_ = 0.f; hammerEnv_ = 0.f; }
+  void kill() { active_ = false; touchEnv_ = 0.f; hammerEnv_ = 0.f; pcm_.reset(); }
   bool active() const { return active_; }
   int note() const { return note_; }
   float age() const { return age_; }
@@ -324,7 +340,7 @@ class PianoVoice {
               float body, float bright, float width, float releaseSec, float sustainHold,
               bool tine) {
     tine_ = tine;
-    if (!active_ || !pcm_) return;
+    if (!active_ || !pcm_ || pcm_->empty()) return;
     // 0,5 ms et non 4 : le transitoire de marteau vit dans les 2 premieres ms,
     // une rampe de 4 ms l'efface et le piano perd son attaque.
     const float atk = 1.f / (0.0005f * sr);
@@ -341,11 +357,15 @@ class PianoVoice {
       const uint32_t i1 = i0 + 1;
       if (i1 >= frames_) { active_ = false; break; }
       const float fr = static_cast<float>(pos_ - i0);
-      const int16_t* p = pcm_ + static_cast<size_t>(i0) * 2;
-      const int16_t* q = pcm_ + static_cast<size_t>(i1) * 2;
+      const int16_t* p = pcm_->data() + static_cast<size_t>(i0) * 2;
+      const int16_t* q = pcm_->data() + static_cast<size_t>(i1) * 2;
+      // Bend lisse : un saut de ratio d'un bloc a l'autre claque.  12 ms de
+      // constante donne un glissando continu, comme une roue qu'on pousse.
+      bendNow_ += (bendTarget_ - bendNow_) * bendCoef_;
+      const float bendRatio = std::pow(2.f, bendNow_ / 12.f);
       float sL = (p[0] + (q[0] - p[0]) * fr) * (1.f / 32768.f);
       float sR = (p[1] + (q[1] - p[1]) * fr) * (1.f / 32768.f);
-      pos_ += ratio_;
+      pos_ += ratio_ * bendRatio;
 
       if (!releasing_) {
         env_ = std::min(1.f, env_ + atk);
@@ -417,10 +437,12 @@ class PianoVoice {
   }
 
  private:
-  const int16_t* pcm_ = nullptr;
+  std::shared_ptr<const std::vector<int16_t>> pcm_;
   uint32_t frames_ = 0;
   double pos_ = 0.0;
   float ratio_ = 1.f, vel_ = 1.f;
+  float bendTarget_ = 0.f, bendNow_ = 0.f;
+  float bendCoef_ = 0.f;
   float env_ = 0.f, rel_ = 0.f, age_ = 0.f, tau1_ = 0.5f;
   uint32_t loopStart_ = 0, loopEnd_ = 0;
   // Shelf aigu par canal : c'est lui qui rend TONE/HAMMER/LID audibles.
@@ -639,7 +661,7 @@ class PianoEngine : public SourceFx {
     if (vel <= 0) { noteOff(note); return; }
     if (!reader_.loaded()) return;
     const PianoSampleReader::Region* g = reader_.pick(note, vel);
-    const std::vector<int16_t>* pcm = reader_.decoded(g);
+    auto pcm = reader_.decoded(g);
     if (!pcm || pcm->empty()) return;
     int slot = -1;
     for (int i = 0; i < kVoices; ++i)
@@ -654,12 +676,13 @@ class PianoEngine : public SourceFx {
     const float v = std::pow(static_cast<float>(vel) / 127.f, 1.f - p(9) * 0.7f);
     // MODEL est enfin lu : index 8 = Electric, dont la corde devient une tine.
     const float tine = (std::lround(p(15) * 8.f) >= 8.f) ? 1.f : 0.f;
-    voices_[slot].start(pcm->data(), static_cast<uint32_t>(pcm->size() / 2),
+    voices_[slot].start(pcm, static_cast<uint32_t>(pcm->size() / 2),
                         g->root, g->tuneCents, note, v, sr_,
                         static_cast<float>(reader_.rate()),
                         loopsOn_ ? g->loopStart : 0u,
                         loopsOn_ ? g->loopEnd : 0u,
                         p(4), p(5), tine, p(0), p(16));
+    voices_[slot].setBend(bend_, bendSemis_);
   }
 
   void noteOff(int note) override {
@@ -667,6 +690,23 @@ class PianoEngine : public SourceFx {
   }
 
   void allNotesOff() override { for (auto& v : voices_) v.kill(); }
+
+  /**
+   * Pitch bend, en demi-tons selon la plage de Track Settings.
+   *
+   * Le piano ne l'implementait pas : SourceFx::pitchBend est vide par defaut, donc
+   * la roue etait inerte sur un piano Æther.  Les voix l'appliquent dans la boucle
+   * de lecture, avec un lissage de 12 ms — un bend qui saute d'un bloc s'entend
+   * comme un demi-ton sec.
+   */
+  void pitchBend(float b) override {
+    bend_ = b;
+    for (auto& v : voices_) v.setBend(b, bendSemis_);
+  }
+  void setPitchBendRange(int semis) override {
+    SourceFx::setPitchBendRange(semis);
+    for (auto& v : voices_) v.setBend(bend_, bendSemis_);
+  }
 
   /** Boucle de sustain active ou non.  Une boucle courte module l'amplitude a sa
    *  frequence de repetition ; la couper supprime la modulation, au prix d'une note
@@ -677,6 +717,14 @@ class PianoEngine : public SourceFx {
     return reader_.load(bytes, size);
   }
   bool hasSampleBank() const override { return reader_.loaded(); }
+
+  /** Voix encore actives.  Sert aux bancs a detecter une note bloquee : une voix
+   *  active alors qu'aucune touche n'est tenue est un bug, pas un etat normal. */
+  int activeVoices() const {
+    int n = 0;
+    for (const auto& v : voices_) if (v.active()) ++n;
+    return n;
+  }
   float sampleMix() const override { return reader_.loaded() ? 1.f : 0.f; }
 
   void process(float* io, int n) override {
@@ -711,7 +759,12 @@ class PianoEngine : public SourceFx {
     // studio.  L'y laisser faisait que deplacer le micro changeait aussi la
     // brillance des cordes, donc deux effets pour un seul reglage.
     const float bright = std::min(1.f, p(1) * (0.55f + 0.9f * p(0)) + p(3) * 0.25f);
-    const float rel = 0.25f + p(8) * 5.0f;
+    // Etouffoir : 0,08 a 0,63 s.  La plage precedente (0,25 + 5,0*p = jusqu'a
+    // 5,25 s) n'etait pas un relachement de piano mais une queue de pedalier : avec
+    // 12 voix, un jeu rapide epuisait le polyphony et volait des voix, ce qui se
+    // joue « une note ne sonne pas comme la precedente ».  Un etouffoir reel retombe
+    // en 0,1 a 0,3 s ; la queue, elle, est deja portee par l'echantillon et la reverb.
+    const float rel = 0.08f + p(8) * 0.55f;
     // Pas de parametre de maintien dans le contrat : on garde une valeur fixe.
     const float hold = 0.5f;
     for (auto& v : voices_) {
@@ -759,6 +812,7 @@ class PianoEngine : public SourceFx {
  private:
   bool loopsOn_ = true;
   PianoSampleReader reader_;
+  float bend_ = 0.f;
   PianoVoice voices_[kVoices];
   std::vector<float> tmpL_, tmpR_;
   PianoStudio studio_;

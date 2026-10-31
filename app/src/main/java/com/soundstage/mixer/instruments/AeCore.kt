@@ -109,6 +109,13 @@ interface AeHost {
 
     /** Mix of samples in the instrument output, 0 = pure synthesis. For the UI readback. */
     fun bankMix(strip: Int): Float = 0f
+
+    /**
+     * Drop the Kotlin-side copy of the bank. The native side already copied it at load time,
+     * so keeping the ByteArray holds the whole pack (12 MB piano, 7 MB of sax packs) for the
+     * rest of the session for nothing.
+     */
+    fun releaseBank(instrument: AeInstrument, type: Int, model: Int = -1) {}
 }
 
 /** One loaded instrument on one strip. Lives in [AeManager], so it survives the window being closed. */
@@ -225,6 +232,9 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
         sessions.remove(strip)?.let { s ->
             savedState[strip to s.instrument] = SavedAeState(s.values.toFloatArray(), s.preset, s.page)
             host.allNotesOff(strip); host.unloadInstrument(strip)
+            // Meme identifiants que loadBank() : le type de sax (param 0) et, pour le
+            // piano, l'index de preset qui designe la banque (8 = electrique).
+            host.releaseBank(s.instrument, s.bankType.coerceAtLeast(0), s.preset)
         }
         sustain.remove(strip); pending.remove(strip)
     }

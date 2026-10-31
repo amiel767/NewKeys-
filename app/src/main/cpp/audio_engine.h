@@ -969,6 +969,18 @@ private:
     static void allNotesOffTrampoline(void *ctx, int channel);
     bool routeEventToSource(int channel, int type, int note, int velocity, int param1, int param2);
 
+    /**
+     * Note ownership per channel, decided at NoteOn.
+     *
+     * The routing used to ask `soundfontPaused` on EVERY event. Loading or unloading
+     * an Æther instrument, or a program change, can flip that state between a NoteOn
+     * and its NoteOff: the NoteOn went to the source and the NoteOff to FluidSynth (or
+     * the reverse), so neither engine ever saw the pair and the note hung for good.
+     * That is the "stuck notes on all Æther instruments" report. Ownership is latched
+     * here instead, and AllNotesOff clears it.
+     */
+    bool noteOwnedBySource_[16] = {};
+
     std::shared_ptr<oboe::AudioStream> mStream;
     std::mutex mStreamMutex;
     std::mutex mRenderMutex;

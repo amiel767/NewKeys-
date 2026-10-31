@@ -508,6 +508,11 @@ bool AudioEngine::sourceRouterTrampoline(void *ctx, int channel, int type, int n
 
 void AudioEngine::allNotesOffTrampoline(void *ctx, int channel) {
     AudioEngine *e = static_cast<AudioEngine *>(ctx);
+    if (channel >= 0 && channel < 16) {
+        e->noteOwnedBySource_[channel] = false;
+    } else {
+        for (int c = 0; c < 16; ++c) e->noteOwnedBySource_[c] = false;
+    }
     if (channel >= 0 && channel < 10) {
         e->mFx.allNotesOff(channel);
     } else {
@@ -569,15 +574,30 @@ void AudioEngine::setTrackInstrumentParam(int track, int param, float norm) {
 }
 
 bool AudioEngine::routeEventToSource(int channel, int type, int note, int velocity, int param1, int param2) {
-    if (!mFx.soundfontPaused(channel)) return false;
+    if (channel < 0 || channel >= 16) return false;
+    // Ownership is latched at NoteOn and honoured at NoteOff. Asking
+    // `soundfontPaused` on every event let a state change (loading or unloading an
+    // Æther instrument, a program change) split a note across the two engines, and
+    // the note hung. See the member's comment in the header.
+    const bool owned = noteOwnedBySource_[channel];
     switch (type) {
-        case EngineMidiEvent::NOTE_ON:
+        case EngineMidiEvent::NOTE_ON: {
+            const bool toSource = mFx.soundfontPaused(channel);
+            noteOwnedBySource_[channel] = toSource;
+            if (!toSource) return false;
             mFx.noteOn(channel, note, velocity);
             return true;
+        }
         case EngineMidiEvent::NOTE_OFF:
+            // Routed by ownership, not by the current state, so the pair always
+            // lands in the same engine.
+            if (!owned) return false;
             mFx.noteOff(channel, note);
             return true;
         case EngineMidiEvent::PITCH_BEND:
+            // Bend is a continuous control: it follows the instrument that is
+            // currently selected, with no note to keep together.
+            if (!mFx.soundfontPaused(channel)) return false;
             // FluidSynth uses 14-bit 0..16383 with 8192 as centre; the source API
             // expects -1..1.
             mFx.pitchBend(channel, (static_cast<float>(param1) - 8192.0f) / 8192.0f);
