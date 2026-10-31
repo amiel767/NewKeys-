@@ -97,8 +97,19 @@ fun FxDesignHost(
  */
 private class FxDesignModel(private val controller: FxController) {
 
-    /** Un id de design par emplacement, -1 quand il est libre. */
-    private val slotIds = mutableStateListOf(-1, -1, -1, -1)
+    /**
+     * Un id de design par emplacement, -1 quand il est libre.
+     *
+     * On part de l'etat de la MAQUETTE, pas du vide : `FxWindowPreview.jsx` ouvre
+     * son rack avec Space engage dans le premier emplacement audio et
+     * l'Arpeggiator dans l'emplacement MIDI (`useState` lignes 1331-1332). La
+     * fenetre doit s'ouvrir sur ce rack-la — sinon la capture montre quatre cases
+     * libres et ne se compare plus au design valide. `adoptFromEngine` reprend la
+     * main des qu'une bande porte un effet : le moteur reste l'autorite.
+     */
+    private val slotIds = mutableStateListOf(
+        FxDesign.SPACE.id, -1, -1, FxDesign.ARP.id,
+    )
 
     /** Les valeurs de maquette, par id de design (dix pour Space, sept au moteur). */
     private val values = mutableStateMapOf<Int, SnapshotStateList<Float>>()

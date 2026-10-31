@@ -2886,3 +2886,35 @@ explicite sur l'import.
 **Piege de mesure** : ne pas conclure « la grille du catalogue est vide » sur un
 rendu ASCII trop grossier. Le catalogue de design ne contient que **deux** effets
 audio et **un** MIDI ; les cartes sont en haut a gauche, pas reparties sur la page.
+
+### « La fenetre est vide » : le rack ne partait pas de l'etat de la maquette (2026-10-31)
+
+Retour utilisateur, deux fois : « le design est une fenetre vide ». La geometrie
+etait juste, l'hote etait bien monte — c'est le **contenu initial** qui manquait.
+
+**Cause racine.** La maquette ouvre son rack **deja rempli** :
+
+```js
+const [midi,  setMidi]  = useState(() => ({ fx: MIDI[0],  on: true })); // Arpeggiator
+const [audio, setAudio] = useState(() => [{ fx: AUDIO[0], on: true }]); // Æther Space
+```
+
+`FxDesignHost` partait de `slotIds = mutableStateListOf(-1,-1,-1,-1)` : quatre
+emplacements libres. La capture etait donc **fidele au vide**, pas au design. Un
+rack vide et un rack correct ont la meme geometrie : aucune mesure de bords ne
+pouvait le voir, et `fx_in_app.png` pesait 125 Ko contre 390 Ko une fois rempli.
+
+**Correctif** : amorcer `slotIds` sur l'etat de la maquette —
+`[SPACE.id, -1, -1, ARP.id]`. `adoptFromEngine` garde la main des qu'une bande
+porte un effet, donc le moteur reste l'autorite ; l'amorcage n'est que le
+**defaut d'ouverture**.
+
+**Regle a retenir.** Une maquette JSX n'est pas qu'une mise en page : ses
+`useState(...)` d'ouverture font partie du design. Avant de comparer deux rendus,
+lire l'**etat initial** de la maquette, pas seulement sa geometrie.
+
+**Piege d'outillage** : `conv_tail.py` (ecrit puis supprime) lisait
+`page_id=1..3` en croyant voir la fin du flux. `page_id=1` est la page la **plus
+ancienne** : il affichait le debut de la conversation. Pour la fin, suivre
+`next_page_id` — c'est ce que fait `tools/conv_last.py` (nouveau, reutilise
+`conv_sync.fetch_all`/`describe`).
