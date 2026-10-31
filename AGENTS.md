@@ -427,6 +427,38 @@ grep -n -A 20 "class PianoEngine" PROJECT_CONTEXT.md   # un extrait, pas le fich
 `AGENTS.md` (ce fichier) reste la memoire des pieges et des decisions ;
 `PROJECT_CONTEXT.md` n'est qu'une carte du code, a interroger par extraits.
 
+## Mode ULTRA economique (Clone 5, 2026-10-31) — la conversation ne gonfle plus
+
+La consommation de l utilisateur est le **flux de conversation renvoye a chaque
+tour**, pas le reseau du sandbox.  Une sortie de terminal de 10 Ko est repayee a
+chaque tour suivant.  La regle du 2026-10-29 disait deja de filtrer ; celle-ci
+ajoute le mecanisme, parce que « filtrer a la main » s oublie au bout de 30 tours.
+
+**1. Ne jamais ecrire un script par heredoc.** Un heredoc renvoie tout le script
+dans la sortie, a chaque appel.  Les scripts d analyse vivent sur disque
+(`tools/audit/*.cpp`, `/tmp/*.py`) et on ne les relit que si besoin.
+
+**2. Toute commande produit au plus 10 lignes.** Motif impose :
+`cmd > /tmp/x.log 2>&1; tail -3 /tmp/x.log`.  Jamais `ls -la`, jamais un
+`grep` sans `| head -N`, jamais un tableau complet.
+
+**3. Les mesures s ecrivent sur disque et se lisent par agregat.** Un banc qui
+sort 200 lignes ecrit `/tmp/mesure.txt` et n affiche que la ligne de synthese.
+Le terminal n est pas un rapport, c est un canal de controle.
+
+**4. Le veilleur (`tools/conv_sync.py`) est le seul gros lecteur tolere**, et il
+imprime deja des agregats.  Il ne faut PAS le lancer en boucle : une fois avant,
+une fois apres une passe de travail.  `--full` rejoue 9000+ evenements, donc
+quasi jamais.
+
+**5. Les builds longs en arriere-plan** (`nohup ... &`), resultat lu par
+`tail -3`.  Un build de premier plan au-dela de 1080 s est coupe.
+
+**Outils disponibles** : `tools/conv_peek.py <CONV_ID> --last` imprime
+**uniquement le dernier message** d une conversation (et non sa derniere action) ;
+le flux brut part dans `tools/.conv_peek/<id>.json` (gitignore).  C est l outil
+pour « redonne-moi son dernier message » sans tirer 5 Mo dans le terminal.
+
 ## Mode economique de conversation (regle, 2026-10-29)
 
 La consommation de l utilisateur = le flux de conversation renvoye a chaque tour,
