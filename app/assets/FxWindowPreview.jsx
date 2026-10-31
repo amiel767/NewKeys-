@@ -70,28 +70,8 @@ const Ico = ({ d, size = 16, sw = 2, style }) => (
   </svg>
 );
 
-/* ── la disquette : celle des Æther Instruments, avec son animation ───────── */
-function Floppy({ armed, size = 15 }) {
-  const w = 24, h = 24, c = w * .12, n = w * .22;
-  const body = armed ? "#FF2A55" : "#8E95A5";
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: "block", flex: "none", overflow: "visible" }}>
-      {armed && (
-        <path d={`M${c} 0 H${w - n} L${w} ${n} V${h - c} A${c} ${c} 0 0 1 ${w - c} ${h} H${c} A${c} ${c} 0 0 1 0 ${h - c} V${c} A${c} ${c} 0 0 1 ${c} 0 Z`}
-              fill="#FF2A55" style={{ animation: "flopPulse 1.6s ease-in-out infinite" }} />
-      )}
-      <path d={`M${c} 0 H${w - n} L${w} ${n} V${h - c} A${c} ${c} 0 0 1 ${w - c} ${h} H${c} A${c} ${c} 0 0 1 0 ${h - c} V${c} A${c} ${c} 0 0 1 ${c} 0 Z`}
-            fill={body} />
-      <rect x={w * .21} y={0} width={w * .58} height={h * .38} rx={c * .25} fill="#0C101A" />
-      <rect x={w * .315} y={h * .084} width={w * .151} height={h * .209} rx="1" fill={body} />
-      <rect x={w * .14} y={h * .58} width={w * .72} height={h * .40} rx={c * .4}
-            fill={armed ? "#FFB3BA" : "#ECEFF1"} opacity={.92} />
-      <rect x={w * .24} y={h * .70} width={w * .52} height={h * .09} rx=".6" fill="#0C101A" opacity={.55} />
-      {armed && <rect x={w * .14} y={h * .58} width={w * .72} height={h * .40} rx={c * .4} fill="#fff"
-                     style={{ animation: "flopWrite 1.6s ease-out infinite" }} />}
-    </svg>
-  );
-}
+/* ── l'icone du bouton Save : une fleche qui descend dans un bac ─────────── */
+const P_SAVE = ["M12 3.4v9.4", "M7.6 8.8 12 13.2l4.4-4.4", "M4.4 17.6h15.2"];
 
 /* ── les effets ───────────────────────────────────────────────────────────── */
 /* Space : dix réglages. Les trois derniers sont nouveaux — Low Cut et High
@@ -222,8 +202,28 @@ const CSS = `
    bordure 1x2 de la carte s'ajoutaient donc a sa hauteur : +22 px dans les deux
    sens, et elle debordait du logement qu'elle remplacait. */
 .fxwin, .fxwin *{box-sizing:border-box}
-@keyframes flopPulse{0%,100%{opacity:0}45%{opacity:.5}}
-@keyframes flopWrite{0%{opacity:0}12%{opacity:.75}34%{opacity:0}}
+
+/* LES COUCHES CARREES AU TOUCHER.
+   Deux mecanismes du navigateur posent un rectangle PLEIN, sans suivre les
+   coins arrondis, des qu'on touche un element :
+   1. Le lavis tactile (-webkit-tap-highlight-color) : par defaut un noir a 18 %,
+      qui se voit comme un carre sombre par-dessus une case arrondie. On le rend
+      transparent.
+   2. La SELECTION DE TEXTE : tirer sur un potard ou sur une barre surlignait
+      les libelles voisins en rectangles bleus. user-select:none sur tout ce qui
+      se touche l'empeche.
+   Le contour de focus clavier est conserve, mais ARRONDI (box-shadow), sinon il
+   redessinait le meme carre pour qui navigue au clavier.
+   ATTENTION : ce bloc vit dans un template literal JS. Aucun accent grave ni
+   sequence d'interpolation ne doit y apparaitre, meme dans un commentaire : le
+   premier accent grave ferme la chaine et casse la compilation. */
+.fxwin, .fxwin *{-webkit-tap-highlight-color:transparent}
+.fxwin button, .fxwin input, .fxwin svg, .fxwin canvas{
+  -webkit-user-select:none; user-select:none;
+}
+.fxwin ::selection{background:rgba(143,178,232,.30); color:#0B0F18}
+.fxwin button:focus{outline:none}
+.fxwin button:focus-visible{outline:none; box-shadow:0 0 0 2px rgba(143,178,232,.65)}
 @keyframes fxCue{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 .fxscroll::-webkit-scrollbar{width:5px;height:5px}
 .fxscroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.13);border-radius:3px}
@@ -672,11 +672,14 @@ function Orb({ vals, palette, accent, fireRef, live = true, scale = 1 }) {
    Elle s'etendait sur toute la largeur de la fenetre. Elle vit maintenant dans
    la colonne des reglages (268 px), sous un intitule et deux fleches.
    ─────────────────────────────────────────────────────────────────────────── */
-function PresetRow({ fx, preset, custom, onPick }) {
+function PresetRow({ fx, preset, custom, onPick, userNames = [], onDeleteUser }) {
   const [open, setOpen] = useState(false);
   const names = Object.keys(fx.presets || {});
-  const i = Math.max(0, names.indexOf(preset));
-  const step = (d) => onPick(names[(i + d + names.length) % names.length]);
+  /* Les fleches parcourent AUSSI les presets utilisateur : sans ca, sauvegarder
+     un preset ne servirait qu'a la souris. */
+  const all = names.concat(userNames);
+  const i = Math.max(0, all.indexOf(preset));
+  const step = (d) => onPick(all[(i + d + all.length) % all.length]);
   const pal = fx.palettes && fx.palettes[preset];
   const hue = `hsl(${(pal && pal.h) || 268},${(pal && pal.s) || 48}%,${(pal && pal.l) || 74}%)`;
   const arrow = (d) => (
@@ -706,7 +709,7 @@ function PresetRow({ fx, preset, custom, onPick }) {
                        overflow: "hidden", textOverflow: "ellipsis" }}>{preset}</span>
         {custom && <span style={{ fontSize: 9, fontWeight: 800, color: "#F2C97D", flex: "none" }}>Custom</span>}
         <span style={{ fontSize: 9.5, fontFamily: MONO, color: MUTE, flex: "none" }}>
-          {String(i + 1).padStart(2, "0")}/{names.length}</span>
+          {String(i + 1).padStart(2, "0")}/{all.length}</span>
         <Ico d={P.down} size={13} style={{ color: MUTE, flex: "none",
               transform: `rotate(${open ? 180 : 0}deg)`, transition: "transform .2s" }} />
       </button>
@@ -739,6 +742,45 @@ function PresetRow({ fx, preset, custom, onPick }) {
                   <span style={{ fontSize: 8, fontFamily: MONO, color: MUTE }}>
                     {String(k + 1).padStart(2, "0")}</span>
                 </button>
+              );
+            })}
+
+            {userNames.length > 0 && (
+              <div style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 8,
+                            margin: "5px 2px 1px" }}>
+                <span style={{ fontSize: 8, fontWeight: 900, letterSpacing: ".16em",
+                               textTransform: "uppercase", color: MUTE }}>User</span>
+                <span style={{ flex: 1, height: 1, background: LINE }} />
+                <span style={{ fontSize: 8, fontFamily: MONO, color: MUTE }}>{userNames.length}</span>
+              </div>
+            )}
+            {userNames.map((n) => {
+              const on = n === preset;
+              return (
+                <div key={"u" + n} style={{ display: "flex", alignItems: "center", gap: 2,
+                                            background: on ? `linear-gradient(90deg,${hx(ACC, .22)},rgba(255,255,255,.02))`
+                                                           : "rgba(255,255,255,.03)",
+                                            border: `1px solid ${on ? hx(ACC, .4) : "transparent"}`,
+                                            borderRadius: 8, paddingRight: 4 }}>
+                  <button onClick={() => { onPick(n); setOpen(false); }}
+                          style={{ flex: 1, minWidth: 0, height: 28, borderRadius: 8, cursor: "pointer",
+                                   padding: "0 8px", display: "flex", alignItems: "center", gap: 7,
+                                   fontFamily: FONT, fontSize: 11, fontWeight: on ? 800 : 600,
+                                   textAlign: "left", background: "transparent", border: "none",
+                                   color: on ? INK : "#96A0B4" }}>
+                    <span style={{ width: 4, height: 4, borderRadius: 2, flex: "none",
+                                   background: on ? ACC : "#39415A" }} />
+                    <span style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden",
+                                   textOverflow: "ellipsis" }}>{n}</span>
+                  </button>
+                  <button title="Delete this user preset"
+                          onClick={(e) => { e.stopPropagation(); onDeleteUser(n); }}
+                          style={{ width: 20, height: 20, flex: "none", cursor: "pointer", borderRadius: 6,
+                                   display: "grid", placeItems: "center", padding: 0,
+                                   background: "transparent", border: "none", color: MUTE }}>
+                    <Ico d={P.close} size={9} sw={2.4} />
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -1039,7 +1081,7 @@ function Catalog({ kind, onPick, onBack, full }) {
    Les quatre premiers réglages sont des potards EN HAUT, les suivants des
    faders EN BAS, sans partage de la case.
    ─────────────────────────────────────────────────────────────────────────── */
-function FxPanel({ fx, vals, setVal, preset, custom, onPick, on, onToggle }) {
+function FxPanel({ fx, vals, setVal, preset, custom, onPick, on, onToggle, userNames, onDeleteUser }) {
   const fireRef = useRef(() => {});
   const get = (k) => vals[k] ?? .5;
   const knobs = fx.params.slice(0, 4);
@@ -1087,7 +1129,8 @@ function FxPanel({ fx, vals, setVal, preset, custom, onPick, on, onToggle }) {
       </div>
 
       <div style={{ width: 268, flex: "none", display: "flex", flexDirection: "column", gap: 8, minHeight: 0 }}>
-        <PresetRow fx={fx} preset={preset} custom={custom} onPick={onPick} />
+        <PresetRow fx={fx} preset={preset} custom={custom} onPick={onPick}
+                   userNames={userNames} onDeleteUser={onDeleteUser} />
         <div style={{ height: 94, flex: "none", display: "flex", alignItems: "center",
                       justifyContent: "space-around", ...well({ borderRadius: 13 }) }}>
           {knobs.map(([n, k, def, mn, mx, u]) => (
@@ -1103,6 +1146,58 @@ function FxPanel({ fx, vals, setVal, preset, custom, onPick, on, onToggle }) {
                      onChange={(v) => setVal(k, v)} onReset={() => setVal(k, def)}
                      display={fmt(get(k), mn, mx, u)} />
           ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══ LA FEUILLE DE NOMMAGE ═════════════════════════════════════════════════
+   Un nom, puis Save. Le champ prend le focus tout seul et Entree valide : on
+   sauvegarde un preset en tapant un nom et en appuyant sur Entree, sans
+   toucher la souris.
+   ─────────────────────────────────────────────────────────────────────────── */
+function NameSheet({ value, onChange, onCancel, onSave }) {
+  const box = useRef(null);
+  useEffect(() => { const t = setTimeout(() => { box.current?.focus(); box.current?.select(); }, 40);
+                    return () => clearTimeout(t); }, []);
+  const ok = value.trim().length > 0;
+  return (
+    <div onClick={onCancel} style={{ position: "absolute", inset: 0, zIndex: 40, display: "grid",
+                                     placeItems: "center", background: "rgba(6,9,16,.62)",
+                                     backdropFilter: "blur(3px)" }}>
+      <div onClick={(e) => e.stopPropagation()}
+           style={{ width: 330, borderRadius: 15, padding: 15,
+                    background: "linear-gradient(180deg,#1D2432,#12171F)",
+                    border: `1px solid ${hx(ACC, .28)}`,
+                    boxShadow: "0 26px 60px rgba(0,0,0,.72), inset 0 1px 0 rgba(255,255,255,.09)",
+                    animation: "fxCue .18s ease-out" }}>
+        <div style={{ fontSize: 9, fontWeight: 900, letterSpacing: ".17em", textTransform: "uppercase",
+                      color: MUTE, marginBottom: 9 }}>Save as user preset</div>
+        <input ref={box} value={value} onChange={(e) => onChange(e.target.value)}
+               onKeyDown={(e) => { if (e.key === "Enter" && ok) onSave(); if (e.key === "Escape") onCancel(); }}
+               placeholder="Preset name"
+               style={{ width: "100%", height: 36, borderRadius: 9, padding: "0 11px", boxSizing: "border-box",
+                        fontFamily: FONT, fontSize: 13, fontWeight: 700, color: INK, outline: "none",
+                        background: "#0C1119",
+                        boxShadow: "inset 0 2px 8px rgba(0,0,0,.66), inset 0 0 0 1px rgba(255,255,255,.05)",
+                        border: `1px solid ${hx(ACC, .3)}` }} />
+        <div style={{ fontSize: 10.5, color: MUTE, margin: "9px 1px 0", lineHeight: 1.5 }}>
+          It will be filed under <span style={{ color: "#B9C4DA", fontWeight: 700 }}>User</span> in the preset list.
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
+          <button onClick={onCancel}
+                  style={{ ...ghost({ height: 30, padding: "0 14px", cursor: "pointer", borderRadius: 9 }),
+                           fontSize: 12, fontWeight: 700, color: DIM }}>Cancel</button>
+          <button onClick={() => ok && onSave()} disabled={!ok}
+                  style={{ height: 30, padding: "0 16px", borderRadius: 9, fontFamily: FONT,
+                           fontSize: 12, fontWeight: 800, letterSpacing: ".02em",
+                           cursor: ok ? "pointer" : "not-allowed", opacity: ok ? 1 : .45,
+                           color: IN_TEXT, border: "none",
+                           background: `linear-gradient(180deg,${IN1},${IN2})`,
+                           boxShadow: ok ? `0 4px 14px ${hx(ACC, .3)}, inset 0 1px 0 rgba(255,255,255,.4)` : "none" }}>
+            Save
+          </button>
         </div>
       </div>
     </div>
@@ -1238,6 +1333,14 @@ function FxWindow() {
   const [vals, setVals] = useState(() => Object.fromEntries(AUDIO[0].params.map(([, k, v]) => [k, v])));
   const [preset, setPreset] = useState("Hall");
   const [custom, setCustom] = useState(false);
+  /* Les presets enregistres. Chaque entree garde son NOM et ses VALEURS : au
+     rappel il faut reposer les reglages, pas seulement le titre. On garde la
+     forme `{ n, v }` de `AeUserStore.kt` cote app, pour que le portage soit
+     direct. */
+  const [user, setUser] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const userOf = (fxId) => user.filter((u) => u.fx === fxId);
   const [view, setView] = useState(() => {
     const h = (typeof location !== "undefined" ? location.hash : "").replace("#", "");
     if (h === "midi") return { k: "catalog", kind: "midi" };
@@ -1258,10 +1361,24 @@ function FxWindow() {
     if (!custom) setCustom(true);      // on garde le preset choisi : sa palette reste
   };
   const applyPreset = (n) => {
-    const row = AUDIO[0].presets[n];
+    const u = user.find((x) => x.fx === AUDIO[0].id && x.n === n);
+    const row = u ? u.v : AUDIO[0].presets[n];
     if (row) setVals(Object.fromEntries(AUDIO[0].params.map(([, k], i) => [k, row[i]])));
     setPreset(n); setCustom(false);
   };
+
+  /* Sauvegarder : on fige les VALEURS COURANTES sous le nom donne, et on les
+     classe dans User. Le preset devient celui qui est actif, donc la fenetre
+     reste dessus au lieu de sauter ailleurs. */
+  const saveUserPreset = () => {
+    const n = saveName.trim();
+    if (!n) return;
+    const v = AUDIO[0].params.map(([, k]) => vals[k]);
+    setUser((list) => [...list.filter((x) => !(x.fx === AUDIO[0].id && x.n === n)),
+                        { fx: AUDIO[0].id, n, v }]);
+    setPreset(n); setCustom(false); setSaving(false); setSaveName("");
+  };
+  const deleteUserPreset = (n) => setUser((list) => list.filter((x) => !(x.fx === AUDIO[0].id && x.n === n)));
 
   useEffect(() => {
     const id = setInterval(() => setT((x) => x + 1), 110);
@@ -1310,9 +1427,18 @@ function FxWindow() {
           </span>
         )}
         {isSpace && (
-          <button title="Save preset" style={{ ...ghost({ width: 28, height: 28, display: "grid", placeItems: "center",
-                   cursor: "pointer", opacity: custom ? 1 : .5 }) }}>
-            <Floppy armed={custom} size={14} />
+          <button onClick={() => { setSaveName(""); setSaving(true); }} title="Save preset"
+                  style={{ height: 28, padding: "0 12px", borderRadius: 9, cursor: "pointer",
+                           display: "flex", alignItems: "center", gap: 6, fontFamily: FONT,
+                           fontSize: 11.5, fontWeight: 800, letterSpacing: ".02em",
+                           color: custom ? INK : DIM,
+                           background: custom ? `linear-gradient(180deg,${hx(ACC, .3)},${hx(ACC, .1)})`
+                                              : "linear-gradient(180deg,#232A38,#171D28)",
+                           border: `1px solid ${custom ? hx(ACC, .45) : "rgba(255,255,255,.08)"}`,
+                           boxShadow: custom ? `0 3px 12px ${hx(ACC, .26)}, inset 0 1px 0 rgba(255,255,255,.16)`
+                                             : "inset 0 1px 0 rgba(255,255,255,.09)" }}>
+            <Ico d={P_SAVE} size={12} sw={2.1} />
+            Save
           </button>
         )}
         {isArp && (
@@ -1367,12 +1493,16 @@ function FxWindow() {
           isArp
             ? <ArpPanel p={arp} set={setArp} cur={cur} />
             : <FxPanel fx={view.fx} vals={vals} setVal={setVal} preset={preset} custom={custom}
+                       userNames={userOf(view.fx.id).map((u) => u.n)} onDeleteUser={deleteUserPreset}
                        onPick={applyPreset}
                        on={isSpace ? audio[0].on : midi.on}
                        onToggle={() => (isSpace ? setAudio((s) => s.map((x, k) => k === 0 ? { ...x, on: !x.on } : x))
                                                 : setMidi((m) => ({ ...m, on: !m.on })))} />
         )}
       </div>
+
+      {saving && <NameSheet value={saveName} onChange={setSaveName}
+                            onCancel={() => setSaving(false)} onSave={saveUserPreset} />}
     </div>
   );
 }
