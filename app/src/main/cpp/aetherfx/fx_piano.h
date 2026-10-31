@@ -59,7 +59,7 @@ class PianoSampleReader {
     std::memcpy(&count, bytes + 12, 4);
     std::memcpy(&pcmLen, bytes + 16, 4);
     std::memcpy(&recLen, bytes + 20, 4);
-    if (28ull + recLen + pcmLen > size || count == 0 || count > 4096) return false;
+    if (28ull + recLen + pcmLen > size || count == 0 || count > 8192) return false;
     rate_ = static_cast<int>(rate);
     for (uint32_t i = 0; i < count; ++i) {
       const uint8_t* r = bytes + 28 + i * 24;
@@ -74,22 +74,29 @@ class PianoSampleReader {
       if (g.frames < 64) continue;
       // stereo entrelace : 2 echantillons par frame, 2 nibbles par octet
       if ((static_cast<uint64_t>(g.offset) + g.frames) * 2ull > pcmLen * 2ull) continue;
+      if (g.layer + 1 > layerCount_) layerCount_ = g.layer + 1;
       regions_.push_back(g);
     }
     pcm_.assign(bytes + 28 + recLen, bytes + 28 + recLen + pcmLen);
     return !regions_.empty();
   }
 
-  void clear() { regions_.clear(); pcm_.clear(); cache_.clear(); rate_ = 22050; }
+  void clear() { regions_.clear(); pcm_.clear(); cache_.clear(); rate_ = 22050; layerCount_ = 1; }
   bool loaded() const { return !regions_.empty(); }
   int rate() const { return rate_; }
 
     size_t regionCount() const { return regions_.size(); }
 
-  /** Region la plus proche en hauteur, en preferant la couche demandee. */
+  /** Region la plus proche en hauteur, en preferant la couche demandee.
+
+   *  La couche est mise a l'echelle sur le nombre de couches DU PACK, pas sur
+   *  un 5 code en dur.  Avec 5 en dur et un pack a 16 couches, les 11 couches
+   *  du haut n'etaient jamais jouees (le pack dense etait paye sans etre lu).
+   */
   const Region* pick(int note, int velocity) const {
     if (regions_.empty()) return nullptr;
-    const int want = std::min(4, std::max(0, velocity * 5 / 128));
+    const int n = layerCount_ > 0 ? layerCount_ : 1;
+    const int want = std::min(n - 1, std::max(0, velocity * n / 128));
     const Region* best = nullptr;
     int bestCost = 1 << 30;
     for (const Region& g : regions_) {
@@ -158,6 +165,7 @@ class PianoSampleReader {
   std::vector<uint8_t> pcm_;
   std::vector<std::pair<size_t, std::vector<int16_t>>> cache_;
   int rate_ = 22050;
+  int layerCount_ = 1;   // nombre de couches reellement presentes dans le pack
 };
 
 // ---------------------------------------------------------------------------

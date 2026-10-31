@@ -2570,3 +2570,82 @@ python3 -m pip install pillow numpy
 `:app:compileDebugKotlin --no-daemon --max-workers=2` -> **BUILD SUCCESSFUL**
 (3m17). Piege : un `apt-get` lance en arriere-plan garde le verrou dpkg et bloque
 toutes les installations suivantes — le tuer puis `dpkg --configure -a`.
+
+## Session 2026-10-31 — pack piano dense (Salamander) + sonie egalisee
+
+Reponse a la question laissee par la conversation parallele (« un pack a 42 notes
+racines ? »). Meme conclusion, autrement : le levier est la **densite**, et elle se
+mesure. Branche `main`, commit `47fb14d`.
+
+### La banque : la licence decide, et elle ne coute rien en qualite
+
+Le « NORD Grand Piano - Timbres Premium.sf2 » (142 Mo) ne se telecharge pas : le
+post Telegram ne sert qu'une **vignette JPEG** (`cdn1.telesco.pe/file/...` renvoie
+un JFIF), l'anonyme n'expose pas le document. Et il circule sans licence.
+
+**Salamander Grand Piano V3 Retuned** le remplace avantageusement : **CC-BY 3.0**
+(attribution : `tools/pianopack/ATTRIBUTION.md`), archive.org, 741 Mo de FLAC
+48 kHz / 24 bits / stereo, **641 regions, 16 couches de velocite, 29 fondamentales
+tous les 3 demi-tons**, queues de 12 a 21 s. C'est plus dense que tout ce qu'on
+avait, et redistribuable.
+
+### Quatre mesures avant de choisir (tools/pianopack2/)
+
+| Question | Mesure | Decision |
+|---|---|---|
+| Taux d'echantillonnage | la banque a **0,0 %** d'energie > 3 kHz | 22,05 kHz suffisait **en theorie** |
+| Normaliser par region | gain **<= 0,5 dB** | rejete (changement moteur pour rien) |
+| Faconnage du bruit (error feedback) | **-8 dB** au lieu de +51 dans le grave | rejete : quantifieur 4 bits instable |
+| 8 couches ou 16 ? | ecarter 8 couches coute **3,3-4,7 dB** spectraux, contre **5,2-8,7 dB** entre deux couches voisines | **8 suffisent** |
+
+Le dernier point est celui qui compte : la couche la plus proche est **plus proche
+que la couche voisine du fichier**, donc garder 16 couches n'ajoute pas
+d'information perceptible. Les octets vont au **taux**.
+
+Et le taux, lui, se justifie : a 44,1 kHz la bande audible gagne **~10 dB de SNR**
+(1-3 kHz : -4,6 -> +5,2 dB sur C4v1 ; 2-3 kHz : -13,3 -> -7,1), pour 2x la taille.
+Le pack precedent coupait a 11 kHz ; ici on garde jusqu'a 22 kHz.
+
+### Resultat
+
+**232 regions** (29 fondamentales x 8 couches), **44,1 kHz**, **24,4 Mo**,
+**232/232 bouclees**. Troncature : attaque + boucle (0,50-1,10 s, nombre entier de
+periodes de f0) + **0,9 s de queue**.
+
+### Le piege moteur : le nombre de couches etait code en dur a 5
+
+`PianoSampleReader::pick()` faisait `velocity * 5 / 128`. Avec un pack a 16 couches,
+les **11 couches du haut n'etaient jamais jouees** — le pack dense etait paye sans
+etre lu. `layerCount_` est desormais deduit au chargement (`max(layer)+1`) et
+`pick()` met la couche a l'echelle dessus. Meme classe de bug que le `paramCount`
+12 vs 16 du piano : **un compte en dur qui ne suit pas le contenu**.
+
+### Sonie : egaliser sur la sonie percue, pas sur le RMS
+
+`tools/aetherfx/mastering.cpp` joue le **vrai pack** dans le **vrai moteur** avec les
+**vrais presets** (extraits de `AePianoUi.kt` par `gen_presets.py`, pour qu'ils ne
+divergent pas) et sort les chiffres d'un ingenieur du mastering.
+
+Les 9 modeles sortaient a **4,9 dB d'ecart** (mesure sur une phrase, pas une note).
+Le RMS brut ne suffit pas a les comparer : il est domine par le grave du piano.
+La mesure retenue est la **sonie K-weighted (ITU-R BS.1770)** — les 9 modeles
+sortent maintenant au **meme niveau percu** (rms 0,014 partout, crete <= 0,22,
+aucun ecretage).
+
+`LEVEL` (7) est un **gain de sortie pur** (applique apres tout le reste, juste avant
+le passe-haut 5 Hz), donc la valeur qui atteint la cible est **exacte en un pas** :
+`level * 10^((cible - mesure)/20)`. Une bissection n'ajouterait que de l'erreur.
+
+Cible = **mediane** des 9, pas le minimum : egaliser ne doit pas couter a un preset
+une attenuation qu'il n'a pas meritee. Resultat : -3,0 dB au plus (Dark), +1,8 dB
+au plus (Bright).
+
+### Outils
+
+`tools/pianopack2/inventory.py` (structure SFZ), `spectrum.py` (contenu spectral),
+`codec.py` (banc de codecs, SNR par bande), `layers.py` (ecart entre couches),
+`build2.py` (constructeur). `tools/aetherfx/mastering.cpp` + `gen_presets.py`.
+
+**Piege de build** : le JDK et le `debug.keystore` disparaissent au redemarrage du
+sandbox. `sudo apt-get update && sudo apt-get install -y openjdk-21-jdk-headless`
+-> `/usr/lib/jvm/java-21-openjdk-amd64`.
