@@ -465,7 +465,7 @@ fun rememberPressBounce(): Pair<Float, () -> Unit> {
  * the measured size, so a vertical rail inside a short horizontal slot collapses
  * to a square. Swapping the constraints is what keeps the rail at full length.
  */
-private fun Modifier.swapAxes(): Modifier = this.layout { measurable, constraints ->
+fun Modifier.swapAxes(): Modifier = this.layout { measurable, constraints ->
     val swapped = Constraints(
         minWidth = constraints.minHeight,
         maxWidth = constraints.maxHeight,

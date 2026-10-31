@@ -4,10 +4,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
@@ -25,38 +25,36 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import com.soundstage.mixer.ui.components.FaderRail
 import com.soundstage.mixer.ui.components.FaderThumb
+import com.soundstage.mixer.ui.components.v2.swapAxes
+import androidx.compose.ui.unit.sp
 import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Le potard de la fenêtre FX — inspiré de Sunday Keys, avec une touche maison.
+ * Le potard de la fenêtre FX.
  *
- * Ce qui vient de Sunday Keys :
- *  - la **bague de valeur à l'EXTÉRIEUR** du corps, pas un arc collé au bord ;
- *  - la **jupe crantée** (une couronne de dents radiales) : c'est la signature
- *    visuelle de leurs potards, et c'est ce qui les fait lire « à tourner » ;
- *  - la lumière unique en haut à gauche, sur toutes les couches.
+ * LA VALEUR EST NORMALISÉE (0..1), comme dans la maquette : c'est elle qui
+ * dessine l'arc et la position de l'index, et l'hôte convertit vers la plage
+ * réelle. Ça évite de faire dépendre le dessin de l'unité du réglage.
  *
- * La touche personnelle : le sommet du crantage porte une **gemme** — un point
- * d'accent avec son halo — là où l'index classique s'arrête. Un point qui
- * s'allume se repère plus vite qu'un trait, et il ne se confond pas avec la
- * bague quand la valeur approche 0 ou 1.
+ * L'ARC VA DE 135° À 405° (270° de course), comme la référence. Le corps est
+ * usiné : collerette cannelée, dôme, index lumineux, reflet de vitre. La lumière
+ * vient d'en haut à gauche, comme le rail des pistes.
  *
- * LA VALEUR EST NORMALISÉE (0..1) : c'est elle qui dessine la bague et la
- * position de la gemme, l'hôte convertit vers la plage réelle.
- *
- * Le glissement est VERTICAL et RELATIF : 160 unités pour la plage entière. Une
- * échelle absolue rendrait les petites plages impossibles à régler.
+ * Le glissement est VERTICAL et RELATIF : 160 unités de course pour la plage
+ * entière. Une échelle absolue rendrait les petites plages impossibles à régler.
+ * Un double-tap remet la valeur par défaut.
  */
 @Composable
 fun FxKnob(
@@ -69,7 +67,7 @@ fun FxKnob(
     onReset: (() -> Unit)? = null,
 ) {
     var drag by remember { mutableFloatStateOf(0f) }
-    var hot by remember { mutableStateOf(false) }
+    var hot by remember { androidx.compose.runtime.mutableStateOf(false) }
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
@@ -90,126 +88,63 @@ fun FxKnob(
         ) {
             Canvas(Modifier.size(size.dp)) {
                 val r = this.size.minDimension / 2f
-                val c = Offset(this.size.width / 2f, this.size.height / 2f)
+                val cx = this.size.width / 2f
+                val cy = this.size.height / 2f
                 val v = value.coerceIn(0f, 1f)
                 val a0 = 135f
                 val sweep = 270f
                 fun pt(deg: Float, rad: Float): Offset {
                     val a = Math.toRadians(deg.toDouble())
-                    return Offset(c.x + rad * cos(a).toFloat(), c.y + rad * sin(a).toFloat())
+                    return Offset(cx + rad * cos(a).toFloat(), cy + rad * sin(a).toFloat())
                 }
-
-                // ── 1. L'ombre portée, sous le corps seulement.
-                drawCircle(
-                    color = Color(0x8A000000), radius = r * .80f,
-                    center = Offset(c.x, c.y + r * .10f),
-                )
-
-                // ── 2. La bague de valeur, à l'extérieur.
-                val ringR = r * .93f
+                // La piste, puis la valeur.
                 drawArc(
-                    color = Color(0x1AFFFFFF), startAngle = a0, sweepAngle = sweep,
-                    useCenter = false,
-                    topLeft = Offset(c.x - ringR, c.y - ringR),
-                    size = Size(ringR * 2f, ringR * 2f),
-                    style = Stroke(width = r * .085f, cap = StrokeCap.Round),
+                    color = Color(0x14FFFFFF), startAngle = a0, sweepAngle = sweep,
+                    useCenter = false, topLeft = Offset(cx - r * .9f, cy - r * .9f),
+                    size = androidx.compose.ui.geometry.Size(r * 1.8f, r * 1.8f),
+                    style = Stroke(width = r * .052f, cap = StrokeCap.Round),
                 )
-                if (v > .008f) {
+                if (v > .012f) {
                     drawArc(
-                        color = accent.copy(alpha = .30f), startAngle = a0, sweepAngle = v * sweep,
-                        useCenter = false,
-                        topLeft = Offset(c.x - ringR, c.y - ringR),
-                        size = Size(ringR * 2f, ringR * 2f),
-                        style = Stroke(width = r * .17f, cap = StrokeCap.Round),
-                    )
-                    drawArc(
-                        brush = Brush.linearGradient(
-                            listOf(accent.copy(alpha = .75f), accent),
-                            start = pt(a0, ringR), end = pt(a0 + v * sweep, ringR),
-                        ),
-                        startAngle = a0, sweepAngle = v * sweep,
-                        useCenter = false,
-                        topLeft = Offset(c.x - ringR, c.y - ringR),
-                        size = Size(ringR * 2f, ringR * 2f),
-                        style = Stroke(width = r * .085f, cap = StrokeCap.Round),
+                        color = accent, startAngle = a0, sweepAngle = v * sweep,
+                        useCenter = false, topLeft = Offset(cx - r * .9f, cy - r * .9f),
+                        size = androidx.compose.ui.geometry.Size(r * 1.8f, r * 1.8f),
+                        style = Stroke(width = r * .052f, cap = StrokeCap.Round),
                     )
                 }
-
-                // ── 3. Le socle sombre qui creuse le potard dans son logement.
-                drawCircle(Color(0xFF0B0E15), radius = r * .76f, center = c)
-
-                // ── 4. La jupe crantée : 40 dents, alternées clair / sombre.
-                //    Deux tons plutôt qu'un seul : c'est ce qui donne la
-                //    sensation de métal usiné, sans aucun dégradé par dent.
-                val teeth = 40
-                val rIn = r * .60f
-                val rOut = r * .755f
-                for (i in 0 until teeth) {
-                    val deg = i * 360f / teeth
-                    val lit = (deg < 200f && deg > 20f)
-                    drawLine(
-                        color = if (lit) Color(0xFF5A6072) else Color(0xFF2A2E3B),
-                        start = pt(deg, rIn), end = pt(deg, rOut),
-                        strokeWidth = r * .052f,
-                    )
-                }
-                // Un liseré net en haut de la jupe : la lumière accroche l'arête.
-                drawArc(
-                    color = Color(0x3DFFFFFF), startAngle = 200f, sweepAngle = 140f,
-                    useCenter = false,
-                    topLeft = Offset(c.x - rOut, c.y - rOut),
-                    size = Size(rOut * 2f, rOut * 2f),
-                    style = Stroke(width = r * .03f),
-                )
-
-                // ── 5. Le corps bombé, lumière en haut à gauche.
+                // La collerette, le corps, le dôme.
+                drawCircle(Color(0xFF2A2E40), radius = r * .72f, center = Offset(cx, cy))
                 drawCircle(
                     brush = Brush.radialGradient(
-                        listOf(
-                            Color(0xFF9BA2B6), Color(0xFF6E7488),
-                            Color(0xFF4A4F62), Color(0xFF2E3342),
-                        ),
-                        center = Offset(c.x - r * .22f, c.y - r * .28f),
-                        radius = r * .78f,
+                        listOf(Color(0xFF767D92), Color(0xFF525869), Color(0xFF373C4E), Color(0xFF212538)),
+                        center = Offset(cx - r * .2f, cy - r * .3f), radius = r * 1.1f,
                     ),
-                    radius = r * .605f, center = c,
+                    radius = r * .61f, center = Offset(cx, cy),
                 )
-                // La gorge concentrique : un anneau fin qui donne l'épaisseur.
                 drawCircle(
-                    color = Color(0x33000000), radius = r * .50f, center = c,
-                    style = Stroke(width = r * .022f),
+                    brush = Brush.radialGradient(
+                        listOf(Color(0xFF959CB2), Color(0xFF565C70), Color(0xFF282C3E)),
+                        center = Offset(cx - r * .18f, cy - r * .3f), radius = r * .9f,
+                    ),
+                    radius = r * .42f, center = Offset(cx, cy),
                 )
-                // Le reflet de vitre, en haut à gauche.
-                drawArc(
-                    color = Color(0x40FFFFFF), startAngle = 205f, sweepAngle = 105f,
-                    useCenter = false,
-                    topLeft = Offset(c.x - r * .43f, c.y - r * .43f),
-                    size = Size(r * .86f, r * .86f),
-                    style = Stroke(width = r * .055f, cap = StrokeCap.Round),
-                )
-
-                // ── 6. La gemme : la touche personnelle, à la pointe de l'index.
+                drawCircle(Color(0x24FFFFFF), radius = r * .31f, center = Offset(cx, cy), style = Stroke(1f))
+                // L'index, dans l'accent.
                 val deg = a0 + v * sweep
-                drawLine(
-                    color = Color(0x59000000), start = pt(deg, r * .18f), end = pt(deg, r * .52f),
-                    strokeWidth = r * .085f, cap = StrokeCap.Round,
+                val p1 = pt(deg, r * .28f)
+                val p2 = pt(deg, r * .56f)
+                drawLine(accent, p1, p2, strokeWidth = r * .075f, cap = StrokeCap.Round)
+                drawLine(Color(0xBFFFFFFF), pt(deg, r * .28f), pt(deg, r * .40f),
+                    strokeWidth = r * .075f, cap = StrokeCap.Round)
+                // Le reflet de vitre.
+                drawOval(
+                    brush = Brush.linearGradient(listOf(Color(0x4DFFFFFF), Color.Transparent)),
+                    topLeft = Offset(cx - r * .5f, cy - r * .55f),
+                    size = androidx.compose.ui.geometry.Size(r * .62f, r * .34f),
                 )
-                drawLine(
-                    color = accent.copy(alpha = .95f),
-                    start = pt(deg, r * .20f), end = pt(deg, r * .50f),
-                    strokeWidth = r * .062f, cap = StrokeCap.Round,
-                )
-                val gem = pt(deg, r * .52f)
-                drawCircle(accent.copy(alpha = .35f), radius = r * .17f, center = gem)
-                drawCircle(accent, radius = r * .095f, center = gem)
-                drawCircle(Color(0xCCFFFFFF), radius = r * .042f,
-                    center = Offset(gem.x - r * .022f, gem.y - r * .022f))
-
                 if (hot) {
-                    drawCircle(
-                        accent.copy(alpha = .45f), radius = r * .99f,
-                        center = c, style = Stroke(r * .04f),
-                    )
+                    drawCircle(accent.copy(alpha = .5f), radius = r * .95f,
+                        center = Offset(cx, cy), style = Stroke(1.5f))
                 }
             }
         }
@@ -223,22 +158,25 @@ fun FxKnob(
 }
 
 
-
 /**
- * LE FADER HORIZONTAL D'UN RÉGLAGE — la forme de la maquette.
+ * LE FADER HORIZONTAL D'UN RÉGLAGE — le montage du **MasterSlider** de la bottom bar.
  *
- * Rail creusé sur toute la largeur, remplissage d'accent par la gauche, et un
- * bonnet rond qui glisse. Le bonnet est **FaderThumb** du mixer, réduit de 25 %
- * par rapport à la taille de la maquette (CAP_D 22 -> 16,5) : à 22 le bonnet
- * écrasait le rail et la rangée paraissait comprimée.
+ * Ce n'est pas une imitation de rail : ce sont les **mêmes composants** que les
+ * pistes du mixer, montés de la même façon que le master horizontal.
+ * `FaderRail` et `FaderThumb` sont verticaux par construction ; on leur donne une
+ * empreinte horizontale avec `swapAxes()` puis on les tourne de 90° autour du
+ * centre. C'est exactement ce que fait `MasterSliderV2` — rail 18 dp d'épaisseur,
+ * bonnet couché le long du rail, remplissage qui part de la gauche.
  *
- * `FaderThumb` est dessiné en **portrait** (1327/1657). Sa géométrie interne est
- * mise à l'échelle uniformément puis centrée, donc l'inscrire dans une boîte
- * carrée ne le déforme pas : il se contente d'y tenir. Le liseré et la LED
- * restent donc verticaux, comme sur une poignée réelle.
+ * Deux pièges repris du master :
+ *  - `swapAxes()` échange les contraintes AVANT la rotation, sinon le bonnet est
+ *    rogné : il est mesuré dans la boîte couchée, pas dans la boîte debout ;
+ *  - la course vaut `largeur - capLong` : centrer le bonnet sur la position
+ *    pousserait la moitié de sa largeur hors du rail aux deux extrémités.
  */
-private const val CAP_D = 16.5f          // 22 x 0,75
-private const val RAIL_H = 8f
+private const val RAIL_T = 18f      // épaisseur du rail des pistes
+private const val CAP_LONG = 22.5f  // 30 x 0,75 : le bonnet du master, réduit de 25 %
+private const val CAP_SHORT = 18f   // 24 x 0,75
 
 @Composable
 fun FxSlider(
@@ -259,64 +197,59 @@ fun FxSlider(
             modifier = Modifier.width(52.dp),
         )
         BoxWithConstraints(
-            Modifier.weight(1f).height((CAP_D + 6f).dp)
+            Modifier.weight(1f).height((CAP_SHORT + 8f).dp)
                 .pointerInput(label) {
-                    detectDragGestures(
+                    detectHorizontalDragGestures(
                         onDragStart = { hot = true },
                         onDragEnd = { hot = false },
                         onDragCancel = { hot = false },
-                    ) { change, _ ->
+                    ) { change, delta ->
                         change.consume()
-                        val usable = (size.width - CAP_D.dp.toPx()).coerceAtLeast(1f)
-                        onChange(((change.position.x - CAP_D.dp.toPx() / 2f) / usable).coerceIn(0f, 1f))
+                        val travel = (size.width - CAP_LONG.dp.toPx()).coerceAtLeast(1f)
+                        onChange((v + delta / travel).coerceIn(0f, 1f))
                     }
                 }
-                .pointerInput(label) { detectTapGestures(onDoubleTap = { onReset?.invoke() }) },
-        ) {
-            // Le rail : creusé, puis rempli d'accent jusqu'au bonnet.
-            Canvas(Modifier.fillMaxSize()) {
-                val cy = size.height / 2f
-                val rh = RAIL_H.dp.toPx()
-                val rr = rh / 2f
-                val inner = rh - 6f
-                drawRoundRect(
-                    brush = Brush.verticalGradient(
-                        listOf(Color(0xFF2D3041), Color(0xFF474A63)),
-                        startY = cy - rr, endY = cy + rr,
-                    ),
-                    topLeft = Offset(0f, cy - rr),
-                    size = Size(size.width, rh),
-                    cornerRadius = CornerRadius(rr),
-                )
-                drawRoundRect(
-                    color = Color(0xFF090C13),
-                    topLeft = Offset(3f, cy - inner / 2f),
-                    size = Size(size.width - 6f, inner),
-                    cornerRadius = CornerRadius(inner / 2f),
-                )
-                val fillW = (v * size.width - 6f).coerceAtLeast(0f)
-                if (fillW > 1f) {
-                    drawRoundRect(
-                        brush = Brush.horizontalGradient(
-                            listOf(accent.copy(alpha = .28f), accent.copy(alpha = .92f)),
-                            startX = 3f, endX = 3f + fillW,
-                        ),
-                        topLeft = Offset(3f, cy - inner / 2f),
-                        size = Size(fillW, inner),
-                        cornerRadius = CornerRadius(inner / 2f),
+                .pointerInput(label) {
+                    detectTapGestures(
+                        onPress = {
+                            hot = true
+                            tryAwaitRelease()
+                            hot = false
+                        },
+                        onTap = { o ->
+                            val travel = (size.width - CAP_LONG.dp.toPx()).coerceAtLeast(1f)
+                            onChange(((o.x - CAP_LONG.dp.toPx() / 2f) / travel).coerceIn(0f, 1f))
+                        },
+                        onDoubleTap = { onReset?.invoke() },
                     )
-                }
-            }
-            // Le bonnet, à sa position exacte sur le rail. `maxWidth` est en dp :
-            // la course vaut la largeur moins le diamètre du bonnet.
-            val capX = (maxWidth - CAP_D.dp) * v
+                },
+        ) {
+            val travel = maxWidth - CAP_LONG.dp
+            // Le rail des pistes, couché : swapAxes() puis rotation 90°.
             Box(
-                Modifier.offset(x = capX).size(CAP_D.dp).align(Alignment.CenterStart),
+                Modifier.size(width = maxWidth, height = RAIL_T.dp)
+                    .swapAxes()
+                    .graphicsLayer(rotationZ = 90f, transformOrigin = TransformOrigin(0.5f, 0.5f)),
+            ) {
+                FaderRail(
+                    accent = accent,
+                    modifier = Modifier.fillMaxSize(),
+                    level = v,
+                    glow = if (hot) .85f else .35f,
+                )
+            }
+            // Le bonnet des pistes, couché, à sa position sur le rail.
+            Box(
+                Modifier.align(Alignment.CenterStart)
+                    .offset(x = travel * v)
+                    .size(CAP_LONG.dp, CAP_SHORT.dp)
+                    .swapAxes()
+                    .graphicsLayer(rotationZ = 90f, transformOrigin = TransformOrigin(0.5f, 0.5f)),
             ) {
                 FaderThumb(
                     accent = accent,
                     modifier = Modifier.fillMaxSize(),
-                    glow = .3f + .7f * v,
+                    glow = if (hot) 1f else .6f,
                     showShadow = false,
                 )
             }

@@ -67,19 +67,27 @@ fun FxButtonChip(
                 scaleX = 1f - sink * .05f
                 scaleY = 1f - sink * .05f
             }
+            // L'ombre est peinte AVANT le clip : dans le drawBehind de la case,
+            // elle serait rognée à ses propres bords et ne dépasserait pas.
+            .drawBehind {
+                softDropShadow(
+                    radius = radius.toPx(),
+                    w = size.width, h = size.height,
+                    drop = size.height * .34f,
+                    alpha = if (on) .60f else .70f,
+                )
+            }
             .clip(RoundedCornerShape(radius))
             .drawBehind {
                 val r = radius.toPx()
                 val w = size.width
                 val h = size.height
                 val path = Path().apply { addRoundRect(RoundRect(0f, 0f, w, h, CornerRadius(r))) }
-                // L'ombre : plus marquée sous la case, quasi nulle au-dessus.
-                softDropShadow(r, w, h, drop = h * .30f, alpha = if (on) .55f else .62f)
                 drawPath(
                     path,
                     Brush.verticalGradient(
-                        if (on) listOf(accent.copy(alpha = .42f), accent.copy(alpha = .13f))
-                        else listOf(Color(0xFF333A4A), Color(0xFF1B2029)),
+                        if (on) listOf(accent.copy(alpha = .34f), accent.copy(alpha = .12f))
+                        else listOf(Color(0xFF232A38), Color(0xFF171D28)),
                     ),
                 )
                 // Le liseré : en haut au repos, en bas quand la case est enfoncée.

@@ -1940,3 +1940,30 @@ Le wipe sandbox a de nouveau effacé le JDK : `sudo apt-get install -y
 openjdk-21-jdk-headless unzip zip` -> `/usr/lib/jvm/java-21-openjdk-amd64`.
 Pillow aussi (`pip install Pillow`). Le serveur de `/workspace/dl/pub` (port 12000)
 survit, les JPEG sont régénérés après chaque capture.
+
+### Correction 2026-10-30 — les 3 retours utilisateur (knob violet, rail du master, matière Save)
+
+**1. Le knob de la première version violette est RESTAURÉ.** Le design « Sunday Keys »
+(bague externe + jupe crantée + gemme) est abandonné : l'utilisateur préférait le knob
+d'origine (`458f2ec`), celui des captures violettes — collerette, corps bombé en
+dégradé radial, dôme, index accent + pointe claire, reflet de verre en ovale.
+Récupéré par `git show 458f2ec:.../FxKnob.kt`, tronqué avant l'ancien `FxSlider`.
+
+**2. Les rails sont redevenus les VRAIS rails des pistes.** Ma version dessinait un
+rail maison en Canvas — « ce n'est même plus la rail faders ». Le montage correct est
+celui de `MasterSliderV2` (`MixerBottomBarV2.kt:500`) : `FaderRail` + `FaderThumb`
+du mixer, couchés par `swapAxes()` puis tournés de `graphicsLayer(rotationZ = 90f)`.
+Rail **18 dp** d'épaisseur (mesuré 18 unités sur la capture), bonnet 30x24 réduit de
+25 % -> 22,5 x 18, course `largeur - capLong`.
+`Modifier.swapAxes()` était `private` dans `MixerBottomBarV2.kt` : rendu **public**
+pour être réutilisé au lieu d'être dupliqué.
+
+**3. Les `+`/`−`/`>`/`X` ont la matière de Save.** `FxButtonChip` reprend exactement
+les deux arrêts de `FxSaveButton` : `0xFF232A38 -> 0xFF171D28` (et la variante
+d'accent à l'état engagé), plus l'ombre portée sous la case.
+
+**Piège du clip et de l'ombre** : dans la chaîne `graphicsLayer -> clip -> drawBehind`,
+l'ombre dessinée dans le `drawBehind` est **rognée aux bords de la case** et ne
+dépasse donc jamais. Il faut un `drawBehind` **avant** le `.clip()` pour l'ombre, et
+un second après pour le fond et le liseré. Mesure après correction : sous la case la
+luminance descend à **17** puis remonte à 37 sur ~5 unités — c'est le dégradé d'ombre.
