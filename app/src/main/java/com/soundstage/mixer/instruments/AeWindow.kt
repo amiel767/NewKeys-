@@ -131,13 +131,19 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
             // 8-unit gaps so it reads as one block instead of four scattered chips. The piano's
             // own X at 954 is gone: the back arrow at 10 already closes the window.
             HeaderBtn(winTh, "◀", 642, 8, 30, 30) { manager.loadPreset(strip, s.preset - 1) }
+            // The preset nameplate that used to sit here is gone: the name is already in the
+            // window header and in the preset browser, and the plate took the place the
+            // controls needed. What is left is the one control that does something — open the
+            // browser.
             val ns = RoundedCornerShape(10.su())
-            Row(Modifier.at(680, 7, 240, 32).clip(ns).background(winTh.glass).border(1.su(), winTh.edge, ns).clickable(remember { MutableInteractionSource() }, null) { list = !list }.padding(horizontal = 12.su()),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                AeT(presets.getOrNull(s.preset)?.name ?: "", 12, winTh.ink); AeT(presets.getOrNull(s.preset)?.category ?: "", 10, winTh.ink2, weight = FontWeight.SemiBold)
+            Box(Modifier.at(680, 7, 240, 32).clip(ns).background(winTh.glass).border(1.su(), winTh.edge, ns)
+                .clickable(remember { MutableInteractionSource() }, null) { list = !list },
+                contentAlignment = Alignment.Center) {
+                AeT(presets.getOrNull(s.preset)?.name ?: "", 12, winTh.ink, Modifier.padding(horizontal = 12.su()))
             }
             HeaderBtn(winTh, "▶", 928, 8, 30, 30) { manager.loadPreset(strip, s.preset + 1) }
-            SaveDiskBtn(winTh, 604, 7) { naming = true }
+            // Shown only once a knob has been moved away from the selected preset.
+            if (manager.isModified(strip)) SaveDiskBtn(winTh, 604, 7) { naming = true }
             if (naming) NameSheet(
                 initial = "My ${s.instrument.title.removePrefix("Æther ")}",
                 onCancel = { naming = false },
@@ -346,12 +352,17 @@ private fun CatRow(name: String, count: Int, sel: Boolean, accent: Color, isAll:
 /** Floppy button that saves the current knobs as a user preset. Same chrome as the header buttons. */
 @Composable
 private fun BoxScope.SaveDiskBtn(th: AeTheme, x: Number, y: Number, onClick: () -> Unit) {
-    val sh = RoundedCornerShape(10.su())
+    val sh = RoundedCornerShape(12.su())
     Box(
-        Modifier.at(x, y, 30, 32).clip(sh).background(th.glass).border(1.su(), th.edge, sh)
+        Modifier.at(x, y, 34, 34).clip(sh)
+            // Lit top edge, shaded bottom: the button reads as raised like the other
+            // header controls, instead of as a flat tinted square with a hard outline.
+            .background(Brush.verticalGradient(listOf(Color(0x4DFFFFFF), Color(0x14FFFFFF))))
+            .background(th.glass)
+            .border(1.su(), th.edge, sh)
             .clickable(remember { MutableInteractionSource() }, null, onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) { FloppyDiskIcon(isArmed = false, tint = th.ink, modifier = Modifier.size(16.su())) }
+    ) { FloppyDiskIcon(isArmed = false, tint = th.ink, modifier = Modifier.size(19.su())) }
 }
 
 /**

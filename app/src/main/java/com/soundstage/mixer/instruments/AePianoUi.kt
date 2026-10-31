@@ -24,6 +24,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
@@ -257,10 +258,9 @@ fun BoxScope.AePianoUi(c: AeCtl, manager: AeManager, strip: Int) {
                 // et le bas est sombre, donc encre sombre sur fond sombre — contraste
                 // mesure 4, texte invisible. Un fond translucide ne peut pas le garantir.
                 // Ici le fond est toujours du cote oppose a l'encre, donc lisible partout.
-                val listBg = if (th.ink.luminance() > 0.5f) Color(0xD90A0D14) else Color(0xD9F4F2EE)
-                Box(Modifier.at(16, 88, 200, 300).clip(RoundedCornerShape(16.su())).background(listBg))
+                AeGlassPanel(th, plate?.bitmap?.asAndroidBitmap(), 16, 88, 200, 300)
                 AeModelList(th, AePianoModels.all.map { it.name }, s.preset, 28, 100) { manager.loadPreset(s.strip, it) }
-                AeGlassCard(th, 694, 54, 280, 326)
+                AeGlassPanel(th, plate?.bitmap?.asAndroidBitmap(), 694, 54, 280, 326)
                 PK.forEachIndexed { j, k ->
                     AeLightKnob(th, c.v(k.idx), k.label, k.fmt(c.v(k.idx)), 704 + (j % 4) * 62, 74 + (j / 4) * 70) { c.set(k.idx, it) }
                 }

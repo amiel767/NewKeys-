@@ -2,7 +2,15 @@ package com.soundstage.mixer.instruments
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import kotlin.math.max
+import kotlin.math.roundToInt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -71,10 +79,52 @@ fun rememberAeTheme(dark: Boolean, acc: Color): AeTheme {
 fun rememberAeThemeFromLuma(topLuma: Float?, acc: Color): AeTheme =
     rememberAeTheme((topLuma ?: 0f) < 0.5f, acc)
 
+
+/**
+ * Frosted-glass panel: the background photo, blurred, under a veil and a lit edge.
+ *
+ * The blur is a heavy downscale drawn back up with bilinear filtering, not a RenderEffect.
+ * Two reasons, in order of importance: a RenderEffect needs API 31, and a blur applied as a
+ * sibling modifier would also blur the window drawn over it — the frosted panel has to sample
+ * the photo, not the composed frame. Downscaling once per model is free and works everywhere.
+ *
+ * The photo is mapped with the same cover-fit as the full stage, then translated by the
+ * panel's own offset, so the blur lines up with the background behind it instead of showing
+ * a squeezed copy of the whole image.
+ */
 @Composable
-fun AeGlassCard(th: AeTheme, x: Number, y: Number, w: Number, h: Number) {
-    val sh = RoundedCornerShape(20.su())
-    Box(Modifier.at(x, y, w, h).clip(sh).background(th.glass).border(1.su(), th.edge, sh))
+fun AeGlassPanel(th: AeTheme, photo: Bitmap?, x: Number, y: Number, w: Number, h: Number) {
+    val sh = RoundedCornerShape(18.su())
+    val small = remember(photo) { photo?.let { blurSmall(it) } }
+    Box(Modifier.at(x, y, w, h).clip(sh).border(1.su(), th.edge, sh)) {
+        if (small != null) {
+            Canvas(Modifier.fillMaxSize()) {
+                val unit = size.width / w.toFloat()
+                val fullW = AE_W * unit; val fullH = AE_H * unit
+                val im = small.asImageBitmap()
+                withTransform({ translate(-x.toFloat() * unit, -y.toFloat() * unit) }) {
+                    val sc = max(fullW / im.width, fullH / im.height)
+                    val dw = im.width * sc; val dh = im.height * sc
+                    drawImage(
+                        im,
+                        dstOffset = IntOffset(((fullW - dw) / 2f).roundToInt(), ((fullH - dh) / 2f).roundToInt()),
+                        dstSize = IntSize(dw.roundToInt(), dh.roundToInt()),
+                        filterQuality = FilterQuality.High,
+                    )
+                }
+            }
+        }
+        Box(Modifier.fillMaxSize().background(th.glass))
+    }
+}
+
+/** Roughly a 20 px blur at the display size: a 1/18 downscale, drawn back up bilinear. */
+private const val BLUR_DIV = 18f
+
+private fun blurSmall(src: Bitmap): Bitmap {
+    val w = (src.width / BLUR_DIV).roundToInt().coerceAtLeast(8)
+    val h = (src.height / BLUR_DIV).roundToInt().coerceAtLeast(8)
+    return Bitmap.createScaledBitmap(src, w, h, true)
 }
 
 @Composable

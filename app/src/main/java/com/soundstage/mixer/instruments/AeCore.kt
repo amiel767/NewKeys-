@@ -267,6 +267,24 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
         }
     }
 
+    /**
+     * True when a knob differs from the preset that is selected.
+     *
+     * The save button is shown only then: a floppy that is always there invites a save that
+     * would duplicate the preset it came from, and it never told the user whether anything
+     * had actually been touched. Reading the preset back is what makes the button honest —
+     * it lights up on a real edit and goes out once the edit is saved or the preset reloaded.
+     */
+    fun isModified(strip: Int): Boolean {
+        val s = sessions[strip] ?: return false
+        // Mid-tween the values are in flight towards the preset, so "modified" has no
+        // meaning and the button would blink for the 420 ms of the slide.
+        if (s.tweening) return false
+        val p = presets(s.instrument).getOrNull(s.preset) ?: return false
+        val ref = padded(s.instrument, p.values)
+        return s.values.indices.any { kotlin.math.abs(s.values[it] - ref[it]) > 1e-4f }
+    }
+
     fun loadPreset(strip: Int, index: Int) {
         val s = sessions[strip] ?: return
         val list = presets(s.instrument)
