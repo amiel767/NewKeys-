@@ -38,3 +38,6 @@ tools/saxpack/out/
 # Packs generes (l asset app/src/main/assets/ est la source de verite)
 tools/pianopack/out/pack*.bin
 tools/pianopack/out/pack*.json
+
+# Conversation dumps written by tools/conv_peek.py (~90 MB for a long stream)
+tools/.conv_peek/

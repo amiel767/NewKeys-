@@ -2520,3 +2520,53 @@ banc a 12 ou 15 parametres reproduit exactement le bug corrige.
 
 Le serveur de recette sert `/workspace/dl/pub` sur 12000 et 12001 (`setsid nohup
 python3 -m http.server`). Il **ne survit pas** a un redemarrage du sandbox.
+
+## Mode ULTRA economique — Clone 5 (regle, 2026-10-31)
+
+Cette conversation est la **suite** de `9c93aa402a634cdfa4a1fbf759935777`
+(« Clone 5 »), qui avait un flux de plusieurs Mo par tour. La cause n'etait pas
+l'agent mais **le dump des observations dans la conversation** : chaque `grep -rn`
+sur 117 fichiers Kotlin, chaque `sed -n`, chaque `ls` complet repart ensuite dans
+le contexte a chaque tour.
+
+### Regles de sortie (non negociables ici)
+
+1. **Jamais de dump brut.** `grep`/`sed`/`ls`/`find` sont **toujours** pipes :
+   `| head -n` / `| tail -n`, ou rediriges vers un fichier puis `tail -3`.
+2. **Les gros artefacts restent sur disque.** Mesures, JSON, arbres : ecrits dans
+   un fichier, consultes par agregats. Le terminal ne montre que l'agregat.
+3. **Pas de `cat` d'un fichier de code.** Pour lire un fichier, l'editeur
+   (`view` avec `view_range`) qui ne renvoie que la tranche demandee.
+4. **Une commande par etape**, pas trois enchainees avec `;` : chaque sortie
+   s'ajoute au contexte.
+5. **Aucun heredoc** : il renvoie tout le script dans la sortie.
+6. **Veille des pairs sans dump** : `tools/conv_watch.py <CID>` (1 a 6 lignes par
+   poll) au lieu de `conv_sync.py --full` (transcript entier). Le dump brut va
+   dans `tools/.conv_peek/<CID>.json` (gitignore), lisible par
+   `tools/conv_analyse.py <CID> --tail N` / `--lastmsg` / `--grep PAT`.
+
+### Outillage de veille (nouveau, Clone 5)
+
+| Script | Role |
+|---|---|
+| `tools/conv_peek.py <CID>` | telecharge le flux brut sur disque, n'imprime que des agregats |
+| `tools/conv_analyse.py <CID>` | relit le dump **sans reseau** : types, `--tail`, `--lastmsg`, `--grep` |
+| `tools/conv_watch.py <CID>` | poll incremental, n'imprime que les **nouveaux messages** (watermark `tools/.conv_peek/.watch_<CID>.json`) |
+
+`tools/.conv_peek/` est gitignore : un dump de conversation longue fait ~90 Mo et
+ne doit jamais entrer dans un commit.
+
+### Environnement (re-provisionne, verifie 2026-10-31)
+
+```bash
+sudo apt-get install -y openjdk-21-jdk-headless unzip zip wget tesseract-ocr ffmpeg lame
+python3 -m pip install pillow numpy
+# JDK: /usr/lib/jvm/java-21-openjdk-amd64 (le chemin /workspace/jdk/jdk21 n'existe plus)
+# SDK: /workspace/android-sdk (platforms;android-36, build-tools;36.0.0,
+#      ndk;26.1.10909125, cmake;3.22.1) + local.properties: sdk.dir=/workspace/android-sdk
+# Keystore: ./debug.keystore (gitignore, a regenerer par keytool)
+```
+
+`:app:compileDebugKotlin --no-daemon --max-workers=2` -> **BUILD SUCCESSFUL**
+(3m17). Piege : un `apt-get` lance en arriere-plan garde le verrou dpkg et bloque
+toutes les installations suivantes — le tuer puis `dpkg --configure -a`.
