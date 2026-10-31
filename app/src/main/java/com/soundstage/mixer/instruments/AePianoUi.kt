@@ -69,7 +69,10 @@ class AePianoModel(
     d: FloatArray,
     idx: Int,
 ) {
-    val values: FloatArray = d + (idx / 8f)
+    // Index 15 = MODEL, 16 = TOUCH.  Le bruit de touche suit la durete du marteau
+    // (d[0] = HAMMER) : un piano a marteau dur claque, un feutre effleure.  Le
+    // deriver evite neuf constantes a maintenir et garde la table lisible.
+    val values: FloatArray = d + (idx / 8f) + (0.30f + 0.55f * d[0])
 }
 
 private fun col(h: Long) = Color(0xFF000000 or h)
@@ -140,7 +143,9 @@ private val PK = listOf(
 private val PSL = listOf(
     K("Release", 8) { "${(50 + it * 450).toInt()}ms" },
     K("Velocity", 9) { if (it < .4f) "Soft" else if (it < .6f) "Linear" else "Hard" },
-    K("Pedal noise", 10, ::pc),
+    // Remplace « Pedal noise » (index 10), qui n'etait lu par personne : le moteur
+    // ne traite pas ce parametre. Un controle vivant vaut mieux qu'un decor.
+    K("Touch", 16, ::pc),
 )
 /** Etage studio : le micro, l'ampli et le punch.  Ce sont eux qui enlevent le « sec ». */
 private val PST = listOf(
