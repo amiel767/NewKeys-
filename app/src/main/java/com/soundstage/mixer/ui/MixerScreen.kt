@@ -1007,23 +1007,11 @@ fun MixerScreen(
 
         when (uiState.activePopup) {
             ActivePopup.EFFECTS -> {
-                // The Æther FX window is the only Effects surface. The legacy
-                // EffectsDialog is gone: FxOverlay renders FxWindowHost, the
-                // ported shell (rack, effect window, add panel).
-                val slotIdx = if (uiState.activeEffectTrackId == 0) null else uiState.activeEffectTrackId - 1
-                val sfTrack = slotIdx?.let { uiState.tracks.getOrNull(it) }
-                com.soundstage.mixer.ui.fx.FxOverlay(
-                    trackId = uiState.activeEffectTrackId,
-                    soundfontName = sfTrack?.soundfontName.orEmpty(),
-                    program = sfTrack?.program ?: 0,
-                    onClose = { viewModel.closePopup() },
-                    onChooseSoundfont = {
-                        if (uiState.activeEffectTrackId in 1..8) {
-                            viewModel.openSoundfontForSlot(uiState.activeEffectTrackId - 1)
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize().zIndex(130f),
-                )
+                // The Æther FX window is DETACHED: it no longer lives inside the
+                // mixer. `com.aetherkeys.fx.FxWindow` is its own surface, fed by
+                // the `FxWindowState` / `FxWindowActions` contract. Nothing is
+                // mounted here on purpose — wiring it back is a host, not a
+                // patch to this `when`.
             }
             ActivePopup.SOUNDFONT -> {
                 val slot = uiState.audioSlots.getOrNull(uiState.activeSoundfontSlotId)

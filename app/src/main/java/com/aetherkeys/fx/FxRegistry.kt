@@ -508,6 +508,32 @@ object FxRegistry {
     )
 
     fun info(id: Int): FxInfo = all.getOrElse(id) { all[0] }
+
+    /**
+     * La couleur d'un effet.
+     *
+     * Elle vit ICI et pas dans `FxScenes` du mixer : la fenêtre FX est détachée,
+     * elle ne doit pas dépendre d'un objet de l'app pour connaître une couleur.
+     * Ce sont exactement les valeurs de la maquette.
+     */
+    fun accent(id: Int): androidx.compose.ui.graphics.Color = when (id) {
+        0 -> androidx.compose.ui.graphics.Color(0xFFA99AD8)
+        1 -> androidx.compose.ui.graphics.Color(0xFFD4B06A)
+        2 -> androidx.compose.ui.graphics.Color(0xFF8FD0FF)
+        3 -> androidx.compose.ui.graphics.Color(0xFFB8C2D4)
+        4 -> androidx.compose.ui.graphics.Color(0xFFC9852C)
+        5 -> androidx.compose.ui.graphics.Color(0xFFE8C98A)
+        6 -> androidx.compose.ui.graphics.Color(0xFFD9C08A)
+        7 -> androidx.compose.ui.graphics.Color(0xFFE0A45A)
+        8 -> androidx.compose.ui.graphics.Color(0xFFECB05C)
+        9 -> androidx.compose.ui.graphics.Color(0xFFE08A4A)
+        10 -> androidx.compose.ui.graphics.Color(0xFFFF9A3C)
+        11 -> androidx.compose.ui.graphics.Color(0xFFF0C060)
+        12 -> androidx.compose.ui.graphics.Color(0xFFE8C060)
+        13 -> androidx.compose.ui.graphics.Color(0xFFC9B8FF)
+        14 -> androidx.compose.ui.graphics.Color(0xFF7AD0FF)
+        else -> androidx.compose.ui.graphics.Color(0xFFA99AD8)
+    }
     fun toReal(p: FxParam, norm: Float): Float = when (p.curve) {
         FxCurve.FREQ_LOG -> 20f * Math.pow(1000.0, norm.toDouble()).toFloat()
         FxCurve.RATIO_STEP -> floatArrayOf(1.5f, 2f, 3f, 4f, 8f, 20f)[Math.round(norm * 5f)]
