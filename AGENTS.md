@@ -1889,3 +1889,54 @@ Pieges du format :
 - « Goodizer » etait **deja** en place (`FxInfo(4, "Goodizer", "Maximizer", ...)`).
 - Le bouton power repond a l'appui par un enfoncement (`translationY` 1,2 +
   `scale` 0,96 + ressort), pas par une ondulation.
+
+## Session 2026-10-30 — FX round 2 : sliders horizontaux, bonnets −25 %, knob cranté, cases de boutons
+
+Branche `design/tests`, **aucun push**. Suite du round 1 (7 correctifs déjà commités).
+Les 4 demandes utilisateur sont livrées et **vérifiées sur pixels**.
+
+### 1. Sliders de nouveau HORIZONTAUX
+`FxSlider` (`FxKnob.kt`) était un fader **vertical** (`FaderRail` + course en Y). La
+maquette utilise un **HSlider** : rail horizontal, remplissage d'accent par la gauche,
+bonnet qui glisse en X. Réécrit en `Row` (libellé 52 dp | rail `weight(1f)` | valeur 44 dp).
+Le remplissage du rail se lit sur `v`, la course du bonnet est `v * (largeur - CAP_D)`.
+
+**Piège de compilation** : `BoxWithConstraints` donne `maxWidth` en **`Dp`**, et
+`Float * Dp` n'existe pas — il faut écrire `(maxWidth - CAP_D.dp) * v`, jamais
+`v * (maxWidth - CAP_D.dp)`. `size.width` n'existe pas dans le scope d'un `Box` (c'est
+`onSizeChanged` ou `BoxWithConstraints`).
+
+### 2. Bonnets réduits de 25 %
+`CAP_D` : 22 -> **16,5** (22 × 0,75). Mesure : le bonnet fait **21,8 unités** sur la
+capture, soit le diamètre attendu à l'échelle de la scène.
+
+### 3. Knob « Sunday Keys » + touche maison (`FxKnob`)
+Le corps vector drawable (`ic_fx_knob_body.xml`) est **remplacé par du Canvas pur**.
+Ce qui vient de Sunday Keys : la **bague de valeur à l'EXTÉRIEUR**, la **jupe crantée**
+(40 dents alternées clair/sombre), la lumière unique en haut à gauche. Touche
+personnelle : une **gemme** (point d'accent + halo + reflet) à la pointe de l'index.
+Mesure : **~40 oscillations par tour** au profil angulaire à 0,68 r — le crantage est
+bien là. Le drawable n'est plus référencé (laissé en place, inoffensif).
+
+### 4. Cases à relief pour `+`/`−`/`✕`/`<`
+Nouveau `FxButtons.kt` -> `FxButtonChip(side, onClick, radius, accent, on, content)` :
+ombre portée sous la case (rectangles empilés, pas `Modifier.shadow`), fond bombé
+(dégradé clair en haut), liseré d'arête haute, bordure 1 px. À l'appui la case
+**s'enfonce** (translation + scale 0,95 + liseré qui passe en bas).
+
+Branché sur : `FxIconButton` (✕ et < de l'en-tête, 28 dp), `FxStepBtn` (`+`/`−`, 24 dp),
+`FxMiniArrow` (chevrons de preset, 24 dp). Les `PLUS` de `FxEmptySlot`/`AddSlotCard`
+ne sont **pas** touchés : la case entière est déjà le bouton.
+
+### Piège majeur : les captures étaient dans `app/app/`
+`./gradlew :app:recordRoborazziDebug` a écrit dans **`app/app/src/test/screenshots/`**
+(dossier imbriqué) pendant que je mesurais `app/src/test/screenshots/` — **périmé de
+1 h 30**. Toute la première passe de mesure était donc fausse (« la case ne se dessine
+pas »). Réflexe : vérifier l'**horodatage** des PNG avant de conclure quoi que ce soit.
+Les fichiers frais ont été recopiés dans `app/src/test/screenshots/` et `app/app` supprimé.
+
+### Environnement
+Le wipe sandbox a de nouveau effacé le JDK : `sudo apt-get install -y
+openjdk-21-jdk-headless unzip zip` -> `/usr/lib/jvm/java-21-openjdk-amd64`.
+Pillow aussi (`pip install Pillow`). Le serveur de `/workspace/dl/pub` (port 12000)
+survit, les JPEG sont régénérés après chaque capture.

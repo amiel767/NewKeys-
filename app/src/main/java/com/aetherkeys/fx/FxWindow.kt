@@ -345,11 +345,7 @@ fun FxHeader(
 /** Bouton carré de l'en-tête : fond sobre, glyphe centré. */
 @Composable
 fun FxIconButton(icon: String, onClick: () -> Unit, size: Int = 28, glyph: Int = 14) {
-    Box(
-        Modifier.size(size.dp).clip(RoundedCornerShape(10.dp))
-            .clickableNoRipple(onClick),
-        contentAlignment = Alignment.Center,
-    ) { FxIcon(icon, glyph.dp, FxC.dim) }
+    FxButtonChip(side = size.dp, onClick = onClick) { FxIcon(icon, glyph.dp, FxC.dim) }
 }
 
 /** Le bouton Save, qui s'allume dès qu'un réglage a bougé. */
@@ -442,8 +438,7 @@ fun FxNumStep(
 
 @Composable
 private fun FxStepBtn(txt: String, onClick: () -> Unit) {
-    Box(
-        Modifier.size(24.dp).clip(RoundedCornerShape(7.dp)).clickableNoRipple(onClick),
-        contentAlignment = Alignment.Center,
-    ) { Text(txt, color = FxC.dim, fontSize = 14.sp) }
+    FxButtonChip(side = 24.dp, onClick = onClick, radius = 7.dp) {
+        Text(txt, color = FxC.dim, fontSize = 13.sp)
+    }
 }
