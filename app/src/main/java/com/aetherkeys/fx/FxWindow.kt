@@ -245,8 +245,8 @@ private fun FxCatalog(state: FxWindowState, actions: FxWindowActions) {
 private fun FxCatalogCard(f: FxInfoD, enabled: Boolean, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().height(68.dp).clip(RoundedCornerShape(13.dp))
-            .clickableNoRipple { if (enabled) onClick() }
-            .fxSvg(AeFxSvg.catalogCard()),
+            .fxRectWell(13.dp, top = .06f, rim = .07f)
+            .clickableNoRipple { if (enabled) onClick() },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Spacer(Modifier.width(13.dp))
@@ -325,7 +325,9 @@ fun FxHeader(
                 modifier = Modifier.graphicsLayer(rotationZ = -1.2f, translationY = 3f),
             )
         } else {
-            Text(title, color = FxC.ink, fontSize = 13.sp, fontWeight = FontWeight.Black, maxLines = 1)
+            // Un cran plus grand que la maquette (13) : le titre « Effects » se
+            // lisait trop petit en 13 sp une fois la fenêtre mise à l'échelle.
+            Text(title, color = FxC.ink, fontSize = 15.sp, fontWeight = FontWeight.Black, maxLines = 1)
         }
         Spacer(Modifier.weight(1f))
         if (counter != null) {

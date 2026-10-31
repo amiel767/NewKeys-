@@ -32,7 +32,10 @@ object AeFxIcons {
     const val TRASH = "M4 7h16|M9 7V5.4a1.6 1.6 0 0 1 1.6-1.6h2.8A1.6 1.6 0 0 1 15 5.4V7|M6.5 7l1 12.2A1.8 1.8 0 0 0 9.3 21h5.4a1.8 1.8 0 0 0 1.8-1.8L17.5 7"
     const val STEP_PREV = "M15 18l-6-6 6-6"
     const val STEP_NEXT = "M9 6l6 6-6 6"
-    const val POWER = "M15.4 14.2a13 13 0 1 0 17.2 0|M24 9.5v10.6"
+    // Tracé sur la grille 24 x 24, comme les autres icônes. L'ancien (grille 48)
+    // débordait à y=37 et se faisait rogner : c'est ce qui faisait un glyphe
+    // mal centré dans son bouton.
+    const val POWER = "M12 7.2v5.6|M7.9 9.3a6.1 6.1 0 1 0 8.2 0"
     const val WAVE = "M2 12c2 0 2-4 4-4s2 8 4 8 2-8 4-8 2 4 4 4"
     const val SLIDERS = "M4 21v-7|M4 10V3|M12 21v-9|M12 8V3|M20 21v-5|M20 12V3|M1 14h6|M9 8h6|M17 16h6"
     const val ARP_UP = "M3 19h4v-4h4v-4h4V7h4"

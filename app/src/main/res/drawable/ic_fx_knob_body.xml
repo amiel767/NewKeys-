@@ -1,0 +1,93 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="100dp"
+    android:height="100dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+
+    <!-- Corps de potard 3D. Le relief vient de quatre plans concentriques, lumière
+         en haut à gauche. L'index et l'arc sont dessinés en Canvas par-dessus :
+         eux seuls tournent avec la valeur, le corps reste fixe. -->
+
+    <path android:pathData="M50,50m-36,0a36,36 0 1,0 72,0a36,36 0 1,0 -72,0">
+        <aapt:attr xmlns:aapt="http://schemas.android.com/aapt" name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="42"
+                android:centerY="40"
+                android:gradientRadius="46">
+                <item android:offset="0" android:color="#FF6E7488"/>
+                <item android:offset="0.55" android:color="#FF3C4155"/>
+                <item android:offset="1" android:color="#FF191C28"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- La collerette : un anneau sombre qui creuse la jonction corps / jupe.
+         (Les vector drawables n'ont pas de strokeDashArray : pas de cannelures
+         pointillées, on creuse la jonction par un anneau plein.) -->
+    <path
+        android:pathData="M50,50m-33,0a33,33 0 1,0 66,0a33,33 0 1,0 -66,0"
+        android:strokeColor="#B0000000"
+        android:strokeWidth="6"/>
+
+    <path android:pathData="M50,50m-30.5,0a30.5,30.5 0 1,0 61,0a30.5,30.5 0 1,0 -61,0">
+        <aapt:attr xmlns:aapt="http://schemas.android.com/aapt" name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="41"
+                android:centerY="38"
+                android:gradientRadius="40">
+                <item android:offset="0" android:color="#FF9AA1B6"/>
+                <item android:offset="0.45" android:color="#FF565C70"/>
+                <item android:offset="1" android:color="#FF23273A"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <path
+        android:pathData="M50,50m-30.5,0a30.5,30.5 0 1,0 61,0a30.5,30.5 0 1,0 -61,0"
+        android:strokeColor="#38FFFFFF"
+        android:strokeWidth="0.9"/>
+
+    <!-- Le dôme, plus clair, décalé vers la lumière. -->
+    <path android:pathData="M50,50m-21,0a21,21 0 1,0 42,0a21,21 0 1,0 -42,0">
+        <aapt:attr xmlns:aapt="http://schemas.android.com/aapt" name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="43"
+                android:centerY="40"
+                android:gradientRadius="28">
+                <item android:offset="0" android:color="#FFB3BACD"/>
+                <item android:offset="0.5" android:color="#FF6A7186"/>
+                <item android:offset="1" android:color="#FF2B3044"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <path
+        android:pathData="M50,50m-21,0a21,21 0 1,0 42,0a21,21 0 1,0 -42,0"
+        android:strokeColor="#6B000000"
+        android:strokeWidth="0.7"/>
+
+    <!-- Le reflet de vitre : l'ellipse inclinée en haut à gauche. -->
+    <path android:pathData="M50,50m-15.6,0a15.6,15.6 0 1,0 31.2,0a15.6,15.6 0 1,0 -31.2,0"
+        android:strokeColor="#24FFFFFF"
+        android:strokeWidth="0.8"/>
+
+    <path android:pathData="M40.5,35m-13.5,0a13.5,7.5 0 1,0 27,0a13.5,7.5 0 1,0 -27,0">
+        <aapt:attr xmlns:aapt="http://schemas.android.com/aapt" name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="27"
+                android:startY="28"
+                android:endX="54"
+                android:endY="43">
+                <item android:offset="0" android:color="#B3FFFFFF"/>
+                <item android:offset="0.6" android:color="#1AFFFFFF"/>
+                <item android:offset="1" android:color="#00FFFFFF"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+</vector>

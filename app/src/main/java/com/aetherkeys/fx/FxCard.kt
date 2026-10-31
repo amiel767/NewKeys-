@@ -1,6 +1,9 @@
 package com.aetherkeys.fx
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -14,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -24,17 +28,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.sp
 
 /**
@@ -179,8 +187,15 @@ fun FxCard(
  */
 @Composable
 private fun FxPowerButton(on: Boolean, accent: Color, onClick: () -> Unit) {
+    // L'appui se lit par un enfoncement, pas par une ondulation : le bouton
+    // perd 1 unité et son ombre s'inverse. C'est ce qui manquait au « creux ».
+    val press = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    val sink by animateFloatAsState(press.value, label = "powerSink")
     Box(
-        Modifier.size(24.dp).clip(RoundedCornerShape(8.dp))
+        Modifier.size(24.dp)
+            .graphicsLayer { translationY = sink * 1.2f; scaleX = 1f - sink * .04f; scaleY = 1f - sink * .04f }
+            .clip(RoundedCornerShape(8.dp))
             .then(
                 if (on) Modifier.background(
                     Brush.verticalGradient(
@@ -188,7 +203,16 @@ private fun FxPowerButton(on: Boolean, accent: Color, onClick: () -> Unit) {
                     )
                 ) else Modifier.fxSvg(AeFxSvg.pressedWell())
             )
-            .clickableNoRipple(onClick),
+            .pointerInput(onClick) {
+                detectTapGestures(
+                    onPress = {
+                        scope.launch { press.animateTo(1f, tween(70)) }
+                        tryAwaitRelease()
+                        scope.launch { press.animateTo(0f, spring(dampingRatio = .45f, stiffness = 900f)) }
+                    },
+                    onTap = { onClick() },
+                )
+            },
         contentAlignment = Alignment.Center,
     ) {
         FxIcon(AeFxIcons.POWER, 13.dp, if (on) accent else Color(0xFF6B7488), sw = 2.2f)

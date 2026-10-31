@@ -1,13 +1,16 @@
 package com.aetherkeys.fx
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
@@ -24,9 +27,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.soundstage.mixer.R
+import com.soundstage.mixer.ui.components.FaderRail
+import com.soundstage.mixer.ui.components.FaderThumb
+import com.soundstage.mixer.ui.components.FaderThumbRatio
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -75,6 +83,15 @@ fun FxKnob(
                 detectTapGestures(onDoubleTap = { onReset?.invoke() })
             },
         ) {
+            // Le corps est un VECTOR DRAWABLE (ic_fx_knob_body) : le relief 3D
+            // vient de ses quatre dégradés, pas de cercles empilés en code.
+            Image(
+                painter = painterResource(R.drawable.ic_fx_knob_body),
+                contentDescription = null,
+                modifier = Modifier.size(size.dp),
+            )
+            // L'arc et l'index restent en Canvas : eux seuls dépendent de la
+            // valeur, donc eux seuls doivent être redessinés au glissement.
             Canvas(Modifier.size(size.dp)) {
                 val r = this.size.minDimension / 2f
                 val cx = this.size.width / 2f
@@ -101,39 +118,21 @@ fun FxKnob(
                         style = Stroke(width = r * .052f, cap = StrokeCap.Round),
                     )
                 }
-                // La collerette, le corps, le dôme.
-                drawCircle(Color(0xFF2A2E40), radius = r * .72f, center = Offset(cx, cy))
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        listOf(Color(0xFF767D92), Color(0xFF525869), Color(0xFF373C4E), Color(0xFF212538)),
-                        center = Offset(cx - r * .2f, cy - r * .3f), radius = r * 1.1f,
-                    ),
-                    radius = r * .61f, center = Offset(cx, cy),
-                )
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        listOf(Color(0xFF959CB2), Color(0xFF565C70), Color(0xFF282C3E)),
-                        center = Offset(cx - r * .18f, cy - r * .3f), radius = r * .9f,
-                    ),
-                    radius = r * .42f, center = Offset(cx, cy),
-                )
-                drawCircle(Color(0x24FFFFFF), radius = r * .31f, center = Offset(cx, cy), style = Stroke(1f))
-                // L'index, dans l'accent.
+                // L'index, dans l'accent, avec sa pointe claire.
                 val deg = a0 + v * sweep
-                val p1 = pt(deg, r * .28f)
-                val p2 = pt(deg, r * .56f)
-                drawLine(accent, p1, p2, strokeWidth = r * .075f, cap = StrokeCap.Round)
-                drawLine(Color(0xBFFFFFFF), pt(deg, r * .28f), pt(deg, r * .40f),
-                    strokeWidth = r * .075f, cap = StrokeCap.Round)
-                // Le reflet de vitre.
-                drawOval(
-                    brush = Brush.linearGradient(listOf(Color(0x4DFFFFFF), Color.Transparent)),
-                    topLeft = Offset(cx - r * .5f, cy - r * .55f),
-                    size = androidx.compose.ui.geometry.Size(r * .62f, r * .34f),
+                drawLine(
+                    accent, pt(deg, r * .28f), pt(deg, r * .56f),
+                    strokeWidth = r * .075f, cap = StrokeCap.Round,
+                )
+                drawLine(
+                    Color(0xBFFFFFFF), pt(deg, r * .28f), pt(deg, r * .40f),
+                    strokeWidth = r * .075f, cap = StrokeCap.Round,
                 )
                 if (hot) {
-                    drawCircle(accent.copy(alpha = .5f), radius = r * .95f,
-                        center = Offset(cx, cy), style = Stroke(1.5f))
+                    drawCircle(
+                        accent.copy(alpha = .5f), radius = r * .95f,
+                        center = Offset(cx, cy), style = Stroke(1.5f),
+                    )
                 }
             }
         }
@@ -146,15 +145,31 @@ fun FxKnob(
     }
 }
 
+
 /**
- * LE FADER D'UN RÉGLAGE — rail creusé, valeur remplie, bonnet bombé.
+ * LE FADER D'UN RÉGLAGE — les composants du MIXER, pas une imitation.
  *
- * Le rail est celui de la maquette : 11 unités de haut, une gorge sombre, et la
- * valeur qui remplit le creux dans l'accent. Le bonnet est un cercle de 22 unités,
- * bombé en huit plans, lumière en haut à gauche. Le libellé est à gauche (52
- * unités) et la valeur à droite (44), donc les rails s'alignent d'une ligne à
- * l'autre.
+ * Le rail est `FaderRail` (celui des pistes) et le bonnet est `FaderThumb`,
+ * pris tels quels. Le rail est aminci : sa largeur d'usage dans le mixer est
+ * 18 dp, on prend 60 % de cette valeur (RAIL_W), soit −40 % comme demandé.
+ * `FaderRail` dérive toute son échelle de sa largeur, donc amincir la boîte
+ * amincit l'ensemble (rainure, liserés, halo) sans rien d'autre à régler.
+ *
+ * La course du bonnet reprend celle du mixer : `CAP_TOP`..`CAP_BOTTOM`, avec
+ * `capCenterY` qui inverse la valeur (1 en haut). Le libellé est sous le rail
+ * et la valeur entre les deux, comme dans la maquette.
  */
+private const val FADER_H = 128f
+private const val FADER_W = 30f
+private const val CAP_H = 34f
+private const val CAP_W = CAP_H * FaderThumbRatio
+private const val RAIL_W = 10.8f          // 18 dp (mixer) x 0,6 = −40 %
+private const val CAP_TOP = 8f
+private const val CAP_BOTTOM = FADER_H - CAP_H / 2f - 4f
+private const val CAP_TRAVEL = CAP_BOTTOM - CAP_TOP
+
+private fun capCenterY(v: Float) = CAP_TOP + (1f - v.coerceIn(0f, 1f)) * CAP_TRAVEL
+
 @Composable
 fun FxSlider(
     label: String,
@@ -167,17 +182,9 @@ fun FxSlider(
     var hot by remember { androidx.compose.runtime.mutableStateOf(false) }
     val v = value.coerceIn(0f, 1f)
 
-    androidx.compose.foundation.layout.Row(
-        Modifier.width(244.dp).height(26.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            label.uppercase(), color = if (hot) FxC.ink else FxC.dim, fontSize = 7.5.sp,
-            fontWeight = FontWeight.ExtraBold, letterSpacing = .8.sp, maxLines = 1,
-            modifier = Modifier.width(52.dp),
-        )
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(FADER_W.dp)) {
         Box(
-            Modifier.weight(1f).height(26.dp)
+            Modifier.width(FADER_W.dp).height(FADER_H.dp)
                 .pointerInput(label) {
                     detectDragGestures(
                         onDragStart = { hot = true },
@@ -185,72 +192,38 @@ fun FxSlider(
                         onDragCancel = { hot = false },
                     ) { change, _ ->
                         change.consume()
-                        val x = change.position.x
-                        onChange((x / size.width).coerceIn(0f, 1f))
+                        // La position du doigt est ABSOLUE dans la boîte : on
+                        // reprend exactement la course du bonnet.
+                        val py = change.position.y / density
+                        onChange((1f - ((py - CAP_TOP) / CAP_TRAVEL)).coerceIn(0f, 1f))
                     }
                 }
                 .pointerInput(label) { detectTapGestures(onDoubleTap = { onReset?.invoke() }) },
         ) {
-            Canvas(Modifier.fillMaxSize()) {
-                val railH = 11f
-                val capD = 22f
-                val midY = size.height / 2f
-                // Le rail, puis la gorge, puis la valeur.
-                drawRoundRect(
-                    brush = Brush.verticalGradient(
-                        listOf(FxC.rail, Color(0xFF313443), Color(0xFF3A3C4F), Color(0xFF3E4155), FxC.rail2),
-                    ),
-                    topLeft = Offset(0f, midY - railH / 2f),
-                    size = androidx.compose.ui.geometry.Size(size.width, railH),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(railH / 2f),
+            // Le rail du mixer, aminci. Le bonnet est centré dessus.
+            Box(Modifier.align(Alignment.TopCenter).width(RAIL_W.dp).fillMaxHeight()) {
+                FaderRail(
+                    accent = accent,
+                    modifier = Modifier.fillMaxSize(),
+                    level = v,
+                    glow = .25f + .75f * v,
                 )
-                val gutter = railH - 6f
-                drawRoundRect(
-                    color = Color(0xFF07090F),
-                    topLeft = Offset(3f, midY - gutter / 2f),
-                    size = androidx.compose.ui.geometry.Size(size.width - 6f, gutter),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(gutter / 2f),
-                )
-                val fillW = (size.width - 6f) * v
-                if (fillW > 1f) {
-                    drawRoundRect(
-                        brush = Brush.horizontalGradient(listOf(accent.copy(alpha = .25f), accent.copy(alpha = .9f))),
-                        topLeft = Offset(3f, midY - gutter / 2f),
-                        size = androidx.compose.ui.geometry.Size(fillW, gutter),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(gutter / 2f),
-                    )
-                }
-                // Le bonnet.
-                val capX = (size.width - capD) * v + capD / 2f
-                drawCircle(
-                    brush = Brush.linearGradient(
-                        listOf(Color(0xFF7C8397), Color(0xFF5A6072), Color(0xFF41465A), Color(0xFF2E3344)),
-                    ),
-                    radius = capD / 2f, center = Offset(capX, midY),
-                )
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        listOf(Color(0xFF6C7387), Color(0xFF4B5164), Color(0xFF333849), Color(0xFF262B3B)),
-                    ),
-                    radius = capD * .37f, center = Offset(capX - 1f, midY - 1.5f),
-                )
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        listOf(Color.White, accent, accent.copy(alpha = .5f)),
-                    ),
-                    radius = capD * .12f, center = Offset(capX - 1f, midY - 2f),
-                )
-                if (hot) {
-                    drawCircle(accent.copy(alpha = .65f), radius = capD / 2f + 1f,
-                        center = Offset(capX, midY), style = Stroke(1.5f))
-                }
+            }
+            val cy = capCenterY(v)
+            Box(Modifier.align(Alignment.TopCenter).offset(y = (cy - CAP_H / 2f).dp).width(CAP_W.dp).height(CAP_H.dp)) {
+                FaderThumb(accent = accent, modifier = Modifier.fillMaxSize(), glow = .3f + .7f * v)
             }
         }
+        Spacer(Modifier.height(3.dp))
         Text(
-            display, color = if (hot) FxC.ink else Color(0xFF7E879C), fontSize = 9.sp,
-            fontFamily = FxFonts.mono,
-            modifier = Modifier.width(44.dp),
-            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+            label.uppercase(), color = if (hot) FxC.ink else FxC.dim,
+            fontSize = 7.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = .6.sp,
+            maxLines = 1,
+        )
+        Text(
+            display, color = if (hot) FxC.ink else Color(0xFF7E879C),
+            fontSize = 8.5.sp, fontFamily = FxFonts.mono, maxLines = 1,
         )
     }
 }
+

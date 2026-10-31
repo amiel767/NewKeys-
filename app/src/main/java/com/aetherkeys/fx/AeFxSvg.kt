@@ -3,8 +3,16 @@ package com.aetherkeys.fx
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.unit.Dp
 import com.caverock.androidsvg.SVG
 import kotlin.math.roundToInt
 
@@ -107,7 +115,11 @@ object AeFxSvg {
             """<circle cx="28" cy="28" r="20" fill="none" stroke="#000000" stroke-opacity=".55"/>""" +
             """<circle cx="28" cy="28" r="14.5" fill="none" stroke="#FFFFFF" stroke-opacity=".10"/></svg>"""
 
-    /** Emplacement libre : cadre en pointillé + le `+`. */
+    /**
+     * L'emplacement libre : le puits opaque, l'ombre d'encastrement et le cadre
+     * pointillé. AUCUN `+` ici — le composable en pose déjà un, et deux signes
+     * superposés se lisaient comme un doublon mal aligné.
+     */
     fun emptySlot(): String =
         """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 209 341" width="209" height="341"><defs>""" +
             """<linearGradient id="f" x1="0" y1="0" x2="0" y2="1">""" +
@@ -115,13 +127,17 @@ object AeFxSvg {
             """</linearGradient>""" +
             """<linearGradient id="s" x1="0" y1="0" x2="0" y2="1">""" +
             """<stop offset="0" stop-color="#000000" stop-opacity=".75"/>""" +
-            """<stop offset=".3" stop-color="#000000" stop-opacity="0"/></linearGradient></defs>""" +
+            """<stop offset=".3" stop-color="#000000" stop-opacity="0"/></linearGradient>""" +
+            """<linearGradient id="sl" x1="0" y1="0" x2="1" y2="0">""" +
+            """<stop offset="0" stop-color="#000000" stop-opacity=".4"/>""" +
+            """<stop offset=".12" stop-color="#000000" stop-opacity="0"/>""" +
+            """<stop offset=".88" stop-color="#000000" stop-opacity="0"/>""" +
+            """<stop offset="1" stop-color="#000000" stop-opacity=".4"/></linearGradient></defs>""" +
             """<rect x="1" y="1" width="207" height="339" rx="15" fill="url(#f)"/>""" +
             """<rect x="1" y="1" width="207" height="339" rx="15" fill="url(#s)"/>""" +
+            """<rect x="1" y="1" width="207" height="339" rx="15" fill="url(#sl)"/>""" +
             """<rect x="1" y="1" width="207" height="339" rx="15" fill="none" """ +
-            """stroke="#FFFFFF" stroke-opacity=".14" stroke-width="1.4" stroke-dasharray="7 6"/>""" +
-            """<g stroke="#8D96AB" stroke-opacity=".85" stroke-width="2.4" stroke-linecap="round">""" +
-            """<path d="M104.5 158.5v24"/><path d="M92.5 170.5h24"/></g></svg>"""
+            """stroke="#FFFFFF" stroke-opacity=".05"/></svg>"""
 
     /** Le creux du bouton engage, éteint : ombre haute, lumière basse. */
     fun pressedWell(): String =
@@ -231,4 +247,52 @@ private object AeFxSvgCache {
 fun Modifier.fxSvg(svg: String): Modifier = this.drawWithCache {
     val bmp = AeFxSvgCache.get(svg, size.width.roundToInt().coerceAtLeast(1), size.height.roundToInt().coerceAtLeast(1))
     onDrawBehind { drawImage(bmp.asImageBitmap()) }
+}
+
+/**
+ * Un RECTANGLE ARRONDI dessiné en Compose, pas en SVG étiré.
+ *
+ * `preserveAspectRatio="none"` etire un viewBox 100 x 100 vers une boîte très
+ * large : les rayons suivent l'échelle X et Y séparément, donc les coins
+ * deviennent des ELLIPSES — c'est la « forme bizarre » que donnaient le champ de
+ * preset et la carte du catalogue. Ici le rayon est en dp et reste rond quelle
+ * que soit la boîte.
+ *
+ * @param top le liseré clair du bord haut (0 = aucun).
+ * @param rim l'opacité de la bordure sur tout le tour.
+ */
+fun Modifier.fxRectWell(radius: Dp, top: Float = .14f, rim: Float = .07f): Modifier = drawBehind {
+    val r = radius.toPx()
+    val w = size.width
+    val h = size.height
+    val shape = RoundRect(
+        0f, 0f, w, h,
+        CornerRadius(r),
+    )
+    val path = Path().apply { addRoundRect(shape) }
+    // Le fond, puis l'ombre d'encastrement, puis le liseré, puis la bordure.
+    drawPath(
+        path,
+        Brush.verticalGradient(
+            listOf(Color(0xFF0E1420), Color(0xFF0B0F18)), startY = 0f, endY = h,
+        ),
+    )
+    drawPath(
+        path,
+        Brush.verticalGradient(
+            listOf(Color(0xB3000000), Color(0x00000000)), startY = 0f, endY = h * .45f,
+        ),
+    )
+    if (top > 0f) {
+        drawPath(
+            path,
+            Brush.verticalGradient(
+                listOf(Color.White.copy(alpha = top), Color.Transparent),
+                startY = 0f, endY = 1.5f,
+            ),
+        )
+    }
+    if (rim > 0f) {
+        drawPath(path, Color.White.copy(alpha = rim), style = Stroke(1f))
+    }
 }

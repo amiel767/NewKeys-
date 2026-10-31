@@ -117,11 +117,12 @@ fun FxEffectPage(state: FxWindowState, actions: FxWindowActions, arp: ArpState) 
                     )
                 }
             }
-            // Les suivants : des faders.
-            Column(
+            // Les suivants : des faders VERTICAUX, comme les pistes du mixer.
+            Row(
                 Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(13.dp))
-                    .background(Brush.verticalGradient(listOf(Color(0xFF0E1420), Color(0xFF0B0F18)))).padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.SpaceEvenly,
+                    .background(Brush.verticalGradient(listOf(Color(0xFF0E1420), Color(0xFF0B0F18))))
+                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
                 fx.params.drop(4).forEachIndexed { j, p ->
                     val i = j + 4
@@ -171,7 +172,7 @@ private fun FxPresetRow(
         Spacer(Modifier.height(5.dp))
         Row(
             Modifier.fillMaxWidth().height(30.dp).clip(RoundedCornerShape(9.dp))
-                .fxSvg(AeFxSvg.presetField())
+                .fxRectWell(9.dp, top = .14f, rim = .10f)
                 .clickableNoRipple { open = !open }
                 .padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
