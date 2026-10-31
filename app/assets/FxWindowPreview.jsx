@@ -475,11 +475,14 @@ function Segmented({ options, value, onChange, height = 34, grow = false, width,
 const LERP_KEYS = ["size", "decay", "pre", "damp", "width", "mix", "diff"];
 const easeTo = (cur, target, dt, speed) => cur + (target - cur) * Math.min(1, dt * speed);
 
-function Orb({ vals, palette, accent, fireRef }) {
+function Orb({ vals, palette, accent, fireRef, live = true }) {
   const cvs = useRef(null);
-  const st = useRef({ t: 0, last: 0, flash: 0, motes: null, sm: null, pal: null });
+  const st = useRef({ t: 0, last: 0, flash: 0, drawn: 0, spd: 1, motes: null, sm: null, pal: null });
   const vref = useRef(vals); vref.current = vals;
   const pref = useRef(palette); pref.current = palette;
+  // `live` est lu dans la boucle : il ne doit PAS relancer l'effet, sinon le
+  // canvas serait reconstruit a chaque bascule et l'orbe repartirait de zero.
+  const lref = useRef(live); lref.current = live;
 
   useEffect(() => {
     const c = cvs.current, ctx = c.getContext("2d");
@@ -522,7 +525,18 @@ function Orb({ vals, palette, accent, fireRef }) {
     let raf;
     const draw = (ts) => {
       const dt = Math.min(.05, (ts - S.last) / 1000 || .016);
-      S.last = ts; S.t += dt;
+      S.last = ts;
+      /* BYPASS : l'orbe ne se coupe pas, il RALENTIT jusqu'a l'arret. `S.spd`
+         glisse de 1 a 0 en ~450 ms, donc les anneaux et les particules perdent
+         leur vitesse au lieu de se figer d'un coup. Comme le temps avance de
+         `dt * S.spd`, la reprise repart exactement de la phase atteinte : aucun
+         saut. Une fois a l'arret, la boucle reste vivante mais ne peint plus —
+         la derniere image reste a l'ecran. */
+      if (!lref.current && S.spd === 0 && S.drawn) { raf = requestAnimationFrame(draw); return; }
+      S.drawn = 1;
+      S.spd += ((lref.current ? 1 : 0) - S.spd) * Math.min(1, dt * 9.5);
+      if (!lref.current && S.spd < .004) S.spd = 0;
+      S.t += dt * S.spd;
       const t = S.t;
 
       /* tout glisse vers sa cible : c'est ce qui rend le changement fluide */
@@ -636,7 +650,12 @@ function Orb({ vals, palette, accent, fireRef }) {
   }, []);
   /* Le canvas est en ABSOLU dans sa case : sinon sa largeur intrinseque (300 px
      par defaut) force le flex item a grandir et la carte deborde du logement. */
-  return <canvas ref={cvs} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block" }} />;
+  return <canvas ref={cvs}
+    style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block",
+             /* le gris est pose par le CSS, pas par le canvas : la transition
+                duree est alors garantie, et le dessin n'a pas a connaitre l'etat. */
+             filter: live ? "none" : "saturate(.05) brightness(.62) contrast(.92)",
+             transition: "filter .45s cubic-bezier(.4,0,.2,1)" }} />;
 }
 
 /* ══ LES PRESETS : une case compacte, dans la colonne de droite ═════════════
@@ -855,9 +874,11 @@ function FxCard({ fx, midi, on, onToggle, onOpen, onRemove, height }) {
                       position: "relative",
                       background: "#12161F", boxShadow: "inset 0 2px 7px rgba(0,0,0,.7), inset 0 0 0 1px rgba(255,255,255,.04)" }}>
           {fx.space
-            ? <Orb vals={vals} palette={pal} accent={ac} fireRef={fireRef} />
+            ? <Orb vals={vals} palette={pal} accent={ac} fireRef={fireRef} live={on} />
             : midi ? <MiniSteps accent={ac} on={on} /> : <MiniGraph type={fx.type} accent={ac} on={on} />}
-          {!on && <div style={{ position: "absolute", inset: 0, background: "rgba(10,13,20,.6)" }} />}
+          <div style={{ position: "absolute", inset: 0, background: "rgba(10,13,20,.34)",
+                        opacity: on ? 0 : 1, transition: "opacity .45s cubic-bezier(.4,0,.2,1)",
+                        pointerEvents: "none" }} />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 9, fontWeight: 700,
                       color: DIM, flex: "none" }}>
@@ -1019,7 +1040,7 @@ function FxPanel({ fx, vals, setVal, preset, custom, onPick, on, onToggle }) {
            style={{ flex: "1 1 0", width: 0, minWidth: 0, position: "relative", borderRadius: 15,
                     overflow: "hidden", cursor: fx.space ? "crosshair" : "default", ...well({ borderRadius: 15 }) }}>
         {fx.space
-          ? <Orb vals={vals} palette={pal} accent={fx.accent} fireRef={fireRef} />
+          ? <Orb vals={vals} palette={pal} accent={fx.accent} fireRef={fireRef} live={on} />
           : <div style={{ height: "100%", display: "grid", placeItems: "center" }}>
               <div style={{ width: "58%", height: "54%" }}>
                 <MiniGraph type={fx.type} accent={fx.accent} on />
@@ -1041,9 +1062,15 @@ function FxPanel({ fx, vals, setVal, preset, custom, onPick, on, onToggle }) {
             Touch the orb to re-fire
           </div>
         )}
-        {!on && <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center",
-                              background: "rgba(9,12,22,.66)", fontSize: 12, fontWeight: 800,
-                              letterSpacing: ".2em", color: MUTE, textTransform: "uppercase" }}>Bypassed</div>}
+        {/* Le voile est LEGER : l'orbe se grise deja lui-meme, un voile opaque
+            le cacherait et on ne verrait plus qu'un rectangle eteint. */}
+        <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center",
+                      background: "rgba(9,12,22,.20)", opacity: on ? 0 : 1,
+                      transition: "opacity .45s cubic-bezier(.4,0,.2,1)", pointerEvents: "none" }}>
+          <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".2em", color: MUTE,
+                         textTransform: "uppercase", padding: "5px 12px", borderRadius: 8,
+                         background: "rgba(9,12,22,.62)", border: `1px solid ${LINE2}` }}>Bypassed</span>
+        </div>
       </div>
 
       <div style={{ width: 268, flex: "none", display: "flex", flexDirection: "column", gap: 8, minHeight: 0 }}>
