@@ -1833,3 +1833,59 @@ Comparer les deux a **891x411** (la maquette fait 1736x800 = 1,948x, la capture 
 L'orbe a une phase animee : son ecart de pixel est intrinsequement non nul. Comparer les
 **profils** (pic 224 maquette / 222 rendu, meme position) et non l'ecart brut. Le
 `FxRegistry.info(id)` borne et les palettes par preset restent inchanges.
+
+## Session 2026-10-31 (suite) — FX : power, slots, faders du mixer, knob 3D, cartes
+
+Branche `design/tests`, aucun push. Retour utilisateur : « 75 % bien », 7 points.
+
+### Trois causes racines, toutes invisibles a la lecture du code
+
+1. **Power mal centre : le trace etait sur la MAUVAISE GRILLE.** `AeFxIcons.POWER`
+   valait `M15.4 14.2a13 13 0 1 0 17.2 0|M24 9.5v10.6` — un dessin concu pour un
+   viewBox **48**, monte sur la grille **24** que `FxIcon` suppose. Il montait a
+   y=37 et se faisait rogner. Verifier qu'un trace tient dans 24x24 **avant** de
+   chercher un probleme de centrage : c'est le meme piege que le SVG etire.
+2. **Le `+` des slots etait dessine DEUX FOIS** : `AeFxSvg.emptySlot()` portait un
+   groupe `<path d="M104.5 158.5v24"/>` et le composable `FxEmptySlot` posait en
+   plus son `FxIcon(PLUS)`. Deux signes a des positions differentes = le doublon
+   mal aligne. Le SVG ne garde que le puits et les ombres ; le composable, le `+`.
+3. **Les « formes bizarres » des cartes : `preserveAspectRatio="none"`.** Un
+   viewBox 100x100 etire vers une boite 244x30 applique l'echelle X et Y
+   **separement** : un `rx=9` devient un rayon de 9 unités en X et 2,7 en Y, donc
+   les coins sont des **ellipses**. Pour un rectangle, ne pas passer par un SVG
+   etire : `Modifier.fxRectWell(radius)` dessine le rayon en dp. Un SVG n'est bon
+   que si son ratio est **proche** de celui de la boite (les carres de 40 dp vont
+   tres bien ; un champ large, non).
+
+### Faders : les composants du mixer, pas une imitation
+
+`FxSlider` etait un `Canvas` horizontal refait a la main. Desormais :
+`FaderRail` (celui des pistes) + `FaderThumb`, **tels quels**.
+- **La largeur pilote tout** dans `FaderRail` (`s = w / 86`) : amincir la boite
+  amincit rainure, liseres et halo. Largeur d'usage du mixer = 18 dp ; on prend
+  **10,8 dp** = **−40 %**, comme demande.
+- La course du bonnet reprend celle du mixer (`CAP_TOP`..`CAP_BOTTOM`,
+  `capCenterY` qui inverse la valeur). Le glissement lit la position **absolue**
+  du doigt dans la boite, pas un delta.
+- `FaderRail` est **vertical par conception** (rainure insettee en Y, remplissage
+  par le bas). Le mettre dans une rangee de faders verticaux : c'est le precedent
+  `AeLeadsUi.kt` (`FADER_W=34`, `RAIL_W=16`). La maquette, elle, est horizontale :
+  l'ecart mesure du space monte donc de 10,1 a 11,5 — **c'est voulu**.
+
+### Knob 3D en vector drawable (demande explicite de methode)
+`res/drawable/ic_fx_knob_body.xml` : quatre plans concentriques en degrades
+radiaux (jupe, collerette, dome, reflet), lumiere en haut a gauche. L'**arc et
+l'index restent en Canvas** : eux seuls dependent de la valeur.
+Pieges du format :
+- `android:strokeDashArray` **n'existe pas** dans un vector drawable
+  (`error: attribute android:strokeDashArray not found`). Les cannelures
+  pointillees de la maquette sont remplacees par un anneau plein.
+- Le namespace `xmlns:aapt` doit etre declare sur la racine pour les `<gradient>`.
+- Le package est `com.aetherkeys.fx` mais la classe `R` est
+  `com.soundstage.mixer.R` : il faut l'import explicite.
+
+### Divers
+- Titre de fenetre 13 -> **15 sp** (la maquette est a 13 ; demande utilisateur).
+- « Goodizer » etait **deja** en place (`FxInfo(4, "Goodizer", "Maximizer", ...)`).
+- Le bouton power repond a l'appui par un enfoncement (`translationY` 1,2 +
+  `scale` 0,96 + ressort), pas par une ondulation.
