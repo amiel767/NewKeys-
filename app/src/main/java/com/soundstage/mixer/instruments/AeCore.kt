@@ -99,7 +99,7 @@ interface AeHost {
      * How much of the output the samples carry is parameter 22 (the Blend knob), pushed by the
      * manager with the rest of the preset, not a separate argument here.
      */
-    fun loadBank(strip: Int, instrument: AeInstrument, type: Int): Boolean = false
+    fun loadBank(strip: Int, instrument: AeInstrument, type: Int, model: Int = -1): Boolean = false
 
     /** Mix of samples in the instrument output, 0 = pure synthesis. For the UI readback. */
     fun bankMix(strip: Int): Float = 0f
@@ -206,8 +206,11 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
         // not a replacement: the synthesis stays underneath and covers the sample seams.
         // The bank is optional, so a failure here must not abort the load.
         val type = (init.firstOrNull() ?: 0f).let { (it * 3f).roundToInt() }
-        s.bankLoaded = host.loadBank(strip, inst, type)
-        if (s.bankLoaded) s.bankType = type
+        s.bankLoaded = host.loadBank(strip, inst, type, s.preset)
+        // bankType identifie la BANQUE chargee : le type de sax, ou le modele pour le
+        // piano (0 acoustique, 8 electrique).  Confondre les deux ferait croire au
+        // piano qu'il a deja la bonne banque.
+        if (s.bankLoaded) s.bankType = if (inst == AeInstrument.PIANO) (if (s.preset == 8) 8 else 0) else type
         return s
     }
 
@@ -234,6 +237,16 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
             if (t != s.bankType) {
                 s.bankLoaded = host.loadBank(strip, s.instrument, t)
                 s.bankType = if (s.bankLoaded) t else -1
+            }
+        }
+        // Piano : le modele « Electric » est une AUTRE banque, pas un reglage du
+        // piano acoustique.  Changer de modele recharge donc l'echantillon quand on
+        // entre ou sort de l'electrique.
+        if (s.instrument == AeInstrument.PIANO && s.bankType != s.preset) {
+            val want = if (s.preset == 8) 8 else 0
+            if (want != s.bankType) {
+                s.bankLoaded = host.loadBank(strip, s.instrument, 0, s.preset)
+                s.bankType = if (s.bankLoaded) want else -1
             }
         }
     }

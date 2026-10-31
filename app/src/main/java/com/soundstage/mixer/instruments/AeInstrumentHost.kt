@@ -31,13 +31,27 @@ object AeBanks {
     private val cache = HashMap<String, ByteArray>()
     /** Bank file per instrument type (0 soprano, 1 alto, 2 tenor, 3 baritone), empty = none. */
     private val saxFiles = arrayOf("saxpack_sop.bin", "saxpack_alt.bin", "saxpack_ten.bin", "saxpack_bar.bin")
-    /** Le piano n'a qu'une banque : le pack construit par tools/pianopack (4,17 Mo, 107 regions). */
+    /** Piano acoustique : pack construit par tools/pianopack (8,2 Mo, 107 regions). */
     private val pianoFile = "pianopack/piano.bin"
+    /**
+     * Piano electrique : banque distincte, pas un reglage du precedent.  Le moteur ne
+     * peut pas transformer un Steinway en tine : l'inharmonicite d'une corde et celle
+     * d'une barre frappee n'ont pas la meme loi.  Banque GregSullivan Wurlitzer EP200
+     * (CC-BY 3.0), pack 1,58 Mo / 48 regions, construite par tools/pianopack/build_electric.py.
+     */
+    private val electricFile = "pianopack/electric.bin"
+    /** Index du modele « Electric » dans AePianoModels.all : il change de banque. */
+    private const val ELECTRIC_MODEL = 8
 
-    /** The bank belonging to an instrument, or null when it has none (organ, synth, leads). */
-    fun fileFor(instrument: AeInstrument, saxType: Int): String? = when (instrument) {
+    /**
+     * The bank belonging to an instrument, or null when it has none (organ, synth, leads).
+     *
+     * `model` selectionne la banque du piano : acoustique par defaut, electrique pour le
+     * modele Electric.  Le reste des modeles sont des reglages sur la banque acoustique.
+     */
+    fun fileFor(instrument: AeInstrument, saxType: Int, model: Int = -1): String? = when (instrument) {
         AeInstrument.SAX -> saxFiles[saxType.coerceIn(0, 3)]
-        AeInstrument.PIANO -> pianoFile
+        AeInstrument.PIANO -> if (model == ELECTRIC_MODEL) electricFile else pianoFile
         else -> null
     }
 
@@ -93,12 +107,12 @@ object AeInstrumentHost : AeHost {
 
     override fun level(strip: Int): Float = NativeAudioBridge.safeFxStripPeak(strip)
 
-    override fun loadBank(strip: Int, instrument: AeInstrument, type: Int): Boolean {
+    override fun loadBank(strip: Int, instrument: AeInstrument, type: Int, model: Int): Boolean {
         // Sax and piano ship a bank. `type` is the sax's first parameter, the same value the
         // engine reads to pick a formant set, so the two stay in step; the piano has a single
         // bank and ignores it.
         if (instrument != AeInstrument.SAX && instrument != AeInstrument.PIANO) return false
-        val name = AeBanks.fileFor(instrument, type) ?: return false
+        val name = AeBanks.fileFor(instrument, type, model) ?: return false
         val bytes = AeBanks.read(name) ?: return false
         val ok = NativeAudioBridge.safeLoadInstrumentBank(strip, bytes)
         // The mix is parameter 22 now (the Blend knob), pushed by the manager with the rest of
