@@ -503,6 +503,9 @@ fun AeInstrumentsTabContent(manager: AeManager, strip: Int, onOpen: () -> Unit, 
                         onPower = { if (loaded) manager.unload(strip) else manager.load(strip, inst) },
                     )
                 }
+                // La 5e carte est seule sur sa ligne : sans cet emplacement vide elle prend
+                // toute la largeur et devient une bande, deux fois plus large que les autres.
+                repeat(2 - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }

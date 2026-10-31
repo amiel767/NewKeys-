@@ -2448,3 +2448,56 @@ Un moteur ne transforme pas un Steinway en tine : l'inharmonicite d'une corde
 
 **Regle** : les 8 autres modeles restent des reglages sur la MEME banque acoustique.
 Pour de vrais instruments distincts il faut d'autres banques, pas d'autres reglages.
+
+## Session 2026-10-31 — carte piano, textes lisibles, vrai electrique (cause racine)
+
+### La cause racine du « piano electrique qui n'en est pas un » : un `paramCount` faux
+
+`AeInstrument.PIANO` declairait **12** parametres, le moteur en attend **16**
+(`fx_piano.h`, `kParams = 16`). `padded()` tronque donc les indices 12..15 :
+AMP DRIVE, PUNCH et surtout **MODEL (index 15)** n'atteignaient **jamais** le moteur.
+Le mode « tine » etait code, mesure, et jamais active — l'electrique jouait la
+banque acoustique. C'est aussi ce qui faisait planter `AePianoCaptureTest`
+(`IndexOutOfBoundsException: index 12, size 12`) : les knobs studio lisaient
+`s.values[12..14]`.
+
+Corrige : `PIANO(17, "Æther Piano", 16)` et `discrete = intArrayOf(8, 15)`.
+
+**Regle** : `paramCount` doit egaler `kParams` cote natif. Un preset peut porter
+moins de valeurs (les 15 du tableau + le modele ajoute par `AePianoModel.values`),
+mais le **contrat de session** doit couvrir tous les indices que l'UI lit.
+
+### Electrique : la banque reprend le dessus + tremolo
+
+Le basculement « tine » etait calibre pour un piano **acoustique** filtre en tine
+(`smp 0,35` / `rg 3,20`) : il etouffait la vraie banque Wurlitzer. Mesure sur la
+banque electrique, resonance 0,15 : centroide **363 Hz** (sourd) contre **833 Hz**
+a `smp 0,85` / `rg 1,5`. Le tremolo stereo (5 Hz, deux phases decalees de 1,9 rad,
+profondeur 0,22) est ajoute **apres** l'etage studio, et seulement en mode tine :
+c'est le trait qui fait reconnaitre un piano electrique.
+
+### Carte piano : meme taille que les autres
+
+`AeInstrumentsTabContent` fait `chunked(2)` sur 5 instruments : la 5e carte etait
+**seule sur sa ligne** et prenait toute la largeur (`weight(1f)`). Ajout d'un
+`Spacer(Modifier.weight(1f))` pour completer la ligne. Mesure : carte piano
+1174 px, autres 1158 px (l'ecart est l'ombre) — meme taille.
+
+### Textes : la luminance du tiers haut ne suffit pas
+
+`rememberAeThemeFromLuma` mesure la bande **haute** de la photo (la ou vivent le
+titre et le nom du modele). Mais la liste des modeles descend a **80 %** de l'image :
+sur Felt le haut est clair (encre sombre) et le bas est sombre → encre sombre sur
+fond sombre, **contraste mesure 4** (texte invisible). Un voile noir ne corrige rien
+(il assombrit un fond deja sombre).
+
+Correctif : fond de la colonne choisi d'apres **l'encre**, pas d'apres la photo —
+`if (th.ink.luminance() > 0.5f) Color(0xD90A0D14) else Color(0xD9F4F2EE)`. Le fond
+est ainsi toujours du cote oppose a l'encre. Mesure apres correction : contraste
+**127 / 164 / 130** sur Bright / Felt / Electric.
+
+### Captures
+
+`AePianoCaptureTest` : 5/5 PASS (plus de crash). `AeCardsCaptureTest` : 2/2.
+`AeManagerTest` + `AetherSnapshotJsonTest` : **30/30 PASS**. `assembleDebug` OK,
+APK 67,9 Mo, `piano.bin` (8,2 Mo) + `electric.bin` (1,6 Mo) embarques.

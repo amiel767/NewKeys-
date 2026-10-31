@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import android.util.LruCache
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,10 +21,12 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -233,6 +236,20 @@ fun BoxScope.AePianoUi(c: AeCtl, manager: AeManager, strip: Int, onClose: () -> 
             AeT(model.tag, 11, th.ink2, Modifier.at(300, 66, 400, 14), AeFonts.display, FontWeight.Light, 0.14f, TextAlign.Center)
             AeIconBtn(th, 2, 954, 14, onClose)
             Box(Modifier.fillMaxSize().graphicsLayer { alpha = ui }) {
+                // Fond de verre derriere la colonne de gauche, le meme que la carte des
+                // potards. La liste s'affiche en encre suivant la photo : sur les 6 modeles
+                // clairs l'encre passe sombre, et la photo claire la noyait (contraste 60,
+                // illisible). Un voile NOIR n'aide pas — il assombrit le fond alors que
+                // l'encre est deja sombre. Le verre du theme, lui, est toujours du cote
+                // oppose a l'encre : clair quand l'encre est sombre, sombre sinon.
+                // Fond de la colonne, choisi d'apres l'ENCRE et non d'apres la photo.
+                // La luminance du theme est mesuree sur le tiers haut, mais la liste
+                // descend a 80 % de l'image : sur Felt le haut est clair (encre sombre)
+                // et le bas est sombre, donc encre sombre sur fond sombre — contraste
+                // mesure 4, texte invisible. Un fond translucide ne peut pas le garantir.
+                // Ici le fond est toujours du cote oppose a l'encre, donc lisible partout.
+                val listBg = if (th.ink.luminance() > 0.5f) Color(0xD90A0D14) else Color(0xD9F4F2EE)
+                Box(Modifier.at(16, 88, 200, 300).clip(RoundedCornerShape(16.su())).background(listBg))
                 AeModelList(th, AePianoModels.all.map { it.name }, s.preset, 28, 100) { manager.loadPreset(s.strip, it) }
                 AeGlassCard(th, 694, 54, 280, 326)
                 PK.forEachIndexed { j, k ->

@@ -317,11 +317,17 @@ class PianoVoice {
       const float res = res_.process(mono) * body;
 
       // En mode tine, l'echantillon (un piano acoustique) s'efface au profit des
-      // resonateurs accordes sur la tine : c'est la barre frappee qu'on entend,
-      // pas la corde enregistree.  Sans ce basculement, changer B ne s'entendait
-      // pas — les partiels mesures restaient ceux de l'echantillon.
-      const float smp = tine_ ? 0.35f : 1.f;
-      const float rg  = tine_ ? 3.20f : 0.85f;
+      // resonateurs accordes sur la tine : c'est la barre frappe, pas la corde
+      // enregistree.  Sans ce basculement, changer B ne s'entendait pas — les
+      // partiels mesures restaient ceux de l'echantillon.
+      //
+      // Ce basculement etait calibre pour un piano ACOUSTIQUE filtre en tine.  Depuis
+      // que l'electrique a sa propre banque (Wurlitzer EP200), il etouffe justement le
+      // son qu'on veut entendre : l'echantillon porte deja la tine.  Mesure sur la
+      // banque electrique, resonance 0,15 : l'ancien reglage donnait un centroide de
+      // 363 Hz (sourd, « pas un piano electrique ») contre 780 Hz a smp 0,85 / rg 1,5.
+      const float smp = tine_ ? 0.85f : 1.f;
+      const float rg  = tine_ ? 1.50f : 0.85f;
       float mL = sL * smp + res * rg;
       float mR = sR * smp + res * rg;
 
@@ -614,6 +620,7 @@ class PianoEngine : public SourceFx {
     // et un couvercle plus ouvert eclairent le timbre, ce sont bien deux reglages.
     const float body = p(2), width = p(6);
     const float tine = (std::lround(p(15) * 8.f) >= 8.f) ? 1.f : 0.f;
+    tineOn_ = tine > 0.5f;
     // HAMMER, TONE, LID et MIC sont quatre facons d'eclairer le timbre ; MIC
     // etait annonce mais jamais lu, et les trois autres se confondaient.
     // MIC ne figure plus ici : c'est desormais une POSITION, traitee par l'etage
@@ -636,6 +643,20 @@ class PianoEngine : public SourceFx {
       std::fill(io, io + 2 * n, 0.f);
     }
     studio_.process(io, n);
+    // Tremolo, apres l'etage studio pour qu'il module le timbre final et non
+    // l'echantillon brut.  Profondeur fixe : c'est un trait de l'instrument, pas un
+    // reglage — un piano electrique sans tremolo n'en est plus un.
+    if (tineOn_) {
+      const float dph = 6.2831853f * 5.0f / sr_;
+      for (int i = 0; i < n; ++i) {
+        const float a = 1.f - 0.22f * (0.5f + 0.5f * std::sin(tremPh_));
+        const float b = 1.f - 0.22f * (0.5f + 0.5f * std::sin(tremPh_ + 1.9f));
+        io[2 * i] *= a;
+        io[2 * i + 1] *= b;
+        tremPh_ += dph;
+        if (tremPh_ > 6.2831853f) tremPh_ -= 6.2831853f;
+      }
+    }
     const float lvl = p(7) * (0.6f + 0.4f * p(5));
     // Passe-haut a 5 Hz (R = 1 - 2*pi*fc/sr), sur le signal d'instrument et non sur la
     // sortie : le tampon de sortie peut deja porter le mix d'autres sources.
@@ -662,6 +683,11 @@ class PianoEngine : public SourceFx {
   // de la reserve de crete perdus en polarisation, et 80 % de l'energie sous 20 Hz.
   // Un piano ne produit rien sous 27 Hz (A0).
   float dcxL_ = 0.f, dcyL_ = 0.f, dcxR_ = 0.f, dcyR_ = 0.f;
+  // Tremolo de l'electrique.  C'est LE trait qui fait reconnaitre un piano electrique :
+  // le Wurlitzer EP200 en a un d'origine, et sans lui la banque sonne comme un piano
+  // acoustique clair.  Phase separee par canal : le tremolo d'origine est stereo.
+  float tremPh_ = 0.f;
+  bool tineOn_ = false;
   float sr_ = 44100.f;
 };
 
