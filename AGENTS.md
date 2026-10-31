@@ -2798,3 +2798,75 @@ Un `std::string` par appel.
 `/workspace/dl/pub/blues/` (port 12000) : 9 MP3 (128 kb/s, ~344 Ko chacun),
 un par modele, tous **distincts** (verifie par md5). Genere par
 `tools/aetherfx/blues_page.py`.
+
+## Session 2026-10-31 (suite) — marteau, bruit de touche, reverb : trois causes mesurees
+
+Retours utilisateur : « ca manque de presence », « le marteau est un peu moche »,
+« ca donne juste un effet de reverb bizarre, pas un vrai changement de nature »,
+et la demande d'un **bruit de touche** discret.
+
+### 1. Le marteau etait du BRUIT BLANC pur (le « moche »)
+
+`hammerNoise_.next()` etait somme tel quel : large bande, sans corps, d'ou un
+« tsss » metallique. Un vrai marteau est un **« toc »** dont l'energie est centree
+sur la resonance du marteau (1,5 a 4 kHz selon la hauteur).
+
+Correctif : passe-haut + passe-bas **12 dB/oct de chaque cote**, frequence
+`max(1400, 3400 - (note-21)*12)`, queue plus longue dans le grave (2,6 ms) que
+dans l'aigu (1,3 ms) — le feutre amortit lentement en bas, la frappe est seche en
+haut. Compensation de niveau **0,25 -> 0,42** : le filtrage retire 7,7 dB, sans
+compensation le piano redevenait mou.
+
+| marteau, 3 ms | avant | apres |
+|---|---|---|
+| part >6 kHz (le « tsss ») | **19,7 %** | **7,2 %** |
+| RMS | 0,0136 | 0,0091 |
+
+**Controle qui compte** : centroide de l'attaque (0-100 ms) mesure **identique**
+avant/apres (595 / 625 / 680 Hz a HAMMER 0,15 / 0,55 / 0,90). Le piano n'est donc
+pas devenu mat — seul le souffle est parti. Le sustain bouge de 3 % (477 -> 458 Hz).
+
+**Piege de mesure** : le banc `mastering.cpp phrase` annoncait un centroide qui
+chutait de 662 a 227 Hz, ce qui ressemble a une regression. C'etait le **bruit
+blanc du marteau** qui dominait la mesure sur la phrase entiere. Toujours separer
+**attaque** et **sustain** avant de conclure sur la brillance.
+
+### 2. Bruit de touche (parametre 17, nouveau)
+
+Le doigt qui atteint la touche. Meme filtre que le marteau mais plus bas et plus
+long (11 ms), declenche **une seule fois** a l'appui et **coupe par le NOTE OFF**
+(`release()` remet `touchEnv_ = 0`) : ce n'est pas un son tenu.
+
+Calibre **contre la note, pas contre le marteau** : a 1,0 il est a **-22 dB sous
+le sustain**, donc audible et discret. Reglable par le knob **Touch**, qui
+remplace « Pedal noise » — un parametre que le moteur **ne lit pas** (verifie) :
+un controle vivant vaut mieux qu'un decor.
+
+### 3. La reverb etait une cathedrale (le « bizarre »)
+
+Valeurs figees : **RT60 4,35 s a 52 % de melange**. Mesure : la queue restait a
+**-11,4 dB sous la note** une seconde apres le relachement, et la reverb
+**doublait** le niveau (0,0156 -> 0,0315). C'est elle qui masquait le timbre des
+modeles — d'ou « pas un vrai changement de nature ».
+
+Corrige en **deux reglages** (`rev_.setNorm(1, ...)` duree, `setNorm(5, ...)`
+melange) au lieu d'un seul : une piece de piano tient en 1,2 a 1,9 s.
+
+**Piege de mesure** : ma premiere fenetre (0,6-1,6 s) etait dominee par la
+**decroissance de la note** (~-22 dB/s), pas par la reverb. Elle ne distinguait
+donc pas « reverb plus courte » de « reverb plus faible », et me faisait croire
+que le parametre ne repondait pas. Verifie en isolant la reverb (`SpaceReverb`
+seule sur une impulsion) : la pente suit bien le reglage, **-39,9 / -26,6 /
+-16,7 dB/s** pour DECAY 0,16 / 0,28 / 0,52.
+
+### Contrat Kotlin
+
+`AeInstrument.PIANO` passe de 16 a **17** parametres (`kParams = 17`). Les 9
+presets recoivent leur 17e valeur **derivee de HAMMER** (`0,30 + 0,55 * d[0]`) :
+un marteau dur claque, un feutre effleure. Deriver evite neuf constantes a
+maintenir.
+
+### Verifications
+
+Fill de blues re-verifie apres tous les changements : **12/12**, ecart max
++6,6 cents. Natif + Kotlin : BUILD SUCCESSFUL.

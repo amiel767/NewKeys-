@@ -12,11 +12,12 @@ import kotlin.math.roundToInt
 /** The Æther Instruments. [fxId] = id of the native Source in FxRegistry (6 organ, 14 synth, 15 leads, 16 sax). */
 enum class AeInstrument(val fxId: Int, val title: String, val paramCount: Int) {
     ORGAN(6, "Æther Organ", 31), SYNTH(14, "Æther Synth", 33), LEADS(15, "Æther Leads", 33), SAX(16, "Æther Sax", 23),
-    // 16 et non 12 : le moteur en attend 16 (fx_piano.h, kParams).  Avec 12,
+    // 17 et non 12 : le moteur en attend 17 (fx_piano.h, kParams).  Avec 12,
     // `padded()` tronquait les indices 12..15 — donc AMP DRIVE, PUNCH et surtout
     // MODEL.  Le mode « tine » n'atteignait jamais le moteur, et l'electrique
     // jouait la banque acoustique : c'est pourquoi il ne sonnait pas electrique.
-    PIANO(17, "Æther Piano", 16);
+    // 16 = TOUCH, le bruit de touche, ajoute apres MODEL.
+    PIANO(17, "Æther Piano", 17);
     /** Parameters that switch instantly on a preset change (the others glide). */
     val discrete: IntArray get() = when (this) {
         ORGAN -> intArrayOf(18, 19, 20, 21, 22, 23, 24, 25)
