@@ -2649,3 +2649,40 @@ au plus (Bright).
 **Piege de build** : le JDK et le `debug.keystore` disparaissent au redemarrage du
 sandbox. `sudo apt-get update && sudo apt-get install -y openjdk-21-jdk-headless`
 -> `/usr/lib/jvm/java-21-openjdk-amd64`.
+
+### Les 8 couches sont-elles toutes jouees ? (mesure, 2026-10-31)
+
+Question posee : « on ne prend que les couches vraiment jouees, 5-6-7 ? »
+**Non, et la mesure le dit dans les deux sens.**
+
+`tools/aetherfx/layer_reach.cpp` appelle le `pick()` reel sur le pack livre :
+**les 8 couches sont atteintes**, chacune possedant **12,6 %** de la plage 1..127
+(couche 5 = velocite 80..95, 6 = 96..111, 7 = 112..127). Aucune region n'est un
+doublon : les 232 sont 232 echantillons distincts, ~12,5 % du poids chacune.
+
+`tools/aetherfx/mastering.cpp vel` mesure le **timbre** (prises normalisees au meme
+RMS, sinon le niveau masque tout) :
+
+| velocite | couche | 0.8-2k | 2-4k | 4-8k |
+|---|---|---|---|---|
+| 24 | 1 | -17,9 | -40,1 | -57,6 |
+| 40 | 2 | -14,6 | -30,3 | -56,6 |
+| 56 | 3 | -13,5 | -26,8 | -54,7 |
+| 72 | 4 | -12,3 | -22,3 | -46,5 |
+| 88 | 5 | -11,5 | -19,8 | -40,8 |
+| 104 | 6 | -10,9 | -18,2 | -37,5 |
+| 120 | 7 | -10,9 | -17,2 | -34,5 |
+
+Chaque couche apporte une etape de timbre : **23 dB** de mouvement dans la bande
+2-4 kHz entre la couche 1 et la 7. Le piano devient brillant *parce qu'on frappe
+fort*, c'est le mecanisme meme de l'instrument.
+
+**Garder 5-6-7 serait une regression** : 5 des 8 couches sont sous la couche 5,
+donc **62 % de la plage de velocite** jouerait le timbre d'un coup fort — jusqu'a
+**31 dB d'erreur** dans la bande de presence. Et les couches 5/6/7 sont justement
+celles qui se ressemblent le plus (1 a 3 dB d'ecart entre elles).
+
+Si un pack plus leger est souhaite un jour : reduire a **4-5 couches reparties sur
+la plage** coute 3-4 dB (mesure `layers.py`), garder les 3 du haut coute 31 dB.
+**Couper doit se faire dans les couches qui se ressemblent, jamais dans celles qui
+portent la dynamique.**
