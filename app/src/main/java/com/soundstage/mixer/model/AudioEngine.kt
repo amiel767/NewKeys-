@@ -186,6 +186,13 @@ class AudioEngine(private val context: Context) {
     }
 
     fun restoreAllEngineParameters() {
+        // Reopening the stream (safeStartEngine) drops back to the native default
+        // buffer of 512 frames, not the user's choice: every reconnect after a
+        // headset plug, a device change or a focus loss silently doubled the
+        // key-touch latency until the app was restarted. Re-apply the stream
+        // settings here, on the same path as the rest of the restore.
+        NativeAudioBridge.safeSetBufferSize(configuredBufferSize)
+        NativeAudioBridge.safeSetPolyphony(configuredPolyphony)
         NativeAudioBridge.safeSetMasterVolume(masterVolume)
         NativeAudioBridge.safeSetMasterPunch(masterPunch)
         NativeAudioBridge.safeSetSpatialWidener(spatialWidener)
@@ -241,6 +248,15 @@ class AudioEngine(private val context: Context) {
             NativeAudioBridge.safeSetMasterVolume(value)
             fallbackSynth.setMasterGain(value)
         }
+
+    /**
+     * Stream settings the user chose. Kept here because reopening the stream
+     * (safeStartEngine, called on every device change) resets them to the native
+     * defaults, and the reconnect path is what re-applies them.
+     */
+    var configuredBufferSize: Int = 256
+    var configuredPolyphony: Int = 128
+
     var fluidSynthGain: Float = 1.0f
         set(value) {
             field = value
@@ -1044,10 +1060,12 @@ class AudioEngine(private val context: Context) {
     }
 
     fun setBufferSize(bufferSize: Int) {
+        configuredBufferSize = bufferSize
         NativeAudioBridge.safeSetBufferSize(bufferSize)
     }
 
     fun setPolyphony(polyphony: Int) {
+        configuredPolyphony = polyphony
         NativeAudioBridge.safeSetPolyphony(polyphony)
     }
 
