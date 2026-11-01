@@ -50,3 +50,4 @@ tools/.conv_peek/
 PROJECT_CONTEXT.md
 tools/pianopack/out/ep_*.bin
 tools/pianopack/out/ep_*.json
+tools/.eco/

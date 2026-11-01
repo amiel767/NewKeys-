@@ -826,3 +826,54 @@ La consommation de l'utilisateur = le flux renvoye, pas le reseau du sandbox.
 Sortie filtree (`tail`), une commande par etape, scripts par l'editeur de
 fichiers (jamais en heredoc : le script entier revient), mesures sur disque
 consultees par agregat.
+
+## Session 2026-11-01 (Clone 5, econome) — MIDI Æther retrouve + latence buffer
+
+### D3/D1 — les pistes Æther ne recevaient plus le MIDI (cause racine, verifiee)
+
+`MixerViewModel.getActivePerformanceChannels` (~l.2508) ne routait une piste que si
+`slot.soundFontId > 0`. Or charger un instrument Æther **decharge le soundfont** de la
+piste (`AeInstruments.onBeforeLoad` -> `unloadSoundFontFromSlot` -> `soundFontId = -1`).
+La piste Æther etait donc **exclue du routage** : plus aucune note ne l'atteignait, ni
+clavier virtuel ni MIDI USB. En USB, `incomingChannel != null` et la liste retombait sur
+`emptyList()` : silence total. C'est exactement « les Æther qui marchaient ne sont plus
+atteints par MIDI ».
+
+Correctif : une piste est jouable si elle porte un soundfont **ou** un instrument Æther
+(`AeInstruments.isLoaded(idx)`). Commit `46bc7d3`.
+
+**Regle** : toute condition de routage qui teste `soundFontId > 0` exclut les pistes Æther.
+Il y a 2 sites (`:2376` = re-selection du program soundfont, legitime ; `:2517` = routage,
+corrige). Verifier les deux avant de conclure.
+
+### Latence — le buffer n'etait pas reapplique a la reconnexion
+
+`safeStartEngine` rouvre le stream, ce qui remet le buffer natif a son defaut (**512**
+frames) et non la valeur choisie (**256** cote app). `reconnectAudioStream` et sa variante
+debouncee ne reappliquaient que les parametres DSP, jamais `setBufferSize` : chaque
+reconnexion (casque, changement de peripherique, perte de focus) **doublait la latence de
+jeu** jusqu'au redemarrage. `AudioEngine` retient desormais `configuredBufferSize` /
+`configuredPolyphony` et `restoreAllEngineParameters` les reapplique. Commit `6592074`.
+
+**Regle** : `safeStartEngine` remet le stream a ses defauts natifs. Tout reglage de stream
+doit etre reapplique dans `restoreAllEngineParameters`, sinon il ne survit pas a une
+reconnexion.
+
+### Outil de veille economique : `tools/eco.py`
+
+Remplace l'usage de `conv_peek --dump` (jusqu'a **92 Mo**) et de `conv_sync.py` qui
+renvoient le flux entier. L'outil garde l'etat sur disque (`tools/.eco/`, gitignore),
+ne regarde que les nouveaux evenements, resume chaque action en une ligne (jamais son
+corps) et **borne la sortie en octets** (`--budget`, defaut 1500).
+
+    python3 tools/eco.py <cid> --state     # une ligne
+    python3 tools/eco.py <cid> --last      # dernier message de l'agent
+    python3 tools/eco.py <cid>             # nouveautes seules, budgetees
+
+Il lit aussi un dump local `tools/.conv_peek/<cid>.json` s'il existe, ce qui evite tout
+reseau (le flux de 9128 evenements declenche un HTTP 429 en ligne). Le dump reste sur
+disque : il n'entre jamais dans la sortie.
+
+**Pieges de structure d'evenement (verifies)** : le texte d'un `MessageEvent` est sous
+`llm_message`, pas `value` ; une action est sous `action` ; une observation sous
+`observation`. Chercher dans `value` renvoie du vide.
