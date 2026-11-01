@@ -24,6 +24,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
@@ -46,9 +47,14 @@ import kotlin.random.Random
 /**
  * Æther Piano — 9 modèles, chacun une scène (photo) et un caractère sonore.
  *
- * Ordre des paramètres (12) : 0 HAMMER, 1 TONE, 2 RESONANCE, 3 LID, 4 MIC, 5 SPACE,
- * 6 WIDTH, 7 LEVEL, 8 RELEASE, 9 VELOCITY, 10 PEDAL NOISE, 11 MODEL (discret : le
- * moteur l'arrondit).
+ * Ordre des paramètres (16, contrat de `fx_piano.h::kParams`) :
+ * 0 HAMMER, 1 TONE, 2 RESONANCE, 3 LID, 4 MIC POS, 5 SPACE, 6 WIDTH, 7 LEVEL,
+ * 8 RELEASE, 9 VEL, 10 PEDAL, 11 DIST, 12 DRIVE, 13 PUNCH, 14 AMP EQ,
+ * 15 MODEL (discret : le moteur l'arrondit, ajouté par [AePianoModel.values]).
+ *
+ * LEVEL (7) est égalisé sur la sonie K-weighted (ITU-R BS.1770) par
+ * `tools/aetherfx/mastering.cpp` : les 9 modèles sortent au même niveau perçu,
+ * donc aucun n'est plus fort qu'un autre sans raison.
  *
  * Images : res/drawable-nodpi/ae_piano_<id>.webp, id = felt studio bright mellow
  * dark upright lady honky electric.
@@ -64,22 +70,32 @@ class AePianoModel(
     d: FloatArray,
     idx: Int,
 ) {
-    val values: FloatArray = d + (idx / 8f)
+    // Index 15 = MODEL, 16 = TOUCH.  Le bruit de touche suit la durete du marteau
+    // (d[0] = HAMMER) : un piano a marteau dur claque, un feutre effleure.  Le
+    // deriver evite neuf constantes a maintenir et garde la table lisible.
+    val values: FloatArray = d + (idx / 8f) + (0.30f + 0.55f * d[0])
 }
 
 private fun col(h: Long) = Color(0xFF000000 or h)
 
 object AePianoModels {
     val all = listOf(
-        AePianoModel("felt", "Felt", "Soft felt hammers · warm & round", false, col(0xE9A8B8), listOf(col(0xF7C6D3), col(0xFBE0E6), col(0xF2A9BD)), AePType.PETAL, floatArrayOf(0.15f, 0.05f, 0.50f, 0.30f, 0.30f, 0.55f, 0.50f, 0.80f, 0.30f, 0.50f, 0.40f, 0.30f, 0.35f, 0.10f, 0.45f), 0),
-        AePianoModel("studio", "Studio", "Concert grand · balanced & clear", false, col(0x4F9FE6), listOf(col(0xFFFFFF), col(0xCFE6FF), col(0x9CCAF5)), AePType.SPARK, floatArrayOf(0.55f, 0.45f, 0.50f, 0.65f, 0.55f, 0.40f, 0.60f, 0.78f, 0.45f, 0.55f, 0.30f, 0.45f, 0.45f, 0.25f, 0.55f), 1),
-        AePianoModel("bright", "Bright", "Crisp attack · sparkling top", false, col(0xE8A812), listOf(col(0xFFE9A8), col(0xFFD166), col(0xFFF3C9)), AePType.LEAF, floatArrayOf(0.90f, 0.90f, 0.25f, 0.95f, 0.80f, 0.15f, 0.70f, 0.72f, 0.35f, 0.60f, 0.25f, 0.80f, 0.20f, 0.30f, 0.70f), 2),
-        AePianoModel("mellow", "Mellow", "Warm mids · rounded highs", true, col(0xFF9A5A), listOf(col(0xFFB27A), col(0xFF8A5C), col(0xFFD0A0)), AePType.PETAL, floatArrayOf(0.25f, 0.15f, 0.60f, 0.40f, 0.20f, 0.70f, 0.50f, 0.78f, 0.60f, 0.45f, 0.40f, 0.25f, 0.75f, 0.15f, 0.30f), 3),
-        AePianoModel("dark", "Dark", "Deep bass · cinematic night", true, col(0x8A9BFF), listOf(col(0xAEBCFF), col(0x7F8FE8), col(0xDFE6FF)), AePType.STAR, floatArrayOf(0.10f, 0.00f, 0.80f, 0.20f, 0.10f, 0.95f, 0.75f, 0.72f, 0.70f, 0.40f, 0.45f, 0.20f, 0.85f, 0.20f, 0.35f), 4),
-        AePianoModel("upright", "Upright", "Wooden upright · intimate", true, col(0xD9A15A), listOf(col(0xE8C58F), col(0xD9A15A), col(0xFFF1D6)), AePType.DUST, floatArrayOf(0.50f, 0.35f, 0.60f, 0.30f, 0.45f, 0.30f, 0.40f, 0.78f, 0.35f, 0.50f, 0.60f, 0.40f, 0.30f, 0.45f, 0.65f), 5),
-        AePianoModel("lady", "Lady D", "Parlor grand · close & golden", true, col(0xE0A25A), listOf(col(0xFFD9A0), col(0xF2B866), col(0xFFF0D0)), AePType.SPARK, floatArrayOf(0.35f, 0.30f, 0.40f, 0.55f, 0.35f, 0.60f, 0.45f, 0.78f, 0.50f, 0.50f, 0.30f, 0.50f, 0.60f, 0.20f, 0.45f), 6),
-        AePianoModel("honky", "Honky", "Detuned old upright · vintage", false, col(0xB8863C), listOf(col(0xA8743A), col(0xC89A5A), col(0x8A5A28)), AePType.LEAF, floatArrayOf(0.70f, 0.70f, 0.30f, 0.50f, 0.60f, 0.25f, 0.90f, 0.74f, 0.35f, 0.60f, 0.70f, 0.70f, 0.30f, 0.40f, 0.75f), 7),
-        AePianoModel("electric", "Electric Keys", "Tine keys · tremolo & neon", true, col(0xFF6AD5), listOf(col(0xFF8BE0), col(0x7BE0FF), col(0xC9A0FF)), AePType.NEON, floatArrayOf(0.40f, 0.85f, 0.15f, 0.70f, 0.90f, 0.35f, 0.85f, 0.70f, 0.45f, 0.50f, 0.20f, 0.85f, 0.25f, 0.55f, 0.60f), 8),
+        AePianoModel("felt", "Felt", "Soft felt hammers · warm & round", false, col(0xE9A8B8), listOf(col(0xF7C6D3), col(0xFBE0E6), col(0xF2A9BD)), AePType.PETAL, floatArrayOf(0.15f, 0.05f, 0.50f, 0.30f, 0.42f, 0.32f, 0.50f, 0.70f, 0.30f, 0.50f, 0.40f, 0.30f, 0.35f, 0.10f, 0.45f), 0),
+        AePianoModel("studio", "Studio", "Concert grand · balanced & clear", false, col(0x4F9FE6), listOf(col(0xFFFFFF), col(0xCFE6FF), col(0x9CCAF5)), AePType.SPARK, floatArrayOf(0.55f, 0.45f, 0.50f, 0.65f, 0.55f, 0.40f, 0.60f, 0.84f, 0.45f, 0.55f, 0.30f, 0.45f, 0.45f, 0.25f, 0.55f), 1),
+        AePianoModel("bright", "Bright", "Crisp attack · sparkling top", false, col(0xE8A812), listOf(col(0xFFE9A8), col(0xFFD166), col(0xFFF3C9)), AePType.LEAF, floatArrayOf(0.90f, 0.90f, 0.25f, 0.95f, 0.80f, 0.15f, 0.70f, 0.89f, 0.35f, 0.60f, 0.25f, 0.80f, 0.20f, 0.30f, 0.70f), 2),
+        AePianoModel("mellow", "Mellow", "Warm mids · rounded highs", true, col(0xFF9A5A), listOf(col(0xFFB27A), col(0xFF8A5C), col(0xFFD0A0)), AePType.PETAL, floatArrayOf(0.25f, 0.15f, 0.60f, 0.40f, 0.20f, 0.70f, 0.50f, 0.58f, 0.60f, 0.45f, 0.40f, 0.25f, 0.75f, 0.15f, 0.30f), 3),
+        AePianoModel("dark", "Dark", "Deep bass · cinematic night", true, col(0x8A9BFF), listOf(col(0xAEBCFF), col(0x7F8FE8), col(0xDFE6FF)), AePType.STAR, floatArrayOf(0.10f, 0.00f, 0.80f, 0.20f, 0.10f, 0.95f, 0.75f, 0.51f, 0.70f, 0.40f, 0.45f, 0.20f, 0.85f, 0.20f, 0.35f), 4),
+        AePianoModel("upright", "Cottage", "Small wooden body · close & intimate", true, col(0xD9A15A), listOf(col(0xE8C58F), col(0xD9A15A), col(0xFFF1D6)), AePType.DUST, floatArrayOf(0.50f, 0.35f, 0.60f, 0.30f, 0.45f, 0.30f, 0.40f, 0.79f, 0.35f, 0.50f, 0.60f, 0.40f, 0.30f, 0.45f, 0.65f), 5),
+        AePianoModel("lady", "Parlor", "Parlor grand · close & golden", true, col(0xE0A25A), listOf(col(0xFFD9A0), col(0xF2B866), col(0xFFF0D0)), AePType.SPARK, floatArrayOf(0.35f, 0.30f, 0.40f, 0.55f, 0.35f, 0.60f, 0.45f, 0.64f, 0.50f, 0.50f, 0.30f, 0.50f, 0.60f, 0.20f, 0.45f), 6),
+        AePianoModel("honky", "Saloon", "Detuned old upright · vintage", false, col(0xB8863C), listOf(col(0xA8743A), col(0xC89A5A), col(0x8A5A28)), AePType.LEAF, floatArrayOf(0.70f, 0.70f, 0.30f, 0.50f, 0.60f, 0.25f, 0.90f, 0.74f, 0.35f, 0.60f, 0.70f, 0.70f, 0.30f, 0.40f, 0.75f), 7),
+        AePianoModel("electric", "Tine Keys", "Tine keys · tremolo & neon", true, col(0xFF6AD5), listOf(col(0xFF8BE0), col(0x7BE0FF), col(0xC9A0FF)), AePType.NEON, floatArrayOf(0.40f, 0.85f, 0.15f, 0.70f, 0.90f, 0.35f, 0.85f, 0.74f, 0.45f, 0.50f, 0.20f, 0.85f, 0.25f, 0.55f, 0.60f), 8),
+        // Les trois suivants portent une BANQUE propre (voir AeBanks.electricModels) :
+        // c'est ce qui les distingue des huit reglages acoustiques.  L'index est lu par
+        // le moteur via le parametre MODEL (15) : `idx / 8f` depasse 1 des l'index 8,
+        // donc le moteur les classe tous « electrique » — c'est voulu, ils le sont.
+        AePianoModel("ballad", "Ballad", "Ballad electric · soft & wide", true, col(0x7BD8A0), listOf(col(0xA8F0C8), col(0x6BC8E8), col(0xE0FFF0)), AePType.DUST, floatArrayOf(0.30f, 0.55f, 0.30f, 0.50f, 0.70f, 0.55f, 0.80f, 0.68f, 0.50f, 0.45f, 0.30f, 0.60f, 0.40f, 0.45f, 0.50f), 9),
+        AePianoModel("dx", "DX Bell", "FM bell electric · glassy", false, col(0x9AB6FF), listOf(col(0xC8D8FF), col(0x8FA8F0), col(0xEAF0FF)), AePType.STAR, floatArrayOf(0.85f, 0.75f, 0.20f, 0.85f, 0.60f, 0.30f, 0.70f, 0.80f, 0.40f, 0.55f, 0.25f, 0.75f, 0.30f, 0.60f, 0.65f), 10),
+        AePianoModel("epiano", "E.Piano", "Classic electric piano · round", true, col(0xE8B45A), listOf(col(0xFFD48A), col(0xD89A50), col(0xFFF0D0)), AePType.SPARK, floatArrayOf(0.45f, 0.60f, 0.35f, 0.60f, 0.75f, 0.45f, 0.75f, 0.72f, 0.48f, 0.50f, 0.35f, 0.65f, 0.35f, 0.50f, 0.55f), 11),
     )
 }
 
@@ -98,8 +114,21 @@ class AePianoPlate(val bitmap: ImageBitmap, val topLuma: Float)
 object AePianoAssets {
     private val cache = LruCache<String, AePianoPlate>(4)
 
+    /**
+     * Modeles EP : une seule image, celle de l'electrique.
+     *
+     * Les 3 modeles ajoutes apres coup (Ballad, DX Bell, E.Piano) n'ont pas de photo
+     * propre.  Sans ce repli, `getIdentifier` renvoie 0 et la scene retombait sur son
+     * dessin vectoriel : la fenetre changeait d'allure entre Tine Keys et ses voisins,
+     * pour la meme famille d'instrument.
+     */
+    private val epIds = setOf("ballad", "dx", "epiano")
+
     fun plate(ctx: Context, id: String): AePianoPlate? {
-        val name = "ae_piano_$id"
+        var name = "ae_piano_$id"
+        if (id in epIds && ctx.resources.getIdentifier(name, "drawable", ctx.packageName) == 0) {
+            name = "ae_piano_electric"
+        }
         cache.get(name)?.let { return it }
         val rid = ctx.resources.getIdentifier(name, "drawable", ctx.packageName)
         if (rid == 0) return null
@@ -135,7 +164,9 @@ private val PK = listOf(
 private val PSL = listOf(
     K("Release", 8) { "${(50 + it * 450).toInt()}ms" },
     K("Velocity", 9) { if (it < .4f) "Soft" else if (it < .6f) "Linear" else "Hard" },
-    K("Pedal noise", 10, ::pc),
+    // Remplace « Pedal noise » (index 10), qui n'etait lu par personne : le moteur
+    // ne traite pas ce parametre. Un controle vivant vaut mieux qu'un decor.
+    K("Touch", 16, ::pc),
 )
 /** Etage studio : le micro, l'ampli et le punch.  Ce sont eux qui enlevent le « sec ». */
 private val PST = listOf(
@@ -247,10 +278,10 @@ fun BoxScope.AePianoUi(c: AeCtl, manager: AeManager, strip: Int) {
                 // et le bas est sombre, donc encre sombre sur fond sombre — contraste
                 // mesure 4, texte invisible. Un fond translucide ne peut pas le garantir.
                 // Ici le fond est toujours du cote oppose a l'encre, donc lisible partout.
-                val listBg = if (th.ink.luminance() > 0.5f) Color(0xD90A0D14) else Color(0xD9F4F2EE)
-                Box(Modifier.at(16, 88, 200, 300).clip(RoundedCornerShape(16.su())).background(listBg))
-                AeModelList(th, AePianoModels.all.map { it.name }, s.preset, 28, 100) { manager.loadPreset(s.strip, it) }
-                AeGlassCard(th, 694, 54, 280, 326)
+                AeGlassPanel(th, plate?.bitmap?.asAndroidBitmap(), 16, 88, 200, 300)
+                // 300 unites de haut, comme le panneau de verre : la liste defile.
+                AeModelList(th, AePianoModels.all.map { it.name }, s.preset, 28, 100, 300) { manager.loadPreset(s.strip, it) }
+                AeGlassPanel(th, plate?.bitmap?.asAndroidBitmap(), 694, 54, 280, 326)
                 PK.forEachIndexed { j, k ->
                     AeLightKnob(th, c.v(k.idx), k.label, k.fmt(c.v(k.idx)), 704 + (j % 4) * 62, 74 + (j / 4) * 70) { c.set(k.idx, it) }
                 }

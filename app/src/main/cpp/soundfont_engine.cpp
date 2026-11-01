@@ -405,7 +405,7 @@ bool SoundfontEngine::selectProgram(int channel, int soundFontId, int bank, int 
     ev.note = preset;
     ev.velocity = 0;
     
-    return mEventQueue.push(ev);
+    return pushEvent(ev);
 }
 
 bool SoundfontEngine::programChange(int channel, int program) {
@@ -419,7 +419,7 @@ bool SoundfontEngine::programChange(int channel, int program) {
     ev.note = 0;
     ev.velocity = 0;
     
-    return mEventQueue.push(ev);
+    return pushEvent(ev);
 }
 
 void SoundfontEngine::noteOn(int channel, int midiNote, int velocity) {
@@ -439,7 +439,7 @@ void SoundfontEngine::noteOn(int channel, int midiNote, int velocity) {
     ev.channel = channel;
     ev.note = clampedNote;
     ev.velocity = clampedVelocity;
-    mEventQueue.push(ev);
+    pushEvent(ev);
 }
 
 void SoundfontEngine::noteOff(int channel, int midiNote) {
@@ -453,7 +453,7 @@ void SoundfontEngine::noteOff(int channel, int midiNote) {
     ev.channel = channel;
     ev.note = clampedNote;
     ev.velocity = 0;
-    mEventQueue.push(ev);
+    pushEvent(ev);
 }
 
 void SoundfontEngine::allNotesOff(int channel) {
@@ -462,7 +462,7 @@ void SoundfontEngine::allNotesOff(int channel) {
     ev.channel = channel;
     ev.note = 0;
     ev.velocity = 0;
-    mEventQueue.push(ev);
+    pushEvent(ev);
 }
 
 void SoundfontEngine::panic() {
@@ -473,7 +473,7 @@ void SoundfontEngine::panic() {
     ev.velocity = 0;
     ev.param1 = 0;
     ev.param2 = 0;
-    mEventQueue.push(ev);
+    pushEvent(ev);
 }
 
 void SoundfontEngine::sendCC(int channel, int cc, int value) {
@@ -482,7 +482,7 @@ void SoundfontEngine::sendCC(int channel, int cc, int value) {
     ev.channel = channel;
     ev.param1 = cc;
     ev.param2 = value;
-    mEventQueue.push(ev);
+    pushEvent(ev);
 }
 
 void SoundfontEngine::pitchBend(int channel, int bendValue) {
@@ -493,7 +493,7 @@ void SoundfontEngine::pitchBend(int channel, int bendValue) {
     ev.type = EngineMidiEvent::PITCH_BEND;
     ev.channel = channel;
     ev.param1 = clampedBend;
-    mEventQueue.push(ev);
+    pushEvent(ev);
 }
 
 void SoundfontEngine::setChannelVolume(int channel, float volume01) {
@@ -512,7 +512,7 @@ void SoundfontEngine::setChannelVolume(int channel, float volume01) {
     ev.channel = channel;
     ev.param1 = 7; // Volume CC
     ev.param2 = ccVal;
-    mEventQueue.push(ev);
+    pushEvent(ev);
 }
 
 void SoundfontEngine::setChannelPan(int channel, float pan) {
@@ -526,7 +526,7 @@ void SoundfontEngine::setChannelPan(int channel, float pan) {
     ev.channel = channel;
     ev.param1 = 10; // Pan CC
     ev.param2 = ccVal;
-    mEventQueue.push(ev);
+    pushEvent(ev);
 }
 
 void SoundfontEngine::setChannelTransposeSemitones(int channel, int semitones) {
@@ -544,7 +544,7 @@ void SoundfontEngine::setChannelReverb(int channel, float reverb01) {
     ev.channel = channel;
     ev.param1 = 91; // Reverb CC
     ev.param2 = ccVal;
-    mEventQueue.push(ev);
+    pushEvent(ev);
 }
 
 void SoundfontEngine::setChannelChorus(int channel, float chorus01) {
@@ -556,7 +556,7 @@ void SoundfontEngine::setChannelChorus(int channel, float chorus01) {
     ev.channel = channel;
     ev.param1 = 93; // Chorus CC
     ev.param2 = ccVal;
-    mEventQueue.push(ev);
+    pushEvent(ev);
 }
 
 void SoundfontEngine::setGain(float gain) {
@@ -710,6 +710,11 @@ void SoundfontEngine::drainEvents() {
                 break;
         }
     }
+
+    // La file vient d'etre drainee : c'est le moment ou la place est libre pour
+    // reemettre ce qui avait ete refuse.  Un NoteOff perdu est une note sans fin.
+    retryDroppedLockFree();
+
 }
 
 // ---- Arpeggiator -----------------------------------------------------------
@@ -778,6 +783,17 @@ void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool 
         return;
     }
 
+    // The drain has to run even with no soundfont loaded. Loading an Æther
+    // instrument unloads that track's soundfont, so a setlist where every track
+    // carries a source leaves `sfCount == 0`; returning here before the drain
+    // meant the NoteOn/NoteOff never left the ring, so the source never received
+    // a note (the "keys never reach the instruments") and the ring filled up
+    // (stuck notes, growing latency). drainEvents() routes to the source through
+    // mSourceRouter and the fluid_synth_* calls are harmless with no soundfont.
+    auto tStart = std::chrono::steady_clock::now();
+
+    drainEvents();
+
     int sfCount = fluid_synth_sfcount(mSynth);
     if (sfCount <= 0) {
         if (!accumulate) {
@@ -785,10 +801,6 @@ void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool 
         }
         return;
     }
-
-    auto tStart = std::chrono::steady_clock::now();
-
-    drainEvents();
 
     // In multi-channel mode FluidSynth sends each MIDI channel to its own audio
     // group (`group = channel % audio_groups`, see fluid_voice.c). But

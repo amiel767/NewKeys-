@@ -342,4 +342,54 @@ class AeManagerTest {
         assertTrue(before === m.sessions[0])
         assertEquals(1, m.sessions[0]?.preset)
     }
+    // --- Plusieurs pistes en meme temps -------------------------------------------
+    // Rien dans la conception ne l'interdit (sessions indexees par piste cote Kotlin,
+    // tracks_[strip] cote natif), mais aucun test ne le couvrait : un etat partage
+    // aurait suffi a casser le cas en silence.
+
+    @Test fun sameInstrumentOnTwoStripsKeepsTheirOwnState() {
+        val host = FakeHost()
+        val m = manager(host)
+        assertTrue(m.load(0, AeInstrument.SAX) != null)
+        assertTrue(m.load(1, AeInstrument.SAX) != null)
+        m.setParam(0, 22, 0.0f)
+        m.setParam(1, 22, 1.0f)
+        assertEquals(2, m.sessions.size)
+        assertEquals(0f, m.sessions[0]!!.values[22], 1e-6f)
+        assertEquals(1f, m.sessions[1]!!.values[22], 1e-6f)
+    }
+
+    @Test fun differentInstrumentsOnDifferentStripsCoexist() {
+        val host = FakeHost()
+        val m = manager(host)
+        assertTrue(m.load(0, AeInstrument.ORGAN) != null)
+        assertTrue(m.load(1, AeInstrument.LEADS) != null)
+        assertTrue(m.load(2, AeInstrument.PIANO) != null)
+        assertEquals(AeInstrument.ORGAN, m.sessions[0]!!.instrument)
+        assertEquals(AeInstrument.LEADS, m.sessions[1]!!.instrument)
+        assertEquals(AeInstrument.PIANO, m.sessions[2]!!.instrument)
+    }
+
+    @Test fun loadingOnOneStripDoesNotTouchAnother() {
+        val host = FakeHost()
+        val m = manager(host)
+        m.load(0, AeInstrument.SAX)
+        val before = m.sessions[0]!!.values.toList()
+        m.load(3, AeInstrument.SYNTH)
+        m.load(4, AeInstrument.LEADS)
+        assertEquals(before, m.sessions[0]!!.values.toList())
+        assertEquals(AeInstrument.SAX, m.sessions[0]!!.instrument)
+    }
+
+    @Test fun unloadingOneStripLeavesTheOthersLoaded() {
+        val host = FakeHost()
+        val m = manager(host)
+        m.load(0, AeInstrument.ORGAN)
+        m.load(1, AeInstrument.SAX)
+        m.unload(0)
+        assertFalse(m.sessions.containsKey(0))
+        assertTrue(m.sessions.containsKey(1))
+        assertEquals(AeInstrument.SAX, m.sessions[1]!!.instrument)
+    }
+
 }

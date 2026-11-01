@@ -12,11 +12,12 @@ import kotlin.math.roundToInt
 /** The Æther Instruments. [fxId] = id of the native Source in FxRegistry (6 organ, 14 synth, 15 leads, 16 sax). */
 enum class AeInstrument(val fxId: Int, val title: String, val paramCount: Int) {
     ORGAN(6, "Æther Organ", 31), SYNTH(14, "Æther Synth", 33), LEADS(15, "Æther Leads", 33), SAX(16, "Æther Sax", 23),
-    // 16 et non 12 : le moteur en attend 16 (fx_piano.h, kParams).  Avec 12,
+    // 17 et non 12 : le moteur en attend 17 (fx_piano.h, kParams).  Avec 12,
     // `padded()` tronquait les indices 12..15 — donc AMP DRIVE, PUNCH et surtout
     // MODEL.  Le mode « tine » n'atteignait jamais le moteur, et l'electrique
     // jouait la banque acoustique : c'est pourquoi il ne sonnait pas electrique.
-    PIANO(17, "Æther Piano", 16);
+    // 16 = TOUCH, le bruit de touche, ajoute apres MODEL.
+    PIANO(17, "Æther Piano", 17);
     /** Parameters that switch instantly on a preset change (the others glide). */
     val discrete: IntArray get() = when (this) {
         ORGAN -> intArrayOf(18, 19, 20, 21, 22, 23, 24, 25)
@@ -108,6 +109,13 @@ interface AeHost {
 
     /** Mix of samples in the instrument output, 0 = pure synthesis. For the UI readback. */
     fun bankMix(strip: Int): Float = 0f
+
+    /**
+     * Drop the Kotlin-side copy of the bank. The native side already copied it at load time,
+     * so keeping the ByteArray holds the whole pack (12 MB piano, 7 MB of sax packs) for the
+     * rest of the session for nothing.
+     */
+    fun releaseBank(instrument: AeInstrument, type: Int, model: Int = -1) {}
 }
 
 /** One loaded instrument on one strip. Lives in [AeManager], so it survives the window being closed. */
@@ -176,8 +184,26 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
      * missing from the session and every write to it would be silently dropped.
      * 0.5 is the neutral value, so an old preset still sounds exactly as before.
      */
-    private fun padded(inst: AeInstrument, v: FloatArray): FloatArray =
-        if (v.size == inst.paramCount) v else FloatArray(inst.paramCount) { if (it < v.size) v[it] else 0.5f }
+    /**
+     * Complete un tableau de valeurs a la taille du contrat de l'instrument.
+     *
+     * Les indices manquants prennent la valeur du **premier preset d'usine**, pas
+     * 0,5.  Un parametre ajoute en fin de contrat a un sens par defaut qui depend
+     * de l'instrument : le Blend du sax vaut 1,0 (les samples portent la voix).
+     * Le remplir a 0,5 coupait le pack de moitie sur tout preset enregistre avant
+     * l'ajout du parametre — la regression « les samples sont passes ou ? ».
+     */
+    private fun padded(inst: AeInstrument, v: FloatArray): FloatArray {
+        if (v.size == inst.paramCount) return v
+        val ref = factoryPresets(inst).firstOrNull()?.values
+        return FloatArray(inst.paramCount) { i ->
+            when {
+                i < v.size -> v[i]
+                ref != null && i < ref.size -> ref[i]
+                else -> 0.5f
+            }
+        }
+    }
 
     /** Saves the session's CURRENT knob values as a named user preset and selects it. */
     fun saveUserPreset(strip: Int, name: String) {
@@ -215,7 +241,7 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
         // bankType identifie la BANQUE chargee : le type de sax, ou le modele pour le
         // piano (0 acoustique, 8 electrique).  Confondre les deux ferait croire au
         // piano qu'il a deja la bonne banque.
-        if (s.bankLoaded) s.bankType = if (inst == AeInstrument.PIANO) (if (s.preset == 8) 8 else 0) else type
+        if (s.bankLoaded) s.bankType = if (inst == AeInstrument.PIANO) (if (AeBanks.isElectricModel(s.preset)) s.preset else 0) else type
         return s
     }
 
@@ -224,6 +250,9 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
         sessions.remove(strip)?.let { s ->
             savedState[strip to s.instrument] = SavedAeState(s.values.toFloatArray(), s.preset, s.page)
             host.allNotesOff(strip); host.unloadInstrument(strip)
+            // Meme identifiants que loadBank() : le type de sax (param 0) et, pour le
+            // piano, l'index de preset qui designe la banque (8 = electrique).
+            host.releaseBank(s.instrument, s.bankType.coerceAtLeast(0), s.preset)
         }
         sustain.remove(strip); pending.remove(strip)
     }
@@ -247,13 +276,35 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
         // Piano : le modele « Electric » est une AUTRE banque, pas un reglage du
         // piano acoustique.  Changer de modele recharge donc l'echantillon quand on
         // entre ou sort de l'electrique.
-        if (s.instrument == AeInstrument.PIANO && s.bankType != s.preset) {
-            val want = if (s.preset == 8) 8 else 0
+        // Piano : chaque modele electrique a SA banque.  La comparaison porte donc sur
+        // `want` (le modele pour l'electrique, 0 pour l'acoustique) et non sur le seul
+        // booleen « est-ce l'electrique » : sans ca, passer de Tine a BalladKey ne
+        // rechargeait rien et les deux modeles jouaient le meme echantillon.
+        if (s.instrument == AeInstrument.PIANO) {
+            val want = if (AeBanks.isElectricModel(s.preset)) s.preset else 0
             if (want != s.bankType) {
                 s.bankLoaded = host.loadBank(strip, s.instrument, 0, s.preset)
                 s.bankType = if (s.bankLoaded) want else -1
             }
         }
+    }
+
+    /**
+     * True when a knob differs from the preset that is selected.
+     *
+     * The save button is shown only then: a floppy that is always there invites a save that
+     * would duplicate the preset it came from, and it never told the user whether anything
+     * had actually been touched. Reading the preset back is what makes the button honest —
+     * it lights up on a real edit and goes out once the edit is saved or the preset reloaded.
+     */
+    fun isModified(strip: Int): Boolean {
+        val s = sessions[strip] ?: return false
+        // Mid-tween the values are in flight towards the preset, so "modified" has no
+        // meaning and the button would blink for the 420 ms of the slide.
+        if (s.tweening) return false
+        val p = presets(s.instrument).getOrNull(s.preset) ?: return false
+        val ref = padded(s.instrument, p.values)
+        return s.values.indices.any { kotlin.math.abs(s.values[it] - ref[it]) > 1e-4f }
     }
 
     fun loadPreset(strip: Int, index: Int) {

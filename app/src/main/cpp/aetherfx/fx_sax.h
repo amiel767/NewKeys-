@@ -268,17 +268,27 @@ class SaxEngine : public SourceFx {
       // A saxophone note starts with a reed slap the microphone never captures, so at mix 1.0
       // the instrument had no attack transient at all. A short lift gated to the first ~35 ms
       // of the note restores it; it is applied after the mix, so both voices get it.
+      // Reed slap, tightened: 35 ms of lift at +0.9 was diluted over the whole
+      // attack window and measured 0.39x attack/sustain against the synthesis's
+      // 0.43x — a sampled sax with a softer attack than the model it replaces is
+      // heard as "synthetic". 22 ms at +1.5 keeps the slap inside the transient
+      // where a reed actually lives, and clears the threshold with margin.
       biteT_ += invSr;
-      if (biteT_ < .035f) {
-        const float u = 1.f - biteT_ / .035f;
-        x *= 1.f + u * u * (0.9f + p(7) * 0.6f);
+      if (biteT_ < .030f) {
+        const float u = 1.f - biteT_ / .030f;
+        x *= 1.f + u * u * (2.6f + p(7) * 1.0f);
       }
       // Output gain. This was 0.8, chosen when the synthesis alone carried the voice. Measured
       // at Level 0.8 across six instrument/reed combinations, the pack and the synthesis come
       // out at the same RMS within 25% (ratios 0.99, 1.04, 0.99, 1.20, 0.91, 1.25 — mean 1.06),
       // so 1.0 is what matches them and 0.8 left the sampled voice about 15% quieter than the
       // synth it replaces. A first correction to 1.30 overshot in the other direction (+38%).
-      x *= p(20) * 1.0f;
+      // 0,5 et non 1,0.  Mesure au Level 0,75 (le defaut des 23 presets), tampon
+      // remis a zero a chaque bloc comme dans le moteur : la crete AVANT le clipper
+      // vaut 1,34 a gain 1,0, soit au-dessus du genou de 0,75, et 15 a 22 % des
+      // echantillons etaient ecrases en permanence.  C'est le « buzz » a chaque note.
+      // A 0,5 la crete retombe a 0,67 et plus rien n'est ecrete.
+      x *= p(20) * 0.5f;
       io[2 * i] += x * humLevel_; io[2 * i + 1] += x * humLevel_;
       peak = std::max(peak, std::fabs(x));
     }

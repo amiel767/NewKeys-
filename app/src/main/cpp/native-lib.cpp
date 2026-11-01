@@ -320,6 +320,20 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_setBufferSize(
     gAudioEngine.setBufferSize(bufferSize);
 }
 
+JNIEXPORT jint JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_actualBufferSize(
+        JNIEnv *env,
+        jobject /* this */) {
+    return static_cast<jint>(gAudioEngine.actualBufferSize());
+}
+
+JNIEXPORT jint JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_actualSampleRate(
+        JNIEnv *env,
+        jobject /* this */) {
+    return static_cast<jint>(gAudioEngine.actualSampleRate());
+}
+
 JNIEXPORT void JNICALL
 Java_com_soundstage_mixer_audio_NativeAudioBridge_setMasterEq(
         JNIEnv *env,

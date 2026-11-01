@@ -44,6 +44,31 @@ object AeBanks {
     private const val ELECTRIC_MODEL = 8
 
     /**
+     * Banques electriques : une par modele, pas un reglage du piano acoustique.
+     *
+     * Mesure sur les 9 modeles : 7 sur 9 rendaient un son bit-identique.  Un filtre
+     * ne transforme pas un Steinway en tine — l'inharmonicite d'une corde (B ~ 1e-4)
+     * et celle d'une barre frappee (B ~ 1e-2) n'ont pas la meme loi.  Ces quatre
+     * banques viennent du SF2 « E.Piano » (80s Layer / BalladKey / DX Legend /
+     * E.Piano), chacune construite par `tools/pianopack/build_sf2.py --preset`.
+     *
+     * Cle = index du modele, valeur = (fichier, nom affiche).  L'ordre suit
+     * AePianoModels.all : 8 = Tine Keys, puis les nouveaux.
+     */
+    private val electricModels = mapOf(
+        8 to "pianopack/ep_tine.bin",
+        9 to "pianopack/ep_ballad.bin",
+        10 to "pianopack/ep_dx.bin",
+        11 to "pianopack/ep_piano.bin",
+    )
+
+    /** Nombre de modeles de piano, pour l'assertion de coherence cote tests. */
+    const val PIANO_MODEL_COUNT = 12
+
+    /** Le modele porte-t-il une de nos banques electriques ? */
+    fun isElectricModel(model: Int): Boolean = electricModels.containsKey(model)
+
+    /**
      * The bank belonging to an instrument, or null when it has none (organ, synth, leads).
      *
      * `model` selectionne la banque du piano : acoustique par defaut, electrique pour le
@@ -51,9 +76,20 @@ object AeBanks {
      */
     fun fileFor(instrument: AeInstrument, saxType: Int, model: Int = -1): String? = when (instrument) {
         AeInstrument.SAX -> saxFiles[saxType.coerceIn(0, 3)]
-        AeInstrument.PIANO -> if (model == ELECTRIC_MODEL) electricFile else pianoFile
+        AeInstrument.PIANO -> electricModels[model] ?: if (model == ELECTRIC_MODEL) electricFile else pianoFile
         else -> null
     }
+
+    /**
+     * Libere une banque du cache Kotlin.  La banque est DEJA copiee cote natif au
+     * chargement, donc le tableau Kotlin ne sert plus : le garder faisait tenir
+     * piano.bin (12 Mo) et les 4 packs sax (7 Mo) en memoire pour toute la session,
+     * en plus de la copie native.  Appele quand un instrument est decharge.
+     */
+    fun release(name: String) { cache.remove(name) }
+
+    /** Purge tout le cache (changement de setlist, memoire basse). */
+    fun releaseAll() { cache.clear() }
 
     fun read(name: String): ByteArray? {
         cache[name]?.let { return it }
@@ -123,6 +159,10 @@ object AeInstrumentHost : AeHost {
     }
 
     override fun bankMix(strip: Int): Float = NativeAudioBridge.safeInstrumentSampleMix(strip)
+
+    override fun releaseBank(instrument: AeInstrument, type: Int, model: Int) {
+        AeBanks.fileFor(instrument, type, model)?.let { AeBanks.release(it) }
+    }
 }
 
 /**

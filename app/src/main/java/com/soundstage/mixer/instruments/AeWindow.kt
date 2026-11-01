@@ -131,13 +131,19 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
             // 8-unit gaps so it reads as one block instead of four scattered chips. The piano's
             // own X at 954 is gone: the back arrow at 10 already closes the window.
             HeaderBtn(winTh, "◀", 642, 8, 30, 30) { manager.loadPreset(strip, s.preset - 1) }
+            // The preset nameplate that used to sit here is gone: the name is already in the
+            // window header and in the preset browser, and the plate took the place the
+            // controls needed. What is left is the one control that does something — open the
+            // browser.
             val ns = RoundedCornerShape(10.su())
-            Row(Modifier.at(680, 7, 240, 32).clip(ns).background(winTh.glass).border(1.su(), winTh.edge, ns).clickable(remember { MutableInteractionSource() }, null) { list = !list }.padding(horizontal = 12.su()),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                AeT(presets.getOrNull(s.preset)?.name ?: "", 12, winTh.ink); AeT(presets.getOrNull(s.preset)?.category ?: "", 10, winTh.ink2, weight = FontWeight.SemiBold)
+            Box(Modifier.at(680, 7, 240, 32).clip(ns).background(winTh.glass).border(1.su(), winTh.edge, ns)
+                .clickable(remember { MutableInteractionSource() }, null) { list = !list },
+                contentAlignment = Alignment.Center) {
+                AeT(presets.getOrNull(s.preset)?.name ?: "", 12, winTh.ink, Modifier.padding(horizontal = 12.su()))
             }
             HeaderBtn(winTh, "▶", 928, 8, 30, 30) { manager.loadPreset(strip, s.preset + 1) }
-            SaveDiskBtn(winTh, 604, 7) { naming = true }
+            // Shown only once a knob has been moved away from the selected preset.
+            if (manager.isModified(strip)) SaveDiskBtn(winTh, 604, 7) { naming = true }
             if (naming) NameSheet(
                 initial = "My ${s.instrument.title.removePrefix("Æther ")}",
                 onCancel = { naming = false },
@@ -243,11 +249,11 @@ private fun BoxScope.PresetList(
             AeT("${shown.size} of ${all.size}", 10, AeC.mute, Modifier.padding(start = 10.su()), font = AeFonts.mono)
         }
         Box(
-            Modifier.at(786, 11, 166, 24).clip(RoundedCornerShape(50)).background(Color(0x1AFF5C7A))
-                .border(1.su(), Color(0x33FF5C7A), RoundedCornerShape(50))
+            Modifier.at(842, 12, 110, 21).clip(RoundedCornerShape(50)).background(Color(0x12FF5C7A))
+                .border(1.su(), Color(0x26FF5C7A), RoundedCornerShape(50))
                 .noRipple(onUnload),
             contentAlignment = Alignment.Center,
-        ) { AeT("Unload instrument", 10, Color(0xFFFFB3C0)) }
+        ) { AeT("Unload", 9.5f, Color(0xCCFFB3C0)) }
 
         // ---- left rail: categories ----
         val railW = 214
@@ -326,7 +332,7 @@ private fun BoxScope.PresetList(
 @Composable
 private fun CatRow(name: String, count: Int, sel: Boolean, accent: Color, isAll: Boolean, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().height(26.su()).clip(RoundedCornerShape(7.su()))
+        Modifier.fillMaxWidth().height(22.su()).clip(RoundedCornerShape(6.su()))
             .background(if (sel) accent.copy(alpha = 0.18f) else Color.Transparent)
             .noRipple(onClick),
         verticalAlignment = Alignment.CenterVertically,
@@ -346,12 +352,17 @@ private fun CatRow(name: String, count: Int, sel: Boolean, accent: Color, isAll:
 /** Floppy button that saves the current knobs as a user preset. Same chrome as the header buttons. */
 @Composable
 private fun BoxScope.SaveDiskBtn(th: AeTheme, x: Number, y: Number, onClick: () -> Unit) {
-    val sh = RoundedCornerShape(10.su())
+    val sh = RoundedCornerShape(12.su())
     Box(
-        Modifier.at(x, y, 30, 32).clip(sh).background(th.glass).border(1.su(), th.edge, sh)
+        Modifier.at(x, y, 34, 34).clip(sh)
+            // Lit top edge, shaded bottom: the button reads as raised like the other
+            // header controls, instead of as a flat tinted square with a hard outline.
+            .background(Brush.verticalGradient(listOf(Color(0x4DFFFFFF), Color(0x14FFFFFF))))
+            .background(th.glass)
+            .border(1.su(), th.edge, sh)
             .clickable(remember { MutableInteractionSource() }, null, onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) { FloppyDiskIcon(isArmed = false, tint = th.ink, modifier = Modifier.size(16.su())) }
+    ) { FloppyDiskIcon(isArmed = false, tint = th.ink, modifier = Modifier.size(19.su())) }
 }
 
 /**
@@ -493,8 +504,12 @@ fun AeInstrumentsTabItem(selected: Boolean, onClick: () -> Unit, modifier: Modif
 @Composable
 fun AeInstrumentsTabContent(manager: AeManager, strip: Int, onOpen: () -> Unit, modifier: Modifier = Modifier) {
     val all = listOf(AeInstrument.ORGAN, AeInstrument.SYNTH, AeInstrument.LEADS, AeInstrument.SAX, AeInstrument.PIANO)
+    // Deux rangees (3 + 2) et non trois (2 + 2 + 1) : en trois rangees chaque carte
+    // ne recevait que ~117 unites de haut alors que son contenu (pastille, visuel,
+    // titre, sous-titre) en demande ~148.  Le visuel se faisait ecraser et la carte
+    // se lisait « petite » alors que la place existait.
     Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        all.chunked(2).forEach { row ->
+        all.chunked(3).forEach { row ->
             Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 row.forEach { inst ->
                     val loaded = manager.sessions[strip]?.instrument == inst
@@ -504,9 +519,9 @@ fun AeInstrumentsTabContent(manager: AeManager, strip: Int, onOpen: () -> Unit, 
                         onPower = { if (loaded) manager.unload(strip) else manager.load(strip, inst) },
                     )
                 }
-                // La 5e carte est seule sur sa ligne : sans cet emplacement vide elle prend
-                // toute la largeur et devient une bande, deux fois plus large que les autres.
-                repeat(2 - row.size) { Spacer(Modifier.weight(1f)) }
+                // La 2e rangee n'a que deux cartes : sans emplacement vide la derniere
+                // s'etale sur la largeur de deux.
+                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }
@@ -646,7 +661,7 @@ private fun AeTile(inst: AeInstrument, loaded: Boolean, modifier: Modifier, onCl
         AeInstrument.SYNTH -> TileStyle(Color(0xFF2B1A5E), Color(0xFF0C0A22), Color(0x668A7AFF), "POLYSYNTH", "Morph oscillators · Filter · Macros")
         AeInstrument.LEADS -> TileStyle(Color(0xFF08283A), Color(0xFF050912), Color(0x5519E3FF), "LED MONO LEAD", "Sine · Square · Saw · Super · Soft")
         AeInstrument.SAX -> TileStyle(Color(0xFF4A2A10), Color(0xFF120905), Color(0x66F2B84A), "BREATH SAXOPHONE", "Soprano · Alto · Tenor · Baritone")
-        AeInstrument.PIANO -> TileStyle(Color(0xFF2A1C10), Color(0xFF0C0704), Color(0x66E3C48A), "HYBRID GRAND", "Felt · Studio · Upright · Electric")
+        AeInstrument.PIANO -> TileStyle(Color(0xFF2A1C10), Color(0xFF0C0704), Color(0x66E3C48A), "HYBRID GRAND", "Felt · Studio · Cottage · Tine")
     }
     val sh = RoundedCornerShape(20.dp)
     Box(

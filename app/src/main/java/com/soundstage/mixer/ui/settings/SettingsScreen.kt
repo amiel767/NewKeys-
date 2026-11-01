@@ -71,6 +71,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -143,6 +144,7 @@ import androidx.compose.runtime.key
 import com.soundstage.mixer.ui.components.KeyboardChrome
 import com.soundstage.mixer.ui.components.KeyboardThemeSwatch
 import com.soundstage.mixer.ui.components.KeyboardThemes
+import com.soundstage.mixer.ui.theme.AppColors
 
 // ════════════════════════════════════════════════════════════════════════════════════════
 // 1. MODELS
@@ -197,6 +199,9 @@ data class SettingsState(
     val bufferSize: Int = 256,
     val maxPolyphony: Int = 128,
     val headroom: Float = 1.00f,
+    /** Taille/sample rate reellement appliques par le materiel (0 = inconnu). Non persiste. */
+    val actualBufferSize: Int = 0,
+    val actualSampleRate: Int = 0,
     // Interface (persisted)
     val autoFit: Boolean = false,
     val hue: Float = 220f,
@@ -738,6 +743,23 @@ private fun AudioSection(state: SettingsState, actions: SettingsActions) {
             modifier = Modifier.fillMaxWidth(),
             footers = SettingsRanges.BUFFER_SIZES.map { String.format(java.util.Locale.US, "~%.1f ms", SettingsLogic.bufferLatencyMs(it)) }
         )
+        // Le materiel impose un plancher (le burst du peripherique) : la valeur
+        // demandee n'est pas toujours celle qui est appliquee.  Afficher l'ecart
+        // evite de croire que choisir 64 frames donne 1,5 ms quand le vrai est 5,4.
+        val applied = state.actualBufferSize
+        val rate = state.actualSampleRate
+        if (applied > 0 && rate > 0 && applied != state.bufferSize) {
+            Text(
+                text = String.format(
+                    java.util.Locale.US,
+                    "Appareil : %d frames appliques (~%.1f ms reels)",
+                    applied, applied * 1000f / rate
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                color = AppColors.Dim,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
     }
     SetDivider()
     SettingRow(title = "Maximum polyphony", hint = "Notes the synth engine can play at once (voices).") {

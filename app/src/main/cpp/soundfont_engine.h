@@ -201,6 +201,53 @@ public:
     void noteOn(int channel, int midiNote, int velocity);
     void noteOff(int channel, int midiNote);
     void allNotesOff(int channel);
+
+    /**
+     * Re-emits the last note events that could not be queued.
+     *
+     * The event ring buffer is finite (2048). `push()` returns false when it is
+     * full, and a dropped NOTE_OFF is the worst kind of drop: the note has no way
+     * to stop, so it rings forever — the stuck notes reported on every Æther
+     * instrument. NoteOns are rate-limited on the audio thread (48/block) but
+     * NoteOffs are not, so a dense controller stream (arpeggiator, MPE, a sweep of
+     * CCs) can outrun the drain and lose exactly the events that end notes.
+     *
+     * Called from the control thread at a low rate (the UI tick), not per event.
+     * NoteOns are kept too so their pairing NoteOff cannot be applied before the
+     * note exists; the note simply starts late rather than never stopping.
+     */
+    /**
+     * Retente les evenements refuses depuis le thread de controle.
+     *
+     * Meme discipline de verrou que [pushEvent] : le ring n'a jamais deux
+     * producteurs a la fois.
+     */
+    void resendDroppedEvents() {
+        std::lock_guard<std::mutex> lk(mDroppedMutex);
+        size_t i = 0;
+        while (i < mDropped.size()) {
+            if (!mEventQueue.push(mDropped[i])) break;   // plus de place : au prochain tick
+            mDropped.erase(mDropped.begin() + i);
+        }
+    }
+
+    /**
+     * Retente les evenements refuses, SANS jamais bloquer le thread audio.
+     *
+     * Appele en fin de drain : la file vient d'etre videe, donc c'est le moment ou
+     * la place est disponible.  `try_lock` : si le thread de controle tient deja le
+     * verrou, on repasse au bloc suivant plutot que de risquer une inversion de
+     * priorite sur le thread audio.
+     */
+    void retryDroppedLockFree() {
+        std::unique_lock<std::mutex> lk(mDroppedMutex, std::try_to_lock);
+        if (!lk.owns_lock() || mDropped.empty()) return;
+        size_t i = 0;
+        while (i < mDropped.size()) {
+            if (!mEventQueue.push(mDropped[i])) break;   // plus de place : au bloc suivant
+            mDropped.erase(mDropped.begin() + i);
+        }
+    }
     void sendCC(int channel, int cc, int value);
 
     // ---- Arpeggiator -------------------------------------------------------
@@ -349,6 +396,31 @@ private:
     AllNotesOffFn mAllNotesOffHook = nullptr;
     void *mAllNotesOffHookCtx = nullptr;
     LockFreeRingBuffer<EngineMidiEvent, 2048> mEventQueue;
+
+    /**
+     * Events refused by a full queue, kept so the control thread can retry them.
+     * Bounded on purpose: past a hundred events the situation is a stalled audio
+     * thread, and retrying forever would only grow the backlog. Only the control
+     * thread touches these.
+     */
+    static constexpr size_t kMaxDropped = 256;
+    std::vector<EngineMidiEvent> mDropped;
+    std::mutex mDroppedMutex;
+
+    /**
+     * Pushes `ev`, stashing it for a retry when the queue is full.
+     *
+     * The mutex is held across the ring push, not just around the stash. The ring is
+     * single-producer/single-consumer: the retry path pushes from the audio thread,
+     * so without this the control thread and the audio thread would be two producers
+     * and could tear the tail index.
+     */
+    bool pushEvent(const EngineMidiEvent& ev) {
+        std::lock_guard<std::mutex> lk(mDroppedMutex);
+        if (mEventQueue.push(ev)) return true;
+        if (mDropped.size() < kMaxDropped) mDropped.push_back(ev);
+        return false;
+    }
     bool mWasHighLoad = false;
 
     // ---- Arpeggiator -------------------------------------------------------

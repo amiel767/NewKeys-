@@ -183,6 +183,9 @@ data class MixerUiState(
     val audioEngine: String = "Oboe (C++)",
     val audioBufferSize: Int = 256,
     val polyphony: Int = 128,
+    /** Taille/sample rate reellement appliques par le materiel (0 = moteur arrete). */
+    val actualAudioBufferSize: Int = 0,
+    val actualAudioSampleRate: Int = 0,
     val fluidSynthGain: Float = 1.0f,
     val selectedLanguage: String = "English",
     val selectedAppLanguage: AppLanguage = AppLanguage.ENGLISH,
@@ -396,6 +399,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             NativeAudioBridge.safeStartEngine()
             audioEngine.setBufferSize(_uiState.value.audioBufferSize)
             audioEngine.setPolyphony(_uiState.value.polyphony)
+            refreshActualAudioLatency()
             val masterVol = _uiState.value.masterTrack.volume
             audioEngine.masterVolume = masterVol
             NativeAudioBridge.safeSetMasterVolume(masterVol)
@@ -2507,7 +2511,14 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     val isWithinRange = (midiNote == null) || (midiNote in track.splitNoteMin..track.splitNoteMax)
                     if (isWithinRange) {
                         val slot = state.audioSlots.getOrNull(idx)
-                        if (slot != null && slot.soundFontId > 0) idx else null
+                        // A track is playable when it carries a soundfont OR an Æther
+                        // instrument. Loading an Æther instrument unloads the soundfont
+                        // (soundFontId becomes -1), so testing only `soundFontId > 0`
+                        // dropped every Æther track from the routing: the notes were
+                        // never sent to its channel and the instrument went silent,
+                        // while a track that still had a soundfont kept working.
+                        val hasAether = com.soundstage.mixer.instruments.AeInstruments.isLoaded(idx)
+                        if (slot != null && (slot.soundFontId > 0 || hasAether)) idx else null
                     } else null
                 } else null
             } else null
@@ -5562,7 +5573,19 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     fun setAudioBufferSize(buffer: Int) {
         _uiState.update { it.copy(audioBufferSize = buffer) }
         audioEngine.setBufferSize(buffer)
+        // Le materiel peut refuser la valeur demandee (plancher du burst) : on relit
+        // ce qui a reellement ete applique, sinon l'UI affiche une latence theorique.
+        refreshActualAudioLatency()
         persistCurrentStateDebounced()
+    }
+
+    /** Relit la taille de buffer et le sample rate reellement appliques. */
+    fun refreshActualAudioLatency() {
+        val applied = NativeAudioBridge.actualBufferSize()
+        val rate = NativeAudioBridge.actualSampleRate()
+        if (applied > 0 && rate > 0) {
+            _uiState.update { it.copy(actualAudioBufferSize = applied, actualAudioSampleRate = rate) }
+        }
     }
 
     fun setPolyphony(poly: Int) {

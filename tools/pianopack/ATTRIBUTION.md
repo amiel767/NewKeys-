@@ -3,12 +3,26 @@
 Les packs produits ici contiennent de l'audio derive de deux banques. Leur usage est
 lie par leurs licences respectives.
 
-## SplendidGrandPiano (piano acoustique, `piano.bin`)
+## S90 Full Grand (piano acoustique, `piano.bin`)
+
+- **Auteur** : JSF (SoundFont publie par son auteur)
+- **Format** : SF2, 167 Mo, 205 echantillons, `isng` EMU8000, construit avec Polyphone
+- **Licence** : aucune mention `ICOP` / `ISBJ` dans le fichier.  L'auteur l'a diffuse
+  librement ; la source est citee par correction, comme pour la banque precedente.
+- **Ce qui est repris** : la STRUCTURE (deux prises par couche, pan gauche/droite,
+  7 plages de velocite, hauteur des racines) et les echantillons.  Le pack est
+  reconstruit au format du moteur par `extract_sf2.py` + `build_sf2.py`.
+- **Mesure** : centroide 1 995 Hz a C4 contre 1 276 Hz pour la banque precedente.
+
+## SplendidGrandPiano (ancienne source de `piano.bin`, conservee pour reference)
 
 - **Auteur** : AKAI / Steinway, programme par sfzinstruments
 - **Source** : https://github.com/sfzinstruments/SplendidGrandPiano
 - **Licence** : **domaine public**
 - Rien n'est exige, mais la source est citee par correction.
+- Remplacee parce que la banque ne porte presque rien au-dessus de 5 kHz
+  (mesure : 0,002 % de l'energie a C4 fortissimo) : aucun moteur ne peut en tirer
+  un piano brillant.
 
 ## GregSullivan.E-Pianos (piano electrique, `electric.bin`)
 

@@ -807,6 +807,13 @@ public:
     }
     void setBufferSize(int bufferSizeInFrames);
 
+    /** Taille reellement appliquee (frames).  Le burst du materiel impose un
+     *  plancher, donc elle differe souvent de la demande : l'UI affiche celle-ci. */
+    int actualBufferSize() const {
+        return mActualBufferSize.load(std::memory_order_relaxed);
+    }
+    int actualSampleRate() const { return mSampleRate; }
+
     // DSP Controls
     void setMasterEq(float lowGainDb, float midGainDb, float highGainDb);
     void setSoundGoodizer(bool enabled, int mode, float amount);
@@ -969,6 +976,18 @@ private:
     static void allNotesOffTrampoline(void *ctx, int channel);
     bool routeEventToSource(int channel, int type, int note, int velocity, int param1, int param2);
 
+    /**
+     * Note ownership per channel, decided at NoteOn.
+     *
+     * The routing used to ask `soundfontPaused` on EVERY event. Loading or unloading
+     * an Æther instrument, or a program change, can flip that state between a NoteOn
+     * and its NoteOff: the NoteOn went to the source and the NoteOff to FluidSynth (or
+     * the reverse), so neither engine ever saw the pair and the note hung for good.
+     * That is the "stuck notes on all Æther instruments" report. Ownership is latched
+     * here instead, and AllNotesOff clears it.
+     */
+    bool noteOwnedBySource_[16] = {};
+
     std::shared_ptr<oboe::AudioStream> mStream;
     std::mutex mStreamMutex;
     std::mutex mRenderMutex;
@@ -1074,6 +1093,10 @@ private:
 
     int mSampleRate = 48000;
     std::atomic<int> mConfiguredBufferSize{512};
+    // Taille reellement appliquee par le materiel.  Le burst d'Oboe impose un
+    // plancher, donc elle differe souvent de la demande : l'UI doit afficher
+    // celle-ci, pas la demande, sinon elle annonce 1,5 ms pour un vrai 5,4 ms.
+    std::atomic<int> mActualBufferSize{512};
     std::atomic<bool> mBypassMasterFX{false};
     std::vector<float> mFloatRenderBuffer;
 
@@ -1107,6 +1130,8 @@ public:
         mSynthEngine.setPolyphony(polyphony);
     }
     void setBufferSize(int bufferSizeInFrames) {}
+    int actualBufferSize() const { return 0; }
+    int actualSampleRate() const { return 0; }
     void setMasterEq(float lowGainDb, float midGainDb, float highGainDb) {}
     void setSoundGoodizer(bool enabled, int mode, float amount) {}
     void setMasterReverb(bool enabled, float size, float decay, float damp, float mix) {}

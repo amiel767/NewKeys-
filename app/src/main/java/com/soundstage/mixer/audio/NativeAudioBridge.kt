@@ -617,6 +617,22 @@ object NativeAudioBridge {
         }
     }
 
+    /**
+     * Taille de buffer reellement appliquee par le materiel, en frames.
+     * Zero si le moteur n'est pas demarre ou si le natif ne la connait pas.
+     * Le burst du peripherique impose un plancher : demander 64 frames ne les
+     * donne pas, et l'UI doit annoncer cette valeur, pas la demande.
+     */
+    fun actualBufferSize(): Int =
+        if (isLibraryLoaded) runCatching { actualBufferSizeNative() }.getOrDefault(0) else 0
+
+    fun actualSampleRate(): Int =
+        if (isLibraryLoaded) runCatching { actualSampleRateNative() }.getOrDefault(0) else 0
+
+    private external fun actualBufferSizeNative(): Int
+
+    private external fun actualSampleRateNative(): Int
+
     fun safeSetMasterEq(lowGainDb: Float, midGainDb: Float, highGainDb: Float) {
         if (isLibraryLoaded) {
             try {

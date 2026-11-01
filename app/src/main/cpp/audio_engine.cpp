@@ -109,8 +109,18 @@ bool AudioEngine::openAndStartStream() {
 
     int burst = mStream->getFramesPerBurst();
     int reqBuffer = mConfiguredBufferSize.load(std::memory_order_relaxed);
-    int targetBuffer = (burst > 0) ? std::max(reqBuffer, burst * 2) : reqBuffer;
+    // Plancher = UN burst, pas deux.  Le burst est le quantum du materiel : c'est la
+    // plus petite taille qui ne fait pas sous-alimenter le DAC.  Avec un plancher de
+    // deux bursts, un appareil a burst 240 rendait 480 frames quelle que soit la
+    // demande : 64, 128 et 256 donnaient tous ~10,9 ms, et la moitie basse du reglage
+    // "Audio buffer size" ne faisait rien tout en annoncant ~1,5 a ~5,8 ms.
+    int targetBuffer = (burst > 0) ? std::max(reqBuffer, burst) : reqBuffer;
     mStream->setBufferSizeInFrames(targetBuffer);
+    {
+        int32_t applied = mStream->getBufferSizeInFrames();
+        mActualBufferSize.store(applied > 0 ? static_cast<int>(applied) : targetBuffer,
+                                std::memory_order_relaxed);
+    }
     int sampleRate = mStream->getSampleRate();
     mSampleRate = sampleRate;
 
@@ -227,12 +237,17 @@ void AudioEngine::setBufferSize(int bufferSizeInFrames) {
         int32_t burst = mStream->getFramesPerBurst();
         int32_t targetFrames = clampedReq;
         if (burst > 0) {
-            int32_t numBursts = std::max(2, (targetFrames + burst - 1) / burst);
+            // Au plus proche, pas au burst superieur : sur un appareil a burst 240 une
+            // demande de 256 partait a 480 (11 ms au lieu de 5,8).  Le plancher reste
+            // un burst, la borne haute ne bouge pas.
+            int32_t numBursts = (targetFrames + burst / 2) / burst;
+            if (numBursts < 1) numBursts = 1;
             targetFrames = numBursts * burst;
         }
         int clamped = std::clamp(targetFrames, 64, 4096);
         auto res = mStream->setBufferSizeInFrames(clamped);
         if (res) {
+            mActualBufferSize.store(static_cast<int>(res.value()), std::memory_order_relaxed);
             LOGI("Oboe buffer size set to %d frames (burst: %d, actual: %d, requested: %d)", clamped, burst, res.value(), clampedReq);
         } else {
             LOGE("Failed to set Oboe buffer size: %s", oboe::convertToText(res.error()));
@@ -508,6 +523,11 @@ bool AudioEngine::sourceRouterTrampoline(void *ctx, int channel, int type, int n
 
 void AudioEngine::allNotesOffTrampoline(void *ctx, int channel) {
     AudioEngine *e = static_cast<AudioEngine *>(ctx);
+    if (channel >= 0 && channel < 16) {
+        e->noteOwnedBySource_[channel] = false;
+    } else {
+        for (int c = 0; c < 16; ++c) e->noteOwnedBySource_[c] = false;
+    }
     if (channel >= 0 && channel < 10) {
         e->mFx.allNotesOff(channel);
     } else {
@@ -569,15 +589,30 @@ void AudioEngine::setTrackInstrumentParam(int track, int param, float norm) {
 }
 
 bool AudioEngine::routeEventToSource(int channel, int type, int note, int velocity, int param1, int param2) {
-    if (!mFx.soundfontPaused(channel)) return false;
+    if (channel < 0 || channel >= 16) return false;
+    // Ownership is latched at NoteOn and honoured at NoteOff. Asking
+    // `soundfontPaused` on every event let a state change (loading or unloading an
+    // Æther instrument, a program change) split a note across the two engines, and
+    // the note hung. See the member's comment in the header.
+    const bool owned = noteOwnedBySource_[channel];
     switch (type) {
-        case EngineMidiEvent::NOTE_ON:
+        case EngineMidiEvent::NOTE_ON: {
+            const bool toSource = mFx.soundfontPaused(channel);
+            noteOwnedBySource_[channel] = toSource;
+            if (!toSource) return false;
             mFx.noteOn(channel, note, velocity);
             return true;
+        }
         case EngineMidiEvent::NOTE_OFF:
+            // Routed by ownership, not by the current state, so the pair always
+            // lands in the same engine.
+            if (!owned) return false;
             mFx.noteOff(channel, note);
             return true;
         case EngineMidiEvent::PITCH_BEND:
+            // Bend is a continuous control: it follows the instrument that is
+            // currently selected, with no note to keep together.
+            if (!mFx.soundfontPaused(channel)) return false;
             // FluidSynth uses 14-bit 0..16383 with 8192 as centre; the source API
             // expects -1..1.
             mFx.pitchBend(channel, (static_cast<float>(param1) - 8192.0f) / 8192.0f);
