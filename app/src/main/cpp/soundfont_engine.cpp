@@ -398,7 +398,7 @@ bool SoundfontEngine::selectProgram(int channel, int soundFontId, int bank, int 
     ev.note = preset;
     ev.velocity = 0;
     
-    return mEventQueue.push(ev);
+    return pushEvent(ev);
 }
 
 bool SoundfontEngine::programChange(int channel, int program) {
@@ -412,7 +412,7 @@ bool SoundfontEngine::programChange(int channel, int program) {
     ev.note = 0;
     ev.velocity = 0;
     
-    return mEventQueue.push(ev);
+    return pushEvent(ev);
 }
 
 void SoundfontEngine::noteOn(int channel, int midiNote, int velocity) {
@@ -432,7 +432,7 @@ void SoundfontEngine::noteOn(int channel, int midiNote, int velocity) {
     ev.channel = channel;
     ev.note = clampedNote;
     ev.velocity = clampedVelocity;
-    mEventQueue.push(ev);
+    pushEvent(ev);
 }
 
 void SoundfontEngine::noteOff(int channel, int midiNote) {
@@ -446,7 +446,7 @@ void SoundfontEngine::noteOff(int channel, int midiNote) {
     ev.channel = channel;
     ev.note = clampedNote;
     ev.velocity = 0;
-    mEventQueue.push(ev);
+    pushEvent(ev);
 }
 
 void SoundfontEngine::allNotesOff(int channel) {
@@ -455,7 +455,7 @@ void SoundfontEngine::allNotesOff(int channel) {
     ev.channel = channel;
     ev.note = 0;
     ev.velocity = 0;
-    mEventQueue.push(ev);
+    pushEvent(ev);
 }
 
 void SoundfontEngine::panic() {
@@ -466,7 +466,24 @@ void SoundfontEngine::panic() {
     ev.velocity = 0;
     ev.param1 = 0;
     ev.param2 = 0;
-    mEventQueue.push(ev);
+    pushEvent(ev);
+}
+
+void SoundfontEngine::resendDroppedEvents() {
+    std::vector<EngineMidiEvent> pending;
+    {
+        std::lock_guard<std::mutex> lk(mDroppedMutex);
+        if (mDropped.empty()) return;
+        pending.swap(mDropped);
+    }
+    // Retente dans l'ordre d'origine.  Ce qui ne rentre toujours pas repart dans la
+    // liste au prochain tick : un NoteOn en retard vaut mieux qu'une note sans fin.
+    for (const EngineMidiEvent& ev : pending) {
+        if (!mEventQueue.push(ev)) {
+            std::lock_guard<std::mutex> lk(mDroppedMutex);
+            if (mDropped.size() < kMaxDropped) mDropped.push_back(ev);
+        }
+    }
 }
 
 void SoundfontEngine::sendCC(int channel, int cc, int value) {
@@ -475,7 +492,7 @@ void SoundfontEngine::sendCC(int channel, int cc, int value) {
     ev.channel = channel;
     ev.param1 = cc;
     ev.param2 = value;
-    mEventQueue.push(ev);
+    pushEvent(ev);
 }
 
 void SoundfontEngine::pitchBend(int channel, int bendValue) {
@@ -486,7 +503,7 @@ void SoundfontEngine::pitchBend(int channel, int bendValue) {
     ev.type = EngineMidiEvent::PITCH_BEND;
     ev.channel = channel;
     ev.param1 = clampedBend;
-    mEventQueue.push(ev);
+    pushEvent(ev);
 }
 
 void SoundfontEngine::setChannelVolume(int channel, float volume01) {
@@ -505,7 +522,7 @@ void SoundfontEngine::setChannelVolume(int channel, float volume01) {
     ev.channel = channel;
     ev.param1 = 7; // Volume CC
     ev.param2 = ccVal;
-    mEventQueue.push(ev);
+    pushEvent(ev);
 }
 
 void SoundfontEngine::setChannelPan(int channel, float pan) {
@@ -519,7 +536,7 @@ void SoundfontEngine::setChannelPan(int channel, float pan) {
     ev.channel = channel;
     ev.param1 = 10; // Pan CC
     ev.param2 = ccVal;
-    mEventQueue.push(ev);
+    pushEvent(ev);
 }
 
 void SoundfontEngine::setChannelTransposeSemitones(int channel, int semitones) {
@@ -537,7 +554,7 @@ void SoundfontEngine::setChannelReverb(int channel, float reverb01) {
     ev.channel = channel;
     ev.param1 = 91; // Reverb CC
     ev.param2 = ccVal;
-    mEventQueue.push(ev);
+    pushEvent(ev);
 }
 
 void SoundfontEngine::setChannelChorus(int channel, float chorus01) {
@@ -549,7 +566,7 @@ void SoundfontEngine::setChannelChorus(int channel, float chorus01) {
     ev.channel = channel;
     ev.param1 = 93; // Chorus CC
     ev.param2 = ccVal;
-    mEventQueue.push(ev);
+    pushEvent(ev);
 }
 
 void SoundfontEngine::setGain(float gain) {
@@ -684,6 +701,11 @@ void SoundfontEngine::drainEvents() {
                 break;
         }
     }
+
+    // La file vient d'etre drainee : c'est le moment ou la place est libre pour
+    // reemettre ce qui avait ete refuse.  Un NoteOff perdu est une note sans fin.
+    retryDroppedLockFree();
+
 }
 
 void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool accumulate) {

@@ -184,8 +184,26 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
      * missing from the session and every write to it would be silently dropped.
      * 0.5 is the neutral value, so an old preset still sounds exactly as before.
      */
-    private fun padded(inst: AeInstrument, v: FloatArray): FloatArray =
-        if (v.size == inst.paramCount) v else FloatArray(inst.paramCount) { if (it < v.size) v[it] else 0.5f }
+    /**
+     * Complete un tableau de valeurs a la taille du contrat de l'instrument.
+     *
+     * Les indices manquants prennent la valeur du **premier preset d'usine**, pas
+     * 0,5.  Un parametre ajoute en fin de contrat a un sens par defaut qui depend
+     * de l'instrument : le Blend du sax vaut 1,0 (les samples portent la voix).
+     * Le remplir a 0,5 coupait le pack de moitie sur tout preset enregistre avant
+     * l'ajout du parametre — la regression « les samples sont passes ou ? ».
+     */
+    private fun padded(inst: AeInstrument, v: FloatArray): FloatArray {
+        if (v.size == inst.paramCount) return v
+        val ref = factoryPresets(inst).firstOrNull()?.values
+        return FloatArray(inst.paramCount) { i ->
+            when {
+                i < v.size -> v[i]
+                ref != null && i < ref.size -> ref[i]
+                else -> 0.5f
+            }
+        }
+    }
 
     /** Saves the session's CURRENT knob values as a named user preset and selects it. */
     fun saveUserPreset(strip: Int, name: String) {

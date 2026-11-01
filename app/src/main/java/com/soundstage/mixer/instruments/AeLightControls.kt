@@ -36,6 +36,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
@@ -229,22 +230,41 @@ fun AeGlassKeyboard(c: AeCtl, th: AeTheme, base: Int, x: Number, y: Number, w: N
         if (uy < bh) for (s in 0 until 36) if (!wn.contains(s % 12)) { val l = blackLeft(s); if (ux >= l && ux <= l + ww * 0.6f) return base + s }
         return base + whites[(ux / ww).toInt().coerceIn(0, whites.size - 1)]
     }
+    // Les notes tenues sont suivies HORS du geste : un pointeur leve ne suffit pas a
+    // tout relacher.  Android annule le geste des qu'il prend la main (geste systeme,
+    // passage en arriere-plan, perte du pointeur), et une fenetre qui se ferme pendant
+    // un appui ne verrait jamais son `!ch.pressed`.  Sans ce nettoyage, la note reste
+    // allumee dans le moteur — c'est la note bloquee signalee sur les 5 instruments.
+    val held = remember { HashMap<PointerId, Int>() }
+    DisposableEffect(c.s.strip) {
+        onDispose {
+            held.values.forEach { c.m.noteOff(c.s.strip, it) }
+            held.clear()
+        }
+    }
     Canvas(Modifier.at(x, y, w, h).clip(RoundedCornerShape(12.su())).pointerInput(c, base) {
-        awaitPointerEventScope {
-            val down = HashMap<PointerId, Int>()
-            while (true) {
-                val ev = awaitPointerEvent()
-                ev.changes.forEach { ch ->
-                    val n = noteAt(ch.position.x, ch.position.y)
-                    val vel = (50 + 77 * (ch.position.y / sc / h.toFloat()).coerceIn(0f, 1f)).toInt()
-                    if (ch.pressed) {
-                        val prev = down[ch.id]
-                        if (prev == null) { down[ch.id] = n; c.m.noteOn(c.s.strip, n, vel) }
-                        else if (prev != n) { c.m.noteOff(c.s.strip, prev); down[ch.id] = n; c.m.noteOn(c.s.strip, n, vel) }
-                        ch.consume()
-                    } else down.remove(ch.id)?.let { c.m.noteOff(c.s.strip, it); ch.consume() }
+        // `awaitPointerEventScope` leve quand le geste est annule (geste systeme,
+        // passage en arriere-plan, perte du pointeur) : sans le `finally`, la note
+        // tenue a cet instant n'est jamais relachee et reste allumee dans le moteur.
+        try {
+            awaitPointerEventScope {
+                while (true) {
+                    val ev = awaitPointerEvent()
+                    ev.changes.forEach { ch ->
+                        val n = noteAt(ch.position.x, ch.position.y)
+                        val vel = (50 + 77 * (ch.position.y / sc / h.toFloat()).coerceIn(0f, 1f)).toInt()
+                        if (ch.pressed) {
+                            val prev = held[ch.id]
+                            if (prev == null) { held[ch.id] = n; c.m.noteOn(c.s.strip, n, vel) }
+                            else if (prev != n) { c.m.noteOff(c.s.strip, prev); held[ch.id] = n; c.m.noteOn(c.s.strip, n, vel) }
+                            ch.consume()
+                        } else held.remove(ch.id)?.let { c.m.noteOff(c.s.strip, it); ch.consume() }
+                    }
                 }
             }
+        } finally {
+            held.values.forEach { c.m.noteOff(c.s.strip, it) }
+            held.clear()
         }
     }) {
         val u = size.width / w.toFloat()
