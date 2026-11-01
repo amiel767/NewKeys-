@@ -427,6 +427,58 @@ grep -n -A 20 "class PianoEngine" PROJECT_CONTEXT.md   # un extrait, pas le fich
 `AGENTS.md` (ce fichier) reste la memoire des pieges et des decisions ;
 `PROJECT_CONTEXT.md` n'est qu'une carte du code, a interroger par extraits.
 
+## Session 2026-11-01 (Clone 5 / Économe 2) — « les touches n'atteignent jamais les Æther » : cause racine trouvee
+
+### Le bug : `drainEvents()` etait APRES le retour anticipe `sfCount <= 0`
+
+`SoundfontEngine::renderStereo()` faisait :
+
+```cpp
+int sfCount = fluid_synth_sfcount(mSynth);
+if (sfCount <= 0) { fill 0; return; }   // <-- sort SANS drainer les evenements
+drainEvents();
+```
+
+Or charger un instrument Æther **decharge le soundfont de la piste**
+(`AeInstruments.onBeforeLoad` -> `unloadSoundFontFromSlot`). Des qu'il ne reste
+plus **aucun** soundfont charge, `sfCount == 0` et `drainEvents()` n'est **plus
+jamais appele** sur le chemin legacy : les NoteOn/NoteOff restent dans le ring.
+
+Un seul bug, trois symptomes :
+
+| Symptome rapporte | Mecanisme |
+|---|---|
+| « les touches n'atteignent jamais les Æther » | la note n'est jamais drainee vers `mSourceRouter` |
+| notes bloquees | le NoteOff reste coince dans le ring, la voix ne s'arrete jamais |
+| latence apparue « depuis je ne sais quelle modification » | le ring (2048) se remplit, deborde dans `mDropped` (256) puis **jette** ; le thread MIDI bloque sur le mutex de `pushEvent` |
+
+**Correctif** : `drainEvents()` remonte **avant** le test `sfCount <= 0`. Les
+appels `fluid_synth_*` sont sans effet quand il n'y a pas de soundfont, donc
+drainer tot est sur. Le chemin FX (`renderChannels`) n'etait pas concerne : il
+appelle deja `drainEvents()` en tete.
+
+**Regle** : ne jamais placer un retour anticipe devant `drainEvents()`. Le drain
+est la seule sortie des notes hors du ring ; le sauter fige **toutes** les
+sources, pas seulement le canal concerne.
+
+### Piege de verification (a refaire a l'identique)
+
+`tools/aetherfx/midi_route_check.cpp` (nouveau) teste le routage **hors
+Android** : `g++ -O2 -std=c++17 -I app/src/main/cpp`. Il a montre que le routage
+lui-meme est sain (Organ/Synth/Leads/Sax : `paused=1 active=1`, peak 0,11..0,31 ;
+Piano peak 0 a vide, normal sans banque chargee). **Le routage n'etait donc pas
+le bug** — c'est ce qui a oriente vers le drain. Un banc qui valide la brique
+isolee fait gagner une passe : ne pas conclure du symptome, mesurer la brique.
+
+### Veille des pairs : RETIREE (2026-11-01)
+
+Decision utilisateur : **ne plus fouiller les autres conversations**. Les anciennes
+ne sont plus a jour ni actives (la cible `9c93aa40` « Clone 3 : économe » est
+`PAUSED` depuis le 31/10 09:03, dernier commit `58af014`, alors que le depot est a
+`3e355dd`). `tools/conv_sync.py` / `conv_watch.py` restent sur disque pour un
+usage ponctuel, mais **ne plus les lancer en boucle**. Le travail se fait
+desormais uniquement ici, sur l'etat reel du depot.
+
 ## Mode ULTRA economique (Clone 5, 2026-10-31) — la conversation ne gonfle plus
 
 La consommation de l utilisateur est le **flux de conversation renvoye a chaque

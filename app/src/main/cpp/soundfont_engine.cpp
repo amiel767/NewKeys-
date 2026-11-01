@@ -700,6 +700,17 @@ void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool 
         return;
     }
 
+    // The drain has to run even with no soundfont loaded. Loading an Æther
+    // instrument unloads that track's soundfont, so a setlist where every track
+    // carries a source leaves `sfCount == 0`; returning here before the drain
+    // meant the NoteOn/NoteOff never left the ring, so the source never received
+    // a note (the "keys never reach the instruments") and the ring filled up
+    // (stuck notes, growing latency). drainEvents() routes to the source through
+    // mSourceRouter and the fluid_synth_* calls are harmless with no soundfont.
+    auto tStart = std::chrono::steady_clock::now();
+
+    drainEvents();
+
     int sfCount = fluid_synth_sfcount(mSynth);
     if (sfCount <= 0) {
         if (!accumulate) {
@@ -707,10 +718,6 @@ void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool 
         }
         return;
     }
-
-    auto tStart = std::chrono::steady_clock::now();
-
-    drainEvents();
 
     // In multi-channel mode FluidSynth sends each MIDI channel to its own audio
     // group (`group = channel % audio_groups`, see fluid_voice.c). But

@@ -2507,7 +2507,14 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     val isWithinRange = (midiNote == null) || (midiNote in track.splitNoteMin..track.splitNoteMax)
                     if (isWithinRange) {
                         val slot = state.audioSlots.getOrNull(idx)
-                        if (slot != null && slot.soundFontId > 0) idx else null
+                        // A track is playable when it carries a soundfont OR an Æther
+                        // instrument. Loading an Æther instrument unloads the soundfont
+                        // (soundFontId becomes -1), so testing only `soundFontId > 0`
+                        // dropped every Æther track from the routing: the notes were
+                        // never sent to its channel and the instrument went silent,
+                        // while a track that still had a soundfont kept working.
+                        val hasAether = com.soundstage.mixer.instruments.AeInstruments.isLoaded(idx)
+                        if (slot != null && (slot.soundFontId > 0 || hasAether)) idx else null
                     } else null
                 } else null
             } else null
