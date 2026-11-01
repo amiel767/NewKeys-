@@ -34,8 +34,12 @@ class PianoPackFormatTest {
         val count = buf.getInt(12)
         val pcmLen = buf.getInt(16)
         val recLen = buf.getInt(20)
-        assertEquals("taux du pack", 22050, rate)
-        assertEquals("régions", 232, count)
+        // 44,1 kHz : la banque S90 FULL GRAND porte de l'energie jusqu'a 11 kHz
+        // (mesure : 3,7 % entre 5 et 8 kHz, 1,3 % au-dessus de 11 kHz sur l'aigu).
+        // A 22,05 kHz le plafond tombe a 11 kHz et le filtre anti-repliement
+        // emporte exactement la bande qui fait la difference avec l'ancienne banque.
+        assertEquals("taux du pack", 44100, rate)
+        assertEquals("régions", 68, count)
         assertEquals("taille des fiches", count * 24, recLen)
         assertTrue("en-tête + fiches + charge utile", 28 + recLen + pcmLen <= bytes.size)
 
@@ -56,15 +60,20 @@ class PianoPackFormatTest {
             roots += root
             layers += layer
         }
-        // The engine scales its velocity mapping to the pack's layer count.  It used to
-        // hardcode 5, which left 3 of this pack's 8 layers unplayed.
-        // The rate is 22.05 kHz on purpose: the bank carries nothing above ~6 kHz,
-        // and at 44.1 kHz the 4-bit quantiser measured WORSE in the presence band
-        // (2-3 kHz: 11.1 dB against 21.1 dB) for twice the size.
-        assertEquals("couches couvertes", (0 until 8).toSet(), layers)
+        // Le moteur adapte son echelle de velocite au nombre de couches du pack
+        // (`pick()` fait `velocity * layerCount / 128`).  Le SF2 en porte 7 plages,
+        // que le build fusionne en 4 : PP, MP, MF, FF.
+        assertEquals("couches couvertes", (0 until 4).toSet(), layers)
         assertEquals("toutes les régions bouclées", count, looped)
-        // 29 roots, 3 semitones apart: no note is more than 1.5 semitones from its sample.
-        assertEquals("nombre de fondamentales", 29, roots.size)
-        assertTrue("étendue de hauteur", roots.min() <= 24 && roots.max() >= 105)
+        // 17 fondamentales de C2 (36) a C6 (84), tous les 3 demi-tons : aucune note
+        // n'est a plus de 1,5 demi-ton de son echantillon.  L'ancienne banque
+        // s'arretait a 108 et couvrait 21..108 ; celle-ci couvre 0..127.
+        assertEquals("nombre de fondamentales", 17, roots.size)
+        // Les racines vont de C2 (36) a C6 (84).  Au-dessus, le SF2 etire
+        // lui-meme l'echantillon de C6 jusqu'a 127 : c'est son mapping, et c'est
+        // le son que la reference produit.  On verifie donc la couverture utile
+        // du clavier jouable, pas la hauteur de la derniere racine.
+        assertTrue("grave couvert", roots.min() <= 36)
+        assertTrue("aigu couvert", roots.max() >= 84)
     }
 }

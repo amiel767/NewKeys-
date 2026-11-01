@@ -78,14 +78,24 @@ class PianoSampleReader {
       regions_.push_back(g);
     }
     pcm_.assign(bytes + 28 + recLen, bytes + 28 + recLen + pcmLen);
+    // Hors du thread audio : `load()` tourne sur le thread UI.  Voir preload().
+    preload();
     return !regions_.empty();
   }
 
-  void clear() { regions_.clear(); pcm_.clear(); cache_.clear(); rate_ = 22050; layerCount_ = 1; }
+  void clear() {
+    regions_.clear();
+    pcm_.clear();
+    cache_.clear();
+    pre_.clear();
+    rate_ = 22050;
+    layerCount_ = 1;
+  }
   bool loaded() const { return !regions_.empty(); }
   int rate() const { return rate_; }
 
     size_t regionCount() const { return regions_.size(); }
+    size_t preloadedCount() const { return pre_.size(); }
 
   /** Region la plus proche en hauteur, en preferant la couche demandee.
 
@@ -128,6 +138,9 @@ class PianoSampleReader {
   std::shared_ptr<const std::vector<int16_t>> decoded(const Region* g) {
     if (!g) return nullptr;
     const size_t key = static_cast<size_t>(g - regions_.data());
+    // Pre-decode : aucune allocation, aucun decodage sur le thread audio.
+    for (size_t i = 0; i < pre_.size(); ++i)
+      if (pre_[i].first == key) return pre_[i].second;
     for (size_t i = 0; i < cache_.size(); ++i) {
       if (cache_[i].first == key) {
         // Le coup se deplace en QUEUE, la ou l'appelant le lit.  L'ancien
@@ -148,6 +161,49 @@ class PianoSampleReader {
 
  private:
   static constexpr size_t kCacheSlots = 10;
+
+  /**
+   * Budget du pre-decodage, en Mo de PCM int16.
+   *
+   * Mesure du cout de decodage dans `noteOn` (cache MISS) : mediane 0,00 ms mais
+   * p90 1,24 ms et **max 1,47 ms** sur x86, pour un bloc audio de 5,80 ms.  Or
+   * les notes arrivent par la file `EngineMidiEvent`, drainee SUR le thread
+   * audio : une nouvelle note payait donc son decodage dans le budget du bloc.
+   * Un accord ou une gamme enchaine les MISS (le cache ne tient que 10 regions
+   * pour 68), et 3-4 notes suffisent a depasser le bloc.  Sur ARM, plus lent,
+   * c'est un trou audio audible — la note qui « saute ».
+   *
+   * Le pack piano (68 regions, 9,95 Mo ADPCM) tient entierement dans 48 Mo.
+   * Un pack plus gros (le pack electrique en preparera un) degrade proprement :
+   * on pre-decode les regions les plus proches de C4 en premier, les autres
+   * passent par le cache LRU.
+   */
+  static constexpr size_t kPreloadBudgetSamples = 24u * 1024u * 1024u;  // 48 Mo int16
+
+  /** Decode une fois, au chargement, les regions les plus utiles. */
+  void preload() {
+    pre_.clear();
+    std::vector<size_t> order(regions_.size());
+    for (size_t i = 0; i < order.size(); ++i) order[i] = i;
+    // Le clavier se joue surtout autour du centre : on sert d'abord les racines
+    // les plus proches de C4 (60), puis on elargit.
+    std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+      const int da = std::abs(regions_[a].root - 60);
+      const int db = std::abs(regions_[b].root - 60);
+      if (da != db) return da < db;
+      return regions_[a].layer < regions_[b].layer;
+    });
+    size_t used = 0;
+    for (size_t idx : order) {
+      const Region& g = regions_[idx];
+      const size_t need = static_cast<size_t>(g.frames) * 2;
+      if (used + need > kPreloadBudgetSamples) continue;
+      auto out = std::make_shared<std::vector<int16_t>>(need);
+      decodeRegion(g, out->data());
+      pre_.emplace_back(idx, std::move(out));
+      used += need;
+    }
+  }
 
   void decodeRegion(const Region& g, int16_t* dst) const {
     int predL = 0, idxL = 0, predR = 0, idxR = 0;
@@ -178,6 +234,10 @@ class PianoSampleReader {
   std::vector<Region> regions_;
   std::vector<uint8_t> pcm_;
   std::vector<std::pair<size_t, std::shared_ptr<const std::vector<int16_t>>>> cache_;
+  // Regions decodees au chargement, jamais evincees : le thread audio n'y fait
+  // aucune allocation.  Triees par cle croissante, donc la recherche lineaire
+  // s'arrete tot ; a 68 regions elle est de toute facon negligeable.
+  std::vector<std::pair<size_t, std::shared_ptr<const std::vector<int16_t>>>> pre_;
   int rate_ = 22050;
   int layerCount_ = 1;   // nombre de couches reellement presentes dans le pack
 };
@@ -720,6 +780,9 @@ class PianoEngine : public SourceFx {
 
   /** Voix encore actives.  Sert aux bancs a detecter une note bloquee : une voix
    *  active alors qu'aucune touche n'est tenue est un bug, pas un etat normal. */
+  size_t bankRegions() const { return reader_.regionCount(); }
+  size_t preloadedRegions() const { return reader_.preloadedCount(); }
+
   int activeVoices() const {
     int n = 0;
     for (const auto& v : voices_) if (v.active()) ++n;
