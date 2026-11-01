@@ -680,3 +680,49 @@ densite de notes racines, pas le poids.
 - **Echecs de banc PRÉEXISTANTS** (defauts du pack, pas des regressions) : soprano
   +193,9 cents (note 57), tenor +91,9 cents (note 72), humanize tenor 38 cents a 0,
   continuite baryton 7846 sauts. Verifier contre l'ancien binaire avant de conclure.
+
+## Session 2026-10-31 (Clone 5 / Économe 2) — D1 sax, D3 notes bloquées, file MIDI
+
+Reprise de la conversation `9c93aa402a634cdfa4a1fbf759935777` (dont le travail
+est déjà un ancêtre de HEAD, rien à rattraper). **Règle de conversation** :
+tout message est une dépense pour l'utilisateur ; sortie filtrée, une commande
+par étape, pas de listing complet.
+
+### D1 — « les samples du sax sont passés où ? »
+Les samples **étaient** chargés et mixés : mettre le Blend à 0 change **96 à
+144 %** du signal, sur les 4 banques (mesure `FxMixer`, blend 0 vs 1).
+Le vrai défaut était la **valeur par défaut des presets enregistrés avant
+l'ajout du paramètre** : `padded` (`AeCore.kt`) complétait les indices manquants
+à **0,5**, ce qui coupait le pack de moitié — un blend de 0,5 sur 23 paramètres.
+Corrigé : un indice ajouté en fin de contrat prend la valeur du **premier preset
+d'usine** (Blend = 1,0). Règle : ne jamais compléter un contrat à 0,5 en
+supposant un neutre ; lire la valeur de référence de l'instrument.
+
+### D3 — notes bloquées : le moteur est innocent, trois causes dans l'app
+1. **Le banc mesurait la réverbération, pas une voix.** Avec tous les paramètres
+   à 0, les 5 instruments tombent à **exactement 0,00000** après `noteOff` :
+   aucune voix ne survit. La queue LEADS/SAX à 1,5 s (0,0055 / 0,0196) est une
+   queue de reverb, comportement voulu. **Métrique correcte** : voix seule vs
+   avec effets. Ne pas comparer au niveau tenu avec un seuil arbitraire.
+2. **Le clavier de la fenêtre ne relâchait pas ses notes** quand le geste est
+   annulé (geste système, perte du pointeur) ou quand la fenêtre se ferme pendant
+   un appui : `awaitPointerEventScope` **lève**, et le `!ch.pressed` n'arrive
+   jamais. `PointerEventType.Cancel` **n'existe pas** dans cette version de
+   Compose — utiliser `try { awaitPointerEventScope { ... } } finally { relâcher }`
+   + un `DisposableEffect` sur le strip.
+3. **Un NoteOff perdu quand la file d'événements est pleine** : `push()` renvoie
+   false et l'événement disparaît — une note sans fin. Les événements refusés sont
+   gardés (borné à 256) et réémis par le drain (`try_lock`, le thread audio ne
+   bloque jamais) et par le tick de contrôle.
+   **Piège de concurrence** : réémettre depuis le drain fait du thread audio un
+   **second producteur** sur un anneau **SPSC**. `pushEvent` tient le verrou
+   **sur le push** (pas seulement sur la liste d'attente) et `resendDroppedEvents`
+   prend le même : le ring n'a jamais deux écrivains.
+
+### Bancs conservés
+`tools/aetherfx/stuck_notes_check.cpp` (D3, voix vs queue d'effet),
+`tools/saxblend.cpp` → `/tmp/saxblend` (D1, contribution du pack).
+Compilation hôte : `g++ -O2 -std=c++17 -I app/src/main/cpp` (aetherfx est
+header-only). **Piège d'API** : `FxChain` exige un argument de constructeur et
+n'expose pas `setInstrument` ; utiliser `FxMixer` (`prepare`, `setInstrument`,
+`noteOn`, `processStrip`, `loadInstrumentBank`).
