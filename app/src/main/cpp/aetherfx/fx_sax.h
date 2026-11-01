@@ -1,13 +1,12 @@
 // Aether Sax: harmonic reed source -> formant chain -> bell, with breath noise, growl AM,
-// subtone, scoop/fall, key click, delayed vibrato and room. Monophonic with legato glide.
+// subtone, scoop, key click, delayed vibrato and room. Monophonic with legato glide.
 // Ported from the reference voice (`mkSax` / `relSax` of preview-leads-sax.html) including the
 // DeepSeek adjustment patch: pitch-scaled formants, a per-note random spread, an asymmetric
-// grit curve, a shared breath LFO driving noise / amplitude / detune, vibrato formant wobble
-// and a curved fall on release.
-// Params (21): 0 type (Soprano,Alto,Tenor,Bari) 1 finish (visual) 2 mouthpiece (Jazz,Classic,Rubber)
-// 3 reed (Soft,Medium,Hard) 4 breath 5 growl 6 subtone 7 grit 8 attack 9 click 10 scoop 11 fall
+// grit curve, a shared breath LFO driving noise / amplitude / detune, and vibrato formant wobble.
+// Params (23): 0 type (Soprano,Alto,Tenor,Bari) 1 finish (visual) 2 mouthpiece (Jazz,Classic,Rubber)
+// 3 reed (Soft,Medium,Hard) 4 breath 5 growl 6 subtone 7 grit 8 attack 9 click 10 scoop 11 release
 // 12 vibrato depth 13 vibrato rate 14 vibrato delay 15 legato 16 room 17 room size 18 warm 19 bright 20 level
-// 21 humanize (adds a per-note random spread to pitch, attack, level and vibrato)
+// 21 humanize (adds a per-note random spread to pitch, attack, level and vibrato) 22 sample mix (blend)
 #pragma once
 #include "fx_source.h"
 #include "fx_space.h"
@@ -28,9 +27,9 @@ class SaxEngine : public SourceFx {
   void reset() override {
     ampStage_ = 0; ampT_ = 0.f; ampLvl_ = 0.f; relT_ = 0.f; relR_ = .2f;
     ph_[0] = ph_[1] = ph_[2] = 0.f; vibPh_ = 0.f; vibDriftPh_ = 0.f; breathLfoPh_ = 0.f; growlPh_ = 0.f;
-    scoopT_ = 0.f; fallT_ = 0.f; clickEnv_ = 0.f; relClickEnv_ = 0.f; biteT_ = 1.f;
+    scoopT_ = 0.f; clickEnv_ = 0.f; relClickEnv_ = 0.f; biteT_ = 1.f;
     q_ = -1.f; rng_ = 0x2545F491u; nVar_ = 1.f; pitchScale_ = 1.f; afScale_ = 1.f;
-    nGainJit_ = 1.f; vfJit_ = 1.f; clickJit_ = 1.f; fallStart_ = 440.f; fallEnd_ = 440.f;
+    nGainJit_ = 1.f; vfJit_ = 1.f; clickJit_ = 1.f;
     hum_ = 0.f; humPitch_ = 1.f; humLevel_ = 1.f; humAtk_ = 1.f; humVib_ = 1.f;
     held_.clear(); note_ = -1; freq_ = 440.f; target_ = 440.f;
     for (auto& b : form_) b.reset();
@@ -54,11 +53,11 @@ class SaxEngine : public SourceFx {
       return;
     }
     note_ = note; freq_ = f; target_ = f; vel_ = vel / 127.f;
-    ampStage_ = 1; ampT_ = 0.f; ampLvl_ = 0.f; fallT_ = 0.f; biteT_ = 0.f;
+    ampStage_ = 1; ampT_ = 0.f; ampLvl_ = 0.f; biteT_ = 0.f;
     scoopT_ = p(10) > .02f ? 1.f : 0.f;
     clickEnv_ = 1.f;
-    // A fall stretches the sample release; put it back so a note struck after a fallen one
-    // starts from the plain 130 ms release.
+    // Plain 130 ms sample release. The pitch tail is carried by the amplitude envelope
+    // (param 11, release) and the room, not by stretching the sample.
     smp_.setRelease(.13f);
     smp_.noteOn(note, vel);
     seed(f);
@@ -74,31 +73,21 @@ class SaxEngine : public SourceFx {
     smp_.noteOff();
     ampStage_ = 3;
     relT_ = 0.f;
-    fallT_ = p(11) > .05f ? 1.f : 0.f;
-    relR_ = fallT_ > 0.f ? .30f + p(11) * .36f : .1f + p(11) * .15f;
-    fallStart_ = freq_;
-    fallEnd_ = std::max(freq_ * std::pow(2.f, -p(11) * 4.5f / 12.f), 20.f);
-    // The fall gets its own duration, shorter than the amplitude release. It used to ride on
-    // relR_ (0.30..0.66 s), which is 3-5x the time the note stays audible: measured on a held
-    // D4, the pitch had moved only 0.4 semitone while the note was still at -6 dB and reached
-    // its -1.8 st target at -28 dB, by which point it is inaudible. That slow, unresolved
-    // descent is what read as "it detunes" rather than as a fall. A player drops the pitch in
-    // roughly 0.15-0.25 s; scale it a little with the interval so a deep fall takes longer.
-    fallDur_ = .14f + p(11) * .16f;
-    // Stretch the sample release to cover the fall, so the pitch descent is not truncated by
-    // the envelope. `1.7x` leaves a little sample at the end of the fall (the amplitude release
-    // below is longer and finishes the tail). Only when there IS a fall: otherwise the note
-    // keeps the plain 130 ms release.
-    smp_.setRelease(fallT_ > 0.f ? fallDur_ * 1.7f : .13f);
-    relClickEnv_ = p(9) > .01f ? (fallT_ > 0.f ? p(9) * .12f : p(9) * .22f) : 0.f;
+    // Le « Fall » (glissando descendant a la detente) a ete retire : il tombait des qu'on
+    // lachait une note tenue, sans que le joueur le declenche, et faisait « detuner » la
+    // fin de chaque note. Le parametre 11 reste dans le contrat (paramCount 23) mais pilote
+    // desormais la DUREE DE DETENTE, qui est un vrai reglage et se sauvegarde avec le preset.
+    relR_ = .08f + p(11) * .5f;
+    smp_.setRelease(.13f);
+    relClickEnv_ = p(9) > .01f ? p(9) * .22f : 0.f;
   }
   void allNotesOff() override {
     held_.clear();
     smp_.allNotesOff();
-    if (note_ >= 0) { note_ = -1; ampStage_ = 3; relT_ = 0.f; fallT_ = 0.f; relR_ = .12f + p(11) * .18f; }
+    if (note_ >= 0) { note_ = -1; ampStage_ = 3; relT_ = 0.f; relR_ = .12f; }
   }
   // Bends the reed stack by the Track Settings range (default 2 st = 1 tone). Applied on top
-  // of the scoop/fall curves, so a bend during a scoop still tracks the finger.
+  // of the scoop curve, so a bend during a scoop still tracks the finger.
   void pitchBend(float b) override { bend_ = b; }
 
   /**
@@ -174,18 +163,11 @@ class SaxEngine : public SourceFx {
       else if (ampStage_ == 2) { ampT_ += invSr; ampLvl_ = vel_ * (.95f + (.75f - .95f) * std::min(1.f, ampT_ / .25f)); amp = ampLvl_; }
       else if (ampStage_ == 3) { relT_ += invSr; const float u = std::min(1.f, relT_ / std::max(1e-4f, relR_)); amp = ampLvl_ * (1.f - u); if (u >= 1.f) { ampStage_ = 0; amp = 0.f; } }
       else amp = 0.f;
-      // ---- pitch: glide, scoop, fall (curved u^2, like setValueCurveAtTime) ----
+      // ---- pitch: glide and scoop (curved, like setValueCurveAtTime) ----
       freq_ += (target_ - freq_) * (legato > 1e-5f ? legato : 1.f);
       float pitch = freq_;
       pitch *= std::pow(2.f, bend_ * static_cast<float>(bendSemis_) / 12.f);
       if (scoopT_ > 0.f) { scoopT_ -= invSr / .1f; if (scoopT_ < 0.f) scoopT_ = 0.f; pitch *= std::pow(2.f, -p(10) * 3.f / 12.f * scoopT_); }
-      if (fallT_ > 0.f) {
-        // Linear in pitch, not u^2: the squared curve spends its first half barely moving, so
-        // with the short duration the descent still sounded like a slow drift. Linear drops the
-        // pitch from the first block, which is what a fall sounds like.
-        const float u = std::min(1.f, relT_ / std::max(1e-4f, fallDur_));
-        pitch = fallStart_ * std::pow(fallEnd_ / fallStart_, u);
-      }
       // ---- vibrato (delayed), with a slow drift and a soft-clipped shape ----
       vibPh_ += static_cast<float>(vibRate * invSr); if (vibPh_ >= 1.f) vibPh_ -= 1.f;
       vibDriftPh_ += static_cast<float>(.13f * invSr); if (vibDriftPh_ >= 1.f) vibDriftPh_ -= 1.f;
@@ -218,15 +200,7 @@ class SaxEngine : public SourceFx {
       x = form_[1].process(0, x);
       x = form_[2].process(0, x);
       x = form_[3].process(0, x);
-      // The fall also closes the tone down. It used to switch the cutoff to a fixed 700 Hz in a
-      // single sample, which is a click of brightness right at the release; glide it over the
-      // fall instead, and only as far as the fall has actually travelled.
-      float lpNow = lpBase;
-      if (fallT_ > 0.f) {
-        const float fu = std::min(1.f, relT_ / std::max(1e-4f, fallDur_));
-        lpNow = lpBase + (700.f - lpBase) * fu;
-      }
-      lpF_.setLowpass(sr_, lpNow, .9f);
+      lpF_.setLowpass(sr_, lpBase, .9f);
       x = lpF_.process(0, x);
       // ---- growl AM (fast) and breath AM (slow) ----
       growlPh_ += static_cast<float>(growlHz * invSr); if (growlPh_ >= 1.f) growlPh_ -= 1.f;
@@ -246,7 +220,7 @@ class SaxEngine : public SourceFx {
         smp_.render(&sm, 1, kSampleGain);
         x = x * (1.f - sampleMix) + sm * sampleMix;
       }
-      // ---- key click: at note-on, and a shorter one at release when there is a fall ----
+      // ---- key click: at note-on, and a shorter one at release ----
       // Both sit *after* the mix, not before it. They used to be summed into the synthesis
       // branch, so at mix 1.0 the mix replaced the whole sum and threw the click away: the
       // measured attack of the sampled voice was 0.08x its sustain, against 0.41x for the
@@ -314,7 +288,7 @@ class SaxEngine : public SourceFx {
       }
     }
     // Push the live pitch factor to the sample reader once per block, after the loop: bend,
-    // vibrato, scoop and fall are computed inside it, and at mix 1.0 the samples ARE the
+    // vibrato and scoop are computed inside it, and at mix 1.0 the samples ARE the
     // voice, so without this none of those controls could be heard.
     smp_.setPitchScale((target_ > 1e-6f) ? lastF / target_ : 1.f);
     setMeter(0, peak);
@@ -489,9 +463,8 @@ class SaxEngine : public SourceFx {
   float biteT_ = 1.f;
   // Humanize: per-note spread (see humanize()).
   float hum_ = 0.f, humPitch_ = 1.f, humLevel_ = 1.f, humAtk_ = 1.f, humVib_ = 1.f;
-  float scoopT_ = 0.f, fallT_ = 0.f, clickEnv_ = 0.f, relClickEnv_ = 0.f;
+  float scoopT_ = 0.f, clickEnv_ = 0.f, relClickEnv_ = 0.f;
   float q_ = -1.f, nVar_ = 1.f, pitchScale_ = 1.f, afScale_ = 1.f, nGainJit_ = 1.f, vfJit_ = 1.f, clickJit_ = 1.f;
-  float fallStart_ = 440.f, fallEnd_ = 440.f, fallDur_ = .2f;
   uint32_t rng_ = 0x2545F491u;
 };
 

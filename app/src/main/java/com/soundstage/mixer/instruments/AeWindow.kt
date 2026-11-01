@@ -113,7 +113,7 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
     AeStage(modifier) {
         val shape = RoundedCornerShape(24.su())
         Box(Modifier.fillMaxSize().clip(shape).border(1.su(), Color(0x22FFFFFF), shape)) {
-            when (s.instrument) { AeInstrument.ORGAN -> AeOrganUi(c, a); AeInstrument.SYNTH -> AeSynthUi(c, a); AeInstrument.LEADS -> AeLeadsUi(c, a); AeInstrument.SAX -> AeSaxUi(c, a); AeInstrument.PIANO -> AePianoUi(c, manager, strip) }
+            when (s.instrument) { AeInstrument.ORGAN -> AeOrganUi(c, a); AeInstrument.SYNTH -> AeSynthUi(c, a); AeInstrument.LEADS -> AeLeadsUi(c, a); AeInstrument.SAX -> AeSaxUi(c, a); AeInstrument.PIANO -> AePianoUi(c, manager, strip) { list = true } }
             when (s.instrument) {
                 AeInstrument.SYNTH -> AeT("ÆTHER SYNTH", 13, Color.White, Modifier.at(58, 15, 200, 18), AeFonts.display, spacing = 0.18f)
                 AeInstrument.LEADS -> AeT("ÆTHER LEADS", 13, Color(0xFF6FE9FF), Modifier.at(58, 15, 200, 18), AeFonts.display, spacing = 0.18f)
@@ -135,11 +135,18 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
             // window header and in the preset browser, and the plate took the place the
             // controls needed. What is left is the one control that does something — open the
             // browser.
+            //
+            // The piano does not even need that: its model list is always on screen (left
+            // column) and the model name is drawn large in the centre, so the header chip only
+            // repeated what is already visible. It stays for the four instruments that have no
+            // other way to reach their presets.
             val ns = RoundedCornerShape(10.su())
-            Box(Modifier.at(680, 7, 240, 32).clip(ns).background(winTh.glass).border(1.su(), winTh.edge, ns)
-                .clickable(remember { MutableInteractionSource() }, null) { list = !list },
-                contentAlignment = Alignment.Center) {
-                AeT(presets.getOrNull(s.preset)?.name ?: "", 12, winTh.ink, Modifier.padding(horizontal = 12.su()))
+            if (s.instrument != AeInstrument.PIANO) {
+                Box(Modifier.at(680, 7, 240, 32).clip(ns).background(winTh.glass).border(1.su(), winTh.edge, ns)
+                    .clickable(remember { MutableInteractionSource() }, null) { list = !list },
+                    contentAlignment = Alignment.Center) {
+                    AeT(presets.getOrNull(s.preset)?.name ?: "", 12, winTh.ink, Modifier.padding(horizontal = 12.su()))
+                }
             }
             HeaderBtn(winTh, "▶", 928, 8, 30, 30) { manager.loadPreset(strip, s.preset + 1) }
             // Shown only once a knob has been moved away from the selected preset.

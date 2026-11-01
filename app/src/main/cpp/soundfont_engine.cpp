@@ -263,11 +263,17 @@ int SoundfontEngine::unloadSoundFont(int sfontId) {
         mSfontRefCount.erase(sfontId);
     }
 
-    // Safety: shut down any voices using this soundfont before freeing memory
-    fluid_synth_all_notes_off(mSynth, -1);
-    
-    // Slight delay to let voices fade if needed, though all_notes_off should be immediate
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    // Safety: shut down any voices using this soundfont before freeing memory.
+    //
+    // `all_notes_off` is NOT enough: it only starts the release phase, so the voices stay
+    // alive and keep a reference on the samples. `fluid_defsfont_sfont_delete` refuses to
+    // free a soundfont while any sample is referenced, so the unload fell through to a
+    // 100 ms retry timer — and if the release never completed (a sustained voice, a note
+    // that never got its NoteOff) the pack stayed in RAM for the rest of the session,
+    // which is exactly the "soundfonts still weigh in RAM after unload" report.
+    // `all_sounds_off` kills the voices outright, so the refcounts drop to 0 and the
+    // unload frees the pack synchronously.
+    fluid_synth_all_sounds_off(mSynth, -1);
 
     // reset_presets = 0 to avoid crashing active voices on other channels
     int res = fluid_synth_sfunload(mSynth, sfontId, 0);
@@ -282,7 +288,9 @@ void SoundfontEngine::unloadAllSoundFonts() {
     std::lock_guard<std::recursive_mutex> lock(mMutex);
     if (!mSynth) return;
 
-    fluid_synth_all_notes_off(mSynth, -1);
+    // Kill the voices (not just note-off them) so every sample refcount drops to 0 and
+    // `fluid_synth_sfunload` below can actually free the packs. See unloadSoundFont().
+    fluid_synth_all_sounds_off(mSynth, -1);
     for (int ch = 0; ch < kMaxChannels; ++ch) {
         fluid_synth_cc(mSynth, ch, 123, 0);
         fluid_synth_cc(mSynth, ch, 120, 0);

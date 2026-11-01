@@ -3,9 +3,10 @@ package com.soundstage.mixer.instruments
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.util.LruCache
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,19 +15,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -203,7 +201,7 @@ fun AePianoCardPreview(modifier: Modifier) {
  * L'eau appartient à Strings.
  */
 @Composable
-fun BoxScope.AePianoUi(c: AeCtl, manager: AeManager, strip: Int) {
+fun BoxScope.AePianoUi(c: AeCtl, manager: AeManager, strip: Int, onOpenBrowser: () -> Unit = {}) {
     val s = manager.sessions[strip] ?: return
     val ctx = LocalContext.current
     val dens = LocalDensity.current.density
@@ -211,8 +209,6 @@ fun BoxScope.AePianoUi(c: AeCtl, manager: AeManager, strip: Int) {
     val plate = remember(model.id) { AePianoAssets.plate(ctx, model.id) }
     val th = rememberAeThemeFromLuma(plate?.topLuma, model.acc)
     val baseNow by rememberUpdatedState(48)
-    var lastTouch by remember { mutableLongStateOf(System.nanoTime()) }
-    var hidden by remember { mutableStateOf(false) }
     var base by remember { mutableIntStateOf(48) }
     val scene = remember(s) { AeSceneRuntime(procedural = false) }
 
@@ -230,7 +226,6 @@ fun BoxScope.AePianoUi(c: AeCtl, manager: AeManager, strip: Int) {
             val dt = min(0.1f, (now - last) / 1e9f)
             last = now
             manager.pollLevel(s.strip)
-            hidden = (now - lastTouch) > 6_000_000_000L
             if (s.noteEvents != seen) {
                 seen = s.noteEvents
                 val ux = 0.3f + ((s.lastNote - baseNow) / 36f).coerceIn(0f, 1f) * 0.4f
@@ -243,17 +238,8 @@ fun BoxScope.AePianoUi(c: AeCtl, manager: AeManager, strip: Int) {
             scene.update(dt)
         }
     }
-    val ui by animateFloatAsState(if (hidden) 0f else 1f, label = "ui")
-
     Box(
-        Modifier.fillMaxSize().pointerInput(Unit) {
-            awaitPointerEventScope {
-                while (true) {
-                    awaitPointerEvent(PointerEventPass.Initial)
-                    lastTouch = System.nanoTime()
-                }
-            }
-        },
+        Modifier.fillMaxSize(),
     ) {
         Canvas(Modifier.fillMaxSize().onSizeChanged { scene.resize(it.width, it.height, dens) }) {
             scene.frame
@@ -263,9 +249,13 @@ fun BoxScope.AePianoUi(c: AeCtl, manager: AeManager, strip: Int) {
         AeStage(Modifier.fillMaxSize()) {
             AeT("ÆTHER PIANO", 10, th.ink2, Modifier.at(24, 44, 200, 12), AeFonts.display, FontWeight.Normal, 0.3f)
             AeT("PIANO", 10, th.ink, Modifier.at(300, 12, 400, 12), AeFonts.display, FontWeight.Light, 0.42f, TextAlign.Center)
-            AeT(model.name.uppercase(), 30, th.ink, Modifier.at(300, 24, 400, 38), AeFonts.display, FontWeight.ExtraLight, 0.2f, TextAlign.Center)
+            // Le nom du modele est le seul libelle qui dit ce qui est charge, et la case
+            // « Presets » de l'en-tete a ete retiree : c'est donc lui qui ouvre le navigateur.
+            Box(Modifier.at(300, 24, 400, 38).clickable(remember { MutableInteractionSource() }, null, onClick = onOpenBrowser)) {
+                AeT(model.name.uppercase(), 30, th.ink, Modifier.fillMaxSize(), AeFonts.display, FontWeight.ExtraLight, 0.2f, TextAlign.Center)
+            }
             AeT(model.tag, 11, th.ink2, Modifier.at(300, 66, 400, 14), AeFonts.display, FontWeight.Light, 0.14f, TextAlign.Center)
-            Box(Modifier.fillMaxSize().graphicsLayer { alpha = ui }) {
+            run {
                 // Fond de verre derriere la colonne de gauche, le meme que la carte des
                 // potards. La liste s'affiche en encre suivant la photo : sur les 6 modeles
                 // clairs l'encre passe sombre, et la photo claire la noyait (contraste 60,
@@ -279,8 +269,11 @@ fun BoxScope.AePianoUi(c: AeCtl, manager: AeManager, strip: Int) {
                 // mesure 4, texte invisible. Un fond translucide ne peut pas le garantir.
                 // Ici le fond est toujours du cote oppose a l'encre, donc lisible partout.
                 AeGlassPanel(th, plate?.bitmap?.asAndroidBitmap(), 16, 88, 200, 300)
-                // 300 unites de haut, comme le panneau de verre : la liste defile.
-                AeModelList(th, AePianoModels.all.map { it.name }, s.preset, 28, 100, 300) { manager.loadPreset(s.strip, it) }
+                // La liste doit tenir DANS le panneau de verre (y 88..388) : elle allait
+                // jusqu'a 400, donc les 12 dernieres unites debordaient sous la case.
+                // 270 = 9 lignes de 30 exactement, donc la derniere ligne est entiere
+                // (100 + 270 = 370, 18 unites de marge avant le bas du panneau).
+                AeModelList(th, AePianoModels.all.map { it.name }, s.preset, 28, 100, 270) { manager.loadPreset(s.strip, it) }
                 AeGlassPanel(th, plate?.bitmap?.asAndroidBitmap(), 694, 54, 280, 326)
                 PK.forEachIndexed { j, k ->
                     AeLightKnob(th, c.v(k.idx), k.label, k.fmt(c.v(k.idx)), 704 + (j % 4) * 62, 74 + (j / 4) * 70) { c.set(k.idx, it) }

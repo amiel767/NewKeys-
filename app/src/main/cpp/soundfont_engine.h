@@ -27,6 +27,7 @@ inline int fluid_synth_bank_select(fluid_synth_t*, int, int) { return -1; }
 inline int fluid_synth_noteon(fluid_synth_t*, int, int, int) { return 0; }
 inline int fluid_synth_noteoff(fluid_synth_t*, int, int) { return 0; }
 inline int fluid_synth_all_notes_off(fluid_synth_t*, int) { return 0; }
+inline int fluid_synth_all_sounds_off(fluid_synth_t*, int) { return 0; }
 inline int fluid_synth_pitch_bend(fluid_synth_t*, int, int) { return 0; }
 inline int fluid_synth_cc(fluid_synth_t*, int, int, int) { return 0; }
 inline int fluid_synth_write_float(fluid_synth_t*, int, void*, int, int, void*, int, int) { return 0; }
