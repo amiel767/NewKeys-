@@ -726,3 +726,51 @@ Compilation hôte : `g++ -O2 -std=c++17 -I app/src/main/cpp` (aetherfx est
 header-only). **Piège d'API** : `FxChain` exige un argument de constructeur et
 n'expose pas `setInstrument` ; utiliser `FxMixer` (`prepare`, `setInstrument`,
 `noteOn`, `processStrip`, `loadInstrumentBank`).
+
+## Session 2026-10-31 (Clone 5 / Économe 2, suite) — etat fige, banque reelle
+
+### La banque du pack est S90 Full Grand, PAS SplendidGrandPiano
+Correction d'une erreur que j'ai ecrite plus haut dans ce fichier.  Le
+`piano.bin` livre vient de **S90 Full Grand** (SF2 de JSF, 167 Mo, 205
+echantillons, `isng` EMU8000) : structure reprise = deux prises par couche (pan
+gauche/droite), **7 plages de velocite**, hauteur des racines ; reconstruit par
+`extract_sf2.py` + `build_sf2.py`.  Mesure : **centroide 1 995 Hz a C4** contre
+1 276 Hz pour SplendidGrandPiano, qui n'est plus que l'ancienne source (gardee
+pour reference dans `ATTRIBUTION.md`).
+
+Ne plus attribuer le timbre du piano a SplendidGrandPiano : c'est la banque
+precedente.  Toute conclusion de timbre doit citer S90 Full Grand.
+
+### Etat des packs (verifie)
+| Fichier | Taille | Source |
+|---|---|---|
+| `pianopack/piano.bin` | 9 Mo | S90 Full Grand |
+| `pianopack/electric.bin` | 1 Mo | GregSullivan Wurlitzer EP200 |
+| `pianopack/ep_ballad/dx/piano/tine.bin` | 2 Mo chacun | SF2 E.Piano, 26 regions, `build_sf2.py --preset` |
+
+### Les 6 defauts sont tous traites (D1-D6 + extras)
+D1 sax (defaut de contrat `padded`), D2 piano accord (pre-decodage hors thread
+audio), D3 notes bloquees (3 causes, voir section precedente), D4 carte piano
+(grille 3+2 + `Spacer`), D5 boutons PED retires, D6 textes (fond choisi a
+l'oppose de l'encre mesuree).  Extras : renommages, 4 banques EP, liste
+defilante `AeModelList`.
+
+### Ce qui reste ouvert, et qui n'est PAS du code
+- **Le piano sonne « jouet »** (dernier retour utilisateur) : c'est un probleme
+  de **banque**, pas de reglage.  Un filtre ne transforme pas un Steinway en un
+  autre instrument.  Le seul levier reel est la **densite** (42 notes racines au
+  lieu de 21), ou une autre banque sous licence propre.
+- **Validation appareil** impossible ici (pas d'emulateur) : son reel, mute sur
+  piste AEther, fontScale 1,3x.
+
+### Lecon de methode (elle a coute du temps)
+La numerotation D1-D6 vient d'un **resume tronque**, pas d'un message : elle
+n'existe dans AUCUNE conversation (verifie sur CLONE5, la source
+`ffdcf16d...`, CLONE2).  Ne pas partir en archeologie pour retrouver un brief :
+demander la liste, ou lire le tracker de taches, et s'arreter vite.
+
+### Mode economique (regle de conversation)
+La consommation de l'utilisateur = le flux renvoye, pas le reseau du sandbox.
+Sortie filtree (`tail`), une commande par etape, scripts par l'editeur de
+fichiers (jamais en heredoc : le script entier revient), mesures sur disque
+consultees par agregat.
