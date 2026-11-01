@@ -22,10 +22,18 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -176,15 +184,34 @@ fun AeSmallBtn(th: AeTheme, label: String, x: Number, y: Number, w: Number, h: N
     }
 }
 
+/**
+ * Liste de modeles, defilante.
+ *
+ * Une colonne peinte en absolu marchait pour 9 entrees ; a 12 elle sortait de la
+ * scene (12 x 30 = 360 unites pour 300 disponibles) et les derniers modeles
+ * etaient inaccessibles.  Le defilement est desormais reel, et la liste se
+ * positionne d'elle-meme sur le modele selectionne.
+ *
+ * Hauteur de ligne inchangee (30) : la geometrie du panneau de verre est calee
+ * dessus.
+ */
 @Composable
-fun AeModelList(th: AeTheme, names: List<String>, selected: Int, x: Number, y: Number, onPick: (Int) -> Unit) {
-    names.forEachIndexed { i, n ->
-        val on = i == selected
-        Box(Modifier.at(x, y.toFloat() + i * 30f, 176, 30).clip(RoundedCornerShape(10.su()))
-            .then(if (on) Modifier.background(Brush.horizontalGradient(listOf(th.glass, Color.Transparent))) else Modifier)
-            .clickable(remember { MutableInteractionSource() }, null) { onPick(i) }) {
-            if (on) Box(Modifier.at(0, 6, 3, 18).background(th.acc))
-            AeT(n.uppercase(), 14, th.ink.copy(alpha = if (on) 1f else 0.72f), Modifier.at(14, 6, 160, 18), AeFonts.display, if (on) FontWeight.Medium else FontWeight.Light, 0.2f)
+fun AeModelList(th: AeTheme, names: List<String>, selected: Int, x: Number, y: Number, h: Number, onPick: (Int) -> Unit) {
+    val state = rememberLazyListState()
+    // Ouvrir l'instrument sur le modele en cours : sans ca, un modele bas de liste
+    // se retrouve selectionne mais hors du cadre visible.
+    LaunchedEffect(selected) {
+        if (selected in names.indices) state.animateScrollToItem(selected)
+    }
+    LazyColumn(Modifier.at(x, y, 176, h), state = state) {
+        itemsIndexed(names) { i, n ->
+            val on = i == selected
+            Box(Modifier.fillMaxWidth().height(30.su()).clip(RoundedCornerShape(10.su()))
+                .then(if (on) Modifier.background(Brush.horizontalGradient(listOf(th.glass, Color.Transparent))) else Modifier)
+                .clickable(remember { MutableInteractionSource() }, null) { onPick(i) }) {
+                if (on) Box(Modifier.at(0, 6, 3, 18).background(th.acc))
+                AeT(n.uppercase(), 14, th.ink.copy(alpha = if (on) 1f else 0.72f), Modifier.at(14, 6, 160, 18), AeFonts.display, if (on) FontWeight.Medium else FontWeight.Light, 0.2f)
+            }
         }
     }
 }

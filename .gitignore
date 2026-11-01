@@ -48,3 +48,5 @@ tools/.conv_peek/
 #   python3 tools/gen_project_context.py
 # Kept on disk, untracked: reading it wholesale is what bloats a conversation.
 PROJECT_CONTEXT.md
+tools/pianopack/out/ep_*.bin
+tools/pianopack/out/ep_*.json

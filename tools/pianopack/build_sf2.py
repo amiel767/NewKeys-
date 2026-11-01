@@ -180,15 +180,22 @@ def seam_ratio(x, t0, L):
     return abs(seg[0] - seg[-1]) / internal
 
 
-def build_region(left, right, sr, root):
-    """(frames stereo int16, meta) pour une region, depuis ses deux prises."""
+def build_region(left, right, sr, root, max_s=2.5, fade_ms=250.0, tail_s=None):
+    """(frames stereo int16, meta) pour une region, depuis ses deux prises.
+
+    `max_s` et `fade_ms` ne servent qu'aux banques SANS boucle (un SF2 sans chunk
+    `smpl`, comme le pack electrique) : la region est alors un one-shot tronque,
+    et sans fondu de sortie la coupure est un clic.
+    """
     f0 = estimate_f0(left, sr, 440.0 * 2 ** ((root - 69) / 12.0))
     t0, L = loop_region(left, right, sr, f0)
-    if t0 is None:
-        end = min(len(left), len(right), int(2.5 * sr))
+    truncated = t0 is None
+    if truncated:
+        end = min(len(left), len(right), int(max_s * sr))
         loop_start = loop_end = 0
     else:
-        end = min(len(left), len(right), t0 + L + int(TAIL_S * sr))
+        tail = TAIL_S if tail_s is None else tail_s
+        end = min(len(left), len(right), t0 + L + int(tail * sr))
         loop_start, loop_end = t0, t0 + L
 
     l = resample(left[:end], sr, RATE)
@@ -209,6 +216,14 @@ def build_region(left, right, sr, root):
             r = bake_crossfade(r, ls, le - ls, xf)
             faded = 1
     n = min(len(l), len(r))
+    if truncated and fade_ms > 0:
+        k = min(int(fade_ms * 1e-3 * RATE), n)
+        if k > 1:
+            ramp = np.linspace(1.0, 0.0, k)
+            l = l.copy()
+            r = r.copy()
+            l[n - k:] *= ramp
+            r[n - k:] *= ramp
     st = np.empty(2 * n, np.int16)
     st[0::2] = np.clip(np.round(l[:n] * 32767.0), -32768, 32767)
     st[1::2] = np.clip(np.round(r[:n] * 32767.0), -32768, 32767)
@@ -221,12 +236,25 @@ def main():
     ap.add_argument('--src', required=True)
     ap.add_argument('--out', required=True)
     ap.add_argument('--roots', default='')
+    ap.add_argument('--max-seconds', type=float, default=2.5)
+    ap.add_argument('--fade-ms', type=float, default=250.0)
+    ap.add_argument('--tail-seconds', type=float, default=None,
+                    help='queue gardee APRES la boucle (defaut 1,5 s).  La boucle '
+                         'porte le sustain : 0,6 s suffit et allege le pack.')
+    ap.add_argument('--layers', default='', help='indices de couche a garder, ex. "0,3"')
+    ap.add_argument('--preset', default='',
+                    help='ne garder que ce preset, par NOM (un SF2 en porte plusieurs '
+                         'et ils partagent les memes racines : sans ce filtre le build '
+                         'melange les timbres).  Le champ est un nom dans mapping.json, '
+                         'pas un index.')
     args = ap.parse_args()
 
     mapping = json.load(open(os.path.join(args.src, 'mapping.json')))
     # Une entree par (racine, plage de velocite) : les deux prises d'une paire.
     pairs = {}
     for z in mapping:
+        if args.preset and z.get('preset') != args.preset:
+            continue
         if z['vel_lo'] == 0 and z['vel_hi'] == 127:
             continue                      # zone de repli, pas une vraie couche
         layer = next((L for lo, hi, L in LAYER_OF_VEL if z['vel_lo'] >= lo and z['vel_hi'] <= hi), None)
@@ -235,11 +263,14 @@ def main():
         pairs.setdefault((z['root'], layer), []).append(z)
 
     want = {int(x) for x in args.roots.split(',') if x} if args.roots else None
+    want_layers = {int(x) for x in args.layers.split(',') if x} if args.layers else None
     blob = bytearray()
     recs = bytearray()
     index = []
     for (root, layer) in sorted(pairs):
         if want and root not in want:
+            continue
+        if want_layers is not None and layer not in want_layers:
             continue
         zs = pairs[(root, layer)]
         lefts = [z for z in zs if z['pan'] < 0]
@@ -252,7 +283,8 @@ def main():
             l = l.mean(axis=1)
         if r.ndim > 1:
             r = r.mean(axis=1)
-        st, meta = build_region(l.astype(np.float64), r.astype(np.float64), slr, root)
+        st, meta = build_region(l.astype(np.float64), r.astype(np.float64), slr, root,
+                                args.max_seconds, args.fade_ms, args.tail_seconds)
         packed = adpcm_encode(st)
         meta['offset'] = len(blob)
         meta['layer'] = layer

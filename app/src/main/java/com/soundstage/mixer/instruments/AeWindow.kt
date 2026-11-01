@@ -661,7 +661,7 @@ private fun AeTile(inst: AeInstrument, loaded: Boolean, modifier: Modifier, onCl
         AeInstrument.SYNTH -> TileStyle(Color(0xFF2B1A5E), Color(0xFF0C0A22), Color(0x668A7AFF), "POLYSYNTH", "Morph oscillators · Filter · Macros")
         AeInstrument.LEADS -> TileStyle(Color(0xFF08283A), Color(0xFF050912), Color(0x5519E3FF), "LED MONO LEAD", "Sine · Square · Saw · Super · Soft")
         AeInstrument.SAX -> TileStyle(Color(0xFF4A2A10), Color(0xFF120905), Color(0x66F2B84A), "BREATH SAXOPHONE", "Soprano · Alto · Tenor · Baritone")
-        AeInstrument.PIANO -> TileStyle(Color(0xFF2A1C10), Color(0xFF0C0704), Color(0x66E3C48A), "HYBRID GRAND", "Felt · Studio · Upright · Electric")
+        AeInstrument.PIANO -> TileStyle(Color(0xFF2A1C10), Color(0xFF0C0704), Color(0x66E3C48A), "HYBRID GRAND", "Felt · Studio · Cottage · Tine")
     }
     val sh = RoundedCornerShape(20.dp)
     Box(
