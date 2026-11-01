@@ -114,8 +114,21 @@ class AePianoPlate(val bitmap: ImageBitmap, val topLuma: Float)
 object AePianoAssets {
     private val cache = LruCache<String, AePianoPlate>(4)
 
+    /**
+     * Modeles EP : une seule image, celle de l'electrique.
+     *
+     * Les 3 modeles ajoutes apres coup (Ballad, DX Bell, E.Piano) n'ont pas de photo
+     * propre.  Sans ce repli, `getIdentifier` renvoie 0 et la scene retombait sur son
+     * dessin vectoriel : la fenetre changeait d'allure entre Tine Keys et ses voisins,
+     * pour la meme famille d'instrument.
+     */
+    private val epIds = setOf("ballad", "dx", "epiano")
+
     fun plate(ctx: Context, id: String): AePianoPlate? {
-        val name = "ae_piano_$id"
+        var name = "ae_piano_$id"
+        if (id in epIds && ctx.resources.getIdentifier(name, "drawable", ctx.packageName) == 0) {
+            name = "ae_piano_electric"
+        }
         cache.get(name)?.let { return it }
         val rid = ctx.resources.getIdentifier(name, "drawable", ctx.packageName)
         if (rid == 0) return null

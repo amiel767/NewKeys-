@@ -65,6 +65,21 @@ class AePianoCaptureTest {
         composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/$name.png")
     }
 
+    // Un fichier par modele, dans l'ordre de AePianoModels.all : c'est ce que la page
+    // de demo affiche a cote de chaque MP3.
+    @Test fun ae_model_00_felt() = capture("ae_model_00_felt", 0)
+    @Test fun ae_model_01_studio() = capture("ae_model_01_studio", 1)
+    @Test fun ae_model_02_bright() = capture("ae_model_02_bright", 2)
+    @Test fun ae_model_03_mellow() = capture("ae_model_03_mellow", 3)
+    @Test fun ae_model_04_dark() = capture("ae_model_04_dark", 4)
+    @Test fun ae_model_05_cottage() = capture("ae_model_05_cottage", 5)
+    @Test fun ae_model_06_parlor() = capture("ae_model_06_parlor", 6)
+    @Test fun ae_model_07_saloon() = capture("ae_model_07_saloon", 7)
+    @Test fun ae_model_08_tine() = capture("ae_model_08_tine", 8)
+    @Test fun ae_model_09_ballad() = capture("ae_model_09_ballad", 9)
+    @Test fun ae_model_10_dx() = capture("ae_model_10_dx", 10)
+    @Test fun ae_model_11_epiano() = capture("ae_model_11_epiano", 11)
+
     @Test fun ae_piano_window() = capture("ae_piano_window", 0)
     @Test fun ae_piano_felt() = capture("ae_piano_felt", 1)
     @Test fun ae_piano_bright() = capture("ae_piano_bright", 3)
