@@ -62,6 +62,7 @@ fun FxWindow(
     actions: FxWindowActions,
     modifier: Modifier = Modifier,
     scale: Float = 1f,
+    arpState: ArpState? = null,
 ) {
     val inEffect = state.openEffect != null
     val title = when {
@@ -72,7 +73,9 @@ fun FxWindow(
     val count = state.slots.count { it != null }
     // L'état de l'arpégiateur vit ICI, pas dans sa page : l'en-tête porte BPM et
     // Swing, la page porte la grille. Deux composants, un seul état.
-    val arp = remember { ArpState() }
+    // L'hôte peut fournir le sien ([arpState]) pour l'observer et le pousser au
+    // moteur ; sans lui, la fenêtre en crée un (cas du harnais de capture).
+    val arp = arpState ?: remember { ArpState() }
     val isArp = state.openEffect?.kind == FxKindD.MIDI
     // Le pas courant avance tout seul tant que la page est ouverte : le curseur
     // de la maquette tourne, il ne reste pas sur le premier point.

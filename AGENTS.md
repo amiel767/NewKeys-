@@ -2047,6 +2047,69 @@ aussi (`com.aetherkeys.sheets.model`) mais dans un autre package. `object FM`
 redouble `AppColors` : decider si le design reste autonome ou s'aligne sur le chrome
 de l'app. Aucun codec de persistance (le depot a deja `FxPersistence.kt`).
 
+## Session 2026-11-01 (2e) — Arpeggiator BRANCHE au moteur (branche `design/tests`)
+
+Suite de la purge. L'Arpeggiator etait une **interface sans moteur** : `fx_arp.h`
+existait (340 l., verifie, 42 tests) mais **rien ne l'appelait**. Le commit qui l'a
+ecrit le dit lui-meme : « le moteur n'est PAS encore cable au chemin audio ».
+Il l'est maintenant, de bout en bout.
+
+### La chaine complete
+`FxDesignHost.armArp()` -> `FxController.setArpArmed` -> `NativeAudioBridge.safeSetArpChannel`
+-> JNI `setArpChannel` -> `SoundfontEngine::setArpChannel` -> `mArpChannel`. Puis
+`drainEvents()` intercepte les notes de CE canal et les pousse dans `mArp` au lieu de
+FluidSynth ; `renderChannels`/`renderPlanar` appellent `runArp()` et decoupent le bloc
+sur chaque frame d'emission (`fluidProcessSegmented`).
+
+### Le piege principal : l'arp doit router comme le joueur, pas comme le synthé
+Premier jet : `applyArpEvent` appelait `fluid_synth_noteon` en direct. **Faux sur une
+piste Æther** : quand un instrument occupe la piste, `soundfontPaused(strip)` est vrai
+et c'est le `mSourceRouter` qui capte les notes. Les notes de l'arp seraient tombees
+dans FluidSynth, muettes. Corrige en passant par `mSourceRouter` **d'abord** — la meme
+regle que `drainEvents`. Toute note emise doit prendre la route du joueur.
+
+### Le modele de l'UI n'est PAS celui du moteur
+- **UI** (`ArpState`) : `sub` (1/4..1/32), `style` (up/down/updown/random), `steps`,
+  `bpm`, `swing`, `vel[16]`, `on[16]` — un **sequenceur** a 16 pas.
+- **Moteur** (`ArpParam`) : ON, RATE, MODE, OCTAVES, GATE, SWING, HOLD, VELOCITY,
+  (+ **STEPS**, ajoute) — un **arpege de notes tenues**.
+La page est un sequenceur ; le moteur arpege. La traduction est faite dans `pushArp()`
+et elle est **assumee** : `octaves`/`gate`/`hold` n'ont pas de controle dans la page et
+sont pousses a leurs valeurs neutres.
+
+### La grille de pas est desormais REELLE (cote moteur)
+Les 16 colonnes n'etaient qu'un dessin : `on[i]`/`vel[i]` ne quittaient jamais l'UI.
+Ajoute au moteur : `ARP_STEPS` (1..16), `setStep(i, on, vel)` (atomics), et dans
+`startStep` une colonne coupee **relache et n'attaque rien** (un silence), et la
+velocite du pas **module** celle du pas. `step_` court sans fin, `col = step_ % steps_`.
+
+**Piege attrape par le banc** : `ARP_STEPS` etant zero-initialise, `steps_` valait
+**1** au demarrage — une note sur seize. Le constructeur pose `params_[ARP_STEPS] = 1`.
+Un parametre ajoute dans un tableau d'atomics **ne prend pas son defaut tout seul**.
+
+### Armer le canal EST l'interrupteur (source unique)
+`ARP_ON` du moteur vaut 0 par defaut : si l'hote armait le canal sans pousser ON, les
+notes interceptees seraient **avalees** (silence). `setArpChannel` pose donc ON lui-meme,
+et `setArpParam(ARP_ON, ...)` est **ignore** cote moteur : deux ecrivains se battraient.
+
+### Desarmer doit relacher (sinon note infinie)
+`runArp` retourne tot quand `mArpChannel < 0` — mais les NoteOff des notes deja allumees
+attendent dans la file de l'arp. Corrige : `runArp` tourne **aussi** desarme tant que
+`mArpEmitChannel >= 0` (le canal d'emission survit au desarmement), vide la file, puis
+le remet a -1 quand il n'y a plus rien. `disarmArp()` appelle en plus `arpAllNotesOff`.
+
+### `ArpState` hisse hors de la fenetre
+Il vivait dans `FxWindow` par `remember` : l'hote ne pouvait pas le lire, donc pas le
+pousser. `FxWindow` recoit maintenant `arpState: ArpState? = null` (defaut = il en cree
+un, cas du harnais de capture). Le **contrat de la fenetre reste intact**.
+
+### Verification
+- Banc hote : `tools/arp/arp_check.cpp` -> **46 tests, 0 echec** (section 10 = la grille).
+- `:app:assembleDebug` -> BUILD SUCCESSFUL. Symboles presents dans le `.so` :
+  `Java_..._setArpChannel/setArpParam/setArpTempo/setArpStep/arpAllNotesOff`,
+  `SoundfontEngine::runArp`, `fluidProcessSegmented`, `applyArpEvent`.
+- **Non teste** : le son reel sur appareil (pas d'emulateur ici).
+
 ## Session 2026-11-01 — fenetre FX : purge de l'ancienne coque (branche `design/tests`)
 
 **Deux interfaces coexistaient** dans le depot, et seule l'une est la bonne. C'est la

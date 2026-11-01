@@ -126,6 +126,16 @@ object NativeAudioBridge {
     external fun setFxEffectParam(strip: Int, slot: Int, param: Int, norm: Float)
     external fun setFxEffectBypass(strip: Int, slot: Int, bypass: Boolean)
     external fun applyFxPreset(strip: Int, slot: Int, preset: Int): Boolean
+
+    // ---- Arpeggiator -------------------------------------------------------
+    // The arp intercepts one MIDI channel: notes sent there feed it instead of
+    // the synth, and the notes it emits are what sounds.
+    external fun setArpChannel(engineIndex: Int, channel: Int)
+    external fun setArpParam(engineIndex: Int, index: Int, norm: Float)
+    external fun setArpTempo(engineIndex: Int, bpm: Double)
+    external fun setArpStep(engineIndex: Int, index: Int, on: Boolean, vel: Float)
+    external fun arpAllNotesOff(engineIndex: Int)
+
     external fun setFxStripGain(strip: Int, lin: Float)
     external fun setFxStripPan(strip: Int, pan: Float)
     external fun setFxStripMute(strip: Int, mute: Boolean)
@@ -818,6 +828,53 @@ object NativeAudioBridge {
             } catch (e: Throwable) {
                 Log.e("NativeAudioBridge", "Error invoking fxPanic: ${e.message}")
             }
+        }
+    }
+
+    // ---- Arpeggiator -------------------------------------------------------
+
+    fun safeSetArpChannel(engineIndex: Int, channel: Int) {
+        if (!isLibraryLoaded) return
+        try {
+            setArpChannel(engineIndex, channel)
+        } catch (e: Throwable) {
+            Log.e("NativeAudioBridge", "Error invoking setArpChannel: ${e.message}")
+        }
+    }
+
+    fun safeSetArpParam(engineIndex: Int, index: Int, norm: Float) {
+        if (!isLibraryLoaded) return
+        try {
+            setArpParam(engineIndex, index, norm)
+        } catch (e: Throwable) {
+            Log.e("NativeAudioBridge", "Error invoking setArpParam: ${e.message}")
+        }
+    }
+
+    fun safeSetArpTempo(engineIndex: Int, bpm: Double) {
+        if (!isLibraryLoaded) return
+        try {
+            setArpTempo(engineIndex, bpm)
+        } catch (e: Throwable) {
+            Log.e("NativeAudioBridge", "Error invoking setArpTempo: ${e.message}")
+        }
+    }
+
+    fun safeSetArpStep(engineIndex: Int, index: Int, on: Boolean, vel: Float) {
+        if (!isLibraryLoaded) return
+        try {
+            setArpStep(engineIndex, index, on, vel)
+        } catch (e: Throwable) {
+            Log.e("NativeAudioBridge", "Error invoking setArpStep: ${e.message}")
+        }
+    }
+
+    fun safeArpAllNotesOff(engineIndex: Int) {
+        if (!isLibraryLoaded) return
+        try {
+            arpAllNotesOff(engineIndex)
+        } catch (e: Throwable) {
+            Log.e("NativeAudioBridge", "Error invoking arpAllNotesOff: ${e.message}")
         }
     }
 

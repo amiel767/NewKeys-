@@ -158,6 +158,57 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_allNotesOff(
     gAudioEngine.getEngine(engineIndex).allNotesOff(channel);
 }
 
+// ---- Arpeggiator -----------------------------------------------------------
+// The arp intercepts ONE channel: notes sent there feed it instead of the synth.
+// It lives on the soundfont engine because that is where the notes already land.
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setArpChannel(
+        JNIEnv *env,
+        jobject /* this */,
+        jint engineIndex,
+        jint channel) {
+    gAudioEngine.getEngine(engineIndex).setArpChannel(channel);
+}
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setArpParam(
+        JNIEnv *env,
+        jobject /* this */,
+        jint engineIndex,
+        jint index,
+        jfloat norm) {
+    gAudioEngine.getEngine(engineIndex).setArpParam(index, norm);
+}
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setArpTempo(
+        JNIEnv *env,
+        jobject /* this */,
+        jint engineIndex,
+        jdouble bpm) {
+    gAudioEngine.getEngine(engineIndex).setArpTempo(bpm);
+}
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_setArpStep(
+        JNIEnv *env,
+        jobject /* this */,
+        jint engineIndex,
+        jint index,
+        jboolean on,
+        jfloat vel) {
+    gAudioEngine.getEngine(engineIndex).setArpStep(index, on == JNI_TRUE, vel);
+}
+
+JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_arpAllNotesOff(
+        JNIEnv *env,
+        jobject /* this */,
+        jint engineIndex) {
+    gAudioEngine.getEngine(engineIndex).arpAllNotesOff();
+}
+
 JNIEXPORT void JNICALL
 Java_com_soundstage_mixer_audio_NativeAudioBridge_setTrackVolume(
         JNIEnv *env,

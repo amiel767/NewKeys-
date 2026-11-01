@@ -291,6 +291,57 @@ int main() {
     ck(ok, "aucune note au-dela de 127");
   }
 
+  // ── 10. la grille de pas ────────────────────────────────────────────────
+  // Les seize colonnes de la page : un pas coupe est un silence, et chaque pas
+  // porte son propre facteur de velocite.
+  printf("10. GRILLE DE PAS\n");
+  {
+    // steps = 3 : la grille se repete tous les trois pas, pas tous les seize.
+    Harness h; setup(h.a, ArpRate::Sixteenth, ArpMode::Up, 1, 0.5f, 0, false);
+    h.a.setParam(ARP_STEPS, 2.0f / 15.0f);         // 1 + round(2/15*15.999) = 3
+    h.a.noteIn(60, 100, true); h.a.noteIn(64, 100, true); h.a.noteIn(67, 100, true);
+    h.run(240);                                   // 30720 frames => 6 pas de 6000
+    // On compte les attaques sur les trois premieres positions de la grille :
+    // elles doivent toutes tomber, preuve que le cycle fait bien 3.
+    auto o = h.ons();
+    ck(o.size() >= 6, "un cycle de 3 pas tourne", "n=" + std::to_string(o.size()));
+    bool cyc = o.size() >= 6 && o[0] == o[3] && o[1] == o[4] && o[2] == o[5];
+    ck(cyc, "le motif se repete toutes les 3 notes");
+  }
+  {
+    // Une case eteinte = un silence : rien n'est attaque sur cette colonne.
+    Harness h; setup(h.a, ArpRate::Sixteenth, ArpMode::Up, 1, 0.5f, 0, false);
+    for (int i = 0; i < 16; ++i) h.a.setStep(i, i != 1, 1.f);   // colonne 2 coupee
+    h.a.noteIn(60, 100, true); h.a.noteIn(64, 100, true); h.a.noteIn(67, 100, true);
+    h.run(160);                                   // >= 3 attaques (0, 2, 3)
+    // Les attaques tombent aux colonnes 0, 2, 3... jamais a la colonne 1 :
+    // l'ecart 0->2 vaut DEUX pas, puis 2->3 reprend un pas normal.
+    std::vector<long> t; for (auto& e : h.ev) if (e.on) t.push_back(e.frame);
+    bool skip = t.size() >= 3 && (t[1] - t[0]) == 12000 && (t[2] - t[1]) == 6000;
+    ck(skip, "une case eteinte saute le pas puis la grille reprend",
+       t.size() >= 3 ? std::to_string(t[1] - t[0]) + "/" + std::to_string(t[2] - t[1]) : "-");
+  }
+  {
+    // La velocite du pas module la velocite de base.
+    Harness h; setup(h.a, ArpRate::Sixteenth, ArpMode::Up, 1, 0.5f, 0, false);
+    for (int i = 0; i < 16; ++i) h.a.setStep(i, true, i == 0 ? 1.0f : 0.25f);
+    h.a.noteIn(60, 100, true); h.a.noteIn(64, 100, true); h.a.noteIn(67, 100, true);
+    h.run(120);                                   // 2 attaques : colonne 0 puis 1
+    std::vector<int> vs; for (auto& e : h.ev) if (e.on) vs.push_back(e.vel);
+    bool loud = vs.size() >= 2 && vs[0] > vs[1];
+    ck(loud, "le pas fort sort plus fort que le pas faible",
+       vs.size() >= 2 ? std::to_string(vs[0]) + " > " + std::to_string(vs[1]) : "-");
+  }
+  {
+    // Reculer steps a 1 : chaque pas rejoue la colonne 0.
+    Harness h; setup(h.a, ArpRate::Sixteenth, ArpMode::Up, 1, 0.5f, 0, false);
+    h.a.setParam(ARP_STEPS, 0.f);                  // 1 pas
+    h.a.noteIn(60, 100, true); h.a.noteIn(64, 100, true);
+    h.run(40);
+    ck(!h.ons().empty(), "steps = 1 : le motif joue quand meme",
+       "n=" + std::to_string(h.ons().size()));
+  }
+
   printf("\n%s (%d echec%s)\n", fails ? "ECHECS" : "TOUT PASSE", fails, fails > 1 ? "s" : "");
   return fails ? 1 : 0;
 }

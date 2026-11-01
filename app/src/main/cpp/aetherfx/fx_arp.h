@@ -47,7 +47,7 @@ inline double arpRateBeats(ArpRate r) {
 // Normalised parameters, in the order the UI sends them (0..1), like the FX rack.
 enum ArpParam {
   ARP_ON = 0, ARP_RATE, ARP_MODE, ARP_OCTAVES, ARP_GATE, ARP_SWING,
-  ARP_HOLD, ARP_VELOCITY, ARP_PARAM_COUNT
+  ARP_HOLD, ARP_VELOCITY, ARP_STEPS, ARP_PARAM_COUNT
 };
 
 class ArpEngine {
@@ -55,6 +55,19 @@ class ArpEngine {
   static constexpr int kMaxHeld = 32;
   static constexpr int kMaxSound = 32;
   static constexpr int kMaxPattern = kMaxHeld * 4;
+  /** Les colonnes que la page dessine : seize. */
+  static constexpr int kSteps = 16;
+
+  ArpEngine() {
+    for (int i = 0; i < kSteps; ++i) {
+      stepOn_[i].store(true, std::memory_order_relaxed);
+      stepVel_[i].store(1.f, std::memory_order_relaxed);
+    }
+    // Le repos, c'est seize colonnes toutes allumees : le moteur doit demarrer
+    // sans grille plutot qu'avec une seule colonne, sinon un hote qui ne pousse
+    // pas ARP_STEPS jouerait une note sur seize.
+    params_[ARP_STEPS].store(1.f, std::memory_order_relaxed);
+  }
 
   // `frame` is the offset INSIDE the current block, so the host splits its render
   // there. `on` distinguishes NoteOn from NoteOff.
@@ -88,6 +101,17 @@ class ArpEngine {
   // Queued like everything else, so it lands in order AFTER the notes already
   // sent: a reset that ran on the control thread would race them.
   void allNotesOff() { noteIn(-1, 0, false); }
+
+  /**
+   * La grille de pas, poussee depuis la page. `on` coupe le pas (un silence) et
+   * `vel` est un facteur 0..1 applique a la velocite du pas. Atomics : la page
+   * ecrit, le thread audio lit, sans verrou — comme les parametres.
+   */
+  void setStep(int i, bool on, float vel) {
+    if (i < 0 || i >= kSteps) return;
+    stepOn_[i].store(on, std::memory_order_relaxed);
+    stepVel_[i].store(vel < 0.f ? 0.f : (vel > 1.f ? 1.f : vel), std::memory_order_relaxed);
+  }
 
   void setParam(int i, float v) {
     if (i < 0 || i >= ARP_PARAM_COUNT) return;
@@ -168,6 +192,7 @@ class ArpEngine {
     swing_ = params_[ARP_SWING].load(std::memory_order_relaxed) * 0.66f;
     hold_ = params_[ARP_HOLD].load(std::memory_order_relaxed) > 0.5f;
     velocity_ = 0.15f + params_[ARP_VELOCITY].load(std::memory_order_relaxed) * 0.85f;
+    steps_ = std::clamp(1 + static_cast<int>(params_[ARP_STEPS].load(std::memory_order_relaxed) * 15.999f), 1, kSteps);
     bpm_ = std::clamp(tempo_.load(std::memory_order_relaxed), 20.0, 400.0);
   }
 
@@ -221,7 +246,19 @@ class ArpEngine {
       }
     if (pn == 0) { if (nSound_ > 0) emitSounding(emit, ctx, frame, false); return; }
 
-    const int vel = std::clamp(static_cast<int>(std::lround(velocity_ * 127.0f)), 1, 127);
+    // La colonne de la page a laquelle ce pas correspond. `step_` court sans fin ;
+    // la grille, elle, fait `steps_` colonnes et se répète.
+    const int col = (steps_ > 0) ? (step_ % steps_) : 0;
+    const float stepVel = stepVel_[col].load(std::memory_order_relaxed);
+    const int vel = std::clamp(static_cast<int>(std::lround(velocity_ * stepVel * 127.0f)), 1, 127);
+
+    // Un pas coupé est un SILENCE : il relâche ce qui sonne et n'attaque rien.
+    // C'est ce que dessine une case éteinte dans la grille.
+    if (!stepOn_[col].load(std::memory_order_relaxed)) {
+      if (nSound_ > 0) emitSounding(emit, ctx, frame, false);
+      gateFrames_ = 0.0;
+      return;
+    }
 
     // What does this step want to sound?
     int want[kMaxSound]; int wn = 0;
@@ -328,6 +365,7 @@ class ArpEngine {
   ArpRate rate_ = ArpRate::Sixteenth;
   ArpMode mode_ = ArpMode::Up;
   int octaves_ = 1;
+  int steps_ = kSteps;
   float gate_ = 0.5f, swing_ = 0.f, velocity_ = 1.f;
 
   static constexpr uint32_t kRing = 256;
@@ -335,6 +373,9 @@ class ArpEngine {
   std::atomic<uint32_t> w_{0}, r_{0};
   std::atomic<float> params_[ARP_PARAM_COUNT]{};
   std::atomic<double> tempo_{120.0};
+  // La grille de pas : lue par le thread audio, écrite par la page.
+  std::atomic<bool> stepOn_[kSteps]{};
+  std::atomic<float> stepVel_[kSteps]{};
 };
 
 }  // namespace aetherfx

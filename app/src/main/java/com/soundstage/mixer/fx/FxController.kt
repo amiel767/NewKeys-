@@ -139,6 +139,35 @@ class FxController(private val strip: Int, private val context: Context? = null)
     fun setPan(pan: Float) = safe(Unit, "setPan") { bridge()?.setFxStripPan(strip, pan) }
     fun setMute(mute: Boolean) = safe(Unit, "setMute") { bridge()?.setFxStripMute(strip, mute) }
 
+    // ---- arpeggiator -------------------------------------------------------
+    // The arp intercepts ONE MIDI channel: the notes sent there feed it instead
+    // of the synth, and the notes it emits are what sounds. Arming the channel IS
+    // the on/off switch, so the engine has a single source of truth. The channel
+    // is the strip itself for tracks (0..7), 8 for Drum and 9 for the Tonic pad;
+    // the master strip has no channel of its own, so the arp stays off there.
+
+    private fun arpChannelForStrip(): Int =
+        if (strip in 0..9) strip else -1
+
+    fun setArpArmed(armed: Boolean) {
+        val ch = if (armed) arpChannelForStrip() else -1
+        safe(Unit, "setArpChannel") {
+            bridge()?.setArpChannel(NativeAudioBridge.ENGINE_FADER, ch)
+        }
+    }
+
+    fun setArpParam(index: Int, norm: Float) =
+        safe(Unit, "setArpParam") { bridge()?.setArpParam(NativeAudioBridge.ENGINE_FADER, index, norm) }
+
+    fun setArpTempo(bpm: Double) =
+        safe(Unit, "setArpTempo") { bridge()?.setArpTempo(NativeAudioBridge.ENGINE_FADER, bpm) }
+
+    fun setArpStep(index: Int, on: Boolean, vel: Float) =
+        safe(Unit, "setArpStep") { bridge()?.setArpStep(NativeAudioBridge.ENGINE_FADER, index, on, vel) }
+
+    fun arpAllNotesOff() =
+        safe(Unit, "arpAllNotesOff") { bridge()?.arpAllNotesOff(NativeAudioBridge.ENGINE_FADER) }
+
     /** Peak level 0..1 for [channel] (0 = left, 1 = right). Safe to poll at 30 Hz. */
     fun peak(channel: Int): Float = safe(0f, "peak") { bridge()?.fxStripPeak(strip, channel) ?: 0f }
 

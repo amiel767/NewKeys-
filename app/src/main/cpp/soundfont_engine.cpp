@@ -88,6 +88,9 @@ bool SoundfontEngine::init(int sampleRate, int polyphony, const char* instanceNa
     }
 
     int effectivePoly = fluid_synth_get_polyphony(mSynth);
+    // The arp's clock is in frames, so it needs the real rate: a wrong one shifts
+    // every step. Prepared here, on the control thread, before the stream opens.
+    mArp.prepare(static_cast<double>(sampleRate));
     LOGI("[%s] Startup Verification: Requested Polyphony=%d, Effective Polyphony=%d, Interpolation=LINEAR(1), SampleRate=%d",
          mInstanceName.c_str(), mConfiguredPolyphony, effectivePoly, sampleRate);
     return true;
@@ -120,7 +123,10 @@ bool SoundfontEngine::renderChannels(float *out, int32_t numFrames, int channelC
     // is rendered into the planar scratch and then copied out. Both sides are
     // contiguous, so this is a straight copy per channel rather than the two
     // stride-2 * channelCount passes the old sample-major layout needed.
-    fluid_synth_process(mSynth, numFrames, 0, nullptr, 2 * channelCount, mChannelPtrs.data());
+    // When the arp is armed the block is split at each note it emits, so a 1/32
+    // at 120 BPM lands on its exact frame instead of the block edge.
+    if (runArp(numFrames)) fluidProcessSegmented(numFrames, channelCount);
+    else fluid_synth_process(mSynth, numFrames, 0, nullptr, 2 * channelCount, mChannelPtrs.data());
     for (int ch = 0; ch < channelCount; ++ch) {
         float *dst = out + static_cast<size_t>(2 * ch) * numFrames;
         const float *srcL = mChannelPtrs[2 * ch];
@@ -151,7 +157,8 @@ bool SoundfontEngine::renderPlanar(int32_t numFrames, int channelCount) {
     for (int ch = 0; ch < 2 * channelCount; ++ch) {
         std::fill(mChannelPtrs[ch], mChannelPtrs[ch] + numFrames, 0.0f);
     }
-    fluid_synth_process(mSynth, numFrames, 0, nullptr, 2 * channelCount, mChannelPtrs.data());
+    if (runArp(numFrames)) fluidProcessSegmented(numFrames, channelCount);
+    else fluid_synth_process(mSynth, numFrames, 0, nullptr, 2 * channelCount, mChannelPtrs.data());
 
     int activeCount = fluid_synth_get_active_voice_count(mSynth);
     mAuditTotalVoices.store(activeCount, std::memory_order_relaxed);
@@ -617,6 +624,25 @@ void SoundfontEngine::drainEvents() {
             noteOnsProcessed++;
         }
         mEventQueue.pop(ev);
+        // The arp sits BETWEEN the player and the engine: a note on its channel
+        // feeds the arp instead of FluidSynth. The arp then emits its own notes,
+        // which are the ones that sound. Same rule as the source router below —
+        // whatever the arp intercepts, FluidSynth must not also receive.
+        const int arpCh = mArpChannel.load(std::memory_order_relaxed);
+        if (arpCh >= 0 && ev.channel == arpCh) {
+            if (ev.type == EngineMidiEvent::NOTE_ON) {
+                mArp.noteIn(ev.note, ev.velocity, true);
+                continue;
+            }
+            if (ev.type == EngineMidiEvent::NOTE_OFF) {
+                mArp.noteIn(ev.note, 0, false);
+                continue;
+            }
+            if (ev.type == EngineMidiEvent::ALL_NOTES_OFF || ev.type == EngineMidiEvent::PANIC) {
+                mArp.allNotesOff();
+                // Falls through: the synth still needs its own all-notes-off.
+            }
+        }
         const bool routedToSource = mSourceRouter && ev.channel >= 0 && ev.channel < kMaxChannels &&
                                     mSourceRouter(mSourceRouterCtx, ev.channel, ev.type, ev.note,
                                                   ev.velocity, ev.param1, ev.param2);
@@ -684,6 +710,63 @@ void SoundfontEngine::drainEvents() {
                 break;
         }
     }
+}
+
+// ---- Arpeggiator -----------------------------------------------------------
+
+void SoundfontEngine::arpEmit(int frame, int note, int velocity, bool on) {
+    if (arpOutCount_ >= kArpMaxOut) return;
+    arpOut_[arpOutCount_++] = ArpNote{frame, note, velocity, on};
+}
+
+void SoundfontEngine::applyArpEvent(const ArpNote &e) {
+    const int ch = mArpEmitChannel.load(std::memory_order_relaxed);
+    if (ch < 0) return;
+    // The emitted notes take the SAME route as the player's: on a strip that
+    // carries an Aether instrument (a Source) the soundfont is paused, so sending
+    // the note to FluidSynth would be silent. The router is what decides.
+    const int type = e.on ? EngineMidiEvent::NOTE_ON : EngineMidiEvent::NOTE_OFF;
+    if (mSourceRouter && mSourceRouter(mSourceRouterCtx, ch, type, e.note, e.velocity, 0, 0)) return;
+    if (e.on) fluid_synth_noteon(mSynth, ch, e.note, e.velocity);
+    else fluid_synth_noteoff(mSynth, ch, e.note);
+}
+
+bool SoundfontEngine::runArp(int numFrames) {
+    arpOutCount_ = 0;
+    const bool armed = mArpChannel.load(std::memory_order_relaxed) >= 0;
+    const bool flushing = mArpEmitChannel.load(std::memory_order_relaxed) >= 0;
+    if (!armed && !flushing) return false;
+    // Even DISARMED the arp must run once more: removing the effect queues the
+    // release of the notes it started, and if nothing drained that queue they
+    // would ring forever. The emit channel is what lets those releases out.
+    mArp.process(numFrames, &SoundfontEngine::arpEmitTrampoline, this);
+    if (!armed && arpOutCount_ == 0) mArpEmitChannel.store(-1, std::memory_order_relaxed);
+    return arpOutCount_ > 0;
+}
+
+void SoundfontEngine::fluidProcessSegmented(int32_t numFrames, int channelCount) {
+    // The block is walked once per event. `mChannelPtrs[c]` points at the start of
+    // channel c's planar scratch, so each segment renders at `base + done` and the
+    // pointer is RESTORED to base afterwards — advancing it twice would walk past
+    // the buffer. Events are already in frame order: the arp emits them that way.
+    float *base[2 * kMaxChannels];
+    for (int c = 0; c < 2 * channelCount; ++c) base[c] = mChannelPtrs[c];
+
+    int done = 0;
+    for (int i = 0; i < arpOutCount_; ++i) {
+        const int at = std::clamp(arpOut_[i].frame, 0, numFrames);
+        if (at > done) {
+            for (int c = 0; c < 2 * channelCount; ++c) mChannelPtrs[c] = base[c] + done;
+            fluid_synth_process(mSynth, at - done, 0, nullptr, 2 * channelCount, mChannelPtrs.data());
+            done = at;
+        }
+        applyArpEvent(arpOut_[i]);
+    }
+    if (done < numFrames) {
+        for (int c = 0; c < 2 * channelCount; ++c) mChannelPtrs[c] = base[c] + done;
+        fluid_synth_process(mSynth, numFrames - done, 0, nullptr, 2 * channelCount, mChannelPtrs.data());
+    }
+    for (int c = 0; c < 2 * channelCount; ++c) mChannelPtrs[c] = base[c];
 }
 
 void SoundfontEngine::renderStereo(float *outputBuffer, int32_t numFrames, bool accumulate) {

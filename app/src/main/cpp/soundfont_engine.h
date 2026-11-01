@@ -1,6 +1,8 @@
 #ifndef DAWSTUDIO_SOUNDFONT_ENGINE_H
 #define DAWSTUDIO_SOUNDFONT_ENGINE_H
 
+#include "fx_arp.h"
+
 #if __has_include(<fluidsynth.h>)
 #include <fluidsynth.h>
 #else
@@ -201,6 +203,36 @@ public:
     void allNotesOff(int channel);
     void sendCC(int channel, int cc, int value);
 
+    // ---- Arpeggiator -------------------------------------------------------
+    // The arp sits BETWEEN the player and the engine: it never makes sound, it
+    // turns held notes into a stream of notes. `setArpChannel` chooses the one
+    // channel it intercepts (-1 = off): notes sent to that channel feed the arp
+    // instead of the synth, and the notes the arp emits are what sounds. All of
+    // these are control-thread calls; the arp itself is lock-free.
+    void setArpChannel(int channel) {
+        std::lock_guard<std::recursive_mutex> lock(mMutex);
+        const int ch = (channel >= 0 && channel < kMaxChannels) ? channel : -1;
+        // Le canal d'emission est pose AVANT le vidage : les NoteOff des notes
+        // deja allumees doivent encore savoir ou sortir.
+        if (ch >= 0) mArpEmitChannel.store(ch, std::memory_order_relaxed);
+        // Armer le canal EST l'interrupteur : sans ca, les notes interceptees
+        // seraient avalees et rien ne sonnerait (l'ARP_ON du moteur vaut 0 par
+        // defaut). Une seule source de verite, pas deux.
+        mArp.setParam(aetherfx::ARP_ON, ch >= 0 ? 1.f : 0.f);
+        mArp.allNotesOff();
+        mArpChannel.store(ch, std::memory_order_relaxed);
+    }
+    int arpChannel() const { return mArpChannel.load(std::memory_order_relaxed); }
+    // ARP_ON is driven by setArpChannel (arming IS the switch), so a host push of
+    // it is ignored: two writers would fight and the notes could be swallowed.
+    void setArpParam(int index, float norm) {
+        if (index == aetherfx::ARP_ON) return;
+        mArp.setParam(index, norm);
+    }
+    void setArpTempo(double bpm) { mArp.setTempo(bpm); }
+    void setArpStep(int index, bool on, float vel) { mArp.setStep(index, on, vel); }
+    void arpAllNotesOff() { mArp.allNotesOff(); }
+
     /**
      * Hard panic: silences every voice *and* flushes the FluidSynth reverb/chorus
      * tail. `allNotesOff` only stops the notes, so with the synth reverb engaged a
@@ -318,6 +350,43 @@ private:
     void *mAllNotesOffHookCtx = nullptr;
     LockFreeRingBuffer<EngineMidiEvent, 2048> mEventQueue;
     bool mWasHighLoad = false;
+
+    // ---- Arpeggiator -------------------------------------------------------
+    // The one channel the arp intercepts, -1 when off. Notes queued for that
+    // channel are pushed into the arp instead of FluidSynth; the arp then emits
+    // its own notes, which are handed straight to FluidSynth on the same channel.
+    aetherfx::ArpEngine mArp;
+    // Lu par le thread audio, ecrit par le thread de controle : atomique.
+    std::atomic<int> mArpChannel{-1};
+
+    /** Le pont arp -> synthé : la frame d'émission découpe le rendu du bloc. */
+    static void arpEmitTrampoline(void *ctx, int frame, int note, int velocity, bool on) {
+        static_cast<SoundfontEngine *>(ctx)->arpEmit(frame, note, velocity, on);
+    }
+    void arpEmit(int frame, int note, int velocity, bool on);
+
+    /**
+     * Runs the arp for this block. Returns true when it is armed on a channel.
+     * The notes it emits are written into `arpOut_` with their frame offset, and
+     * the caller splits the FluidSynth render at those offsets so a 1/32 at
+     * 120 BPM does not jitter by a whole block.
+     */
+    bool runArp(int numFrames);
+    struct ArpNote { int frame; int note; int velocity; bool on; };
+    static constexpr int kArpMaxOut = 128;
+    ArpNote arpOut_[kArpMaxOut]{};
+    int arpOutCount_ = 0;
+    /** Le canal sur lequel les notes de l'arp sortent. Il survit au desarmement,
+     *  sinon les notes deja allumees ne trouveraient plus leur canal pour etre
+     *  relachees et sonneraient sans fin. */
+    std::atomic<int> mArpEmitChannel{-1};
+    void applyArpEvent(const ArpNote &e);
+    /**
+     * Rend le bloc en le DÉCOUPANT à chaque note de l'arp, pour que la note
+     * tombe sur son échantillon exact au lieu du bord de bloc. `mChannelPtrs`
+     * est décalé par segment ; l'appelant a déjà vidé la zone.
+     */
+    void fluidProcessSegmented(int32_t numFrames, int channelCount);
 
     // Temporary non-audio intrusive instrumentation
     std::atomic<int> mAuditTotalVoices{0};

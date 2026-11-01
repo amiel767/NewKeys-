@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.collectLatest
+import com.aetherkeys.fx.ArpState
 import com.aetherkeys.fx.FxDesign
 import com.aetherkeys.fx.FxInfoD
 import com.aetherkeys.fx.FxKindD
@@ -48,12 +49,13 @@ fun stripForTrack(trackId: Int): Int =
  * adaptateur est le seul endroit qui connaît les deux vocabulaires — la fenêtre
  * ne change pas d'une ligne, exactement comme le contrat le promettait.
  *
- * CE QUI N'EST PAS BRANCHÉ, ET QUI EST ASSUMÉ. Le catalogue de design dessine
- * Space et l'Arpeggiator ; le moteur ne connaît que Space (id 0, sept réglages).
- * L'Arpeggiator n'a pas de contrepartie native : il s'installe dans l'emplacement
- * MIDI et vit purement à l'écran, sans son. Les trois derniers réglages de Space
- * (Low Cut, Hi Shelf, Mod) sont de la maquette : ils se règlent et se mémorisent
- * ici, mais ne partent pas au moteur, qui ne les a pas.
+ * CE QUI EST BRANCHÉ. Le catalogue de design dessine Space et l'Arpeggiator. Space
+ * est un effet moteur (id 0, sept réglages) ; l'Arpeggiator n'est PAS un effet — il
+ * ne fait pas de son, il transforme les notes tenues en flux de notes. Il s'installe
+ * dans l'emplacement MIDI, arme le canal de la piste (`setArpChannel`) et pousse sa
+ * grille de seize pas. Les trois derniers réglages de Space (Low Cut, Hi Shelf, Mod)
+ * sont de la maquette : ils se règlent et se mémorisent ici, mais ne partent pas au
+ * moteur, qui ne les a pas.
  */
 @Composable
 fun FxDesignHost(
@@ -83,6 +85,23 @@ fun FxDesignHost(
             }
     }
 
+    // La page de l'arp écrit son état à chaque geste (une case, un pas, le BPM).
+    // Le moteur doit suivre : on pousse dès que l'arp est vivant. `collectLatest`
+    // coalesce les rafales d'un drag, et le push est bon marché (des atomics).
+    LaunchedEffect(strip) {
+        androidx.compose.runtime.snapshotFlow { host.arpRevision() }
+            .collectLatest {
+                if (host.arpIsLive()) host.pushArp()
+            }
+    }
+
+    // Fermer la fenêtre DÉSARME l'arp. Le rack n'est pas encore persisté : sans
+    // ça, le canal resterait intercepté par un arp que plus aucune interface ne
+    // montre, et le joueur ne pourrait plus le couper.
+    androidx.compose.runtime.DisposableEffect(strip) {
+        onDispose { controller.setArpArmed(false) }
+    }
+
     Box(
         modifier = modifier.fillMaxSize().background(Color(0xCC05070C)),
         contentAlignment = Alignment.Center,
@@ -90,7 +109,7 @@ fun FxDesignHost(
         BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             // On garde la taille de la maquette : le facteur ne dépasse jamais 1.
             val scale = rememberFitScale(maxWidth - 16.dp, maxHeight - 16.dp)
-            FxWindow(state = host.state(), actions = host.actions(onClose), scale = scale)
+            FxWindow(state = host.state(), actions = host.actions(onClose), scale = scale, arpState = host.arp)
         }
     }
 }
@@ -122,6 +141,15 @@ private class FxDesignModel(private val controller: FxController) {
     private var openId by mutableStateOf<Int?>(null)
     private var catalog by mutableStateOf<FxKindD?>(null)
     private var custom by mutableStateOf(false)
+
+    /**
+     * L'état de l'arpégiateur, HÉBERGÉ ICI et passé à la fenêtre.
+     *
+     * Il vivait dans la fenêtre par `remember`, donc l'hôte ne pouvait pas le
+     * lire : impossible de le pousser au moteur. Le contrat de la fenêtre est
+     * resté intact — c'est l'hôte qui l'approvisionne.
+     */
+    val arp = ArpState()
 
     /**
      * Compteur d'écritures. La persistance l'observe au lieu d'être appelée à
@@ -223,6 +251,11 @@ private class FxDesignModel(private val controller: FxController) {
                 } else {
                     slotIds[slot] = -1
                 }
+            } else if (effectId == FxDesign.ARP.id) {
+                // L'Arpeggiator n'est pas un effet : il ne fait pas de son, il
+                // transforme les notes tenues en flux de notes. On arme le canal
+                // de la piste et on pousse la grille ; le moteur fait le reste.
+                armArp()
             }
             catalog = null
             touch()
@@ -233,6 +266,7 @@ private class FxDesignModel(private val controller: FxController) {
             if (id < 0) return
             val engine = engineSlot(slot)
             if (engine >= 0) controller.setEffect(engine, -1)
+            if (id == FxDesign.ARP.id) disarmArp()
             slotIds[slot] = -1
             engaged.remove(id)
             if (openId == id) openId = null
@@ -244,8 +278,14 @@ private class FxDesignModel(private val controller: FxController) {
             if (id < 0) return
             val now = !(engaged[id] ?: true)
             engaged[id] = now
-            val engine = engineSlot(slot)
-            if (engine >= 0) controller.setBypass(engine, !now)
+            if (id == FxDesign.ARP.id) {
+                // Contourner l'arp, c'est le désarmer : les notes repartent
+                // directement au synthé au lieu d'être avalées par le moteur.
+                if (now) armArp() else controller.setArpArmed(false)
+            } else {
+                val engine = engineSlot(slot)
+                if (engine >= 0) controller.setBypass(engine, !now)
+            }
             touch()
         }
 
@@ -303,6 +343,79 @@ private class FxDesignModel(private val controller: FxController) {
         if (engine < 0) return
         vals(id).forEachIndexed { i, x ->
             if (i < engineParamCount()) controller.setEffectParam(engine, i, x)
+        }
+    }
+
+    // ---- arpégiateur -------------------------------------------------------
+    // Le moteur ne connaît pas d'« effet ARP » : il connaît un canal intercepté.
+    // Armer, c'est donc pousser toute la configuration puis choisir le canal.
+    // Tout ce que la page peut régler est envoyé ici — sinon un réglage serait
+    // un dessin, pas un contrôle.
+
+    /** L'arp est-il dans le rack ET engagé ? */
+    private fun arpLive(): Boolean {
+        val slot = slotIds.indexOf(FxDesign.ARP.id)
+        if (slot < 0) return false
+        return engaged[FxDesign.ARP.id] ?: true
+    }
+
+    /** Pour l'observateur : la page n'a pas de compteur, on en dérive un. */
+    fun arpIsLive(): Boolean = arpLive()
+
+    /**
+     * Une valeur qui change à chaque réglage de l'arp. `snapshotFlow` n'observe
+     * que des lectures d'état Compose : on relit donc ici tout ce que la page
+     * peut modifier, et on combine — c'est le changement qui compte, pas la
+     * valeur.
+     */
+    fun arpRevision(): Int = arp.sub * 1_000_003 +
+        arp.style * 100_003 +
+        arp.steps * 10_007 +
+        arp.bpm * 101 +
+        arp.swing +
+        arp.on.count { it } * 31 +
+        arp.vel.sumOf { (it * 1000).toInt() }
+
+    private fun armArp() {
+        pushArp()
+        controller.setArpArmed(true)
+    }
+
+    private fun disarmArp() {
+        controller.setArpArmed(false)
+        // Les notes déjà allumées par l'arp doivent être relâchées, sinon elles
+        // sonnent sans fin : le moteur vide sa liste sur le canal d'émission.
+        controller.arpAllNotesOff()
+    }
+
+    /**
+     * Pousse les réglages de la page au moteur. Les indices suivent [ArpParam]
+     * natif : RATE, MODE, OCTAVES, GATE, SWING, HOLD, VELOCITY, STEPS. ON n'est
+     * pas poussé : c'est l'armement du canal qui l'allume (source unique).
+     */
+    fun pushArp() {
+        // sub (0..3) = 1/4, 1/8, 1/16, 1/32 -> ArpRate::Quarter..ThirtySecond.
+        controller.setArpParam(1, arp.sub / 3f)
+        // style (0..3) = up, down, updown, random -> ArpMode::Up, Down, UpDown, Random.
+        val mode = when (arp.style) {
+            1 -> 1f
+            2 -> 2f
+            3 -> 4f  // Random (UpDown = 2, DownUp = 3, Random = 4)
+            else -> 0f
+        }
+        controller.setArpParam(2, mode / 5f)
+        controller.setArpParam(3, 0f)          // octaves = 1 (la page n'en a pas)
+        controller.setArpParam(4, 0.5f)        // gate = ~52 %
+        controller.setArpParam(5, arp.swing / 100f)
+        controller.setArpParam(6, 0f)          // hold off
+        controller.setArpParam(7, 0.85f)       // velocity de base
+        // steps (1..16) -> 0..1 sur 16 colonnes.
+        controller.setArpParam(8, (arp.steps - 1).coerceIn(0, 15) / 15f)
+        controller.setArpTempo(arp.bpm.toDouble())
+        for (i in 0 until 16) {
+            val on = i < arp.steps && arp.on.getOrElse(i) { true }
+            val vel = if (i < arp.steps) arp.vel.getOrElse(i) { 1f } else 0f
+            controller.setArpStep(i, on, vel)
         }
     }
 

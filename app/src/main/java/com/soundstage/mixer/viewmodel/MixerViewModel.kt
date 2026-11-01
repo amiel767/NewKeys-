@@ -2920,6 +2920,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun openEffectsForTrack(trackId: Int) {
+        // The keyboard must play the track whose FX are on screen: the arp, once
+        // armed, intercepts that track's MIDI channel, and notes sent elsewhere
+        // would never reach it. Same rule as the soundfont window.
+        audioEngine.activeTargetChannel = AudioSlot.midiChannelForSlot(trackId)
         _uiState.update { it.copy(activePopup = ActivePopup.EFFECTS, activeEffectTrackId = trackId) }
     }
 
