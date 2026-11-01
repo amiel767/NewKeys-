@@ -136,7 +136,13 @@ class LeadsEngine : public SourceFx {
       float mono = 0.f;
       for (auto& v : v_) {
         if (!v.on) continue;
-        stepEnv(v, A, H, D, R, invSr);
+        // Les rampes (amplitude, filtre, fondu anti-clic) durent A*varA et D*varD, mais
+        // la machine d'etat avancait sur A et D nus : elle changeait d'etape jusqu'a 12 %
+        // AVANT la fin de la rampe et la coupait en plein milieu. varA etant tire au
+        // hasard par voix, le point de coupe changeait a chaque note — un "tac" qui
+        // suivait la note, audible seulement sur les couches lisses (le sine).
+        const float Av = A * v.varA, Dv = D * v.varD;
+        stepEnv(v, Av, H, Dv, R, invSr);
         if (v.stage >= 6) { v.on = false; continue; }
         const float tgt = v.target + bend_ * static_cast<float>(bendSemis_);
         v.pit += (tgt - v.pit) * (mode == 0 ? 1.f : gl);
@@ -146,7 +152,7 @@ class LeadsEngine : public SourceFx {
         v.driftPh += static_cast<float>(0.12f + v.driftPh2 * 0.35f) * invSr; if (v.driftPh >= 1.f) v.driftPh -= 1.f;
         const float drift = sineTable().at(v.driftPh) * v.driftDepth;
         const float detuneAll = vib + v.voiceOff + drift;
-        const float fc = fcAt(v, fc0, pk, S, A * v.varA, H, D * v.varD);
+        const float fc = fcAt(v, fc0, pk, S, Av, H, Dv);
         const float kf = 1.f / (kfBase + v.qJit);
         const float g = std::tan(static_cast<float>(kPi) * std::min(fc, .45f * static_cast<float>(sr_)) * invSr);
         const float a1 = 1.f / (1.f + g * (g + kf)), a2 = g * a1, a3 = g * a2;
@@ -160,12 +166,12 @@ class LeadsEngine : public SourceFx {
         // Fade the oscillator sum in before the saturator: the reference ramps its mix
         // bus over 5 ms. Without it the saturator sees a full-amplitude sum on the first
         // sample of a voice, and that discontinuity is the click.
-        const float fade = v.stage == 1 ? std::min(1.f, v.envT / std::max(1e-4f, A * v.varA)) : 1.f;
+        const float fade = v.stage == 1 ? std::min(1.f, v.envT / std::max(1e-4f, Av)) : 1.f;
         sum = fastTanh(sum * .55f * v.satDrive * fade);
         const float v3 = sum - v.ic[1], v1 = a1 * v.ic[0] + a2 * v3, v2 = v.ic[1] + a2 * v.ic[0] + a3 * v3;
         v.ic[0] = 2.f * v1 - v.ic[0]; v.ic[1] = 2.f * v2 - v.ic[1];
         const float y = ftype == 0 ? v2 : ftype == 1 ? sum - kf * v1 - v2 : v1;
-        mono += y * ampAt(v, v.vel, A * v.varA, D * v.varD, S, R);
+        mono += y * ampAt(v, v.vel, Av, Dv, S, R);
       }
       // ---- shared bus: chorus -> tone shelves -> delay -> (reverb below) ----
       float ch = mono;
