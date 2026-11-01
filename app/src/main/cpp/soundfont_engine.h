@@ -214,7 +214,20 @@ public:
      * NoteOns are kept too so their pairing NoteOff cannot be applied before the
      * note exists; the note simply starts late rather than never stopping.
      */
-    void resendDroppedEvents();
+    /**
+     * Retente les evenements refuses depuis le thread de controle.
+     *
+     * Meme discipline de verrou que [pushEvent] : le ring n'a jamais deux
+     * producteurs a la fois.
+     */
+    void resendDroppedEvents() {
+        std::lock_guard<std::mutex> lk(mDroppedMutex);
+        size_t i = 0;
+        while (i < mDropped.size()) {
+            if (!mEventQueue.push(mDropped[i])) break;   // plus de place : au prochain tick
+            mDropped.erase(mDropped.begin() + i);
+        }
+    }
 
     /**
      * Retente les evenements refuses, SANS jamais bloquer le thread audio.
@@ -362,10 +375,17 @@ private:
     std::vector<EngineMidiEvent> mDropped;
     std::mutex mDroppedMutex;
 
-    /** Pushes `ev`, stashing it for a retry when the queue is full. */
+    /**
+     * Pushes `ev`, stashing it for a retry when the queue is full.
+     *
+     * The mutex is held across the ring push, not just around the stash. The ring is
+     * single-producer/single-consumer: the retry path pushes from the audio thread,
+     * so without this the control thread and the audio thread would be two producers
+     * and could tear the tail index.
+     */
     bool pushEvent(const EngineMidiEvent& ev) {
-        if (mEventQueue.push(ev)) return true;
         std::lock_guard<std::mutex> lk(mDroppedMutex);
+        if (mEventQueue.push(ev)) return true;
         if (mDropped.size() < kMaxDropped) mDropped.push_back(ev);
         return false;
     }

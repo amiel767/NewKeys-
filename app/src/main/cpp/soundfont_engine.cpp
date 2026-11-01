@@ -469,23 +469,6 @@ void SoundfontEngine::panic() {
     pushEvent(ev);
 }
 
-void SoundfontEngine::resendDroppedEvents() {
-    std::vector<EngineMidiEvent> pending;
-    {
-        std::lock_guard<std::mutex> lk(mDroppedMutex);
-        if (mDropped.empty()) return;
-        pending.swap(mDropped);
-    }
-    // Retente dans l'ordre d'origine.  Ce qui ne rentre toujours pas repart dans la
-    // liste au prochain tick : un NoteOn en retard vaut mieux qu'une note sans fin.
-    for (const EngineMidiEvent& ev : pending) {
-        if (!mEventQueue.push(ev)) {
-            std::lock_guard<std::mutex> lk(mDroppedMutex);
-            if (mDropped.size() < kMaxDropped) mDropped.push_back(ev);
-        }
-    }
-}
-
 void SoundfontEngine::sendCC(int channel, int cc, int value) {
     EngineMidiEvent ev;
     ev.type = EngineMidiEvent::CC;
