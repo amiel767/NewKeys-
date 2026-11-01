@@ -1011,3 +1011,53 @@ APK ~70 Mo). `AeManagerTest` + `AetherSnapshotJsonTest` BUILD SUCCESSFUL.
 Push **sans** workflow : `release.yml` est `workflow_dispatch` seulement, aucune
 run declenchee (verifie via l'API Actions).
 
+
+## Session 2026-11-01 (Clone 5, suite) — pack « Nord Stage 3 Ultimate » : pipeline prouve, licence refusee
+
+### Le defi etait realisable techniquement — et je l'ai prouve
+
+Le pack `Nord Stage 3 Ultimate Stage Pianos` (2 flux herokuapp, RAR5 multivolume,
+**3,67 Go + 1,75 Go**) est un monolithe Kontakt. J'ai extrait et decode
+l'audio **de bout en bout**, sans Kontakt :
+
+| Etape | Outil | Resultat verifie |
+|---|---|---|
+| Reassemblage RAR5 | `7z x` | 7 fichiers (1 NKI + 7 NKX + NKR/NKC/NICNT) |
+| Extraction des blobs NCW | `/tmp/nkx_extract.py` | magic `0x16CCF80A`, version `0x0110`, u32 longueur a +19, donnees a +31 |
+| Decodage NCW | `/tmp/ncw_decode.py` | header `0xD69EA801`, blocs 512, delta `bits>0` / tronque `bits<0`, mid/side, table d'offsets |
+
+**Validation du decodeur (obligatoire, regle du depot)** : sur un echantillon
+reel, continuite `median|dx|/rms = 0,0058` (audio ; du bruit de mauvais ordre de
+bits donnerait >0,5), `peak/median` spectral 36540 (tonal), 0 % d'energie >5 kHz
+a 11 kHz. 11 025 Hz, 16 bits, stereo mid/side, ~395 k frames.
+
+**Contenu (le « plusieurs types » du brief, confirme)** : vol.1 = **11 pianos a
+queue** (Bright Grand, Concert Grand Ambient/Close, Grand Imperial, Grand Lady D,
+Italian Grand, Royal Grand 3D, Silver Grand, Studio Grand 1/2, Velvet Grand) ;
+vol.2 = **3 electriques** (Electric Grand Amped, CP80, Gerbstedt) ; vol.3 =
+les autres (E-Pianos, uprights, etc.). 3693+508+2807+... echantillons au total.
+
+### Le filtre licence echoue — et c'est un arret net
+
+Le NKI contient `Licensed to Ivan Matias Gonzalez`. Ce n'est **pas** un pack
+libre : c'est une conversion Kontakt **non autorisee** du Nord Piano Library
+(Clavia/Nord), distribuee sur des forums/herokuapp. Recherche : le Reddit
+r/worshipleaders dit explicitement « It is illegal and distributed illegally ».
+Le depot ne ship que du **CC-BY** (Salamander, MTG Solo Sax, GregSullivan) avec
+`ATTRIBUTION.md`. Integrer ce pack exposerait l'app.
+
+**Regle** : le premier filtre d'une banque est la licence, pas la qualite. Un
+pack « gratuit » trouve sur un lien direct n'a pas forcement de licence. Chercher
+l'`ATTRIBUTION`/le copyright **avant** de compresser : ici tout le pipeline
+technique etait pret et a du etre arrete.
+
+### Ce qui a ete conserve
+Les deux outils de decodage (`/tmp/nkx_extract.py`, `/tmp/ncw_decode.py`) sont
+generaux : ils resserviront pour tout monolithe Kontakt **sous licence propre**.
+Les archives (5,4 Go) et l'extrait ont ete supprimes.
+
+### Alternative conforme (a proposer)
+Meme rendu « plusieurs types » avec des banques CC-BY : Salamander (queue,
+CC-BY), GregSullivan E-Pianos (CC-BY), MTG (CC-BY) — c'est ce que le depot
+utilise deja. Le levier de qualite reste la **densite** de notes racines, pas la
+taille de la banque (regle mesuree le 2026-10-31).
