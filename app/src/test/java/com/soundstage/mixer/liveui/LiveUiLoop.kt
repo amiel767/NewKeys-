@@ -1,19 +1,10 @@
 package com.soundstage.mixer.liveui
 
 import android.app.Application
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Surface
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.isRoot
@@ -30,10 +21,6 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import com.soundstage.mixer.model.ActivePopup
 import com.soundstage.mixer.model.AppScreenPage
 import com.soundstage.mixer.ui.MixerScreen
-import com.aetherkeys.fx.ui.FxEngine
-import com.aetherkeys.fx.ui.FxShellStore
-import com.aetherkeys.fx.ui.FxWindowHost
-import com.aetherkeys.fx.ui.fxModules
 import com.soundstage.mixer.ui.theme.DarkBg
 import com.soundstage.mixer.ui.theme.SoundfontLiveMixerTheme
 import com.soundstage.mixer.viewmodel.MixerViewModel
@@ -72,28 +59,10 @@ class LiveUiLoop {
         val viewModel = MixerViewModel(app)
 
         composeTestRule.mainClock.autoAdvance = false
-        // Preview mode renders the real FX composables directly. The native bridge is
-        // absent under Robolectric, so FxController.setEffect() refuses every id; the
-        // FX state is therefore seeded through the controller's public lists.
-        val fxPreview = mutableStateOf("")
         composeTestRule.setContent {
             SoundfontLiveMixerTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = DarkBg) {
-                    when {
-                        // FX previews render the ported shell directly: the same
-                        // FxShellStore/FxWindowHost the app now uses for Effects.
-                        fxPreview.value == "add" -> FxPreviewSurface(Modifier.padding(24.dp), Alignment.Center) {
-                            val store = remember { previewStore("add") }
-                            FxWindowHost(store = store, modifier = Modifier.fillMaxSize())
-                        }
-                        fxPreview.value.isNotEmpty() -> FxPreviewSurface(
-                            Modifier.padding(horizontal = 12.dp).padding(top = 38.dp, bottom = 10.dp),
-                        ) {
-                            val store = remember(fxPreview.value) { previewStore(fxPreview.value) }
-                            FxWindowHost(store = store, modifier = Modifier.fillMaxSize())
-                        }
-                        else -> MixerScreen(viewModel = viewModel, skipSplash = true)
-                    }
+                    MixerScreen(viewModel = viewModel, skipSplash = true)
                 }
             }
         }
@@ -111,7 +80,6 @@ class LiveUiLoop {
                     val seq = o.optLong("seq", 0L)
                     if (seq != lastSeq) {
                         lastSeq = seq
-                        o.optString("fxPreview").takeIf { it.isNotBlank() }?.let { fxPreview.value = it }
                         o.optString("page").takeIf { it.isNotBlank() }?.let { p ->
                             runCatching { viewModel.navigateToPage(AppScreenPage.valueOf(p)) }
                         }
@@ -225,44 +193,4 @@ class LiveUiLoop {
             Thread.sleep(150)
         }
     }
-}
-
-/**
- * Builds a store for the FX previews without the native bridge. Under Robolectric
- * the bridge is absent, so FxController refuses every id; the store is driven
- * directly instead. `fxPreview` values: "rack", "add", or "window:<id>".
- */
-private fun previewStore(key: String): FxShellStore {
-    val store = FxShellStore(fxModules(), object : FxEngine {
-        override fun setEffect(strip: Int, slot: Int, id: Int) = true
-        override fun setInstrument(strip: Int, id: Int) = true
-        override fun setParam(strip: Int, slot: Int, index: Int, value: Float) = Unit
-        override fun setInstrumentParam(strip: Int, index: Int, value: Float) = Unit
-        override fun setBypass(strip: Int, slot: Int, bypassed: Boolean) = Unit
-        override fun applyPreset(strip: Int, slot: Int, presetIndex: Int) = true
-        override fun meter(strip: Int, slot: Int, index: Int) = 0f
-    })
-    when {
-        key == "add" -> store.addOpen = true
-        key.startsWith("window:") -> {
-            val id = key.removePrefix("window:").toIntOrNull() ?: 0
-            store.addEffect(id)
-            store.openId = id
-        }
-        else -> listOf(10, 0, 1).forEach { store.addEffect(it) }
-    }
-    return store
-}
-
-/** Full-bleed backdrop matching the FX overlay, so the preview frames are readable. */
-@Composable
-private fun FxPreviewSurface(
-    modifier: Modifier = Modifier,
-    contentAlignment: Alignment = Alignment.TopStart,
-    content: @Composable () -> Unit,
-) {
-    Box(
-        Modifier.fillMaxSize().background(Color(0xFF05070C)).then(modifier),
-        contentAlignment = contentAlignment,
-    ) { content() }
 }

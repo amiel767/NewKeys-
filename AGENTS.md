@@ -2047,6 +2047,47 @@ aussi (`com.aetherkeys.sheets.model`) mais dans un autre package. `object FM`
 redouble `AppColors` : decider si le design reste autonome ou s'aligne sur le chrome
 de l'app. Aucun codec de persistance (le depot a deja `FxPersistence.kt`).
 
+## Session 2026-11-01 — fenetre FX : purge de l'ancienne coque (branche `design/tests`)
+
+**Deux interfaces coexistaient** dans le depot, et seule l'une est la bonne. C'est la
+source du « rendu en double » sur la page servie.
+
+| | Ancienne coque (**SUPPRIMEE**) | Fenetre vivante (gardee) |
+|---|---|---|
+| Entree | `FxOverlay.kt` -> `com.aetherkeys.fx.ui.FxWindowHost` | `com.aetherkeys.fx.FxWindow` |
+| Modele | `FxShellStore` + `FxEngine` + `fxModules()` | contrat `FxWindowState` / `FxWindowActions` |
+| Rangee | **4 emplacements identiques, pas de MIDI** | **3 audio + 1 MIDI** (`FxDesign.MAX_AUDIO`/`MAX_MIDI`) |
+| Catalogue | registre moteur (17 effets, dont les instruments) | `FxDesign.audio = [SPACE]`, `midi = [ARP]` |
+| Hote | — | `ui/fx/FxDesignHost.kt` (seul appelant, depuis `MixerScreen`) |
+
+L'ancienne coque etait **morte** : `FxOverlay` n'avait **aucun** appelant ; ses seuls
+consommateurs etaient trois tests de capture qui la photographiaient hors de l'app
+(`FxWindowCaptureTest`, `FxShellStoreResilienceTest`, la branche `fxPreview` de
+`LiveUiLoop`) — d'ou les images trompeuses `fxdet_*` / `fx_window_*`.
+
+### Ce qui a ete supprime (22 fichiers + 28 PNG)
+`com/aetherkeys/fx/ui/` **entier** (12 fichiers), `ui/fx/FxOverlay|FxSurface|
+FxInstrumentScenes|FxSfWarning|FxRack|FxScenes|FxFonts`, les 3 tests de la coque et
+leurs captures. Reste dans `ui/fx/` : `FxDesignHost.kt` **seul**.
+
+**Piege** : `stripForTrack(trackId)` vivait dans `FxRack.kt` supprime — le compilateur
+l'a signale (`Unresolved reference`). Elle est deplacee dans `FxDesignHost.kt`, son
+unique utilisateur. Le compilateur est l'arbitre : `git rm` puis `compileDebugKotlin`
+trouve la derniere dependance cachee en un passage.
+
+**Piege de trace** : un graphe par nom de symbole est **faux ici** — `FxRack`, `FxFonts`,
+`FxKnob`, `FxEngine` existent en 2 ou 3 exemplaires dans des paquets differents. Et
+Kotlin n'importe pas un symbole du **meme** paquet, donc un graphe qui ne suit que les
+`import` manque la moitie des liens. Conclusion : ne pas conclure par script, **laisser
+le compilateur trancher**.
+
+### Resultat
+`:app:compileDebugKotlin` -> BUILD SUCCESSFUL (seuls warnings `quadraticBezierTo`).
+`FxInAppCaptureTest` -> BUILD SUCCESSFUL, `fx_in_app.png` regenere (125 Ko, 2340x1080).
+Sur pixels : **4 emplacements en ligne**, rack **vide** ; catalogue audio = « Aether
+Space / REVERB » seul. Page servie : `index.html` ne reference plus que
+`fx_in_app_window.jpg` + `fx_in_app_catalog_window.jpg` (les `fxdet_*` ont disparu).
+
 ## Session 2026-10-31 — fenetre FX (branche `design/tests`) : fidelite mesuree a la maquette
 
 Branche isolee `design/tests`, **aucun push**. Maquette = `app/assets/FxWindowPreview.jsx`,

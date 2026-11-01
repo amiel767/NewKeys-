@@ -10,10 +10,9 @@ import com.soundstage.mixer.R
 /**
  * Les polices de la fenêtre FX.
  *
- * Elles appartiennent au paquet détaché : la fenêtre ne doit pas dépendre de
- * `com.soundstage.mixer.ui.fx.FxFonts`, sinon détacher la fenêtre ne changerait
- * rien. Les fichiers sont dans `res/font`, déjà présents dans l'app — on ne les
- * duplique pas, on les référence.
+ * Elles vivent ICI et pas dans le mixer : la fenêtre est détachée, elle ne doit
+ * pas dépendre des polices de l'application. Les fichiers sont dans `res/font`,
+ * déjà présents dans l'app — on ne les duplique pas, on les référence.
  */
 object FxFonts {
 

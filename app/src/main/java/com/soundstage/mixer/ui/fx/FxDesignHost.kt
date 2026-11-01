@@ -28,6 +28,11 @@ import com.aetherkeys.fx.FxWindowActions
 import com.aetherkeys.fx.FxWindowState
 import com.aetherkeys.fx.rememberFitScale
 import com.soundstage.mixer.fx.FxController
+import com.soundstage.mixer.fx.FxRegistry
+
+/** FX strip for a mixer track: tracks 1..8 map to strips 0..7, track 0 is master. */
+fun stripForTrack(trackId: Int): Int =
+    if (trackId == 0) FxRegistry.STRIP_MASTER else (trackId - 1).coerceIn(0, 7)
 
 /**
  * L'ADAPTATEUR mixer -> contrat, celui que `FxWindowState.kt` annonçait.
