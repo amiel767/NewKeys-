@@ -3022,3 +3022,39 @@ Les `fxdet_*` (harnais `FxWindow` monte a la main, ancienne coque detachee) sont
 **perimes** : ils montrent une fenetre qu'on ne livre plus. Les retirer de
 `index.html` en meme temps que la source, sinon la page fait croire que deux
 fenetres coexistent encore.
+
+## Session 2026-11-01 (3e) — « l'ancienne fenetre FX s'affiche » : c'etait l'APK, pas le code
+
+Symptome : l'utilisateur voit l'**ancienne** coque FX alors que `design/tests` monte la
+nouvelle. Reflexe naturel : chercher un second montage dans le code. **Il n'y en a pas.**
+
+**Cause racine.** Le workflow `release.yml` se declenche a la main (`workflow_dispatch`) et
+construit la **branche par defaut (`main`)**. `main` monte encore `FxOverlay` ->
+`FxWindowHost` (l'ancienne coque) : le travail « nouvelle fenetre » vit sur `design/tests`,
+**non poussee**. La release `v195` (2026-11-01 10:03, commit `3e355dd`, sur `main`) embarque
+donc l'ancienne interface. Installer cette APK montre l'ancienne fenetre — le code local est
+hors de cause.
+
+**Preuve a faire en premier** (au lieu de relire le source) : comparer les dex de l'APK.
+
+```python
+import zipfile
+z=zipfile.ZipFile('app/build/outputs/apk/debug/app-debug.apk')
+for d in z.namelist():
+    if d.endswith('.dex'):
+        b=z.read(d)
+        a,o=b.count(b'FxDesignHost'), b.count(b'FxOverlay')
+        if a or o: print(d,'FxDesignHost',a,'FxOverlay',o)
+# design/tests : FxDesignHost 94+2, FxOverlay 0
+# main (v195)  : FxDesignHost 0,    FxOverlay >0
+```
+
+**Regle.** Une release construite depuis `main` ne contient **que** ce qui est sur `main`.
+Avant de conclure « le code est faux », verifier **quel commit** la release porte :
+`curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
+  https://api.github.com/repos/amiel767/NewKeys-/releases?per_page=3`
+-> `target_commitish`. Un `git branch -a --contains <sha>` dit sur quelle branche il vit.
+Rappel : ne **jamais** lancer `release.yml` sans accord (regle du depot) ; fusionner d'abord.
+
+**Diagnostic servi** : `ae_pourquoi_ancienne_fenetre.html` (+ `ae_OLD_window.jpg` /
+`ae_NEW_window.jpg` / `ae_design_tests.apk`) dans `/workspace/dl/pub/`.
