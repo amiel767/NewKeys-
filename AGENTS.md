@@ -942,3 +942,72 @@ impose un plancher (le burst) ; afficher la valeur relue.
 `AetherSnapshotJsonTest` 5/5. `buffer_size_check.cpp` : **TOUT PASSE** (ecart
 affiche/reel 0,0 ms).
 
+## Session 2026-11-01 (Clone 5, econome) — piano/EP saturation, notes bloquees, RAM des soundfonts
+
+Cinq correctifs, commit `40a7ded` (base `ce649d9`). T1/T4/T5 sont des causes
+racines mesurees ; T2/T3 sont des defauts d'UI.
+
+### T1 — le piano/EP saturait a la crete de jeu normale
+L'etage studio de `fx_piano.h` appliquait `std::tanh(l)` / `std::tanh(r)` a
+**chaque** echantillon. `tanh` est non lineaire des le premier echantillon : a la
+crete de jeu normale du piano (**0,31 mesuree**), il distordait deja. Remplace
+par un limiteur a genou `softClip(x, knee = 0.8f)` : **exactement lineaire**
+sous le genou, arrondi et borne a 1 au-dessus. Un piano joue sous 0,8 est donc
+inchange, seul un depassement est ecrase.
+
+**Regle** : un `tanh` en sortie n'est un limiteur « inaudible » que si le signal
+l'atteint rarement. Verifier la crete de jeu reelle avant de le poser.
+
+### T1 (legato) — le vol de voix prenait la note la PLUS RECENTE
+`kVoices` 12 -> 32, et le vol corrige : l'ancien code gardait l'`age()` le plus
+**petit**, donc volait la note la plus **recente**. Jouer un accord coupait la
+note qu'on venait de frapper, ce qui se joue « une seule note a la fois ».
+Desormais on vole la plus **ancienne**, et parmi celles-ci les relachees d'abord.
+
+### T4 — le « Fall » du sax tombait sans qu'on le demande
+`fx_sax.h` appliquait un glissando descendant a **chaque** note relachee
+(param 11), sans que le joueur le declenche : la fin de chaque note « detunait ».
+Le fall est retire. Le parametre 11 reste dans le contrat (paramCount 23) mais
+pilote la **duree de detente** (`relR_ = 0.08 + 0.5*p11`), un vrai reglage
+sauvegarde avec le preset. Le sample garde sa detente franche de 130 ms. Le nom
+du parametre dans l'UI passe de « Fall » a « Release ».
+
+### T5 — les soundfonts ne rendaient jamais leur RAM (cause racine)
+`fluid_synth_all_notes_off` ne fait que **demarrer la phase de relachement** :
+les voix restent actives et gardent une reference sur les echantillons
+(`sample->refcount != 0`). Or `fluid_defsfont_sfont_delete` **refuse** de liberer
+un soundfont tant qu'un echantillon est reference. La decharge retombait donc
+dans un `new_fluid_timer` de 100 ms qui n'aboutissait jamais : le pack restait en
+RAM toute la session. C'est exactement « les soundfonts pesent encore en RAM
+apres decharge ».
+
+Correctif : `fluid_synth_all_sounds_off` (tue les voix **immediatement**, donc
+les refcounts tombent a 0) dans `unloadSoundFont()` et `unloadAllSoundFonts()`,
+suivi des CC 123/120 sur `kMaxChannels`. Stub de repli ajoute dans
+`soundfont_engine.h` (l.30). La decharge redevient synchrone.
+
+**Regle** : `all_notes_off` != `all_sounds_off`. Pour **liberer** la memoire il
+faut tuer les voix, pas les relacher. `malloc_trim(0)` suit la decharge.
+
+### T2/T3 — UI du piano
+- Le nom du modele (grand, centre) **ouvre desormais le navigateur de presets**.
+  La case « Presets » de l'en-tete est masquee pour le piano (la liste des
+  modeles est deja a l'ecran, a gauche) ; elle reste pour les 4 autres
+  instruments, qui n'ont pas d'autre acces.
+- La liste des modeles tenait 300 unites dans un panneau de verre haut de 300
+  (y 88..388) : elle allait jusqu'a 400, donc les 12 dernieres unites debordaient
+  sous la case. Ramenee a **270 = 9 lignes de 30 exactement**, derniere ligne
+  entiere, 18 unites de marge.
+
+### Bancs conserves (`tools/aetherfx/`)
+`piano_steal_check`, `piano_poly_check`, `piano_drive_check`, `piano_env_check`,
+`piano_layer_check`, `piano_mix_check`, `piano_voice_check`. Compilation hote :
+`g++ -O2 -std=c++17 -I app/src/main/cpp`. Mesures : 0/60 bloc ecrete de 1 a 24
+notes tenues ; distorsion plate sur toute la plage de DRIVE.
+
+### Verifie
+`assembleDebug` BUILD SUCCESSFUL sur la base `ce649d9` (natif 4 ABI compris,
+APK ~70 Mo). `AeManagerTest` + `AetherSnapshotJsonTest` BUILD SUCCESSFUL.
+Push **sans** workflow : `release.yml` est `workflow_dispatch` seulement, aucune
+run declenchee (verifie via l'API Actions).
+
