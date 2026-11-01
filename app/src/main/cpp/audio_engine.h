@@ -807,6 +807,13 @@ public:
     }
     void setBufferSize(int bufferSizeInFrames);
 
+    /** Taille reellement appliquee (frames).  Le burst du materiel impose un
+     *  plancher, donc elle differe souvent de la demande : l'UI affiche celle-ci. */
+    int actualBufferSize() const {
+        return mActualBufferSize.load(std::memory_order_relaxed);
+    }
+    int actualSampleRate() const { return mSampleRate; }
+
     // DSP Controls
     void setMasterEq(float lowGainDb, float midGainDb, float highGainDb);
     void setSoundGoodizer(bool enabled, int mode, float amount);
@@ -1086,6 +1093,10 @@ private:
 
     int mSampleRate = 48000;
     std::atomic<int> mConfiguredBufferSize{512};
+    // Taille reellement appliquee par le materiel.  Le burst d'Oboe impose un
+    // plancher, donc elle differe souvent de la demande : l'UI doit afficher
+    // celle-ci, pas la demande, sinon elle annonce 1,5 ms pour un vrai 5,4 ms.
+    std::atomic<int> mActualBufferSize{512};
     std::atomic<bool> mBypassMasterFX{false};
     std::vector<float> mFloatRenderBuffer;
 
@@ -1119,6 +1130,8 @@ public:
         mSynthEngine.setPolyphony(polyphony);
     }
     void setBufferSize(int bufferSizeInFrames) {}
+    int actualBufferSize() const { return 0; }
+    int actualSampleRate() const { return 0; }
     void setMasterEq(float lowGainDb, float midGainDb, float highGainDb) {}
     void setSoundGoodizer(bool enabled, int mode, float amount) {}
     void setMasterReverb(bool enabled, float size, float decay, float damp, float mix) {}

@@ -877,3 +877,60 @@ disque : il n'entre jamais dans la sortie.
 **Pieges de structure d'evenement (verifies)** : le texte d'un `MessageEvent` est sous
 `llm_message`, pas `value` ; une action est sous `action` ; une observation sous
 `observation`. Chercher dans `value` renvoie du vide.
+
+## Session 2026-11-01 (Clone 5, suite) — la vraie latence : le plancher de 2 bursts
+
+### Le diagnostic du clone etait faux, et mon premier correctif aussi
+
+`mConfiguredBufferSize` est un membre d'`AudioEngine`, qui est un **singleton**
+(`static AudioEngine gAudioEngine`, native-lib.cpp:11). Il **survit** a
+`safeStartEngine` : le natif ne le remet jamais a 512 (seule ecriture : le setter
+lui-meme). Reappeler `setBufferSize` apres chaque reconnexion (commit `6592074`) ne
+corrigeait donc rien — le comportement etait deja correct. Le commit reste (il rend
+l'intention explicite et protege d'un futur `stop()`), mais ce n'etait pas le bug.
+
+### La vraie cause : un plancher de DEUX bursts, a deux endroits
+
+```cpp
+// ouverture
+int targetBuffer = std::max(reqBuffer, burst * 2);          // AVANT
+// changement
+int numBursts = std::max(2, (target + burst - 1) / burst);  // AVANT
+```
+
+Le burst est le quantum du materiel. Avec un plancher de **deux** bursts, un appareil
+a burst 240 (Pixel 6) rendait **480 frames quoi qu'on demande** : 64, 128 et 256
+donnaient tous ~10,9 ms. Et le second site arrondissait **au burst superieur**, donc
+256 partait encore a 480. L'UI, elle, affichait `req / 44100` : **1,5 ms pour 64**
+alors que le vrai etait 5,4. Le reglage ne marchait pas sur sa moitie basse et mentait.
+
+Correctifs (`audio_engine.cpp`) : plancher = **un** burst a l'ouverture ; arrondi **au
+plus proche** au changement. Mesure (`tools/aetherfx/buffer_size_check.cpp`) :
+
+| Appareil (burst) | demande | avant | apres |
+|---|---|---|---|
+| Pixel 6 (240) | 64/128 | 10,9 ms | **5,4 ms** |
+| Pixel 8 (192) | 64/128 | 8,7 ms | **4,4 ms** |
+| Snapdragon (96) | 64 | 4,4 ms | **2,2 ms** |
+| USB DAC (480) | 256 | 21,8 ms | **10,9 ms** |
+| Pixel 6 (240) | 512 | 16,3 ms | **10,9 ms** |
+
+Latence divisee par deux sur tous les appareils testes, sans jamais descendre sous un
+burst (garde-fou du banc).
+
+### L'UI affiche desormais la latence REELLE
+
+`actualBufferSize()` / `actualSampleRate()` cote natif (stockes aux deux sites
+d'application, exposes par JNI), lus par `NativeAudioBridge` et
+`MixerViewModel.refreshActualAudioLatency()`. Settings affiche « Appareil : N frames
+appliques (~X ms reels) » quand le materiel refuse la demande. Avant, choisir 64
+annoncait 1,5 ms pour un vrai 5,4 ms.
+
+**Regle** : ne jamais afficher une valeur *demandee* a cote d'une latence. Le materiel
+impose un plancher (le burst) ; afficher la valeur relue.
+
+### Verifie
+`assembleDebug` BUILD SUCCESSFUL (natif 4 ABI compris). `AeManagerTest` 29/29,
+`AetherSnapshotJsonTest` 5/5. `buffer_size_check.cpp` : **TOUT PASSE** (ecart
+affiche/reel 0,0 ms).
+

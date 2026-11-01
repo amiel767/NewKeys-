@@ -109,8 +109,18 @@ bool AudioEngine::openAndStartStream() {
 
     int burst = mStream->getFramesPerBurst();
     int reqBuffer = mConfiguredBufferSize.load(std::memory_order_relaxed);
-    int targetBuffer = (burst > 0) ? std::max(reqBuffer, burst * 2) : reqBuffer;
+    // Plancher = UN burst, pas deux.  Le burst est le quantum du materiel : c'est la
+    // plus petite taille qui ne fait pas sous-alimenter le DAC.  Avec un plancher de
+    // deux bursts, un appareil a burst 240 rendait 480 frames quelle que soit la
+    // demande : 64, 128 et 256 donnaient tous ~10,9 ms, et la moitie basse du reglage
+    // "Audio buffer size" ne faisait rien tout en annoncant ~1,5 a ~5,8 ms.
+    int targetBuffer = (burst > 0) ? std::max(reqBuffer, burst) : reqBuffer;
     mStream->setBufferSizeInFrames(targetBuffer);
+    {
+        int32_t applied = mStream->getBufferSizeInFrames();
+        mActualBufferSize.store(applied > 0 ? static_cast<int>(applied) : targetBuffer,
+                                std::memory_order_relaxed);
+    }
     int sampleRate = mStream->getSampleRate();
     mSampleRate = sampleRate;
 
@@ -227,12 +237,17 @@ void AudioEngine::setBufferSize(int bufferSizeInFrames) {
         int32_t burst = mStream->getFramesPerBurst();
         int32_t targetFrames = clampedReq;
         if (burst > 0) {
-            int32_t numBursts = std::max(2, (targetFrames + burst - 1) / burst);
+            // Au plus proche, pas au burst superieur : sur un appareil a burst 240 une
+            // demande de 256 partait a 480 (11 ms au lieu de 5,8).  Le plancher reste
+            // un burst, la borne haute ne bouge pas.
+            int32_t numBursts = (targetFrames + burst / 2) / burst;
+            if (numBursts < 1) numBursts = 1;
             targetFrames = numBursts * burst;
         }
         int clamped = std::clamp(targetFrames, 64, 4096);
         auto res = mStream->setBufferSizeInFrames(clamped);
         if (res) {
+            mActualBufferSize.store(static_cast<int>(res.value()), std::memory_order_relaxed);
             LOGI("Oboe buffer size set to %d frames (burst: %d, actual: %d, requested: %d)", clamped, burst, res.value(), clampedReq);
         } else {
             LOGE("Failed to set Oboe buffer size: %s", oboe::convertToText(res.error()));

@@ -916,6 +916,8 @@ fun MixerScreen(
                     bufferSize = uiState.audioBufferSize,
                     maxPolyphony = uiState.polyphony,
                     headroom = uiState.headroom,
+                    actualBufferSize = uiState.actualAudioBufferSize,
+                    actualSampleRate = uiState.actualAudioSampleRate,
                     autoFit = uiState.isFaderAutoFit,
                     hue = uiState.themeHue,
                     accentSaturation = uiState.themeAccentSaturation,
