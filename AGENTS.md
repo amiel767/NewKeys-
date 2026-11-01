@@ -2887,34 +2887,34 @@ explicite sur l'import.
 rendu ASCII trop grossier. Le catalogue de design ne contient que **deux** effets
 audio et **un** MIDI ; les cartes sont en haut a gauche, pas reparties sur la page.
 
-### « La fenetre est vide » : le rack ne partait pas de l'etat de la maquette (2026-10-31)
+### Les slots sont VIDES par defaut — ne pas pre-remplir le rack (2026-10-31)
 
-Retour utilisateur, deux fois : « le design est une fenetre vide ». La geometrie
-etait juste, l'hote etait bien monte — c'est le **contenu initial** qui manquait.
+Retour utilisateur : « Les slots sont vides par defaut evidemment ». C'etait un
+**constat de conception**, pas une plainte. Le lire comme un bug a fait ajouter un
+amorcage `[SPACE, -1, -1, ARP]` qui remplissait le rack a l'ouverture : l'inverse
+du design. Annule.
 
-**Cause racine.** La maquette ouvre son rack **deja rempli** :
+**Regle.** Le rack s'ouvre sur **quatre emplacements libres** (cadre pointille +
+`+`). C'est le catalogue qui installe un effet, pas l'hote au demarrage.
+`FxDesignHost.slotIds` reste `[-1,-1,-1,-1]` ; `adoptFromEngine` ne fait que
+relire ce que le **moteur** porte deja sur la bande, jamais inventer un contenu.
 
-```js
-const [midi,  setMidi]  = useState(() => ({ fx: MIDI[0],  on: true })); // Arpeggiator
-const [audio, setAudio] = useState(() => [{ fx: AUDIO[0], on: true }]); // Æther Space
-```
-
-`FxDesignHost` partait de `slotIds = mutableStateListOf(-1,-1,-1,-1)` : quatre
-emplacements libres. La capture etait donc **fidele au vide**, pas au design. Un
-rack vide et un rack correct ont la meme geometrie : aucune mesure de bords ne
-pouvait le voir, et `fx_in_app.png` pesait 125 Ko contre 390 Ko une fois rempli.
-
-**Correctif** : amorcer `slotIds` sur l'etat de la maquette —
-`[SPACE.id, -1, -1, ARP.id]`. `adoptFromEngine` garde la main des qu'une bande
-porte un effet, donc le moteur reste l'autorite ; l'amorcage n'est que le
-**defaut d'ouverture**.
-
-**Regle a retenir.** Une maquette JSX n'est pas qu'une mise en page : ses
-`useState(...)` d'ouverture font partie du design. Avant de comparer deux rendus,
-lire l'**etat initial** de la maquette, pas seulement sa geometrie.
+**Piege de lecture.** La maquette `FxWindowPreview.jsx` contient bien
+`useState(() => ({ fx: MIDI[0], on: true }))` et `[{ fx: AUDIO[0], on: true }]` :
+c'est son **etat de demonstration** pour montrer les cartes remplies dans un
+preview statique. Ce n'est pas le defaut de l'app. Une maquette de vitrine se
+distingue d'une spec d'etat initial — ne pas confondre les deux.
 
 **Piege d'outillage** : `conv_tail.py` (ecrit puis supprime) lisait
 `page_id=1..3` en croyant voir la fin du flux. `page_id=1` est la page la **plus
 ancienne** : il affichait le debut de la conversation. Pour la fin, suivre
 `next_page_id` — c'est ce que fait `tools/conv_last.py` (nouveau, reutilise
 `conv_sync.fetch_all`/`describe`).
+
+### La page ne doit montrer que le design courant
+
+La page de recette ne garde que les captures du **chemin reel** (`fx_in_app*`).
+Les `fxdet_*` (harnais `FxWindow` monte a la main, ancienne coque detachee) sont
+**perimes** : ils montrent une fenetre qu'on ne livre plus. Les retirer de
+`index.html` en meme temps que la source, sinon la page fait croire que deux
+fenetres coexistent encore.
