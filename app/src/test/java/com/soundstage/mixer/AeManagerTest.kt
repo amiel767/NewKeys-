@@ -1,5 +1,6 @@
 package com.soundstage.mixer
 
+import com.soundstage.mixer.instruments.AeBanks
 import com.soundstage.mixer.instruments.AeHost
 import com.soundstage.mixer.instruments.AeInstrument
 import com.soundstage.mixer.instruments.AeManager
@@ -44,7 +45,7 @@ class AeManagerTest {
         var bankOk = true
         override fun loadBank(strip: Int, instrument: AeInstrument, type: Int, model: Int): Boolean {
             bankLoads += strip to type
-            return bankOk && instrument == AeInstrument.SAX
+            return bankOk && (instrument == AeInstrument.SAX || instrument == AeInstrument.PIANO)
         }
     }
 
@@ -254,6 +255,26 @@ class AeManagerTest {
         host.bankLoads.clear()
         m.setParam(0, 0, 1f)
         assertTrue(host.bankLoads.isEmpty())
+    }
+
+    @Test
+    fun switchingBetweenGrandAndUprightReloadsTheBank() {
+        val host = FakeHost()
+        val m = manager(host)
+        val s = m.load(0, AeInstrument.PIANO)
+        assertTrue(s?.bankLoaded == true)
+        // The grand is the default model (Felt, index 0).
+        assertEquals(AeBanks.pianoBankId(0), s?.bankType)
+        host.bankLoads.clear()
+        // Cottage (index 5) plays the upright bank: a different identity, so the
+        // sample must be swapped.  Two models sharing one identity would keep the
+        // grand loaded and both keys would sound the same.
+        m.loadPreset(0, 5)
+        assertEquals(1, host.bankLoads.size)
+        // Back to a grand model reloads the grand bank.
+        host.bankLoads.clear()
+        m.loadPreset(0, 1)
+        assertEquals(1, host.bankLoads.size)
     }
 
     @Test

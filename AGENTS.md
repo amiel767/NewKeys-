@@ -1061,3 +1061,67 @@ Meme rendu « plusieurs types » avec des banques CC-BY : Salamander (queue,
 CC-BY), GregSullivan E-Pianos (CC-BY), MTG (CC-BY) — c'est ce que le depot
 utilise deja. Le levier de qualite reste la **densite** de notes racines, pas la
 taille de la banque (regle mesuree le 2026-10-31).
+
+## Session 2026-11-01 (successeur) — pack piano compresse + 3 bugs UI mesures
+
+### Le pack piano remplace (15 Mo, qualite preservee)
+
+Pipeline `tools/pianopack/build_newstage.py` (ex `/tmp/build_newstage.py`) :
+`.nkx` (Nord Stage 3) -> echantillons -> ADPCM -> `.bin` PIAP.  Deux banques
+livrees :
+
+| Fichier | Source | Regions | Racines | Couches | Taille |
+|---|---|---|---|---|---|
+| `pianopack/piano.bin` | Royal Grand 3D | 160 | 48 (33-100) | 8 | 11,6 Mo |
+| `pianopack/upright.bin` | Grand Upright 01-04 | 201 | 30 (33-100) | 7 | 14,8 Mo |
+
+**Pieges du builder (chacun a coute une passe) :**
+
+- **Convention d'octave du pack : `C3 = MIDI 60`.** Le `.nkx` nomme « D#1 » un son a
+  77,8 Hz = D#2 = MIDI 39, donc `midi_of` doit ecrire `(octv+2)*12 + ...`. Ecrire
+  `(octv+1)*12` place chaque racine 12 demi-tons bas et **tout le piano joue une
+  octave trop haut**. Verifier sur `root=48` -> 130,8 Hz (pas 261) avant de livrer.
+- **Normaliser PAR COUCHE, pas par region.** Le moteur lit la dynamique dans l'ecart
+  de niveau entre couches (`layerSpreadDb_`, cible 19 dB). Une cible RMS unique pour
+  toutes les regions ecrase cet ecart : mesure 2,2 dB sur l'ancien pack, donc
+  **la velocite ne changeait presque rien** (le « velocity ne marche pas » signale).
+  `LAYER_SPREAD_DB = 19.0` reparti sur les pas (`step_db = 19/(n-1)`, pas 19 par pas :
+  sinon 76 dB et les couches faibles deviennent inaudibles).
+- **Boucle alignee sur la PERIODE, pas de crossfade.** Le moteur reboucle sans fondu.
+  Un crossfade decorrele le raccord et AJOUTE un clic (mesure 1,54). Choisir
+  `loopEnd - loopStart = k * periode` (autocorrelation) rend le raccord continu par
+  construction : clic median 0,023 (l'ancien pack : 0,008), pente -0,02 dB/s.
+  Piege : pour les aigus (periode ~21 ech.), marcher `k` jusqu'a 2500 est lent et
+  faux — viser une longueur cible et l'aligner sur la periode.
+- **Ordonner les jobs par COUCHE, pas par racine.** Un budget coupe en fin de boucle :
+  en ordre racine-major il supprime le **haut du clavier**. En couche-major, il
+  supprime la derniere couche, et la couverture des touches reste entiere.
+- **Le vrai levier est la densite de racines, pas la taille.** Royal Grand 3D n'a que
+  2 couches par racine en median (54 racines) ; Grand Upright en a 7 (52 racines).
+  Un grand clairsemé a besoin de 48 racines pour couvrir ; un droit bien echantillonne
+  se contente de 30.
+
+### 3 bugs UI, causes mesurees
+
+1. **« Mic » en double** : `K("Mic", 4)` (PK) et `K("Mic pos", 4)` (PST) pointaient le
+   MEME index 4. Retire de PK ; « Mic pos » reste sur l'etage studio.
+2. **« Velocity ne marche pas »** : ce n'etait pas le controle (p(9) est bien lu) mais
+   le **pack** (2,2 dB d'ecart pp->ff au lieu de 19). Corrige par la normalisation par
+   couche ci-dessus.
+3. **Reglages « inutiles » (dont l'ampli guitare)** : les index de PST etaient decales
+   d'un cran. L'appel moteur est
+   `studio_.set(p(4), p(11), p(3), p(12), p(14)x4, p(13), p(5), p(6))` : dist = **11**,
+   drive = **12**, punch = **13**. L'UI etiquetait 12/13/14, donc « Amp drive »
+   pilotait le punch et « Punch » l'egaliseur — l'ampli semblait mort. Index corriges.
+   (Le « guitar amp » n'existe pas dans la fenetre Piano ; `Aether Guitar` est un FX
+   distinct dans `FxRegistry.kt`.)
+
+### Banques par modele de piano
+
+`AeBanks.pianoBankId(model)` remplace l'ancien booleen « electrique » : 0 = queue,
+1 = droit (Cottage index 5, Parlor index 6), 8..11 = electriques. Le manager compare
+cette identite avant de recharger — deux modeles qui la partagent ne rechargeraient
+rien. Test : `AeManagerTest.switchingBetweenGrandAndUprightReloadsTheBank`.
+
+Verifie : `compileDebugKotlin` OK, `AeManagerTest` 30/30, `AetherSnapshotJsonTest`
+5/5, `assembleDebug` BUILD SUCCESSFUL.

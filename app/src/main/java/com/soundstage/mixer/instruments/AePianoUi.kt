@@ -43,15 +43,21 @@ import kotlin.math.roundToInt
 import kotlin.random.Random
 
 /**
- * Æther Piano — 9 modèles, chacun une scène (photo) et un caractère sonore.
+ * Æther Piano — 12 modèles, chacun une scène (photo) et un caractère sonore.
  *
- * Ordre des paramètres (16, contrat de `fx_piano.h::kParams`) :
+ * Ordre des paramètres (17, contrat de `fx_piano.h::kParams`) :
  * 0 HAMMER, 1 TONE, 2 RESONANCE, 3 LID, 4 MIC POS, 5 SPACE, 6 WIDTH, 7 LEVEL,
- * 8 RELEASE, 9 VEL, 10 PEDAL, 11 DIST, 12 DRIVE, 13 PUNCH, 14 AMP EQ,
- * 15 MODEL (discret : le moteur l'arrondit, ajouté par [AePianoModel.values]).
+ * 8 RELEASE, 9 VEL, 10 PEDAL, 11 MIC DIST, 12 DRIVE, 13 PUNCH, 14 AMP EQ,
+ * 15 MODEL (discret : le moteur l'arrondit, ajouté par [AePianoModel.values]),
+ * 16 TOUCH.
+ *
+ * MIC DIST (11), DRIVE (12) et PUNCH (13) sont les index de l'appel moteur
+ * `studio_.set(p(4), p(11), p(3), p(12), p(14), p(14), p(14), p(14), p(13), p(5), p(6))` :
+ * les nommer 12/13/14 decalait chaque etiquette d'un cran, donc « Amp drive »
+ * pilotait le punch et l'ampli semblait mort.
  *
  * LEVEL (7) est égalisé sur la sonie K-weighted (ITU-R BS.1770) par
- * `tools/aetherfx/mastering.cpp` : les 9 modèles sortent au même niveau perçu,
+ * `tools/aetherfx/mastering.cpp` : les modèles sortent au même niveau perçu,
  * donc aucun n'est plus fort qu'un autre sans raison.
  *
  * Images : res/drawable-nodpi/ae_piano_<id>.webp, id = felt studio bright mellow
@@ -154,7 +160,8 @@ private val PK = listOf(
     K("Tone", 1) { "${((it - .5f) * 16).toInt()}dB" },
     K("Resonance", 2, ::pc),
     K("Lid", 3) { if (it < .33f) "Closed" else if (it < .66f) "Half" else "Open" },
-    K("Mic", 4) { if (it < .33f) "Close" else if (it < .66f) "Room" else "Hall" },
+    // Pas de « Mic » ici : l'etage studio porte deja « Mic pos » sur le meme index 4.
+    // Deux etiquettes pour un parametre, c'est le doublon signale par l'utilisateur.
     K("Space", 5, ::pc),
     K("Width", 6, ::pc),
     K("Level", 7, ::db),
@@ -166,12 +173,20 @@ private val PSL = listOf(
     // ne traite pas ce parametre. Un controle vivant vaut mieux qu'un decor.
     K("Touch", 16, ::pc),
 )
-/** Etage studio : le micro, l'ampli et le punch.  Ce sont eux qui enlevent le « sec ». */
+/**
+ * Etage studio : le micro, l'ampli et le punch.  Ce sont eux qui enlevent le « sec ».
+ *
+ * Les index suivent l'ORDRE DE L'APPEL MOTEUR
+ * `studio_.set(p(4), p(11), p(3), p(12), p(14), p(14), p(14), p(14), p(13), p(5), p(6))` :
+ * dist = 11, drive = 12, punch = 13.  L'ancienne table decalait tout d'un cran
+ * (12/13/14), donc « Amp drive » bougeait en realite le punch et « Punch » l'egaliseur :
+ * l'ampli semblait sans effet, d'ou le reglage signale comme inutile.
+ */
 private val PST = listOf(
     K("Mic pos", 4) { if (it < .34f) "Under" else if (it < .67f) "Front" else "Over" },
-    K("Mic dist", 12) { if (it < .34f) "Near" else if (it < .67f) "Mid" else "Far" },
-    K("Amp drive", 13) { if (it < .2f) "Clean" else if (it < .55f) "Warm" else if (it < .85f) "Crunch" else "Hot" },
-    K("Punch", 14) { when { it < .35f -> "Soft" ; it < .6f -> "Neutral" ; it < .85f -> "Punch" ; else -> "Hard" } },
+    K("Mic dist", 11) { if (it < .34f) "Near" else if (it < .67f) "Mid" else "Far" },
+    K("Amp drive", 12) { if (it < .2f) "Clean" else if (it < .55f) "Warm" else if (it < .85f) "Crunch" else "Hot" },
+    K("Punch", 13) { when { it < .35f -> "Soft" ; it < .6f -> "Neutral" ; it < .85f -> "Punch" ; else -> "Hard" } },
 )
 
 /** Aperçu de carte : la scène Felt, recadrée au centre. */

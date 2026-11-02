@@ -31,8 +31,15 @@ object AeBanks {
     private val cache = HashMap<String, ByteArray>()
     /** Bank file per instrument type (0 soprano, 1 alto, 2 tenor, 3 baritone), empty = none. */
     private val saxFiles = arrayOf("saxpack_sop.bin", "saxpack_alt.bin", "saxpack_ten.bin", "saxpack_bar.bin")
-    /** Piano acoustique : pack construit par tools/pianopack (8,2 Mo, 107 regions). */
+    /** Piano acoustique (queue) : Royal Grand 3D, 11,6 Mo, 160 regions, 48 racines, 8 couches. */
     private val pianoFile = "pianopack/piano.bin"
+    /**
+     * Piano acoustique (droit) : Grand Upright, 14,8 Mo, 201 regions, 30 racines,
+     * 7 couches.  Un droit n'est pas un queue filtre : la table d'harmonie courte,
+     * les cordes croisees et la proximite du meuble donnent un autre timbre.  C'est
+     * donc une banque, comme l'electrique.
+     */
+    private val uprightFile = "pianopack/upright.bin"
     /**
      * Piano electrique : banque distincte, pas un reglage du precedent.  Le moteur ne
      * peut pas transformer un Steinway en tine : l'inharmonicite d'une corde et celle
@@ -62,21 +69,50 @@ object AeBanks {
         11 to "pianopack/ep_piano.bin",
     )
 
+    /**
+     * Modeles qui jouent une AUTRE banque acoustique (le droit), pas un reglage du
+     * queue.  Cle = index du modele dans AePianoModels.all.
+     */
+    private val uprightModels = setOf(5, 6)
+
     /** Nombre de modeles de piano, pour l'assertion de coherence cote tests. */
     const val PIANO_MODEL_COUNT = 12
 
     /** Le modele porte-t-il une de nos banques electriques ? */
     fun isElectricModel(model: Int): Boolean = electricModels.containsKey(model)
 
+    /** Le modele porte-t-il la banque du piano droit ? */
+    fun isUprightModel(model: Int): Boolean = model in uprightModels
+
+    /**
+     * Identite de la banque d'un modele de piano, pour le manager.
+     *
+     * Doit etre DISTINCTE par banque : le manager compare cette valeur avant de
+     * recharger.  Deux modeles qui partagent la meme valeur ne declenchent aucun
+     * rechargement, donc passer du queue (Studio) au droit (Cottage) garderait le
+     * mauvais echantillon.  0 = queue, 1 = droit, 8..11 = une valeur par electrique.
+     */
+    fun pianoBankId(model: Int): Int = when {
+        electricModels.containsKey(model) -> model
+        model in uprightModels -> UPRIGHT_BANK_ID
+        else -> GRAND_BANK_ID
+    }
+    private const val GRAND_BANK_ID = 0
+    private const val UPRIGHT_BANK_ID = 1
+
     /**
      * The bank belonging to an instrument, or null when it has none (organ, synth, leads).
      *
-     * `model` selectionne la banque du piano : acoustique par defaut, electrique pour le
-     * modele Electric.  Le reste des modeles sont des reglages sur la banque acoustique.
+     * `model` selectionne la banque du piano : queue par defaut, droit pour Cottage et
+     * Parlor, electrique pour les quatre derniers.  Les autres modeles sont des reglages
+     * sur la banque du queue.
      */
     fun fileFor(instrument: AeInstrument, saxType: Int, model: Int = -1): String? = when (instrument) {
         AeInstrument.SAX -> saxFiles[saxType.coerceIn(0, 3)]
-        AeInstrument.PIANO -> electricModels[model] ?: if (model == ELECTRIC_MODEL) electricFile else pianoFile
+        AeInstrument.PIANO -> electricModels[model]
+            ?: if (model == ELECTRIC_MODEL) electricFile
+            else if (model in uprightModels) uprightFile
+            else pianoFile
         else -> null
     }
 

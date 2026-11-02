@@ -238,10 +238,10 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
         // The bank is optional, so a failure here must not abort the load.
         val type = (init.firstOrNull() ?: 0f).let { (it * 3f).roundToInt() }
         s.bankLoaded = host.loadBank(strip, inst, type, s.preset)
-        // bankType identifie la BANQUE chargee : le type de sax, ou le modele pour le
-        // piano (0 acoustique, 8 electrique).  Confondre les deux ferait croire au
-        // piano qu'il a deja la bonne banque.
-        if (s.bankLoaded) s.bankType = if (inst == AeInstrument.PIANO) (if (AeBanks.isElectricModel(s.preset)) s.preset else 0) else type
+        // bankType identifie la BANQUE chargee : le type de sax, ou l'identite de la
+        // banque du piano (0 queue, 1 droit, 8..11 electriques).  Confondre deux
+        // banques ferait croire au piano qu'il a deja la bonne.
+        if (s.bankLoaded) s.bankType = if (inst == AeInstrument.PIANO) AeBanks.pianoBankId(s.preset) else type
         return s
     }
 
@@ -273,15 +273,12 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
                 s.bankType = if (s.bankLoaded) t else -1
             }
         }
-        // Piano : le modele « Electric » est une AUTRE banque, pas un reglage du
-        // piano acoustique.  Changer de modele recharge donc l'echantillon quand on
-        // entre ou sort de l'electrique.
-        // Piano : chaque modele electrique a SA banque.  La comparaison porte donc sur
-        // `want` (le modele pour l'electrique, 0 pour l'acoustique) et non sur le seul
-        // booleen « est-ce l'electrique » : sans ca, passer de Tine a BalladKey ne
-        // rechargeait rien et les deux modeles jouaient le meme echantillon.
+        // Piano : chaque modele acoustique peut porter une AUTRE banque (queue ou
+        // droit), et chaque modele electrique la sienne.  La comparaison porte donc
+        // sur `want` (l'identite de la banque) : sans ca, passer de Studio a Cottage
+        // ne rechargeait rien et les deux jouaient le meme echantillon.
         if (s.instrument == AeInstrument.PIANO) {
-            val want = if (AeBanks.isElectricModel(s.preset)) s.preset else 0
+            val want = AeBanks.pianoBankId(s.preset)
             if (want != s.bankType) {
                 s.bankLoaded = host.loadBank(strip, s.instrument, 0, s.preset)
                 s.bankType = if (s.bankLoaded) want else -1
