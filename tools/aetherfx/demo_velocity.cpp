@@ -82,17 +82,28 @@ static double rmsOf(const std::vector<float>& x) {
 }
 
 int main(int argc, char** argv) {
-    const std::string pack = argc > 1 ? argv[1] : "app/src/main/assets/pianopack/piano.bin";
+    const std::string assets = argc > 1 ? argv[1] : "app/src/main/assets";
     const std::string outDir = argc > 2 ? argv[2] : "/tmp/vel";
+    const std::string wantModel = argc > 3 ? argv[3] : "Studio";
 
-    auto bytes = readFile(pack);
-    if (bytes.empty()) { fprintf(stderr, "pack illisible : %s\n", pack.c_str()); return 1; }
+    // Banque par modele, comme AeBanks.fileFor : acoustiques sur piano.bin,
+    // 8..11 sur leur ep_*.bin.
+    const char* ep[12] = {nullptr};
+    ep[8] = "pianopack/electric.bin";
+    ep[9] = "pianopack/ep_ballad.bin";
+    ep[10] = "pianopack/ep_dx.bin";
+    ep[11] = "pianopack/ep_piano.bin";
 
-    // Modele « Studio » : le piano de reference, celui que l'app charge par defaut.
-    const DemoPreset* studio = nullptr;
+    const DemoPreset* model = nullptr;
+    int modelIdx = -1;
     for (int i = 0; i < k_piano_n; ++i)
-        if (std::string(k_piano[i].name) == "Studio") studio = &k_piano[i];
-    if (!studio) { fprintf(stderr, "modele Studio absent de demo_presets.h\n"); return 1; }
+        if (std::string(k_piano[i].name) == wantModel) { model = &k_piano[i]; modelIdx = i; }
+    if (!model) { fprintf(stderr, "modele « %s » absent de demo_presets.h\n", wantModel.c_str()); return 1; }
+
+    const std::string bankPath = assets + "/" + (ep[modelIdx] ? ep[modelIdx] : "pianopack/piano.bin");
+    auto bytes = readFile(bankPath);
+    if (bytes.empty()) { fprintf(stderr, "banque illisible : %s\n", bankPath.c_str()); return 1; }
+    printf("modele %s  banque %s\n", model->name, bankPath.c_str());
 
     PianoEngine eng;
     eng.prepare(kSr, 512);
@@ -133,7 +144,7 @@ int main(int argc, char** argv) {
     }
 
     for (auto& t : takes) {
-        for (int i = 0; i < studio->n; ++i) eng.setNorm(i, studio->v[i]);
+        for (int i = 0; i < model->n; ++i) eng.setNorm(i, model->v[i]);
         eng.reset();
         std::vector<float> take;
         play(eng, t.bars, t.beat, take);
