@@ -1125,3 +1125,88 @@ rien. Test : `AeManagerTest.switchingBetweenGrandAndUprightReloadsTheBank`.
 
 Verifie : `compileDebugKotlin` OK, `AeManagerTest` 30/30, `AetherSnapshotJsonTest`
 5/5, `assembleDebug` BUILD SUCCESSFUL.
+
+## Session 2026-11-01 — Leads : le « tactactac » a chaque note (cause mesuree)
+
+Demande : retirer le clic « comme un marteau de piano » a **chaque** note des Æther
+Leads. ~10 demandes precedentes sans solution. Branche `main`, **aucun push**.
+Seul fichier de l'app touche : `app/src/main/cpp/aetherfx/fx_leads.h` (+107/-8).
+
+### Le piege qui a bloque les 9 tentatives precedentes : la METRIQUE
+
+Une dent de scie rebascule **une fois par periode** (un creneau deux fois) : un
+echantillon de chaque periode porte donc un saut pleine amplitude. Si ce hasard
+tombe sur l'echantillon de note-on, une lecture naive « quelle est la taille du
+saut au note-on » annonce un clic **qui n'est que l'onde elle-meme**.
+
+Consequence : `Mono Saw` annoncait 103 % (un rebasculement de scie tombant pile sur
+la frontiere) alors que la frontiere etait propre a **0,003**. J'ai cherche ce
+faux clic pendant plusieurs passes — phase aleatoire, phase heritee, sans
+etalement : **le chiffre ne bougeait pas**, parce qu'il ne mesurait pas le clic.
+
+**La bonne metrique est `excess = boundary - periodic`** : ce que la frontiere
+ajoute au saut que l'onde fait deja. `boundary` seul ne veut rien dire.
+
+### Deux causes racines reelles, trouvees par la mesure
+
+1. **Toutes les phases d'oscillateur a zero.** `float ph[kOsc] = {0}` : les 5
+   dents de scie desaccordees d'un super-saw posaient leur rebasculement **sur le
+   meme echantillon**, et leur somme tombait exactement a la fin de la rampe
+   d'attaque (la ou l'amplitude vient d'atteindre son plein) — l'evenement le plus
+   fort de la note. `seed()` etale desormais les phases, **seulement pour une note
+   vraiment neuve** : une voix volee ou un retrigger mono garde sa phase (la faire
+   sauter en pleine note recreerait la discontinuite qu'on supprime).
+
+2. **`noteOff` ne remettait pas `envT` a zero.** `envT` s'accumule sans borne
+   pendant le sustain ; a l'entree en relachement il etait deja au-dela de `R`, donc
+   la voix sautait a l'etape 6 **en un echantillon** (coupure nette). Le relachement
+   part maintenant **du niveau ou la note est** (`relFrom = v.amp`) — une note
+   relachee pendant son attaque **remontait** au niveau de sustain avant de decroitre.
+
+### Un troisieme defaut, decouvert en corrigeant le deuxieme
+
+En **mono/legato**, `noteOn` reecrivait la voix en place : la nouvelle note partait
+du silence alors que l'ancienne sonnait encore. La sortie sautait de l'echantillon
+precedent directement a la nouvelle attaque — c'est le « tac » sur une touche
+repetee. `handOverTail()` deplace la voix qui sonne dans un slot libre (la moins
+forte si tous sont pris) pour qu'elle **fonde** pendant que la nouvelle demarre, et
+la nouvelle note recoit des phases fraiches (sinon elle serait **en phase** avec sa
+propre queue, dont les rebasculements s'additionneraient).
+
+Et en **legato**, un `noteOff` suivi d'un `noteOn` dans le meme bloc (re-appui de la
+meme touche) **annulait le relachement** : la note **s'eteignait sous un doigt qui
+ne s'etait pas leve**. Le banc le montre (`Praise Lead` +81 % de sustain) et c'est
+le comportement juste : `relStage`/`relStageT` restaurent l'enveloppe exactement ou
+le relachement l'avait interrompue. Borne a `envT <= 0` : un re-appui **plus tard**
+est un vrai lacher+appui et doit continuer a fondre.
+
+### Resultat mesure sur les 32 presets reels de l'app
+
+8 frappes de la meme note par preset, saut a l'echantillon de note-on :
+
+| | exces moyen | exces max | presets > 25 % |
+|---|---|---|---|
+| avant | 43,8 % | 389,1 % | **16** |
+| apres | **0,3 %** | **7,5 %** | **0** |
+
+Aucune regression. Niveau global preserve (±1 dB), sauf les presets legato ou la
+note **tenait** deja moins bien (+3 dB : c'est le bug repare).
+
+### Bancs (nouveaux, dans `tools/aetherfx/`)
+
+`extract_leads_presets.py` (presets reels -> C++, **jamais recopies a la main**),
+`leads_presets_check.cpp` (la metrique `excess` sur les 32 presets),
+`leads_strike_check.cpp` (frappe par frappe : un maximum cache **laquelle** est
+mauvaise), `leads_release_check.cpp`, `leads_preset_dump.cpp` (echantillons bruts
+autour de la frontiere), `demo_leads.cpp` + `demo_encode_leads.py` (MP3 avant/apres).
+Voir `tools/aetherfx/README.md`.
+
+**Piege d'outillage** : `extract_leads_presets.py` doit ecrire `0.0f` et non `0f` —
+Kotlin accepte `0f`, le C++ non. Et les noms de presets contiennent des espaces :
+parser la sortie par `awk` sur `$1` casse les noms.
+
+### Verification
+
+`compileDebugKotlin` et `assembleDebug` -> **BUILD SUCCESSFUL** (APK 76 Mo, 4 ABI,
+`libnative-lib.so` porte `LeadsEngine`). Page d'ecoute avant/apres :
+`/workspace/dl/pub/leads/index.html` (port 12000).

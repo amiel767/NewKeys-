@@ -25,6 +25,16 @@ class LeadsEngine : public SourceFx {
     uint32_t rng = 1u;
     float ph[kOsc] = {0};
     float ic[2] = {0, 0};
+    // Amplitude of the last rendered sample, and the level the release starts from. The release has
+    // to fade from wherever the note actually was, not from the sustain level: a note released during
+    // its attack used to jump UP to vel*S before decaying, which is a step in the middle of the note.
+    float amp = 0.f, relFrom = 0.f;
+    // Stage and elapsed time the release interrupted, so a noteOn that lands in the same block can
+    // put the envelope back exactly where it was instead of stepping the amplitude to another level.
+    int relStage = 0;
+    float relStageT = 0.f;
+    // Fade time for a handed-over tail. Zero means "use the preset release".
+    float relTime = 0.f;
   };
 
  public:
@@ -55,12 +65,14 @@ class LeadsEngine : public SourceFx {
       const int maxV = intensityVoices(kV);
       int idx = -1;
       for (int i = 0; i < maxV; ++i) if (!v_[i].on) { idx = i; break; }
+      // A stolen voice keeps running: only a free slot gets a fresh start phase.
+      const bool fresh = idx >= 0;
       if (idx < 0) { float best = 1e9f; for (int i = 0; i < maxV; ++i) { const float a = v_[i].gate ? v_[i].age + 1e6f : v_[i].age; if (a < best) { best = a; idx = i; } } }
       Voice& v = v_[idx];
       const float prev = v.on ? v.pit : static_cast<float>(note);
       v.on = true; v.gate = true; v.note = note; v.vel = vel / 127.f; v.stage = 1; v.envT = 0.f;
       v.pit = prev; v.target = static_cast<float>(note); v.age = ++age_;
-      seed(v);
+      seed(v, fresh);
       return;
     }
     // mono / legato: a single voice, gliding from the previous pitch
@@ -68,22 +80,48 @@ class LeadsEngine : public SourceFx {
     Voice& v = v_[0];
     const bool wasOn = v.on;
     const float prev = v.on ? v.pit : static_cast<float>(note);
+    // A retrigger arrives as noteOff then noteOn, usually in the same block, so the voice is already
+    // in its release by the time we get here. The test is therefore "is it still making sound", not
+    // "is it still gated": keying on the gate misses the ordinary case of a repeated note.
+    const bool sounding = wasOn && v.amp > 1e-4f;
     v.note = note; v.vel = vel / 127.f; v.on = true; v.gate = true; v.target = static_cast<float>(note); v.age = ++age_;
-    if (mode == 1 || !wasOn) { v.stage = 1; v.envT = 0.f; seed(v); }
+    if (mode == 1 || !wasOn) {
+      // Retriggering a mono voice used to rewrite it in place, so the new note started from silence
+      // while the old one was still sounding: the output stepped from the old sample straight to the
+      // new attack. On a key repeated every beat that step is the "tac". Hand the sounding voice to a
+      // second slot to fade out over the release, and play the new note on a clean one.
+      if (sounding) handOverTail(v, .06f);
+      // Fresh phases whenever the tail was handed over: the tail is an exact copy of this voice,
+      // phases included, so a new note left at the same phases would sit in lock step with its own
+      // tail and the two saws would reset on the same sample - the very alignment being removed.
+      v.stage = 1; v.envT = 0.f; seed(v, !wasOn || sounding);
+    } else if (v.stage == 5 && v.envT <= 0.f) {
+      // Legato: the same key is re-pressed while it is still held, so noteOff started the release and
+      // noteOn lands in the same block. Put the envelope back exactly where the release interrupted
+      // it - the amplitude, the stage and the elapsed time all have to return, otherwise the level
+      // steps and the note stops under a key that never came up.
+      //
+      // Only while the release has not rendered yet (envT is only advanced by process, so it is still
+      // zero here). A later re-press of the same key is a genuine key-up then key-down and must keep
+      // fading: restoring the stage there would step the amplitude back up.
+      v.stage = v.relStage > 0 ? v.relStage : 4;
+      v.envT = v.relStageT;
+      v.gate = true;
+    }
     v.pit = prev;
   }
   void noteOff(int note) override {
     const int mode = static_cast<int>(std::lround(p(28) * 2.f));
     if (mode == 0) {
-      for (auto& v : v_) if (v.on && v.gate && v.note == note) { v.gate = false; v.stage = 5; }
+      for (auto& v : v_) if (v.on && v.gate && v.note == note) startRelease(v);
       return;
     }
     for (size_t i = 0; i < held_.size(); ++i) if (held_[i] == note) { held_.erase(held_.begin() + static_cast<long>(i)); break; }
     if (v_[0].note != note) return;
     if (!held_.empty()) v_[0].note = held_.back(), v_[0].target = static_cast<float>(held_.back());
-    else { v_[0].gate = false; v_[0].stage = 5; }
+    else startRelease(v_[0]);
   }
-  void allNotesOff() override { held_.clear(); for (auto& v : v_) if (v.on) { v.gate = false; v.stage = 5; } }
+  void allNotesOff() override { held_.clear(); for (auto& v : v_) if (v.on) startRelease(v); }
   void pitchBend(float b) override { bend_ = b; }
 
   /**
@@ -171,7 +209,9 @@ class LeadsEngine : public SourceFx {
         const float v3 = sum - v.ic[1], v1 = a1 * v.ic[0] + a2 * v3, v2 = v.ic[1] + a2 * v.ic[0] + a3 * v3;
         v.ic[0] = 2.f * v1 - v.ic[0]; v.ic[1] = 2.f * v2 - v.ic[1];
         const float y = ftype == 0 ? v2 : ftype == 1 ? sum - kf * v1 - v2 : v1;
-        mono += y * ampAt(v, v.vel, Av, Dv, S, R);
+        const float amp = ampAt(v, v.vel, Av, Dv, S, R);
+        v.amp = amp;
+        mono += y * amp;
       }
       // ---- shared bus: chorus -> tone shelves -> delay -> (reverb below) ----
       float ch = mono;
@@ -226,7 +266,16 @@ class LeadsEngine : public SourceFx {
   // Per-voice randomness seeded at note-on: drift LFO rate/depth, a fixed detune offset
   // (voiceOff, +-3.5 cents), envelope timing spread (+-12%), filter-Q jitter and saturation
   // drive. Mirrors the Math.random() calls of the reference mkLead().
-  static void seed(Voice& v) {
+  //
+  // Also spreads the start phase of the oscillators, which is what removes the note-on "tac".
+  // Every oscillator used to start at phase 0, so the five detuned saws of a super-saw put their
+  // reset on the same sample: their discontinuities summed, and at the end of the attack ramp
+  // (where the amplitude has just reached full) that sum was the loudest event in the note. Spread
+  // out, the resets are staggered and the sum stays smooth.
+  //
+  // Only for a genuinely fresh note. A stolen voice, or a mono retrigger, keeps the phase it is
+  // already running at: jumping it mid-note would create the very discontinuity this removes.
+  static void seed(Voice& v, bool freshPhase) {
     auto r = [&v]() { v.rng ^= v.rng << 13; v.rng ^= v.rng >> 17; v.rng ^= v.rng << 5; return static_cast<float>(static_cast<int32_t>(v.rng)) * (1.0f / 2147483648.0f); };
     r();
     v.driftPh2 = .5f + r() * .5f;
@@ -236,8 +285,17 @@ class LeadsEngine : public SourceFx {
     v.varD = .88f + (.5f + r() * .5f) * .24f;
     v.qJit = r() * .5f;
     v.satDrive = 1.1f + (.5f + r() * .5f) * .4f;
+    if (freshPhase) {
+      for (int i = 0; i < kOsc; ++i) v.ph[i] = (static_cast<float>(i) + r()) / static_cast<float>(kOsc);
+    }
   }
   // One stage machine drives both the amplitude and the filter envelope (same A/H/D).
+  //
+  // envT is an elapsed time WITHIN the current stage, so every entry into a stage must reset it.
+  // It is only cleared on the attack/hold/decay transitions; the release stage is entered from
+  // noteOff, which must clear it too. envT accumulates without bound during the sustain, so an
+  // entry into the release that leaves it stale sees envT already past R and terminates the voice
+  // on its first sample: the note is cut off instead of released.
   static void stepEnv(Voice& v, float A, float H, float D, float R, float invSr) {
     v.envT += invSr;
     switch (v.stage) {
@@ -248,13 +306,58 @@ class LeadsEngine : public SourceFx {
       default: break;
     }
   }
+  // Enter the release stage from the level the voice is actually at. envT is cleared because the
+  // release measures its own elapsed time, and relFrom records where the fade starts so the
+  // amplitude does not step to the sustain level first.
+  static void startRelease(Voice& v) {
+    v.relStage = v.stage;
+    v.relStageT = v.envT;
+    v.relFrom = v.amp;
+    v.gate = false;
+    v.stage = 5;
+    v.envT = 0.f;
+  }
+
+  /**
+   * Move a still-sounding mono voice into a free slot so it can fade out while the new note starts.
+   *
+   * The mono allocator has a single voice, so a retrigger had nowhere to put the old note: it was
+   * overwritten in place and the output jumped from the old sample to the new attack in one step.
+   * The copy keeps the phase and the filter state, so the tail is a genuine continuation of the note
+   * that was playing; only its envelope is redirected to the release.
+   *
+   * A free slot is preferred. When none is left - a long release under a fast repeated note fills
+   * them all, and the click would come straight back on the notes after that - the quietest tail is
+   * taken instead. It is the least audible one to cut, and it keeps the count bounded. Only voice 0
+   * is ever gated in this mode, so every other slot is a tail and none of them is in use.
+   */
+  void handOverTail(Voice& v, float fadeSec) {
+    const int maxV = intensityVoices(kV);
+    int slot = -1;
+    float quietest = 1e9f;
+    for (int i = 1; i < maxV; ++i) {
+      if (!v_[i].on) { slot = i; break; }
+      if (v_[i].amp < quietest) { quietest = v_[i].amp; slot = i; }
+    }
+    if (slot < 0) return;
+    const float amp = v.amp;
+    v_[slot] = v;
+    v_[slot].note = -1;  // never matched by noteOff
+    v_[slot].amp = amp;
+    v_[slot].relFrom = amp;
+    v_[slot].relTime = fadeSec;
+    v_[slot].stage = 5;
+    v_[slot].envT = 0.f;
+    v_[slot].gate = false;
+  }
+
   static float ampAt(const Voice& v, float vel, float A, float D, float S, float R) {
     switch (v.stage) {
       case 1: return vel * std::min(1.f, v.envT / std::max(1e-4f, A));
       case 2: return vel;
       case 3: return vel * (1.f - (1.f - S) * std::min(1.f, v.envT / std::max(1e-4f, D)));
       case 4: return vel * S;
-      case 5: return vel * S * (1.f - std::min(1.f, v.envT / std::max(1e-4f, R)));
+      case 5: return v.relFrom * (1.f - std::min(1.f, v.envT / std::max(1e-4f, v.relTime > 0.f ? v.relTime : R)));
       default: return 0.f;
     }
   }
