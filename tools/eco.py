@@ -103,10 +103,19 @@ def fetch_all(cid: str, ttl: int = 90) -> list[dict]:
         if not items:
             break
         out.extend(items)
-        if len(items) < PAGE:
+        # L'API pagine par DECALAGE, pas par numero de page : `next_page_id` est
+        # l'offset du lot suivant.  Incrementer un compteur de page rejouait des
+        # fenetres qui se recouvrent (~100 evenements d'ecart), donc des requetes
+        # inutiles et un 429 qui figeait la veille.
+        nxt = body.get("next_page_id") if isinstance(body, dict) else None
+        try:
+            nxt = int(nxt)
+        except (TypeError, ValueError):
+            break  # pas d'offset suivant exploitable
+        if nxt <= page:
             break
-        page += 1
-        if page > 400:  # garde-fou : 40 000 evenements max
+        page = nxt
+        if page > 400000:  # garde-fou : 400 000 evenements max
             break
     if out:
         cache.write_text(json.dumps(out, ensure_ascii=False))

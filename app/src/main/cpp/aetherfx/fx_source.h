@@ -10,6 +10,12 @@ class SourceFx : public Effect {
   virtual void noteOff(int note) = 0;
   virtual void allNotesOff() = 0;
   virtual void pitchBend(float /*minus1..plus1*/) {}
+  /**
+   * Sustain pedal (CC64) for the track this source has taken over. A source renders
+   * outside FluidSynth, so the engine's own pedal handling never reaches it; the
+   * sampled piano needs it to hold a released key. Default: ignored.
+   */
+  virtual void sustain(bool /*on*/) {}
 
   /**
    * Bend range in semitones reached at full wheel. A source renders outside FluidSynth,

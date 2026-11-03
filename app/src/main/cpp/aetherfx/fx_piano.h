@@ -90,9 +90,17 @@ class PianoSampleReader {
       if (g.frames < 64) continue;
       // stereo entrelace : 2 echantillons par frame, 2 nibbles par octet
       if ((static_cast<uint64_t>(g.offset) + g.frames) * 2ull > pcmLen * 2ull) continue;
-      if (g.layer + 1 > layerCount_) layerCount_ = g.layer + 1;
       regions_.push_back(g);
     }
+    // Couches REELLEMENT presentes, triees.  Un pack peut n'avoir que les indices
+    // 0 et 3 (electric.bin) : compter `max+1` = 4 faisait alors adresser des couches
+    // vides, et le fondu entre couches tombait a cote.  C'est cette liste, et non
+    // le numero de couche, qui indexe la selection.
+    for (const Region& g : regions_)
+      if (std::find(layers_.begin(), layers_.end(), g.layer) == layers_.end())
+        layers_.push_back(g.layer);
+    std::sort(layers_.begin(), layers_.end());
+    layerCount_ = static_cast<int>(layers_.size());
     pcm_.assign(bytes + 28 + recLen, bytes + 28 + recLen + pcmLen);
     // Hors du thread audio : `load()` tourne sur le thread UI.  Voir preload().
     preload();
@@ -104,6 +112,7 @@ class PianoSampleReader {
     pcm_.clear();
     cache_.clear();
     pre_.clear();
+    layers_.clear();
     rate_ = 22050;
     layerCount_ = 1;
   }
@@ -115,6 +124,21 @@ class PianoSampleReader {
     size_t preloadedCount() const { return pre_.size(); }
     /** Ecart de niveau faible->fort du pack, mesure au chargement. 0 si inconnu. */
     float layerSpreadDb() const { return layerSpreadDb_; }
+    /** RMS mesure de (racine, couche), pour diagnostic. */
+    double layerRmsAt(int root, int layer) const {
+      return rootLayerRms_[static_cast<size_t>(std::min(127, std::max(0, root))) * 8 +
+                           std::min(7, std::max(0, layer))];
+    }
+    /** Gain de correction de niveau de (racine, couche). Rampe monotone, <= 1. */
+    float layerGain(int root, int layer) const {
+      const int r = std::min(127, std::max(0, root));
+      const int L = std::min(7, std::max(0, layer));
+      return rootLayerGain_[static_cast<size_t>(r) * 8 + L];
+    }
+    /** Crete lineaire du pack, normalisee a 1.0 (mesuree au chargement). */
+    float peak() const { return peak_; }
+    /** Facteur applique a la lecture pour ramener la crete sous le genou. */
+    float normGain() const { return normGain_; }
 
   /** Region la plus proche en hauteur, en preferant la couche demandee.
 
@@ -125,11 +149,46 @@ class PianoSampleReader {
   const Region* pick(int note, int velocity) const {
     if (regions_.empty()) return nullptr;
     const int n = layerCount_ > 0 ? layerCount_ : 1;
-    const int want = std::min(n - 1, std::max(0, velocity * n / 128));
+    const int want = layers_[std::min(n - 1, std::max(0, velocity * n / 128))];
+    // Couche EXACTE d'abord.  La couche porte le timbre de la frappe, et
+    // l'espacement du pack (48 racines pour 88 touches, soit ~1,8 demi-ton)
+    // rend l'etirement de hauteur inaudible a cote.
+    //
+    // L'ancien cout melangeait les deux termes avec un poids de 8 sur la hauteur :
+    // `|root - note| * 8 + |layer - want|`.  Une racine a un demi-ton pesait donc
+    // 8, ce qui battait n'importe quel ecart de couche.  Sur toute note dont la
+    // racine la plus proche n'a PAS la couche demandee, le moteur rejouait la
+    // couche 0 quelle que soit la velocite.  Mesure (`piano_pick_trace.cpp`) :
+    // 0,0 dB de dynamique sur la note 60 contre 18,7 dB sur la 63 — le clavier
+    // repondait « n'importe comment » selon la touche.
     const Region* best = nullptr;
     int bestCost = 1 << 30;
     for (const Region& g : regions_) {
+      if (g.layer != want) continue;
+      const int cost = std::abs(g.root - note);
+      if (cost < bestCost) { bestCost = cost; best = &g; }
+    }
+    if (best) return best;
+    // Aucune region ne porte cette couche : on retombe sur la couche la plus
+    // proche, en gardant la hauteur comme critere secondaire.
+    bestCost = 1 << 30;
+    for (const Region& g : regions_) {
       const int cost = std::abs(g.root - note) * 8 + std::abs(g.layer - want);
+      if (cost < bestCost) { bestCost = cost; best = &g; }
+    }
+    return best;
+  }
+
+  /** Region EXACTE d'une couche donnee (racine la plus proche), ou nullptr.
+   *  Sert au fondu entre deux couches : on lit les deux regions a la fois. */
+  const Region* pickLayer(int note, int layerIndex) const {
+    if (layerIndex < 0 || layerIndex >= static_cast<int>(layers_.size())) return nullptr;
+    const int layer = layers_[layerIndex];
+    const Region* best = nullptr;
+    int bestCost = 1 << 30;
+    for (const Region& g : regions_) {
+      if (g.layer != layer) continue;
+      const int cost = std::abs(g.root - note);
       if (cost < bestCost) { bestCost = cost; best = &g; }
     }
     return best;
@@ -237,18 +296,93 @@ class PianoSampleReader {
       if (r > hi) hi = r;
     }
     layerSpreadDb_ = (lo > 0 && hi > 0) ? static_cast<float>(20.0 * std::log10(hi / lo)) : 0.f;
+
+    // Toutes les regions sont ramenees au MEME niveau de reference.  Le passage
+    // d'une couche a l'autre ne change plus le NIVEAU, seulement le TIMBRE.
+    //
+    // C'est la seule facon de supprimer le « saut brutal a forte velocite » signale.
+    // `pick()` choisit UNE region, et dans ces packs une couche n'est PAS repartie
+    // sur les memes racines que les autres : la couche 0 de la note 60 est enregistree
+    // a la racine 60, les couches 1..7 a la racine 59.  Changer de couche change donc
+    // AUSSI de racine, donc de niveau enregistre : mesure 9,1 dB de saut d'une
+    // velocite a la suivante sur `electric.bin` (couches espacees de 19 dB) et 14 dB
+    // sur `piano.bin`.  Une correction par (racine, couche) ne pouvait rien y faire :
+    // la cible doit etre la MEME pour toutes les regions.
+    //
+    // La cible est le niveau RMS (ENERGIE) moyen des regions du pack : c'est lui qui
+    // fait la SONIE perçue d'une note tenue.  Normaliser sur la crete a ete mesure
+    // PIRE (les crêtes de couches different surtout par leur attaque, ce qui ne
+    // s'entend pas comme « plus fort » : la marche residuelle montait a 5 dB au lieu
+    // de 2).  L'energie seule donne la courbe la plus lisse.  Gains bornes 0,05..20 :
+    // une region quasi silencieuse n'est pas amplifiee jusqu'au bruit de fond.
+    rootLayerGain_ = std::vector<float>(128 * 8, 1.f);
+    {
+      double e = 0.0;
+      int n = 0;
+      for (int root = 0; root < 128; ++root)
+        for (int L = 0; L < 8; ++L) {
+          const double r = rootLayerRms_[static_cast<size_t>(root) * 8 + L];
+          if (r > 0.0) { e += r * r; ++n; }
+        }
+      if (n > 0) {
+        const double target = std::sqrt(e / static_cast<double>(n));
+        for (int root = 0; root < 128; ++root)
+          for (int L = 0; L < 8; ++L) {
+            const size_t k = static_cast<size_t>(root) * 8 + L;
+            const double r = rootLayerRms_[k];
+            if (r <= 0.0) continue;
+            rootLayerGain_[k] = static_cast<float>(std::min(20.0, std::max(0.05, target / r)));
+          }
+      }
+    }
+
+    // Crete APRES correction de couche : les gains peuvent depasser 1 (couche
+    // faible remontee), donc mesurer la crete brute du pack sous-estimerait la
+    // sortie reelle.  Le constructeur (`build_sf2.py`) fait `clip(round(l*32767))`
+    // sans normalisation, donc la couche forte sort a 1,000 sur TOUS les packs.  Le
+    // moteur multiplie ensuite par la courbe de velocite : 1,0 x 1,0 ecrete, et la
+    // somme des voix depasse encore.  On ramene la crete a 0,85, ce qui laisse
+    // 1,4 dB de marge sous le genou du limiteur (0,8) meme sur un accord fort.
+    double peak = 0.0;
+    for (const auto& kv : pre_) {
+      const Region& g = regions_[kv.first];
+      const float lg = layerGain(g.root, g.layer);
+      const auto& pcm = *kv.second;
+      for (size_t i = 0; i < pcm.size(); ++i)
+        peak = std::max(peak, std::abs(static_cast<double>(pcm[i])) / 32768.0 * lg);
+    }
+    peak_ = static_cast<float>(peak);
+    normGain_ = (peak_ > 0.85f) ? (0.85f / peak_) : 1.f;
   }
 
-  /** RMS de la region de cette couche la plus proche de C4. Sert a la dynamique. */
+  /**
+   * RMS d'une region, pour deux usages : le niveau de sa couche (dynamique
+   * globale, mesuree pres de C4) et le niveau de son couple (racine, couche),
+   * qui sert a reparer une dynamique inversee.
+   *
+   * La fenetre est le DEBUT de la note (0,4 s), pas la region entiere.  Un piano
+   * s'entend sur son attaque et son debut de tenue ; une queue longue gonfle la
+   * moyenne sans rien changer au niveau percu.  Mesurer la region entiere faisait
+   * croire a deux couches egales alors que l'une decroit deux fois plus vite —
+   * c'est ce qui laissait un saut de -3,8 dB sur `ep_ballad` apres correction.
+   */
   void measureLayer(const Region& g, const std::vector<int16_t>& pcm) {
-    if (g.layer < 0 || g.layer >= static_cast<int>(layerRms_.size())) return;
+    if (g.layer < 0 || g.layer >= 8 || pcm.empty()) return;
+    const size_t frames = pcm.size() / 2;
+    const size_t window = std::min<size_t>(frames, static_cast<size_t>(0.25 * rate_));
+    double s = 0;
+    for (size_t i = 0; i < window; ++i) {
+      const double l = pcm[2 * i] / 32768.0;
+      const double r = pcm[2 * i + 1] / 32768.0;
+      s += l * l + r * r;
+    }
+    const double rms = std::sqrt(s / std::max<size_t>(1, window * 2));
+    if (g.root >= 0 && g.root < 128)
+      rootLayerRms_[static_cast<size_t>(g.root) * 8 + g.layer] = rms;
     const int cost = std::abs(g.root - 60);
     if (cost >= layerBest_[g.layer]) return;
-    double s = 0;
-    for (int16_t v : pcm) s += static_cast<double>(v) * v;
-    if (pcm.empty()) return;
     layerBest_[g.layer] = cost;
-    layerRms_[g.layer] = std::sqrt(s / pcm.size()) / 32768.0;
+    layerRms_[g.layer] = rms;
   }
 
   void decodeRegion(const Region& g, int16_t* dst) const {
@@ -278,6 +412,7 @@ class PianoSampleReader {
   }
 
   std::vector<Region> regions_;
+  std::vector<int> layers_;   // indices de couche reellement presents, tries
   std::vector<uint8_t> pcm_;
   std::vector<std::pair<size_t, std::shared_ptr<const std::vector<int16_t>>>> cache_;
   // Regions decodees au chargement, jamais evincees : le thread audio n'y fait
@@ -289,6 +424,12 @@ class PianoSampleReader {
   std::vector<double> layerRms_;   // RMS a C4 par couche, mesuree au chargement
   std::vector<int> layerBest_;     // distance de hauteur de la region mesuree
   float layerSpreadDb_ = 0.f;      // ecart faible->fort du pack, en dB
+  // RMS de chaque (racine, couche), puis gain qui ramene chaque region au niveau
+  // de reference du pack.  Table plate : 128 racines x 8 couches.
+  std::vector<double> rootLayerRms_ = std::vector<double>(128 * 8, 0.0);
+  std::vector<float> rootLayerGain_ = std::vector<float>(128 * 8, 1.f);
+  float peak_ = 0.f;       // crete mesuree du pack, normalisee a 1.0
+  float normGain_ = 1.f;   // facteur de lecture pour rester sous le genou
 };
 
 // ---------------------------------------------------------------------------
@@ -354,22 +495,31 @@ class PianoVoice {
    *  instrument Æther, ou sautait par demi-ton quand le moteur reaccordait la voix. */
   void setBend(float b, int semis) { bendTarget_ = b * static_cast<float>(semis); }
 
-  void start(const std::shared_ptr<const std::vector<int16_t>>& pcm, uint32_t frames,
-             int root, float tuneCents,
-             int note, float velocity, float sr, float packRate,
-             uint32_t loopStart, uint32_t loopEnd, float mic, float space, float tine,
-             float hammer, float touch) {
-    pcm_ = pcm; frames_ = frames; pos_ = 0.0;
-    loopStart_ = loopStart; loopEnd_ = loopEnd;
-    if (loopEnd_ <= loopStart_ || loopEnd_ > frames) loopStart_ = loopEnd_ = 0;
-    const float rootF = 440.f * std::pow(2.f, (root - 69) / 12.f)
-                        * std::pow(2.f, tuneCents / 1200.f);
-    const float f = 440.f * std::pow(2.f, (note - 69) / 12.f);
-    // packRate/sr : le pack est a 22050 Hz et la sortie a 44100.  Sans ce facteur
-    // chaque note sort une octave trop haut — c'est le son de jouet.
-    ratio_ = (rootF > 1e-6f) ? f / rootF * (packRate / sr) : 1.f;
+  /** Une couche prete a lire : le PCM et ce qu'il faut pour le parcourir. */
+  struct Src {
+    std::shared_ptr<const std::vector<int16_t>> pcm;
+    uint32_t frames = 0, loopStart = 0, loopEnd = 0;
+    double pos = 0.0;
+    float ratio = 1.f;   // avance par echantillon (hauteur + correction pack/sortie)
+    float gain = 1.f;    // egalisation de niveau de la couche (au chargement)
+  };
+
+  /** `a` = couche de la velocite, `b` = couche au-dessus, `blend` = part de `b`.
+   *  Lire les deux et les melanger est ce qui supprime la marche de niveau : la
+   *  couche change d'un coup, donc sans recouvrement le niveau sautait (mesure
+   *  jusqu'a 4 dB a la frontiere 63->64 d'un pack electrique). */
+  void start(const Src& a, const Src& b, float blend,
+             int note, float velocity, float sr,
+             float mic, float space, float tine,
+             float hammer, float hammerNoise, float keyNoise, float damperNoise,
+             float gain) {
+    gain_ = gain;
+    damperAmt_ = damperNoise;
+    srcA_ = a; srcB_ = b;
+    blend_ = (b.pcm && b.frames > 1) ? std::min(1.f, std::max(0.f, blend)) : 0.f;
     note_ = note; vel_ = velocity;
-    active_ = true; releasing_ = false;
+    active_ = true; releasing_ = false; keyDown_ = true;
+    const float f = 440.f * std::pow(2.f, (note - 69) / 12.f);
     // Constante de decroissance, calee sur la decroissance MESUREE des sources :
     // mediane ~8,6 dB/s dans le grave, ~8,4 a C4, ~12,9 une octave plus haut.
     // Le facteur (1 + 6*sustainHold) du rendu multiplie tau par 4 (hold = 0,5),
@@ -406,24 +556,32 @@ class PianoVoice {
     hpL_ = hpR_ = lpL2_ = lpR2_ = 0.f;
     // Le filtrage retire beaucoup d'energie (bande 1,6-5,4 kHz au lieu de tout le
     // spectre) : sans compensation l'attaque perdait 7,7 dB et le piano redevenait
-    // mou.  0,42 ramene la frappe au niveau percu d'avant, mais avec un « toc » a
-    // la place du « tsss ».
-    hammerAmt_ = 0.42f * hammer * (0.12f + 0.88f * velocity * velocity);
+    // mou.  On ramene la frappe au niveau percu d'avant, mais avec un « toc » a la
+    // place du « tsss ».
+    //
+    // Trois bruits SEPARES, avec des graines independantes : le marteau (la frappe,
+    // depend de la durete), la touche (le doigt + la mecanique, depend du toucher)
+    // et l'etouffoir (le feutre qui retombe, seulement au relachement).  Un seul
+    // generateur partage les faisait « sonner » ensemble a chaque note, ce qui se
+    // joue comme un clic mecanique unique et non comme un piano.
+    hammerAmt_ = 0.42f * hammerNoise * (0.12f + 0.88f * velocity * velocity);
     hammerEnv_ = 1.f;
     hammerDecay_ = std::exp(-1.f / (hDec * sr));
-    hammerNoise_.s = 0x2545F491u ^ (static_cast<uint32_t>(note) * 2654435761u);
+    noiseHammer_.s = 0x2545F491u ^ (static_cast<uint32_t>(note) * 2654435761u) ^ 0x9E3779B9u;
 
-    // Bruit de touche : le doigt qui atteint la touche, la mecanique qui suit.
-    // Discret, une seule fois a l'appui, et coupe par le NOTE OFF -- ce n'est pas
-    // un son tenu.  Meme filtre que le marteau, un peu plus bas : c'est un contact,
-    // pas une frappe.  Le niveau monte avec la velocite, comme le vrai toucher.
-    touchAmt_ = 0.075f * touch * (0.20f + 0.80f * velocity * velocity);
-    touchEnv_ = 1.f;
-    touchDecay_ = std::exp(-1.f / (0.011f * sr));
-    touchHz_ = std::max(900.f, 2200.f - (note - 21) * 7.f);
-    tA_ = 1.f - std::exp(-2.f * static_cast<float>(M_PI) * (touchHz_ * 0.6f) / sr);
-    tB_ = 1.f - std::exp(-2.f * static_cast<float>(M_PI) * (touchHz_ * 1.5f) / sr);
-    tL_ = tR_ = 0.f;
+    keyAmt_ = 0.075f * keyNoise * (0.20f + 0.80f * velocity * velocity);
+    keyEnv_ = 1.f;
+    keyDecay_ = std::exp(-1.f / (0.011f * sr));
+    keyHz_ = std::max(900.f, 2200.f - (note - 21) * 7.f);
+    kA_ = 1.f - std::exp(-2.f * static_cast<float>(M_PI) * (keyHz_ * 0.6f) / sr);
+    kB_ = 1.f - std::exp(-2.f * static_cast<float>(M_PI) * (keyHz_ * 1.5f) / sr);
+    kL_ = kR_ = 0.f;
+    noiseKey_.s = 0x85EBCA6Bu ^ (static_cast<uint32_t>(note) * 2246822519u) ^ 0x27D4EB2Fu;
+
+    damperEnv_ = 0.f;
+    damperDecay_ = std::exp(-1.f / (0.028f * sr));
+    noiseDamper_.s = 0xC2B2AE35u ^ (static_cast<uint32_t>(note) * 3266489917u) ^ 0x165667B1u;
+    dL_ = dR_ = 0.f;
   }
 
   /** B mesuree : 2,29e-4 * 2^(0,1045*(midi-60)/12).  tine multiplie B : une tine
@@ -438,19 +596,53 @@ class PianoVoice {
     releasing_ = true;
     // Le bruit de touche s'arrete au relachement : la mecanique a fini son geste.
     // Le laisser courir ferait entendre un « clic » isole apres la note eteinte.
-    touchEnv_ = 0.f;
+    keyEnv_ = 0.f;
+    // Le feutre de l'etouffoir retombe : bruit court, decale sous la touche.  C'est
+    // le « damper noise » que Pianoteq expose, et il n'arrive QUE sur le relachement.
+    damperEnv_ = 1.f;
   }
-  void kill() { active_ = false; touchEnv_ = 0.f; hammerEnv_ = 0.f; pcm_.reset(); }
+  void kill() { active_ = false; keyEnv_ = 0.f; hammerEnv_ = 0.f; damperEnv_ = 0.f; srcA_.pcm.reset(); srcB_.pcm.reset(); }
+
+  /** Touche relachee.  Si la pedale est enfoncee, la corde continue (aucune rampe) ;
+   *  sinon l'etouffoir tombe.  C'est ce qui manquait : la pedale ne faisait que
+   *  retarder l'extinction au lieu de tenir la note. */
+  void liftKey() {
+    keyDown_ = false;
+    if (!sustained_) release();
+  }
+  /** Etat de la pedale.  Quand elle remonte, les touches deja relachees s'eteignent. */
+  void setSustained(bool on) {
+    sustained_ = on;
+    if (!on && !keyDown_ && !releasing_) release();
+  }
   bool active() const { return active_; }
   bool releasing() const { return releasing_; }
   int note() const { return note_; }
   float age() const { return age_; }
 
+  /** Lit un echantillon stereo d'une source et avance son curseur. Renvoie faux
+   *  quand la source est finie (hors boucle). */
+  bool readOne(Src& s, float bendRatio, float& l, float& r) {
+    if (!s.pcm || s.frames < 2) return false;
+    if (s.loopEnd > s.loopStart && !releasing_ && s.pos >= s.loopEnd)
+      s.pos -= (s.loopEnd - s.loopStart);
+    const uint32_t i0 = static_cast<uint32_t>(s.pos);
+    const uint32_t i1 = i0 + 1;
+    if (i1 >= s.frames) return false;
+    const float fr = static_cast<float>(s.pos - i0);
+    const int16_t* p = s.pcm->data() + static_cast<size_t>(i0) * 2;
+    const int16_t* q = s.pcm->data() + static_cast<size_t>(i1) * 2;
+    l = (p[0] + (q[0] - p[0]) * fr) * (1.f / 32768.f) * s.gain;
+    r = (p[1] + (q[1] - p[1]) * fr) * (1.f / 32768.f) * s.gain;
+    s.pos += s.ratio * bendRatio;
+    return true;
+  }
+
   void render(float* outL, float* outR, int n, float sr,
               float body, float bright, float width, float releaseSec, float sustainHold,
               bool tine) {
     tine_ = tine;
-    if (!active_ || !pcm_ || pcm_->empty()) return;
+    if (!active_ || !srcA_.pcm || srcA_.pcm->empty()) return;
     // 0,5 ms et non 4 : le transitoire de marteau vit dans les 2 premieres ms,
     // une rampe de 4 ms l'efface et le piano perd son attaque.
     const float atk = 1.f / (0.0005f * sr);
@@ -458,26 +650,30 @@ class PianoVoice {
     // Plage +-12 dB (etait +-6) : a +-6 les quatre reglages d'aigu se confondaient.
     const float shelfG = std::exp2((bright - 0.5f) * 4.0f);
     for (int i = 0; i < n; ++i) {
-      // Tant que la touche est tenue, on tourne dans la boucle ; au relachement on
-      // la quitte et on joue la queue enregistree, qui porte la decroissance reelle.
-      if (loopEnd_ > loopStart_ && !releasing_ && pos_ >= loopEnd_) {
-        pos_ -= (loopEnd_ - loopStart_);
-      }
-      const uint32_t i0 = static_cast<uint32_t>(pos_);
-      const uint32_t i1 = i0 + 1;
-      if (i1 >= frames_) { active_ = false; break; }
-      const float fr = static_cast<float>(pos_ - i0);
-      const int16_t* p = pcm_->data() + static_cast<size_t>(i0) * 2;
-      const int16_t* q = pcm_->data() + static_cast<size_t>(i1) * 2;
       // Bend lisse : un saut de ratio d'un bloc a l'autre claque.  12 ms de
       // constante donne un glissando continu, comme une roue qu'on pousse.
       bendNow_ += (bendTarget_ - bendNow_) * bendCoef_;
       const float bendRatio = std::pow(2.f, bendNow_ / 12.f);
-      float sL = (p[0] + (q[0] - p[0]) * fr) * (1.f / 32768.f);
-      float sR = (p[1] + (q[1] - p[1]) * fr) * (1.f / 32768.f);
-      pos_ += ratio_ * bendRatio;
+      const float step = bendRatio;   // le ratio propre a chaque couche est dans Src
 
-      if (!releasing_) {
+      // Deux couches lues ensemble, fondues a puissance constante.  Chaque source
+      // a son propre curseur mais le meme ratio : elles tournent dans le meme temps,
+      // donc le fondu reste coherent sur toute la duree de la note.
+      float sL = 0.f, sR = 0.f;
+      if (blend_ <= 0.f) {
+        if (!readOne(srcA_, step, sL, sR)) { active_ = false; break; }
+      } else {
+        float aL = 0.f, aR = 0.f, bL = 0.f, bR = 0.f;
+        const bool okA = readOne(srcA_, step, aL, aR);
+        const bool okB = readOne(srcB_, step, bL, bR);
+        if (!okA && !okB) { active_ = false; break; }
+        const float ca = std::cos(blend_ * 1.5707963f), cb = std::sin(blend_ * 1.5707963f);
+        sL = aL * ca + bL * cb;
+        sR = aR * ca + bR * cb;
+      }
+
+      const bool held = !releasing_ || sustained_;
+      if (held) {
         env_ = std::min(1.f, env_ + atk);
       } else {
         rel_ += 1.f / (std::max(0.05f, releaseSec) * sr);
@@ -485,7 +681,7 @@ class PianoVoice {
       }
       age_ += 1.f / sr;
       const float tail = std::exp(-age_ / (tau1_ * (1.f + 6.f * sustainHold)));
-      const float amp = env_ * (releasing_ ? (1.f - rel_) : 1.f) * tail;
+      const float amp = env_ * (held ? 1.f : (1.f - rel_)) * tail;
 
       const float mono = (sL + sR) * 0.5f;
       const float res = res_.process(mono) * body;
@@ -518,12 +714,15 @@ class PianoVoice {
       mL = lpL_ + (mL - lpL_) * shelfG;
       mR = lpR_ + (mR - lpR_) * shelfG;
 
-      outL[i] += mL * amp * vel_;
-      outR[i] += mR * amp * vel_;
+      // gain_ = normalisation de crete du pack (mesuree au chargement) : le pack
+      // brut sortait a 1,0 et le produit avec la courbe de velocite ecretait.
+      const float out = amp * vel_ * gain_;
+      outL[i] += mL * out;
+      outR[i] += mR * out;
       if (hammerEnv_ > 1e-4f) {
         // Frappe filtree : passe-haut puis passe-bas, deux fois, pour une pente de
         // 12 dB/oct de chaque cote.  C'est ce qui transforme le « tsss » en « toc ».
-        float hn = hammerNoise_.next() * hammerEnv_ * hammerAmt_;
+        float hn = noiseHammer_.next() * hammerEnv_ * hammerAmt_;
         hpL_ += hpA_ * (hn - hpL_);
         hpR_ += hpA_ * (hn * 0.94f - hpR_);
         lpL2_ += lpA_ * (hpL_ - lpL2_);
@@ -532,41 +731,56 @@ class PianoVoice {
         outR[i] += lpR2_;
         hammerEnv_ *= hammerDecay_;
       }
-      if (touchEnv_ > 1e-4f) {
+      if (keyEnv_ > 1e-4f) {
         // Contact de touche : meme filtre, plus bas et plus long.  Passe par le meme
         // chemin stereo legerement desequilibre, comme le marteau.
-        float tn = hammerNoise_.next() * touchEnv_ * touchAmt_;
-        tL_ += tA_ * (tn - tL_);
-        tR_ += tA_ * (tn * 0.90f - tR_);
-        const float tl = tB_ * tL_, tr = tB_ * tR_;
+        float tn = noiseKey_.next() * keyEnv_ * keyAmt_;
+        kL_ += kA_ * (tn - kL_);
+        kR_ += kA_ * (tn * 0.90f - kR_);
+        const float tl = kB_ * kL_, tr = kB_ * kR_;
         outL[i] += tl;
         outR[i] += tr;
-        touchEnv_ *= touchDecay_;
+        keyEnv_ *= keyDecay_;
+      }
+      if (damperEnv_ > 1e-4f) {
+        // Etouffoir : feutre qui retombe sur la corde, uniquement au relachement.
+        // Plus bas et plus court que la touche (c'est un contact amorti), et son
+        // niveau suit DAMPER NOISE, le reglage dedie.
+        float dn = noiseDamper_.next() * damperEnv_ * damperAmt_ * 0.5f;
+        dL_ += kA_ * (dn - dL_);
+        dR_ += kA_ * (dn * 0.88f - dR_);
+        outL[i] += kB_ * dL_;
+        outR[i] += kB_ * dR_;
+        damperEnv_ *= damperDecay_;
       }
     }
   }
 
  private:
-  std::shared_ptr<const std::vector<int16_t>> pcm_;
-  uint32_t frames_ = 0;
-  double pos_ = 0.0;
-  float ratio_ = 1.f, vel_ = 1.f;
+  Src srcA_, srcB_;
+  float blend_ = 0.f;   // part de la couche superieure dans le fondu
+  float vel_ = 1.f;
   float bendTarget_ = 0.f, bendNow_ = 0.f;
   float bendCoef_ = 0.f;
   float env_ = 0.f, rel_ = 0.f, age_ = 0.f, tau1_ = 0.5f;
-  uint32_t loopStart_ = 0, loopEnd_ = 0;
   // Shelf aigu par canal : c'est lui qui rend TONE/HAMMER/LID audibles.
   float lpL_ = 0.f, lpR_ = 0.f, shelfA_ = 0.25f;
   bool tine_ = false;
+  float gain_ = 1.f;
   float hammerAmt_ = 0.f, hammerEnv_ = 0.f, hammerDecay_ = 0.f;
   float hpA_ = 0.5f, lpA_ = 0.5f, hpL_ = 0.f, hpR_ = 0.f, lpL2_ = 0.f, lpR2_ = 0.f;
   // Bruit de touche : enveloppe separee, coupee par le NOTE OFF (ce n'est pas un
   // son tenu, c'est un contact).
-  float touchAmt_ = 0.f, touchEnv_ = 0.f, touchDecay_ = 0.f, touchHz_ = 0.f;
-  float tA_ = 0.5f, tB_ = 0.5f, tL_ = 0.f, tR_ = 0.f;
-  Noise hammerNoise_;
+  float keyAmt_ = 0.f, keyEnv_ = 0.f, keyDecay_ = 0.f, keyHz_ = 0.f;
+  float kA_ = 0.5f, kB_ = 0.5f, kL_ = 0.f, kR_ = 0.f;
+  // Bruit d'etouffoir : seulement au relachement, enveloppe propre.
+  float damperAmt_ = 0.f, damperEnv_ = 0.f, damperDecay_ = 0.f;
+  float dL_ = 0.f, dR_ = 0.f;
+  // Trois generateurs independants : un seul partage faisait « sonner » marteau,
+  // touche et etouffoir ensemble, ce qui se joue comme un clic mecanique unique.
+  Noise noiseHammer_, noiseKey_, noiseDamper_;
   int note_ = -1;
-  bool active_ = false, releasing_ = false;
+  bool active_ = false, releasing_ = false, sustained_ = false, keyDown_ = false;
   PianoResonators res_;
 };
 
@@ -602,24 +816,27 @@ class PianoStudio {
   void reset() {
     for (auto& b : mem_) b.reset();
     for (auto& b : air_) b.reset();
-    for (int i = 0; i < 2; ++i) { drive_[i].reset(); tone_[i].reset(); pres_[i].reset(); }
+    for (int i = 0; i < 2; ++i) { tone_[i].reset(); pres_[i].reset(); }
     pre_.reset(); rev_.reset();
-    envF_ = 0.f; envS_ = 0.f; cf_ = -1; chKey_ = -1;
+    cf_ = -1;
   }
 
   /**
-   * Position et distance du micro, drive d'ampli, punch, piece.
+   * Position et distance du micro, couvercle, egaliseur, piece, largeur.
+   *
+   * L'ampli et le formateur de transitoire sont PARTIS.  Ils n'existent sur aucun
+   * piano acoustique, et la saturation `tanh` etait en serie sur toute la sortie :
+   * un pack deja cale a sa crete ne pouvait qu'y ecreter.  C'est ce que l'utilisateur
+   * a entendu comme « Amp detruit le son ».  Pianoteq n'a pas d'etape ampli.
    *
    * Tout est recalcule seulement quand un reglage bouge : les Biquad ont un
    * cout de calcul par echantillon, pas par bloc.
    */
-  void set(float pos, float dist, float lid, float drive, float bass, float mid, float treb,
-           float pres, float punch, float space, float width) {
+  void set(float pos, float dist, float lid, float bass, float mid, float treb,
+           float pres, float space, float width) {
     // Chaque famille de reglages a SON propre garde.  Les regrouper sous celui du
-    // micro etait un bug mesure : une fois le preset pose, bouger DRIVE, PUNCH,
-    // TONE, PRESENCE, SPACE ou WIDTH ne faisait plus rien tant que le micro ne
-    // bougeait pas aussi (moteur vivant : DRIVE 0 -> 1 restait a 0,0140 au lieu de
-    // passer de 0,0114 a 0,0181).
+    // micro etait un bug mesure : une fois le preset pose, bouger TONE, PRESENCE,
+    // SPACE ou WIDTH ne faisait plus rien tant que le micro ne bougeait pas aussi.
     if (std::fabs(pos - cPos_) > 0.002f || std::fabs(dist - cDist_) > 0.002f ||
         std::fabs(lid - cLid_) > 0.002f) {
       cPos_ = pos; cDist_ = dist; cLid_ = lid;
@@ -635,19 +852,6 @@ class PianoStudio {
       air_[0].setHighShelf(sr_, 9000, air);
       air_[1].setHighShelf(sr_, 9000, air);
     }
-    const int key = static_cast<int>(std::lround(drive * 4.f));
-    if (key != chKey_) {
-      chKey_ = key;
-      // Ampli a lampes : chaque cran durcit la pente et rabote le grave, ce qui
-      // « punch » le rendu au lieu de simplement l'ecraser.
-      const float g = 1.f + key * 1.1f;
-      for (int ch2 = 0; ch2 < 2; ++ch2) drive_[ch2].setLowpass(sr_, 12000.f - key * 2600.f, 0.7 + key * 0.12f);
-      driveG_ = g;
-      // Compensation : sans elle, saturer faisait simplement baisser le niveau de
-      // 9 dB au lieu de durcir le timbre.  g^-0,7 rend le gain unitaire a petit
-      // signal tout en ecrasant les cretes.
-      driveC_ = std::pow(g, -0.7f);
-    }
     if (std::fabs(bass - cBass_) > 0.002f || std::fabs(mid - cMid_) > 0.002f ||
         std::fabs(treb - cTreb_) > 0.002f) {
       cBass_ = bass; cMid_ = mid; cTreb_ = treb;
@@ -661,45 +865,20 @@ class PianoStudio {
       cPres_ = pres;
       for (int ch2 = 0; ch2 < 2; ++ch2) pres_[ch2].setHighShelf(sr_, 5500, (pres - 0.5f) * 12.f);
     }
-    punchAmt_ = punch;
     spaceAmt_ = space;
     widthAmt_ = width;
   }
 
-  /** Un bloc stereo : mem -> ampli -> tone -> compresseur -> largeur. */
+  /** Un bloc stereo : micro -> egaliseur -> largeur -> reverb. */
   void process(float* io, int n) {
     if (n <= 0) return;
-    // Punch = formateur de transitoire, pas compresseur.  L'attaque d'un piano
-    // dure moins de 5 ms : un compresseur a 8 ms de constante la laisse passer et
-    // n'agit que sur la tenue, donc il ne « punch » rien.  On separe donc les deux
-    // enveloppes : une rapide (l'attaque) et une lente (le corps), et le reglage
-    // dose l'ecart.  Positif = attaque mise en avant (punch), negatif = attaque
-    // arrondie (adoucir).  C'est le meme reglage dans les deux sens.
-    const float aFast = 1.f - std::exp(-1.f / (0.0008f * sr_));
-    const float aSlow = 1.f - std::exp(-1.f / (0.060f * sr_));
     for (int i = 0; i < n; ++i) {
       float l = io[2 * i], r = io[2 * i + 1];
       l = pre_.process(0, l); r = pre_.process(1, r);
       l = mem_[0].process(0, l); r = mem_[1].process(1, r);
       l = air_[0].process(0, l); r = air_[1].process(1, r);
-      if (driveG_ > 1.001f) {                       // ampli : saturation douce + rabotage
-        l = drive_[0].process(0, std::tanh(driveG_ * l) * driveC_);
-        r = drive_[1].process(1, std::tanh(driveG_ * r) * driveC_);
-      }
       l = tone_[0].process(0, l); r = tone_[1].process(1, r);
       l = pres_[0].process(0, l); r = pres_[1].process(1, r);
-      // Deux enveloppes sur le canal le plus fort : un seul detecteur pour les deux
-      // canaux, sinon l'image stereo pompe.
-      const float pk = std::max(std::fabs(l), std::fabs(r));
-      envF_ += aFast * (pk - envF_);
-      envS_ += aSlow * (pk - envS_);
-      // Rapport d'attaque : > 1 pendant le transitoire, ~1 pendant la tenue.
-      const float ratio = envF_ / std::max(envS_, 1e-4f);
-      // tanh borne la correction : sans lui un transitoire franc donnait +30 dB.
-      // Centre neutre : 0,5 ne change RIEN, 0 adoucit l'attaque, 1 la met en avant.
-      // Un reglage qui n'a pas de position neutre oblige a deviner sa valeur de repos.
-      const float shape = std::tanh((ratio - 1.f) * (punchAmt_ - 0.5f) * 2.6f);
-      l *= 1.f + shape; r *= 1.f + shape;
       if (widthAmt_ != 1.f) { const float m = 0.5f * (l + r), s = 0.5f * (l - r) * widthAmt_; l = m + s; r = m - s; }
       // Limiteur doux, LINEAIRE sous le genou.  Un `tanh(x)` sec est non lineaire des
       // le premier echantillon : a la crete normale du piano (0,31 mesuree) il rendait
@@ -727,26 +906,32 @@ class PianoStudio {
 
  private:
   float sr_ = 44100.f;
-  Biquad mem_[2], air_[2], pre_, tone_[2], drive_[2], pres_[2];
+  Biquad mem_[2], air_[2], pre_, tone_[2], pres_[2];
   SpaceReverb rev_;
-  float envF_ = 0.f, envS_ = 0.f, driveG_ = 1.f, driveC_ = 1.f;
-  float punchAmt_ = 0.5f, spaceAmt_ = 0.3f, widthAmt_ = 1.f;
+  float spaceAmt_ = 0.3f, widthAmt_ = 1.f;
   float cPos_ = -1.f, cDist_ = -1.f, cLid_ = -1.f;
   float cBass_ = -1.f, cMid_ = -1.f, cTreb_ = -1.f, cPres_ = -1.f;
-  int cf_ = -1, chKey_ = -1;
+  int cf_ = -1;
 };
 
 // ---------------------------------------------------------------------------
-// Moteur.  16 parametres :
-//   0 HAMMER  durete de marteau      8 RELEASE longueur de queue
-//   1 TONE    brillance              9 VEL    sensibilite velocite
-//   2 RESONANCE couplage resonateurs 10 PEDAL  bruit de pedale
-//   3 LID     couvercle              11 DIST   distance du micro
-//   4 MIC POS position du micro      12 DRIVE  ampli
-//   5 SPACE   piece                  13 PUNCH  formateur de transitoire
-//   6 WIDTH   largeur stereo         14 AMP EQ basse/mid/aigu (macro)
-//   7 LEVEL   niveau                 15 MODEL  choix du modele (Kotlin l'ajoute en dernier)
-//   16 TOUCH   bruit de touche (doigt + mecanique, a l'appui, coupe au relachement)
+// Moteur.  17 parametres (contrat de l'interface ; l'ordre est fige) :
+//   0 HAMMER   durete de marteau      9 VEL      courbe de velocite (monotone)
+//   1 TONE     brillance              10 DAMPER  bruit d'etouffoir (au relachement)
+//   2 RESONANCE couplage resonateurs  11 DIST    distance du micro
+//   3 LID      couvercle              12 KEY     bruit de touche (a l'appui)
+//   4 MIC POS  position du micro      13 (libre)  ex-PUNCH, retire
+//   5 SPACE    piece                  14 EQ      basse/mid/aigu (macro)
+//   6 WIDTH    largeur stereo         15 MODEL   choix du modele (Kotlin, en dernier)
+//   7 LEVEL    niveau                 16 HAMMER N bruit de marteau (la frappe)
+//   8 RELEASE  longueur de queue
+//
+// DRIVE (12) et PUNCH (13) sont RETIRES : deux reglages qu'aucun piano acoustique
+// n'a, et dont la saturation en serie ecrasait un pack deja a sa crete (« Amp
+// detruit le son »).  L'index 12 est recycle en bruit de touche, l'index 13 reste
+// libre (les presets enregistres le portent, le moteur l'ignore).  Le bruit de
+// marteau reprend l'index 16 : c'est le meme contrat a 17 que l'ancien, donc aucun
+// preset enregistre n'est tronque.
 // ---------------------------------------------------------------------------
 class PianoEngine : public SourceFx {
  public:
@@ -777,9 +962,6 @@ class PianoEngine : public SourceFx {
     if (note < 0 || note > 127) return;
     if (vel <= 0) { noteOff(note); return; }
     if (!reader_.loaded()) return;
-    const PianoSampleReader::Region* g = reader_.pick(note, vel);
-    auto pcm = reader_.decoded(g);
-    if (!pcm || pcm->empty()) return;
     int slot = -1;
     for (int i = 0; i < kVoices; ++i)
       if (!voices_[i].active()) { slot = i; break; }
@@ -798,31 +980,76 @@ class PianoEngine : public SourceFx {
       }
       slot = (oldestFree >= 0) ? oldestFree : oldest;
     }
-    // Courbe de velocite : sans elle, toutes les couches sonnent au meme niveau
-    // et le choix de couche n'a plus de sens.  Le pack acoustique livre ne porte
-    // que 2,2 dB d'ecart entre sa couche faible et sa couche forte (mesure) : le
-    // marteau, la touche et les resonateurs suivent deja la velocite, mais la
-    // SONIE, elle, ne bougeait presque pas, et c'est ce qui se joue « ecrase ».
-    // On restaure donc la dynamique perdue, a partir de l'ecart MESURE au
-    // chargement du pack, et seulement quand le pack en manque : un pack qui a
-    // deja sa dynamique (electrique, 19 dB) n'est pas retouche.
-    const float targetDb = 19.f;
-    const float deficit = std::max(0.f, (targetDb - reader_.layerSpreadDb()) / targetDb);
-    const float vShape = std::pow(static_cast<float>(vel) / 127.f, 1.f - p(9) * 0.7f);
-    const float v = vShape * (1.f - deficit) + vShape * vShape * deficit;
+    // Courbe de velocite MONOTONE.  L'ancienne version melangeait la velocite brute
+    // avec son carre selon un « deficit » mesure sur le pack ; le resultat n'etait
+    // pas une fonction croissante, donc certaines touches repondaient a l'envers
+    // (c'est le « velocite bizarre, desordre total »).  Ici on n'utilise QUE des
+    // exposants : v = (vel/127)^g.  g = 1 (lin), 0,6 (doux, plus de niveau a faible
+    // velocite), 1,6 (dur, il faut frapper).  Toujours strictement croissant.
+    const float lin = static_cast<float>(vel) / 127.f;
+    const float gamma = std::pow(2.f, (0.5f - p(9)) * 1.36f);   // 0 -> 1.6, 0.5 -> 1, 1 -> 0.6
+    const float v = std::pow(lin, gamma);
     // MODEL est enfin lu : index 8 = Electric, dont la corde devient une tine.
     const float tine = (std::lround(p(15) * 8.f) >= 8.f) ? 1.f : 0.f;
-    voices_[slot].start(pcm, static_cast<uint32_t>(pcm->size() / 2),
-                        g->root, g->tuneCents, note, v, sr_,
-                        static_cast<float>(reader_.rate()),
-                        loopsOn_ ? g->loopStart : 0u,
-                        loopsOn_ ? g->loopEnd : 0u,
-                        p(4), p(5), tine, p(0), p(16));
+    // Deux couches lues ENSEMBLE et fondues.  La couche porte le TIMBRE (marteau
+    // plus dur, tine plus mordant) et change d'un coup ; sans recouvrement le
+    // niveau sautait a la frontiere (mesure jusqu'a 4 dB sur un pack electrique,
+    // l'utilisateur decrivait « ca saute » dans le haut de la velocite).  On lit
+    // donc la couche de la velocite et celle AU-DESSUS, avec un fondu a puissance
+    // constante : le timbre glisse au lieu de basculer.
+    const int nLayers = reader_.layerCount() > 0 ? reader_.layerCount() : 1;
+    const float vlayer = v * static_cast<float>(nLayers);
+    int lo = static_cast<int>(vlayer);
+    float blend = vlayer - static_cast<float>(lo);
+    if (lo >= nLayers - 1) { lo = nLayers - 1; blend = 0.f; }
+    if (lo < 0) { lo = 0; blend = 0.f; }
+    auto mkSrc = [&](const PianoSampleReader::Region* rg) {
+      PianoVoice::Src s;
+      if (!rg) return s;
+      auto p = reader_.decoded(rg);
+      if (!p || p->empty()) return s;
+      const float rootF = 440.f * std::pow(2.f, (rg->root - 69) / 12.f)
+                          * std::pow(2.f, rg->tuneCents / 1200.f);
+      const float f = 440.f * std::pow(2.f, (note - 69) / 12.f);
+      s.pcm = p; s.frames = static_cast<uint32_t>(p->size() / 2);
+      s.ratio = (rootF > 1e-6f) ? f / rootF * (static_cast<float>(reader_.rate()) / sr_) : 1.f;
+      s.loopStart = loopsOn_ ? rg->loopStart : 0u;
+      s.loopEnd = loopsOn_ ? rg->loopEnd : 0u;
+      if (s.loopEnd <= s.loopStart || s.loopEnd > s.frames) s.loopStart = s.loopEnd = 0;
+      s.gain = reader_.layerGain(rg->root, rg->layer);
+      return s;
+    };
+    const auto srcA = mkSrc(reader_.pickLayer(note, lo));
+    const auto srcB = mkSrc(reader_.pickLayer(note, lo + 1));
+    if (!srcA.pcm && !srcB.pcm) return;
+    // Si la couche du dessus manque, on ne fond rien : srcA seul porte la note.
+    if (!srcB.pcm) blend = 0.f;
+    if (!srcA.pcm) { /* seule B existe : elle porte tout */ blend = 1.f; }
+    const float gain = reader_.normGain();
+    voices_[slot].start(srcA, srcB, blend, note, v, sr_,
+                        p(4), p(5), tine,
+                        p(0),      // HAMMER : un marteau dur claque plus fort
+                        p(16),     // HAMMER N : bruit de la frappe (depend de la durete)
+                        p(12),     // KEY : bruit de touche (ex-DRIVE, index recycle)
+                        p(10),     // DAMPER : bruit d'etouffoir (au relachement)
+                        gain);
+    voices_[slot].setSustained(sustained_);
     voices_[slot].setBend(bend_, bendSemis_);
   }
 
   void noteOff(int note) override {
-    for (auto& v : voices_) if (v.active() && v.note() == note) v.release();
+    // La touche remonte : si la pedale est enfoncee la corde continue, sinon
+    // l'etouffoir tombe.  Le moteur appelait `release()` directement, donc la
+    // pedale ne tenait jamais la note.
+    for (auto& v : voices_) if (v.active() && v.note() == note) v.liftKey();
+  }
+
+  /** Pedale sustain.  L'etat est retenu pour les notes suivantes (une note jouee
+   *  pedale enfoncee n'est pas coupee a son relachement) et applique aux voix en
+   *  cours : remonter la pedale eteint celles dont la touche est deja levee. */
+  void sustain(bool on) override {
+    sustained_ = on;
+    for (auto& v : voices_) v.setSustained(on);
   }
 
   void allNotesOff() override { for (auto& v : voices_) v.kill(); }
@@ -859,6 +1086,29 @@ class PianoEngine : public SourceFx {
   size_t bankRegions() const { return reader_.regionCount(); }
   size_t preloadedRegions() const { return reader_.preloadedCount(); }
 
+  /** Diagnostic : region choisie et gain de correction, pour tracer une inversion
+   *  de velocite (`tools/aetherfx/piano_pick_trace.cpp`).  Lecture seule. */
+  const PianoSampleReader::Region* pickRegion(int note, int vel) const { return reader_.pick(note, vel); }
+  float layerGain(int root, int layer) const { return reader_.layerGain(root, layer); }
+  double regionRms(int root, int layer) const { return reader_.layerRmsAt(root, layer); }
+  /** RMS de la region choisie sur les `sec` premieres secondes, gain applique.
+   *  Sert a accorder la fenetre de normalisation sur celle qu'on entend. */
+  double pickedRms(int note, int vel, double sec) {
+    const PianoSampleReader::Region* g = reader_.pick(note, vel);
+    if (!g) return 0.0;
+    auto pcm = reader_.decoded(g);
+    if (!pcm || pcm->empty()) return 0.0;
+    const size_t win = std::min<size_t>(pcm->size() / 2, static_cast<size_t>(sec * reader_.rate()));
+    double s = 0;
+    for (size_t i = 0; i < win; ++i) {
+      const double l = (*pcm)[2 * i] / 32768.0, r = (*pcm)[2 * i + 1] / 32768.0;
+      s += l * l + r * r;
+    }
+    return std::sqrt(s / std::max<size_t>(1, win * 2)) * reader_.layerGain(g->root, g->layer);
+  }
+  float packPeak() const { return reader_.peak(); }
+  float packNormGain() const { return reader_.normGain(); }
+
   int activeVoices() const {
     int n = 0;
     for (const auto& v : voices_) if (v.active()) ++n;
@@ -883,10 +1133,10 @@ class PianoEngine : public SourceFx {
     for (auto& v : voices_) if (v.active()) { any = true; break; }
 
     // Ordre des parametres (contrat de l'interface) : 0 HAMMER, 1 TONE,
-    // 2 RESONANCE, 3 LID, 4 MIC, 5 SPACE, 6 WIDTH, 7 LEVEL, 8 RELEASE,
-    // 9 VELOCITY, 10 PEDAL NOISE, 11 MODEL.
-    // MIC et PEDAL NOISE ne sont pas encore traites ; MODEL est reserve au choix
-    // discret du modele, que le moteur ignore pour l'instant.
+    // 2 RESONANCE, 3 LID, 4 MIC POS, 5 SPACE, 6 WIDTH, 7 LEVEL, 8 RELEASE,
+    // 9 VELOCITY, 10 DAMPER, 11 MIC DIST, 12 KEY, 14 EQ, 15 MODEL, 16 HAMMER N.
+    // DAMPER, KEY, HAMMER N et MIC DIST sont lus dans noteOn (les bruits naissent
+    // avec la note) ; MODEL choisit la banque ; EQ et l'etage studio sont ici.
     // HAMMER et LID agissent tous deux sur le haut du spectre : un marteau plus dur
     // et un couvercle plus ouvert eclairent le timbre, ce sont bien deux reglages.
     const float body = p(2), width = p(6);
@@ -910,9 +1160,10 @@ class PianoEngine : public SourceFx {
       if (!v.active()) continue;
       v.render(tmpL_.data(), tmpR_.data(), n, sr_, body, bright, width, rel, hold, tine > 0.5f);
     }
-    // Etage studio : micro -> ampli -> tone -> compresseur -> espace.  Il tourne
-    // meme sans voix active, sinon la queue de reverb serait coupee net.
-    studio_.set(p(4), p(11), p(3), p(12), p(14), p(14), p(14), p(14), p(13), p(5), p(6));
+    // Etage studio : micro -> egaliseur -> largeur -> espace.  Il tourne meme sans
+    // voix active, sinon la queue de reverb serait coupee net.  Plus d'ampli ni de
+    // punch : les deux index sont retires du contrat (voir l'en-tete du moteur).
+    studio_.set(p(4), p(11), p(3), p(14), p(14), p(14), p(14), p(5), p(6));
     if (any) {
       for (int i = 0; i < n; ++i) { io[2 * i] = tmpL_[i]; io[2 * i + 1] = tmpR_[i]; }
     } else {
@@ -950,6 +1201,7 @@ class PianoEngine : public SourceFx {
 
  private:
   bool loopsOn_ = true;
+  bool sustained_ = false;   // etat de la pedale, retenu pour les notes suivantes
   PianoSampleReader reader_;
   float bend_ = 0.f;
   PianoVoice voices_[kVoices];

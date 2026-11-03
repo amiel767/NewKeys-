@@ -12,11 +12,9 @@ import kotlin.math.roundToInt
 /** The Æther Instruments. [fxId] = id of the native Source in FxRegistry (6 organ, 14 synth, 15 leads, 16 sax). */
 enum class AeInstrument(val fxId: Int, val title: String, val paramCount: Int) {
     ORGAN(6, "Æther Organ", 31), SYNTH(14, "Æther Synth", 33), LEADS(15, "Æther Leads", 33), SAX(16, "Æther Sax", 23),
-    // 17 et non 12 : le moteur en attend 17 (fx_piano.h, kParams).  Avec 12,
-    // `padded()` tronquait les indices 12..15 — donc AMP DRIVE, PUNCH et surtout
-    // MODEL.  Le mode « tine » n'atteignait jamais le moteur, et l'electrique
-    // jouait la banque acoustique : c'est pourquoi il ne sonnait pas electrique.
-    // 16 = TOUCH, le bruit de touche, ajoute apres MODEL.
+    // 17 = contrat du moteur (fx_piano.h, kParams).  L'index 12 (ex-DRIVE) est
+    // recycle en bruit de touche, 13 (ex-PUNCH) est libre, 16 est le bruit de
+    // marteau.  AMP et PUNCH sont retires du moteur : voir l'en-tete de fx_piano.h.
     PIANO(17, "Æther Piano", 17);
     /** Parameters that switch instantly on a preset change (the others glide). */
     val discrete: IntArray get() = when (this) {
@@ -57,9 +55,13 @@ object AeFmt {
         else -> pct(v)
     }
     private fun piano(i: Int, v: Float): String = when (i) {
-        4 -> "%.2fs".format(0.25f + v * 5f)          // RELEASE : la queue modelisee
-        8 -> "${((v - 0.5f) * 20).toInt()}ct"        // TUNE
-        11 -> "${(-40 + v * 46).toInt()}dB"          // LEVEL
+        7 -> "${(-40 + v * 46).toInt()}dB"                       // LEVEL
+        8 -> "${(80 + v * 550).toInt()}ms"                       // RELEASE
+        9 -> if (v < 0.4f) "Hard" else if (v < 0.6f) "Linear" else "Soft"
+        3 -> if (v < 0.33f) "Closed" else if (v < 0.66f) "Half" else "Open"
+        4 -> if (v < 0.34f) "Under" else if (v < 0.67f) "Front" else "Over"
+        11 -> if (v < 0.34f) "Near" else if (v < 0.67f) "Mid" else "Far"
+        14 -> "${((v - 0.5f) * 18f).toInt()}dB"                  // EQ
         else -> pct(v)
     }
     private fun classic(inst: AeInstrument, i: Int, v: Float): String = if (inst == AeInstrument.ORGAN) {
@@ -158,8 +160,12 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
     val ccLeads = mutableMapOf(74 to 18, 71 to 19, 73 to 12, 72 to 16, 91 to 25, 1 to 30, 7 to 31, 5 to 29)
     /** Sax: CC2 = breath controller, CC11 = expression (level), CC1 = vibrato depth. */
     val ccSax = mutableMapOf(2 to 4, 11 to 20, 7 to 20, 1 to 12, 74 to 19, 91 to 16)
-    // Piano : cutoff et volume sur le CC attendu, sustain sur 64, reverb sur 91.
-    val ccPiano = mutableMapOf(74 to 1, 1 to 1, 7 to 11, 91 to 6, 5 to 4, 64 to 3)
+    // Piano : les CC tombent sur le VRAI parametre du contrat.
+    //   74 brillance -> TONE (1)      1 roue de modulation -> TONE (1)
+    //   7  volume    -> LEVEL (7)     91 reverb -> SPACE (5)
+    //   5  portamento-> MIC POS (4)   72 release -> RELEASE (8)
+    // Le sustain (64) est traite avant cette table, dans `onMidiCc`.
+    val ccPiano = mutableMapOf(74 to 1, 1 to 1, 7 to 7, 91 to 5, 5 to 4, 72 to 8)
 
     fun factoryPresets(i: AeInstrument): List<AePreset> = when (i) { AeInstrument.ORGAN -> AePresets.organ; AeInstrument.SYNTH -> AePresets.synth; AeInstrument.LEADS -> AePresets.leads; AeInstrument.SAX -> AePresets.sax; AeInstrument.PIANO -> AePresets.piano }
 

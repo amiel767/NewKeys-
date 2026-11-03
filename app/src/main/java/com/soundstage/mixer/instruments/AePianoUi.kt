@@ -47,14 +47,15 @@ import kotlin.random.Random
  *
  * Ordre des paramètres (17, contrat de `fx_piano.h::kParams`) :
  * 0 HAMMER, 1 TONE, 2 RESONANCE, 3 LID, 4 MIC POS, 5 SPACE, 6 WIDTH, 7 LEVEL,
- * 8 RELEASE, 9 VEL, 10 PEDAL, 11 MIC DIST, 12 DRIVE, 13 PUNCH, 14 AMP EQ,
+ * 8 RELEASE, 9 VEL, 10 DAMPER, 11 MIC DIST, 12 KEY, 13 (libre), 14 EQ,
  * 15 MODEL (discret : le moteur l'arrondit, ajouté par [AePianoModel.values]),
- * 16 TOUCH.
+ * 16 HAMMER N.
  *
- * MIC DIST (11), DRIVE (12) et PUNCH (13) sont les index de l'appel moteur
- * `studio_.set(p(4), p(11), p(3), p(12), p(14), p(14), p(14), p(14), p(13), p(5), p(6))` :
- * les nommer 12/13/14 decalait chaque etiquette d'un cran, donc « Amp drive »
- * pilotait le punch et l'ampli semblait mort.
+ * AMP (12) et PUNCH (13) ont été RETIRÉS.  Aucun piano acoustique n'a d'ampli, et
+ * la saturation `tanh` qu'ils plaçaient en série écrasait un pack déjà à sa crête :
+ * c'est le « Amp détruit le son » signalé.  L'index 12 est recyclé en bruit de
+ * touche, 13 reste libre (les presets enregistrés le portent, le moteur l'ignore),
+ * 16 devient le bruit de marteau.
  *
  * LEVEL (7) est égalisé sur la sonie K-weighted (ITU-R BS.1770) par
  * `tools/aetherfx/mastering.cpp` : les modèles sortent au même niveau perçu,
@@ -74,10 +75,26 @@ class AePianoModel(
     d: FloatArray,
     idx: Int,
 ) {
-    // Index 15 = MODEL, 16 = TOUCH.  Le bruit de touche suit la durete du marteau
-    // (d[0] = HAMMER) : un piano a marteau dur claque, un feutre effleure.  Le
-    // deriver evite neuf constantes a maintenir et garde la table lisible.
-    val values: FloatArray = d + (idx / 8f) + (0.30f + 0.55f * d[0])
+    /**
+     * 17 valeurs, une par paramètre du contrat `fx_piano.h`.
+     *
+     * `d` (15 valeurs) porte les réglages de timbre 0..14.  Les trois bruits de
+     * mécanique et l'EQ sont DÉRIVÉS de la dureté du marteau `d[0]` plutôt que
+     * répétés douze fois : un piano à marteau dur claque et cliquette, un feutre
+     * effleure.  Cela évite douze constantes à maintenir et garde la table lisible.
+     *
+     * Les emplacements 10 (ex-PEDAL), 12 (ex-DRIVE) et 13 (ex-PUNCH) de `d` sont
+     * désormais ignorés : DRIVE et PUNCH sont retirés du moteur, et DAMPER/KEY sont
+     * recalculés ci-dessous.  Les y laisser serait du code mort déguisé.
+     */
+    val values: FloatArray = FloatArray(17).also { v ->
+        for (i in 0..14) v[i] = d[i]
+        v[10] = 0.20f + 0.30f * d[0]     // DAMPER : feutre discret, suit la dureté
+        v[12] = 0.15f + 0.40f * d[0]     // KEY : contact de touche, jamais envahissant
+        v[13] = 0f                        // libre (ex-PUNCH)
+        v[15] = idx / 8f                  // MODEL : >= 1 dès l'index 8 = banque électrique
+        v[16] = 0.25f + 0.60f * d[0]     // HAMMER N : bruit de la frappe
+    }
 }
 
 private fun col(h: Long) = Color(0xFF000000 or h)
@@ -154,39 +171,47 @@ object AePianoAssets {
 private class K(val label: String, val idx: Int, val fmt: (Float) -> String)
 private fun pc(v: Float) = "${(v * 100).toInt()}%"
 private fun db(v: Float) = "${(-40 + v * 46).toInt()}dB"
+private fun eqdb(v: Float) = "${((v - .5f) * 18f).toInt().let { if (it > 0) "+$it" else "$it" }}dB"
+private fun lvl(v: Float, vararg names: String) = names[(v * names.size).toInt().coerceIn(0, names.size - 1)]
 
+/**
+ * Potards de voix — 8, en deux rangées de quatre.
+ *
+ * Chacun pilote un paramètre RÉEL et distinct du contrat : plus de doublon
+ * « Mic »/« Mic pos » (deux étiquettes sur l'index 4), plus d'« Amp drive » sur un
+ * index qui n'était pas l'ampli.  Ordre = ordre du contrat, donc l'écran se lit de
+ * gauche à droite comme la chaîne audio.
+ */
 private val PK = listOf(
     K("Hardness", 0, ::pc),
     K("Tone", 1) { "${((it - .5f) * 16).toInt()}dB" },
     K("Resonance", 2, ::pc),
-    K("Lid", 3) { if (it < .33f) "Closed" else if (it < .66f) "Half" else "Open" },
-    // Pas de « Mic » ici : l'etage studio porte deja « Mic pos » sur le meme index 4.
-    // Deux etiquettes pour un parametre, c'est le doublon signale par l'utilisateur.
+    K("Lid", 3) { lvl(it, "Closed", "Half", "Open") },
+    K("Mic pos", 4) { lvl(it, "Under", "Front", "Over") },
     K("Space", 5, ::pc),
     K("Width", 6, ::pc),
     K("Level", 7, ::db),
 )
+/** Curseurs de jeu — 3. */
 private val PSL = listOf(
-    K("Release", 8) { "${(50 + it * 450).toInt()}ms" },
-    K("Velocity", 9) { if (it < .4f) "Soft" else if (it < .6f) "Linear" else "Hard" },
-    // Remplace « Pedal noise » (index 10), qui n'etait lu par personne : le moteur
-    // ne traite pas ce parametre. Un controle vivant vaut mieux qu'un decor.
-    K("Touch", 16, ::pc),
+    K("Release", 8) { "${(80 + it * 550).toInt()}ms" },
+    // gamma = 2^((0.5 - v) * 1.36) : v BAS => gamma > 1 => il faut frapper (Hard).
+    // L'etiquette suit le comportement, pas la valeur brute.
+    K("Velocity", 9) { lvl(it, "Hard", "Linear", "Soft") },
+    K("Damper", 10, ::pc),
 )
 /**
- * Etage studio : le micro, l'ampli et le punch.  Ce sont eux qui enlevent le « sec ».
+ * Mécanique et micro — 4 potards, une rangée.
  *
- * Les index suivent l'ORDRE DE L'APPEL MOTEUR
- * `studio_.set(p(4), p(11), p(3), p(12), p(14), p(14), p(14), p(14), p(13), p(5), p(6))` :
- * dist = 11, drive = 12, punch = 13.  L'ancienne table decalait tout d'un cran
- * (12/13/14), donc « Amp drive » bougeait en realite le punch et « Punch » l'egaliseur :
- * l'ampli semblait sans effet, d'ou le reglage signale comme inutile.
+ * C'est ce que l'utilisateur réclamait (« réglages essentiels manquants ») : les
+ * trois bruits d'un vrai piano (marteau, touche, étouffoir) sont maintenant des
+ * contrôles, au lieu de constantes cachées dans le moteur.
  */
 private val PST = listOf(
-    K("Mic pos", 4) { if (it < .34f) "Under" else if (it < .67f) "Front" else "Over" },
-    K("Mic dist", 11) { if (it < .34f) "Near" else if (it < .67f) "Mid" else "Far" },
-    K("Amp drive", 12) { if (it < .2f) "Clean" else if (it < .55f) "Warm" else if (it < .85f) "Crunch" else "Hot" },
-    K("Punch", 13) { when { it < .35f -> "Soft" ; it < .6f -> "Neutral" ; it < .85f -> "Punch" ; else -> "Hard" } },
+    K("Mic dist", 11) { lvl(it, "Near", "Mid", "Far") },
+    K("Key noise", 12, ::pc),
+    K("Hammer noise", 16, ::pc),
+    K("EQ", 14, ::eqdb),
 )
 
 /** Aperçu de carte : la scène Felt, recadrée au centre. */

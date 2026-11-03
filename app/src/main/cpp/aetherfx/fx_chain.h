@@ -249,6 +249,7 @@ class TrackStrip {
   void noteOff(int n) { if (SourceFx* s = src()) s->noteOff(n); }
   void allNotesOff() { if (SourceFx* s = src()) s->allNotesOff(); }
   void pitchBend(float b) { if (SourceFx* s = src()) s->pitchBend(b); }
+  void sustain(bool on) { if (SourceFx* s = src()) s->sustain(on); }
   /** Track Settings bend range, forwarded to the source. No-op when the strip has no source. */
   void setPitchBendRange(int semis) { if (SourceFx* s = src()) s->setPitchBendRange(semis); }
   void process(float* io, int frames) { instrument.process(io, frames); strip.process(io, frames); }

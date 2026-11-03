@@ -617,6 +617,13 @@ bool AudioEngine::routeEventToSource(int channel, int type, int note, int veloci
             // expects -1..1.
             mFx.pitchBend(channel, (static_cast<float>(param1) - 8192.0f) / 8192.0f);
             return true;
+        case EngineMidiEvent::CC:
+            // CC64 (sustain) must reach the source too. The engine otherwise forwards
+            // CC to FluidSynth only, which is silent on a source strip, so the pedal
+            // did nothing on an Æther instrument.
+            if (param1 != 64 || !mFx.soundfontPaused(channel)) return false;
+            mFx.sustain(channel, param2 >= 64);
+            return true;
         default:
             return false;
     }
