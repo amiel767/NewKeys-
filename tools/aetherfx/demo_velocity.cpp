@@ -89,7 +89,7 @@ int main(int argc, char** argv) {
     // Banque par modele, comme AeBanks.fileFor : acoustiques sur piano.bin,
     // 8..11 sur leur ep_*.bin.
     const char* ep[12] = {nullptr};
-    ep[8] = "pianopack/electric.bin";
+    ep[8] = "pianopack/ep_tine.bin";
     ep[9] = "pianopack/ep_ballad.bin";
     ep[10] = "pianopack/ep_dx.bin";
     ep[11] = "pianopack/ep_piano.bin";

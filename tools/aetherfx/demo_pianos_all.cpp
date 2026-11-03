@@ -96,7 +96,7 @@ int main(int argc, char** argv) {
     std::vector<uint8_t> acoustic = readFile(assets + "/pianopack/piano.bin");
     if (acoustic.empty()) { fprintf(stderr, "pianopack/piano.bin illisible\n"); return 1; }
     const char* ep[12] = {nullptr};
-    ep[8] = "pianopack/electric.bin";
+    ep[8] = "pianopack/ep_tine.bin";
     ep[9] = "pianopack/ep_ballad.bin";
     ep[10] = "pianopack/ep_dx.bin";
     ep[11] = "pianopack/ep_piano.bin";
