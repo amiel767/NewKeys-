@@ -138,10 +138,13 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
             //
             // The piano does not even need that: its model list is always on screen (left
             // column) and the model name is drawn large in the centre, so the header chip only
-            // repeated what is already visible. It stays for the four instruments that have no
+            // repeated what is already visible. It stays for the three instruments that have no
             // other way to reach their presets.
+            //
+            // The sax does not need it either: the user asked for the preset box to go, so the
+            // header keeps only the prev/next arrows and the panel stays clean.
             val ns = RoundedCornerShape(10.su())
-            if (s.instrument != AeInstrument.PIANO) {
+            if (s.instrument != AeInstrument.PIANO && s.instrument != AeInstrument.SAX) {
                 Box(Modifier.at(680, 7, 240, 32).clip(ns).background(winTh.glass).border(1.su(), winTh.edge, ns)
                     .clickable(remember { MutableInteractionSource() }, null) { list = !list },
                     contentAlignment = Alignment.Center) {

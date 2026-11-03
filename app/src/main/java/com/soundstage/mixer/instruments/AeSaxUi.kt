@@ -106,11 +106,10 @@ fun BoxScope.AeSaxUi(c: AeCtl, a: AeAnim) {
     AeSaxHero(c, a, 340, 40, 320, 310)
     AeCardBox(22, 54, 300, 286, "", GOLD, border)
     listOf("INSTRUMENT" to 64, "FINISH" to 110, "MOUTHPIECE" to 156, "REED" to 202).forEach { (t, yy) -> AeT(t, 9, GOLD, Modifier.at(38, yy, 200, 12), AeFonts.plate, FontWeight.ExtraBold, 0.2f) }
-    // Baryton retire : le pack ne fournit pas de banque baryton (demande utilisateur).
-    // n=4 est CONSERVE : le moteur mappe `lround(p(0)*3)` (0 soprano, 1 alto, 2 tenor,
-    // 3 bari). Avec n=3 les chips enverraient 0 / 0.5 / 1 -> 0 / 2 / 3, donc
-    // « Alto » deviendrait Tenor et « Tenor » deviendrait Bari.
-    arrayOf("SOPRANO", "ALTO", "TENOR").forEachIndexed { i, t -> AeChip(c, 0, i, 4, t, 36 + i * 90, 80, 86) }
+    // Les quatre types restent : le moteur mappe `lround(p(0)*3)` (0 soprano, 1 alto,
+    // 2 tenor, 3 bari), donc un chip par type. Seul l'alto change de source : Bulldog
+    // (une seule anche, profil alto) le remplacera, les trois autres gardent MTG.
+    arrayOf("SOPRANO", "ALTO", "TENOR", "BARI").forEachIndexed { i, t -> AeChip(c, 0, i, 4, t, 36 + i * 68, 80, 64) }
     arrayOf("GOLD", "BLACK", "SILVER", "COPPER").forEachIndexed { i, t -> AeChip(c, 1, i, 4, t, 36 + i * 68, 126, 64) }
     arrayOf("JAZZ", "CLASSIC", "RUBBER").forEachIndexed { i, t -> AeChip(c, 2, i, 3, t, 36 + i * 90, 172, 86) }
     arrayOf("SOFT", "MEDIUM", "HARD").forEachIndexed { i, t -> AeChip(c, 3, i, 3, t, 36 + i * 90, 218, 86) }

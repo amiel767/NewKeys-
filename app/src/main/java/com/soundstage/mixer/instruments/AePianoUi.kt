@@ -135,12 +135,11 @@ object AePianoAssets {
     private val cache = LruCache<String, AePianoPlate>(4)
 
     /**
-     * Modeles EP : une seule image, celle de l'electrique.
+     * Repli des modeles electriques sur l'image de Tine Keys.
      *
-     * Les 3 modeles ajoutes apres coup (Ballad, DX Bell, E.Piano) n'ont pas de photo
-     * propre.  Sans ce repli, `getIdentifier` renvoie 0 et la scene retombait sur son
-     * dessin vectoriel : la fenetre changeait d'allure entre Tine Keys et ses voisins,
-     * pour la meme famille d'instrument.
+     * Depuis que le pack de planches fournit une photo par modele, ce repli ne se
+     * declenche plus ; il reste pour qu'un modele ajoute plus tard sans photo propre
+     * retombe sur l'image de l'electrique au lieu du dessin vectoriel.
      */
     private val epIds = setOf("ballad", "dx", "epiano")
 
