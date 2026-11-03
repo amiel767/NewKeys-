@@ -1125,3 +1125,41 @@ rien. Test : `AeManagerTest.switchingBetweenGrandAndUprightReloadsTheBank`.
 
 Verifie : `compileDebugKotlin` OK, `AeManagerTest` 30/30, `AetherSnapshotJsonTest`
 5/5, `assembleDebug` BUILD SUCCESSFUL.
+
+## Session 2026-11-03 — fondu entre couches : fin des sauts de velocite
+
+Reprise de la conversation `950ca98a` (erreur 401 = jeton proxy LLM expire, voir
+plus bas). Les 5 plaintes Æther Piano sont traitees ; le dernier point ouvert
+etait la marche de niveau au **medium** (frontiere de couche 63->64).
+
+### Cause : la selection indexait le NUMERO de couche, pas la couche PRESENTE
+`electric.bin` (et les EP) ne portent que les indices de couche **0 et 3**.
+`pick()` calculait `velocity * layerCount_ / 128` avec `layerCount_ = max(layer)+1 = 4`,
+donc il adressait des couches vides (1, 2) et le fondu tombait a cote : la mesure
+montrait des sauts de **-58 / -38 dB** (couche absente = silence) et un `hi_max`
+de 149 dB. Correctif : `layers_` = liste triee des couches **reellement presentes**,
+et `pick`/`pickLayer` indexent CETTE liste. `layerCount_ = layers_.size()`.
+
+### Le fondu lui-meme
+`PianoVoice::start` prend maintenant **deux** `Src` (`a` = couche de la velocite,
+`b` = couche au-dessus) + `blend`. `render` lit les deux et melange a **puissance
+constante** (`cos/sin(blend*pi/2)`), un seul ratio pour les deux. La couche porte
+le TIMBRE (marteau/tine), qui glisse au lieu de basculer. Chaque `Src` a son propre
+`gain` (`layerGain`), applique dans `readOne`. Mesure apres correctif : plus aucun
+saut > 1 dB, ni au medium ni dans 96..127 (avant : 4 dB).
+
+**Piege** : un pack sparse en couches (0 et 3 seulement) est invisible tant qu'on
+teste `piano.bin` (couches 0..7 contigues). Tester sur `electric.bin` ET les EP.
+
+### 401 « token_not_found_in_db » = jeton proxy LLM, pas le depot
+L'erreur (`sk-...`, `LiteLLM_VerificationTokenTable`) vient du **proxy LLM de la
+plateforme**, pas du code : le jeton du sandbox est tourne hors de la table de
+verification. Le sandbox le rafraichit via `OH_LLM_API_KEY_REFRESH_URL`
+(`https://llm-proxy.app.all-hands.dev`). Aucun remede cote depot ; cela arrive sur
+les sessions tres longues. Garder les sessions courtes et commiter tot (mode
+economique) est la seule mitigation.
+
+### Mode economique (rappel)
+Sortie filtree (`tail -3`), une commande par etape, scripts par l'editeur (jamais
+en heredoc), mesures sur disque consultees par agregat. Les captures Roborazzi
+s'ecrivent dans `app/src/test/screenshots/`, pas `/tmp`.
