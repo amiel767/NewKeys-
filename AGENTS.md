@@ -1163,3 +1163,49 @@ economique) est la seule mitigation.
 Sortie filtree (`tail -3`), une commande par etape, scripts par l'editeur (jamais
 en heredoc), mesures sur disque consultees par agregat. Les captures Roborazzi
 s'ecrivent dans `app/src/test/screenshots/`, pas `/tmp`.
+
+## Session 2026-11-03 — « rien n'a changé » : c'était le MOTEUR, pas l'INTERFACE
+
+**Cause racine de l'escalade utilisateur.** Les commits precedents (`4e4abeb`,
+`e09e8b0`, `22d0deb`) etaient bien dans `origin/main` (verifie par
+`git rev-list --left-right --count`) mais ils ne touchaient que `fx_piano.h` et
+les bancs : **le moteur audio**. Le brief d'interface (clavier virtuel, Sex knob,
+Baryton, case Presets, reglages EP) n'avait **jamais** ete applique. D'ou « rien
+n'a change dans l'interface » : c'etait exact, l'appareil testait la meme UI.
+
+**Regle** : « le correctif compile et est pousse » ne prouve pas que l'UI a bouge.
+Verifier le FICHIER qui rend la fenetre (`AePianoUi.kt`, `AeSaxUi.kt`,
+`AeWindow.kt`), pas seulement le commit. Une capture Roborazzi + OCR le confirme.
+
+### Interface refaite (commit `f7bdf9c`)
+
+| Demande | Etat | Ou |
+|---|---|---|
+| Retirer le Virtual Keyboard | fait | `AePianoUi.kt`, `AeSaxUi.kt` (plus d'appel) |
+| Renommer le « Sex knob » | fait | macro 22 = « Character » (`AeSaxUi.kt`) |
+| Retirer Baryton | fait | chips 3/4 + 2 presets supprimes (`AePresets.kt`) |
+| Reglages EP dedies | fait | `EP_GROUPS` (TINE/BODY/PICKUP/ATTACK), choisi par `AeBanks.isElectricModel` |
+| Reglages ranges par familles | fait | `PIANO_GROUPS` TONE/MIC/PLAY/MECHANICS, `saxGroups` AIR/ARTICULATION/VIBRATO/ROOM |
+| Case Presets piano | deja fait | `AeWindow.kt:144` (`if (instrument != PIANO)`) |
+| Fall sax | deja fait | `fx_sax.h:76` (p(11) = release, plus de glissando) |
+
+**Piege** : `AeChip(c, idx, i, n, ...)` ecrit `i/(n-1)`. Le moteur sax mappe
+`lround(p(0)*3)` (0 soprano, 1 alto, 2 tenor, 3 bari) : retirer Baryton impose de
+**garder `n=4`** (0/0.33/0.67 -> 0/1/2), sinon `n=3` envoie 0/0.5/1 -> 0/2/3 et
+« Alto » devient Tenor.
+
+**Code mort** : `AeGlassKeyboard` (`AeLightControls.kt:222`) et `AeLightSlider`
+(160) ne sont plus appeles. `AeKeyboard` reste utilise par Organ/Leads/Synth.
+
+### 401 « token_not_found_in_db »
+
+C'est le proxy LiteLLM (jeton expire), **pas** le depot : aucun `sk-`/`ghu_` en
+dur (verifie). `tools/eco.py` sort net sur 401/403 desormais (avant : il
+reessayait, martelant le proxy). La veille se fait sur le dump local
+`tools/.conv_peek/<cid>.json` — **aucun reseau**.
+
+### Environnement (sandbox vierge, re-provisionne)
+
+`apt-get install openjdk-21-jdk-headless` (trixie n'a pas de 17) ; le SDK est
+deja a `/workspace/android-sdk` mais **le JDK n'y est pas** cette fois.
+`JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64`.
