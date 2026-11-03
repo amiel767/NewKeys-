@@ -13,6 +13,7 @@ Tous les chiffres ci-dessous sont **mesures**, pas estimes.
 |---|---|---|---|---|
 | **SplendidGrandPiano** (AKAI/Steinway) | **domaine public** | 62 notes x 5 couches, 73 Mo | `smpl` present mais fin = EOF | **principal** |
 | GregSullivan.E-Pianos | CC-BY 3.0 | Wurlitzer 2,3 Mo, CP80 10,5 Mo | vraies boucles, courtes | **secondaire** (Electric) |
+| **ED DX7 ROMANCE TINES** | source citee, pas de licence explicite | 37,9 Mo, 2 couches, 22 racines | presentes | **tine (Tine Keys, `ep_tine.bin`)** |
 | SalamanderGrandPiano (Yamaha C5) | CC-BY 3.0 | 16 couches, **714 Mo** | **aucun smpl** | rejete (trop lourd) |
 | jlearman.jRhodes3c (Rhodes) | CC BY-NC-SA | 17,8 Mo | boucle | **rejete — non commercial** |
 

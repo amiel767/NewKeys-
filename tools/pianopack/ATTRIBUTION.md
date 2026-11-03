@@ -36,6 +36,20 @@ lie par leurs licences respectives.
 L'echantillon est transforme (mono vers stereo, 22,05 kHz, troncature, boucle,
 ADPCM 4 bits) mais reste une oeuvre derivee : la licence s'applique au resultat.
 
+## ED DX7 ROMANCE TINES (piano electrique, `ep_tine.bin`)
+
+- **Auteur** : Ed Araujo (`ICOP = SAMPLED BY ED ARAUJO 2023`)
+- **Format** : SF2 37,9 Mo, 89 echantillons, 22 racines (tous les 7 demi-tons),
+  2 couches de velocite, paires stereo L/R, boucles presentes, construit avec Polyphone
+- **Licence** : aucune mention `ICOP` de licence explicite. Comme S90 Full Grand,
+  l'auteur l'a diffuse librement ; la source est citee par correction.
+- **Ce qui est repris** : les echantillons et leur structure (2 couches, paires
+  stereo).  Reconstruit par `build_dxrom.py` (44100 Hz, 30 regions, 3,16 Mo).
+- **Mesure** : centroide 881 Hz, soit **2,8x plus sombre** que les autres EP
+  (2173-2970 Hz).  C'est un tine feutre, pas un tine brillant — d'ou le remplacement
+  de l'ancien `ep_tine.bin` (SF2 « E.Piano », centroide 2497 Hz).
+- **Pitch** : verifie par produit harmonique, +-2,3 cents (identique a `piano.bin`).
+
 ## Banques examinees et rejetees
 
 | Banque | Raison |
