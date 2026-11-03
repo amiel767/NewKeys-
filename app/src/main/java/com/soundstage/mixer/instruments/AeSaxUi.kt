@@ -106,7 +106,11 @@ fun BoxScope.AeSaxUi(c: AeCtl, a: AeAnim) {
     AeSaxHero(c, a, 340, 40, 320, 310)
     AeCardBox(22, 54, 300, 286, "", GOLD, border)
     listOf("INSTRUMENT" to 64, "FINISH" to 110, "MOUTHPIECE" to 156, "REED" to 202).forEach { (t, yy) -> AeT(t, 9, GOLD, Modifier.at(38, yy, 200, 12), AeFonts.plate, FontWeight.ExtraBold, 0.2f) }
-    arrayOf("SOPRANO", "ALTO", "TENOR", "BARI").forEachIndexed { i, t -> AeChip(c, 0, i, 4, t, 36 + i * 68, 80, 64) }
+    // Baryton retire : le pack ne fournit pas de banque baryton (demande utilisateur).
+    // n=4 est CONSERVE : le moteur mappe `lround(p(0)*3)` (0 soprano, 1 alto, 2 tenor,
+    // 3 bari). Avec n=3 les chips enverraient 0 / 0.5 / 1 -> 0 / 2 / 3, donc
+    // « Alto » deviendrait Tenor et « Tenor » deviendrait Bari.
+    arrayOf("SOPRANO", "ALTO", "TENOR").forEachIndexed { i, t -> AeChip(c, 0, i, 4, t, 36 + i * 90, 80, 86) }
     arrayOf("GOLD", "BLACK", "SILVER", "COPPER").forEachIndexed { i, t -> AeChip(c, 1, i, 4, t, 36 + i * 68, 126, 64) }
     arrayOf("JAZZ", "CLASSIC", "RUBBER").forEachIndexed { i, t -> AeChip(c, 2, i, 3, t, 36 + i * 90, 172, 86) }
     arrayOf("SOFT", "MEDIUM", "HARD").forEachIndexed { i, t -> AeChip(c, 3, i, 3, t, 36 + i * 90, 218, 86) }
@@ -115,17 +119,29 @@ fun BoxScope.AeSaxUi(c: AeCtl, a: AeAnim) {
     Canvas(Modifier.at(38, 266, 140, 14)) { a.frame.intValue; drawSaxVu(a) }
     AeT("OUTPUT", 9, GOLD, Modifier.at(38, 286, 100, 12), AeFonts.plate, FontWeight.ExtraBold, 0.2f)
     AeGlassKnob(c, 20, "Level", 262, 250, 42)
-    // Blend mixes the sampled pack under the synthesis (parameter 22). It sits beside Level
-    // because it is a voice-level setting, not an articulation: how much of the sound comes
-    // from the recording rather than the model.
-    AeGlassKnob(c, 22, "Blend", 196, 250, 42)
+    // Le macro central (ex-« SEX knob » d'Embertone) est renomme « Character ».  Il melange
+    // le pack echantillonne sous la synthese (parametre 22) : de 0 (modele pur) a 1
+    // (enregistrement pur), c'est le « fleuri » de l'instrument, pas un dosage de volume.
+    AeGlassKnob(c, 22, "Character", 196, 250, 42)
     // Humanize sits with OUTPUT rather than in the expression grid: it is not an articulation
     // setting but the player model itself (per-note spread of pitch, attack, level and vibrato),
     // and it reads as the counterpart of Level — how loud, and how human.
     AeIntensitySlider(c, 21, 36, 310, 286, GOLD)
-    AeCardBox(678, 54, 300, 286, "EXPRESSION · ARTICULATION · ROOM", GOLD, border, AeFonts.plate)
-    listOf(4 to "Breath", 5 to "Growl", 6 to "Subtone", 7 to "Grit", 8 to "Attack", 9 to "Click", 10 to "Scoop", 11 to "Release",
-        12 to "V.Depth", 13 to "V.Rate", 14 to "V.Delay", 15 to "Legato", 16 to "Room", 17 to "Size", 18 to "Warm", 19 to "Bright")
-        .forEachIndexed { i, (k, l) -> AeGlassKnob(c, k, l, 704 + (i % 4) * 72, 78 + (i / 4) * 66, 36) }
-    AeKeyboard(c, 52, 360, 896, 90)
+    // Panneau de droite range en familles nommees (demande utilisateur : « on change les
+    // controles de droite »).  L'ancien bloc unique de 16 knobs sans repere se lit mal ;
+    // ici chaque famille a son en-tete et une ligne.
+    AeCardBox(678, 54, 300, 372, "", GOLD, border)
+    val saxGroups = listOf(
+        "AIR" to listOf(4 to "Breath", 6 to "Subtone", 18 to "Warm", 19 to "Bright"),
+        "ARTICULATION" to listOf(7 to "Grit", 8 to "Attack", 9 to "Click", 10 to "Scoop"),
+        "VIBRATO" to listOf(12 to "Depth", 13 to "Rate", 14 to "Delay", 5 to "Growl"),
+        "ROOM" to listOf(16 to "Room", 17 to "Size", 15 to "Legato", 11 to "Release"),
+    )
+    // Pas de 88 et depart a 70 : le 4e groupe pose ses potards a 340+18 = 358 et le
+    // hit box (36 + 26) finit a 420, dans la carte qui va jusqu'a 426.
+    saxGroups.forEachIndexed { gi, (title, ks) ->
+        val gy = 70 + gi * 88
+        AeT(title, 9, GOLD, Modifier.at(704, gy, 240, 12), AeFonts.plate, FontWeight.ExtraBold, 0.22f)
+        ks.forEachIndexed { i, (k, l) -> AeGlassKnob(c, k, l, 704 + i * 72, gy + 18, 36) }
+    }
 }

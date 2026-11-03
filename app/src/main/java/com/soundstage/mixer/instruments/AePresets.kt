@@ -1,6 +1,6 @@
 package com.soundstage.mixer.instruments
 
-/** Generated from presets-organ-synth.json and presets-leads-sax.json. Values normalised 0..1, registry order (organ 31, synth 32, leads 32, sax 21). */
+/** Generated from presets-organ-synth.json and presets-leads-sax.json. Values normalised 0..1, registry order (organ 31, synth 32, leads 32, sax 19). */
 object AePresets {
     val organ: List<AePreset> = listOf(
         AePreset("Smith 888", "Jazz", floatArrayOf(1f, 1f, 1f, 0f, 0f, 0f, 0f, 0f, 0f, 0.5f, 0f, 1f, 0f, 0f, 0f, 0f, 0f, 0f, 1f, 0f, 1f, 1f, 1f, 1f, 0f, 0.5f, 0.3f, 0.55f, 0.25f, 0.3f, 0.75f)),
@@ -137,8 +137,6 @@ object AePresets {
         AePreset("Afro Sax Riff", "Kompa / Afro", floatArrayOf(0.67f, 0f, 0f, 0.5f, 0.3f, 0.15f, 0f, 0.25f, 0.85f, 0.45f, 0.25f, 0.25f, 0.3f, 0.5f, 0.5f, 0.5f, 0.22f, 0.5f, 0.5f, 0.58f, 0.75f, 0.35f, 1f)),
         AePreset("Funk Honk Tenor", "Funk / Rock", floatArrayOf(0.67f, 0.33f, 0f, 1f, 0.3f, 0.6f, 0f, 0.4f, 0.9f, 0.5f, 0.25f, 0.25f, 0.3f, 0.5f, 0.5f, 0.5f, 0.18f, 0.5f, 0.5f, 0.7f, 0.75f, 0.35f, 1f)),
         AePreset("Growl Rock Tenor", "Funk / Rock", floatArrayOf(0.67f, 0.33f, 0.5f, 1f, 0.3f, 0.9f, 0f, 0.6f, 0.85f, 0.3f, 0.25f, 0.25f, 0.3f, 0.5f, 0.5f, 0.5f, 0.25f, 0.5f, 0.5f, 0.68f, 0.75f, 0.35f, 1f)),
-        AePreset("Bari Groove", "Funk / Rock", floatArrayOf(1f, 0.33f, 0.5f, 0.5f, 0.3f, 0.3f, 0f, 0.3f, 0.8f, 0.3f, 0.25f, 0.25f, 0.3f, 0.5f, 0.5f, 0.5f, 0.2f, 0.5f, 0.6f, 0.5f, 0.75f, 0.35f, 1f)),
-        AePreset("Quartet Bari", "Jazz", floatArrayOf(1f, 0f, 0.5f, 0.5f, 0.35f, 0f, 0.2f, 0.1f, 0.45f, 0.3f, 0.2f, 0.25f, 0.2f, 0.5f, 0.5f, 0.5f, 0.4f, 0.5f, 0.7f, 0.5f, 0.75f, 0.35f, 1f)),
         AePreset("Ballad Tenor Subtone", "Jazz", floatArrayOf(0.67f, 0f, 0.5f, 0.5f, 0.55f, 0f, 0.85f, 0.1f, 0.25f, 0.3f, 0.25f, 0.4f, 0.2f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.78f, 0.3f, 0.75f, 0.35f, 1f)),
         AePreset("Breathy Intimate", "Smooth Jazz", floatArrayOf(0.33f, 0f, 0.5f, 0.5f, 0.88f, 0f, 0f, 0.1f, 0.2f, 0.3f, 0.3f, 0.25f, 0.2f, 0.5f, 0.5f, 0.5f, 0.55f, 0.5f, 0.7f, 0.35f, 0.75f, 0.35f, 1f)),
         AePreset("Lounge Alto", "Smooth Jazz", floatArrayOf(0.33f, 0.67f, 0.5f, 0.5f, 0.35f, 0f, 0f, 0.1f, 0.45f, 0.3f, 0.25f, 0.25f, 0.28f, 0.5f, 0.5f, 0.5f, 0.55f, 0.7f, 0.58f, 0.5f, 0.75f, 0.35f, 1f)),

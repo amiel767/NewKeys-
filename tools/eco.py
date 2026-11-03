@@ -96,6 +96,13 @@ def fetch_all(cid: str, ttl: int = 90) -> list[dict]:
                 if e.code == 429:
                     time.sleep(2.0 * (attempt + 1))
                     continue
+                # 401/403 : le jeton a expire (proxy LiteLLM « token_not_found_in_db »).
+                # Ne PAS reessayer : chaque essai rejoue la requete et ne fait que
+                # marteler le proxy. On sort net, avec le message et la marche a suivre.
+                if e.code in (401, 403):
+                    sys.exit(f"HTTP {e.code} : jeton refuse (expire ?). Reouvre une session "
+                             f"pour un OPENHANDS_API_KEY neuf, ou lis le dump local "
+                             f"tools/.conv_peek/{cid}.json (aucun reseau).")
                 raise
         if body is None:
             break  # rate-limit persistant : on rend ce qu'on a

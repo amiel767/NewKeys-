@@ -14,7 +14,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -175,43 +174,82 @@ private fun eqdb(v: Float) = "${((v - .5f) * 18f).toInt().let { if (it > 0) "+$i
 private fun lvl(v: Float, vararg names: String) = names[(v * names.size).toInt().coerceIn(0, names.size - 1)]
 
 /**
- * Potards de voix — 8, en deux rangées de quatre.
+ * Les réglages du piano, rangés en quatre familles nommées.
  *
- * Chacun pilote un paramètre RÉEL et distinct du contrat : plus de doublon
- * « Mic »/« Mic pos » (deux étiquettes sur l'index 4), plus d'« Amp drive » sur un
- * index qui n'était pas l'ampli.  Ordre = ordre du contrat, donc l'écran se lit de
- * gauche à droite comme la chaîne audio.
+ * L'ancienne disposition empilait 8 potards, 3 curseurs puis 4 potards sans
+ * logique lisible — « moches et illogiques » (retour utilisateur).  Ici chaque
+ * famille porte son en-tête et tient sur une ligne, dans l'ordre de la chaîne
+ * audio : le timbre, puis le micro, puis le jeu, puis la mécanique.  Pianoteq
+ * range ses réglages de la même façon.
+ *
+ * Chaque potard pilote un paramètre RÉEL et distinct du contrat `fx_piano.h` :
+ * plus de doublon « Mic »/« Mic pos », plus d'« Amp drive » (retiré du moteur).
  */
-private val PK = listOf(
-    K("Hardness", 0, ::pc),
-    K("Tone", 1) { "${((it - .5f) * 16).toInt()}dB" },
-    K("Resonance", 2, ::pc),
-    K("Lid", 3) { lvl(it, "Closed", "Half", "Open") },
-    K("Mic pos", 4) { lvl(it, "Under", "Front", "Over") },
-    K("Space", 5, ::pc),
-    K("Width", 6, ::pc),
-    K("Level", 7, ::db),
+private class KG(val title: String, val ks: List<K>)
+
+private val PIANO_GROUPS = listOf(
+    KG("TONE", listOf(
+        K("Hardness", 0, ::pc),
+        K("Tone", 1) { "${((it - .5f) * 16).toInt()}dB" },
+        K("Resonance", 2, ::pc),
+        K("Lid", 3) { lvl(it, "Closed", "Half", "Open") },
+    )),
+    KG("MIC", listOf(
+        K("Position", 4) { lvl(it, "Under", "Front", "Over") },
+        K("Distance", 11) { lvl(it, "Near", "Mid", "Far") },
+        K("Space", 5, ::pc),
+        K("Width", 6, ::pc),
+    )),
+    KG("PLAY", listOf(
+        // gamma = 2^((0.5 - v) * 1.36) : v BAS => gamma > 1 => il faut frapper (Hard).
+        // L'etiquette suit le comportement, pas la valeur brute.
+        K("Velocity", 9) { lvl(it, "Hard", "Linear", "Soft") },
+        K("Release", 8) { "${(80 + it * 550).toInt()}ms" },
+        K("Damper", 10, ::pc),
+        K("Level", 7, ::db),
+    )),
+    KG("MECHANICS", listOf(
+        K("Key", 12, ::pc),
+        K("Hammer", 16, ::pc),
+        K("EQ", 14, ::eqdb),
+    )),
 )
-/** Curseurs de jeu — 3. */
-private val PSL = listOf(
-    K("Release", 8) { "${(80 + it * 550).toInt()}ms" },
-    // gamma = 2^((0.5 - v) * 1.36) : v BAS => gamma > 1 => il faut frapper (Hard).
-    // L'etiquette suit le comportement, pas la valeur brute.
-    K("Velocity", 9) { lvl(it, "Hard", "Linear", "Soft") },
-    K("Damper", 10, ::pc),
-)
+
 /**
- * Mécanique et micro — 4 potards, une rangée.
+ * Réglages d'un piano ÉLECTRIQUE (Rhodes/Wurlitzer/DX), pas d'un acoustique.
  *
- * C'est ce que l'utilisateur réclamait (« réglages essentiels manquants ») : les
- * trois bruits d'un vrai piano (marteau, touche, étouffoir) sont maintenant des
- * contrôles, au lieu de constantes cachées dans le moteur.
+ * L'utilisateur l'a demandé explicitement : « les réglages EP doivent être autre
+ * chose ».  Un EP n'a ni couvercle ni position de micro dans un piano : ce sont
+ * un tine, un corps, une position de pickup et une attaque de marteau.  Les
+ * mêmes paramètres moteur sont réemployés (le contrat est figé à 17), mais
+ * relus avec le vocabulaire de l'instrument — et LID (3) disparaît, faute d'objet.
+ *
+ * `Hardness` devient `Tine` : sur un EP c'est bien la dureté du tine qui règle le
+ * mordant, le moteur bascule déjà la corde en tine quand MODEL >= 1.
  */
-private val PST = listOf(
-    K("Mic dist", 11) { lvl(it, "Near", "Mid", "Far") },
-    K("Key noise", 12, ::pc),
-    K("Hammer noise", 16, ::pc),
-    K("EQ", 14, ::eqdb),
+private val EP_GROUPS = listOf(
+    KG("TONE", listOf(
+        K("Tine", 0, ::pc),
+        K("Tone", 1) { "${((it - .5f) * 16).toInt()}dB" },
+        K("Body", 2, ::pc),
+        K("Pickup", 4) { lvl(it, "Near", "Mid", "Far") },
+    )),
+    KG("SPACE", listOf(
+        K("Room", 5, ::pc),
+        K("Width", 6, ::pc),
+        K("Distance", 11) { lvl(it, "Near", "Mid", "Far") },
+        K("Level", 7, ::db),
+    )),
+    KG("PLAY", listOf(
+        K("Velocity", 9) { lvl(it, "Hard", "Linear", "Soft") },
+        K("Release", 8) { "${(80 + it * 550).toInt()}ms" },
+        K("Damper", 10, ::pc),
+    )),
+    KG("MECHANICS", listOf(
+        K("Key", 12, ::pc),
+        K("Attack", 16, ::pc),
+        K("EQ", 14, ::eqdb),
+    )),
 )
 
 /** Aperçu de carte : la scène Felt, recadrée au centre. */
@@ -249,7 +287,6 @@ fun BoxScope.AePianoUi(c: AeCtl, manager: AeManager, strip: Int, onOpenBrowser: 
     val plate = remember(model.id) { AePianoAssets.plate(ctx, model.id) }
     val th = rememberAeThemeFromLuma(plate?.topLuma, model.acc)
     val baseNow by rememberUpdatedState(48)
-    var base by remember { mutableIntStateOf(48) }
     val scene = remember(s) { AeSceneRuntime(procedural = false) }
 
     LaunchedEffect(model.id) {
@@ -308,23 +345,25 @@ fun BoxScope.AePianoUi(c: AeCtl, manager: AeManager, strip: Int, onOpenBrowser: 
                 // et le bas est sombre, donc encre sombre sur fond sombre — contraste
                 // mesure 4, texte invisible. Un fond translucide ne peut pas le garantir.
                 // Ici le fond est toujours du cote oppose a l'encre, donc lisible partout.
-                AeGlassPanel(th, plate?.bitmap?.asAndroidBitmap(), 16, 88, 200, 300)
-                // La liste doit tenir DANS le panneau de verre (y 88..388) : elle allait
-                // jusqu'a 400, donc les 12 dernieres unites debordaient sous la case.
-                // 270 = 9 lignes de 30 exactement, donc la derniere ligne est entiere
-                // (100 + 270 = 370, 18 unites de marge avant le bas du panneau).
-                AeModelList(th, AePianoModels.all.map { it.name }, s.preset, 28, 100, 270) { manager.loadPreset(s.strip, it) }
-                AeGlassPanel(th, plate?.bitmap?.asAndroidBitmap(), 694, 54, 280, 326)
-                PK.forEachIndexed { j, k ->
-                    AeLightKnob(th, c.v(k.idx), k.label, k.fmt(c.v(k.idx)), 704 + (j % 4) * 62, 74 + (j / 4) * 70) { c.set(k.idx, it) }
+                // Le clavier virtuel a ete RETIRE (demande utilisateur) : il occupait
+                // les 60 unites du bas pour un doublon du clavier materiel, alors que
+                // la hauteur manquait aux reglages. Les deux panneaux descendent donc
+                // jusqu'a y=430.
+                AeGlassPanel(th, plate?.bitmap?.asAndroidBitmap(), 16, 88, 200, 342)
+                AeModelList(th, AePianoModels.all.map { it.name }, s.preset, 28, 100, 310) { manager.loadPreset(s.strip, it) }
+                AeGlassPanel(th, plate?.bitmap?.asAndroidBitmap(), 694, 54, 280, 376)
+                // Quatre familles, une par ligne. Un modele electrique n'affiche pas
+                // les memes : pas de couvercle, pas de micro de piano, mais un tine et
+                // une position de pickup (demande utilisateur : « les reglages EP
+                // doivent etre autre chose »).
+                val groups = if (AeBanks.isElectricModel(s.preset)) EP_GROUPS else PIANO_GROUPS
+                groups.forEachIndexed { gi, g ->
+                    val gy = 72 + gi * 88
+                    AeT(g.title, 9, th.acc, Modifier.at(704, gy, 240, 12), AeFonts.plate, FontWeight.ExtraBold, 0.22f)
+                    g.ks.forEachIndexed { j, k ->
+                        AeLightKnob(th, c.v(k.idx), k.label, k.fmt(c.v(k.idx)), 704 + j * 62, gy + 16) { c.set(k.idx, it) }
+                    }
                 }
-                PSL.forEachIndexed { j, k -> AeLightSlider(th, c.v(k.idx), k.label, 708, 222 + j * 24) { c.set(k.idx, it) } }
-                PST.forEachIndexed { j, k ->
-                    AeLightKnob(th, c.v(k.idx), k.label, k.fmt(c.v(k.idx)), 704 + j * 62, 304) { c.set(k.idx, it) }
-                }
-                AeGlassKeyboard(c, th, base, 150, 396, 700, 52)
-                AeSmallBtn(th, "−", 108, 410, 28, 28) { base = (base - 12).coerceAtLeast(24) }
-                AeSmallBtn(th, "+", 864, 410, 28, 28) { base = (base + 12).coerceAtMost(60) }
             }
         }
     }
