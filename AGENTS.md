@@ -576,6 +576,43 @@ python3 -m pip install pillow numpy
 toutes les installations suivantes — le tuer puis `dpkg --configure -a`.
 
 
+## Cle API LLM : erreur 401 « token_not_found_in_db » (verifie 2026-11-03)
+
+Symptome : `Error code: 401 ... Invalid proxy server token passed ... Unable to
+find token in cache or LiteLLM_VerificationTokenTable`.
+
+Ce n'est **pas** une cle de ce depot (il n'en contient aucune : `.env` et
+`debug.keystore` sont gitignores, `.env.example` n'a qu'un placeholder). C'est la
+cle du **proxy LiteLLM** (`https://llm-proxy.app.all-hands.dev`) : celle du
+sandbox a expire apres un re-provisionnement, le proxy ne la trouve plus.
+
+**Correctif (sans redemarrer le sandbox)** : redemander une cle fraiche avec la
+cle de session du conteneur.
+
+```bash
+K=$(tools/api_key.sh)        # cle LLM fraiche, imprimee sur stdout
+curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $K" \
+  "$OH_LLM_API_KEY_REFRESH_BASE_URLS/v1/models"    # attendu : 200
+```
+
+`tools/api_key.sh` lit `SESSION_API_KEY` (present dans `/proc/1/environ`, **pas**
+dans l'environnement du shell), appelle `OH_LLM_API_KEY_REFRESH_URL` avec l'en-tete
+`X-Session-API-Key`, et retombe sur `OPENHANDS_API_KEY` si l'endpoint echoue.
+
+| Variable | Role |
+|---|---|
+| `OPENHANDS_API_KEY` | cle du runtime, **expire** au re-provisionnement (c'est elle qui donne le 401) |
+| `SESSION_API_KEY` | cle de session du conteneur, dans `/proc/1/environ` seulement ; sert au refresh |
+| `OH_LLM_API_KEY_REFRESH_URL` | endpoint qui rend une cle LLM valide (`X-Session-API-Key`) |
+| `OH_LLM_API_KEY_REFRESH_BASE_URLS` | base du proxy (`/v1/models` pour tester) |
+
+**Ne jamais** mettre la cle dans un fichier versionne : l'ecrire seulement dans
+l'environnement du process qui en a besoin (`OPENHANDS_API_KEY=$(tools/api_key.sh)
+python3 ...`). Attention : l'endpoint **Cloud** `/api/v1/conversation/<id>/events`
+n'accepte que `OPENHANDS_API_KEY`, pas la cle LLM — `tools/conv_peek.py` echoue
+donc en `401 NoCredentialsError` si on lui passe la cle LLM.
+
+
 ## Pieges moteur piano (verifies, a relire AVANT de toucher fx_piano.h)
 
 - **Cache de regions : le hit doit aller vers la QUEUE.** `decoded()` lit
