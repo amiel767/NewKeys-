@@ -228,12 +228,17 @@ class SaxEngine : public SourceFx {
       // instrument, not to one of its two sound sources.
       if (clickEnv_ > 1e-4f) {
         clickF_.setBandpass(sr_, 2800.f + (freq_ / 440.f - 1.f) * -200.f + clickJit_ * 400.f, 1.6f);
-        x += clickF_.process(0, noise_.next()) * p(9) * .3f * (.6f + clickJit_ * .6f) * clickEnv_;
+        // Gate par (1 - mix) : le clic est un artefact de SYNTHESE.  L'echantillon Bulldog
+        // porte deja sa propre attaque d'anche ; le superposer dessus donnait le « pa »
+        // percussif a chaque note (tous les presets sont a Character = 1, donc le clic y
+        // disparait).  En pure synthese (mix 0) il reste, et le controle p(9) garde son sens.
+        x += clickF_.process(0, noise_.next()) * p(9) * .3f * (1.f - sampleMix) * (.6f + clickJit_ * .6f) * clickEnv_;
         clickEnv_ *= std::exp(static_cast<float>(-1.0 / (.018 * sr_)));
       }
       if (relClickEnv_ > 1e-4f) {
         clickF_.setBandpass(sr_, 2400.f + clickJit_ * 600.f, 1.6f);
-        x += clickF_.process(0, noise_.next()) * relClickEnv_;
+        // Meme logique que le clic d'attaque : artefact de synthese, coupe en mode echantillon.
+        x += clickF_.process(0, noise_.next()) * relClickEnv_ * (1.f - sampleMix);
         relClickEnv_ *= std::exp(static_cast<float>(-1.0 / (.015 * sr_)));
       }
       // ---- warm/bright shelves then out ----
