@@ -184,32 +184,11 @@ class PianoSampleReader {
   const Region* pickLayer(int note, int layerIndex) const {
     if (layerIndex < 0 || layerIndex >= static_cast<int>(layers_.size())) return nullptr;
     const int layer = layers_[layerIndex];
-    // Racine la plus proche de la note, TOUTES COUCHES CONFONDUES.
-    //
-    // L'ancienne version cherchait, couche par couche, la racine la plus proche
-    // ayant CETTE couche.  Sur un pack heterogene (ici `piano.bin` : 48 racines,
-    // dont 18 n'ont qu'UNE couche, 15 en ont 2, le reste 6 ou 8) les deux couches
-    // d'un fondu tombaient sur DEUX racines differentes, donc deux prises
-    // differentes re-echantillonnees a des hauteurs differentes.  La note 60
-    // (racine 60, couche 0 seule) fondait ainsi la prise de la racine 60 avec
-    // celle de la racine 59 montee d'un demi-ton : deux enregistrements de phase
-    // et de hauteur distinctes, dont la somme BAT.  Mesure : la fondamentale
-    // module de 3,9 dB (le « dain dain » de la tenue) alors que la prise seule est
-    // propre a 0,03 dB.
-    int bestRoot = -1, bestRootCost = 1 << 30;
-    for (const Region& g : regions_) {
-      const int c = std::abs(g.root - note);
-      if (c < bestRootCost) { bestRootCost = c; bestRoot = g.root; }
-    }
-    if (bestRoot < 0) return nullptr;
-    // Couche demandee de CETTE racine.  Si elle n'existe pas (racine a une seule
-    // couche), on prend sa couche disponible la plus proche : les deux couches du
-    // fondu sont alors la MEME prise, donc la somme est un no-op, jamais un battement.
     const Region* best = nullptr;
     int bestCost = 1 << 30;
     for (const Region& g : regions_) {
-      if (g.root != bestRoot) continue;
-      const int cost = std::abs(static_cast<int>(g.layer) - layer);
+      if (g.layer != layer) continue;
+      const int cost = std::abs(g.root - note);
       if (cost < bestCost) { bestCost = cost; best = &g; }
     }
     return best;
