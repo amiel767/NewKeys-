@@ -1266,3 +1266,45 @@ propre** (ici la prise seule, 0,03 dB) avant de conclure qu'un moteur module.
 - Un correctif qui fait chuter le niveau de sortie (ici -18 dB) est un **bug**, meme
   s'il ameliore la metrique qu'il cible : toujours mesurer le rms de sortie avant/apres.
 - `flattenLoop` fonctionne (aplatit bien la boucle) ; ne pas le suspecter sans mesure.
+
+## Session 2026-11-04 (4e) — le « dain dain » EXISTE : boucles de couches (le banc du 04 etait juste, celui du 3e faux)
+
+Le banc du 3e qui concluait « pas d'ondulation » utilisait une fenetre de tendance de
+**250 ms** (< la decroissance), donc il retirait la pente et ratait les creux. Le bon
+banc (**fenetre 50 ms, tendance cubique sur 11 s**) montre des **creux periodiques de
+9,5 dB** dans la queue des pianos acoustiques.
+
+**Cause racine** : les **couches d'une meme racine** ont des boucles d'un nombre de
+**periodes** different. Le lecteur reboucle chaque couche sur SA longueur ; au fondu
+(velocite moyenne) deux rythmes de boucle se melangent et leur **somme bat**.
+- `piano.bin` racine 59 : L6 = 89,1 periodes, L7 = 173,3, L0-L3 = 222 (periode reelle
+  mesuree 178-179 ech, pas la periode theorique 178,6).
+- Modulation max a **vel 100** (fondu 50/50), faible a 64 et 128 (couche seule).
+- E.Piano exempt : `ep_piano.bin` a 2 couches/racine et des boucles proches
+  (sortie note 60 : acoustique 1,96 dB contre E.Piano 0,45 dB).
+
+**Correctif** : `harmonizeLoops()` (`fx_piano.h`), appele dans `loadSampleBank`
+**avant** `preload()`. Ramene toutes les couches d'une racine a la longueur la **plus
+courte** (deja un entier de periodes, donc le raccord reste continu et la cible tient
+dans l'echantillon). Mesure 17 notes 36-84 : crete **7,15 -> 3,64 dB** (-49 %),
+niveau **preserve** (ratio 1,01). Banques electriques **inchangees** (ratio ~1,00).
+
+**Ecartees par la mesure** : `noloop` (pire), le fix `flattenLoop` de la derniere
+fenetre (aucun effet), `pickLayer`, les parametres (seul `Level` a 0 = silence), la
+reverb (`nospace`), les durees d'echantillon.
+
+**Regle** : dans un pack multi-couches, toutes les couches d'une racine doivent
+boucler sur le **meme nombre de periodes** (`boucle_ech / periode_reelle` = meme
+entier). Valider un correctif de boucle **hors-ligne** d'abord (somme tuilee des
+couches) : le moteur reagit moins (facteurs de fondu et d'enveloppe).
+
+## Erreur 401 `token_not_found_in_db` (plateforme, pas depot)
+
+`Error code: 401 ... Unable to find token in cache or LiteLLM_VerificationTokenTable`.
+Le jeton du proxy LLM expire cote plateforme. Rien dans le depot ne le provoque et
+rien ici ne peut le corriger. Mitigation cote agent : **garder la conversation
+courte** (le flux renvoye a chaque tour est ce qui coute ; un contexte enorme
+multiplie les reprises de requete qui exposent l'expiration). Le rafraichissement
+plateforme passe par `OH_LLM_API_KEY_REFRESH_URL` (base `https://llm-proxy.app.all-hands.dev`,
+en-tete `X-Session-API-Key`). Si le 401 revient : relancer la conversation, ne pas
+chercher une cause dans le code.
