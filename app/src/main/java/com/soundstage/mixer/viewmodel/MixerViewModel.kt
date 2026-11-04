@@ -610,6 +610,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                                     pan = savedT.pan,
                                     soundfontName = savedT.soundfontName,
                                     patchName = savedT.patchName,
+                                    soundSource = savedT.soundSource,
                                     bank = savedT.bank,
                                     program = savedT.program,
                                     reverbPreset = savedT.reverbPreset,
@@ -2949,14 +2950,23 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Opens the sound-source chooser for a slot: the user then picks the soundfont window or the
-     * Æther Instruments window. The target channel is armed here so either window inherits it.
+     * Tapping a name plate opens the strip's sound source. The chooser (Æther vs SF2) is asked
+     * only once, the first time the strip is tapped: once the user has picked a source it is
+     * remembered on the track and the matching window opens directly on every later tap.
+     * [force] reopens the chooser, which is what a long press on the name plate does.
      */
-    fun openSoundSourceForSlot(slotId: Int) {
+    fun openSoundSourceForSlot(slotId: Int, force: Boolean = false) {
         audioEngine.activeTargetChannel = AudioSlot.midiChannelForSlot(slotId)
+        val chosen = _uiState.value.tracks.getOrNull(slotId)?.soundSource ?: ""
+        val direct = when {
+            force -> null
+            chosen == TrackChannel.SOURCE_AETHER -> ActivePopup.AETHER
+            chosen == TrackChannel.SOURCE_SF2 -> ActivePopup.SOUNDFONT
+            else -> null
+        }
         _uiState.update {
             it.copy(
-                activePopup = ActivePopup.SOUND_SOURCE,
+                activePopup = direct ?: ActivePopup.SOUND_SOURCE,
                 activeSoundfontSlotId = slotId
             )
         }
@@ -2985,7 +2995,13 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val slotId = _uiState.value.activeSoundfontSlotId
         if (popup != ActivePopup.SOUNDFONT && popup != ActivePopup.AETHER) return
         audioEngine.activeTargetChannel = AudioSlot.midiChannelForSlot(slotId)
-        _uiState.update { it.copy(activePopup = popup) }
+        val source = if (popup == ActivePopup.AETHER) TrackChannel.SOURCE_AETHER else TrackChannel.SOURCE_SF2
+        _uiState.update { state ->
+            state.copy(
+                activePopup = popup,
+                tracks = state.tracks.map { if (it.id == slotId + 1) it.copy(soundSource = source) else it }
+            )
+        }
     }
 
     // ================= DRUM PAD CONTROLS =================
@@ -3854,6 +3870,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                                 pan = tObj.optDouble("pan", originalTrack.pan.toDouble()).toFloat(),
                                 soundfontName = tObj.optString("soundfontName", originalTrack.soundfontName),
                                 patchName = tObj.optString("patchName", originalTrack.patchName),
+                                soundSource = tObj.optString("soundSource", originalTrack.soundSource),
                                 bank = tObj.optInt("bank", originalTrack.bank),
                                 program = tObj.optInt("program", originalTrack.program),
                                 reverbPreset = tObj.optString("reverbPreset", originalTrack.reverbPreset),
@@ -4034,6 +4051,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                                         pan = to.optDouble("pan", 0.0).toFloat(),
                                         soundfontName = to.optString("soundfontName", ""),
                                         patchName = to.optString("patchName", "-"),
+                                        soundSource = to.optString("soundSource", ""),
                                         bank = to.optInt("bank", 0),
                                         program = to.optInt("program", 0),
                                         reverbPreset = to.optString("reverbPreset", "Concert Hall"),
@@ -4848,7 +4866,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     name = "Patch 1",
                     tracks = fresh.tracks,
                     audioSlots = fresh.audioSlots,
-                    visibleTracksCount = 1,
+                    visibleTracksCount = 0,
                     transpose = 0,
                     octave = 0,
                     masterVolume = 0.85f,
@@ -4866,10 +4884,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     put("drumVolume", 0.75)
                     put("drumReverb", 0.24)
                     put("masterVolume", 0.85)
-                    // A brand new setlist starts on a single track. Without this key the
-                    // loader falls back to `count { it.isEnabled }`, which is 8, and the
-                    // setlist opened on eight faders.
-                    put("visibleTracksCount", 1)
+                    // A brand new setlist opens on NO track at all: just the "+" to add one and
+                    // pick its source. Without this key the loader falls back to
+                    // `count { it.isEnabled }`, which is 8, and the setlist opened on eight faders.
+                    put("visibleTracksCount", 0)
                     // `tracks` / `audioSlots` must be written even though they are blank.
                     // `selectScene` treats a missing key as "keep whatever is in memory",
                     // so omitting them made a fresh setlist inherit the previous
@@ -4882,7 +4900,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         put(org.json.JSONObject().apply {
                             put("id", initialPatch.id)
                             put("name", initialPatch.name)
-                            put("visibleTracksCount", 1)
+                            put("visibleTracksCount", 0)
                             // Same reason as above: the patch reader also falls back to the
                             // in-memory tracks when its own `tracks` key is missing.
                             put("tracks", TrackJson.toJson(fresh.tracks))
@@ -5072,7 +5090,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             name = cleanName,
             tracks = if (isBlank) freshState.tracks else state.tracks,
             audioSlots = if (isBlank) freshState.audioSlots else state.audioSlots,
-            visibleTracksCount = if (isBlank) 1 else state.visibleTracksCount,
+            // A blank patch starts empty: no fader at all, only the "+" that adds the first
+            // track and asks for its sound source.
+            visibleTracksCount = if (isBlank) 0 else state.visibleTracksCount,
             transpose = if (isBlank) 0 else state.transpose,
             octave = if (isBlank) 0 else state.octave,
             masterVolume = state.masterTrack.volume,

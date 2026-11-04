@@ -291,6 +291,9 @@ fun TrackSettingsWindow(
             .clip(shape)
             .background(Brush.verticalGradient(listOf(Color(0xFF232C3E), Color(0xFF1A2230)))) // OPAQUE
             .border(1.dp, white(0.1f), shape)
+            // Swallow taps that land on the window itself: without this a press on an empty
+            // area reaches the dismiss scrim behind it and closes the window.
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
     ) {
         Header(
             title = title, sub = sub, color = state.color,

@@ -114,11 +114,16 @@ class FxChain {
     return e ? e->meter(i) : 0.f;
   }
   // Retired effects are deleted only after the audio thread has run >= 3 more blocks.
-  void collectGarbage() {
+  // `force` frees them right away: only safe when the caller has excluded the audio thread
+  // from process(), because the epoch only advances while this chain is being processed —
+  // and the mixer stops calling process() as soon as the last instrument/effect is gone,
+  // which is exactly the unload case. Without the force the bank of an unloaded instrument
+  // was never deleted.
+  void collectGarbage(bool force = false) {
     std::lock_guard<std::mutex> lk(ctl_);
     const uint64_t now = epoch_.load(std::memory_order_acquire);
     for (size_t i = 0; i < garbage_.size();) {
-      if (now >= garbage_[i].retireAt) { delete garbage_[i].fx; garbage_.erase(garbage_.begin() + i); } else ++i;
+      if (force || now >= garbage_[i].retireAt) { delete garbage_[i].fx; garbage_.erase(garbage_.begin() + i); } else ++i;
     }
   }
   int latencySamples() const {
@@ -253,7 +258,7 @@ class TrackStrip {
   /** Track Settings bend range, forwarded to the source. No-op when the strip has no source. */
   void setPitchBendRange(int semis) { if (SourceFx* s = src()) s->setPitchBendRange(semis); }
   void process(float* io, int frames) { instrument.process(io, frames); strip.process(io, frames); }
-  void collectGarbage() { instrument.collectGarbage(); strip.chain.collectGarbage(); }
+  void collectGarbage(bool force = false) { instrument.collectGarbage(force); strip.chain.collectGarbage(force); }
 
  private:
   SourceFx* src() const { return kindOf(instrument.effectId(0)) == Kind::Source ? static_cast<SourceFx*>(instrument.peek(0)) : nullptr; }

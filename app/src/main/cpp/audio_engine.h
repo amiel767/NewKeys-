@@ -923,6 +923,17 @@ private:
     float fxInstrumentSampleMix(int strip) { return mFx.instrumentSampleMix(strip); }
     float fxMeter(int strip, int slot, int i) { return mFx.meter(strip, slot, i); }
     void fxCollectGarbage() { mFx.collectGarbage(); }
+    /**
+     * Free the retired instruments/effects *now*. Takes mRenderMutex, which is the same
+     * lock the render callback holds, so no process() can be inside a chain while it is
+     * deleted. Needed because the mixer stops rendering as soon as the last instrument is
+     * gone, so the deferred collector would never run: unloading an Æther instrument used
+     * to leave its sample bank resident.
+     */
+    void fxCollectGarbageNow() {
+        std::lock_guard<std::mutex> lock(mRenderMutex);
+        mFx.collectGarbage(true);
+    }
     /** Panic: clears every Æther effect tail so a runaway loop stops ringing. */
     void fxPanic() { mFx.requestPanic(); }
 

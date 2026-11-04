@@ -116,7 +116,10 @@ class FxMixer {
   float meter(int strip, int slot, int i) const { const FxChain* c = chainC(strip); return c ? c->meter(slot, i) : 0.f; }
   float peakL(int strip) const { const FxStrip* s = fxStripC(strip); return s ? s->peakL() : 0.f; }
   float peakR(int strip) const { const FxStrip* s = fxStripC(strip); return s ? s->peakR() : 0.f; }
-  void collectGarbage() { for (auto& t : tracks_) t.collectGarbage(); master_.chain.collectGarbage(); }
+  void collectGarbage(bool force = false) {
+    for (auto& t : tracks_) t.collectGarbage(force);
+    master_.chain.collectGarbage(force);
+  }
 
   /** Panic: clears every effect tail (delay/reverb loops, filter state) on all strips. */
   void requestPanic() {

@@ -136,6 +136,10 @@ data class TrackChannel(
     val fxSummary: String = "Fx, EQ...",
     val soundfontName: String = "",
     val patchName: String = "",
+    // Sound source the user picked for this strip: "" = not chosen yet (the chooser opens on
+    // the first tap), "sf2" = soundfont window, "aether" = Æther Instruments window. Once set,
+    // the name plate opens that window directly instead of asking again.
+    val soundSource: String = "",
     val bank: Int = 0,
     val program: Int = 0,
     // FX Tabs per track
@@ -163,7 +167,12 @@ data class TrackChannel(
     // Peak meters (0f..1f)
     val peakMeterL: Float = 0.0f,
     val peakMeterR: Float = 0.0f
-)
+) {
+    companion object {
+        const val SOURCE_SF2 = "sf2"
+        const val SOURCE_AETHER = "aether"
+    }
+}
 
 data class DrumPadItem(
     val id: Int,

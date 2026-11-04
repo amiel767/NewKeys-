@@ -118,6 +118,13 @@ interface AeHost {
      * rest of the session for nothing.
      */
     fun releaseBank(instrument: AeInstrument, type: Int, model: Int = -1) {}
+
+    /**
+     * Reclaim the native memory the unloaded source held. Detaching a source only *retires*
+     * it — the audio thread deletes it on a later block — so the host has to run the
+     * collector and return the freed pages, otherwise the sample bank stays resident.
+     */
+    fun releaseNative() {}
 }
 
 /** One loaded instrument on one strip. Lives in [AeManager], so it survives the window being closed. */
@@ -276,6 +283,9 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
             host.releaseBank(s.instrument, s.bankType.coerceAtLeast(0), s.preset)
         }
         sustain.remove(strip); pending.remove(strip)
+        // Only after the source is detached and its Kotlin copy dropped. The delete itself
+        // happens on the audio thread a few blocks later, hence the delayed collector run.
+        host.releaseNative()
     }
 
     fun setParam(strip: Int, index: Int, value: Float) {

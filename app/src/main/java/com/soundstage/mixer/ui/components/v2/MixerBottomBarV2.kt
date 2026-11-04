@@ -686,9 +686,16 @@ private fun ResourceMonitorV2(width: androidx.compose.ui.unit.Dp) {
         var prevCpu = android.os.Process.getElapsedCpuTime()
         var prevWall = System.currentTimeMillis()
         while (true) {
-            val jvm = runtime.totalMemory() - runtime.freeMemory()
-            val native = runCatching { Debug.getNativeHeapAllocatedSize() }.getOrDefault(0L)
-            ramMb = ((jvm + native) / (1024L * 1024L)).toInt().coerceAtLeast(1)
+            // PSS is the whole process footprint (Java + native + graphics + code) as the
+            // kernel accounts it, which is what "the app weighs N Mo" means. Summing the
+            // Java and native *allocated* heaps missed the sample banks mapped by the audio
+            // engine, so unloading an instrument showed no drop at all.
+            val pss: Long = runCatching { Debug.getPss() }.getOrDefault(0L)
+            ramMb = if (pss > 0L) (pss / 1024L).coerceAtLeast(1L).toInt() else {
+                val jvm = runtime.totalMemory() - runtime.freeMemory()
+                val native = runCatching { Debug.getNativeHeapAllocatedSize() }.getOrDefault(0L)
+                ((jvm + native) / (1024L * 1024L)).toInt().coerceAtLeast(1)
+            }
 
             val nowCpu = android.os.Process.getElapsedCpuTime()
             val nowWall = System.currentTimeMillis()

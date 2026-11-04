@@ -97,6 +97,7 @@ class AppStatePersistence(context: Context) {
         val pan: Float,
         val soundfontName: String,
         val patchName: String,
+        val soundSource: String = "",
         val bank: Int,
         val program: Int,
         val reverbPreset: String,
@@ -283,6 +284,7 @@ class AppStatePersistence(context: Context) {
                     put("pan", t.pan.toDouble())
                     put("soundfontName", t.soundfontName)
                     put("patchName", t.patchName)
+                    put("soundSource", t.soundSource)
                     put("bank", t.bank)
                     put("program", t.program)
                     put("reverbPreset", t.reverbPreset)
@@ -423,6 +425,7 @@ class AppStatePersistence(context: Context) {
                             put("pan", t.pan.toDouble())
                             put("soundfontName", t.soundfontName)
                             put("patchName", t.patchName)
+                            put("soundSource", t.soundSource)
                             put("bank", t.bank)
                             put("program", t.program)
                             put("reverbPreset", t.reverbPreset)
@@ -582,6 +585,7 @@ class AppStatePersistence(context: Context) {
                             pan = obj.optDouble("pan", 0.0).toFloat(),
                             soundfontName = obj.optString("soundfontName", ""),
                             patchName = obj.optString("patchName", "-"),
+                            soundSource = obj.optString("soundSource", ""),
                             bank = obj.optInt("bank", 0),
                             program = obj.optInt("program", 0),
                             reverbPreset = obj.optString("reverbPreset", "Concert Hall"),
@@ -800,6 +804,7 @@ class AppStatePersistence(context: Context) {
                                         pan = to.optDouble("pan", 0.0).toFloat(),
                                         soundfontName = to.optString("soundfontName", ""),
                                         patchName = to.optString("patchName", "-"),
+                                        soundSource = to.optString("soundSource", ""),
                                         bank = to.optInt("bank", 0),
                                         program = to.optInt("program", 0),
                                         reverbPreset = to.optString("reverbPreset", "Concert Hall"),
