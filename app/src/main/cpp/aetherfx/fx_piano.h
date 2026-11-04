@@ -317,22 +317,60 @@ class PianoSampleReader {
     // une region quasi silencieuse n'est pas amplifiee jusqu'au bruit de fond.
     rootLayerGain_ = std::vector<float>(128 * 8, 1.f);
     {
-      double e = 0.0;
-      int n = 0;
-      for (int root = 0; root < 128; ++root)
-        for (int L = 0; L < 8; ++L) {
+      // Normalisation PAR COUCHE, avec RE-ESPACEMENT REGULIER.
+      //
+      // Deux problemes mesures, une seule correction :
+      //
+      // 1. Une cible UNIQUE pour toutes les couches (version precedente, 0,142)
+      //    ecrasait la dynamique : le sustain valait 0,00 dB de la velocite 20 a
+      //    127, avec des inversions (frapper plus fort donnait MOINS de son).
+      //    L'ecart ENTRE couches est ce qui porte la dynamique du clavier ; il faut
+      //    le conserver.
+      //
+      // 2. Les enregistrements d'un pack n'ont pas des pas de dynamique EGaux :
+      //    mesure sur `piano.bin`, +0,6 dB de la couche 5 a la 6, puis +5,0 dB de
+      //    la 6 a la 7.  Suivre ces niveaux bruts fait « sauter » la sonie a la
+      //    frontiere d'une couche (le « ca saute a forte velocite »).
+      //
+      // On garde donc l'ECART TOTAL du pack (couche faible -> forte, ~20 dB) mais
+      // on le repartit GEOMETRIQUEMENT : chaque couche est posee a un pas de dB
+      // constant.  A l'interieur d'une couche, les racines sont alignees sur la
+      // cible de la couche (le moteur change de racine en changeant de couche, donc
+      // un ecart residuel ferait un saut).
+      double layerMean[8];
+      bool layerHas[8];
+      for (int L = 0; L < 8; ++L) {
+        double e = 0.0;
+        int n = 0;
+        for (int root = 0; root < 128; ++root) {
           const double r = rootLayerRms_[static_cast<size_t>(root) * 8 + L];
           if (r > 0.0) { e += r * r; ++n; }
         }
-      if (n > 0) {
-        const double target = std::sqrt(e / static_cast<double>(n));
-        for (int root = 0; root < 128; ++root)
-          for (int L = 0; L < 8; ++L) {
-            const size_t k = static_cast<size_t>(root) * 8 + L;
-            const double r = rootLayerRms_[k];
-            if (r <= 0.0) continue;
-            rootLayerGain_[k] = static_cast<float>(std::min(20.0, std::max(0.05, target / r)));
-          }
+        layerHas[L] = n > 0;
+        layerMean[L] = n > 0 ? std::sqrt(e / static_cast<double>(n)) : 0.0;
+      }
+      int first = -1, last = -1;
+      double lo = 0.0, hi = 0.0;
+      for (int L = 0; L < 8; ++L) {
+        if (!layerHas[L]) continue;
+        if (first < 0) first = L;
+        last = L;
+        if (lo <= 0.0 || layerMean[L] < lo) lo = layerMean[L];
+        if (layerMean[L] > hi) hi = layerMean[L];
+      }
+      const int nl = last - first + 1;
+      for (int L = 0; L < 8; ++L) {
+        if (!layerHas[L]) continue;
+        const double target =
+            (nl > 1 && lo > 0.0 && hi > lo)
+                ? lo * std::pow(hi / lo, static_cast<double>(L - first) / (nl - 1))
+                : layerMean[L];
+        for (int root = 0; root < 128; ++root) {
+          const size_t k = static_cast<size_t>(root) * 8 + L;
+          const double r = rootLayerRms_[k];
+          if (r <= 0.0) continue;
+          rootLayerGain_[k] = static_cast<float>(std::min(20.0, std::max(0.05, target / r)));
+        }
       }
     }
 
@@ -755,7 +793,16 @@ class PianoVoice {
         const bool okA = readOne(srcA_, step, aL, aR);
         const bool okB = readOne(srcB_, step, bL, bR);
         if (!okA && !okB) { active_ = false; break; }
-        const float ca = std::cos(blend_ * 1.5707963f), cb = std::sin(blend_ * 1.5707963f);
+        // Fondu LINEAIRE, pas a puissance constante.
+        //
+        // Les deux couches d'une meme note sont deux enregistrements de la MEME
+        // corde, donc fortement CORRELEES.  Le fondu cos/sin (puissance constante)
+        // suppose deux signaux INDEPENDANTS : sur deux signaux correles il ajoute
+        // jusqu'a +3 dB au milieu du fondu.  Mesure sur `piano.bin` : une bosse de
+        // +3 dB vers vel 100 puis un creux de -1,7 dB vers vel 95 — exactement le
+        // « la velocite repond n'importe comment ».  La somme lineaire, elle,
+        // interpole le niveau reel entre les deux couches.
+        const float ca = 1.f - blend_, cb = blend_;
         sL = aL * ca + bL * cb;
         sR = aR * ca + bR * cb;
       }

@@ -117,7 +117,10 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
             when (s.instrument) {
                 AeInstrument.SYNTH -> AeT("ÆTHER SYNTH", 13, Color.White, Modifier.at(58, 15, 200, 18), AeFonts.display, spacing = 0.18f)
                 AeInstrument.LEADS -> AeT("ÆTHER LEADS", 13, Color(0xFF6FE9FF), Modifier.at(58, 15, 200, 18), AeFonts.display, spacing = 0.18f)
-                AeInstrument.SAX -> AeT("ÆTHER SAX", 13, AeC.gold, Modifier.at(58, 15, 200, 18), AeFonts.plate, FontWeight.ExtraBold, 0.2f)
+                AeInstrument.SAX -> {
+                    val ty = (c.v(0) * 3).roundToInt().coerceIn(0, 3)
+                    AeT(if (ty == 1) "ÆTHER SAX · BULLDOG" else "ÆTHER SAX", 13, AeC.gold, Modifier.at(58, 15, 200, 18), AeFonts.plate, FontWeight.ExtraBold, 0.2f)
+                }
                 else -> Unit
             }
             val presets = manager.presets(s.instrument)
