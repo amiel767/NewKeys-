@@ -574,23 +574,32 @@ fun AeInstrumentsTabContent(manager: AeManager, strip: Int, onOpen: () -> Unit, 
 }
 
 /**
- * Where a row's artwork comes from.
+ * Where a row's artwork comes from: the real photograph of the instrument.
  *
- * There is no bundled `ae_row_*` picture: an earlier attempt pointed at five drawables that
- * were never added to the repo, so every row silently rendered with no image at all (the
- * decode returns null and the `art?.let` block is skipped). The artwork is instead the one
- * each instrument already ships with:
- *  - Organ / Synth / Leads draw their mini front-panel SVG (the same asset the old tile used);
- *  - Piano shows the photograph of its first model (Felt), the one the reference pack provides;
- *  - Sax shows the gold alto cut-out.
+ * `ae_row_<inst>.webp` is built by `tools/aerows/build_rows.py` (a Commons photo of
+ * an organ / synth / lead for the first three, the repo's own piano and sax assets
+ * for the last two). If the drawable is missing the row falls back to the vector
+ * mini, so a row is never blank.
  */
 private object AeRowArt {
-    fun of(ctx: android.content.Context, inst: AeInstrument): ImageBitmap? = when (inst) {
-        AeInstrument.ORGAN -> AeSvgCache.get(AeSvgs.MINI_ORGAN, ArtW, ArtH)
-        AeInstrument.SYNTH -> AeSvgCache.get(AeSvgs.MINI_SYNTH, ArtW, ArtH)
-        AeInstrument.LEADS -> AeSvgCache.get(AeSvgs.MINI_LEADS, ArtW, ArtH)
-        AeInstrument.PIANO -> AePianoAssets.plate(ctx, "felt")?.bitmap
-        AeInstrument.SAX -> AeSaxBitmaps.get(ctx, 1, 0)
+    private val cache = android.util.LruCache<String, ImageBitmap>(6)
+
+    fun of(ctx: android.content.Context, inst: AeInstrument): ImageBitmap? {
+        val name = "ae_row_" + inst.name.lowercase()
+        cache.get(name)?.let { return it }
+        val id = ctx.resources.getIdentifier(name, "drawable", ctx.packageName)
+        if (id != 0) {
+            android.graphics.BitmapFactory.decodeResource(ctx.resources, id)?.let {
+                return it.asImageBitmap().also { bmp -> cache.put(name, bmp) }
+            }
+        }
+        return when (inst) {
+            AeInstrument.ORGAN -> AeSvgCache.get(AeSvgs.MINI_ORGAN, ArtW, ArtH)
+            AeInstrument.SYNTH -> AeSvgCache.get(AeSvgs.MINI_SYNTH, ArtW, ArtH)
+            AeInstrument.LEADS -> AeSvgCache.get(AeSvgs.MINI_LEADS, ArtW, ArtH)
+            AeInstrument.PIANO -> AePianoAssets.plate(ctx, "mellow")?.bitmap
+            AeInstrument.SAX -> AeSaxBitmaps.get(ctx, 1, 0)
+        }
     }
 }
 
