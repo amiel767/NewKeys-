@@ -38,3 +38,23 @@
 - **Planches piano/EP** : `tools/pianopack/build_plates.py` convertit les 12 PNG
   du zip (1376x768) en WebP 1500 px -> 770 Ko (contre 1254 Ko). Les 3 EP
   (ballad/dx/epiano) ont desormais leur photo (avant : repli sur `electric`).
+
+## Session 2026-11-04 — faux sustain piano + « marteau » sax
+- **Faux sustain piano (N1)** : 38/68 regions du pack bouclaient dans la partie
+  qui DECROIT ; le lecteur rebouclait sans fondu ni gain. `build_newstage.py`
+  annonce compenser mais ne le fait jamais (`faded=0`). Correction A LA LECTURE :
+  `flattenLoop()` (`fx_piano.h`, appele par `decodeRegion`) aplatit le niveau de
+  la boucle + fond le raccord sur une periode vers la phase AVANT `loopStart`
+  (jamais vers la tete du loop). Chute 0,78->0,96, saut 0,77->0,06.
+- **« Marteau » sax (N5)** : ce n'etait pas la boucle (saine : chute 0,99) mais le
+  `bite` de `fx_sax.h` : `x *= 1 + u²*(2.6+p7)` sur 30 ms = boost large bande =
+  « thump » a 33 Hz. Fenetre 30 ms -> 5 ms (un slap d'anche dure < 6 ms).
+- **p(1) « Subtone » n'est lu nulle part** dans `fx_sax.h` (parametre mort).
+- **Parametre 22 = knob « Character »** (0 = synthese, 1 = echantillon). Les 23
+  presets sax sont a **1,0** -> tous les controles de synthese (Breath, Growl,
+  Scoop, Grit, Attack) sont annules. C'est « les articulations pas branchees ».
+- **Bulldog Sax V2** = Kontakt PAYANT (BDS001, synthonia.com), pas de licence
+  libre -> ne pas embarquer. Sur disque /workspace/work/bulldog (non versionne).
+- **401 token_not_found_in_db** : rafraichissement par la plateforme via
+  `OH_LLM_API_KEY_REFRESH_URL` / base `https://llm-proxy.app.all-hands.dev` /
+  en-tete `X-Session-API-Key`. Probleme plateforme, pas depot ; sortir net.
