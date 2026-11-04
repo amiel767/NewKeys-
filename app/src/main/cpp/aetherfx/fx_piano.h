@@ -102,6 +102,10 @@ class PianoSampleReader {
     std::sort(layers_.begin(), layers_.end());
     layerCount_ = static_cast<int>(layers_.size());
     pcm_.assign(bytes + 28 + recLen, bytes + 28 + recLen + pcmLen);
+    // Les couches d'une meme racine doivent boucler sur la MEME longueur, sinon
+    // leur somme bat (creux periodiques = « dain dain »).  Avant `preload()`,
+    // qui aplatit le niveau de boucle sur la longueur retenue.
+    harmonizeLoops();
     // Hors du thread audio : `load()` tourne sur le thread UI.  Voir preload().
     preload();
     return !regions_.empty();
@@ -257,6 +261,42 @@ class PianoSampleReader {
    * passent par le cache LRU.
    */
   static constexpr size_t kPreloadBudgetSamples = 24u * 1024u * 1024u;  // 48 Mo int16
+
+  /**
+   * Aligne la LONGUEUR de boucle des couches d'une meme racine.
+   *
+   * Les deux couches d'un fondu sont deux prises de la MEME note, mais le pack
+   * leur a donne des boucles d'un nombre de periodes different (mesure `piano.bin`
+   * racine 59 : L6 = 89 periodes, L7 = 173).  Le lecteur reboucle chaque couche
+   * sur SA longueur : deux rythmes de boucle differents, donc leur SOMME bat —
+   * creux periodiques mesures jusqu'a 9,5 dB dans la queue (« Nain-Nain-Nain »),
+   * et c'est maximal a velocite moyenne, la ou le fondu est a 50/50.
+   *
+   * Toutes les couches d'une racine partagent le meme `root`, donc le meme facteur
+   * de reechantillonnage : l'invariant est le nombre de FRAMES.  On ramene tout le
+   * groupe a la longueur la PLUS COURTE, deja un nombre entier de periodes (mesure :
+   * 28,0 et 27,95 ; 89,1 et 173,3) — raccourcir ne peut donc pas casser la continuite
+   * du raccord, et la cible tient toujours dans l'echantillon.  Mesure hors-ligne de
+   * la somme brute : 8 a 17 dB d'ondulation ramenes a ~2 dB.
+   * Fait AVANT `preload()`, donc avant `flattenLoop`, qui aplatit le niveau de la
+   * boucle sur la longueur retenue.
+   */
+  void harmonizeLoops() {
+    const int n = static_cast<int>(regions_.size());
+    for (int i = 0; i < n; ++i) {
+      Region& gi = regions_[i];
+      if (gi.loopEnd <= gi.loopStart) continue;
+      uint32_t best = 0;
+      for (int j = 0; j < n; ++j) {
+        const Region& gj = regions_[j];
+        if (gj.root != gi.root || gj.loopEnd <= gj.loopStart) continue;
+        const uint32_t L = gj.loopEnd - gj.loopStart;
+        if (best == 0 || L < best) best = L;
+      }
+      if (best > 0 && gi.loopEnd - gi.loopStart > best)
+        gi.loopEnd = gi.loopStart + best;
+    }
+  }
 
   /** Decode une fois, au chargement, les regions les plus utiles. */
   void preload() {
