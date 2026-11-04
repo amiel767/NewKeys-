@@ -33,6 +33,13 @@
   Attention : un banc a fenetre de tendance courte (250 ms) invente un « battement »
   qui n'existe pas — le valider sur un signal temoin (prise seule) avant de conclure.
 
+## Environnement (verifie 2026-11-04, New 3 Design)
+- **Le depot vit a la RACINE `/workspace/project`** (pas de sous-dossier `NewKeys-`).
+  `restore_env.sh` y pointe encore -> casse, ne pas l'utiliser tel quel.
+  Provisionnement SDK : `/workspace/provision_sdk.sh` (verifie, idempotent).
+- `serve.py` doit demarrer APRES `apk_page.py` (sinon `/workspace/dl/pub` absent au
+  demarrage -> il sert le cwd -> 404 sur /aether.apk).
+
 ## Session 2026-11-04 — T2/T5 velocite piano
 - Cause unique mesuree : normalisation GLOBALE des couches (dynamique 13,6 -> 29,7 dB
   apres correction) + pas de dB inegaux du pack (saut T5) + fondu cos/sin sur signaux
