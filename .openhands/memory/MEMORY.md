@@ -46,9 +46,15 @@
   `flattenLoop()` (`fx_piano.h`, appele par `decodeRegion`) aplatit le niveau de
   la boucle + fond le raccord sur une periode vers la phase AVANT `loopStart`
   (jamais vers la tete du loop). Chute 0,78->0,96, saut 0,77->0,06.
-- **« Marteau » sax (N5)** : ce n'etait pas la boucle (saine : chute 0,99) mais le
-  `bite` de `fx_sax.h` : `x *= 1 + u²*(2.6+p7)` sur 30 ms = boost large bande =
-  « thump » a 33 Hz. Fenetre 30 ms -> 5 ms (un slap d'anche dure < 6 ms).
+- **« Marteau » sax (N5) — CORRIGE le 2026-11-03** : ce n'est NI la boucle (saine,
+  chute 0,99) NI le `bite`. Mesure : le `bite` ne pese que **2,6 %** du signal, et le
+  desactiver laisse le MEME nombre de pics. Les « ts ts ts » tombent EXACTEMENT sur les
+  attaques de notes (verifie en correlant les clics avec les noteOns du lick). C'est le
+  transitoire d'attaque (crete/RMS 0,37) = clic de synthese delibere (fx_sax.h l.229,
+  bande 2800 Hz, 18 ms) + attaque naturelle de l'echantillon. Correctif candidat :
+  attaque adoucie (synth 50 ms + fondu echantillon 150 ms + clics coupes) -> 0,25.
+  **Regle** : un clic qui suit chaque note n'est pas forcement un clic ajoute ; mesurer
+  le transitoire d'attaque avant de retirer quoi que ce soit.
 - **p(1) « Subtone » n'est lu nulle part** dans `fx_sax.h` (parametre mort).
 - **Parametre 22 = knob « Character »** (0 = synthese, 1 = echantillon). Les 23
   presets sax sont a **1,0** -> tous les controles de synthese (Breath, Growl,
@@ -56,6 +62,19 @@
 - **Bulldog Sax V2** : l'utilisateur a declare le 2026-11-04 detenir la LICENCE
   et l'ACCORD du proprietaire. **Tous les fichiers qu'il enverra desormais sont
   livres avec accord** -> ne plus bloquer sur la licence ; reintegrer Bulldog.
+  **INTEGRE le 2026-11-03** (commit `700879f`) : `tools/saxpack/build_bulldog.py`
+  construit `saxpack_bulldog.bin` depuis les 36 `NN-EXP1.wav` (02 = MIDI 54, +1
+  demi-ton/fichier, mesure par hauteur). `AeBanks.fileFor` : l'**alto** (type 1)
+  joue Bulldog, repli `saxpack_alt.bin` dans `read()`. Boucle = entier de periodes
+  (seam 0,98 -> 0,21), tenue plate sur 6 s.
+- **Velocite piano/EP (T2/T5) : OK, pas de saut.** `piano_velocity_check` +
+  balayage fin : courbe LISSE sur 1..127 (~41 dB), aucune inversion reelle. Le
+  fondu a puissance constante entre couches (fx_piano.h ~l.1084) corrige le « ca
+  saute » en haut de la velocite. Le faux « saut de 5 dB » venait d'un `printf("%d",
+  double)` dans mon banc, pas du moteur.
+- **T1 (Amp) : deja fait** — AMP (12) et PUNCH (13) retires de `AePianoUi.kt` ;
+  index 12 recycle en bruit de touche. **T4 : fait** — groupes TONE/MIC/PLAY/
+  MECHANICS (acoustique) et TONE/SPACE/PLAY/MECHANICS (EP).
 - **Demos audio** : `tools/demos/audio/` (12 pianos + 4 sax, MP3) rendus par le
   moteur reel ; regen via `tools/demos/f32_to_mp3.py`. Sert de reference d'ecoute.
 - **401 token_not_found_in_db** : rafraichissement par la plateforme via
