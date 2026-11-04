@@ -13,6 +13,11 @@
   `recordRoborazziDebug` (jamais `testDebugUnitTest` seul, jamais sans --tests).
 - 401 « token_not_found_in_db » = proxy LiteLLM, pas le depot. Sortir net, pas
   de retry. Veille via dump local, zero reseau.
+- **Mode economique (demande utilisateur) : toute commande sort <= 10 lignes.**
+  `cmd > /tmp/x.log 2>&1; tail -3`. Jamais de `ls -la`/`grep`/`cat` non filtres,
+  jamais de dump de script par heredoc (il revient en entier), jamais de listing
+  complet. Mesures ecrites sur disque, lues par agregat. Une conversation qui
+  gonfle coute a CHAQUE tour suivant.
 - Ne JAMAIS declencher de workflow GitHub (release.yml = workflow_dispatch only).
 - **Pack multi-couches : normaliser PAR COUCHE, jamais globalement.** Une cible RMS
   unique pour toutes les couches ecrase la dynamique -> courbe de velocite plate et
