@@ -106,7 +106,7 @@ def main():
   <p class="sub">Phrases reelles jouees par le <b>moteur de l'app</b> (rendu hors Android), un fichier par instrument.
      Presets lus depuis <code>AePresets.kt</code>, banques du depot. Encodage 48 kbps - ~950 Ko au total.</p>
 
-  <p class="sub" style="margin:0 0 22px"><a class="dl" href="/aether.apk" download>Telecharger l'APK (53,7 Mo)</a>
+  <p class="sub" style="margin:0 0 22px"><a class="dl" href="/aether.apk" download>Telecharger l'APK (57,3 Mo)</a>
      &nbsp; build du jour : piano (velocite T2, saturation T1), sax (clic), RAM (T5).</p>
 
   <h2>Pianos &amp; pianos electriques <span class="tag">12 - queue + droit + 4 EP</span></h2>
