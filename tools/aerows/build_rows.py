@@ -14,8 +14,10 @@ What it does
    nothing is squashed, then normalises the exposure.
 3. Applies a long left-side alpha dissolve (plus a short top/bottom feather), so
    the photo reads as a reflection inside the glass rather than a pasted sticker.
-4. For Piano and Sax the source is already in the repo (`ae_piano_mellow.webp`
-   and the `ae_sax_alto_gold.webp` cut-out), so nothing is downloaded for them.
+4. Piano's source is already in the repo (`ae_piano_mellow.webp`), so nothing is
+   downloaded for it. Sax uses a Commons photograph like the other three: the
+   repo's `ae_sax_alto_gold.webp` is a *cut-out* (a thin silhouette on empty
+   glass), which read as a different style next to the four photos.
 
 Usage
 -----
@@ -48,6 +50,7 @@ SOURCES = {
     "organ": "File:Hammond B3 & Drawbars.jpg",
     "synth": "File:Sequential Prophet 10 Rev 4.png",
     "leads": "File:Minimoog Model D Synthesizer at SMEM Playroom.jpg",
+    "sax": "File:A Saxophone.jpg",
 }
 
 # Crop window per instrument: (centre x, centre y, width fraction), plus options.
@@ -57,6 +60,7 @@ CROPS = {
     "organ": dict(cx=0.50, cy=0.45, wfrac=0.80, target=110),
     "synth": dict(cx=0.50, cy=0.63, wfrac=0.78, target=110),
     "leads": dict(cx=0.50, cy=0.56, wfrac=0.72, target=110),
+    "sax": dict(cx=0.62, cy=0.50, wfrac=0.72, target=112),
 }
 
 
@@ -135,31 +139,6 @@ def strip(src: str, dst_name: str, cx: float, cy: float, wfrac: float,
     print(f"  {dst_name:22s} {os.path.getsize(p)//1024:3d} Ko  crop {cw}x{ch} @({x},{y})")
 
 
-def sax_row(dst_name: str = "ae_row_sax.webp") -> None:
-    """Sax: the repo already ships the cut-out, so re-fit it instead of downloading."""
-    src = os.path.join(OUT, "ae_sax_alto_gold.webp")
-    cut = Image.open(src).convert("RGBA")
-    th = int(H * 0.94)
-    tw = int(cut.width * th / cut.height)
-    small = cut.resize((tw, th), Image.LANCZOS)
-    m = ImageStat.Stat(small.convert("RGB"), small.getchannel("A")).mean
-    g = max(0.8, min(2.6, 118 / max(m[0] * 0.3 + m[1] * 0.5 + m[2] * 0.2, 1)))
-    body = ImageEnhance.Contrast(
-        ImageEnhance.Brightness(small.convert("RGB")).enhance(g)
-    ).enhance(1.08).convert("RGBA")
-    body.putalpha(small.getchannel("A"))
-    c = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    c.paste(body, (W - tw - int(W * 0.06), (H - th) // 2), body)
-    ramp = left_fade(W, H)
-    a = c.getchannel("A")
-    px = Image.new("L", (W, H))
-    px.putdata([min(v, r) for v, r in zip(a.get_flattened_data(), ramp.get_flattened_data())])
-    c.putalpha(px)
-    p = os.path.join(OUT, dst_name)
-    c.save(p, "WEBP", quality=88, method=6)
-    print(f"  {dst_name:22s} {os.path.getsize(p)//1024:3d} Ko  tw={tw}")
-
-
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--check", action="store_true", help="only report existing assets")
@@ -175,7 +154,7 @@ def main() -> int:
 
     os.makedirs(CACHE, exist_ok=True)
     os.makedirs(OUT, exist_ok=True)
-    print("Organ / Synth / Leads (Commons photos):")
+    print("Commons photographs (organ / synth / leads / sax):")
     for key, title in SOURCES.items():
         dst = os.path.join(CACHE, key + os.path.splitext(title)[1].lower())
         commons_download(title, dst)
@@ -184,9 +163,6 @@ def main() -> int:
     print("Piano (repo asset, mirrored):")
     strip(os.path.join(OUT, "ae_piano_mellow.webp"), "ae_row_piano.webp",
           cx=0.55, cy=0.45, wfrac=1.00, flip=True, target=118)
-
-    print("Sax (repo cut-out):")
-    sax_row()
     return 0
 
 
