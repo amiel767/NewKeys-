@@ -20,7 +20,11 @@ android {
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
     ndk {
-      abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+      // Livraison : arm64 uniquement (demande utilisateur).  Les 3 autres ABI
+      // pesaient 15,7 Mo d'APK pour des appareils qui n'existent plus dans le
+      // parc vise ; armeabi-v7a est de toute facon une cible 32 bits sous-dotee
+      // pour un moteur audio multi-voix.
+      abiFilters += listOf("arm64-v8a")
     }
     externalNativeBuild {
       cmake {
