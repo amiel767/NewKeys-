@@ -142,3 +142,31 @@
   (le sax renvoie « Sax », il n'a pas d'UI de preset), lu par `ChannelStripV2.kt:95`.
 - Récupération après wipe : le dump `tools/.eco/stream_<cid>.json` + rejeu des
   éditions `file_editor` reconstruit un worktree perdu (voir daily log).
+
+## Session 2026-11-04 (New 2, suite) — pistes : 0 piste, source unique, Save, RAM
+Commit `e7a6c98`. `compileDebugKotlin` + `assembleDebug` OK (APK arm64 54,1 Mo).
+- **Un setlist neuf ouvre sur 0 piste** : `visibleTracksCount` passe de 1 a **0**
+  (createNewProject / createSetlistFromScreen / patch vierge) et la coercion
+  `MixerScreen` devient **0..8**. **Piege** : 0 doit etre ECRIT dans le JSON du
+  setlist, sinon le lecteur retombe sur `count { it.isEnabled }` = 8.
+- **Choix de source demande UNE fois** : `TrackChannel.soundSource`
+  ("" | "sf2" | "aether", persiste). Tap = ouvre la fenetre memorisee ;
+  **appui long = rouvre le choix** (bascule SF2 <-> Æther).
+- **Bouton Save Æther** : `SaveDiskBtn` -> `SaveButton`, pastille libellee (l'icone
+  disquette se lisait comme une decoration). Piano x=916, autres x=590.
+- **RAM dechargee — cause moteur, pas Kotlin** : `setInstrument(-1)` ne fait que
+  RETIRER l'objet ; le collecteur `FxChain::collectGarbage()` attend
+  `epoch + 3 blocs`, mais `epoch_` n'avance que dans `process()`, et
+  `renderFxPath` est **gate par `mFx.hasActiveWork()`**. Plus aucun instrument ->
+  plus de process -> **jamais de delete** : la banque (8-12 Mo) restait en RAM.
+  Fix : `collectGarbage(force)` + `AudioEngine::fxCollectGarbageNow()` (prend
+  `mRenderMutex`) + JNI + `AeHost.releaseNative()` depuis `AeManager.unload()`.
+  **Regle** : un collecteur differe par « N blocs » ne tourne jamais quand le chemin
+  de rendu est desactive. Forcer la liberation sous le verrou de rendu.
+- **Affichage RAM** : lire `Debug.getPss()` (empreinte process reelle). La somme
+  `Runtime` + `getNativeHeapAllocatedSize()` rate les banques du moteur, donc
+  decharger ne montrait aucune baisse.
+- **Fenetres** : zones vides = `clickable` absorbant (Æther + Track Settings) ;
+  animation d'entree `scaleIn(0.55f)+fadeIn`. **Piege** : la fenetre est composee
+  avec `isOpen` deja vrai -> `AnimatedVisibility` seul peint la taille finale des la
+  1re frame ; garde d'une frame (`shown` via `LaunchedEffect(Unit)`).
