@@ -14,6 +14,16 @@
 - 401 « token_not_found_in_db » = proxy LiteLLM, pas le depot. Sortir net, pas
   de retry. Veille via dump local, zero reseau.
 - Ne JAMAIS declencher de workflow GitHub (release.yml = workflow_dispatch only).
+- **Pack multi-couches : normaliser PAR COUCHE, jamais globalement.** Une cible RMS
+  unique pour toutes les couches ecrase la dynamique -> courbe de velocite plate et
+  NON monotone (frapper plus fort donne moins). Et pour un fondu entre deux prises de
+  la MEME source (correlees) : fondu LINEAIRE, pas cos/sin (puissance constante).
+
+## Session 2026-11-04 — T2/T5 velocite piano
+- Cause unique mesuree : normalisation GLOBALE des couches (dynamique 13,6 -> 29,7 dB
+  apres correction) + pas de dB inegaux du pack (saut T5) + fondu cos/sin sur signaux
+  correles. Correctifs dans `fx_piano.h` (`preload`, `PianoVoice::process`). Commit
+  `94d393e` pousse. Detail : `.openhands/memory/2026-11-04.md`.
 
 ## Carte du code Æther
 - Fenetres : `AeWindow.kt` dispatch -> `AePianoUi.kt` / `AeSaxUi.kt` / ...
