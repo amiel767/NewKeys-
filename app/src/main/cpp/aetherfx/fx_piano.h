@@ -409,6 +409,88 @@ class PianoSampleReader {
       dst[i * 2] = static_cast<int16_t>(step(nib(nL), predL, idxL));
       dst[i * 2 + 1] = static_cast<int16_t>(step(nib(nR), predR, idxR));
     }
+#ifdef PIANO_NO_LOOP_FIX
+    (void)g;
+#else
+    flattenLoop(dst, g);
+#endif
+  }
+
+  /** Aplatit le niveau de la boucle pour que le raccord ne « re-attaque » pas.
+   *
+   * Le docstring de `build_newstage.py` annonce compenser la decroissance de la
+   * boucle, mais le code ne le fait jamais (`faded` vaut 0 sur les 68 regions) et
+   * le lecteur reboucle SANS fondu ni gain (contrairement au lecteur sax, qui en a
+   * un). Or 38 des 68 regions posent leur boucle dans la partie qui DECROIT :
+   * mesure (`tools/pianopack/loop_decay.py`) -2,2 dB/tour en median, jusqu'a
+   * -25 dB. L'enveloppe descend donc puis REMONTE d'autant a chaque tour : c'est
+   * le « faux sustain » entendu comme un echo.
+   *
+   * On ramene la boucle au niveau de son premier bloc (gain = RMS_tete / RMS_local,
+   * borne pour ne pas souffler le plancher ADPCM), puis on fond le raccord sur une
+   * PERIODE.  Une periode exacte est ce qui rend le fondu invisible : la boucle est
+   * un nombre entier de periodes, donc le dernier echantillon fondu retombe sur la
+   * phase qui precede `loopStart` et le rebouclage reste continu (un fondu plus
+   * court ou plus long laisse une marche, cf. le commentaire du lecteur sax).
+   * Fait au decodage, hors du thread audio. */
+  void flattenLoop(int16_t* dst, const Region& g) const {
+    const uint32_t ls = g.loopStart, le = g.loopEnd;
+    if (le <= ls || le > g.frames) return;
+    const uint32_t L = le - ls;
+    const uint32_t win = std::max<uint32_t>(1u, static_cast<uint32_t>(0.010 * rate_));
+    const uint32_t nwin = std::max<uint32_t>(2u, L / win);
+    std::vector<float> raw(nwin);
+    for (uint32_t k = 0; k < nwin; ++k) {
+      const uint32_t a = ls + static_cast<uint32_t>(static_cast<uint64_t>(k) * L / nwin);
+      const uint32_t b = ls + static_cast<uint32_t>(static_cast<uint64_t>(k + 1) * L / nwin);
+      double s = 0;
+      for (uint32_t i = a; i < b; ++i) {
+        const double l = dst[2 * i] / 32768.0, r = dst[2 * i + 1] / 32768.0;
+        s += l * l + r * r;
+      }
+      raw[k] = static_cast<float>(std::sqrt(s / std::max<uint32_t>(1u, (b - a) * 2)));
+    }
+    const float head = std::max(1e-6f, raw[0]);
+    std::vector<float> gv(nwin);
+    for (uint32_t k = 0; k < nwin; ++k)
+      gv[k] = std::min(12.f, head / std::max(1e-6f, raw[k]));
+    // Lissee : un gain par fenetre brute module l'enveloppe au rythme des fenetres.
+    std::vector<float> gs(gv);
+    for (uint32_t k = 1; k + 1 < nwin; ++k)
+      gs[k] = 0.25f * gv[k - 1] + 0.5f * gv[k] + 0.25f * gv[k + 1];
+    for (uint32_t k = 0; k < nwin; ++k) {
+      const uint32_t a = ls + static_cast<uint32_t>(static_cast<uint64_t>(k) * L / nwin);
+      const uint32_t b = ls + static_cast<uint32_t>(static_cast<uint64_t>(k + 1) * L / nwin);
+      const float g0 = gs[k];
+      const float g1 = (k + 1 < nwin) ? gs[k + 1] : gs[0];
+      const uint32_t span = std::max<uint32_t>(1u, b - a);
+      for (uint32_t i = a; i < b; ++i) {
+        const float gg = g0 + (g1 - g0) * (static_cast<float>(i - a) / static_cast<float>(span));
+        for (int c = 0; c < 2; ++c) {
+          const float v = dst[2 * i + c] * gg;
+          dst[2 * i + c] = static_cast<int16_t>(std::max(-32768.f, std::min(32767.f, v)));
+        }
+      }
+    }
+    // Fondu du raccord, sur une periode, vers la phase QUI PRECEDE loopStart — jamais
+    // vers la tete du loop.  Fondre vers x[ls..ls+xf) laisse le dernier echantillon
+    // fondu xf echantillons APRES loopStart alors que le rebouclage repart de
+    // loopStart : chaque tour saute de ce que la forme d'onde fait en xf
+    // echantillons (le clic periodique mesure a 0,57 cote sax).  Comme la boucle
+    // fait un nombre entier de periodes, la phase d'avant loopStart est celle qui
+    // suit reellement x[le-1].
+    const float f0 = 440.f * std::pow(2.f, (g.root - 69) / 12.f);
+    uint32_t xf = static_cast<uint32_t>(std::max(1.f, rate_ / std::max(20.f, f0)));
+    xf = std::min(xf, std::min(L / 2, ls));   // il faut de la place AVANT loopStart
+    for (uint32_t i = 0; i < xf; ++i) {
+      const float u = static_cast<float>(i + 1) / static_cast<float>(xf + 1);
+      for (int c = 0; c < 2; ++c) {
+        const float tail = dst[2 * (le - xf + i) + c];
+        const float pre = dst[2 * (ls - xf + i) + c];
+        dst[2 * (le - xf + i) + c] =
+            static_cast<int16_t>(std::max(-32768.f, std::min(32767.f, tail * (1.f - u) + pre * u)));
+      }
+    }
   }
 
   std::vector<Region> regions_;
