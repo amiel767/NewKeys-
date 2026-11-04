@@ -48,15 +48,6 @@ object AeBanks {
      * donc une banque, comme l'electrique.
      */
     private val uprightFile = "pianopack/upright.bin"
-    /**
-     * Piano electrique : banque distincte, pas un reglage du precedent.  Le moteur ne
-     * peut pas transformer un Steinway en tine : l'inharmonicite d'une corde et celle
-     * d'une barre frappee n'ont pas la meme loi.  Banque GregSullivan Wurlitzer EP200
-     * (CC-BY 3.0), pack 1,58 Mo / 48 regions, construite par tools/pianopack/build_electric.py.
-     */
-    private val electricFile = "pianopack/electric.bin"
-    /** Index du modele « Electric » dans AePianoModels.all : il change de banque. */
-    private const val ELECTRIC_MODEL = 8
 
     /**
      * Banques electriques : une par modele, pas un reglage du piano acoustique.
@@ -119,8 +110,7 @@ object AeBanks {
         // L'alto (type 1) joue Bulldog ; soprano/tenor/baryton gardent MTG.
         AeInstrument.SAX -> if (saxType == 1) bulldogAltoFile else saxFiles[saxType.coerceIn(0, 3)]
         AeInstrument.PIANO -> electricModels[model]
-            ?: if (model == ELECTRIC_MODEL) electricFile
-            else if (model in uprightModels) uprightFile
+            ?: if (model in uprightModels) uprightFile
             else pianoFile
         else -> null
     }
