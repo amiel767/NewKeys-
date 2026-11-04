@@ -53,8 +53,11 @@
 - **Parametre 22 = knob « Character »** (0 = synthese, 1 = echantillon). Les 23
   presets sax sont a **1,0** -> tous les controles de synthese (Breath, Growl,
   Scoop, Grit, Attack) sont annules. C'est « les articulations pas branchees ».
-- **Bulldog Sax V2** = Kontakt PAYANT (BDS001, synthonia.com), pas de licence
-  libre -> ne pas embarquer. Sur disque /workspace/work/bulldog (non versionne).
+- **Bulldog Sax V2** : l'utilisateur a declare le 2026-11-04 detenir la LICENCE
+  et l'ACCORD du proprietaire. **Tous les fichiers qu'il enverra desormais sont
+  livres avec accord** -> ne plus bloquer sur la licence ; reintegrer Bulldog.
+- **Demos audio** : `tools/demos/audio/` (12 pianos + 4 sax, MP3) rendus par le
+  moteur reel ; regen via `tools/demos/f32_to_mp3.py`. Sert de reference d'ecoute.
 - **401 token_not_found_in_db** : rafraichissement par la plateforme via
   `OH_LLM_API_KEY_REFRESH_URL` / base `https://llm-proxy.app.all-hands.dev` /
   en-tete `X-Session-API-Key`. Probleme plateforme, pas depot ; sortir net.
