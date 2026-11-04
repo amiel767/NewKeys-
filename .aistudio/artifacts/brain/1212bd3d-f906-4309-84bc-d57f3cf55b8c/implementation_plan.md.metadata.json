@@ -1,6 +1,0 @@
-{
-  "summary":  "Revised implementation plan: Restore Patches overlay on touch, access Setlists exclusively from the button inside Patches overlay, and wire all settings and setlists parameters cleanly with MixerViewModel and AppStatePersistence.",
-  "updatedAt":  "2026-10-11T20:28:28.135448549Z",
-  "requestFeedback":  true,
-  "userFacing":  true
-}
