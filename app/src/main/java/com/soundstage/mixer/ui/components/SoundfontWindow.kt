@@ -355,8 +355,6 @@ fun SoundfontWindow(
     state: SoundfontWindowState,
     actions: SfWindowActions = NoOpSfWindowActions,
     modifier: Modifier = Modifier,
-    aether: com.soundstage.mixer.instruments.AeManager? = null,
-    aetherStrip: Int = 0,
     // Hoisted so the list keeps its position when the window is closed and reopened.
     // The popup branch is removed from the composition on close, so a state remembered
     // inside would be reset to the top and the user had to scroll back to the file.
@@ -364,8 +362,6 @@ fun SoundfontWindow(
 ) {
     val rowsListState = listState ?: rememberLazyListState()
     var tab by remember { mutableStateOf(if (state.loadedFileId != null) SfTab.Presets else SfTab.All) }
-    var aetherTab by remember { mutableStateOf(false) }
-    var aetherOpen by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf<SfCategory?>(null) }
     var selectedBank by remember { mutableIntStateOf(state.loadedBank) }
@@ -391,12 +387,6 @@ fun SoundfontWindow(
             }
             selectedBank = state.loadedBank
             hiddenFileKeys.value = emptySet()
-            // A strip that already carries an Æther instrument reopens on that instrument, not on
-            // the soundfont list: it is what the track is playing. The back chevron leads to the
-            // four-card picker, and the picker's cards swap or unload it.
-            val hasInstrument = aether?.sessions?.containsKey(aetherStrip) == true
-            aetherTab = hasInstrument
-            aetherOpen = hasInstrument
         }
     }
 
@@ -559,7 +549,6 @@ fun SoundfontWindow(
                         tab = tab,
                         onTabChange = { t ->
                             tab = t
-                            aetherTab = false
                             selectedCategory = when (state.variant) {
                                 SoundfontVariant.Pad -> SfCategory.Pads
                                 SoundfontVariant.Drum -> SfCategory.Drums
@@ -567,22 +556,10 @@ fun SoundfontWindow(
                             }
                             query = ""
                         },
-                        aetherOn = aetherTab,
-                        onAether = if (aether != null && state.variant == SoundfontVariant.Track) ({
-                            aetherTab = true
-                            // A strip that already carries an instrument reopens straight into its
-                            // interface: the four-card picker is only for choosing one. The back
-                            // chevron inside the window returns to the picker to swap instruments.
-                            if (aether.sessions.containsKey(aetherStrip)) aetherOpen = true
-                        }) else null,
                         categories = visibleCats,
                         counts = countsByCategory,
                         selected = selectedCategory,
                         onSelect = { c ->
-                            // Picking a soundfont category leaves the instrument interface. Without
-                            // this the Æther cards stayed on screen while the user browsed the
-                            // soundfont list, so the window looked stuck on the instrument.
-                            aetherTab = false
                             selectedCategory = if (selectedCategory == c) null else c
                         },
                         modifier = Modifier
@@ -650,14 +627,6 @@ fun SoundfontWindow(
                                 .fillMaxWidth()
                                 .weight(1f)
                         ) {
-                            if (aetherTab && aether != null) {
-                                com.soundstage.mixer.instruments.AeInstrumentsTabContent(
-                                    manager = aether,
-                                    strip = aetherStrip,
-                                    onOpen = { aetherOpen = true },
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                            } else {
                             SfList(
                                 rows = currentRows,
                                 tab = tab,
@@ -681,42 +650,6 @@ fun SoundfontWindow(
                                     pendingDelete = row
                                     pendingDeleteKey = System.nanoTime()
                                 },
-                            )
-                            }
-                        }
-                    }
-                }
-
-                // The instrument window must be there the moment it is opened. A 220/260 ms
-                // fade+scale read as "it takes a while, then it shows up", which is exactly
-                // what the user reported. The exit keeps its fade so closing stays smooth.
-                AnimatedVisibility(
-                    visible = aetherOpen && aether != null,
-                    enter = fadeIn(tween(90)),
-                    exit = fadeOut(tween(160)) + scaleOut(tween(160), targetScale = 0.96f),
-                ) {
-                    val mgr = aether
-                    if (mgr != null) {
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .background(Color(0xCC05070D))
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                ) { /* absorb taps behind the instrument window */ },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            com.soundstage.mixer.instruments.AeInstrumentWindow(
-                                manager = mgr,
-                                strip = aetherStrip,
-                                onClose = { aetherOpen = false },
-                                modifier = Modifier
-                                    .fillMaxWidth(0.97f)
-                                    .aspectRatio(
-                                        com.soundstage.mixer.instruments.AE_W /
-                                            com.soundstage.mixer.instruments.AE_H
-                                    ),
                             )
                         }
                     }
@@ -888,8 +821,6 @@ private fun SfHeader(
 private fun SfLeftColumn(
     tab: SfTab,
     onTabChange: (SfTab) -> Unit,
-    aetherOn: Boolean,
-    onAether: (() -> Unit)?,
     categories: List<SfCategory>,
     counts: Map<SfCategory, Int>,
     selected: SfCategory?,
@@ -906,15 +837,6 @@ private fun SfLeftColumn(
                 .height(32.dp)
         )
         Spacer(Modifier.height(10.dp))
-
-        if (onAether != null) {
-            com.soundstage.mixer.instruments.AeInstrumentsTabItem(
-                selected = aetherOn,
-                onClick = onAether,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(10.dp))
-        }
 
         Text(
             "Category",

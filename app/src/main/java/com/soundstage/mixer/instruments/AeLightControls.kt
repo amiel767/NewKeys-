@@ -136,13 +136,17 @@ private fun blurSmall(src: Bitmap): Bitmap {
     return Bitmap.createScaledBitmap(src, w, h, true)
 }
 
+/**
+ * Potard rotatif. [s] est un facteur d'echelle : 1 = taille des rangees de reglages,
+ * plus grand pour le groupe isole au milieu de la fenetre (mecanique).
+ */
 @Composable
-fun AeLightKnob(th: AeTheme, value: Float, label: String, text: String, x: Number, y: Number, onChange: (Float) -> Unit) {
+fun AeLightKnob(th: AeTheme, value: Float, label: String, text: String, x: Number, y: Number, s: Float = 1f, onChange: (Float) -> Unit) {
     val sc = LocalAeScale.current
     val v by rememberUpdatedState(value)
     val cb by rememberUpdatedState(onChange)
-    Column(Modifier.at(x, y, 64, 72).pointerInput(Unit) { detectDragGestures { ch, d -> ch.consume(); cb((v - d.y / (130f * sc)).coerceIn(0f, 1f)) } }, horizontalAlignment = Alignment.CenterHorizontally) {
-        Canvas(Modifier.size(40.su())) {
+    Column(Modifier.at(x, y, 64 * s, 72 * s).pointerInput(Unit) { detectDragGestures { ch, d -> ch.consume(); cb((v - d.y / (130f * sc * s)).coerceIn(0f, 1f)) } }, horizontalAlignment = Alignment.CenterHorizontally) {
+        Canvas(Modifier.size((40 * s).su())) {
             val k = size.width / 60f; val r = 26f * k; val st = 3f * k
             val tl = Offset(30f * k - r, 30f * k - r); val sz = Size(2 * r, 2 * r); val c = Offset(30f * k, 30f * k)
             drawArc(th.ink.copy(alpha = 0.22f), 135f, 270f, false, tl, sz, style = Stroke(st, cap = StrokeCap.Round))
@@ -151,8 +155,8 @@ fun AeLightKnob(th: AeTheme, value: Float, label: String, text: String, x: Numbe
             drawCircle(Color(0x2E000000), 19f * k, c, style = Stroke(0.8f * k))
             rotate(-135f + 270f * value, c) { drawRoundRect(Color(0xFF3A3028), Offset(28.8f * k, 14f * k), Size(2.4f * k, 9f * k), CornerRadius(1.2f * k)) }
         }
-        AeT(label.uppercase(), 9, th.ink2, weight = FontWeight.Normal, spacing = 0.18f, align = TextAlign.Center)
-        AeT(text, 10, th.ink, font = AeFonts.mono, weight = FontWeight.Normal, align = TextAlign.Center)
+        AeT(label.uppercase(), 9 * s, th.ink2, weight = FontWeight.Normal, spacing = 0.18f, align = TextAlign.Center)
+        AeT(text, 10 * s, th.ink, font = AeFonts.mono, weight = FontWeight.Normal, align = TextAlign.Center)
     }
 }
 

@@ -47,6 +47,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soundstage.mixer.model.ActivePopup
+import com.soundstage.mixer.instruments.AetherInstrumentsWindow
+import com.soundstage.mixer.instruments.SoundSourceChooserPopup
 import com.soundstage.mixer.model.AppScreenPage
 import com.soundstage.mixer.ui.components.*
 import com.soundstage.mixer.ui.components.v2.MixerBackgroundV2
@@ -244,7 +246,7 @@ private fun MixerMainPageContent(
                                         onPanChange = { pan -> viewModel.setTrackPan(track.id, pan) },
                                         onSoloToggle = { viewModel.onTrackSoloClick(track.id) },
                                         onMuteToggle = { viewModel.onTrackMuteClick(track.id) },
-                                        onTrackNameClick = { viewModel.openSoundfontForSlot(track.id - 1) },
+                                        onTrackNameClick = { viewModel.openSoundSourceForSlot(track.id - 1) },
                                         onFxClick = { viewModel.openEffectsForTrack(track.id) },
                                         onTrackSettingsClick = { viewModel.openTrackSettings(track.id) },
                                         onPowerToggle = { viewModel.toggleTrackPower(track.id) },
@@ -330,7 +332,7 @@ private fun MixerMainPageContent(
                                 onPanChange = { id, pan -> viewModel.setTrackPan(id, pan) },
                                 onMuteClick = { id -> viewModel.onTrackMuteClick(id) },
                                 onSoloClick = { id -> viewModel.onTrackSoloClick(id) },
-                                onTrackNameClick = { id -> viewModel.openSoundfontForSlot(id - 1) },
+                                onTrackNameClick = { id -> viewModel.openSoundSourceForSlot(id - 1) },
                                 onFxClick = { id -> viewModel.openEffectsForTrack(id) },
                                 onTrackSettingsClick = { id -> viewModel.openTrackSettings(id) },
                                 modifier = Modifier
@@ -1081,8 +1083,6 @@ fun MixerScreen(
 
                 SoundfontWindow(
                     state = sfWindowState,
-                    aether = com.soundstage.mixer.instruments.AeInstruments.manager,
-                    aetherStrip = uiState.activeSoundfontSlotId,
                     listState = sfListState,
                     actions = object : SfWindowActions {
                         override fun onClose() { viewModel.closePopup() }
@@ -1125,6 +1125,22 @@ fun MixerScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .zIndex(120f)
+                )
+            }
+            ActivePopup.SOUND_SOURCE -> {
+                SoundSourceChooserPopup(
+                    onPickSoundfonts = { viewModel.openSoundfontForSlot(uiState.activeSoundfontSlotId) },
+                    onPickAether = { viewModel.openAetherForSlot(uiState.activeSoundfontSlotId) },
+                    onClose = { viewModel.closePopup() },
+                )
+            }
+            ActivePopup.AETHER -> {
+                AetherInstrumentsWindow(
+                    manager = com.soundstage.mixer.instruments.AeInstruments.manager,
+                    strip = uiState.activeSoundfontSlotId,
+                    isOpen = true,
+                    onClose = { viewModel.closePopup() },
+                    modifier = Modifier.fillMaxSize().zIndex(120f),
                 )
             }
             ActivePopup.TRACK_SETTINGS -> {

@@ -207,11 +207,19 @@ private val PIANO_GROUPS = listOf(
         K("Damper", 10, ::pc),
         K("Level", 7, ::db),
     )),
-    KG("MECHANICS", listOf(
-        K("Key", 12, ::pc),
-        K("Hammer", 16, ::pc),
-        K("EQ", 14, ::eqdb),
-    )),
+)
+
+/**
+ * Mecanique : trois reglages, sortis des familles et poses au milieu de la fenetre.
+ *
+ * L'utilisateur a demande de les « enlever du lot » et de les deplacer au centre, un
+ * peu plus grands, sans titre.  Ils ne tiennent donc plus dans la colonne de droite
+ * et sont dessines a part, sous le nom du modele.
+ */
+private val MECHANICS = listOf(
+    K("Key", 12, ::pc),
+    K("Hammer", 16, ::pc),
+    K("EQ", 14, ::eqdb),
 )
 
 /**
@@ -244,31 +252,7 @@ private val EP_GROUPS = listOf(
         K("Release", 8) { "${(80 + it * 550).toInt()}ms" },
         K("Damper", 10, ::pc),
     )),
-    KG("MECHANICS", listOf(
-        K("Key", 12, ::pc),
-        K("Attack", 16, ::pc),
-        K("EQ", 14, ::eqdb),
-    )),
 )
-
-/** Aperçu de carte : la scène Felt, recadrée au centre. */
-@Composable
-fun AePianoCardPreview(modifier: Modifier) {
-    val ctx = LocalContext.current
-    val bmp = remember { AePianoAssets.plate(ctx, "felt")?.bitmap }
-    Canvas(modifier.clip(RoundedCornerShape(12.dp))) {
-        bmp?.let {
-            val sc = max(size.width / it.width, size.height / it.height)
-            val dw = it.width * sc
-            val dh = it.height * sc
-            drawImage(
-                it,
-                dstOffset = IntOffset(((size.width - dw) / 2f).roundToInt(), ((size.height - dh) / 2f).roundToInt()),
-                dstSize = IntSize(dw.roundToInt(), dh.roundToInt()),
-            )
-        }
-    }
-}
 
 /**
  * La fenêtre Piano : scène plein cadre (photo + particules), liste des modèles à
@@ -323,14 +307,14 @@ fun BoxScope.AePianoUi(c: AeCtl, manager: AeManager, strip: Int, onOpenBrowser: 
             scene.particles.draw(this)
         }
         AeStage(Modifier.fillMaxSize()) {
-            AeT("ÆTHER PIANO", 10, th.ink2, Modifier.at(24, 44, 200, 12), AeFonts.display, FontWeight.Normal, 0.3f)
-            AeT("PIANO", 10, th.ink, Modifier.at(300, 12, 400, 12), AeFonts.display, FontWeight.Light, 0.42f, TextAlign.Center)
+            // Titre majestueux en Cinzel, la police des titres du depot : grand et
+            // grave, centre sur la zone libre entre les deux panneaux de verre.
+            AeT("ÆTHER PIANO", 42, th.ink, Modifier.at(216, 8, 478, 48), AeFonts.plate, FontWeight.ExtraBold, 0.16f, TextAlign.Center)
             // Le nom du modele est le seul libelle qui dit ce qui est charge, et la case
             // « Presets » de l'en-tete a ete retiree : c'est donc lui qui ouvre le navigateur.
-            Box(Modifier.at(300, 24, 400, 38).clickable(remember { MutableInteractionSource() }, null, onClick = onOpenBrowser)) {
-                AeT(model.name.uppercase(), 30, th.ink, Modifier.fillMaxSize(), AeFonts.display, FontWeight.ExtraLight, 0.2f, TextAlign.Center)
+            Box(Modifier.at(216, 58, 478, 34).clickable(remember { MutableInteractionSource() }, null, onClick = onOpenBrowser)) {
+                AeT(model.name.uppercase(), 26, th.ink, Modifier.fillMaxSize(), AeFonts.display, FontWeight.Light, 0.2f, TextAlign.Center)
             }
-            AeT(model.tag, 11, th.ink2, Modifier.at(300, 66, 400, 14), AeFonts.display, FontWeight.Light, 0.14f, TextAlign.Center)
             run {
                 // Fond de verre derriere la colonne de gauche, le meme que la carte des
                 // potards. La liste s'affiche en encre suivant la photo : sur les 6 modeles
@@ -357,11 +341,19 @@ fun BoxScope.AePianoUi(c: AeCtl, manager: AeManager, strip: Int, onOpenBrowser: 
                 // doivent etre autre chose »).
                 val groups = if (AeBanks.isElectricModel(s.preset)) EP_GROUPS else PIANO_GROUPS
                 groups.forEachIndexed { gi, g ->
-                    val gy = 72 + gi * 88
+                    // Trois familles au lieu de quatre : la mecanique est sortie du lot.
+                    // L'espacement passe donc de 88 a 112 pour remplir le panneau.
+                    val gy = 88 + gi * 112
                     AeT(g.title, 9, th.acc, Modifier.at(704, gy, 240, 12), AeFonts.plate, FontWeight.ExtraBold, 0.22f)
                     g.ks.forEachIndexed { j, k ->
                         AeLightKnob(th, c.v(k.idx), k.label, k.fmt(c.v(k.idx)), 704 + j * 62, gy + 16) { c.set(k.idx, it) }
                     }
+                }
+                // Mecanique : trois potards plus grands, en BAS au milieu de la fenetre, sans titre.
+                // « En bas milieu, pas au beau milieu » : sous le nom du modele, pas au centre de
+                // l'ecran ou ils flottaient au-dessus de la photo. Centres sur x=500 (370 + 3*86/2).
+                MECHANICS.forEachIndexed { j, k ->
+                    AeLightKnob(th, c.v(k.idx), k.label, k.fmt(c.v(k.idx)), 370 + j * 86, 336, 1.35f) { c.set(k.idx, it) }
                 }
             }
         }

@@ -37,12 +37,17 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
@@ -125,27 +130,20 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
             }
             val presets = manager.presets(s.instrument)
             BackArrow(winTh, 10, 9, 30) { onClose() }
-            // Header geometry, left to right:
-            //   back 10..40 | title from 58 | disk 604..634 | prev 642..672 |
-            //   preset chip 680..920 | next 928..958.
-            // The piano draws its model name centred at x 500 and the longest one, "ELECTRIC",
-            // reaches 595 at 30 sp with the 0.2 em tracking. The disk button used to sit at 552
-            // and covered it. 604 leaves 9 units of clearance; the group then steps right in
-            // 8-unit gaps so it reads as one block instead of four scattered chips. The piano's
-            // own X at 954 is gone: the back arrow at 10 already closes the window.
-            HeaderBtn(winTh, "◀", 642, 8, 30, 30) { manager.loadPreset(strip, s.preset - 1) }
-            // The preset nameplate that used to sit here is gone: the name is already in the
-            // window header and in the preset browser, and the plate took the place the
-            // controls needed. What is left is the one control that does something — open the
-            // browser.
+            // Header geometry: back arrow at 10..40, then the save disk at 604 when a knob has
+            // moved. The prev/next preset arrows that used to sit at 642 and 928 are gone (user
+            // request: "enlève les flèches résiduelles"). They only stepped one preset at a time
+            // while every instrument already has a full preset list, and on the piano they sat
+            // over the model name. A preset is now chosen from the list, never by a pair of arrows.
+            //
+            // The preset nameplate that used to sit here is gone too: the name is already in the
+            // window header and in the preset browser. What is left is the one control that does
+            // something — open the browser.
             //
             // The piano does not even need that: its model list is always on screen (left
             // column) and the model name is drawn large in the centre, so the header chip only
-            // repeated what is already visible. It stays for the three instruments that have no
-            // other way to reach their presets.
-            //
-            // The sax does not need it either: the user asked for the preset box to go, so the
-            // header keeps only the prev/next arrows and the panel stays clean.
+            // repeated what is already visible. It stays for the instruments that have no other
+            // way to reach their presets. The sax does not need it either (user request).
             val ns = RoundedCornerShape(10.su())
             if (s.instrument != AeInstrument.PIANO && s.instrument != AeInstrument.SAX) {
                 Box(Modifier.at(680, 7, 240, 32).clip(ns).background(winTh.glass).border(1.su(), winTh.edge, ns)
@@ -154,7 +152,6 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
                     AeT(presets.getOrNull(s.preset)?.name ?: "", 12, winTh.ink, Modifier.padding(horizontal = 12.su()))
                 }
             }
-            HeaderBtn(winTh, "▶", 928, 8, 30, 30) { manager.loadPreset(strip, s.preset + 1) }
             // Shown only once a knob has been moved away from the selected preset.
             if (manager.isModified(strip)) SaveDiskBtn(winTh, 604, 7) { naming = true }
             if (naming) NameSheet(
@@ -176,12 +173,37 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
 /**
  * Close affordance: a quiet back chevron in the top-left corner, the way a pushed screen is
  * dismissed, rather than a ✕ boxed in the top-right corner.
+ *
+ * Relief, same language as [AePowerIcon]: no hard ring anywhere. The button is a recessed
+ * well (a top-to-bottom dark wash plus a soft inner shadow at the top), and the chevron is an
+ * emboss — a dark copy offset one step down, the lit copy on top. A flat stroke on a flat disc
+ * read as a drawn glyph; this reads as a hollow pressed into the glass.
  */
 @Composable
 private fun BoxScope.BackArrow(th: AeTheme, x: Number, y: Number, size: Number, onClick: () -> Unit) {
     val s = size.toFloat()
     Box(
         Modifier.at(x, y, size, size).clip(CircleShape)
+            .background(Brush.verticalGradient(listOf(Color(0x1F000000), Color(0x05000000))))
+            .drawWithContent {
+                drawContent()
+                // The well: a soft inner shadow at the top, no hard ring.
+                drawCircle(
+                    brush = Brush.verticalGradient(
+                        listOf(Color(0x73000000), Color(0x00000000)),
+                        endY = this.size.height * 0.85f,
+                    ),
+                    radius = this.size.minDimension / 2f,
+                )
+                // Light bevel on the lower rim, shadow on the upper: the face is lit from above.
+                drawArc(
+                    color = Color(0x1AFFFFFF),
+                    startAngle = 20f, sweepAngle = 140f, useCenter = false,
+                    topLeft = Offset(0.75f, 0.75f),
+                    size = Size(this.size.width - 1.5f, this.size.height - 1.5f),
+                    style = Stroke(width = 1.1f * density),
+                )
+            }
             .clickable(remember { MutableInteractionSource() }, null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -189,20 +211,21 @@ private fun BoxScope.BackArrow(th: AeTheme, x: Number, y: Number, size: Number, 
             val k = this.size.width / s
             val cx = 17f * k; val cy = 15f * k
             val w = 2.2f * k
-            val p = androidx.compose.ui.graphics.Path().apply {
-                moveTo(cx + 4.5f * k, cy - 6f * k)
-                lineTo(cx - 3.5f * k, cy)
-                lineTo(cx + 4.5f * k, cy + 6f * k)
+            val emb = w * 0.45f
+            fun chevron(dy: Float, col: Color) {
+                val p = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(cx + 4.5f * k, cy - 6f * k + dy)
+                    lineTo(cx - 3.5f * k, cy + dy)
+                    lineTo(cx + 4.5f * k, cy + 6f * k + dy)
+                }
+                drawPath(p, col, style = Stroke(w, cap = StrokeCap.Round, join = StrokeJoin.Round))
             }
-            drawPath(p, th.ink, style = androidx.compose.ui.graphics.drawscope.Stroke(w, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+            chevron(emb, Color(0x66000000))
+            chevron(0f, th.ink)
         }
     }
 }
 
-@Composable
-private fun BoxScope.HeaderBtn(th: AeTheme, t: String, x: Number, y: Number, w: Number, h: Number, onClick: () -> Unit) {
-    Box(Modifier.at(x, y, w, h).clip(RoundedCornerShape(9.su())).background(th.glass).clickable(remember { MutableInteractionSource() }, null, onClick = onClick), contentAlignment = Alignment.Center) { AeT(t, 12, th.ink) }
-}
 
 /**
  * Preset browser: a three-pane library, the layout professional instrument plug-ins use.
@@ -513,51 +536,271 @@ fun AeInstrumentsTabItem(selected: Boolean, onClick: () -> Unit, modifier: Modif
     }
 }
 
-/** Right-hand content of the tab: four cards (2 x 2). Tapping a card loads it NOW (audio live) then calls [onOpen]. */
+/**
+ * Right-hand content of the tab: the instrument list.
+ *
+ * This replaced a 2 x 3 grid of tiles. A grid says "pick one of these pictures"; the
+ * user is really choosing a *sound*, and the thing that identifies it is its name.
+ * A list puts the name where the eye starts, and the photograph behind the glass does
+ * what the tile's flat gradient could not: it tells you what the instrument is before
+ * you read a word.
+ *
+ * The rows are the soundfont rows' frosted glass. Two differences from the soundfont
+ * list: the artwork is a real photograph bleeding off the right edge, faded to nothing
+ * on its left so it reads as a reflection caught in the glass rather than a sticker;
+ * and the power toggle is kept, because it is the only way to load an instrument
+ * without opening its editor.
+ */
 @Composable
 fun AeInstrumentsTabContent(manager: AeManager, strip: Int, onOpen: () -> Unit, modifier: Modifier = Modifier) {
-    val all = listOf(AeInstrument.ORGAN, AeInstrument.SYNTH, AeInstrument.LEADS, AeInstrument.SAX, AeInstrument.PIANO)
-    // Deux rangees (3 + 2) et non trois (2 + 2 + 1) : en trois rangees chaque carte
-    // ne recevait que ~117 unites de haut alors que son contenu (pastille, visuel,
-    // titre, sous-titre) en demande ~148.  Le visuel se faisait ecraser et la carte
-    // se lisait « petite » alors que la place existait.
-    Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        all.chunked(3).forEach { row ->
-            Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                row.forEach { inst ->
-                    val loaded = manager.sessions[strip]?.instrument == inst
-                    AeTile(
-                        inst, loaded, Modifier.weight(1f).fillMaxHeight(),
-                        onClick = { if (manager.load(strip, inst) != null) onOpen() },
-                        onPower = { if (loaded) manager.unload(strip) else manager.load(strip, inst) },
+    val ctx = LocalContext.current
+    LazyColumn(
+        modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+        contentPadding = PaddingValues(top = 2.dp, bottom = 12.dp),
+    ) {
+        items(AeInstrument.entries) { inst ->
+            val loaded = manager.sessions[strip]?.instrument == inst
+            AeRow(
+                inst = inst,
+                loaded = loaded,
+                art = remember(inst) { AeRowArt.of(ctx, inst) },
+                onOpen = { if (manager.load(strip, inst) != null) onOpen() },
+                onPower = { if (loaded) manager.unload(strip) else manager.load(strip, inst) },
+            )
+        }
+    }
+}
+
+/** Where a row's photograph comes from: bundled `ae_row_*` webp assets, one per instrument. */
+private object AeRowArt {
+    private val cache = android.util.LruCache<String, ImageBitmap>(8)
+
+    private fun drawable(inst: AeInstrument) = when (inst) {
+        AeInstrument.ORGAN -> "ae_row_organ"
+        AeInstrument.SYNTH -> "ae_row_synth"
+        AeInstrument.LEADS -> "ae_row_leads"
+        AeInstrument.PIANO -> "ae_row_piano"
+        AeInstrument.SAX -> "ae_row_sax"
+    }
+
+    fun of(ctx: android.content.Context, inst: AeInstrument): ImageBitmap? {
+        val name = drawable(inst)
+        cache.get(name)?.let { return it }
+        val id = ctx.resources.getIdentifier(name, "drawable", ctx.packageName)
+        if (id == 0) return null
+        val bm = android.graphics.BitmapFactory.decodeResource(ctx.resources, id) ?: return null
+        return bm.asImageBitmap().also { cache.put(name, it) }
+    }
+}
+
+/**
+ * One instrument row: a frosted-glass card with the artwork reflecting inside it.
+ *
+ * The artwork is a single `Image` stretched to fill the row and cropped to the right, so
+ * it can never be squeezed out of shape by a row height it did not expect — the earlier
+ * tile placed its preview in a fixed box and the picture was crushed whenever the card
+ * came up short.
+ */
+@Composable
+private fun AeRow(
+    inst: AeInstrument,
+    loaded: Boolean,
+    art: ImageBitmap?,
+    onOpen: () -> Unit,
+    onPower: () -> Unit,
+) {
+    val st = rowStyleOf(inst)
+    val shape = RoundedCornerShape(10.dp)
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(RowHeight)
+            .shadow(
+                if (loaded) 10.dp else 5.dp, shape,
+                spotColor = st.accent.copy(alpha = 0.40f),
+                ambientColor = Color(0x40000000),
+            )
+            .clip(shape)
+            .background(Brush.horizontalGradient(listOf(st.glassL, st.glassR)))
+            .clickable(remember { MutableInteractionSource() }, null, onClick = onOpen),
+    ) {
+        // The reflection fills the right cell edge to edge: full row height, and exactly 3:1
+        // wide, so it is never squashed and never leaves the empty band above and below that a
+        // letterboxed picture produced. The asset itself is faded on all four sides, so the
+        // picture has no hard end anywhere.
+        art?.let {
+            Image(
+                bitmap = it,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                alignment = Alignment.CenterEnd,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .fillMaxHeight()
+                    .width(RowImageWidth),
+            )
+        }
+        // The glass itself: an opaque veil over the name, thinning to almost nothing where the
+        // photograph sits, so the reflection stays legible instead of being washed out twice
+        // (once by the asset's own fade, once here). The veil is the row's own tint, not grey,
+        // so the photograph dissolves into its instrument's colour.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.horizontalGradient(
+                        0.00f to st.glassL,
+                        0.42f to st.glassL.copy(alpha = 0.90f),
+                        0.68f to st.glassL.copy(alpha = 0.24f),
+                        1.00f to st.glassL.copy(alpha = 0.04f),
+                    )
+                )
+        )
+        // A wash of the accent colour down the left third, so the tint reads as a lit surface and
+        // not as a flat fill.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(st.accent.copy(alpha = 0.13f), st.accent.copy(alpha = 0.02f), Color(0x00FFFFFF))
+                    )
+                )
+        )
+        // The relief. A hard 1 dp outline reads as a drawn box; glass reads as light on the top
+        // lip and shade under the bottom one. The specular is inset and faded at both ends,
+        // because a full-width line lands exactly on the rounded corner and shows as a white
+        // seam across the card. No ring anywhere.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .drawWithContent {
+                    drawContent()
+                    drawRect(
+                        Brush.verticalGradient(
+                            0.00f to Color(0x14FFFFFF),
+                            0.22f to Color(0x00FFFFFF),
+                            0.80f to Color(0x00000000),
+                            1.00f to Color(0x2E000000),
+                        )
+                    )
+                    drawRoundRect(
+                        brush = Brush.horizontalGradient(
+                            listOf(Color(0x00FFFFFF), Color(0x59FFFFFF), Color(0x00FFFFFF))
+                        ),
+                        topLeft = Offset(size.width * 0.09f, 0.4f),
+                        size = Size(size.width * 0.82f, 1.1f),
+                        cornerRadius = CornerRadius(0.55f, 0.55f),
+                    )
+                    if (loaded) drawRect(
+                        Brush.horizontalGradient(
+                            listOf(st.accent.copy(alpha = 0.20f), Color(0x00FFFFFF), Color(0x00FFFFFF))
+                        )
                     )
                 }
-                // La 2e rangee n'a que deux cartes : sans emplacement vide la derniere
-                // s'etale sur la largeur de deux.
-                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+        )
+
+        Row(
+            Modifier.fillMaxSize().padding(start = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    inst.title,
+                    color = Color(0xFFF4F6FB),
+                    fontSize = 16.sp,
+                    lineHeight = 16.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontFamily = AeFonts.ui,
+                    maxLines = 1,
+                )
+                Text(
+                    st.sub,
+                    color = st.accent.copy(alpha = 0.66f),
+                    fontSize = 10.sp,
+                    lineHeight = 12.sp,
+                    fontFamily = AeFonts.ui,
+                    maxLines = 1,
+                )
             }
+            if (loaded) {
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0x1FFFFFFF))
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "LIVE",
+                        color = Color(0xFFE6EAF3),
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 1.1.sp,
+                        fontFamily = AeFonts.ui,
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+            }
+            AePowerIcon(loaded, onClick = onPower)
+            // The cell the picture occupies. Reserving it here keeps the power button to the
+            // LEFT of the artwork instead of sitting on top of it.
+            Spacer(Modifier.width(RowImageWidth))
         }
     }
 }
 
-@Composable
-private fun Chip(t: String, modifier: Modifier = Modifier) = Box(modifier.clip(RoundedCornerShape(50)).background(Color(0x22FFFFFF)).padding(horizontal = 8.dp, vertical = 4.dp)) {
-    Text(t, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.3.sp, fontFamily = AeFonts.ui)
-}
+/** Row height: a quarter taller than the 40 dp soundfont rows. */
+private val RowHeight = 50.dp
 
-private class TileStyle(val c0: Color, val c1: Color, val border: Color, val tag: String, val sub: String)
+/** Width of the artwork cell: exactly 3:1 with [RowHeight], so the picture fills it. */
+private val RowImageWidth = 150.dp
 
-/** Mini preview of the sax card: the alto cut-out, centred. */
-@Composable
-private fun AeSaxMini(modifier: Modifier) {
-    val ctx = LocalContext.current
-    val bmp = remember { AeSaxBitmaps.get(ctx, 1, 1) }
-    Canvas(modifier) {
-        bmp?.let {
-            val w = min(size.width, size.height * it.width / it.height); val h = w * it.height / it.width
-            drawImage(it, dstOffset = IntOffset(((size.width - w) / 2f).roundToInt(), ((size.height - h) / 2f).roundToInt()), dstSize = IntSize(w.roundToInt(), h.roundToInt()), filterQuality = FilterQuality.High)
-        }
-    }
+/**
+ * Per-instrument styling for a row.
+ *
+ * Each instrument carries its own colour so the list reads as five distinct materials rather
+ * than five copies of one grey card: vintage brown for the organ, brass for the sax, cool
+ * modern hues for the synth and leads, cold blue-grey for the piano.
+ *
+ * [glassL] / [glassR] are the two ends of the glass gradient, left to right. [glassL] doubles as
+ * the veil colour that hides the left of the photograph, so the tint is the same everywhere and
+ * the picture dissolves into *its own* colour instead of into a neutral grey.
+ */
+private class AeRowStyle(
+    val accent: Color,
+    val sub: String,
+    val glassL: Color,
+    val glassR: Color,
+)
+
+private fun rowStyleOf(inst: AeInstrument) = when (inst) {
+    // Marron vintage : le bois et les tirants d'un Hammond.
+    AeInstrument.ORGAN -> AeRowStyle(
+        Color(0xFFD9A85E), "Tonewheel · Drawbars · Rotary · Percussion",
+        Color(0xFF33241A), Color(0xFF1C140E),
+    )
+    // Moderne : violet froid, oscillateurs et filtres.
+    AeInstrument.SYNTH -> AeRowStyle(
+        Color(0xFF8A7AFF), "Morph oscillators · Filter · Macros",
+        Color(0xFF1E1A38), Color(0xFF121022),
+    )
+    // Moderne : cyan electrique, la couleur des leads.
+    AeInstrument.LEADS -> AeRowStyle(
+        Color(0xFF19E3FF), "Sine · Square · Saw · Super · Soft",
+        Color(0xFF0F2532), Color(0xFF0A1720),
+    )
+    // Laiton : le metal de l'instrument.
+    AeInstrument.SAX -> AeRowStyle(
+        Color(0xFFF2B84A), "Soprano · Alto · Tenor · Baritone",
+        Color(0xFF33280F), Color(0xFF1E1710),
+    )
+    // Bleu-gris froid : la laque et le feutre d'un piano, distinct des autres lignes.
+    AeInstrument.PIANO -> AeRowStyle(
+        Color(0xFF9FB0C8), "Felt · Studio · Cottage · Tine",
+        Color(0xFF232A36), Color(0xFF151A24),
+    )
 }
 
 /**
@@ -663,48 +906,6 @@ private fun AePowerIcon(on: Boolean, onClick: () -> Unit, size: Dp = 22.dp) {
                 radius = r * 1.6f,
                 alpha = shade * 0.5f,
             )
-        }
-    }
-}
-
-@Composable
-private fun AeTile(inst: AeInstrument, loaded: Boolean, modifier: Modifier, onClick: () -> Unit, onPower: () -> Unit) {
-    val st = when (inst) {
-        AeInstrument.ORGAN -> TileStyle(Color(0xFF4B2A17), Color(0xFF1B0E07), Color(0x55D9B36A), "TONEWHEEL", "Drawbars · Rotary · Percussion")
-        AeInstrument.SYNTH -> TileStyle(Color(0xFF2B1A5E), Color(0xFF0C0A22), Color(0x668A7AFF), "POLYSYNTH", "Morph oscillators · Filter · Macros")
-        AeInstrument.LEADS -> TileStyle(Color(0xFF08283A), Color(0xFF050912), Color(0x5519E3FF), "LED MONO LEAD", "Sine · Square · Saw · Super · Soft")
-        AeInstrument.SAX -> TileStyle(Color(0xFF4A2A10), Color(0xFF120905), Color(0x66F2B84A), "BREATH SAXOPHONE", "Soprano · Alto · Tenor · Baritone")
-        AeInstrument.PIANO -> TileStyle(Color(0xFF2A1C10), Color(0xFF0C0704), Color(0x66E3C48A), "HYBRID GRAND", "Felt · Studio · Cottage · Tine")
-    }
-    val sh = RoundedCornerShape(20.dp)
-    Box(
-        modifier.clip(sh).background(Brush.linearGradient(listOf(st.c0, st.c1), end = androidx.compose.ui.geometry.Offset(300f, 900f)))
-            .border(1.dp, st.border, sh).clickable(remember { MutableInteractionSource() }, null, onClick = onClick).padding(12.dp),
-    ) {
-        // Three bands, so the title and sub-title can never sit on top of the artwork when the
-        // card is short: chips on top, artwork in the middle at whatever height is left, text at
-        // the bottom. Before, all three were absolutely placed in the box and collided.
-        Column(Modifier.fillMaxSize()) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Chip(st.tag)
-                // Power toggle at the card's top-right: green when the instrument holds the strip,
-                // grey when it does not. Tapping loads it (without opening the editor) or unloads
-                // it, so the rest of the card stays available for "open".
-                AePowerIcon(loaded, onClick = onPower)
-            }
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                when (inst) {
-                    AeInstrument.ORGAN -> Box(Modifier.size(110.dp, 73.dp).aeSvg(AeSvgs.MINI_ORGAN))
-                    AeInstrument.SYNTH -> Box(Modifier.size(110.dp, 73.dp).aeSvg(AeSvgs.MINI_SYNTH))
-                    AeInstrument.LEADS -> Box(Modifier.size(110.dp, 59.dp).aeSvg(AeSvgs.MINI_LEADS))
-                    AeInstrument.SAX -> AeSaxMini(Modifier.size(54.dp, 96.dp))
-                    AeInstrument.PIANO -> AePianoCardPreview(Modifier.size(110.dp, 73.dp))
-                }
-            }
-            Column {
-                Text(inst.title, color = Color.White, fontSize = 16.sp, lineHeight = 16.sp, fontWeight = FontWeight.ExtraBold, fontFamily = AeFonts.ui, maxLines = 1)
-                Text(st.sub, color = Color(0xCCFFFFFF), fontSize = 10.sp, lineHeight = 10.sp, fontFamily = AeFonts.ui, maxLines = 1)
-            }
         }
     }
 }

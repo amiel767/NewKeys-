@@ -2948,6 +2948,34 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Opens the sound-source chooser for a slot: the user then picks the soundfont window or the
+     * Æther Instruments window. The target channel is armed here so either window inherits it.
+     */
+    fun openSoundSourceForSlot(slotId: Int) {
+        audioEngine.activeTargetChannel = AudioSlot.midiChannelForSlot(slotId)
+        _uiState.update {
+            it.copy(
+                activePopup = ActivePopup.SOUND_SOURCE,
+                activeSoundfontSlotId = slotId
+            )
+        }
+    }
+
+    /**
+     * Opens the Æther Instruments window for a slot. Same target-channel rule as the soundfont
+     * window: the strip that opens the window is the one the incoming MIDI is aimed at.
+     */
+    fun openAetherForSlot(slotId: Int) {
+        audioEngine.activeTargetChannel = AudioSlot.midiChannelForSlot(slotId)
+        _uiState.update {
+            it.copy(
+                activePopup = ActivePopup.AETHER,
+                activeSoundfontSlotId = slotId
+            )
+        }
+    }
+
     // ================= DRUM PAD CONTROLS =================
     fun setDrumTab(tab: String) {
         _uiState.update { it.copy(drumActiveTab = tab) }
