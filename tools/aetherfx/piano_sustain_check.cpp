@@ -78,6 +78,7 @@ int main(int argc, char** argv) {
             if (opt == "nodamper") pv[10] = 0.f;     // etouffoir
             if (opt == "single") pv[9] = 0.f;        // pas de fondu de couches (vel. fixe)
             if (opt == "tine") pv[15] = 1.f;         // tremolo ON (comme le preset Tine Keys)
+            if (opt == "notine") pv[15] = 0.5f;      // tremolo OFF
             std::vector<float> take = hold(eng, pv.data(), midi, 100);
             if (midi == 60 && (mi == 1 || mi == 8)) {   // acoustique + electrique
                 char p[64];
