@@ -105,6 +105,19 @@
   précédent : « On créer le pop up on est ici pour CRÉER »).
 - La pastille « Æther Instruments » est **retirée définitivement** de
   `SoundfontWindow` (plus de paramètres `aether`/`aetherStrip`).
-- Piano MECHANICS : **bas milieu**, `y=336`, `x=370+j*86`, échelle 1,35, sans titre.
+- Piano MECHANICS : **bas milieu**, `y=348`, `x=370+j*86`, échelle 1,35, sans titre.
+  Mesure : colonne de 97 unites, finit a 445 (bord 460, panneaux de verre 430).
+- **Cartes de la liste** (`AeRow`, `AeWindow.kt`) : rayon **7 dp** (pas 10 : un fort
+  rayon se lit comme une boite dessinee), image en `Crop` pleine case + **3 masques
+  `DstIn`** (fondu gauche, feather droit, feather vertical haut/bas) — c'est le
+  feather vertical qui fait « reflet » au lieu d'une image collee. Le bouton Power
+  est a GAUCHE de la cellule image (reservee par `Spacer(RowImageWidth)`).
+- **`addSoundTrack()` ne doit RIEN ouvrir** : le bridge LiveUI
+  (`LiveUiLoop.kt:146`) l'appelle en boucle pour grandir le mixer, un popup par
+  appel parasite les captures. Le « + » de l'UI passe par
+  `addSoundTrackAndChooseSource()` ; le pop up bascule de fenetre via
+  `openSourceWindow(popup)` sans recreer de piste.
+- Nom du preset Æther sur la plaque de piste : `AeManager.presetNameOn(strip)`
+  (le sax renvoie « Sax », il n'a pas d'UI de preset), lu par `ChannelStripV2.kt:95`.
 - Récupération après wipe : le dump `tools/.eco/stream_<cid>.json` + rejeu des
   éditions `file_editor` reconstruit un worktree perdu (voir daily log).
