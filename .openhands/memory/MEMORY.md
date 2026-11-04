@@ -90,3 +90,21 @@
 - **401 token_not_found_in_db** : rafraichissement par la plateforme via
   `OH_LLM_API_KEY_REFRESH_URL` / base `https://llm-proxy.app.all-hands.dev` /
   en-tete `X-Session-API-Key`. Probleme plateforme, pas depot ; sortir net.
+
+## Session 2026-11-04 (suite) — fenêtre Æther Instruments + pop up de choix
+- **Deux fenêtres séparées** : `SoundfontWindow` (inchangée) et
+  `instruments/AeInstrumentsWindow.kt` → `AetherInstrumentsWindow`
+  (`ActivePopup.AETHER`), coque copiée de SoundfontWindow (660x372, rayon 24,
+  colonne gauche 154 dp = pastille seule). L'interface de l'instrument est
+  hébergée **dans la même fenêtre** (redimensionnée à 1000x460 via `AeStage`),
+  plus d'overlay isolé.
+- **Pop up de choix** : `SoundSourceChooserPopup` (`ActivePopup.SOUND_SOURCE`),
+  ouvert au clic sur le nom de piste, deux entrées (Soundfonts / Æther
+  Instruments), **pas de « soon »**. Il est **à créer** — ne pas le chercher
+  dans le repo, il n'existait pas (piège qui a coûté des passes au clone
+  précédent : « On créer le pop up on est ici pour CRÉER »).
+- La pastille « Æther Instruments » est **retirée définitivement** de
+  `SoundfontWindow` (plus de paramètres `aether`/`aetherStrip`).
+- Piano MECHANICS : **bas milieu**, `y=336`, `x=370+j*86`, échelle 1,35, sans titre.
+- Récupération après wipe : le dump `tools/.eco/stream_<cid>.json` + rejeu des
+  éditions `file_editor` reconstruit un worktree perdu (voir daily log).
