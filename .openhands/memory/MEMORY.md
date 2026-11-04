@@ -20,6 +20,13 @@
 - Banques : `AeBanks` (`AeInstrumentHost.kt`) : `isElectricModel`, `pianoBankId`.
 - Moteurs : `app/src/main/cpp/aetherfx/fx_piano.h` (17 params), `fx_sax.h` (23).
 
+## Session 2026-11-03 (3e) — nettoyage ressources mortes (ea4d6f5)
+- 40 ressources mortes retirees (ic_fx_* = vecteurs AeFxIcons en code, fonts
+  inter/lexend/orbitron) + reliques racine (0.4500, B4/B5*.txt, copies racine
+  de Setlists/Settings, .aistudio). Outil : `tools/audit_dead_res.py`.
+- NE PAS toucher `ae_piano_*`/`ae_sax_*` : charges par `getIdentifier` (invisible
+  a un grep de nom). `app/assets/` (JSX) conserve : reference de design.
+
 ## Session 2026-11-03 (suite) — Sax + planches
 - **Bulldog = UN sax, profil ALTO** (centroide 2600-3400 Hz ; plage EXP1
   MIDI 50.9-86.3). « enleve le sax de meme nature » = l'alto change de source,
