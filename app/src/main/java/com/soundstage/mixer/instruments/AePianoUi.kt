@@ -352,8 +352,10 @@ fun BoxScope.AePianoUi(c: AeCtl, manager: AeManager, strip: Int, onOpenBrowser: 
                 // Mecanique : trois potards plus grands, en BAS au milieu de la fenetre, sans titre.
                 // « En bas milieu, pas au beau milieu » : sous le nom du modele, pas au centre de
                 // l'ecran ou ils flottaient au-dessus de la photo. Centres sur x=500 (370 + 3*86/2).
+                // y=348 : la colonne mesure 72*1,35 = 97 unites, donc elle finit a 445, sous les
+                // panneaux de verre (430) et a 15 unites du bord bas (460) — « toujours un peu plus bas ».
                 MECHANICS.forEachIndexed { j, k ->
-                    AeLightKnob(th, c.v(k.idx), k.label, k.fmt(c.v(k.idx)), 370 + j * 86, 336, 1.35f) { c.set(k.idx, it) }
+                    AeLightKnob(th, c.v(k.idx), k.label, k.fmt(c.v(k.idx)), 370 + j * 86, 348, 1.35f) { c.set(k.idx, it) }
                 }
             }
         }

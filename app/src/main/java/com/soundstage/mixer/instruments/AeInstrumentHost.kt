@@ -244,6 +244,9 @@ object AeInstruments {
     /** Display name of the instrument on a strip, or null when the strip has no Æther instrument. */
     fun nameOn(strip: Int): String? = manager.sessions[strip]?.instrument?.title
 
+    /** Preset name the strip plays, so the mixer's name plate can show it. */
+    fun presetNameOn(strip: Int): String? = manager.presetNameOn(strip)
+
     /** Loads an instrument on a strip and returns true when the engine accepted it. */
     fun load(strip: Int, instrument: AeInstrument): Boolean {
         if (manager.sessions[strip]?.instrument == instrument) return true

@@ -286,7 +286,7 @@ private fun MixerMainPageContent(
                                                     )
                                                 )
                                             }
-                                            .clickable { viewModel.addSoundTrack() }
+                                            .clickable { viewModel.addSoundTrackAndChooseSource() }
                                             .testTag("btn_add_sound_track"),
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -1128,9 +1128,12 @@ fun MixerScreen(
                 )
             }
             ActivePopup.SOUND_SOURCE -> {
+                // One chooser, two uses: the "+" (which has just materialised the new strip) and a
+                // strip's name plate. Both point activeSoundfontSlotId at the strip to configure,
+                // so picking either window here targets the same strip.
                 SoundSourceChooserPopup(
-                    onPickSoundfonts = { viewModel.openSoundfontForSlot(uiState.activeSoundfontSlotId) },
-                    onPickAether = { viewModel.openAetherForSlot(uiState.activeSoundfontSlotId) },
+                    onPickSoundfonts = { viewModel.openSourceWindow(ActivePopup.SOUNDFONT) },
+                    onPickAether = { viewModel.openSourceWindow(ActivePopup.AETHER) },
                     onClose = { viewModel.closePopup() },
                 )
             }

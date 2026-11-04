@@ -39,13 +39,16 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -128,7 +131,6 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
                 }
                 else -> Unit
             }
-            val presets = manager.presets(s.instrument)
             BackArrow(winTh, 10, 9, 30) { onClose() }
             // Header geometry: back arrow at 10..40, then the save disk at 604 when a knob has
             // moved. The prev/next preset arrows that used to sit at 642 and 928 are gone (user
@@ -136,20 +138,16 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
             // while every instrument already has a full preset list, and on the piano they sat
             // over the model name. A preset is now chosen from the list, never by a pair of arrows.
             //
-            // The preset nameplate that used to sit here is gone too: the name is already in the
-            // window header and in the preset browser. What is left is the one control that does
-            // something — open the browser.
-            //
-            // The piano does not even need that: its model list is always on screen (left
-            // column) and the model name is drawn large in the centre, so the header chip only
-            // repeated what is already visible. It stays for the instruments that have no other
-            // way to reach their presets. The sax does not need it either (user request).
+            // The preset name is not shown here at all (user: "le nom du preset uniquement sur
+            // l'affichage" — the mixer strip's name plate). The header chip that used to carry it
+            // is gone for every instrument; only the browser opener is kept, because it is the
+            // only way to reach the preset list on the instruments that have no always-on list.
             val ns = RoundedCornerShape(10.su())
             if (s.instrument != AeInstrument.PIANO && s.instrument != AeInstrument.SAX) {
                 Box(Modifier.at(680, 7, 240, 32).clip(ns).background(winTh.glass).border(1.su(), winTh.edge, ns)
                     .clickable(remember { MutableInteractionSource() }, null) { list = !list },
                     contentAlignment = Alignment.Center) {
-                    AeT(presets.getOrNull(s.preset)?.name ?: "", 12, winTh.ink, Modifier.padding(horizontal = 12.su()))
+                    AeT("PRESETS", 12, winTh.ink, Modifier.padding(horizontal = 12.su()))
                 }
             }
             // Shown only once a knob has been moved away from the selected preset.
@@ -163,7 +161,7 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
                 m = manager, strip = strip, s = s,
                 onPick = { manager.loadPreset(strip, it) },
                 onDeleteUser = { manager.deleteUserPreset(s.instrument, it) },
-                onUnload = { list = false; onClose(); manager.unload(strip) },
+                onUnload = { list = false; onClose(); AeInstruments.unload(strip) },
                 onDismiss = { list = false },
             )
         }
@@ -565,34 +563,40 @@ fun AeInstrumentsTabContent(manager: AeManager, strip: Int, onOpen: () -> Unit, 
                 inst = inst,
                 loaded = loaded,
                 art = remember(inst) { AeRowArt.of(ctx, inst) },
-                onOpen = { if (manager.load(strip, inst) != null) onOpen() },
-                onPower = { if (loaded) manager.unload(strip) else manager.load(strip, inst) },
+                // Through AeInstruments, not the manager: only that path runs onBeforeLoad, which
+                // releases the soundfont already on the strip. Calling `manager.load` directly
+                // installed the instrument on top of the soundfont, so both answered the strip.
+                onOpen = { if (AeInstruments.load(strip, inst)) onOpen() },
+                onPower = { if (loaded) AeInstruments.unload(strip) else AeInstruments.load(strip, inst) },
             )
         }
     }
 }
 
-/** Where a row's photograph comes from: bundled `ae_row_*` webp assets, one per instrument. */
+/**
+ * Where a row's artwork comes from.
+ *
+ * There is no bundled `ae_row_*` picture: an earlier attempt pointed at five drawables that
+ * were never added to the repo, so every row silently rendered with no image at all (the
+ * decode returns null and the `art?.let` block is skipped). The artwork is instead the one
+ * each instrument already ships with:
+ *  - Organ / Synth / Leads draw their mini front-panel SVG (the same asset the old tile used);
+ *  - Piano shows the photograph of its first model (Felt), the one the reference pack provides;
+ *  - Sax shows the gold alto cut-out.
+ */
 private object AeRowArt {
-    private val cache = android.util.LruCache<String, ImageBitmap>(8)
-
-    private fun drawable(inst: AeInstrument) = when (inst) {
-        AeInstrument.ORGAN -> "ae_row_organ"
-        AeInstrument.SYNTH -> "ae_row_synth"
-        AeInstrument.LEADS -> "ae_row_leads"
-        AeInstrument.PIANO -> "ae_row_piano"
-        AeInstrument.SAX -> "ae_row_sax"
-    }
-
-    fun of(ctx: android.content.Context, inst: AeInstrument): ImageBitmap? {
-        val name = drawable(inst)
-        cache.get(name)?.let { return it }
-        val id = ctx.resources.getIdentifier(name, "drawable", ctx.packageName)
-        if (id == 0) return null
-        val bm = android.graphics.BitmapFactory.decodeResource(ctx.resources, id) ?: return null
-        return bm.asImageBitmap().also { cache.put(name, it) }
+    fun of(ctx: android.content.Context, inst: AeInstrument): ImageBitmap? = when (inst) {
+        AeInstrument.ORGAN -> AeSvgCache.get(AeSvgs.MINI_ORGAN, ArtW, ArtH)
+        AeInstrument.SYNTH -> AeSvgCache.get(AeSvgs.MINI_SYNTH, ArtW, ArtH)
+        AeInstrument.LEADS -> AeSvgCache.get(AeSvgs.MINI_LEADS, ArtW, ArtH)
+        AeInstrument.PIANO -> AePianoAssets.plate(ctx, "felt")?.bitmap
+        AeInstrument.SAX -> AeSaxBitmaps.get(ctx, 1, 0)
     }
 }
+
+/** Artwork cell, in pixels: 3:1 with the row height, so the picture is never squashed. */
+private const val ArtW = 900
+private const val ArtH = 300
 
 /**
  * One instrument row: a frosted-glass card with the artwork reflecting inside it.
@@ -611,24 +615,34 @@ private fun AeRow(
     onPower: () -> Unit,
 ) {
     val st = rowStyleOf(inst)
-    val shape = RoundedCornerShape(10.dp)
+    // Corners: the soundfont rows use 12 dp, and the earlier Æther cards used 10 dp — but the user
+    // asked for *less* rounding, because a strong radius reads as a drawn rounded box rather than a
+    // pane of glass. 7 dp keeps a soft corner without the box look.
+    val shape = RoundedCornerShape(7.dp)
     Box(
         Modifier
             .fillMaxWidth()
             .height(RowHeight)
             .shadow(
-                if (loaded) 10.dp else 5.dp, shape,
-                spotColor = st.accent.copy(alpha = 0.40f),
-                ambientColor = Color(0x40000000),
+                if (loaded) 8.dp else 4.dp, shape,
+                spotColor = st.accent.copy(alpha = 0.34f),
+                ambientColor = Color(0x33000000),
             )
             .clip(shape)
             .background(Brush.horizontalGradient(listOf(st.glassL, st.glassR)))
             .clickable(remember { MutableInteractionSource() }, null, onClick = onOpen),
     ) {
-        // The reflection fills the right cell edge to edge: full row height, and exactly 3:1
-        // wide, so it is never squashed and never leaves the empty band above and below that a
-        // letterboxed picture produced. The asset itself is faded on all four sides, so the
-        // picture has no hard end anywhere.
+        // The artwork fills the right cell, edge to edge — the user's "remplir la case de droite et
+        // pleinement" — rather than being letterboxed in the middle of the cell with glass showing
+        // above and below it.
+        //
+        // Every side is then faded out with an alpha mask (`DstIn`), so the picture has no hard
+        // edge anywhere ("sans extrémités dures"). A hard cut is what a photograph looks like when
+        // it is pasted on; the glass look needs it to dissolve instead, and the dissolve is what
+        // makes the artwork read as a reflection in the row rather than a sticker on it.
+        //
+        // The mask only works inside its own layer, hence the offscreen compositing strategy;
+        // without it `DstIn` would also erase the row background drawn before the image.
         art?.let {
             Image(
                 bitmap = it,
@@ -638,7 +652,40 @@ private fun AeRow(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .fillMaxHeight()
-                    .width(RowImageWidth),
+                    .width(RowImageWidth)
+                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                    .drawWithContent {
+                        drawContent()
+                        // Left: the long dissolve that lets the name sit on the glass beside it.
+                        drawRect(
+                            brush = Brush.horizontalGradient(
+                                0.00f to Color.Transparent,
+                                0.34f to Color.Black,
+                                1.00f to Color.Black,
+                            ),
+                            blendMode = BlendMode.DstIn,
+                        )
+                        // Right: a short feather so the picture does not end on a cut edge.
+                        drawRect(
+                            brush = Brush.horizontalGradient(
+                                0.00f to Color.Black,
+                                0.86f to Color.Black,
+                                1.00f to Color.Transparent,
+                            ),
+                            blendMode = BlendMode.DstIn,
+                        )
+                        // Top and bottom: the same feather, which is what turns the crop into a
+                        // reflection instead of a slice pasted across the row.
+                        drawRect(
+                            brush = Brush.verticalGradient(
+                                0.00f to Color.Transparent,
+                                0.22f to Color.Black,
+                                0.78f to Color.Black,
+                                1.00f to Color.Transparent,
+                            ),
+                            blendMode = BlendMode.DstIn,
+                        )
+                    },
             )
         }
         // The glass itself: an opaque veil over the name, thinning to almost nothing where the

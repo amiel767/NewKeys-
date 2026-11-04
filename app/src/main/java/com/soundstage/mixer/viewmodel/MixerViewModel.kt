@@ -2976,6 +2976,18 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Switches the sound-source chooser to the window the user picked, keeping the strip it was
+     * opened for. The strip already exists by then — the "+" creates it before opening the
+     * chooser — so this only swaps which of the two windows is shown.
+     */
+    fun openSourceWindow(popup: ActivePopup) {
+        val slotId = _uiState.value.activeSoundfontSlotId
+        if (popup != ActivePopup.SOUNDFONT && popup != ActivePopup.AETHER) return
+        audioEngine.activeTargetChannel = AudioSlot.midiChannelForSlot(slotId)
+        _uiState.update { it.copy(activePopup = popup) }
+    }
+
     // ================= DRUM PAD CONTROLS =================
     fun setDrumTab(tab: String) {
         _uiState.update { it.copy(drumActiveTab = tab) }
@@ -4461,6 +4473,18 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 )
             } else current
         }
+    }
+
+    /**
+     * The mixer's "+": materialises the next strip, then asks which sound source it carries. Kept
+     * apart from [addSoundTrack] because a caller that only wants the strip (the LiveUI bridge
+     * grows the mixer to N tracks) must not leave a chooser open on screen.
+     */
+    fun addSoundTrackAndChooseSource() {
+        val nextTrackIdx = _uiState.value.visibleTracksCount
+        if (nextTrackIdx >= 8) return
+        addSoundTrack()
+        openSoundSourceForSlot(nextTrackIdx)
     }
 
     fun garbageCollectUnusedSoundFonts() {

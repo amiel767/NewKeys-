@@ -57,11 +57,11 @@ private val AePanelBottom = Color(0xFF1A2230)
 /**
  * The Æther Instruments window.
  *
- * Two states, one window:
- *  - no instrument loaded (or the user went back): the list of instruments, laid out like the
- *    soundfont window (left column with a single pill, the rows on the right);
- *  - an instrument loaded: the instrument's own interface, the window growing to the stage's
- *    1000:460 ratio. The back chevron inside the interface returns to the list.
+ * One window, two states: the list of instruments (the left column carries only the "Æther
+ * Instruments" pill, the right side the rows), and — once a row is opened — that instrument's own
+ * interface, hosted **inside this same window**, which grows to the stage's 1000:460 ratio. There
+ * is no separate instrument overlay any more; the back chevron inside the interface returns to the
+ * list.
  *
  * [isOpen] drives the enter/exit animation so the caller keeps the window in the composition
  * (and its scroll position) while it is closed.

@@ -177,6 +177,21 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
      */
     fun presets(i: AeInstrument): List<AePreset> = factoryPresets(i) + AeUserStore.load(i)
 
+    /**
+     * Name of the preset a strip currently plays, or null when no Æther instrument is loaded.
+     * Read by the mixer's name plate: the preset is the strip's identity once an Æther
+     * instrument occupies it, exactly as a soundfont's patch name is for a FluidSynth track.
+     *
+     * The sax is the exception: it has no preset UI (its window hides the preset chip), so
+     * showing one of its factory preset names would name something the user cannot change.
+     * It reads just "Sax".
+     */
+    fun presetNameOn(strip: Int): String? {
+        val s = sessions[strip] ?: return null
+        if (s.instrument == AeInstrument.SAX) return "Sax"
+        return presets(s.instrument).getOrNull(s.preset)?.name
+    }
+
     /** Value the session's current preset gives to [index], for the double-tap reset on a knob. */
     fun presetValue(strip: Int, index: Int): Float? {
         val s = sessions[strip] ?: return null

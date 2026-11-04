@@ -54,6 +54,7 @@ class AetherInstrumentsWindowCaptureTest {
         return m
     }
 
+    /** Full-bleed: no padding, so the rows are exactly as wide as in the real window. */
     @Test fun aether_window_list() {
         val m = manager()
         composeTestRule.mainClock.autoAdvance = false
