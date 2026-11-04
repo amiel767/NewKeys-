@@ -20,7 +20,7 @@ os.makedirs(OUT, exist_ok=True)
 
 PIANO_NAMES = ["Felt", "Studio", "Bright", "Mellow", "Dark", "Cottage",
                "Parlor", "Saloon", "Tine Keys", "Ballad", "DX Bell", "E.Piano"]
-SAX_SLUGS = ["soprano", "alto", "tenor", "baryton"]
+SAX_SLUGS = ["bulldog", "soprano", "alto", "tenor", "baryton"]
 
 
 def load_stereo(path):

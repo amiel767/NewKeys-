@@ -100,11 +100,14 @@ int main(int argc, char** argv) {
     struct Type { const char* preset; const char* bank; int shift; const char* slug; };
     // Le parametre 0 du preset choisit le type (0 sop, 1 alto, 2 tenor, 3 bari) ; la banque
     // doit correspondre, sinon le moteur joue un autre saxophone que celui annonce.
-    const Type types[4] = {
+    const Type types[5] = {
         {"Smooth Soprano", "saxpack_sop.bin", 5, "soprano"},
         {"Jazz Ballad Alto", "saxpack_alt.bin", 0, "alto"},
         {"Neo-Soul Tenor", "saxpack_ten.bin", -5, "tenor"},
         {"Bari Groove", "saxpack_bar.bin", -12, "baryton"},
+        // Bulldog : meme preset alto, banque dediee. Le moteur ne connait qu'un « alto » ;
+        // c'est la banque qui porte le timbre, donc les deux sortent cote a cote pour l'ecoute.
+        {"Jazz Ballad Alto", "saxpack_bulldog.bin", 0, "bulldog"},
     };
 
     for (const Type& ty : types) {
