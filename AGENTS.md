@@ -288,6 +288,16 @@ dans `/tmp` est perdu. Règles :
 
 ## Conventions
 
+- **Livraison au navigateur** : `python3 tools/serve.py` sert `/workspace/dl/pub`
+  (port 12000, `Cache-Control: no-store` — sans cet en-tete le navigateur ressert
+  l'ancienne page et on croit que rien n'a change). URL :
+  `https://work-1-...prod-runtime.all-hands.dev/` (port 12000). Les pages s'y
+  ecrivent par des generateurs, jamais a la main :
+  `tools/aetherfx/demos_page.py` (ecoute des demos, MP3) et `tools/shots_page.py`
+  (captures, WebP compressees). Les deux partagent le meme theme sombre/or.
+- **Ne pas livrer un PNG de capture brut** : une capture Roborazzi pese ~3 Mo.
+  `tools/shots_page.py` les reencode en WebP (vignette 520 px + pleine 1500 px) :
+  98 Mo -> 2,7 Mo.
 - **Veille de la conversation parallele — OBLIGATOIRE avant ET apres chaque
   modification.** Ce depot est developpe par plusieurs conversations OpenHands
   en meme temps. La conversation de reference est
