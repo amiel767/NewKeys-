@@ -142,3 +142,18 @@
   (le sax renvoie « Sax », il n'a pas d'UI de preset), lu par `ChannelStripV2.kt:95`.
 - Récupération après wipe : le dump `tools/.eco/stream_<cid>.json` + rejeu des
   éditions `file_editor` reconstruit un worktree perdu (voir daily log).
+
+## Session 2026-11-04 (suite) — « dain dain » : FONDU DE RACCORD trop court
+- Cause racine : fondu de raccord d'UNE periode (~4 ms) -> continu mais audible.
+  Porte a **200 ms** -> 0,0 dB. Mesure = **plus FORTE remontee d'enveloppe**
+  (`tools/aetherfx/tail_echo.py`), PAS la somme (un tremolo de pack cumule 45 dB
+  inaudibles) et PAS la modulation a la periode de boucle (non discriminante).
+  Resultat : les 6 banques rejoignent le plancher « 1 couche ». Commit `e2b25bd`.
+- Pieges de banc : un mode de dump ne doit pas desactiver les boucles ; borner les
+  remontees d'enveloppe a 12 dB (le passage par un zero des couches donne des pics
+  non physiques de 30-480 dB) ; verifier l'unite d'un champ avant de conclure.
+- `repairLoops` ne force plus la longueur la plus courte si les couches sont a
+  moins de 5 % (ep_ballad). Chargement 613 -> 387 ms (un seul decodage/region).
+- Env : JDK a reinstaller apres wipe (openjdk-21-jdk-headless) ; SDK =
+  `/workspace/android-sdk` ; `restore_env.sh` CASSE. Livraison : `tools/apk_page.py`
+  -> `/workspace/dl/pub`, servir port 12000.
