@@ -23,18 +23,15 @@
   unique pour toutes les couches ecrase la dynamique -> courbe de velocite plate et
   NON monotone (frapper plus fort donne moins). Et pour un fondu entre deux prises de
   la MEME source (correlees) : fondu LINEAIRE, pas cos/sin (puissance constante).
-- **Pack heterogene : ne pas indexer une couche par recherche PAR COUCHE.** Il faut
-  d'abord fixer la racine (toutes couches confondues), puis la couche DANS cette
-  racine. Sinon les deux couches d'un fondu viennent de deux racines (deux prises a
-  des hauteurs differentes) et leur somme BAT — le « dain dain » de la tenue.
-  Mesure d'un battement de tenue : **amplitude de la fondamentale** (Goertzel
-  glissant), jamais une autocorrelation de periode courte (elle mesure le timbre).
-
-## Session 2026-11-04 (2e) — « dain dain » du sustain piano
-- Cause : `pickLayer` (`fx_piano.h`) cherchait la racine la plus proche PAR COUCHE ;
-  sur `piano.bin` (racines a 1/2/6/8 couches) le fondu melangeait deux racines ->
-  battement. Correctif : racine fixee d'abord, puis couche dans cette racine.
-  Note 60 : 3,87 -> 0,14 dB. Commit `2e53dc8`. Detail : `AGENTS.md` + daily log.
+- **Pack heterogene : NE PAS forcer une note a lire toutes ses couches sur une seule
+  racine.** Mesure du 2026-11-04 (3e) : la racine 60 ne porte qu'UNE couche (la
+  DOUCE) ; les couches fortes vivent sur la racine 59. Forcer la racine 60 a la note
+  60 remplace la couche forte (rms 0,040) par la douce (0,001) -> **-18 dB** et
+  timbre detruit. Une couche = une racine distincte dans ces packs. Le « dain dain »
+  suppose du 04 n'a PAS ete confirme : l'enveloppe du moteur d'origine (fenetre 50 ms
+  / hop 10 ms, detrend) est une decroissance MONOTONE lisse, sans ondulation.
+  Attention : un banc a fenetre de tendance courte (250 ms) invente un « battement »
+  qui n'existe pas — le valider sur un signal temoin (prise seule) avant de conclure.
 
 ## Session 2026-11-04 — T2/T5 velocite piano
 - Cause unique mesuree : normalisation GLOBALE des couches (dynamique 13,6 -> 29,7 dB

@@ -1220,37 +1220,49 @@ reessayait, martelant le proxy). La veille se fait sur le dump local
 deja a `/workspace/android-sdk` mais **le JDK n'y est pas** cette fois.
 `JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64`.
 
-## Session 2026-11-04 — « dain dain » de la tenue piano : battement entre deux racines
+## Session 2026-11-04 (3e) — ANNULATION : le correctif « dain dain » du 04 etait faux
 
-**Symptome** : sur le sustain, tous les pianos acoustiques font « daiiiiin-dain-dain »
-(une modulation d'amplitude de quelques Hz sur la note tenue).
+**L'utilisateur avait raison : « la qualite du son a ete detruite ».** Le commit
+`2e53dc8` est **annule** (`2995232`). Voici ce qui s'est reellement passe.
 
-**Cause racine** : `pickLayer(note, layerIndex)` (`fx_piano.h`) cherchait, **couche
-par couche**, la racine la plus proche ayant CETTE couche.  Le pack est
-**heterogene** (`piano.bin` : 48 racines, dont 18 n'ont qu'UNE couche, 15 en ont 2,
-le reste 6 ou 8 ; `upright.bin` : 30 racines a 5-7 couches).  Pour la note 60
-(racine 60 = 1 seule couche) le moteur fondait donc la **prise de la racine 60**
-avec la **couche 1 de la racine 59** montee d'un demi-ton : deux enregistrements
-distincts, re-echantillonnes a des hauteurs differentes → **battement**.
+**Ce que `2e53dc8` faisait** : forcer une note a lire **toutes ses couches sur la
+racine la plus proche de la note** (au lieu de la racine la plus proche PAR COUCHE).
+Or le pack n'est pas construit ainsi. Mesure du pack livre (`piano.bin`) :
 
-**Mesure** (amplitude de la fondamentale, fenetre Goertzel 40 ms, bande 0,3-1,5 s,
-detrend 250 ms) : sortie moteur **3,87 dB** d'ondulation alors que **la prise seule
-est propre a 0,03 dB**.  Ni la boucle (`noloop` : 3,78), ni la reverb (`nospace`),
-ni les resonateurs (`nobody`) n'y etaient pour grand-chose.  Le banc
-`piano_sustain_check` mesurait une **periode courte** (autocorrelation) et ratait ce
-battement lent — d'ou le diagnostic « tremolo » precedent, faux.
+| racine | couches presentes |
+|---|---|
+| 59 | 8 (L0..L7) |
+| 60 | **1 seule** (la couche DOUCE) |
 
-**Correctif** : choisir la racine la plus proche **toutes couches confondues**, puis
-la couche demandee **dans cette racine** ; si elle manque, prendre sa couche la plus
-proche → les deux couches du fondu sont la MEME prise (somme = no-op).
-Resultat : note 60 **3,87 → 0,14 dB**, note 72 **1,09 → 0,14 dB**.
+La note 60 lisait donc la couche douce de la racine 60 (rms 0,001) au lieu des
+couches fortes de la racine 59 (rms 0,040) :
+
+| | rms sortie note 60 (8 s) |
+|---|---|
+| avant `2e53dc8` | 0,0046 |
+| apres `2e53dc8` | 0,0006 (**-18 dB**) |
+
+**Verification** : rendu 8 s de note 60 dans les deux versions, `max|diff|` du PCM
+stereo. Apres annulation, la sortie est **bit-a-bit identique** a l'origine
+(diff 0,00000000, rms 0,00472). L'APK qui avait ete servi aux utilisateurs etait la
+version -18 dB ; il a ete reconstruit et redeploye avec le moteur d'origine.
+
+**Le « dain dain » n'a pas ete confirme.** Re-mesure sur le moteur d'origine :
+enveloppe RMS **fenetre 50 ms / hop 10 ms** (la fenetre doit etre plus longue que la
+fondamentale ~4 ms pour ne pas mesurer la note elle-meme), detrend — la tenue est une
+**decroissance monotone lisse** (-23,8 dB en 1,2 s), **sans ondulation periodique**.
+
+**Pourquoi le banc du 04 croyait a 3,87 dB** : sa fenetre de tendance faisait
+50 echantillons de 5 ms = **250 ms**, plus courte que la decroissance a retirer, donc
+la « modulation residuelle » etait en fait la **pente de decroissance**. Le banc
+n'etait pas valide sur un temoin. Regle : valider le banc sur un signal **connu
+propre** (ici la prise seule, 0,03 dB) avant de conclure qu'un moteur module.
 
 **Regles durables** :
-- Un pack a couches **heterogenes** (toutes les racines n'ont pas le meme nombre de
-  couches) ne peut pas indexer les couches par une recherche par couche.  Toujours
-  fixer d'abord la racine, puis la couche DANS cette racine.
-- Mesurer un battement de tenue avec l'**amplitude de la fondamentale** (Goertzel
-  glissant), pas avec une autocorrelation de periode courte : celle-ci mesure le
-  timbre, pas la modulation lente.
-- `flattenLoop` (fenetre 10 ms) n'a **aucun** effet mesurable sur cette modulation ;
-  ne pas y chercher la cause.
+- Une note ne lit **pas** toutes ses couches sur une seule racine dans ces packs :
+  une couche = une racine distincte. Ne jamais « unifier » la racine d'une note.
+- Un banc d'enveloppe doit utiliser une fenetre **plus longue que la periode
+  fondamentale** (>= 40-50 ms a C4) et etre valide sur un temoin.
+- Un correctif qui fait chuter le niveau de sortie (ici -18 dB) est un **bug**, meme
+  s'il ameliore la metrique qu'il cible : toujours mesurer le rms de sortie avant/apres.
+- `flattenLoop` fonctionne (aplatit bien la boucle) ; ne pas le suspecter sans mesure.
