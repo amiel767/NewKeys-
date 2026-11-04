@@ -23,6 +23,7 @@ Les `.f32` sont du PCM stéréo 44,1 kHz entrelacé (pas d'en-tête). Conversion
 
 ```bash
 python3 tools/demos/f32_to_mp3.py /tmp/demos tools/demos/audio
+python3 tools/demos/make_medleys.py /tmp/demos tools/demos/audio
 ```
 
 ## Licence des instruments
