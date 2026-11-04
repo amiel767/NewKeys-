@@ -242,16 +242,19 @@ class SaxEngine : public SourceFx {
       // A saxophone note starts with a reed slap the microphone never captures, so at mix 1.0
       // the instrument had no attack transient at all. A short lift gated to the first ~35 ms
       // of the note restores it; it is applied after the mix, so both voices get it.
-      // Reed slap, tightened: 35 ms of lift at +0.9 was diluted over the whole
-      // attack window and measured 0.39x attack/sustain against the synthesis's
-      // 0.43x — a sampled sax with a softer attack than the model it replaces is
-      // heard as "synthetic". 22 ms at +1.5 keeps the slap inside the transient
-      // where a reed actually lives, and clears the threshold with margin.
+      //
+      // Il etait BRUT (`x *= 1 + lift`), donc large bande : mesure sur le pack livre, 51 % de
+      // son energie tombait dans 150-500 Hz et 0,4 % sous 150 Hz — un « thud » grave, entendu
+      // comme un « marteau » derriere le sax. Un slap d'anche vit au-dessus de 1,5 kHz : on
+      // remplace le lift large bande par une CRETE courte centree sur la bande de l'anche,
+      // qui apporte le « chiff » d'attaque sans toucher le grave.
       biteT_ += invSr;
-      if (biteT_ < .030f) {
-        const float u = 1.f - biteT_ / .030f;
+#ifndef SAX_NO_BITE
+      if (biteT_ < .005f) {
+        const float u = 1.f - biteT_ / .005f;
         x *= 1.f + u * u * (2.6f + p(7) * 1.0f);
       }
+#endif
       // Output gain. This was 0.8, chosen when the synthesis alone carried the voice. Measured
       // at Level 0.8 across six instrument/reed combinations, the pack and the synthesis come
       // out at the same RMS within 25% (ratios 0.99, 1.04, 0.99, 1.20, 0.91, 1.25 — mean 1.06),
