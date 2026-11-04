@@ -31,6 +31,14 @@ object AeBanks {
     private val cache = HashMap<String, ByteArray>()
     /** Bank file per instrument type (0 soprano, 1 alto, 2 tenor, 3 baritone), empty = none. */
     private val saxFiles = arrayOf("saxpack_sop.bin", "saxpack_alt.bin", "saxpack_ten.bin", "saxpack_bar.bin")
+    /**
+     * L'alto peut jouer deux banques : MTG Solo Sax (CC-BY, la banque par defaut) et
+     * Bulldog Sax 2 (licence + accord du proprietaire, voir ATTRIBUTION.md), une seule
+     * anche au profil alto.  Bulldog est plus proche d'un vrai saxo (attaque plus nette,
+     * tenue plus riche) ; on en fait la source de l'alto et on garde MTG comme repli si
+     * l'asset manque.
+     */
+    private val bulldogAltoFile = "saxpack/saxpack_bulldog.bin"
     /** Piano acoustique (queue) : Royal Grand 3D, 11,6 Mo, 160 regions, 48 racines, 8 couches. */
     private val pianoFile = "pianopack/piano.bin"
     /**
@@ -108,7 +116,8 @@ object AeBanks {
      * sur la banque du queue.
      */
     fun fileFor(instrument: AeInstrument, saxType: Int, model: Int = -1): String? = when (instrument) {
-        AeInstrument.SAX -> saxFiles[saxType.coerceIn(0, 3)]
+        // L'alto (type 1) joue Bulldog ; soprano/tenor/baryton gardent MTG.
+        AeInstrument.SAX -> if (saxType == 1) bulldogAltoFile else saxFiles[saxType.coerceIn(0, 3)]
         AeInstrument.PIANO -> electricModels[model]
             ?: if (model == ELECTRIC_MODEL) electricFile
             else if (model in uprightModels) uprightFile
@@ -137,9 +146,12 @@ object AeBanks {
             ctx.assets.open(path).use { it.readBytes() }.also { cache[name] = it }
         } catch (e: Throwable) {
             Log.e("AeBanks", "Cannot read asset bank $name: ${e.message}")
+            // Repli : si la banque Bulldog n'est pas dans l'APK, l'alto garde MTG.
+            fallback[name]?.let { return read(it) }
             null
         }
     }
+    private val fallback = mapOf(bulldogAltoFile to "saxpack_alt.bin")
 }
 
 /**

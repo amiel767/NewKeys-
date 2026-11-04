@@ -29,6 +29,20 @@ The derivative work is limited to:
 - re-aligning each loop point to the best seam (`snap_loop_end`),
 - encoding to 4-bit IMA ADPCM.
 
+## Bulldog Sax 2 (alto)
+
+- **Pack**: `saxpack_bulldog.bin`, built by `tools/saxpack/build_bulldog.py`.
+- **Source**: 36 chromatic `NN-EXP1.wav` sustain samples (44.1 kHz stereo 24-bit),
+  the held-note layer of the Bulldog Sax 2 Kontakt library.
+- **Licence**: used with the **licence and the express agreement of the owner**
+  (declared by the project owner on 2026-11-03). Kept out of the CC-BY attribution
+  block above because it is not CC-BY.
+- **Derivative work**: left channel, resampled to 22.05 kHz, RMS-normalised to
+  0.20, one hold loop per region (`hold_loop`), encoded to 4-bit IMA ADPCM.
+- **Role**: the **alto** sax bank (`AeBanks.fileFor`, type 1). Soprano, tenor and
+  baritone still use MTG Solo Saxophones; `saxpack_alt.bin` stays as the fallback
+  if the Bulldog asset is missing.
+
 No pitch shifting, time stretching or spectral editing is applied.
 
 ## Rejected sources, kept for the record
