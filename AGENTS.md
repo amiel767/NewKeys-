@@ -1219,3 +1219,38 @@ reessayait, martelant le proxy). La veille se fait sur le dump local
 `apt-get install openjdk-21-jdk-headless` (trixie n'a pas de 17) ; le SDK est
 deja a `/workspace/android-sdk` mais **le JDK n'y est pas** cette fois.
 `JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64`.
+
+## Session 2026-11-04 — « dain dain » de la tenue piano : battement entre deux racines
+
+**Symptome** : sur le sustain, tous les pianos acoustiques font « daiiiiin-dain-dain »
+(une modulation d'amplitude de quelques Hz sur la note tenue).
+
+**Cause racine** : `pickLayer(note, layerIndex)` (`fx_piano.h`) cherchait, **couche
+par couche**, la racine la plus proche ayant CETTE couche.  Le pack est
+**heterogene** (`piano.bin` : 48 racines, dont 18 n'ont qu'UNE couche, 15 en ont 2,
+le reste 6 ou 8 ; `upright.bin` : 30 racines a 5-7 couches).  Pour la note 60
+(racine 60 = 1 seule couche) le moteur fondait donc la **prise de la racine 60**
+avec la **couche 1 de la racine 59** montee d'un demi-ton : deux enregistrements
+distincts, re-echantillonnes a des hauteurs differentes → **battement**.
+
+**Mesure** (amplitude de la fondamentale, fenetre Goertzel 40 ms, bande 0,3-1,5 s,
+detrend 250 ms) : sortie moteur **3,87 dB** d'ondulation alors que **la prise seule
+est propre a 0,03 dB**.  Ni la boucle (`noloop` : 3,78), ni la reverb (`nospace`),
+ni les resonateurs (`nobody`) n'y etaient pour grand-chose.  Le banc
+`piano_sustain_check` mesurait une **periode courte** (autocorrelation) et ratait ce
+battement lent — d'ou le diagnostic « tremolo » precedent, faux.
+
+**Correctif** : choisir la racine la plus proche **toutes couches confondues**, puis
+la couche demandee **dans cette racine** ; si elle manque, prendre sa couche la plus
+proche → les deux couches du fondu sont la MEME prise (somme = no-op).
+Resultat : note 60 **3,87 → 0,14 dB**, note 72 **1,09 → 0,14 dB**.
+
+**Regles durables** :
+- Un pack a couches **heterogenes** (toutes les racines n'ont pas le meme nombre de
+  couches) ne peut pas indexer les couches par une recherche par couche.  Toujours
+  fixer d'abord la racine, puis la couche DANS cette racine.
+- Mesurer un battement de tenue avec l'**amplitude de la fondamentale** (Goertzel
+  glissant), pas avec une autocorrelation de periode courte : celle-ci mesure le
+  timbre, pas la modulation lente.
+- `flattenLoop` (fenetre 10 ms) n'a **aucun** effet mesurable sur cette modulation ;
+  ne pas y chercher la cause.
