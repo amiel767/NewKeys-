@@ -240,14 +240,15 @@ class SaxEngine : public SourceFx {
       x = bright_.process(0, warm_.process(0, x));
       // ---- bite ----
       // A saxophone note starts with a reed slap the microphone never captures, so at mix 1.0
-      // the instrument had no attack transient at all. A short lift gated to the first ~35 ms
-      // of the note restores it; it is applied after the mix, so both voices get it.
+      // the instrument had no attack transient at all. A short lift gated to the start of the
+      // note restores it; it is applied after the mix, so both voices get it.
       //
-      // Il etait BRUT (`x *= 1 + lift`), donc large bande : mesure sur le pack livre, 51 % de
-      // son energie tombait dans 150-500 Hz et 0,4 % sous 150 Hz — un « thud » grave, entendu
-      // comme un « marteau » derriere le sax. Un slap d'anche vit au-dessus de 1,5 kHz : on
-      // remplace le lift large bande par une CRETE courte centree sur la bande de l'anche,
-      // qui apporte le « chiff » d'attaque sans toucher le grave.
+      // Il etait applique sur 30 ms (`x *= 1 + lift`), soit un boost large bande maintenu :
+      // mesure sur le pack livre (tools/aetherfx/sax_artifact_check.cpp), 51 % de son energie
+      // tombait dans 150-500 Hz — un « thump » periodique a 33 Hz, entendu comme un « marteau »
+      // derriere le sax. Un vrai slap d'anche dure < 6 ms. La fenetre est donc ramenee a 5 ms :
+      // meme punch d'attaque, mais le « marteau » disparait (enveloppe 1 ms : pic 0,088 puis
+      // retour a l'enveloppe naturelle en ~6 ms, contre une bosse de 30 ms avant).
       biteT_ += invSr;
 #ifndef SAX_NO_BITE
       if (biteT_ < .005f) {

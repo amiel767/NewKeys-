@@ -437,9 +437,14 @@ class PianoSampleReader {
     const uint32_t ls = g.loopStart, le = g.loopEnd;
     if (le <= ls || le > g.frames) return;
     const uint32_t L = le - ls;
-    const uint32_t win = std::max<uint32_t>(1u, static_cast<uint32_t>(0.010 * rate_));
+    // Fenetres sur la pile : `decoded()` peut etre appele sur le thread audio (cache MISS),
+    // et cette fonction ne doit rien allouer la.  Au-dela de kMaxWin fenetres on elargit la
+    // fenetre plutot que d'allouer.
+    constexpr uint32_t kMaxWin = 512;
+    uint32_t win = std::max<uint32_t>(1u, static_cast<uint32_t>(0.010 * rate_));
+    if (L / win > kMaxWin) win = L / kMaxWin + 1;
     const uint32_t nwin = std::max<uint32_t>(2u, L / win);
-    std::vector<float> raw(nwin);
+    float raw[kMaxWin], gs[kMaxWin];
     for (uint32_t k = 0; k < nwin; ++k) {
       const uint32_t a = ls + static_cast<uint32_t>(static_cast<uint64_t>(k) * L / nwin);
       const uint32_t b = ls + static_cast<uint32_t>(static_cast<uint64_t>(k + 1) * L / nwin);
@@ -451,18 +456,19 @@ class PianoSampleReader {
       raw[k] = static_cast<float>(std::sqrt(s / std::max<uint32_t>(1u, (b - a) * 2)));
     }
     const float head = std::max(1e-6f, raw[0]);
-    std::vector<float> gv(nwin);
     for (uint32_t k = 0; k < nwin; ++k)
-      gv[k] = std::min(12.f, head / std::max(1e-6f, raw[k]));
+      gs[k] = std::min(12.f, head / std::max(1e-6f, raw[k]));
     // Lissee : un gain par fenetre brute module l'enveloppe au rythme des fenetres.
-    std::vector<float> gs(gv);
-    for (uint32_t k = 1; k + 1 < nwin; ++k)
-      gs[k] = 0.25f * gv[k - 1] + 0.5f * gv[k] + 0.25f * gv[k + 1];
+    float smoothed[kMaxWin];
+    for (uint32_t k = 0; k < nwin; ++k)
+      smoothed[k] = (k == 0 || k + 1 == nwin)
+                        ? gs[k]
+                        : 0.25f * gs[k - 1] + 0.5f * gs[k] + 0.25f * gs[k + 1];
     for (uint32_t k = 0; k < nwin; ++k) {
       const uint32_t a = ls + static_cast<uint32_t>(static_cast<uint64_t>(k) * L / nwin);
       const uint32_t b = ls + static_cast<uint32_t>(static_cast<uint64_t>(k + 1) * L / nwin);
-      const float g0 = gs[k];
-      const float g1 = (k + 1 < nwin) ? gs[k + 1] : gs[0];
+      const float g0 = smoothed[k];
+      const float g1 = (k + 1 < nwin) ? smoothed[k + 1] : smoothed[0];
       const uint32_t span = std::max<uint32_t>(1u, b - a);
       for (uint32_t i = a; i < b; ++i) {
         const float gg = g0 + (g1 - g0) * (static_cast<float>(i - a) / static_cast<float>(span));
