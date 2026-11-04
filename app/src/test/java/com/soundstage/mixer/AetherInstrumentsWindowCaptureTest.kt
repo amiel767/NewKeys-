@@ -77,4 +77,21 @@ class AetherInstrumentsWindowCaptureTest {
         composeTestRule.mainClock.advanceTimeBy(1_500)
         composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/sound_source_chooser.png")
     }
+
+    /**
+     * The instrument interface, hosted *inside* the window rather than in an overlay of its own.
+     * Captured at the real 1000x460 stage so the layout can be checked against the mock-up; the
+     * piano is used because it is the busiest of the five (model list, groups of knobs, plate).
+     */
+    @Test fun aether_window_instrument() {
+        val m = manager(AeInstrument.PIANO)
+        composeTestRule.mainClock.autoAdvance = false
+        composeTestRule.setContent {
+            Box(Modifier.fillMaxSize().background(Color(0xFF0E131C))) {
+                AetherInstrumentsWindow(manager = m, strip = 0, isOpen = true, onClose = {})
+            }
+        }
+        composeTestRule.mainClock.advanceTimeBy(1_500)
+        composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/aether_window_instrument.png")
+    }
 }
