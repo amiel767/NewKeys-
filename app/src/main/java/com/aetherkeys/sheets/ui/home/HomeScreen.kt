@@ -3,6 +3,7 @@ package com.aetherkeys.sheets.ui.home
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -43,13 +44,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -198,10 +204,12 @@ private fun FilterRow(state: LibraryUiState, actions: HomeActions, onNewSet: () 
 
 // ────────────────────────────────────────────────────────────────────────────────────────
 // Rangee des Sets : cartes de la taille de celles de la page Setlists (96 dp).
-// Same material as the sheets (gradient + spine + shadow), not glass.
+// Same material as the sheets: frosted glass, spine, shadow.
 // ────────────────────────────────────────────────────────────────────────────────────────
 
-private val SetCardWidth = 252.dp
+private val SetCorner = 16.dp
+private val RowCorner = 13.dp
+private val SetCardWidth = 272.dp
 private val SetCardHeight = 96.dp
 
 @Composable
@@ -229,9 +237,9 @@ private fun SetRow(
 }
 
 /**
- * Set card: a folder of sheets, at the Setlists page gauge (96 dp tall). The colour is
+ * Set card: a folder of sheets, at the Setlists page gauge (96 dp tall). The glass is
  * the Set's own; the content announces what is inside — the first sheet titles and a
- * preview of their chords. [LibraryTexture] gives it the same material as a sheet.
+ * preview of their chords. [LibraryGlass] gives it the same material as a sheet.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -249,36 +257,42 @@ private fun SetChip(
     val scale by animateFloatAsState(if (pressed) 0.95f else 1f, spring(dampingRatio = 0.55f, stiffness = 900f), label = "setPress")
     val base = (setlist.colorArgb ?: PalettePresets.Presets.first()).toColor()
     val ink = onColorFor(base)
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(SetCorner)
     val first = sheets.firstOrNull()
     val firstSection = first?.sections?.firstOrNull { it.bars.isNotEmpty() }
     val key = firstSection?.let { first.keyFor(it) } ?: first?.keyPc ?: 0
+    // Four bars, three spaces apart: at 21 sp the whole row is the preview, and four
+    // bars is what fits across the card without clipping mid-chord.
     val preview = firstSection?.bars?.take(4)
-        ?.joinToString("  ") { Theory.barText(it, key, settings.notation, settings.passing) }.orEmpty()
+        ?.joinToString("   ") { Theory.barText(it, key, settings.notation, settings.passing) }.orEmpty()
 
     Box(
         Modifier.testTag("set-card")
             .width(SetCardWidth).height(SetCardHeight)
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .shadow(if (pressed) 5.dp else 12.dp, shape, clip = false)
+            .shadow(if (pressed) 6.dp else 16.dp, shape, clip = false, ambientColor = Color.Black, spotColor = base.copy(alpha = 0.55f))
             .clip(shape)
-            .background(Brush.linearGradient(listOf(base, lerp(base, Color.Black, 0.32f))))
             .combinedClickable(
                 interactionSource = source, indication = null,
                 onClick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onOpen() },
                 onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onMenu() },
             ),
     ) {
-        LibraryTexture(ink)
+        LibraryGlass(base, ink, SetCorner)
         // Spine: the same landmark as a sheet, so the colour reads at a glance.
-        Box(Modifier.width(4.dp).fillMaxHeight().background(ink.copy(alpha = 0.5f)))
+        Box(Modifier.width(4.dp).fillMaxHeight().background(ink.copy(alpha = 0.45f)))
         Column(
             Modifier.fillMaxSize().padding(start = 16.dp, end = 12.dp, top = 11.dp, bottom = 10.dp),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 Text(setlist.name, style = SheetsType.CardTitle, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                Spacer(Modifier.weight(1f))
                 if (selected) Text("OPEN", style = SheetsType.Overline.copy(fontSize = 8.sp), color = ink.copy(alpha = 0.85f))
+                Text(
+                    "${sheets.size}",
+                    style = SheetsType.CardMeta.copy(fontSize = 10.sp), color = ink.copy(alpha = 0.70f),
+                )
             }
             Text(
                 if (sheets.isEmpty()) "No sheets yet"
@@ -286,18 +300,13 @@ private fun SetChip(
                 style = SheetsType.CardMeta.copy(fontSize = 11.sp), color = ink.copy(alpha = 0.86f),
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (preview.isNotEmpty()) {
-                    Text(
-                        preview,
-                        style = SheetsType.chord(SheetsFonts.family(first?.chordFontId ?: FontIds.ArchitectsDaughter), 14f),
-                        color = ink.copy(alpha = 0.92f), maxLines = 1, softWrap = false, overflow = TextOverflow.Clip,
-                        modifier = Modifier.weight(1f),
-                    )
-                } else Spacer(Modifier.weight(1f))
+            // The preview is the point of the card: it owns this row outright.
+            if (preview.isNotEmpty()) {
                 Text(
-                    "${sheets.size} sheet${if (sheets.size > 1) "s" else ""}",
-                    style = SheetsType.CardMeta.copy(fontSize = 10.sp), color = ink.copy(alpha = 0.75f),
+                    preview,
+                    style = SheetsType.chord(SheetsFonts.family(first?.chordFontId ?: FontIds.ArchitectsDaughter), 21f),
+                    color = ink.copy(alpha = 0.95f), maxLines = 1, softWrap = false, overflow = TextOverflow.Clip,
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
@@ -348,7 +357,7 @@ private fun SheetRow(
     val pressed by source.collectIsPressedAsState()
     val base = sheet.colorArgb.toColor()
     val ink = onColorFor(base)
-    val shape = RoundedCornerShape(13.dp)
+    val shape = RoundedCornerShape(RowCorner)
     val family = SheetsFonts.family(sheet.chordFontId)
     val firstSection = sheet.sections.firstOrNull { it.bars.isNotEmpty() }
     val key = firstSection?.let { sheet.keyFor(it) } ?: sheet.keyPc
@@ -358,19 +367,20 @@ private fun SheetRow(
         ?.joinToString("   ") { Theory.barText(it, key, settings.notation, settings.passing) }.orEmpty()
     val keyInk = onColorFor(base)
 
-    Row(
+    Box(
         Modifier.fillMaxWidth().height(SheetRowHeight)
             .graphicsLayer { scaleX = if (pressed) 0.99f else 1f; scaleY = if (pressed) 0.99f else 1f }
             .clip(shape)
-            .background(lerp(SheetsColors.Surface, base, 0.18f))
-            .border(1.dp, ink.copy(alpha = 0.12f), shape)
             .combinedClickable(
                 interactionSource = source, indication = null,
                 onClick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onOpen() },
                 onDoubleClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onFloat() },
                 onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onMenu() },
-            )
-            .padding(start = 13.dp, end = 9.dp),
+            ),
+    ) {
+    LibraryGlass(base, ink, RowCorner)
+    Row(
+        Modifier.fillMaxSize().padding(start = 13.dp, end = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
@@ -383,7 +393,7 @@ private fun SheetRow(
         if (preview.isNotEmpty()) {
             Text(
                 preview,
-                style = SheetsType.chord(family, 15f), color = SheetsColors.TextPrimary.copy(alpha = 0.86f),
+                style = SheetsType.chord(family, 19f), color = SheetsColors.TextPrimary.copy(alpha = 0.90f),
                 maxLines = 1, softWrap = false, overflow = TextOverflow.Clip,
                 modifier = Modifier.weight(1f),
             )
@@ -403,26 +413,88 @@ private fun SheetRow(
         }
         Icon(SheetsIcons.ChevronRight, contentDescription = null, tint = SheetsColors.TextMuted, modifier = Modifier.size(16.dp))
     }
+    }
 }
 
 /**
- * Card material, shared by the sheet rows and the Set cards: a diagonal light band, a
- * bright top edge and a dark bottom edge. Drawn in code rather than in XML so it can
- * take the ink colour of any tint.
+ * Frosted glass, shared by the sheet rows and the Set cards.
+ *
+ * Real glass, not a drawn outline: a translucent tinted fill over the page, a fine
+ * grain, a broad specular sheen across the top-left, a soft edge light, and a thin
+ * coloured rim only where the light catches. No hard stroke around the card — a
+ * border would read as a drawn box and destroy the material.
  */
 @Composable
-private fun BoxScope.LibraryTexture(ink: Color) {
+private fun BoxScope.LibraryGlass(base: Color, ink: Color, corner: Dp) {
+    // 1. The pane itself: the sheet's tint at low alpha, plus a neutral lift so the
+    //    glass stays readable over the dark page.
     Box(
         Modifier.matchParentSize().background(
-            Brush.linearGradient(
-                0f to ink.copy(alpha = 0.13f),
-                0.42f to ink.copy(alpha = 0.03f),
-                1f to Color.Transparent,
+            Brush.verticalGradient(
+                listOf(
+                    lerp(SheetsColors.SurfaceRaised, base, 0.30f).copy(alpha = 0.62f),
+                    lerp(SheetsColors.Surface, base, 0.20f).copy(alpha = 0.50f),
+                ),
             ),
         ),
     )
-    Box(Modifier.align(Alignment.TopStart).fillMaxWidth().height(1.dp).background(ink.copy(alpha = 0.28f)))
-    Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(1.dp).background(Color.Black.copy(alpha = 0.22f)))
+    // 2. The light: grain, sheen and edge glow, all drawn in one canvas.
+    val cornerPx = with(LocalDensity.current) { corner.toPx() }
+    Canvas(Modifier.matchParentSize()) {
+        val w = size.width
+        val h = size.height
+
+        // Grain: a sparse deterministic stipple. Random would shimmer on recomposition.
+        var seed = 0x9E3779B9.toInt()
+        val dots = ((w * h) / 5200f).toInt().coerceIn(24, 90)
+        repeat(dots) {
+            seed = seed * 1664525 + 1013904223
+            val rx = ((seed ushr 8) and 0xFFFF) / 65535f
+            seed = seed * 1664525 + 1013904223
+            val ry = ((seed ushr 8) and 0xFFFF) / 65535f
+            drawCircle(
+                color = Color.White.copy(alpha = 0.030f),
+                radius = 0.7f,
+                center = Offset(rx * w, ry * h),
+            )
+        }
+
+        // Sheen: a broad diagonal band, brightest just past the top-left corner.
+        drawPath(
+            path = Path().apply {
+                moveTo(0f, 0f); lineTo(w * 0.62f, 0f); lineTo(w * 0.20f, h); lineTo(0f, h); close()
+            },
+            brush = Brush.linearGradient(
+                colors = listOf(ink.copy(alpha = 0.14f), ink.copy(alpha = 0.05f), Color.Transparent),
+                start = Offset(0f, 0f),
+                end = Offset(w * 0.7f, h),
+            ),
+        )
+
+        // Edge light: bright along the top, fading to nothing at the bottom, so the
+        // card is lit rather than outlined.
+        drawLine(
+            color = ink.copy(alpha = 0.30f),
+            start = Offset(cornerPx, 0.6f),
+            end = Offset(w - cornerPx, 0.6f),
+            strokeWidth = 1.2f,
+        )
+        drawLine(
+            color = Color.Black.copy(alpha = 0.16f),
+            start = Offset(6f, h - 0.6f),
+            end = Offset(w - 6f, h - 0.6f),
+            strokeWidth = 1f,
+        )
+
+        // Specular rim: a short bright arc where the light catches the top-left radius.
+        drawArc(
+            color = Color.White.copy(alpha = 0.22f),
+            startAngle = 150f, sweepAngle = 70f, useCenter = false,
+            topLeft = Offset(1f, 1f),
+            size = Size(cornerPx * 1.7f, cornerPx * 1.7f),
+            style = Stroke(width = 1.6f),
+        )
+    }
 }
 
 @Composable

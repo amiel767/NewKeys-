@@ -55,7 +55,7 @@ STATES = [
 # Rendus Compose réels (Roborazzi), pas la maquette : ce que le code fait vraiment.
 REAL = [
     ("sheets_home_real.png", "L'accueil, rendu par Compose",
-     "Les Sets sont en haut, toujours visibles : une rangée de cartes de 96 dp, la même taille que la page Setlists, avec la texture des feuilles. En dessous, la liste, une feuille par ligne de 58 dp — six mesures d'accords, titre sur deux lignes."),
+     "Les Sets sont en haut, toujours visibles : une rangée de cartes de verre dépoli de 272 × 96 dp. L'aperçu d'accords y occupe toute la rangée basse, à 21 sp. En dessous, la liste, une feuille par ligne de 58 dp, aperçu à 19 sp."),
     ("sheets_sets_real.png", "Les Sets, rendus par Compose",
      "Un Set est une carte large : nom choisi, couleur propre, aperçu des premières feuilles et de leurs accords, nombre de feuilles. On entre dans un Set par sa carte ; le Set ouvert se marque « OUVERT »."),
     ("sheets_inside_a_set_real.png", "Dans un Set, rendu par Compose",
@@ -165,7 +165,7 @@ def main() -> None:
         "<li>③ Le contrôle <b>« + Set »</b> est aligné avec <b>Favoris</b> ; le nom d'un Set n'apparaît "
         "qu'à un seul endroit (sa carte).</li>"
         "<li>④ La liste du bas a <b>grandi</b> : une feuille par ligne de <b>58 dp</b> (avant 44), "
-        "six mesures d'accords au lieu de trois, titre sur deux lignes. Mesuré sur la capture : 58,2 dp.</li>"
+        "et l'aperçu d'accords passe de 15 à <b>19 sp</b>.</li>"
         "<li>⑤ Dans un Set, la rangée reste visible pour <b>passer d'un Set à l'autre</b> ; « ← Tout » en sort.</li>"
         "<li>⑥ La scène flottante est <b>allégée</b> : pastilles quasi invisibles collées aux bords, X fondu.</li>"
         "<li>⑦ <b>Édition rapide</b> : un appui long relit la ligne d'accords de la section affichée, "
@@ -175,6 +175,12 @@ def main() -> None:
         "partagée par la liste, l'éditeur et l'export.</li>"
         "<li>⑨ <b>Réglages</b> refaits pour la nouvelle interface : chaque contrôle explique ce qu'il change, "
         "et le réglage « sens du balayage », stocké mais <b>jamais lu</b> depuis toujours, est enfin branché.</li>"
+        "<li>⑩ <b>Verre dépoli</b> : les cartes et les lignes n'ont plus de contour dessiné. Un fond translucide "
+        "teinté, un grain fin, un reflet spéculaire en diagonale, une lumière d'arête en haut et un liseré "
+        "qui n'apparaît que là où la lumière accroche. Mesuré : le reflet décroît de 79 à 49 de la gauche "
+        "vers la droite, et le bord haut ne présente <b>aucun saut</b> de luminance — c'est une lumière, pas un trait.</li>"
+        "<li>⑪ L'<b>aperçu d'accords</b> des cartes de Set passe de 14 à <b>21 sp</b> (+50 %) : il occupe "
+        "désormais toute la rangée basse, le compteur de feuilles remontant dans l'en-tête.</li>"
         "</ul>"
         "</div>"
     )
