@@ -42,6 +42,11 @@ data class FxParamD(
  * entre elles, pas un aplat. C'est la demande : « violet noir », « orange rouge
  * (magma) », « noir bleu ciel ». Elles restent sombres : le fond est un fond, il
  * ne doit pas concurrencer les contrôles.
+ *
+ * [titleSize], [titleSpacing] et [titleWeight] sont le STYLE DU TITRE, propre au
+ * preset : le lettrage de l'en-tête change de corps, d'interlettre et de graisse
+ * avec l'ambiance. Le titre reste le même mot — c'est sa mise en forme qui suit
+ * le preset, comme le wordmark d'un plugin qui change de couleur selon le mode.
  */
 data class FxPalette(
     val h: Float,
@@ -54,6 +59,9 @@ data class FxPalette(
     val rim: Color,
     val bgA: Color,
     val bgB: Color,
+    val titleSize: Float = 30f,
+    val titleSpacing: Float = 1.0f,
+    val titleWeight: Int = 700,
 )
 
 /** Le genre d'effet : un effet audio, ou un effet MIDI. */
@@ -88,12 +96,14 @@ object FxDesign {
         h: Float, dh: Float, s: Float, l: Float,
         core: String, rim: String, bgA: String, bgB: String,
         h2: Float = h, multi: Boolean = false,
+        titleSize: Float = 30f, titleSpacing: Float = 1f, titleWeight: Int = 700,
     ) = FxPalette(
         h, dh, s, l, h2, multi,
         Color(android.graphics.Color.parseColor(core)),
         Color(android.graphics.Color.parseColor(rim)),
         Color(android.graphics.Color.parseColor(bgA)),
         Color(android.graphics.Color.parseColor(bgB)),
+        titleSize, titleSpacing, titleWeight,
     )
 
     /**
@@ -137,16 +147,26 @@ object FxDesign {
             "Infinite" to listOf(1f, 1f, .40f, .25f, 1f, .60f, .95f, .50f, .70f, .70f),
         ),
         // Le FOND change avec le preset : deux teintes fusionnées en diagonale.
-        // Le cœur et le liseré du gros potard suivent la même paire.
+        // Le cœur et le liseré du gros potard suivent la même paire. Le STYLE DU
+        // TITRE (corps, interlettre, graisse) suit aussi le preset : Cathedral
+        // s'écrit large et espacé, Room serré et petit, Shimmer léger et aéré.
         palettes = mapOf(
-            "Hall" to pal(272f, 75f, 48f, 74f, "#E7D9FF", "#22103A", "#120A20", "#2A1244"),
-            "Plate" to pal(210f, 40f, 62f, 76f, "#EAF3FF", "#16283C", "#0A1018", "#1B2C40"),
-            "Room" to pal(205f, 44f, 34f, 68f, "#CFE8FF", "#0E2336", "#0A0F18", "#14324A"),
-            "Cathedral" to pal(258f, 60f, 56f, 66f, "#E4DAFF", "#1A0F38", "#0B0A1C", "#241244"),
-            "Shimmer" to pal(312f, 90f, 66f, 76f, "#FFF0FB", "#2A1030", "#1A0A22", "#2A1030", h2 = 186f, multi = true),
-            "Chamber" to pal(165f, 40f, 40f, 70f, "#D6FFF0", "#0C2A1E", "#07130F", "#123528"),
-            "Bloom" to pal(18f, 70f, 58f, 74f, "#FFC98A", "#3E1206", "#1A0805", "#3C1408"),
-            "Infinite" to pal(214f, 50f, 30f, 84f, "#FFFFFF", "#0E1626", "#06070C", "#101A2E"),
+            "Hall" to pal(272f, 75f, 48f, 74f, "#E7D9FF", "#22103A", "#120A20", "#2A1244",
+                titleSize = 30f, titleSpacing = 1.4f, titleWeight = 700),
+            "Plate" to pal(210f, 40f, 62f, 76f, "#EAF3FF", "#16283C", "#0A1018", "#1B2C40",
+                titleSize = 27f, titleSpacing = 2.2f, titleWeight = 500),
+            "Room" to pal(205f, 44f, 34f, 68f, "#CFE8FF", "#0E2336", "#0A0F18", "#14324A",
+                titleSize = 24f, titleSpacing = 0.4f, titleWeight = 900),
+            "Cathedral" to pal(258f, 60f, 56f, 66f, "#E4DAFF", "#1A0F38", "#0B0A1C", "#241244",
+                titleSize = 34f, titleSpacing = 3.2f, titleWeight = 500),
+            "Shimmer" to pal(312f, 90f, 66f, 76f, "#FFF0FB", "#2A1030", "#1A0A22", "#2A1030", h2 = 186f, multi = true,
+                titleSize = 33f, titleSpacing = 4.0f, titleWeight = 500),
+            "Chamber" to pal(165f, 40f, 40f, 70f, "#D6FFF0", "#0C2A1E", "#07130F", "#123528",
+                titleSize = 26f, titleSpacing = 1.0f, titleWeight = 700),
+            "Bloom" to pal(18f, 70f, 58f, 74f, "#FFC98A", "#3E1206", "#1A0805", "#3C1408",
+                titleSize = 31f, titleSpacing = 0.2f, titleWeight = 900),
+            "Infinite" to pal(214f, 50f, 30f, 84f, "#FFFFFF", "#0E1626", "#06070C", "#101A2E",
+                titleSize = 29f, titleSpacing = 5.0f, titleWeight = 500),
         ),
     )
 

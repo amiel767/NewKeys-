@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -31,26 +32,40 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 
 /**
- * LA PAGE D'UN EFFET — un gros potard à gauche, les contrôles à droite.
+ * LA PAGE D'UN EFFET — elle REMPLIT toute la fenêtre.
  *
- * C'est la composition de la référence : UN réglage principal, tenu par le gros
- * potard, et tout le reste rangé en grille à côté. L'orbe a disparu — il ne
- * portait aucune information que le potard ne porte mieux.
+ * Il n'y a pas de bande d'en-tête ici : le titre est écrit DANS le corps, en
+ * haut de la colonne de gauche, comme le mot d'un plugin posé dans son panneau.
+ * La version précédente réservait 46 unités à une bande d'en-tête et laissait
+ * une réserve vide sous les contrôles ; la référence ne fait ni l'un ni l'autre.
+ *
+ * La disposition est celle de la référence, traduite :
+ *
+ *  - À GAUCHE, une colonne : le titre de l'effet, puis le GROS potard du réglage
+ *    principal, avec son libellé et sa valeur.
+ *  - À DROITE, les autres réglages, chacun dans SA cellule — deux colonnes de
+ *    cellules, un potard par cellule. Ils ne sont plus tassés dans une grille
+ *    unique : la référence sépare les réglages, elle ne les empile pas.
+ *  - Le sélecteur de preset est posé en haut à droite, dans le flux.
  *
  * LE FOND VIENT DU PRESET. Chaque preset porte deux teintes (`bgA`, `bgB`) qui
- * se fondent en diagonale : violet-noir, orange-rouge, noir-bleu ciel. Changer
- * de preset change donc l'ambiance de la page entière, pas seulement un liseré.
- *
- * L'Arpeggiator n'a pas de potard principal : il a sa propre page, [FxArpPage].
+ * se fondent en diagonale, et le STYLE DU TITRE (corps, interlettre, graisse)
+ * suit le même preset.
  */
 @Composable
-fun FxEffectPage(state: FxWindowState, actions: FxWindowActions, arp: ArpState) {
+fun FxEffectPage(
+    state: FxWindowState,
+    actions: FxWindowActions,
+    arp: ArpState,
+    onClose: () -> Unit = {},
+) {
     val fx = state.openEffect ?: return
     if (fx.kind == FxKindD.MIDI) {
         FxArpPage(fx, arp)
@@ -72,11 +87,11 @@ fun FxEffectPage(state: FxWindowState, actions: FxWindowActions, arp: ArpState) 
     val hueA = pal?.let { Color.hsv(it.h, (it.s / 100f).coerceAtMost(.85f), .55f) } ?: fx.accent
     val hueB = pal?.let { Color.hsv(it.h2, (it.s / 100f).coerceAtMost(.85f), .50f) } ?: fx.accent
 
-    // L'index du réglage principal : un seul le porte, et la grille montre les autres.
+    // L'index du réglage principal : un seul le porte, et les cellules montrent les autres.
     val mainIndex = fx.params.indexOfFirst { it.main }.let { if (it < 0) 0 else it }
     val mainParam = fx.params[mainIndex]
     // L'ouverture de la liste est tenue ICI : la liste doit se dessiner AU-DESSUS
-    // de la grille, donc elle est un frère de la grille, pas son descendant.
+    // des cellules, donc elle est un frère de la grille, pas son descendant.
     var presetOpen by remember(fx.id) { mutableStateOf(false) }
 
     Box(
@@ -99,58 +114,104 @@ fun FxEffectPage(state: FxWindowState, actions: FxWindowActions, arp: ArpState) 
                 onDrawBehind { drawRect(a); drawRect(b) }
             },
         )
-        Row(Modifier.fillMaxSize().padding(10.dp)) {
-            // ── LE GROS POTARD ──────────────────────────────────────────────
-            Column(
-                Modifier.width(250.dp).fillMaxHeight(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                FxMagmaKnob(
-                    label = mainParam.name,
-                    value = values.getOrElse(mainIndex) { mainParam.def },
-                    display = FxDesign.fmt(values.getOrElse(mainIndex) { mainParam.def }, mainParam),
-                    palette = pal,
-                    accent = fx.accent,
-                    onChange = { actions.setValue(mainIndex, it) },
-                    onReset = { actions.setValue(mainIndex, mainParam.def) },
-                )
-            }
-            Spacer(Modifier.width(10.dp))
-
-            // ── LA COLONNE DE DROITE : le sélecteur, puis les contrôles ──────
-            Box(Modifier.weight(1f).fillMaxHeight()) {
-                Column(Modifier.fillMaxSize()) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+        Row(Modifier.fillMaxSize().padding(FxGeo.PAGE_PAD.dp)) {
+            // ── LA COLONNE DE GAUCHE : les commandes, le titre, le gros potard ──
+            Box(Modifier.width(FxGeo.COL_L.dp).fillMaxHeight()) {
+                Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.Start) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (fx.space) {
+                            FxSaveButton(custom = state.custom) { actions.beginSave() }
+                            Spacer(Modifier.width(6.dp))
+                        }
                         FxPresetButton(
                             preset = preset, custom = state.custom, palette = pal,
                             open = presetOpen, onToggle = { presetOpen = !presetOpen },
                         )
+                        Spacer(Modifier.weight(1f))
+                        FxIconButton(AeFxIcons.BACK, onClick = { actions.closePage() })
+                        Spacer(Modifier.width(6.dp))
+                        FxIconButton(AeFxIcons.CLOSE, onClick = onClose)
                     }
-                    Spacer(Modifier.height(8.dp))
-                    FxControlsGrid(fx, values, mainIndex, actions)
-                }
-                if (presetOpen) {
-                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopEnd) {
-                        FxPresetList(
-                            fx = fx, preset = preset,
-                            userNames = state.userPresets[fx.id] ?: emptyList(),
-                            modifier = Modifier.padding(top = 34.dp).width(168.dp).zIndex(2f),
-                            onPick = { actions.pickPreset(it); presetOpen = false },
+                    Spacer(Modifier.height(10.dp))
+                    FxPageTitle(fx.name, pal)
+                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        FxMagmaKnob(
+                            label = mainParam.name,
+                            value = values.getOrElse(mainIndex) { mainParam.def },
+                            display = FxDesign.fmt(values.getOrElse(mainIndex) { mainParam.def }, mainParam),
+                            palette = pal,
+                            accent = fx.accent,
+                            onChange = { actions.setValue(mainIndex, it) },
+                            onReset = { actions.setValue(mainIndex, mainParam.def) },
                         )
                     }
                 }
+                if (presetOpen) {
+                    FxPresetList(
+                        fx = fx, preset = preset,
+                        userNames = state.userPresets[fx.id] ?: emptyList(),
+                        modifier = Modifier.padding(top = 34.dp).width(180.dp).zIndex(2f),
+                        onPick = { actions.pickPreset(it); presetOpen = false },
+                    )
+                }
+            }
+            Spacer(Modifier.width(FxGeo.COL_GAP.dp))
+
+            // ── LA COLONNE DE DROITE : les cellules, sur toute la hauteur ────
+            // Les commandes sont à gauche : la hauteur entière revient aux
+            // cellules, et c'est ce qui permet au potard de grandir.
+            Column(Modifier.weight(1f).fillMaxHeight()) {
+                FxControlsGrid(fx, values, mainIndex, actions)
             }
         }
     }
 }
 
 /**
- * LA GRILLE DES CONTRÔLES — trois colonnes, libellé et valeur sous chaque potard.
+ * LE TITRE DE LA PAGE — écrit DANS le corps, pas dans une bande d'en-tête.
  *
- * C'est la disposition de la référence : des cellules alignées, jamais une
- * rangée qui s'étire. Le réglage principal n'y figure pas — il est déjà le gros
- * potard, le répéter en petit ferait doublon.
+ * Son STYLE appartient au preset : [FxPalette.titleSize], [titleSpacing] et
+ * [titleWeight] changent d'un preset à l'autre. Cathedral s'écrit large et
+ * espacé, Room serré et petit, Shimmer léger et aéré. Le mot ne change pas —
+ * c'est sa mise en forme qui suit l'ambiance, comme le wordmark d'un plugin.
+ *
+ * Le léger devers (1,2°) est repris de la maquette : un titre parfaitement
+ * d'aplomb dans un panneau se lit comme un formulaire.
+ */
+@Composable
+private fun FxPageTitle(name: String, pal: FxPalette?) {
+    val weight = when (pal?.titleWeight ?: 700) {
+        in 0..500 -> FontWeight.Medium
+        in 501..750 -> FontWeight.Bold
+        else -> FontWeight.Black
+    }
+    Column(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalAlignment = Alignment.Start) {
+        Text(
+            name, color = FxC.ink, fontSize = (pal?.titleSize ?: 30f).sp,
+            fontFamily = FxFonts.display, fontWeight = weight,
+            letterSpacing = (pal?.titleSpacing ?: 1f).sp,
+            maxLines = 1,
+            modifier = Modifier.graphicsLayer(rotationZ = -1.2f),
+        )
+        Spacer(Modifier.height(5.dp))
+        Box(
+            Modifier.width(56.dp).height(2.dp).clip(RoundedCornerShape(1.dp))
+                .background(pal?.core ?: FxC.acc),
+        )
+    }
+}
+
+/**
+ * LES CELLULES DES RÉGLAGES — chaque réglage dans SA case, jamais empilés.
+ *
+ * C'est la demande : « on sépare et on agrandit la taille des knobs au lieu de
+ * tout rassembler dans un seul cadre ». La version précédente mettait les neuf
+ * réglages dans UN panneau, à 46 unités de potard. Ici chaque réglage a sa
+ * cellule, avec son propre creux, et le potard passe à [FxGeo.KNOB] = 96.
+ *
+ * DEUX colonnes, pas trois : à trois colonnes les cellules sont plus étroites
+ * que le disque et le libellé n'entre plus. Les cellules remplissent toute la
+ * hauteur disponible — `SpaceEvenly` les répartit, il n'y a pas de réserve vide.
  */
 @Composable
 private fun ColumnScope.FxControlsGrid(
@@ -160,35 +221,66 @@ private fun ColumnScope.FxControlsGrid(
     actions: FxWindowActions,
 ) {
     val others = fx.params.withIndex().filter { it.index != mainIndex }
-    val rows = others.chunked(3)
+    val rows = others.chunked(FxGeo.CELLS)
     Column(
-        Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(13.dp))
-            // Un fond SOMBRE TRANSLUCIDE, pas seulement le creux : sans lui la
-            // grille flotte sur le dégradé du preset et ne se lit pas comme un
-            // panneau. Le creux par-dessus donne l'arête.
-            .background(Color(0x4D06090F))
-            .fxRectWell(13.dp, top = .12f, rim = .08f)
-            .padding(horizontal = 6.dp, vertical = 6.dp),
-        verticalArrangement = Arrangement.SpaceEvenly,
+        Modifier.fillMaxWidth().weight(1f),
+        verticalArrangement = Arrangement.spacedBy(FxGeo.COL_GAP.dp),
     ) {
         rows.forEach { row ->
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth().weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(FxGeo.COL_GAP.dp),
+            ) {
                 row.forEach { (i, p) ->
-                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                        FxKnob(
-                            label = p.name, value = values.getOrElse(i) { p.def },
-                            accent = fx.accent,
-                            display = FxDesign.fmt(values.getOrElse(i) { p.def }, p),
-                            size = 46,
-                            onReset = { actions.setValue(i, p.def) },
-                            onChange = { actions.setValue(i, it) },
-                        )
-                    }
+                    FxControlCell(
+                        label = p.name,
+                        value = values.getOrElse(i) { p.def },
+                        accent = fx.accent,
+                        display = FxDesign.fmt(values.getOrElse(i) { p.def }, p),
+                        modifier = Modifier.weight(1f),
+                        onChange = { actions.setValue(i, it) },
+                        onReset = { actions.setValue(i, p.def) },
+                    )
                 }
-                // Une rangée incomplète garde ses colonnes : sinon les deux
-                // derniers contrôles s'étalent et ne s'alignent plus sur la grille.
-                repeat(3 - row.size) { Box(Modifier.weight(1f)) }
+                // Une rangée incomplète garde ses colonnes : sinon le dernier
+                // contrôle s'étale et ne s'aligne plus sur les autres.
+                repeat(FxGeo.CELLS - row.size) { Box(Modifier.weight(1f)) }
             }
+        }
+    }
+}
+
+/**
+ * UNE CELLULE : le creux, le potard, le libellé et la valeur.
+ *
+ * Le creux est ce qui SÉPARE les réglages. Sans lui, deux potards voisins se
+ * lisent comme une rangée continue — c'est exactement ce que la référence évite.
+ */
+@Composable
+private fun FxControlCell(
+    label: String,
+    value: Float,
+    accent: Color,
+    display: String,
+    modifier: Modifier = Modifier,
+    onChange: (Float) -> Unit,
+    onReset: () -> Unit,
+) {
+    Box(
+        modifier.fillMaxHeight()
+            .clip(RoundedCornerShape(FxGeo.CELL_R.dp))
+            .background(Brush.verticalGradient(listOf(FxC.cellTop, FxC.cellBot)))
+            .fxRectWell(FxGeo.CELL_R.dp, top = .14f, rim = .08f),
+        contentAlignment = Alignment.Center,
+    ) {
+        // Le plus grand disque qui entre dans la case, plafonné à la cible : une
+        // taille figée était écrasée par les rangées et rien ne le signalait.
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val d = minOf(maxWidth.value, maxHeight.value - FxGeo.KNOB_TEXT, FxGeo.KNOB.toFloat())
+            FxKnob(
+                label = label, value = value, accent = accent, display = display,
+                size = d.toInt(), onChange = onChange, onReset = onReset,
+            )
         }
     }
 }

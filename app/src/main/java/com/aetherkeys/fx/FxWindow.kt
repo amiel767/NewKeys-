@@ -96,38 +96,32 @@ fun FxWindow(
                 .background(Brush.verticalGradient(listOf(FxC.winTop, FxC.winBot))),
         ) {
             Column(Modifier.fillMaxSize()) {
-                FxHeader(
-                    title = title,
-                    big = inEffect,
-                    onBack = if (inEffect || state.catalogOpen) ({ actions.closePage() }) else null,
-                    counter = if (!inEffect && !state.catalogOpen) "$count / ${FxDesign.SLOTS}" else null,
-                    trailing = {
-                        if (inEffect && state.openEffect?.space == true) {
-                            FxSaveButton(custom = state.custom) { actions.beginSave() }
-                        }
-                        // BPM et Swing sont MONTEES DANS L'EN-TETE, comme la
-                        // maquette : ce sont des reglages du transport, pas de la
-                        // grille. Les mettre dans la page les aurait noyes.
-                        if (isArp) {
-                            Spacer(Modifier.width(8.dp))
-                            Box(Modifier.width(1.dp).height(24.dp).background(FxC.line))
-                            Spacer(Modifier.width(8.dp))
-                            FxNumStep("BPM", arp.bpm, 40, 240, 32) { arp.bpm = it }
-                            Spacer(Modifier.width(8.dp))
-                            FxNumStep("Swing", arp.swing, 0, 80, 36, "%") { arp.swing = it }
-                            Spacer(Modifier.width(8.dp))
-                            Box(Modifier.width(1.dp).height(24.dp).background(FxC.line))
-                        }
-                    },
-                    onClose = { actions.onClose() },
-                )
+                // La page d'un effet REMPLIT la fenêtre : elle n'a pas de bande
+                // d'en-tête. Le titre, le retour et la fermeture sont alors portés
+                // par la page elle-même (le titre dans le corps, les deux boutons
+                // posés en haut à droite). Sur le rack et le catalogue, l'en-tête
+                // reste : ces deux vues ont un compteur et un titre de section.
+                if (!inEffect) {
+                    FxHeader(
+                        title = title,
+                        big = false,
+                        onBack = if (state.catalogOpen) ({ actions.closePage() }) else null,
+                        counter = if (!state.catalogOpen) "$count / ${FxDesign.SLOTS}" else null,
+                        trailing = {},
+                        onClose = { actions.onClose() },
+                    )
+                }
                 Box(
                     Modifier.fillMaxWidth().weight(1f)
-                        .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+                        .padding(
+                            start = if (inEffect) 0.dp else 12.dp,
+                            end = if (inEffect) 0.dp else 12.dp,
+                            bottom = if (inEffect) 0.dp else 12.dp,
+                        ),
                 ) {
                     when {
                         state.catalogOpen -> FxCatalog(state, actions)
-                        state.openEffect != null -> FxEffectPage(state, actions, arp)
+                        state.openEffect != null -> FxEffectPage(state, actions, arp, onClose = { actions.onClose() })
                         else -> FxRack(state, actions)
                     }
                 }
@@ -357,7 +351,7 @@ fun FxIconButton(icon: String, onClick: () -> Unit, size: Int = 28, glyph: Int =
 
 /** Le bouton Save, qui s'allume dès qu'un réglage a bougé. */
 @Composable
-private fun FxSaveButton(custom: Boolean, onClick: () -> Unit) {
+fun FxSaveButton(custom: Boolean, onClick: () -> Unit) {
     Row(
         Modifier.height(28.dp).clip(RoundedCornerShape(9.dp))
             .background(

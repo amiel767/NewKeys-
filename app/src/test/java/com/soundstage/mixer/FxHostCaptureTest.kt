@@ -47,14 +47,14 @@ class FxHostCaptureTest {
             }
         }
         composeTestRule.mainClock.advanceTimeBy(1500)
-        composeTestRule.onRoot().captureRoboImage("app/src/test/screenshots/$name.png")
+        composeTestRule.onRoot().captureRoboImage("src/test/screenshots/$name.png")
     }
 
     /** La fenetre doit etre visible : l'hote monte le rack, meme sans moteur. */
     @Test
     fun fx_host_is_visible() {
         capture("fx_host")
-        val f = java.io.File("app/src/test/screenshots/fx_host.png")
+        val f = java.io.File("src/test/screenshots/fx_host.png")
         assertTrue("capture absente : la fenetre n'a pas ete montee", f.exists())
         // Un ecran entierement noir ferait ~0 octet une fois compresse ; une
         // fenetre dessinee pese forcement plus. C'est le garde-fou contre la

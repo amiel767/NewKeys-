@@ -22,6 +22,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
@@ -44,17 +45,25 @@ import kotlin.math.sin
 /**
  * Le potard de la fenêtre FX — **plat, à la Valhalla**.
  *
- * La référence a été MESURÉE, pas interprétée : dans une capture Valhalla, le
- * disque du potard vaut 121 de luminance quand le panneau vaut 52, et il est
- * **uniforme** sur tout son rayon. Il n'y a donc ni dôme, ni dégradé de corps,
- * ni collerette : ces couches donnaient l'aspect « 3D bricolée » que la
- * référence n'a pas. Ce qui fait lire le potard, c'est uniquement :
+ * La référence a été MESURÉE, pas interprétée. Trois chiffres commandent tout le
+ * dessin, pris sur `room_24.jpg` :
  *
- *  1. le disque : un aplat plus clair que le panneau, sans dégradé ;
- *  2. le liseré : un filet fin, un peu plus clair, sur le bord du disque ;
- *  3. la piste : l'arc creusé, très sombre ;
- *  4. la valeur : un arc d'accent, fin, qui part de 135° ;
- *  5. l'index : une aiguille du centre vers le bord, avec sa bille.
+ *  - le disque vaut **121 de luminance** (47 %) sur un panneau à **52** (20 %).
+ *    Le rapport est de **2,3** : le disque est un gris MOYEN, pas un noir. C'est
+ *    le point qu'une première version avait manqué — à 40 de luminance, le disque
+ *    se confondait avec le panneau et le potard ne se lisait plus ;
+ *  - il est **uniforme** sur tout son rayon : ni dôme, ni dégradé de corps, ni
+ *    collerette. Ce sont ces couches qui donnaient l'aspect « 3D bricolée » ;
+ *  - il n'y a **pas de liseré** : la transition disque → panneau est franche, en
+ *    un pixel (121 puis 51). Un filet clair au bord était une invention.
+ *
+ * Ce qui fait lire le potard, c'est donc uniquement :
+ *
+ *  1. le disque : un aplat CLAIR, bien détaché du panneau ;
+ *  2. l'index : une aiguille SOMBRE, du centre vers le bord (elle est sombre sur
+ *     le disque clair, jamais blanche) ;
+ *  3. la valeur : un **coin** plein, au bord, dans l'anneau — mesuré de rayon
+ *     28 à 57 sur un disque de 54, soit de la moitié au bord, et large de ~25°.
  *
  * L'ARC VA DE 135° À 405° (270° de course), comme la référence.
  *
@@ -92,84 +101,80 @@ fun FxKnob(
                 detectTapGestures(onDoubleTap = { onReset?.invoke() })
             },
         ) {
-            Canvas(Modifier.size(size.dp)) {
-                val r = this.size.minDimension / 2f
-                val c = Offset(this.size.width / 2f, this.size.height / 2f)
-                val v = value.coerceIn(0f, 1f)
-                val a0 = 135f
-                val sweep = 270f
-                fun pt(deg: Float, rad: Float): Offset {
-                    val a = Math.toRadians(deg.toDouble())
-                    return Offset(c.x + rad * cos(a).toFloat(), c.y + rad * sin(a).toFloat())
-                }
-
-                // ── 1. LE DISQUE. Un APLAT, sans le moindre dégradé : c'est la
-                //    mesure de la référence (121 uniforme sur un panneau à 52).
-                //    Le disque est plus clair que le panneau, donc il se détache
-                //    par le contraste, pas par un relief.
-                val discR = r * .80f
-                drawCircle(Color(0xFF2A2F3C), radius = discR, center = c)
-
-                // ── 2. LE LISERÉ : un filet fin, un peu plus clair, sur le bord.
-                //    C'est lui, et l'index, qui donnent toute la lecture.
-                drawCircle(
-                    color = Color(0x30FFFFFF), radius = discR - r * .012f, center = c,
-                    style = Stroke(width = r * .024f),
-                )
-                drawCircle(
-                    color = Color(0x5A000000), radius = discR + r * .010f, center = c,
-                    style = Stroke(width = r * .020f),
-                )
-
-                // ── 3. LA PISTE DE VALEUR : l'arc creusé, dans le panneau, juste
-                //    hors du disque. Très sombre, sans liseré clair.
-                val ringR = r * .93f
-                drawArc(
-                    color = Color(0x66000000), startAngle = a0, sweepAngle = sweep,
-                    useCenter = false,
-                    topLeft = Offset(c.x - ringR, c.y - ringR),
-                    size = Size(ringR * 2f, ringR * 2f),
-                    style = Stroke(width = r * .055f, cap = StrokeCap.Round),
-                )
-
-                // ── 4. LA VALEUR : l'arc d'accent, FIN. La référence ne pose pas
-                //    de halo : un trait net qui part de 135° et s'arrête à la
-                //    valeur. Une version épaisse et lumineuse faisait « jouet ».
-                if (v > .008f) {
-                    drawArc(
-                        color = accent, startAngle = a0, sweepAngle = v * sweep,
-                        useCenter = false,
-                        topLeft = Offset(c.x - ringR, c.y - ringR),
-                        size = Size(ringR * 2f, ringR * 2f),
-                        style = Stroke(width = r * .055f, cap = StrokeCap.Round),
-                    )
-                }
-
-                // ── 5. L'INDEX : une aiguille rectiligne du centre vers le bord,
-                //    blanche, avec la bille au bout. Rien de creusé.
-                val deg = a0 + v * sweep
-                drawLine(
-                    color = Color(0xFFE8ECF5), start = pt(deg, r * .16f), end = pt(deg, r * .70f),
-                    strokeWidth = r * .075f, cap = StrokeCap.Round,
-                )
-                val tip = pt(deg, r * .70f)
-                drawCircle(Color(0xFFE8ECF5), radius = r * .085f, center = tip)
-
-                if (hot) {
-                    drawCircle(
-                        accent.copy(alpha = .55f), radius = discR + r * .02f, center = c,
-                        style = Stroke(r * .035f),
-                    )
-                }
-            }
+            Canvas(Modifier.size(size.dp)) { drawFxKnob(value, accent, hot) }
         }
-        Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.height(3.dp))
         Text(
             label.uppercase(), color = if (hot) FxC.ink else FxC.dim,
-            fontSize = 7.5.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp, maxLines = 1,
+            fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp, maxLines = 1,
         )
-        Text(display, color = if (hot) FxC.ink else Color(0xFF7E879C), fontSize = 9.sp, fontFamily = FxFonts.mono)
+        Spacer(Modifier.height(1.dp))
+        Text(display, color = if (hot) FxC.ink else FxC.knobVal, fontSize = 11.sp, fontFamily = FxFonts.mono)
     }
+}
+
+/**
+ * Le dessin d'un potard plat, dans un carré de rayon `r` centré.
+ *
+ * Extrait de [FxKnob] et [FxMagmaKnob] : les deux montrent la MÊME pièce, à deux
+ * échelles. Deux copies auraient dérivé — c'est exactement ce qui s'était produit
+ * entre le disque du gros potard et celui des petits.
+ */
+fun DrawScope.drawFxKnob(v0: Float, accent: Color, hot: Boolean) {
+    val r = size.minDimension / 2f
+    val c = Offset(size.width / 2f, size.height / 2f)
+    val v = v0.coerceIn(0f, 1f)
+
+    // ── 1. LE DISQUE. Un APLAT CLAIR, sans le moindre dégradé. Le rapport avec
+    //    le panneau est celui de la référence : 121 sur 52, soit 2,3.
+    val discR = r * .84f
+    drawCircle(FxC.knobDisc, radius = discR, center = c)
+    if (hot) {
+        drawCircle(accent.copy(alpha = .22f), radius = discR, center = c)
+    }
+
+    // ── 2. LA PISTE : l'anneau creusé dans le panneau, juste hors du disque.
+    //    Très sombre, SANS liseré clair — la référence n'en a pas.
+    val ringR = r * .955f
+    drawArc(
+        color = FxC.knobTrack, startAngle = 135f, sweepAngle = 270f, useCenter = false,
+        topLeft = Offset(c.x - ringR, c.y - ringR), size = Size(ringR * 2f, ringR * 2f),
+        style = Stroke(width = r * .13f, cap = StrokeCap.Butt),
+    )
+
+    // ── 3. LA VALEUR : un COIN PLEIN posé sur l'anneau, à l'angle de la valeur.
+    //    C'est la mesure : rayon 28 → 57 sur un disque de 54, largeur ~25°. Un
+    //    arc d'épaisseur constante ne donnait pas ce coin.
+    if (v > .012f) {
+        val deg = 135f + v * 270f
+        val ri = r * .52f
+        val ro = r * 1.02f
+        val half = 12.5f
+        fun pt(d: Float, rad: Float) = Offset(
+            c.x + rad * cos(Math.toRadians(d.toDouble())).toFloat(),
+            c.y + rad * sin(Math.toRadians(d.toDouble())).toFloat(),
+        )
+        val path = androidx.compose.ui.graphics.Path().apply {
+            moveTo(pt(deg - half, ri).x, pt(deg - half, ri).y)
+            lineTo(pt(deg - half, ro).x, pt(deg - half, ro).y)
+            lineTo(pt(deg + half, ro).x, pt(deg + half, ro).y)
+            lineTo(pt(deg + half, ri).x, pt(deg + half, ri).y)
+            close()
+        }
+        drawPath(path, accent)
+    }
+
+    // ── 4. L'INDEX : une aiguille SOMBRE du centre vers le bord. Sur un disque
+    //    clair, c'est le sombre qui se voit — la référence fait exactement ça.
+    val deg = 135f + v * 270f
+    fun pt(rad: Float) = Offset(
+        c.x + rad * cos(Math.toRadians(deg.toDouble())).toFloat(),
+        c.y + rad * sin(Math.toRadians(deg.toDouble())).toFloat(),
+    )
+    drawLine(
+        color = FxC.knobIndex, start = pt(r * .10f), end = pt(r * .68f),
+        strokeWidth = r * .085f, cap = StrokeCap.Round,
+    )
 }
 
 

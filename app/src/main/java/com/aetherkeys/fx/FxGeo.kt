@@ -45,6 +45,45 @@ object FxGeo {
     /** Le corps disponible : 411 − 46 − 24 = 341. */
     const val BODY = H - HEAD - PAD * 2
 
+    /**
+     * LA PAGE D'UN EFFET REMPLIT TOUTE LA FENÊTRE.
+     *
+     * Il n'y a PAS de bande d'en-tête sur cette page : le titre est posé dans le
+     * corps, en haut de la colonne de gauche, et les contrôles occupent tout le
+     * reste. Une bande d'en-tête laissait une réserve vide que la référence n'a
+     * pas — chez Valhalla le mot est écrit DANS le panneau, il ne consomme pas
+     * une ligne à lui seul.
+     */
+    const val PAGE_PAD = 10f
+
+    /** La colonne de gauche de la page d'effet : le titre, le gros potard. */
+    const val COL_L = 300f
+
+    /** La gouttière entre la colonne de gauche et les cellules. */
+    const val COL_GAP = 10f
+
+    /** Trois colonnes de cellules : à deux, les rangées écrasent le potard. */
+    const val CELLS = 3
+
+    /** Rayon d'une cellule de réglage. */
+    const val CELL_R = 14f
+
+    /**
+     * Diamètre VISÉ d'un potard de cellule.
+     *
+     * C'est une CIBLE, pas une contrainte : la cellule mesure ce qu'elle a et
+     * prend le plus grand disque qui entre ([FxControlCell]). Une taille figée
+     * était le bug de la version à deux colonnes — le potard était écrasé à 52
+     * unités dans une case de 63 sans que rien ne le signale.
+     */
+    const val KNOB = 96
+
+    /** La place réservée sous le disque : libellé et valeur. */
+    const val KNOB_TEXT = 34f
+
+    /** Diamètre du GROS potard principal. */
+    const val KNOB_MAIN = 232
+
     /** Quatre emplacements, une gouttière de 10 entre eux. */
     const val SLOTS = 4
     const val GAP = 10f
