@@ -94,5 +94,24 @@ fun BoxScope.AeSynthUi(c: AeCtl, a: AeAnim) {
             AeGlassKnob(c, 30, "Tune", 700, 130, 50); AeGlassKnob(c, 31, "Level", 812, 130, 50)
         }
     }
-    AeKeyboard(c, 52, 360, 896, 90)
+    SynthConsole(c, a)
+}
+
+/**
+ * The band the virtual keyboard used to fill: output level and the oscillator stack at a glance.
+ *
+ * The instrument is played from the mixer's own keyboard. In its place the window shows the
+ * output meter and a readout of the two oscillators' shape and mix, which is the pair of
+ * settings a player checks before touching anything else.
+ */
+@Composable
+private fun BoxScope.SynthConsole(c: AeCtl, a: AeAnim) {
+    Box(Modifier.at(22, 352, 428, 96).clip(RoundedCornerShape(18.su())).background(Brush.linearGradient(listOf(Color(0x14FFFFFF), Color(0x05FFFFFF)))).border(1.su(), Color(0x1CFFFFFF), RoundedCornerShape(18.su())))
+    AeT("OUTPUT", 9, AeC.violet, Modifier.at(38, 362, 200, 12), weight = FontWeight.ExtraBold, spacing = 0.2f)
+    Canvas(Modifier.at(38, 380, 250, 58)) { a.frame.intValue; drawOutputMeter(a, c.v(31), AeC.p2) }
+    Box(Modifier.at(302, 352, 324, 96).clip(RoundedCornerShape(18.su())).background(Brush.linearGradient(listOf(Color(0x14FFFFFF), Color(0x05FFFFFF)))).border(1.su(), Color(0x1CFFFFFF), RoundedCornerShape(18.su())))
+    AeT("OSCILLATORS", 9, AeC.violet, Modifier.at(318, 362, 200, 12), weight = FontWeight.ExtraBold, spacing = 0.2f)
+    Canvas(Modifier.at(318, 380, 292, 30)) { a.frame.intValue; drawWave(c.v(0), if (c.s.held.isEmpty()) 0f else a.t * 0.6f) }
+    Canvas(Modifier.at(318, 412, 292, 30)) { a.frame.intValue; drawWave(c.v(1), if (c.s.held.isEmpty()) 0.3f else a.t * 0.6f + 0.3f) }
+    AeT("A " + c.fmt(0) + "   B " + c.fmt(1) + "   DETUNE " + c.fmt(2), 9, AeC.mute, Modifier.at(318, 434, 292, 12), AeFonts.mono, FontWeight.Normal)
 }

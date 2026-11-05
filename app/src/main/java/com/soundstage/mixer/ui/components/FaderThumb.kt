@@ -15,6 +15,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.withTransform
@@ -35,6 +36,11 @@ import kotlin.math.sqrt
  * - [accent]     couleur de la LED (barre + halo), n'importe quelle couleur.
  * - [glow]       0..1 : intensité LED (0 = éteinte et atténuée, 1 = pleine). À piloter par l'activité audio.
  * - [showShadow] ombre portée de l'image de référence (déborde du cadre : ne pas clipper le parent).
+ * - [capTop]/[capBottom] matière du capot. Laissés nuls, le capot garde le bonnet sombre échantillonné
+ *   du mixeur ; fournis, ils recolorent la face (tirettes d'orgue : marron, blanc, noir) en conservant
+ *   le relief mesuré — lèvre éclairée, arête, bande basse, biseaux latéraux.
+ * - [showLed]    false retire la barre LED et son halo. Une tirette d'orgue n'a pas de LED : garder
+ *   la barre y lirait comme un joint au milieu du capot.
  *
  * Format : largeur/hauteur = 1327/1657. Utilise Modifier.width(..).aspectRatio(FaderThumbRatio).
  * Le dessin garde ses proportions (échelle uniforme, centré) : aucun étirement.
@@ -47,6 +53,9 @@ fun FaderThumb(
     modifier: Modifier = Modifier,
     glow: Float = 1f,
     showShadow: Boolean = true,
+    capTop: Color? = null,
+    capBottom: Color? = null,
+    showLed: Boolean = true,
 ) {
     val g = glow.coerceIn(0f, 1f)
     Canvas(modifier = modifier) {
@@ -60,9 +69,11 @@ fun FaderThumb(
         }) {
             if (showShadow) drawShadow()
             clipPath(Spec.bodyPath) {
-                drawBody()
-                drawGlow(accent, g)
-                drawLed(accent, g)
+                drawBody(capTop, capBottom)
+                if (showLed) {
+                    drawGlow(accent, g)
+                    drawLed(accent, g)
+                }
             }
         }
     }
@@ -163,8 +174,58 @@ private fun parseStrips(data: String): List<Strip> =
     }
 
 // ---------- dessin ----------
-private fun DrawScope.drawBody() {
-    drawRect(Spec.baseBrush, topLeft = Offset.Zero, size = Size(Spec.W, Spec.H))
+private fun luminance(c: Color) = 0.2126f * c.red + 0.7152f * c.green + 0.0722f * c.blue
+
+/** Bornes de luminance du profil échantillonné, pour le normaliser en rampe 0..1. */
+private val LUMA_MIN = Spec.baseStops.minOf { luminance(it.second) }
+private val LUMA_MAX = Spec.baseStops.maxOf { luminance(it.second) }
+
+/**
+ * Face du capot. Sans teinte fournie, le dégradé échantillonné est posé tel quel (bonnet sombre
+ * du mixeur). Avec une teinte, le RELIEF mesuré est conservé mais normalisé en rampe 0..1, puis
+ * projeté entre une variante claire et une variante sombre de la teinte demandée.
+ *
+ * Pourquoi normaliser : le profil source est intrinsèquement sombre (luminance ~0,06..0,32).
+ * L'appliquer tel quel à une teinte écrase tout — un capot blanc mesuré ne dépassait pas la
+ * luminance 77 contre 38 pour un noir, donc les deux se ressemblaient. La rampe normalisée donne
+ * à chaque teinte toute son étendue, tout en gardant la forme exacte du relief : lèvre éclairée,
+ * arête nette, bande basse, biseaux latéraux.
+ */
+private fun DrawScope.drawBody(top: Color? = null, bottom: Color? = null) {
+    if (top == null || bottom == null) {
+        drawRect(Spec.baseBrush, topLeft = Offset.Zero, size = Size(Spec.W, Spec.H))
+    } else {
+        // Variante claire de la lèvre, variante sombre de la base : c'est la matière du capot.
+        val light = lerp(top, Color.White, 0.34f)
+        val dark = lerp(bottom, Color.Black, 0.46f)
+        val span = (LUMA_MAX - LUMA_MIN).coerceAtLeast(1e-4f)
+        val stops = Spec.baseStops.map { (t, c) ->
+            val ramp = ((luminance(c) - LUMA_MIN) / span).coerceIn(0f, 1f)
+            val mid = lerp(dark, light, ramp)
+            // Un léger enfoncement de la bande basse : sans lui le capot a l'air bombé, alors
+            // qu'un capot de tirette est plat avec un chanfrein.
+            val f = if (t > 0.80f) 0.86f else 1f
+            t to Color(mid.red * f, mid.green * f, mid.blue * f, 1f)
+        }.toTypedArray()
+        drawRect(
+            Brush.verticalGradient(*stops, startY = 0f, endY = Spec.H),
+            topLeft = Offset.Zero, size = Size(Spec.W, Spec.H),
+        )
+        // Reflet plastique : une bande spéculaire sous la lèvre, et un retour de lumière en bas.
+        // Sans elle une face teintée reste mate et lit comme du carton, pas comme du plastique.
+        drawRect(
+            Brush.verticalGradient(
+                0f to Color.White.copy(alpha = 0f),
+                0.085f to Color.White.copy(alpha = 0.30f),
+                0.135f to Color.White.copy(alpha = 0.06f),
+                0.30f to Color.White.copy(alpha = 0f),
+                0.90f to Color.White.copy(alpha = 0f),
+                1f to Color.White.copy(alpha = 0.07f),
+                startY = 0f, endY = Spec.H,
+            ),
+            topLeft = Offset.Zero, size = Size(Spec.W, Spec.H),
+        )
+    }
     for (st in Spec.strips) {
         drawRect(st.brush, topLeft = Offset(st.x, 0f), size = Size(4.5f, Spec.H))
     }

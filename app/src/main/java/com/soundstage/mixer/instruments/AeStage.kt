@@ -137,12 +137,3 @@ fun Modifier.aeSvg(svg: String): Modifier = this.drawWithCache {
     onDrawBehind { drawImage(bmp) }
 }
 
-/** Walnut: gradient + seeded grain lines (no filters, deterministic). */
-fun Modifier.aeWood(): Modifier = this.drawBehind {
-    drawRect(Brush.horizontalGradient(listOf(Color(0xFF4A2815), Color(0xFF6A3A20), Color(0xFF3A1E0E))))
-    val r = Random(4)
-    repeat(150) {
-        val x = r.nextFloat() * size.width
-        drawLine(Color.Black.copy(alpha = 0.04f + r.nextFloat() * 0.12f), Offset(x, 0f), Offset(x + r.nextFloat() * 6f - 3f, size.height), 1f + r.nextFloat() * 2f)
-    }
-}

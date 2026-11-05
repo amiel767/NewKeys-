@@ -41,29 +41,27 @@ private val CAPS = intArrayOf(0, 0, 1, 1, 2, 1, 2, 2, 1)
 /** Registration readout: the nine drawbar steps as one number, spaced every three bars. */
 private fun reg(c: AeCtl, off: Int) = (0..8).joinToString("") { (if (it == 2 || it == 6) " " else "") + (c.v(off + it) * 8).roundToInt() }
 
-/** Slate side rail: a thin cyan hairline marks the console edge. */
+/** Walnut end cheek, real grain, with a lit edge where it meets the console. */
 @Composable
 private fun BoxScope.Rail(x: Number, flip: Boolean) {
     val sh = RoundedCornerShape(topStart = if (flip) 0.su() else 24.su(), topEnd = if (flip) 24.su() else 0.su())
     Box(
-        Modifier.at(x, 0, 46, 460).clip(sh).background(
-            Brush.horizontalGradient(if (flip) listOf(Color(0xFF18212F), Color(0xFF0B1119)) else listOf(Color(0xFF0B1119), Color(0xFF18212F))),
-        ).drawBehind {
-            val ex = if (flip) 0f else size.width
-            drawLine(AeC.organ.copy(alpha = 0.20f), Offset(ex, 0f), Offset(ex, size.height), 1.5f)
-        },
+        Modifier.at(x, 0, 46, 460).clip(sh).aeWood(if (flip) Color(0xFF5C3418) else Color(0xFF6A3E1E), if (flip) 9 else 4)
+            .drawBehind {
+                val ex = if (flip) 0f else size.width
+                drawLine(AeC.organ.copy(alpha = 0.18f), Offset(ex, 0f), Offset(ex, size.height), 1.5f)
+            },
     )
 }
 
-/** Glass panel: the console body, in the same language as the synth's cards. */
+/** Brushed-metal panel: the console body, with its own grain and a lit top edge. */
 @Composable
-private fun Panel(x: Number, y: Number, w: Number, h: Number, r: Number = 18) {
+private fun Panel(x: Number, y: Number, w: Number, h: Number, r: Number = 10) {
     val sh = RoundedCornerShape(r.su())
     Box(
-        Modifier.at(x, y, w, h).clip(sh)
-            .background(Brush.linearGradient(listOf(Color(0x14FFFFFF), Color(0x05FFFFFF))))
-            .border(1.su(), Color(0x1CFFFFFF), sh)
-            .drawBehind { drawLine(AeC.organ.copy(alpha = 0.12f), Offset(16f, 1f), Offset(size.width - 16f, 1f), 1.5f) },
+        Modifier.at(x, y, w, h).clip(sh).aeBrushed(Color(0xFF2B313A), (x.toInt() / 7) + 3)
+            .border(1.su(), Color(0x33000000), sh)
+            .drawBehind { drawLine(AeC.organ.copy(alpha = 0.10f), Offset(16f, 1f), Offset(size.width - 16f, 1f), 1.5f) },
     )
 }
 
@@ -88,8 +86,6 @@ fun BoxScope.AeOrganUi(c: AeCtl, a: AeAnim) {
     })
     Rail(0, flip = false)
     Rail(954, flip = true)
-    AeT("ÆTHER · TONEWHEEL", 13, AeC.organ, Modifier.at(64, 15, 300, 18), weight = FontWeight.ExtraBold, spacing = 0.2f)
-
     // The two manuals. Each registration number sits with its own drawbar set, so a manual reads
     // as one unit: panel, caption, registration, then the nine bars.
     listOf(Triple(54, 0, "UPPER MANUAL"), Triple(606, 9, "LOWER MANUAL")).forEach { (x, off, title) ->
@@ -171,5 +167,26 @@ fun BoxScope.AeOrganUi(c: AeCtl, a: AeAnim) {
     AeMetalKnob(c, 27, "TONE", 792, 298, 44)
     AeMetalKnob(c, 29, "SPACE", 868, 298, 44)
     AeMetalKnob(c, 30, "LEVEL", 944, 298, 44)
-    AeKeyboard(c, 52, 360, 896, 90)
+    // The band the virtual keyboard used to fill. The instrument is played from the mixer's own
+    // keyboard, so the window gives the space back to readouts an organist actually watches:
+    // the output level and both registrations, always in view while the drawbars are moved.
+    ConsoleStrip(c, a)
+}
+
+/** Output level and both registrations, in the band the on-screen keyboard used to occupy. */
+@Composable
+private fun BoxScope.ConsoleStrip(c: AeCtl, a: AeAnim) {
+    Panel(54, 348, 892, 100, 12)
+    Canvas(Modifier.fillMaxSize()) {
+        drawScrew(66f, 360f, 4.2f); drawScrew(934f, 360f, 4.2f)
+        drawScrew(66f, 436f, 4.2f); drawScrew(934f, 436f, 4.2f)
+    }
+    AeT("OUTPUT", 9, AeC.organ, Modifier.at(84, 358, 200, 12), weight = FontWeight.ExtraBold, spacing = 0.2f)
+    Canvas(Modifier.at(84, 374, 380, 62)) { a.frame.intValue; drawOutputMeter(a, c.v(30), AeC.organ) }
+    AeT("REGISTRATION", 9, AeC.organ, Modifier.at(500, 358, 200, 12), weight = FontWeight.ExtraBold, spacing = 0.2f)
+    AeT("UPPER", 8, AeC.goldDim, Modifier.at(500, 376, 60, 12), weight = FontWeight.ExtraBold, spacing = 0.14f)
+    AeT(reg(c, 0), 20, AeC.organ, Modifier.at(560, 372, 240, 24), AeFonts.mono)
+    AeT("LOWER", 8, AeC.goldDim, Modifier.at(500, 404, 60, 12), weight = FontWeight.ExtraBold, spacing = 0.14f)
+    AeT(reg(c, 9), 20, AeC.organ, Modifier.at(560, 400, 240, 24), AeFonts.mono)
+    AeT(arrayOf("STOP", "SLOW", "FAST")[(c.v(25) * 2).roundToInt().coerceIn(0, 2)] + " · " + (if (c.v(18) > 0.5f) "PERC ON" else "PERC OFF"), 9, AeC.goldDim, Modifier.at(820, 376, 120, 14), weight = FontWeight.ExtraBold, spacing = 0.1f, align = TextAlign.End)
 }

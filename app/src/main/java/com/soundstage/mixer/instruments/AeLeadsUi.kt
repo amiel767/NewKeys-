@@ -176,5 +176,28 @@ fun BoxScope.AeLeadsUi(c: AeCtl, a: AeAnim, samples: FloatArray? = null) {
             Canvas(Modifier.at(474, 210, 490, 110)) { drawLeadKeys { c.s.held.containsKey(it) } }
         }
     }
-    AeKeyboard(c, 52, 360, 896, 90)
+    LeadsConsole(c, a)
+}
+
+/**
+ * The band the virtual keyboard used to fill.
+ *
+ * The instrument is played from the mixer's own keyboard, so the window gives the space back to
+ * what the player watches: the output level, the patch's own identity (level, glide, vibrato),
+ * and which of the five layers are actually up. The layer bars are read straight from the engine
+ * parameters, so they cannot drift from the sound.
+ */
+@Composable
+private fun BoxScope.LeadsConsole(c: AeCtl, a: AeAnim) {
+    val border = Color(0x2619E3FF)
+    AeCardBox(22, 352, 566, 96, "OUTPUT", CYAN, border)
+    Canvas(Modifier.at(40, 374, 340, 62)) { a.frame.intValue; drawOutputMeter(a, c.v(31), CYAN) }
+    Canvas(Modifier.fillMaxSize()) { a.frame.intValue; drawLayerBars(0, c, 400f, 374f, 170f, 62f, CYAN) }
+    AeCardBox(604, 352, 374, 96, "VOICE", CYAN, border)
+    AeT("LAYERS UP", 8, CYAN, Modifier.at(620, 372, 90, 12), weight = FontWeight.ExtraBold, spacing = 0.14f)
+    val up = (0 until 5).count { c.v(it) > 0.02f }
+    AeT("$up / 5", 22, Color(0xFFD9FBFF), Modifier.at(620, 388, 120, 26), AeFonts.mono)
+    AeT("MODE", 8, CYAN, Modifier.at(760, 372, 60, 12), weight = FontWeight.ExtraBold, spacing = 0.14f)
+    AeT(arrayOf("POLY", "MONO", "LEGATO")[(c.v(28) * 2f).roundToInt().coerceIn(0, 2)], 15, Color(0xFFD9FBFF), Modifier.at(760, 388, 120, 20), AeFonts.display, FontWeight.ExtraBold)
+    AeT("LEVEL " + c.fmt(31) + "   GLIDE " + c.fmt(29), 9, AeC.mute, Modifier.at(620, 418, 340, 12), AeFonts.mono, FontWeight.Normal)
 }
