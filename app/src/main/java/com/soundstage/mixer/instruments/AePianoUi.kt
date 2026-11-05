@@ -385,13 +385,14 @@ fun BoxScope.AePianoUi(c: AeCtl, manager: AeManager, strip: Int, onOpenBrowser: 
                 EQ_SIDE.forEachIndexed { j, k ->
                     AeLightKnob(th, c.v(k.idx), k.label, k.fmt(c.v(k.idx)), 716 + j * 84, 330, 0.95f) { c.set(k.idx, it) }
                 }
-                // Mecanique + frequence de l'EQ, en BAS au milieu, sans titre.
-                // Trois potards de 1,05 espaces de 74 tiennent en 215, centres sur
-                // la meme abscisse que l'ancienne rangee de six (537).  Taille
-                // reduite : ce sont des reglages de finition, pas des axes de jeu.
+                // Mecanique + frequence de l'EQ, en bas au milieu, sans titre.
+                // Centres sur l'axe du titre (455) et non sur l'ancienne abscisse
+                // de la rangee de six (537), qui les laissait 37 unites a droite du
+                // milieu.  Pose au ras du bas : 370 + 76 de haut laisse 14 unites,
+                // et le panneau s'arrete a 430, donc aucun recouvrement.
                 val midRow = MECHANICS + EQ_MID
                 midRow.forEachIndexed { j, k ->
-                    AeLightKnob(th, c.v(k.idx), k.label, k.fmt(c.v(k.idx)), 429 + j * 74, 348, 1.05f) { c.set(k.idx, it) }
+                    AeLightKnob(th, c.v(k.idx), k.label, k.fmt(c.v(k.idx)), 337 + j * 80, 370, 1.2f) { c.set(k.idx, it) }
                 }
             }
         }
