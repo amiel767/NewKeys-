@@ -96,7 +96,11 @@ fun HomeScreen(
             HomeHeader(state, actions, onBackToMixer, onOpenSettings)
             FilterRow(state, actions, onNewSet = { newSetlist = true })
             if (visible.isEmpty() && sets.isEmpty() && !state.loading) {
-                EmptyState(hasQuery = state.query.isNotBlank() || state.filter != LibraryFilter.All) { actions.createSheet(onOpenEditor) }
+                EmptyState(
+                    state = state,
+                    onCreate = { actions.createSheet(onOpenEditor) },
+                    onNewSet = { newSetlist = true },
+                )
             } else {
                 BoxWithConstraints(Modifier.weight(1f)) {
                     // La preview se cale sur la largeur reelle d'une carte de la grille.
@@ -347,12 +351,28 @@ private fun LibraryCard(
 }
 
 @Composable
-private fun EmptyState(hasQuery: Boolean, onCreate: () -> Unit) {
+private fun EmptyState(state: LibraryUiState, onCreate: () -> Unit, onNewSet: () -> Unit) {
+    val searching = state.query.isNotBlank()
+    val setsOnly = state.filter == LibraryFilter.Sets
     Column(Modifier.fillMaxWidth().padding(top = 48.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text(if (hasQuery) "No sheet matches" else "No sheets yet", style = SheetsType.Title, color = Color.White)
-        if (!hasQuery) {
-            Text("Create your first sheet to start writing.", style = SheetsType.Body, color = SheetsColors.TextMuted, textAlign = TextAlign.Center)
-            Pill("New sheet", selected = true, onClick = onCreate)
+        Text(
+            when {
+                searching -> "Aucun resultat"
+                setsOnly -> "Aucun Set"
+                else -> "Aucune feuille"
+            },
+            style = SheetsType.Title, color = Color.White,
+        )
+        if (!searching) {
+            Text(
+                if (setsOnly) "Un Set rassemble les feuilles que tu joues ensemble."
+                else "Cree ta premiere feuille pour commencer a ecrire.",
+                style = SheetsType.Body, color = SheetsColors.TextMuted, textAlign = TextAlign.Center,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Pill("Nouvelle feuille", selected = true, onClick = onCreate)
+                Pill("Nouveau Set", onClick = onNewSet)
+            }
         }
     }
 }
