@@ -2,6 +2,18 @@
 
 **Lire AGENTS.md d'abord** (pieges + decisions, charge auto). Ceci est l'index.
 
+## Session 2026-11-05 — EQ piano (bug « un seul Biquad pour trois bandes »)
+- **Un filtre = un objet.** `setLowShelf`/`setPeaking`/`setHighShelf` appeles sur le
+  MEME `Biquad` : seul le dernier survit -> grave et medium morts. Corrige en
+  `eqL_/eqM_/eqH_[2]` (`fx_piano.h`). Contrat piano = **20 params** (17/18/19 = EQ
+  MID/FREQ/HIGH, 14 = EQ LOW).
+- Mesurer un EQ sur du **bruit blanc a bas niveau** (0,05), jamais sur un accord
+  (bandes larges = dilution) ; verifier d'abord `Biquad::magDb()` analytiquement.
+- **`gen_presets.py` doit lire les 20 valeurs** ; reste a 15 = colonnes decalees.
+  LEVEL piano = resolus par `mastering.cpp ... retune` (cible K-weighted mediane).
+- **Roborazzi : `testDebugUnitTest` ne reecrit PAS les PNG.** Utiliser
+  `./gradlew :app:recordRoborazziDebug --tests "*AePianoCaptureTest*"`.
+
 ## Pieges couteux
 - « Compile + pousse » ne prouve PAS qu'une UI a bouge : verifier le fichier qui
   rend la fenetre, + capture Roborazzi/OCR. (2026-11-03 : 3 commits moteur, user
