@@ -15,16 +15,18 @@ PUB = Path("/workspace/dl/pub/sheets")
 OUT = PUB / "index_page.html"
 
 STATES = [
-    ("01_library.png", "Bibliothèque", "Grille de cartes, chaque carte a la couleur de la feuille."),
-    ("02_floating_one.png", "Flottant · une section", "Double-tap sur une carte : elle se pose sur le mixer, sans contour, une section."),
-    ("03_picker_open.png", "Sélecteur de sections", "Le bouton calques choisit ce qui s'affiche."),
-    ("04_floating_many.png", "Flottant · plusieurs sections", "Verse + Chorus + Bridge, défilables dans la carte."),
+    ("01_library.png", "Bibliothèque · grille", "Cartes riches : tranche de couleur, titre, accords sur rail, tonalité, BPM, nombre de sections, date."),
+    ("01b_list.png", "Bibliothèque · liste", "Même contenu en lignes compactes : bascule grille/liste dans l'en-tête."),
+    ("02_floating_one.png", "Flottant · une section", "Double-tap sur une carte : elle se pose sur le mixer, une section. X en haut à droite, verrou en bas à gauche, poignée au centre."),
+    ("03_picker_open.png", "Sections DANS la carte", "Tap sur la carte ou sur la pastille : la liste s'ouvre dans la carte, pas dans un popover externe."),
+    ("04_floating_many.png", "Flottant · plusieurs sections", "Verse + Chorus + Bridge ; le balayage horizontal passe d'une section à l'autre."),
     ("05_editor.png", "Éditeur", "Ruban 40 % / page 60 %, quatre onglets."),
 ]
 
 # Rendus Compose réels (Roborazzi), pas la maquette : ce que le code fait vraiment.
 REAL = [
-    ("floating_real.png", "Le flottant, rendu par Compose", "Capture Android réelle : carte à la couleur de la feuille, 371 dp, sans contour."),
+    ("sheets_home_real.png", "La bibliothèque, rendue par Compose", "Capture Android réelle : cartes redessinées (tranche, accords, tonalité, BPM, sections, date) et bascule grille/liste."),
+    ("sheets_floating_real.png", "Le flottant, rendu par Compose", "Capture Android réelle : X en haut à droite, verrou en bas à gauche, poignée de redimensionnement au centre, pastille de section en bas à droite."),
 ]
 
 STYLE = """
@@ -65,7 +67,7 @@ def main() -> None:
         "la même convention que les autres maquettes du dépôt.</div></header>",
         "<div class=wrap>",
         "<a class=cta href='/sheets/'>▶ Ouvrir la maquette vivante <small>interactive — cliquable</small></a>",
-        "<h2>Les cinq états</h2>",
+        "<h2>Les six états</h2>",
         "<div class=grid>",
     ]
     for f, title, desc in STATES:
@@ -89,16 +91,17 @@ def main() -> None:
         )
     parts.append("</div>")
     parts.append(
-        "<h2>Ce que la maquette fixe</h2>"
+        "<h2>Les sept points demandés</h2>"
         "<div class=note>"
-        "<b>Le flottant, la partie en refonte :</b>"
         "<ul>"
-        "<li>Double-tap sur une carte → la carte se pose <b>sur le mixer</b>, à sa couleur, <b>sans contour</b>.</li>"
-        "<li>Déplaçable <b>n'importe où</b>, sans aimantation (aujourd'hui : aimant gauche/droite seulement).</li>"
-        "<li>Le bouton <b>calques</b> choisit <b>une</b> section ou <b>plusieurs</b> (Verse, Chorus, Bridge…).</li>"
-        "<li>Verrou et double-tap pour ouvrir l'éditeur restent.</li>"
+        "<li>① Le texte en bas de la carte est <b>retiré</b> (plus de « Drag anywhere · double-tap to edit »).</li>"
+        "<li>② Sections : <b>balayage</b> gauche/droite <b>et</b> tap qui ouvre la <b>liste dans la carte</b>.</li>"
+        "<li>③ <b>X à droite</b> en haut, <b>cadenas en bas à gauche</b>.</li>"
+        "<li>④ La carte s'<b>allonge</b> ; redimensionnable par <b>pincement</b> / poignée, avec <b>retour haptique</b> au glissement.</li>"
+        "<li>⑤ <b>Double-tap</b> = flotter ; <b>tap simple</b> dans la bibliothèque = ouvrir l'éditeur.</li>"
+        "<li>⑥ Cartes de bibliothèque <b>redessinées</b> : tranche de couleur, accords sur rail, tonalité, BPM, sections, date — et bascule grille/liste.</li>"
+        "<li>⑦ Cohérence matérielle : palette app, rayons, typo, ruban 40 / page 60 inchangés.</li>"
         "</ul>"
-        "<b>Ce qui ne change pas :</b> palette app, rayons, typo, grille de la bibliothèque, ruban 40 / page 60."
         "</div>"
     )
     parts.append("</div></html>")

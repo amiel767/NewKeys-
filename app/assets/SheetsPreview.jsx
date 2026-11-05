@@ -91,6 +91,9 @@ function Ico({ n, size = 18, sw = 2 }) {
     unlock: <><rect x="5" y="10.5" width="14" height="9.5" rx="2" /><path d="M8.5 10.5V8a3.5 3.5 0 016.8-1.2" /></>,
     layers: <><path d="M12 3l8 4.5-8 4.5-8-4.5z" /><path d="M4 12l8 4.5 8-4.5M4 16.5L12 21l8-4.5" /></>,
     grid: <><rect x="4" y="4" width="7" height="7" rx="1.5" /><rect x="13" y="4" width="7" height="7" rx="1.5" /><rect x="4" y="13" width="7" height="7" rx="1.5" /><rect x="13" y="13" width="7" height="7" rx="1.5" /></>,
+    list: <><path d="M4 6.5h16M4 12h16M4 17.5h16" /></>,
+    check: <><path d="M5 12.5l4.5 4.5L19 7" /></>,
+    grip: <><path d="M8 9.5h8M8 14.5h8" /></>,
     back: <><path d="M15 5l-7 7 7 7" /></>,
     close: <><path d="M6 6l12 12M18 6L6 18" /></>,
     text: <><path d="M5 6h14M9 6v13M15 6v13" /></>,
@@ -104,7 +107,7 @@ function Ico({ n, size = 18, sw = 2 }) {
 /* ══════════════════════════════════════════════════════════════
    1. LIBRARY
    ══════════════════════════════════════════════════════════════ */
-function SheetCard({ s, onOpen, onFloat, onMenu }) {
+function SheetCard({ s, onOpen, onFloat, onMenu, selected, onSelect }) {
   const ink = inkOn(s.color);
   const first = s.sections.find((x) => x.lines.length);
   const preview = first.lines[0].join("   ");
@@ -113,21 +116,64 @@ function SheetCard({ s, onOpen, onFloat, onMenu }) {
       onDoubleClick={() => { vib(12); onFloat(s); }}
       onClick={() => { vib(6); onOpen(s); }}
       style={{
-        position: "relative", height: 150, borderRadius: 16, overflow: "hidden", cursor: "pointer", userSelect: "none",
-        background: `linear-gradient(180deg, ${s.color} 0%, ${rgba(s.color, 1)} 55%, ${shade(s.color, -0.35)} 100%)`,
-        boxShadow: "0 10px 22px rgba(0,0,0,.38)", padding: "14px 18px",
-        display: "flex", flexDirection: "column", justifyContent: "space-between",
+        position: "relative", height: 172, borderRadius: 18, overflow: "hidden", cursor: "pointer", userSelect: "none",
+        background: `linear-gradient(155deg, ${shade(s.color, 0.10)} 0%, ${s.color} 46%, ${shade(s.color, -0.42)} 100%)`,
+        boxShadow: selected ? `0 0 0 2.5px ${APP.accent}, 0 16px 32px rgba(0,0,0,.5)` : "0 12px 26px rgba(0,0,0,.42)",
+        transition: "box-shadow .16s, transform .16s", transform: selected ? "translateY(-3px)" : "none",
+      }}>
+      {/* material: noise + a soft light sweep, the card reads as a physical object */}
+      <div style={{ position: "absolute", inset: 0, backgroundImage: NOISE, opacity: 0.07, mixBlendMode: "overlay", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", inset: 0, background: `radial-gradient(120% 80% at 12% 0%, ${rgba(ink === "#FFFFFF" ? "#fff" : "#000", .18)}, transparent 62%)`, pointerEvents: "none" }} />
+      {/* colour spine down the left edge: the sheet's identity, readable at a glance */}
+      <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 6, background: `linear-gradient(180deg, ${rgba(ink === "#FFFFFF" ? "#fff" : "#000", .55)}, ${rgba(ink === "#FFFFFF" ? "#fff" : "#000", .18)})` }} />
+
+      <div style={{ position: "relative", height: "100%", padding: "15px 18px 13px 22px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+          <span style={{ flex: 1, minWidth: 0, fontFamily: HAND, fontSize: 27, lineHeight: 1.05, color: ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.title}</span>
+          {s.favorite && <span style={{ color: "#F5C24B", marginTop: 2 }}><Ico n="star" size={15} sw={0} /></span>}
+        </div>
+
+        {/* chord preview on its own rail, like the real chart line */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          <span style={{ width: 2.5, height: 26, borderRadius: 2, background: rgba(ink === "#FFFFFF" ? "#fff" : "#000", .8) }} />
+          <span style={{ fontFamily: HAND, fontSize: 29, color: ink, whiteSpace: "nowrap", overflow: "hidden" }}>{preview}</span>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <span style={{ padding: "4px 10px", borderRadius: 8, background: rgba(ink === "#FFFFFF" ? "#000" : "#fff", 0.2), fontFamily: SANS, fontWeight: 800, fontSize: 12, color: ink }}>{s.key}</span>
+            <span style={{ fontFamily: SANS, fontSize: 11, fontWeight: 700, color: rgba(ink === "#FFFFFF" ? "#fff" : "#000", 0.72) }}>{s.bpm} BPM</span>
+            <span style={{ width: 3, height: 3, borderRadius: 2, background: rgba(ink === "#FFFFFF" ? "#fff" : "#000", 0.5) }} />
+            <span style={{ fontFamily: SANS, fontSize: 11, fontWeight: 700, color: rgba(ink === "#FFFFFF" ? "#fff" : "#000", 0.72) }}>{s.sections.length} sect.</span>
+          </div>
+          <span style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, color: rgba(ink === "#FFFFFF" ? "#fff" : "#000", 0.6) }}>{s.updated}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* Compact list row: same identity (colour spine + key), no big preview. */
+function SheetRow({ s, onOpen, onFloat, selected, onSelect }) {
+  const ink = inkOn(s.color);
+  const first = s.sections.find((x) => x.lines.length);
+  return (
+    <div
+      onDoubleClick={() => { vib(12); onFloat(s); }}
+      onClick={() => { vib(6); onOpen(s); }}
+      style={{
+        position: "relative", height: 62, borderRadius: 14, overflow: "hidden", cursor: "pointer", userSelect: "none",
+        background: `linear-gradient(90deg, ${s.color} 0%, ${shade(s.color, -0.34)} 100%)`,
+        boxShadow: selected ? `0 0 0 2.5px ${APP.accent}, 0 10px 22px rgba(0,0,0,.42)` : "0 6px 16px rgba(0,0,0,.34)",
+        display: "flex", alignItems: "center", gap: 14, padding: "0 16px 0 20px",
       }}>
       <div style={{ position: "absolute", inset: 0, backgroundImage: NOISE, opacity: 0.06, mixBlendMode: "overlay", pointerEvents: "none" }} />
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ flex: 1, minWidth: 0, fontFamily: HAND, fontSize: 26, color: ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.title}</span>
-        {s.favorite && <span style={{ color: "#F5C24B" }}><Ico n="star" size={16} sw={0} /></span>}
-        <span style={{ padding: "5px 11px", borderRadius: 9, background: rgba(ink === "#FFFFFF" ? "#FFFFFF" : "#000000", 0.18), fontFamily: SANS, fontWeight: 700, fontSize: 13, color: ink }}>{s.key}</span>
-      </div>
-      <div style={{ fontFamily: HAND, fontSize: 28, color: ink, whiteSpace: "nowrap" }}>{preview}</div>
-      <div style={{ display: "flex", justifyContent: "space-between", fontFamily: SANS, fontSize: 11, fontWeight: 600, color: rgba(ink === "#FFFFFF" ? "#FFFFFF" : "#000000", 0.75) }}>
-        <span>{s.bpm} BPM · 4/4</span><span>{s.updated}</span>
-      </div>
+      <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 5, background: rgba(ink === "#FFFFFF" ? "#fff" : "#000", .5) }} />
+      <span style={{ flex: 1, minWidth: 0, fontFamily: HAND, fontSize: 23, color: ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.title}</span>
+      {s.favorite && <span style={{ color: "#F5C24B" }}><Ico n="star" size={14} sw={0} /></span>}
+      <span style={{ fontFamily: HAND, fontSize: 20, color: rgba(ink === "#FFFFFF" ? "#fff" : "#000", .9), whiteSpace: "nowrap" }}>{first.lines[0].slice(0, 3).join("  ")}</span>
+      <span style={{ padding: "4px 10px", borderRadius: 8, background: rgba(ink === "#FFFFFF" ? "#000" : "#fff", 0.2), fontFamily: SANS, fontWeight: 800, fontSize: 12, color: ink }}>{s.key}</span>
+      <span style={{ fontFamily: SANS, fontSize: 11, fontWeight: 700, color: rgba(ink === "#FFFFFF" ? "#fff" : "#000", 0.66), width: 66, textAlign: "right" }}>{s.bpm} BPM</span>
     </div>
   );
 }
@@ -138,6 +184,8 @@ const shade = (h, t) => {
 };
 
 function Library({ sheets, onOpen, onFloat, onMenu, notation, setNotation }) {
+  const [layout, setLayout] = useState("grid");   // grid | list
+  const [sel, setSel] = useState(null);
   return (
     <div style={{ position: "absolute", inset: 0, padding: "20px 28px", display: "flex", flexDirection: "column", gap: 14 }}>
       {/* header */}
@@ -151,6 +199,11 @@ function Library({ sheets, onOpen, onFloat, onMenu, notation, setNotation }) {
         <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", fontFamily: SANS, fontSize: 22, fontWeight: 800, color: "#fff" }}>Sheets</div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <Seg a="1-7" b="A-G" sel={notation === "nashville" ? 0 : 1} onSel={(i) => setNotation(i === 0 ? "nashville" : "standard")} w={132} />
+          <div style={{ display: "flex", gap: 3, padding: 3, borderRadius: 12, background: APP.panelTop }}>
+            {["grid", "list"].map((v) => (
+              <span key={v} onClick={() => setLayout(v)} style={{ display: "grid", placeItems: "center", width: 34, height: 34, borderRadius: 9, background: layout === v ? APP.accent : "transparent", color: layout === v ? APP.accentText : APP.mute, cursor: "pointer" }}><Ico n={v} size={16} /></span>
+            ))}
+          </div>
           <Chip w={40} h={40} r={99} bg={APP.panelTop}><span style={{ color: APP.soft }}><Ico n="gear" size={18} /></span></Chip>
         </div>
       </div>
@@ -161,10 +214,14 @@ function Library({ sheets, onOpen, onFloat, onMenu, notation, setNotation }) {
         <Pill label="Main Stage" />
         <Pill label="New setlist" />
       </div>
-      {/* grid */}
-      <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, overflow: "hidden" }}>
-        {sheets.map((s) => <SheetCard key={s.id} s={s} onOpen={onOpen} onFloat={onFloat} onMenu={onMenu} />)}
-      </div>
+      {/* grid | list */}
+      {layout === "grid"
+        ? <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, overflow: "hidden", alignContent: "start" }}>
+            {sheets.map((s) => <SheetCard key={s.id} s={s} onOpen={onOpen} onFloat={onFloat} onMenu={onMenu} selected={sel === s.id} onSelect={() => setSel(sel === s.id ? null : s.id)} />)}
+          </div>
+        : <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8, overflow: "hidden" }}>
+            {sheets.map((s) => <SheetRow key={s.id} s={s} onOpen={onOpen} onFloat={onFloat} selected={sel === s.id} onSelect={() => setSel(sel === s.id ? null : s.id)} />)}
+          </div>}
       {/* create FAB */}
       <div style={{ position: "absolute", right: 34, bottom: 30, width: 56, height: 56, borderRadius: 99, background: APP.accent, color: APP.accentText, display: "grid", placeItems: "center", boxShadow: "0 8px 20px rgba(0,0,0,.4)" }}>
         <Ico n="plus" size={26} sw={2.2} />
@@ -283,42 +340,106 @@ function MixerBackdrop() {
 /* ══════════════════════════════════════════════════════════════
    4. FLOATING CARD  ← the redesign
    ══════════════════════════════════════════════════════════════ */
-function FloatingCard({ s, pos, onPos, sections, mode, onPickSections, locked, onLock, onOpenEditor, onClose }) {
+function FloatingCard({ s, pos, onPos, sections, mode, setMode, onToggle, locked, onLock, onOpenEditor, onClose, size, onSize }) {
   const base = s.color;
   const ink = inkOn(base);
   const drag = useRef(null);
+  const pinch = useRef(null);
+  const grip = useRef(null);
   const shown = sections.length ? sections : [s.sections[0]];
+  const [dragging, setDragging] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const swipe = useRef(null);
+  const swiped = useRef(false);
 
+  /* Vertical pinch: two pointers down -> height follows the finger spread. */
   const down = (e) => {
     if (e.target.closest("[data-ctl]")) return;
-    drag.current = { x: e.clientX - pos.x, y: e.clientY - pos.y };
     e.currentTarget.setPointerCapture(e.pointerId);
+    if (e.pointerType === "touch" && e.isPrimary === false) {
+      pinch.current = { y: e.clientY, h: size.h };
+      drag.current = null;
+      return;
+    }
+    drag.current = { x: e.clientX - pos.x, y: e.clientY - pos.y };
+    setDragging(true);
   };
   const move = (e) => {
+    if (pinch.current) {
+      onSize({ h: clamp(pinch.current.h + (e.clientY - pinch.current.y) * 1.4, 150, 900) });
+      return;
+    }
     if (!drag.current) return;
     onPos({ x: e.clientX - drag.current.x, y: e.clientY - drag.current.y });
   };
-  const up = () => { drag.current = null; };
+  const up = () => { drag.current = null; pinch.current = null; setDragging(false); };
+
+  const secList = s.sections.filter((x) => x.lines.length);
+
+  /* swipe left/right on the chart moves between sections, one at a time */
+  const onSwipeDown = (e) => { if (!e.target.closest("[data-ctl]")) { swipe.current = e.clientX; swiped.current = false; } };
+  const onSwipeMove = (e) => {
+    if (swipe.current == null) return;
+    const dx = e.clientX - swipe.current;
+    if (Math.abs(dx) < 60) return;
+    const i = secList.indexOf(shown[0]);
+    const n = clamp(i + (dx < 0 ? 1 : -1), 0, secList.length - 1);
+    if (n !== i) { vib(10); setMode("one"); onToggle(secList[n]); }
+    swipe.current = null; swiped.current = true;
+  };
+  const onSwipeUp = () => { swipe.current = null; };
+  /* a plain tap on the chart opens the section list (swipe must not) */
+  const onChartTap = () => { if (swiped.current) { swiped.current = false; return; } vib(6); setPickerOpen(true); };
+  /* resize handle: drag it up/down to stretch the card vertically */
+  const gripDown = (e) => { grip.current = { y: e.clientY, h: size.h }; e.currentTarget.setPointerCapture(e.pointerId); };
+  const gripMove = (e) => { if (grip.current) onSize({ h: clamp(grip.current.h + (e.clientY - grip.current.y), 150, 900) }); };
+  const gripUp = () => { grip.current = null; };
 
   return (
     <div
-      onPointerDown={down} onPointerMove={move} onPointerUp={up}
+      onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
       onDoubleClick={onOpenEditor}
       style={{
-        position: "absolute", left: pos.x, top: pos.y, width: 372, maxHeight: "92%", cursor: "grab",
+        position: "absolute", left: pos.x, top: pos.y, width: 372, height: size.h, cursor: dragging ? "grabbing" : "grab",
         borderRadius: 26, overflow: "hidden", touchAction: "none", userSelect: "none",
-        /* NO OUTLINE: the card is its own colour, only a soft shadow lifts it */
         background: `linear-gradient(180deg, ${base} 0%, ${shade(base, -0.12)} 100%)`,
-        boxShadow: "0 26px 60px rgba(0,0,0,.55)",
+        boxShadow: dragging ? "0 34px 70px rgba(0,0,0,.62)" : "0 26px 60px rgba(0,0,0,.55)",
+        transform: dragging ? "scale(1.012)" : "scale(1)", transition: "box-shadow .18s, transform .18s",
         animation: "rise .34s cubic-bezier(.2,.9,.25,1)",
       }}>
       <div style={{ position: "absolute", inset: 0, backgroundImage: NOISE, opacity: 0.06, mixBlendMode: "overlay", pointerEvents: "none" }} />
-      {/* controls */}
-      <div data-ctl style={{ position: "absolute", top: 10, right: 10, display: "flex", gap: 6, zIndex: 2 }}>
-        <span onClick={() => { vib(8); onPickSections(); }} style={{ display: "grid", placeItems: "center", width: 28, height: 28, borderRadius: 9, background: rgba(ink === "#FFFFFF" ? "#000" : "#fff", 0.16), color: ink, cursor: "pointer" }}><Ico n="layers" size={15} /></span>
-        <span onClick={() => { vib(8); onLock(); }} style={{ display: "grid", placeItems: "center", width: 28, height: 28, borderRadius: 9, background: rgba(ink === "#FFFFFF" ? "#000" : "#fff", 0.16), color: ink, cursor: "pointer", opacity: locked ? 0.95 : 0.5 }}><Ico n={locked ? "lock" : "unlock"} size={15} /></span>
-      </div>
-      <div style={{ padding: "22px 22px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
+
+      {/* top-right: X (close). the section list replaces the layers button. */}
+      <span data-ctl onClick={() => { vib(8); onClose(); }} style={{ position: "absolute", top: 10, right: 10, zIndex: 3, display: "grid", placeItems: "center", width: 30, height: 30, borderRadius: 10, background: rgba(ink === "#FFFFFF" ? "#000" : "#fff", 0.18), color: ink, cursor: "pointer" }}><Ico n="close" size={15} /></span>
+
+      {/* the section list lives INSIDE the card: swipe or tap the strip to open it */}
+      {pickerOpen && <div data-ctl onClick={(e) => { if (e.target === e.currentTarget) setPickerOpen(false); }} style={{ position: "absolute", inset: 0, zIndex: 4, background: rgba(ink === "#FFFFFF" ? "#0A0D13" : "#FFF", 0.72), backdropFilter: "blur(6px)" }}>
+        <div style={{ position: "absolute", left: 14, right: 14, top: 14, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 800, letterSpacing: 1.2, color: ink, opacity: .8 }}>SECTIONS</span>
+          <div style={{ display: "flex", gap: 6 }}>
+            <Pill label="One" on={mode === "one"} onClick={() => setMode("one")} small />
+            <Pill label="Many" on={mode === "many"} onClick={() => setMode("many")} small />
+          </div>
+        </div>
+        <div style={{ position: "absolute", left: 14, right: 14, top: 54, bottom: 14, overflowY: "auto", display: "flex", flexDirection: "column", gap: 3 }}>
+          {secList.map((sec) => {
+            const on = sections.some((x) => x.name === sec.name);
+            return (
+              <div key={sec.name} onClick={() => { vib(6); onToggle(sec); }} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 11, background: on ? rgba(ink === "#FFFFFF" ? "#fff" : "#000", 0.16) : rgba(ink === "#FFFFFF" ? "#fff" : "#000", 0.05), cursor: "pointer" }}>
+                <span style={{ width: 9, height: 9, borderRadius: 5, background: sec.colorOverride || KIND[sec.kind] }} />
+                <span style={{ flex: 1, fontFamily: SANS, fontSize: 13.5, fontWeight: 700, color: ink, opacity: on ? 1 : .72 }}>{sec.name}</span>
+                {on && <span style={{ color: ink }}><Ico n="check" size={14} sw={2.4} /></span>}
+              </div>
+            );
+          })}
+        </div>
+      </div>}
+
+      {/* sections: swipe left/right to move between them, tap to open the list */}
+      <div data-ctl
+        onPointerDown={onSwipeDown} onPointerMove={onSwipeMove} onPointerUp={onSwipeUp} onPointerCancel={onSwipeUp}
+        onClick={onChartTap}
+        style={{ position: "relative", height: "100%", padding: "22px 22px 46px", display: "flex", flexDirection: "column", gap: 14, overflowY: "auto" }}>
         {shown.map((sec) => (
           <div key={sec.name}>
             <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 99, background: sec.colorOverride || KIND[sec.kind], color: "#fff", fontFamily: SANS, fontSize: 11, fontWeight: 800 }}>{sec.name}</span>
@@ -335,40 +456,27 @@ function FloatingCard({ s, pos, onPos, sections, mode, onPickSections, locked, o
           </div>
         ))}
       </div>
-      {/* drag hint / close */}
-      <div data-ctl style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 22px 14px" }}>
-        <span style={{ fontFamily: SANS, fontSize: 11, fontWeight: 600, color: rgba(ink === "#FFFFFF" ? "#fff" : "#000", 0.6) }}>
-          {locked ? "Locked — swipe and drag disabled" : "Drag anywhere · double-tap to edit"}
-        </span>
-        <span onClick={onClose} style={{ display: "grid", placeItems: "center", width: 26, height: 26, borderRadius: 9, background: rgba(ink === "#FFFFFF" ? "#000" : "#fff", 0.16), color: ink, cursor: "pointer" }}><Ico n="close" size={14} /></span>
+
+      {/* bottom-left: lock. */}
+      <span data-ctl onClick={() => { vib(8); onLock(); }} style={{ position: "absolute", left: 12, bottom: 12, zIndex: 3, display: "grid", placeItems: "center", width: 30, height: 30, borderRadius: 10, background: rgba(ink === "#FFFFFF" ? "#000" : "#fff", locked ? 0.26 : 0.14), color: ink, cursor: "pointer" }}><Ico n={locked ? "lock" : "unlock"} size={15} /></span>
+
+      {/* resize grip: drag up/down to stretch the card, centred at the bottom */}
+      <div data-ctl
+        onPointerDown={gripDown} onPointerMove={gripMove} onPointerUp={gripUp} onPointerCancel={gripUp}
+        style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", bottom: 8, zIndex: 3, display: "grid", placeItems: "center", width: 60, height: 22, cursor: "ns-resize", touchAction: "none" }}>
+        <span style={{ width: 34, height: 4, borderRadius: 3, background: rgba(ink === "#FFFFFF" ? "#fff" : "#000", .45) }} />
+      </div>
+
+      {/* section strip: tap opens the in-card list; the label names the current section */}
+      <div data-ctl data-strip="1" onClick={() => { vib(6); setPickerOpen((p) => !p); }} style={{ position: "absolute", right: 14, bottom: 14, zIndex: 3, display: "flex", alignItems: "center", gap: 7, padding: "6px 12px", borderRadius: 99, background: rgba(ink === "#FFFFFF" ? "#000" : "#fff", 0.15), color: ink, cursor: "pointer" }}>
+        <span style={{ fontFamily: SANS, fontSize: 11, fontWeight: 800, letterSpacing: .3 }}>{shown.length === 1 ? shown[0].name : `${shown.length} sections`}</span>
+        <span style={{ opacity: .75 }}><Ico n="layers" size={13} /></span>
       </div>
     </div>
   );
 }
 
-function SectionPicker({ s, sections, mode, setMode, onToggle, onClose }) {
-  return (
-    <div style={{ position: "absolute", right: 16, top: 48, width: 250, borderRadius: 16, background: APP.panelTop, boxShadow: "0 18px 44px rgba(0,0,0,.6)", padding: 12, zIndex: 5, animation: "rise .22s ease" }}>
-      <div style={{ fontFamily: SANS, fontSize: 10, fontWeight: 800, letterSpacing: 1.2, color: APP.mute, marginBottom: 8 }}>SECTIONS SHOWN</div>
-      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-        <Pill label="One" on={mode === "one"} onClick={() => { vib(6); setMode("one"); }} small />
-        <Pill label="Many" on={mode === "many"} onClick={() => { vib(6); setMode("many"); }} small />
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        {s.sections.map((sec) => {
-          const on = sections.some((x) => x.name === sec.name);
-          return (
-            <div key={sec.name} onClick={() => { vib(6); onToggle(sec); }} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 9, background: on ? rgba(APP.accent, 0.14) : "transparent", cursor: "pointer" }}>
-              <span style={{ width: 9, height: 9, borderRadius: 5, background: KIND[sec.kind] }} />
-              <span style={{ flex: 1, fontFamily: SANS, fontSize: 13, fontWeight: 600, color: on ? APP.soft : APP.mute }}>{sec.name}</span>
-              {on && <span style={{ color: APP.accent }}><Ico n="layers" size={13} /></span>}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+/* the old floating SectionPicker popover is gone: the list now lives inside the card */
 
 /* ── small shared bits ── */
 const Chip = ({ w, h, r, bg, children }) => <div style={{ width: w, height: h, borderRadius: r, background: bg, display: "grid", placeItems: "center" }}>{children}</div>;
@@ -394,7 +502,7 @@ export default function SheetsPreview() {
   const [sections, setSections] = useState([]);
   const [mode, setMode] = useState("one");
   const [locked, setLocked] = useState(false);
-  const [picker, setPicker] = useState(false);
+  const [size, setSize] = useState({ h: 300 });
   const [reduced, setReduced] = useState(false);
   const [vp, setVp] = useState({ w: 900, h: 500 });
 
@@ -410,7 +518,7 @@ export default function SheetsPreview() {
     setActive(s);
     setPos({ x: 300, y: 58 });
     setSections([s.sections.find((x) => x.lines.length) || s.sections[0]]);
-    setMode("one"); setLocked(false); setPicker(false);
+    setMode("one"); setLocked(false);
     setView("floating");
   };
   const toggleSection = (sec) => {
@@ -441,21 +549,15 @@ export default function SheetsPreview() {
               <MixerBackdrop />
               <FloatingCard
                 s={active} pos={pos} onPos={setPos}
-                sections={sections} mode={mode}
-                onPickSections={() => setPicker((p) => !p)}
+                sections={sections} mode={mode} setMode={setOneMany} onToggle={toggleSection}
                 locked={locked} onLock={() => setLocked((l) => !l)}
                 onOpenEditor={() => setView("editor")}
                 onClose={() => { setView("library"); setActive(null); }}
+                size={size} onSize={setSize}
               />
-              {picker && <SectionPicker s={active} sections={sections} mode={mode} setMode={setOneMany} onToggle={toggleSection} onClose={() => setPicker(false)} />}
             </>
           )}
 
-          {view === "library" && (
-            <div style={{ position: "absolute", left: 28, bottom: 8, fontFamily: MONO, fontSize: 10.5, color: APP.dim }}>
-              double-tap a card to float it over the mixer
-            </div>
-          )}
         </div>
       </div>
 

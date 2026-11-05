@@ -6,7 +6,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
 import com.aetherkeys.sheets.model.Bar
 import com.aetherkeys.sheets.model.Chord
 import com.aetherkeys.sheets.model.Ext
@@ -111,7 +115,7 @@ class SheetsCaptureTest {
 
     /**
      * La carte flottante posee sur le mixer : sans contour, a la couleur de la feuille,
-     * plusieurs sections a la fois. Rendue seule (le mixer n'apporte rien au cadrage).
+     * plusieurs sections a la fois, redimensionnable. Rendue seule.
      */
     @Test
     fun sheets_floating() {
@@ -143,6 +147,46 @@ class SheetsCaptureTest {
         }
         composeTestRule.mainClock.autoAdvance = false
         composeTestRule.mainClock.advanceTimeBy(2_000)
+        // Les trois commandes de la carte existent : X (haut droite), verrou (bas gauche),
+        // et la pastille de section. Le verrou a quitte la barre du haut.
+        composeTestRule.onNodeWithContentDescription("Close scene").assertExists()
+        composeTestRule.onNodeWithContentDescription("Lock scene").assertExists()
+        composeTestRule.onNodeWithTag("resize-grip").assertExists()
+        composeTestRule.onNodeWithTag("section-strip").assertExists()
         composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/sheets_floating.png")
+    }
+
+    /** La liste des sections s'ouvre DANS la carte (voile interne), pas dans un popover. */
+    @Test
+    fun sheets_floating_sections() {
+        val sheet = Sheet(
+            title = "Midnight Drive", keyPc = 9, bpm = 124, colorArgb = 0xFF7A5CFFL,
+            sections = listOf(
+                Section(kind = SectionKind.Verse, name = "Verse", bars = listOf(Bar(chords = listOf(chord(9))), Bar(chords = listOf(chord(2))))),
+                Section(kind = SectionKind.Chorus, name = "Chorus", bars = listOf(Bar(chords = listOf(chord(0))), Bar(chords = listOf(chord(5))))),
+                Section(kind = SectionKind.Bridge, name = "Bridge", bars = listOf(Bar(chords = listOf(chord(11))), Bar(chords = listOf(chord(4))))),
+            ),
+        )
+        composeTestRule.setContent {
+            androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(Color(0xFF10141CL))) {
+                com.aetherkeys.sheets.ui.floating.FloatingSheetHost(
+                    sheet = sheet,
+                    settings = SheetsSettings(),
+                    originRect = null,
+                    bottomInset = androidx.compose.ui.unit.Dp(0f),
+                    onOpenEditor = {},
+                    onClose = {},
+                )
+            }
+        }
+        composeTestRule.mainClock.autoAdvance = false
+        composeTestRule.mainClock.advanceTimeBy(2_000)
+        composeTestRule.onNodeWithTag("section-strip").performClick()
+        composeTestRule.mainClock.advanceTimeBy(500)
+        composeTestRule.onNodeWithTag("section-picker").assertExists()
+        composeTestRule.onNodeWithText("SECTIONS").assertExists()
+        composeTestRule.onNodeWithText("Chorus").assertExists()
+        composeTestRule.onNodeWithText("Bridge").assertExists()
+        composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/sheets_floating_sections.png")
     }
 }
