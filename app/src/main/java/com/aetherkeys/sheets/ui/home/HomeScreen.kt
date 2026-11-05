@@ -10,12 +10,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -23,11 +21,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -85,61 +81,56 @@ fun HomeScreen(
     val settings = state.settings
     val visible = state.visibleSheets()
     val sets = state.visibleSetlists()
-    // Dans un Set on ne montre que son contenu ; ailleurs les Sets ouvrent la grille.
-    val showSets = state.filter !is LibraryFilter.OfSetlist
+    val inSet = state.filter as? LibraryFilter.OfSetlist
     var menuFor by remember { mutableStateOf<Sheet?>(null) }
     var setMenuFor by remember { mutableStateOf<Setlist?>(null) }
     var newSetlist by remember { mutableStateOf(false) }
 
     SheetsPageBackground(modifier) {
-        Column(Modifier.fillMaxSize().padding(horizontal = 28.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Column(Modifier.fillMaxSize().padding(start = 28.dp, end = 28.dp, top = 20.dp)) {
             HomeHeader(state, actions, onBackToMixer, onOpenSettings)
+            Spacer(Modifier.height(14.dp))
             FilterRow(state, actions, onNewSet = { newSetlist = true })
-            if (visible.isEmpty() && sets.isEmpty() && !state.loading) {
-                EmptyState(
-                    state = state,
-                    onCreate = { actions.createSheet(onOpenEditor) },
-                    onNewSet = { newSetlist = true },
+
+            // Les Sets vivent en haut de la page, pas derriere un filtre : c'est le
+            // premier niveau de la bibliotheque. Meme hauteur de carte que Setlists.
+            if (sets.isNotEmpty()) {
+                Spacer(Modifier.height(16.dp))
+                SetRow(
+                    sets = sets,
+                    sheets = state.sheets,
+                    selectedId = inSet?.id,
+                    onOpen = { actions.setFilter(LibraryFilter.OfSetlist(it)) },
+                    onMenu = { setMenuFor = it },
                 )
+            }
+
+            Spacer(Modifier.height(18.dp))
+            ListHeader(
+                state = state,
+                count = visible.size,
+                inSetName = inSet?.let { f -> state.library.setlists.firstOrNull { it.id == f.id }?.name },
+                onAll = { actions.setFilter(LibraryFilter.All) },
+            )
+            Spacer(Modifier.height(8.dp))
+
+            if (visible.isEmpty() && !state.loading) {
+                EmptyState(state = state, onCreate = { actions.createSheet(onOpenEditor) }, onNewSet = { newSetlist = true })
             } else {
-                BoxWithConstraints(Modifier.weight(1f)) {
-                    // La preview se cale sur la largeur reelle d'une carte de la grille.
-                    val previewWidthSp = previewWidthFor(maxWidth / 4)
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(4),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 96.dp + bottomInset),
-                    ) {
-                        if (showSets && sets.isNotEmpty()) {
-                            item(key = "sets-label", span = { GridItemSpan(maxLineSpan) }) {
-                                OverlineLabel("Sets")
-                            }
-                            items(sets, key = { "set-${it.id}" }) { sl ->
-                                SetCard(
-                                    setlist = sl,
-                                    // Le nom des feuilles du Set, dans l'ordre de jeu.
-                                    sheetNames = sl.sheetIds.mapNotNull { id -> state.sheets.firstOrNull { it.id == id }?.title },
-                                    modifier = Modifier,
-                                    onOpen = { actions.setFilter(LibraryFilter.OfSetlist(sl.id)) },
-                                    onMenu = { setMenuFor = sl },
-                                )
-                            }
-                            if (visible.isNotEmpty()) {
-                                item(key = "sheets-label", span = { GridItemSpan(maxLineSpan) }) {
-                                    OverlineLabel("Sheets")
-                                }
-                            }
-                        }
-                        items(visible, key = { it.id }) { sheet ->
-                            SheetCard(
-                                sheet = sheet, settings = settings, modifier = Modifier,
-                                previewWidthSp = previewWidthSp,
-                                onOpen = { onOpenEditor(sheet.id) },
-                                onFloat = { onFloatOverMixer(sheet) },
-                                onMenu = { menuFor = sheet },
-                            )
-                        }
+                LazyColumn(
+                    Modifier.weight(1f).fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 104.dp + bottomInset),
+                ) {
+                    items(visible, key = { it.id }) { sheet ->
+                        SheetRow(
+                            sheet = sheet,
+                            settings = settings,
+                            setCount = state.setlistsContaining(sheet.id).size,
+                            onOpen = { onOpenEditor(sheet.id) },
+                            onFloat = { onFloatOverMixer(sheet) },
+                            onMenu = { menuFor = sheet },
+                        )
                     }
                 }
             }
@@ -152,7 +143,6 @@ fun HomeScreen(
                 .clickable { actions.createSheet(onOpenEditor) },
             contentAlignment = Alignment.Center,
         ) { Icon(SheetsIcons.Plus, contentDescription = "New sheet", tint = SheetsColors.AccentText, modifier = Modifier.size(26.dp)) }
-
     }
 
     menuFor?.let { s -> CardMenuDialog(s, state, actions, onDismiss = { menuFor = null }) }
@@ -160,193 +150,199 @@ fun HomeScreen(
     if (newSetlist) NameDialog("Nouveau Set", "Nom du Set", onDismiss = { newSetlist = false }) { actions.createSetlist(it); newSetlist = false }
 }
 
-@Composable
-private fun HomeHeader(state: LibraryUiState, actions: HomeActions, onBackToMixer: () -> Unit, onOpenSettings: () -> Unit) {
-    val notation = state.settings.notation
-    Box(Modifier.fillMaxWidth().height(44.dp)) {
-        Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            MixerIconButton(onBackToMixer)
-            SearchField(state.query, actions::setQuery, Modifier.width(220.dp))
-        }
-        Text("Sheets", style = SheetsType.Title, color = Color.White, modifier = Modifier.align(Alignment.Center))
-        Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SegmentedToggle(
-                options = listOf("1-7", "A-G"),
-                selectedIndex = if (notation == Notation.Nashville) 0 else 1,
-                onSelect = { actions.setNotation(if (it == 0) Notation.Nashville else Notation.Standard) },
-                modifier = Modifier.width(132.dp),
-            )
-            GlyphButton(SheetsIcons.Settings, onOpenSettings, contentDescription = "Sheets settings")
-        }
-    }
-}
+// ────────────────────────────────────────────────────────────────────────────────────────
+// Rangee des Sets : cartes de la taille de celles de la page Setlists (96 dp).
+// Meme matiere que les feuilles (degrade + tranche + ombre), pas de verre.
+// ────────────────────────────────────────────────────────────────────────────────────────
+
+private val SetCardWidth = 236.dp
+private val SetCardHeight = 96.dp
 
 @Composable
-private fun SearchField(query: String, onChange: (String) -> Unit, modifier: Modifier = Modifier) {
-    Box(modifier.height(40.dp).clip(RoundedCornerShape(SheetsRadius.Chip)).background(SheetsColors.Chip).padding(horizontal = 16.dp), contentAlignment = Alignment.CenterStart) {
-        if (query.isEmpty()) Text("Search", style = SheetsType.Body, color = SheetsColors.TextMuted)
-        BasicTextField(query, onChange, singleLine = true, textStyle = SheetsType.Body.copy(color = SheetsColors.TextPrimary), cursorBrush = SolidColor(SheetsColors.Accent), modifier = Modifier.fillMaxWidth())
-    }
-}
-
-@Composable
-private fun FilterRow(state: LibraryUiState, actions: HomeActions, onNewSet: () -> Unit) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        item { Pill("All · ${state.sheets.size}", selected = state.filter == LibraryFilter.All) { actions.setFilter(LibraryFilter.All) } }
-        item { Pill("★ Favorites", selected = state.filter == LibraryFilter.Favorites) { actions.setFilter(LibraryFilter.Favorites) } }
-        item { Pill("Sets · ${state.library.setlists.size}", selected = state.filter == LibraryFilter.Sets) { actions.setFilter(LibraryFilter.Sets) } }
-        items(state.library.setlists.size) { i ->
-            val sl = state.library.setlists[i]
-            Pill(sl.name, selected = (state.filter as? LibraryFilter.OfSetlist)?.id == sl.id) { actions.setFilter(LibraryFilter.OfSetlist(sl.id)) }
-        }
-        item { Pill("+ Set") { onNewSet() } }
-    }
-}
-
-/**
- * Taille de la preview d'accords, calee sur la largeur reelle de la carte.
- * La reference est la carte de 212 dp (quatre par ligne sur une page de 891 dp) :
- * une carte plus etroite reduit la preview, pour que les trois accords tiennent.
- */
-private fun previewWidthFor(cardWidth: Dp): Float = (25f * (cardWidth.value / 212f)).coerceIn(9f, 25f)
-
-/**
- * Carte de bibliotheque, quatre par ligne. Le fond porte la couleur de la carte,
- * `sheet_card_sheen.xml` dessine liseret et bande de lumiere, `shadow` pose l'ombre.
- *
- * - tap : ouvrir ; double-tap : poser sur le mixer ; appui long : menu
- * - la carte s'enfonce au doigt (echelle 0.94, ressort) avec retour haptique
- * - [previewWidthSp] : taille de la preview, calee sur la largeur reelle de la carte
- */
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun SheetCard(
-    sheet: Sheet, settings: SheetsSettings, modifier: Modifier,
-    previewWidthSp: Float,
-    onOpen: () -> Unit, onFloat: () -> Unit, onMenu: () -> Unit,
+private fun SetRow(
+    sets: List<Setlist>,
+    sheets: List<Sheet>,
+    selectedId: String?,
+    onOpen: (String) -> Unit,
+    onMenu: (Setlist) -> Unit,
 ) {
-    val base = sheet.colorArgb.toColor()
-    val ink = onColorFor(base)
-    val family = SheetsFonts.family(sheet.chordFontId)
-
-    val firstSection = sheet.sections.firstOrNull { it.bars.isNotEmpty() }
-    val key = firstSection?.let { sheet.keyFor(it) } ?: sheet.keyPc
-    val preview = firstSection?.bars?.take(3)?.joinToString("  ") { Theory.barText(it, key, settings.notation, settings.passing) }.orEmpty()
-
-    LibraryCard(modifier, base, ink, onOpen, onFloat, onMenu) {
-        Column(
-            Modifier.fillMaxSize().padding(start = 15.dp, end = 14.dp, top = 13.dp, bottom = 12.dp),
-            verticalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                sheet.title, style = SheetsType.CardTitle, color = ink,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        items(sets, key = { it.id }) { sl ->
+            SetChip(
+                setlist = sl,
+                // Les feuilles du Set, dans l'ordre de jeu : sert au compte et a l'apercu.
+                sheets = sl.sheetIds.mapNotNull { id -> sheets.firstOrNull { it.id == id } },
+                selected = sl.id == selectedId,
+                onOpen = { onOpen(sl.id) },
+                onMenu = { onMenu(sl) },
             )
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                Box(Modifier.width(2.5.dp).height(24.dp).clip(RoundedCornerShape(2.dp)).background(ink.copy(alpha = 0.75f)))
-                Text(preview, style = SheetsType.chord(family, previewWidthSp), color = ink, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
-            }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                // Tonalite : plaque noire, texte blanc — lisible quelle que soit la teinte.
-                Box(Modifier.clip(RoundedCornerShape(7.dp)).background(Color(0xE6000000)).padding(horizontal = 9.dp, vertical = 3.dp)) {
-                    Text(Theory.KEY_NAMES[sheet.keyPc], style = SheetsType.CardMeta, color = Color.White)
-                }
-                Spacer(Modifier.width(6.dp))
-                Text("${sheet.bpm}", style = SheetsType.CardMeta, color = ink.copy(alpha = 0.7f))
-                Spacer(Modifier.weight(1f))
-                if (sheet.favorite) Icon(SheetsIcons.Star, contentDescription = "Favorite", tint = SheetsColors.Warning, modifier = Modifier.size(13.dp))
-                else Text("${sheet.sections.size} sect.", style = SheetsType.CardMeta, color = ink.copy(alpha = 0.7f))
-            }
         }
     }
 }
 
 /**
- * Carte de Set : le dossier de feuilles, affiche exactement comme une feuille —
- * meme gabarit, meme profondeur, meme rebond. La tranche reste, le contenu change.
+ * Carte de Set : un dossier de feuilles, au format des cartes Setlists (96 dp).
+ * La couleur est celle du Set ; le contenu annonce ce qu'il y a dedans — le nom des
+ * premieres feuilles et un apercu de leurs accords, plus petit que dans la liste.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SetCard(
-    setlist: Setlist, sheetNames: List<String>, modifier: Modifier,
-    onOpen: () -> Unit, onMenu: () -> Unit,
-) {
-    val base = (setlist.colorArgb ?: PalettePresets.Presets.first()).toColor()
-    val ink = onColorFor(base)
-    // Apercu du contenu : les trois premiers titres ranges dans le Set.
-    val names = remember(sheetNames) { sheetNames.take(3) }
-
-    LibraryCard(modifier.testTag("set-card"), base, ink, onOpen, onDouble = null, onMenu = onMenu) {
-        Column(
-            Modifier.fillMaxSize().padding(start = 15.dp, end = 14.dp, top = 13.dp, bottom = 12.dp),
-            verticalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                setlist.name, style = SheetsType.CardTitle, color = ink,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                Icon(SheetsIcons.Folder, contentDescription = null, tint = ink.copy(alpha = 0.85f), modifier = Modifier.size(22.dp))
-                Text(
-                    if (names.isEmpty()) "Aucune feuille" else names.joinToString(" · "),
-                    style = SheetsType.CardMeta.copy(fontSize = 11.sp), color = ink.copy(alpha = 0.82f),
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.clip(RoundedCornerShape(7.dp)).background(Color(0xE6000000)).padding(horizontal = 9.dp, vertical = 3.dp)) {
-                    Text("SET", style = SheetsType.CardMeta, color = Color.White)
-                }
-                Spacer(Modifier.width(6.dp))
-                Text("${sheetNames.size} feuille${if (sheetNames.size > 1) "s" else ""}", style = SheetsType.CardMeta, color = ink.copy(alpha = 0.7f))
-                Spacer(Modifier.weight(1f))
-                Icon(SheetsIcons.ChevronRight, contentDescription = null, tint = ink.copy(alpha = 0.6f), modifier = Modifier.size(14.dp))
-            }
-        }
-    }
-}
-
-/**
- * Gabarit commun des cartes de la bibliotheque : fond, volume en XML, tranche,
- * ombre, gestes et rebond. Les feuilles et les Sets n'en different que par le contenu.
- */
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun LibraryCard(
-    modifier: Modifier, base: Color, ink: Color,
-    onOpen: () -> Unit, onDouble: (() -> Unit)?, onMenu: () -> Unit,
-    content: @Composable () -> Unit,
+private fun SetChip(
+    setlist: Setlist,
+    sheets: List<Sheet>,
+    selected: Boolean,
+    onOpen: () -> Unit,
+    onMenu: () -> Unit,
 ) {
     val haptic = LocalHapticFeedback.current
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.94f else 1f, spring(dampingRatio = 0.55f, stiffness = 900f), label = "cardPress")
+    val scale by animateFloatAsState(if (pressed) 0.95f else 1f, spring(dampingRatio = 0.55f, stiffness = 900f), label = "setPress")
+    val base = (setlist.colorArgb ?: PalettePresets.Presets.first()).toColor()
+    val ink = onColorFor(base)
+    val shape = RoundedCornerShape(16.dp)
+    val first = sheets.firstOrNull()
+    val firstSection = first?.sections?.firstOrNull { it.bars.isNotEmpty() }
+    val key = firstSection?.let { first.keyFor(it) } ?: first?.keyPc ?: 0
+    val preview = firstSection?.bars?.take(4)
+        ?.joinToString("  ") { Theory.barText(it, key, Notation.Nashville, PassingDisplay.Auto) }.orEmpty()
 
     Box(
-        modifier.height(164.dp)
+        Modifier.testTag("set-card")
+            .width(SetCardWidth).height(SetCardHeight)
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .shadow(if (pressed) 6.dp else 14.dp, RoundedCornerShape(18.dp), clip = false)
-            .clip(RoundedCornerShape(18.dp))
-            .background(base)
+            .shadow(if (pressed) 5.dp else 12.dp, shape, clip = false)
+            .clip(shape)
+            .background(Brush.linearGradient(listOf(base, lerp(base, Color.Black, 0.30f))))
             .combinedClickable(
-                interactionSource = source,
-                indication = null,
+                interactionSource = source, indication = null,
                 onClick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onOpen() },
-                onDoubleClick = onDouble?.let { { haptic.performHapticFeedback(HapticFeedbackType.LongPress); it() } },
                 onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onMenu() },
             ),
     ) {
-        // Volume : degrade + liserets + bande de lumiere, le second dessine en XML.
-        Box(Modifier.matchParentSize().background(Brush.linearGradient(listOf(base, lerp(base, Color.Black, 0.34f)))))
-        Image(
-            painter = painterResource(R.drawable.sheet_card_sheen),
-            contentDescription = null,
-            contentScale = ContentScale.FillBounds,
-            modifier = Modifier.matchParentSize(),
+        // Tranche : meme repere que les feuilles, pour lire la couleur d'un coup d'oeil.
+        Box(Modifier.width(4.dp).fillMaxHeight().background(ink.copy(alpha = 0.5f)))
+        Column(
+            Modifier.fillMaxSize().padding(start = 15.dp, end = 11.dp, top = 10.dp, bottom = 9.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text(setlist.name, style = SheetsType.CardTitle, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                if (selected) Text("OUVERT", style = SheetsType.Overline.copy(fontSize = 8.sp), color = ink.copy(alpha = 0.85f))
+            }
+            Text(
+                if (sheets.isEmpty()) "Aucune feuille"
+                else sheets.take(2).joinToString(" · ") { it.title },
+                style = SheetsType.CardMeta.copy(fontSize = 11.sp), color = ink.copy(alpha = 0.85f),
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (preview.isNotEmpty()) {
+                    Text(
+                        preview,
+                        style = SheetsType.chord(SheetsFonts.family(first?.chordFontId ?: FontIds.ArchitectsDaughter), 13f),
+                        color = ink.copy(alpha = 0.92f), maxLines = 1, softWrap = false, overflow = TextOverflow.Clip,
+                        modifier = Modifier.weight(1f),
+                    )
+                } else Spacer(Modifier.weight(1f))
+                Text(
+                    "${sheets.size} feuille${if (sheets.size > 1) "s" else ""}",
+                    style = SheetsType.CardMeta.copy(fontSize = 10.sp), color = ink.copy(alpha = 0.7f),
+                )
+            }
+        }
+    }
+}
+
+// ────────────────────────────────────────────────────────────────────────────────────────
+// Liste du bas : une feuille par ligne, meme gabarit que les lignes de Setlists.
+// Apercu des accords + informations (tonalite, tempo, sections).
+// ────────────────────────────────────────────────────────────────────────────────────────
+
+private val SheetRowHeight = 44.dp
+
+@Composable
+private fun ListHeader(state: LibraryUiState, count: Int, inSetName: String?, onAll: () -> Unit) {
+    Row(Modifier.fillMaxWidth().height(24.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (inSetName != null) {
+            Box(
+                Modifier.clip(RoundedCornerShape(SheetsRadius.Chip)).background(SheetsColors.Chip)
+                    .clickable { onAll() }.padding(horizontal = 10.dp, vertical = 3.dp),
+            ) { Text("← Tout", style = SheetsType.Caption, color = SheetsColors.TextPrimary) }
+        }
+        OverlineLabel(
+            when {
+                inSetName != null -> inSetName
+                state.filter == LibraryFilter.Favorites -> "Favoris"
+                state.query.isNotBlank() -> "Resultats"
+                else -> "Recemment modifies"
+            },
         )
-        // Tranche : identite de la carte, lisible d'un coup d'oeil.
-        Box(Modifier.width(5.dp).fillMaxHeight().background(ink.copy(alpha = 0.55f)))
-        content()
+        Text("$count", style = SheetsType.Overline, color = SheetsColors.TextMuted)
+        Spacer(Modifier.weight(1f))
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun SheetRow(
+    sheet: Sheet,
+    settings: SheetsSettings,
+    setCount: Int,
+    onOpen: () -> Unit,
+    onFloat: () -> Unit,
+    onMenu: () -> Unit,
+) {
+    val haptic = LocalHapticFeedback.current
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val base = sheet.colorArgb.toColor()
+    val ink = onColorFor(base)
+    val shape = RoundedCornerShape(13.dp)
+    val family = SheetsFonts.family(sheet.chordFontId)
+    val firstSection = sheet.sections.firstOrNull { it.bars.isNotEmpty() }
+    val key = firstSection?.let { sheet.keyFor(it) } ?: sheet.keyPc
+    val preview = firstSection?.bars?.take(3)
+        ?.joinToString("  ") { Theory.barText(it, key, settings.notation, settings.passing) }.orEmpty()
+
+    Row(
+        Modifier.fillMaxWidth().height(SheetRowHeight)
+            .graphicsLayer { scaleX = if (pressed) 0.99f else 1f; scaleY = if (pressed) 0.99f else 1f }
+            .clip(shape)
+            .background(lerp(SheetsColors.Surface, base, 0.16f))
+            .border(1.dp, ink.copy(alpha = 0.10f), shape)
+            .combinedClickable(
+                interactionSource = source, indication = null,
+                onClick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onOpen() },
+                onDoubleClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onFloat() },
+                onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onMenu() },
+            )
+            .padding(start = 10.dp, end = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(11.dp),
+    ) {
+        // Pastille de couleur : la seule teinte de la ligne, comme les points de Setlists.
+        Box(Modifier.size(9.dp).clip(CircleShape).background(base))
+        Text(sheet.title, style = SheetsType.Label, color = SheetsColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        if (preview.isNotEmpty()) {
+            Text(
+                preview,
+                style = SheetsType.chord(family, 13f), color = SheetsColors.TextMuted,
+                maxLines = 1, softWrap = false, overflow = TextOverflow.Clip,
+                modifier = Modifier.weight(1.4f),
+            )
+        } else Spacer(Modifier.weight(1.4f))
+        // Tonalite : plaque sombre, lisible sur n'importe quelle teinte.
+        Box(Modifier.clip(RoundedCornerShape(6.dp)).background(Color(0xE6000000)).padding(horizontal = 7.dp, vertical = 2.dp)) {
+            Text(Theory.KEY_NAMES[key], style = SheetsType.CardMeta.copy(fontSize = 10.sp), color = Color.White)
+        }
+        Text("${sheet.bpm}", style = SheetsType.CardMeta.copy(fontSize = 10.sp), color = SheetsColors.TextMuted, modifier = Modifier.width(30.dp))
+        Text("${sheet.sections.size} sect.", style = SheetsType.CardMeta.copy(fontSize = 10.sp), color = SheetsColors.TextMuted, modifier = Modifier.width(48.dp))
+        Box(Modifier.width(14.dp), contentAlignment = Alignment.Center) {
+            if (sheet.favorite) Icon(SheetsIcons.Star, contentDescription = "Favorite", tint = SheetsColors.Warning, modifier = Modifier.size(12.dp))
+            else if (setCount > 0) Icon(SheetsIcons.Layers, contentDescription = null, tint = SheetsColors.TextMuted, modifier = Modifier.size(12.dp))
+        }
+        Icon(SheetsIcons.ChevronRight, contentDescription = null, tint = SheetsColors.TextMuted, modifier = Modifier.size(15.dp))
     }
 }
 
