@@ -187,3 +187,32 @@ Commit `e7a6c98`. `compileDebugKotlin` + `assembleDebug` OK (APK arm64 54,1 Mo).
   animation d'entree `scaleIn(0.55f)+fadeIn`. **Piege** : la fenetre est composee
   avec `isOpen` deja vrai -> `AnimatedVisibility` seul peint la taille finale des la
   1re frame ; garde d'une frame (`shown` via `LaunchedEffect(Unit)`).
+
+## Sheets — flottant + bibliotheque (New 2, 2026-11-04, commit 88f01af)
+- **Imports Compose non-wildcard** : `Modifier.border`, `Spacer`, `fillMaxHeight`,
+  `FontWeight` doivent etre importes nommement. `assertExists()` est une methode, pas
+  un import (sinon Unresolved reference).
+- **Refactor par script** : couper une plage par index peut DUPLIQUER une fonction si
+  le marqueur de fin differe. Toujours `grep -c "private fun X"` apres la coupe.
+- **Cartes de bibliotheque** : `SheetCard` (172 dp, tranche 6 dp, accords sur rail 29 px,
+  tonalite/BPM/sections/date) + `SheetRow` (62 dp). Bascule grille/liste dans l'en-tete
+  (`LayoutToggle`, icones `SheetsIcons.Grid`/`List`, ajoutees).
+- **Flottant** : X en haut a droite, cadenas en bas a gauche, poignee au centre, pastille
+  de section en bas a droite. Liste des sections DANS la carte (`InCardSectionPicker`),
+  plus de popover externe. Balayage horizontal entre sections. Hauteur redimensionnable
+  (150..conteneur-bottomInset), pas d'`animateContentSize` (il lisse la poignee).
+- **Tap** : `combinedClickable(onClick = editeur, onDoubleClick = flotter, onLongClick = menu)`.
+- **testTags** : « resize-grip », « section-strip », « section-picker ». Le texte « Verse »
+  existe en double -> `onNodeWithText` echoue, utiliser le tag.
+- **Voile de liste** : teinte de l'encre (`isLightInk` = luminance < 0.5).
+- **Sandbox** : `apt-get update` AVANT `install openjdk-21-jdk-headless` (sinon
+  « Unable to locate package »). tesseract-ocr introuvable sur ce miroir.
+- **Bibliotheque = cartes 4 par ligne, plus de bascule liste** (decision 2026-11-04,
+  commit da60455). `painterResource()` REFUSE un `<layer-list>` ; la profondeur de
+  carte est un `<vector>` avec `<gradient>` par `<aapt:attr>` (`sheet_card_sheen.xml`).
+- **Tonalite de carte** : plaque noire 90 % a texte blanc (lisible sur toute teinte).
+  Titre en Plus Jakarta Sans (`SheetsType.CardTitle`), plus la police manuscrite.
+- **Rebond des cases** (convention app, cf. `TrackBottomRow.kt`) :
+  `collectIsPressedAsState` -> `animateFloatAsState(0.94f, spring(0.55f, 900f))`
+  en `graphicsLayer`, + `HapticFeedbackType.TextHandleMove` au tap, `indication = null`.
+- **Travail desormais dans le reel sur `main`**, plus de maquette JSX comme etape.
