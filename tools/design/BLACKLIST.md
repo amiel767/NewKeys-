@@ -36,7 +36,7 @@ le diff. Le disque du potard valait 40 de luminance quand on croyait en dessiner
 beau — c'est l'œil qui a été trompé, pas la mesure.
 
 ```bash
-export JAVA_HOME=/workspace/jdk/jdk-21.0.13+9
+export JAVA_HOME=/workspace/jdk/jdk-21.0.13+9   # Temurin (Debian snapshot: 404)
 export ANDROID_HOME=/workspace/android-sdk
 ./gradlew :app:recordRoborazziDebug --tests "com.soundstage.mixer.FxDetachedCaptureTest"
 python3 tools/design/fx_page.py    # page reference|rendu sur le port 12000
