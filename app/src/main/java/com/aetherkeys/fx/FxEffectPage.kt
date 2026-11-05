@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -26,27 +27,27 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 
 /**
- * LA PAGE D'UN EFFET — presets à gauche, orbe au centre, réglages à droite.
+ * LA PAGE D'UN EFFET — un gros potard à gauche, les contrôles à droite.
  *
- * C'est la composition de la maquette, et c'est ce que la première version avait
- * raté : elle empilait un titre puis une rangée de potards, sans orbe et sans
- * colonne de presets. Trois zones, dans cet ordre :
+ * C'est la composition de la référence : UN réglage principal, tenu par le gros
+ * potard, et tout le reste rangé en grille à côté. L'orbe a disparu — il ne
+ * portait aucune information que le potard ne porte mieux.
  *
- *   | orbe (grand) | presets + 4 potards + les sliders |
+ * LE FOND VIENT DU PRESET. Chaque preset porte deux teintes (`bgA`, `bgB`) qui
+ * se fondent en diagonale : violet-noir, orange-rouge, noir-bleu ciel. Changer
+ * de preset change donc l'ambiance de la page entière, pas seulement un liseré.
  *
- * Les QUATRE PREMIERS réglages sont des potards, en haut de la colonne ; les
- * suivants sont des faders, en dessous. C'est le découpage de la maquette, et il
- * est fonctionnel : les quatre premiers se règlent en tournant, les autres en
- * glissant, et ils ne se disputent pas la même case.
- *
- * L'Arpeggiator n'a pas d'orbe : il a sa propre page, [FxArpPage].
+ * L'Arpeggiator n'a pas de potard principal : il a sa propre page, [FxArpPage].
  */
 @Composable
 fun FxEffectPage(state: FxWindowState, actions: FxWindowActions, arp: ArpState) {
@@ -56,81 +57,83 @@ fun FxEffectPage(state: FxWindowState, actions: FxWindowActions, arp: ArpState) 
         return
     }
     val values = state.slots.firstOrNull { it?.info?.id == fx.id }?.values ?: fx.params.map { it.def }
-    val on = state.slots.firstOrNull { it?.info?.id == fx.id }?.on ?: true
     val preset = state.presetName ?: fx.firstPreset
     val pal = preset?.let { fx.palettes[it] } ?: fx.palettes[fx.firstPreset]
+    val bgA = pal?.bgA ?: Color(0xFF0B0F18)
+    val bgB = pal?.bgB ?: Color(0xFF161C2A)
 
-    Row(Modifier.fillMaxSize()) {
-        // ── L'ORBE : la grande zone de gauche ──────────────────────────────
+    // ── LE FOND, FUSION DE DEUX TEINTES ─────────────────────────────────────
+    // Un aplat sombre, puis DEUX voiles colorés tirés des deux teintes du preset
+    // (h et h2), posés en coins opposés. C'est la « fusion de deux couleurs » :
+    // violet/noir, orange/rouge, noir/bleu ciel. Un simple dégradé entre bgA et
+    // bgB ne suffisait pas — les deux teintes étant toutes deux très sombres, la
+    // page ne changeait pas d'ambiance d'un preset à l'autre (243° contre 249°
+    // mesurés). Les voiles colorés, eux, se lisent.
+    val hueA = pal?.let { Color.hsv(it.h, (it.s / 100f).coerceAtMost(.85f), .55f) } ?: fx.accent
+    val hueB = pal?.let { Color.hsv(it.h2, (it.s / 100f).coerceAtMost(.85f), .50f) } ?: fx.accent
+
+    // L'index du réglage principal : un seul le porte, et la grille montre les autres.
+    val mainIndex = fx.params.indexOfFirst { it.main }.let { if (it < 0) 0 else it }
+    val mainParam = fx.params[mainIndex]
+    // L'ouverture de la liste est tenue ICI : la liste doit se dessiner AU-DESSUS
+    // de la grille, donc elle est un frère de la grille, pas son descendant.
+    var presetOpen by remember(fx.id) { mutableStateOf(false) }
+
+    Box(
+        Modifier.fillMaxSize().clip(RoundedCornerShape(15.dp))
+            .background(Brush.linearGradient(listOf(bgA, bgB))),
+    ) {
+        // Les deux voiles : deux taches larges et douces, en coins opposés.
         Box(
-            Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(15.dp))
-                .background(Brush.verticalGradient(listOf(Color(0xFF0E1420), Color(0xFF0B0F18)))),
-        ) {
-            FxOrb(vals = values, palette = pal, live = on)
-            // La pastille : preset actif, puis la durée de queue.
-            Row(
-                Modifier.padding(start = 11.dp, top = 9.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0x8C0A0E1A))
-                    .padding(horizontal = 9.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                val hue = pal?.let { Color.hsv(it.h, it.s / 100f, it.l / 100f) } ?: FxC.acc
-                Box(Modifier.size(5.dp).clip(CircleShape).background(hue))
-                Spacer(Modifier.width(7.dp))
-                Text(
-                    if (state.custom) "Custom" else (preset ?: ""),
-                    color = Color(0xFFC6CEE8), fontSize = 10.sp,
-                    fontWeight = FontWeight.ExtraBold, letterSpacing = .9.sp,
+            Modifier.fillMaxSize().drawWithCache {
+                val a = Brush.radialGradient(
+                    listOf(hueA.copy(alpha = .34f), Color.Transparent),
+                    center = Offset(size.width * .18f, size.height * .16f),
+                    radius = size.minDimension * 1.05f,
                 )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    "${FxDesign.decaySeconds(values.getOrElse(1) { .7f })} s",
-                    color = FxC.mute, fontSize = 10.sp, fontFamily = FxFonts.mono,
+                val b = Brush.radialGradient(
+                    listOf(hueB.copy(alpha = .30f), Color.Transparent),
+                    center = Offset(size.width * .88f, size.height * .92f),
+                    radius = size.minDimension * 1.15f,
                 )
-            }
-            Text(
-                "Touch the orb to re-fire",
-                color = FxC.mute, fontSize = 8.5.sp, fontWeight = FontWeight.ExtraBold,
-                letterSpacing = 1.sp,
-                modifier = Modifier.align(Alignment.BottomStart).padding(start = 11.dp, bottom = 8.dp),
-            )
-        }
-        Spacer(Modifier.width(12.dp))
-
-        // ── LA COLONNE DES RÉGLAGES, 268 unités ────────────────────────────
-        Column(Modifier.width(268.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            FxPresetRow(fx, preset, state.custom, state.userPresets[fx.id] ?: emptyList(), actions)
-            // Les quatre premiers : des potards.
-            Row(
-                Modifier.fillMaxWidth().height(94.dp).clip(RoundedCornerShape(13.dp))
-                    .background(Brush.verticalGradient(listOf(Color(0xFF0E1420), Color(0xFF0B0F18)))),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                fx.params.take(4).forEachIndexed { i, p ->
-                    FxKnob(
-                        label = p.name, value = values.getOrElse(i) { p.def },
-                        accent = fx.accent, display = FxDesign.fmt(values.getOrElse(i) { p.def }, p),
-                        onReset = { actions.setValue(i, p.def) },
-                        onChange = { actions.setValue(i, it) },
-                    )
-                }
-            }
-            // Les suivants : des faders HORIZONTAUX, comme la maquette.
+                onDrawBehind { drawRect(a); drawRect(b) }
+            },
+        )
+        Row(Modifier.fillMaxSize().padding(10.dp)) {
+            // ── LE GROS POTARD ──────────────────────────────────────────────
             Column(
-                Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(13.dp))
-                    .background(Brush.verticalGradient(listOf(Color(0xFF0E1420), Color(0xFF0B0F18))))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.SpaceEvenly,
+                Modifier.width(250.dp).fillMaxHeight(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
             ) {
-                fx.params.drop(4).forEachIndexed { j, p ->
-                    val i = j + 4
-                    FxSlider(
-                        label = p.name, value = values.getOrElse(i) { p.def }, accent = fx.accent,
-                        display = FxDesign.fmt(values.getOrElse(i) { p.def }, p),
-                        onReset = { actions.setValue(i, p.def) },
-                        onChange = { actions.setValue(i, it) },
+                FxMagmaKnob(
+                    label = mainParam.name,
+                    value = values.getOrElse(mainIndex) { mainParam.def },
+                    display = FxDesign.fmt(values.getOrElse(mainIndex) { mainParam.def }, mainParam),
+                    palette = pal,
+                    accent = fx.accent,
+                    onChange = { actions.setValue(mainIndex, it) },
+                    onReset = { actions.setValue(mainIndex, mainParam.def) },
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+
+            // ── LA COLONNE DE DROITE : le sélecteur, puis les contrôles ──────
+            Box(Modifier.weight(1f).fillMaxHeight()) {
+                Column(Modifier.fillMaxSize()) {
+                    FxPresetButton(
+                        preset = preset, custom = state.custom, palette = pal,
+                        open = presetOpen, onToggle = { presetOpen = !presetOpen },
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    FxControlsGrid(fx, values, mainIndex, actions)
+                }
+                if (presetOpen) {
+                    FxPresetList(
+                        fx = fx, preset = preset,
+                        userNames = state.userPresets[fx.id] ?: emptyList(),
+                        modifier = Modifier.padding(top = 40.dp).zIndex(2f),
+                        onPick = { actions.pickPreset(it); presetOpen = false },
                     )
                 }
             }
@@ -139,67 +142,133 @@ fun FxEffectPage(state: FxWindowState, actions: FxWindowActions, arp: ArpState) 
 }
 
 /**
- * La rangée des presets : un intitulé, deux flèches, et le preset actif.
+ * LA GRILLE DES CONTRÔLES — trois colonnes, libellé et valeur sous chaque potard.
  *
- * Les flèches parcourent la liste ENTIÈRE, presets utilisateur compris — sinon
- * sauvegarder un preset ne servirait qu'à la souris. Le compteur `02/16` dit où
- * on en est dans la liste.
+ * C'est la disposition de la référence : des cellules alignées, jamais une
+ * rangée qui s'étire. Le réglage principal n'y figure pas — il est déjà le gros
+ * potard, le répéter en petit ferait doublon.
  */
 @Composable
-private fun FxPresetRow(
+private fun ColumnScope.FxControlsGrid(
     fx: FxInfoD,
-    preset: String?,
-    custom: Boolean,
-    userNames: List<String>,
+    values: List<Float>,
+    mainIndex: Int,
     actions: FxWindowActions,
 ) {
-    var open by remember { mutableStateOf(false) }
-    val all = fx.presets.keys.toList() + userNames
-    val i = all.indexOf(preset).coerceAtLeast(0)
-    val pal = preset?.let { fx.palettes[it] }
-    val hue = pal?.let { Color.hsv(it.h, it.s / 100f, it.l / 100f) } ?: FxC.acc
-
-    Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "Presets", color = FxC.mute, fontSize = 8.sp,
-                fontWeight = FontWeight.ExtraBold, letterSpacing = 1.5.sp,
-                modifier = Modifier.weight(1f),
-            )
-            FxMiniArrow(back = true) { actions.pickPreset(all[(i - 1 + all.size) % all.size]) }
-            FxMiniArrow(back = false) { actions.pickPreset(all[(i + 1) % all.size]) }
-        }
-        Spacer(Modifier.height(5.dp))
-        Row(
-            Modifier.fillMaxWidth().height(30.dp).clip(RoundedCornerShape(9.dp))
-                .fxRectWell(9.dp, top = .14f, rim = .10f)
-                .clickableNoRipple { open = !open }
-                .padding(horizontal = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(Modifier.size(6.dp).clip(CircleShape).background(hue))
-            Spacer(Modifier.width(8.dp))
-            Text(
-                preset ?: "", color = FxC.ink, fontSize = 12.sp,
-                fontWeight = FontWeight.ExtraBold, maxLines = 1, modifier = Modifier.weight(1f),
-            )
-            if (custom) {
-                Text("Custom", color = Color(0xFFF2C97D), fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
-                Spacer(Modifier.width(6.dp))
+    val others = fx.params.withIndex().filter { it.index != mainIndex }
+    val rows = others.chunked(3)
+    Column(
+        Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(13.dp))
+            // Un fond SOMBRE TRANSLUCIDE, pas seulement le creux : sans lui la
+            // grille flotte sur le dégradé du preset et ne se lit pas comme un
+            // panneau. Le creux par-dessus donne l'arête.
+            .background(Color(0x4D06090F))
+            .fxRectWell(13.dp, top = .12f, rim = .08f)
+            .padding(horizontal = 6.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.SpaceEvenly,
+    ) {
+        rows.forEach { row ->
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                row.forEach { (i, p) ->
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        FxKnob(
+                            label = p.name, value = values.getOrElse(i) { p.def },
+                            accent = fx.accent,
+                            display = FxDesign.fmt(values.getOrElse(i) { p.def }, p),
+                            size = 46,
+                            onReset = { actions.setValue(i, p.def) },
+                            onChange = { actions.setValue(i, it) },
+                        )
+                    }
+                }
+                // Une rangée incomplète garde ses colonnes : sinon les deux
+                // derniers contrôles s'étalent et ne s'alignent plus sur la grille.
+                repeat(3 - row.size) { Box(Modifier.weight(1f)) }
             }
-            Text(
-                "${(i + 1).toString().padStart(2, '0')}/${all.size.toString().padStart(2, '0')}",
-                color = FxC.mute, fontSize = 9.5.sp, fontFamily = FxFonts.mono,
-            )
         }
     }
 }
 
-/** Une flèche de parcours des presets. */
+/**
+ * LE BOUTON DE PRESET — le titre « Space <Preset> », une pastille de la teinte
+ * du preset, et un chevron qui dit si la liste est ouverte.
+ *
+ * Il ne tient PAS la liste : celle-ci est un frère de la grille, pour pouvoir
+ * passer au-dessus. Le bouton ne fait que dire son état.
+ */
 @Composable
-private fun FxMiniArrow(back: Boolean, onClick: () -> Unit) {
-    FxButtonChip(side = 24.dp, onClick = onClick, radius = 7.dp) {
-        FxIcon(if (back) AeFxIcons.BACK else AeFxIcons.STEP_NEXT, 12.dp, FxC.dim)
+private fun FxPresetButton(
+    preset: String?,
+    custom: Boolean,
+    palette: FxPalette?,
+    open: Boolean,
+    onToggle: () -> Unit,
+) {
+    val hue = palette?.let { Color.hsv(it.h, it.s / 100f, it.l / 100f) } ?: FxC.acc
+    Row(
+        Modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(10.dp))
+            .fxRectWell(10.dp, top = .14f, rim = .10f)
+            .clickableNoRipple(onToggle)
+            .padding(horizontal = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(7.dp).clip(CircleShape).background(hue))
+        Spacer(Modifier.width(9.dp))
+        Text(
+            "Space${preset ?: ""}", color = FxC.ink, fontSize = 14.sp,
+            fontWeight = FontWeight.ExtraBold, maxLines = 1, modifier = Modifier.weight(1f),
+        )
+        if (custom) {
+            Text("Custom", color = Color(0xFFF2C97D), fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
+            Spacer(Modifier.width(7.dp))
+        }
+        FxIcon(if (open) AeFxIcons.CHEV_UP else AeFxIcons.CHEV_DOWN, 13.dp, FxC.dim)
+    }
+}
+
+/**
+ * LA LISTE DES PRESETS, dépliée sous le bouton.
+ *
+ * Elle est opaque : c'est ce qui la sépare de la grille qu'elle recouvre. Une
+ * version translucide laissait lire les potards au travers et les deux se
+ * mélangeaient.
+ */
+@Composable
+private fun FxPresetList(
+    fx: FxInfoD,
+    preset: String?,
+    userNames: List<String>,
+    modifier: Modifier,
+    onPick: (String) -> Unit,
+) {
+    val all = fx.presets.keys.toList() + userNames
+    Column(
+        modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(11.dp))
+            .background(Color(0xFF141926))
+            .fxRectWell(11.dp, top = .10f, rim = .08f)
+            .padding(vertical = 4.dp),
+    ) {
+        all.forEach { name ->
+            val p = fx.palettes[name]
+            val dot = p?.let { Color.hsv(it.h, it.s / 100f, it.l / 100f) } ?: FxC.mute
+            val here = name == preset
+            Row(
+                Modifier.fillMaxWidth().height(28.dp)
+                    .clickableNoRipple { onPick(name) }
+                    .padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.size(6.dp).clip(CircleShape).background(dot))
+                Spacer(Modifier.width(9.dp))
+                Text(
+                    name, color = if (here) FxC.ink else FxC.dim, fontSize = 12.sp,
+                    fontWeight = if (here) FontWeight.Bold else FontWeight.Medium,
+                    maxLines = 1, modifier = Modifier.weight(1f),
+                )
+                if (here) Box(Modifier.size(5.dp).clip(CircleShape).background(FxC.acc))
+            }
+        }
     }
 }
 

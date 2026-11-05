@@ -19,7 +19,11 @@ import androidx.compose.ui.graphics.Color
  */
 
 /** Un réglage. [def], [min] et [max] sont dans l'ordre de la maquette : [def]
- * est NORMALISÉ (0..1), l'affichage vaut `min + def * (max - min)`. */
+ * est NORMALISÉ (0..1), l'affichage vaut `min + def * (max - min)`.
+ *
+ * [main] : le réglage porté par le GROS potard central. Un seul par effet ; les
+ * autres sont des contrôles secondaires. Le choix est éditorial — la largeur
+ * stéréo est ce qui se règle à l'oreille en premier sur une reverb. */
 data class FxParamD(
     val name: String,
     val key: String,
@@ -27,16 +31,17 @@ data class FxParamD(
     val min: Float,
     val max: Float,
     val unit: String,
+    val main: Boolean = false,
 )
 
 /**
- * La palette d'une orbe. Chaque preset porte la sienne : c'est elle qui donne
- * sa couleur à la nébuleuse, pas un accent unique.
+ * La palette d'un preset : elle porte à la fois le cœur du gros potard et le
+ * FOND de la page, qui change de preset en preset.
  *
- * [h2] et [multi] : quand un preset mélange DEUX teintes (Shimmer magenta +
- * cyan, Bloom rose + violet…), le mélange se fait en RVB. Mélanger en degrés
- * ferait traverser le cercle chromatique à l'envers — 30 et 268 donneraient un
- * vert.
+ * [bgA] et [bgB] sont les deux teintes fusionnées du fond — un dégradé diagonal
+ * entre elles, pas un aplat. C'est la demande : « violet noir », « orange rouge
+ * (magma) », « noir bleu ciel ». Elles restent sombres : le fond est un fond, il
+ * ne doit pas concurrencer les contrôles.
  */
 data class FxPalette(
     val h: Float,
@@ -47,6 +52,8 @@ data class FxPalette(
     val multi: Boolean = false,
     val core: Color,
     val rim: Color,
+    val bgA: Color,
+    val bgB: Color,
 )
 
 /** Le genre d'effet : un effet audio, ou un effet MIDI. */
@@ -79,70 +86,67 @@ object FxDesign {
 
     private fun pal(
         h: Float, dh: Float, s: Float, l: Float,
-        core: String, rim: String, h2: Float = h, multi: Boolean = false,
-    ) = FxPalette(h, dh, s, l, h2, multi, Color(android.graphics.Color.parseColor(core)),
-        Color(android.graphics.Color.parseColor(rim)))
+        core: String, rim: String, bgA: String, bgB: String,
+        h2: Float = h, multi: Boolean = false,
+    ) = FxPalette(
+        h, dh, s, l, h2, multi,
+        Color(android.graphics.Color.parseColor(core)),
+        Color(android.graphics.Color.parseColor(rim)),
+        Color(android.graphics.Color.parseColor(bgA)),
+        Color(android.graphics.Color.parseColor(bgB)),
+    )
 
     /**
-     * Space : dix réglages, seize presets, une palette par preset.
+     * Space : dix réglages, huit presets, une palette par preset.
      *
-     * Les sept premiers réglages pilotent l'orbe (taille, queue, pré-delai,
-     * amortissement, largeur, mix, diffusion) ; les trois derniers sont des
-     * réglages de reverb qu'on attend et que la maquette ajoute.
+     * Les sept premiers pilotent la reverb (taille, queue, pré-délai, diffusion,
+     * largeur, mix, amortissement) ; Lo Cut, Mod Rate et Mod Depth complètent la
+     * liste. Un seul réglage porte [main] : c'est lui qu'affiche le GROS potard
+     * central.
      */
     val SPACE = FxInfoD(
         id = 0, name = "Æther Space", type = "Reverb", family = "Space", kind = FxKindD.AUDIO,
         accent = Color(0xFFA99AD8), space = true,
         params = listOf(
+            // Les SEPT premiers suivent l'ordre du moteur (`FxRegistry` id 0) :
+            // `setValue(i)` pousse l'index `i` tel quel, donc cet ordre est un
+            // contrat. Ne pas le réarranger pour faire joli.
             FxParamD("Size", "size", .62f, 0f, 100f, " %"),
             FxParamD("Decay", "decay", .7f, .4f, 8f, " s"),
             FxParamD("Pre-delay", "pre", .2f, 0f, 120f, " ms"),
             FxParamD("Damp", "damp", .45f, 1f, 12f, " kHz"),
-            FxParamD("Width", "width", .8f, 0f, 100f, " %"),
+            FxParamD("Width", "width", .8f, 0f, 100f, " %", main = true),
             FxParamD("Mix", "mix", .35f, 0f, 100f, " %"),
             FxParamD("Diffuse", "diff", .5f, 0f, 100f, " %"),
-            FxParamD("Low Cut", "lowcut", .25f, 20f, 400f, " Hz"),
-            FxParamD("Hi Shelf", "shelf", .55f, -12f, 6f, " dB"),
-            FxParamD("Mod", "mod", .3f, 0f, 100f, " %"),
+            // Ceux-ci n'ont pas d'équivalent moteur : ils se règlent et se
+            // mémorisent à l'écran, et sont ignorés par le push (index >= 7).
+            FxParamD("Lo Cut", "lowcut", .25f, 20f, 400f, " Hz"),
+            FxParamD("Mod Rate", "modrate", .30f, 0f, 5f, " Hz"),
+            FxParamD("Mod Depth", "moddepth", .35f, 0f, 100f, " %"),
         ),
+        // HUIT presets, dans l'ORDRE du moteur : `pickPreset` retrouve l'index
+        // moteur par `indexOf`, donc l'ordre de cette table est un contrat.
         presets = mapOf(
-            "Hall" to listOf(.62f, .70f, .20f, .45f, .80f, .35f, .50f, .30f, .50f, .35f),
-            "Plate" to listOf(.40f, .50f, .10f, .70f, .90f, .30f, .70f, .35f, .60f, .25f),
-            "Room" to listOf(.25f, .30f, .05f, .50f, .60f, .25f, .30f, .20f, .40f, .15f),
+            "Hall" to listOf(.62f, .70f, .20f, .45f, .80f, .35f, .50f, .30f, .30f, .35f),
+            "Plate" to listOf(.42f, .52f, .10f, .70f, .90f, .30f, .72f, .35f, .26f, .25f),
+            "Room" to listOf(.28f, .30f, .06f, .55f, .60f, .25f, .35f, .20f, .18f, .12f),
             "Cathedral" to listOf(.95f, .95f, .35f, .30f, 1f, .45f, .80f, .45f, .55f, .55f),
-            "Shimmer" to listOf(.70f, .85f, .25f, .20f, 1f, .50f, .90f, .40f, .70f, .65f),
-            "Chamber" to listOf(.35f, .40f, .08f, .55f, .70f, .28f, .45f, .25f, .45f, .20f),
-            "Bloom" to listOf(.80f, .80f, .30f, .35f, .95f, .42f, 1f, .35f, .65f, .60f),
-            "Infinite" to listOf(1f, 1f, .40f, .25f, 1f, .60f, .95f, .50f, .50f, .70f),
-            "Ambience" to listOf(.55f, .88f, .30f, .60f, .95f, .28f, .85f, .40f, .45f, .45f),
-            "Spring" to listOf(.30f, .45f, .02f, .75f, .55f, .40f, .25f, .15f, .70f, .80f),
-            "Dark Hall" to listOf(.78f, .82f, .28f, .22f, .85f, .38f, .65f, .55f, .35f, .30f),
-            "Bright Hall" to listOf(.60f, .62f, .16f, .78f, .88f, .32f, .55f, .20f, .68f, .40f),
-            "Vocal Plate" to listOf(.38f, .46f, .06f, .66f, .95f, .30f, .78f, .42f, .58f, .20f),
-            "Drum Room" to listOf(.28f, .26f, .01f, .42f, .70f, .24f, .35f, .12f, .46f, .10f),
-            "Chorus Verb" to listOf(.66f, .74f, .22f, .58f, 1f, .40f, .72f, .30f, .62f, .85f),
-            "Gated" to listOf(.44f, .22f, .00f, .68f, .60f, .34f, .30f, .25f, .52f, .00f),
+            "Shimmer" to listOf(.70f, .85f, .25f, .20f, 1f, .50f, .90f, .40f, .65f, .65f),
+            "Chamber" to listOf(.38f, .42f, .10f, .55f, .70f, .28f, .45f, .25f, .22f, .20f),
+            "Bloom" to listOf(.80f, .80f, .30f, .35f, .95f, .42f, 1f, .35f, .60f, .60f),
+            "Infinite" to listOf(1f, 1f, .40f, .25f, 1f, .60f, .95f, .50f, .70f, .70f),
         ),
-        // Chaque preset emprunte ses couleurs à une nébuleuse réelle : la teinte
-        // principale au cœur, la teinte secondaire aux volutes, le bord sombre à
-        // la poussière.
+        // Le FOND change avec le preset : deux teintes fusionnées en diagonale.
+        // Le cœur et le liseré du gros potard suivent la même paire.
         palettes = mapOf(
-            "Hall" to pal(268f, 75f, 48f, 74f, "#eee8ff", "#1d1a38"),
-            "Plate" to pal(196f, 40f, 62f, 76f, "#f0fbff", "#0f2530"),
-            "Room" to pal(158f, 34f, 34f, 68f, "#eafaf4", "#12241f"),
-            "Cathedral" to pal(246f, 60f, 56f, 66f, "#e9e4ff", "#161034"),
-            "Shimmer" to pal(312f, 90f, 66f, 76f, "#fff0fb", "#2a1030", h2 = 186f, multi = true),
-            "Chamber" to pal(172f, 40f, 40f, 70f, "#eefffb", "#0e2a28"),
-            "Bloom" to pal(328f, 70f, 58f, 74f, "#ffeef6", "#2c1030", h2 = 268f, multi = true),
-            "Infinite" to pal(210f, 50f, 30f, 84f, "#ffffff", "#101a2e"),
-            "Ambience" to pal(224f, 44f, 36f, 64f, "#e6ecff", "#0d1424"),
-            "Spring" to pal(34f, 26f, 62f, 70f, "#fff4e2", "#2a1a0c"),
-            "Dark Hall" to pal(22f, 16f, 68f, 58f, "#ffd9a8", "#07050e", h2 = 268f, multi = true),
-            "Bright Hall" to pal(48f, 30f, 56f, 74f, "#fff8e2", "#2a2410", h2 = 118f, multi = true),
-            "Vocal Plate" to pal(42f, 26f, 52f, 74f, "#fff2dc", "#241c0e", h2 = 152f, multi = true),
-            "Drum Room" to pal(186f, 40f, 46f, 66f, "#e8fbff", "#0c2224", h2 = 138f, multi = true),
-            "Chorus Verb" to pal(184f, 40f, 60f, 74f, "#eaffff", "#0c2430", h2 = 300f, multi = true),
-            "Gated" to pal(318f, 30f, 64f, 62f, "#ffe4f4", "#26081c", h2 = 26f, multi = true),
+            "Hall" to pal(272f, 75f, 48f, 74f, "#E7D9FF", "#22103A", "#120A20", "#2A1244"),
+            "Plate" to pal(210f, 40f, 62f, 76f, "#EAF3FF", "#16283C", "#0A1018", "#1B2C40"),
+            "Room" to pal(205f, 44f, 34f, 68f, "#CFE8FF", "#0E2336", "#0A0F18", "#14324A"),
+            "Cathedral" to pal(258f, 60f, 56f, 66f, "#E4DAFF", "#1A0F38", "#0B0A1C", "#241244"),
+            "Shimmer" to pal(312f, 90f, 66f, 76f, "#FFF0FB", "#2A1030", "#1A0A22", "#2A1030", h2 = 186f, multi = true),
+            "Chamber" to pal(165f, 40f, 40f, 70f, "#D6FFF0", "#0C2A1E", "#07130F", "#123528"),
+            "Bloom" to pal(18f, 70f, 58f, 74f, "#FFC98A", "#3E1206", "#1A0805", "#3C1408"),
+            "Infinite" to pal(214f, 50f, 30f, 84f, "#FFFFFF", "#0E1626", "#06070C", "#101A2E"),
         ),
     )
 

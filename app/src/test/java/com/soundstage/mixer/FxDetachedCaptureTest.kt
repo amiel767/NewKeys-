@@ -6,7 +6,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import com.aetherkeys.fx.FxDesign
 import com.aetherkeys.fx.FxKindD
@@ -29,9 +31,10 @@ import org.robolectric.annotation.GraphicsMode
  * avec la référence au pixel. On ne dépend d'aucun moteur — l'état est fabriqué
  * à la main, ce qui est précisément l'intérêt du contrat détaché.
  *
- * LES SIX VUES SONT CELLES DE LA MAQUETTE : le rack, le rack avec un effet
- * contourné, le catalogue, la page de Space (avec l'orbe), un preset à deux
- * teintes, et la page de l'Arpeggiator (sa grille de pas).
+ * LA PAGE DE SPACE EST CELLE DU REDESIGN : gros potard principal à gauche, case
+ * déroulante de preset et grille de contrôles à droite, fond bicolore qui suit
+ * le preset. Les vues couvrent deux presets (Hall, Shimmer) pour vérifier que
+ * le fond change bien avec eux.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -114,6 +117,51 @@ class FxDetachedCaptureTest {
             openEffect = FxDesign.SPACE, presetName = "Shimmer",
         ),
     )
+
+    /**
+     * La case déroulante OUVERTE : les huit presets se déplient sous le bouton.
+     * C'est la seule capture qui a besoin d'un clic — le reste est piloté par
+     * l'état —, donc elle ne passe pas par [capture].
+     */
+    @Test
+    fun fx_space_dropdown() {
+        composeTestRule.mainClock.autoAdvance = false
+        composeTestRule.setContent {
+            Box(Modifier.size(891.dp, 411.dp).background(Color(0xFF0B0F17))) {
+                FxWindow(
+                    state = FxWindowState(
+                        slots = listOf(space(preset = "Hall"), null, null, arp()),
+                        openEffect = FxDesign.SPACE, presetName = "Hall",
+                    ),
+                    actions = noop,
+                )
+            }
+        }
+        composeTestRule.mainClock.advanceTimeBy(1400)
+        composeTestRule.onNodeWithText("SpaceHall").performClick()
+        composeTestRule.mainClock.advanceTimeBy(220)
+        composeTestRule.onRoot().captureRoboImage("app/src/test/screenshots/fx_space_dropdown.png")
+    }
+
+    /**
+     * La même page, le réglage principal POUSSÉ BAS. C'est la capture qui prouve
+     * que le magma suit la valeur : comparée à `fx_space`, le noyau doit être
+     * visiblement plus petit et moins lumineux.
+     */
+    @Test
+    fun fx_space_knob_low() {
+        val fx = FxDesign.SPACE
+        val vals = fx.presets.getValue("Hall").toMutableList().also { it[4] = .08f }
+        capture(
+            "fx_space_knob_low",
+            FxWindowState(
+                slots = listOf(
+                    FxSlotState(fx, true, "Hall", vals, fx.palettes["Hall"]), null, null, arp(),
+                ),
+                openEffect = fx, presetName = "Hall",
+            ),
+        )
+    }
 
     /** La page de l'Arpeggiator : la barre de commandes et la grille de 16 pas. */
     @Test
