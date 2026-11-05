@@ -124,9 +124,11 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
         val shape = RoundedCornerShape(24.su())
         Box(Modifier.fillMaxSize().clip(shape).border(1.su(), Color(0x22FFFFFF), shape)) {
             when (s.instrument) { AeInstrument.ORGAN -> AeOrganUi(c, a); AeInstrument.SYNTH -> AeSynthUi(c, a); AeInstrument.LEADS -> AeLeadsUi(c, a); AeInstrument.SAX -> AeSaxUi(c, a); AeInstrument.PIANO, AeInstrument.KEYBOARDS -> AePianoUi(c, manager, strip) { list = true } }
+            // No "ÆTHER <instrument>" caption here. The header pill carries the loaded preset
+            // name, which is what identifies the window; the decorative brand line above it
+            // only competed with the pill. Sax keeps its factory name (its type is a real
+            // distinction between the four chips).
             when (s.instrument) {
-                AeInstrument.SYNTH -> AeT("ÆTHER SYNTH", 13, Color.White, Modifier.at(58, 15, 200, 18), AeFonts.display, spacing = 0.18f)
-                AeInstrument.LEADS -> AeT("ÆTHER LEADS", 13, Color(0xFF6FE9FF), Modifier.at(58, 15, 200, 18), AeFonts.display, spacing = 0.18f)
                 AeInstrument.SAX -> {
                     val ty = (c.v(0) * 3).roundToInt().coerceIn(0, 3)
                     AeT(if (ty == 1) "ÆTHER SAX · BULLDOG" else "ÆTHER SAX", 13, AeC.gold, Modifier.at(58, 15, 200, 18), AeFonts.plate, FontWeight.ExtraBold, 0.2f)
