@@ -157,3 +157,14 @@
 - Env : JDK a reinstaller apres wipe (openjdk-21-jdk-headless) ; SDK =
   `/workspace/android-sdk` ; `restore_env.sh` CASSE. Livraison : `tools/apk_page.py`
   -> `/workspace/dl/pub`, servir port 12000.
+
+## Session 2026-11-05 — demo « Isn't She Lovely » (couplet)
+- Demos : https://work-1-hhyxzxmoalbivmju.prod-runtime.all-hands.dev/demos/
+  (`tools/serve.py 12000` sert `/workspace/dl/pub`).
+- Morceau : mi majeur, 12/8, couplet `C#m7 | F#9 | B9sus4 | E` ; melodie
+  PENTATONIQUE de mi ; riff `B-C#-E-F#-G#`. Outils : `demo_isnt_she_lovely.cpp`,
+  `encode_isl.py` (MP3 64 kbps), `isl_page.py`. 152 Ko/modele -> 1,8 Mo pour 12.
+- Piege : un generateur de demo doit rendre jusqu'au PROCHAIN evenement, pas par
+  blocs fixes, sinon les attaques derivent et le rythme se decale.
+- Verifier une ligne par controle spectral (FFT 16384, fenetre 150 ms) avant de
+  publier : la hauteur mesuree doit coller a la partition.
