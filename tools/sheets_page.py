@@ -54,9 +54,20 @@ STATES = [
 
 # Rendus Compose réels (Roborazzi), pas la maquette : ce que le code fait vraiment.
 REAL = [
-    ("sheets_home_real.png", "La bibliothèque, rendue par Compose", "Capture Android réelle : quatre cartes par ligne, titre en Plus Jakarta Sans, tonalité sur plaque noire, volume en XML (liseret clair en haut, sombre en bas)."),
-    ("sheets_floating_real.png", "Le flottant, rendu par Compose", "Capture Android réelle : X en haut à droite, verrou en bas à gauche, poignée de redimensionnement au centre, pastille de section en bas à droite."),
-    ("sheets_floating_sections_real.png", "La liste de sections, rendue par Compose", "Capture Android réelle : la liste s'ouvre DANS la carte, par-dessus le chart, avec un voile a la teinte de l'encre."),
+    ("sheets_home_real.png", "La bibliothèque, rendue par Compose",
+     "Quatre cartes par ligne, titre en Plus Jakarta Sans, tonalité sur plaque noire, volume en XML. Les Sets ouvrent la grille, les feuilles suivent."),
+    ("sheets_sets_real.png", "Les Sets, rendus par Compose",
+     "Un Set est un dossier de feuilles : nom choisi, couleur propre, nombre de feuilles, et l'aperçu des titres qu'il contient. Même gabarit que les feuilles, quatre par ligne."),
+    ("sheets_inside_a_set_real.png", "Dans un Set, rendu par Compose",
+     "Ouvrir un Set ne montre que ses feuilles, dans l'ordre de jeu. Les cartes de Sets disparaissent : on est dans le dossier."),
+    ("sheets_floating_real.png", "Le flottant, rendu par Compose",
+     "X en haut à droite, verrou en bas à gauche, pastille fine en bas (hauteur) et à gauche (largeur), pastille de section en bas à droite."),
+    ("sheets_floating_tall_real.png", "La pastille du bas allonge la fenêtre",
+     "On tire la pastille fine du bas : la fenêtre s'allonge et la section suivante s'affiche dès qu'elle entre dans la hauteur."),
+    ("sheets_floating_wide_real.png", "La pastille de gauche élargit, les polices suivent",
+     "On tire la pastille fine de gauche : la fenêtre s'élargit, les accords se replacent et la taille des polices grandit avec la largeur."),
+    ("sheets_floating_sections_real.png", "La liste de sections, rendue par Compose",
+     "La liste s'ouvre DANS la carte, par-dessus le chart, avec un voile à la teinte de l'encre."),
 ]
 
 STYLE = """
@@ -86,7 +97,14 @@ figcaption span{color:var(--dim)}
 """
 
 
+def clean_stale_pngs() -> None:
+    """Retire du dossier publie les PNG bruts : la page ne sert que du WebP."""
+    for old in PUB.glob("*.png"):
+        old.unlink()
+
+
 def main() -> None:
+    clean_stale_pngs()
     parts = [
         "<!doctype html><html lang=fr><meta charset=utf-8>",
         "<meta name=viewport content='width=device-width,initial-scale=1'>",
@@ -114,7 +132,7 @@ def main() -> None:
     parts.append("<div class=grid>")
     before = after = 0
     for f, title, desc in REAL:
-        src = SRC / (f[:-len("_real.png")] + ".png")
+        src = SRC / f.replace("_real.png", ".png")
         enc = encode(src)
         if enc is None:
             continue

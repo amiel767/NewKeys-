@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 sealed interface LibraryFilter {
     object All : LibraryFilter
     object Favorites : LibraryFilter
+    object Sets : LibraryFilter
     data class OfSetlist(val id: String) : LibraryFilter
 }
 
@@ -31,12 +32,26 @@ data class LibraryUiState(
         return when (val f = filter) {
             LibraryFilter.All -> list.sortedByDescending { it.updatedAt }
             LibraryFilter.Favorites -> list.filter { it.favorite }.sortedByDescending { it.updatedAt }
+            // Dans un Set on ne montre que ses feuilles, dans l'ordre de jeu.
             is LibraryFilter.OfSetlist -> {
                 val order = library.setlists.firstOrNull { it.id == f.id }?.sheetIds.orEmpty()
                 order.mapNotNull { id -> list.firstOrNull { it.id == id } }
             }
+            LibraryFilter.Sets -> emptyList()
         }
     }
+
+    /** Sets affiches en tete de bibliotheque : tous, ou ceux qui portent la recherche. */
+    fun visibleSetlists(): List<Setlist> {
+        val q = query.trim()
+        val all = library.setlists.sortedByDescending { it.updatedAt }
+        if (q.isEmpty()) return all
+        return all.filter { it.name.contains(q, ignoreCase = true) }
+    }
+
+    /** Une feuille est-elle rangee dans au moins un Set ? */
+    fun setlistsContaining(sheetId: String): List<Setlist> =
+        library.setlists.filter { sheetId in it.sheetIds }
 
     fun floatingSheet(): Sheet? = sheets.firstOrNull { it.id == floatingId }
 }
@@ -49,6 +64,9 @@ interface HomeActions {
     fun duplicate(id: String)
     fun delete(id: String)
     fun createSetlist(name: String)
+    fun renameSetlist(id: String, name: String)
+    fun deleteSetlist(id: String)
+    fun setSetlistColor(id: String, argb: Long?)
     fun addToSetlist(sheetId: String, setlistId: String)
     fun removeFromSetlist(sheetId: String, setlistId: String)
     fun moveInSetlist(setlistId: String, sheetId: String, delta: Int)
@@ -125,20 +143,48 @@ class SheetsLibraryViewModel(private val repo: SheetsRepository) : ViewModel(), 
     override fun createSetlist(name: String) {
         val n = name.trim().ifEmpty { return }
         val lib = _state.value.library
-        saveLibrary(lib.copy(setlists = lib.setlists + Setlist(name = n)))
+        val now = System.currentTimeMillis()
+        // Une couleur propre au Set, prise dans la meme palette que les feuilles :
+        // deux Sets cote a cote ne se ressemblent pas.
+        val used = lib.setlists.mapNotNull { it.colorArgb }.toSet()
+        val color = PalettePresets.Presets.map { it }.firstOrNull { it !in used }
+            ?: PalettePresets.Presets.random()
+        saveLibrary(lib.copy(setlists = lib.setlists + Setlist(name = n, colorArgb = color, createdAt = now, updatedAt = now)))
     }
+
+    override fun renameSetlist(id: String, name: String) {
+        val n = name.trim().ifEmpty { return }
+        mapSetlist(id) { it.copy(name = n, updatedAt = System.currentTimeMillis()) }
+    }
+
+    override fun deleteSetlist(id: String) {
+        val lib = _state.value.library
+        // Le Set disparait, ses feuilles restent : un dossier n'est pas un conteneur.
+        val next = lib.setlists.filter { it.id != id }
+        val filter = if ((_state.value.filter as? LibraryFilter.OfSetlist)?.id == id) LibraryFilter.All else _state.value.filter
+        _state.value = _state.value.copy(library = lib.copy(setlists = next), filter = filter)
+        viewModelScope.launch { repo.saveLibrary(lib.copy(setlists = next)) }
+    }
+
+    override fun setSetlistColor(id: String, argb: Long?) =
+        mapSetlist(id) { it.copy(colorArgb = argb, updatedAt = System.currentTimeMillis()) }
 
     private fun mapSetlist(id: String, f: (Setlist) -> Setlist) {
         val lib = _state.value.library
         saveLibrary(lib.copy(setlists = lib.setlists.map { if (it.id == id) f(it) else it }))
     }
 
-    override fun addToSetlist(sheetId: String, setlistId: String) = mapSetlist(setlistId) { if (sheetId in it.sheetIds) it else it.copy(sheetIds = it.sheetIds + sheetId) }
-    override fun removeFromSetlist(sheetId: String, setlistId: String) = mapSetlist(setlistId) { it.copy(sheetIds = it.sheetIds - sheetId) }
+    override fun addToSetlist(sheetId: String, setlistId: String) = mapSetlist(setlistId) {
+        if (sheetId in it.sheetIds) it else it.copy(sheetIds = it.sheetIds + sheetId, updatedAt = System.currentTimeMillis())
+    }
+    override fun removeFromSetlist(sheetId: String, setlistId: String) = mapSetlist(setlistId) {
+        it.copy(sheetIds = it.sheetIds - sheetId, updatedAt = System.currentTimeMillis())
+    }
 
     override fun moveInSetlist(setlistId: String, sheetId: String, delta: Int) = mapSetlist(setlistId) { sl ->
         val i = sl.sheetIds.indexOf(sheetId); val j = i + delta
-        if (i < 0 || j !in sl.sheetIds.indices) sl else sl.copy(sheetIds = sl.sheetIds.toMutableList().apply { add(j, removeAt(i)) })
+        if (i < 0 || j !in sl.sheetIds.indices) sl
+        else sl.copy(sheetIds = sl.sheetIds.toMutableList().apply { add(j, removeAt(i)) }, updatedAt = System.currentTimeMillis())
     }
 
     override fun setNotation(n: Notation) = update { it.copy(notation = n) }

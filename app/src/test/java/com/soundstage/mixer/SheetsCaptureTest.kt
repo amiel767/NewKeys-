@@ -10,7 +10,10 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import com.aetherkeys.sheets.model.Bar
 import com.aetherkeys.sheets.model.Chord
 import com.aetherkeys.sheets.model.Ext
@@ -86,7 +89,11 @@ class SheetsCaptureTest {
         repo.saveLibrary(
             LibraryData(
                 settings = SheetsSettings(notation = com.aetherkeys.sheets.model.Notation.Nashville),
-                setlists = listOf(Setlist(name = "Live set", sheetIds = sheets.map { it.id })),
+                // updatedAt distinct : l'ordre d'affichage des Sets est deterministe.
+                setlists = listOf(
+                    Setlist(name = "Live set", sheetIds = sheets.map { it.id }, colorArgb = 0xFF3F7BE8L, updatedAt = 2_000L),
+                    Setlist(name = "Dimanche matin", sheetIds = sheets.take(2).map { it.id }, colorArgb = 0xFF26A58AL, updatedAt = 1_000L),
+                ),
             )
         )
         sheets
@@ -188,5 +195,127 @@ class SheetsCaptureTest {
         composeTestRule.onNodeWithText("Chorus").assertExists()
         composeTestRule.onNodeWithText("Bridge").assertExists()
         composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/sheets_floating_sections.png")
+    }
+
+    /**
+     * Les Sets en tete de bibliotheque, quatre par ligne comme les feuilles : un Set
+     * est un dossier de feuilles, on lui donne un nom et une couleur, et il se range
+     * dans la meme grille que le reste.
+     */
+    @Test
+    fun sheets_sets() {
+        val dir = File.createTempFile("sheets-sets", "").let { it.delete(); it.mkdirs(); it }
+        seed(dir)
+        composeTestRule.setContent {
+            SheetsRoot(
+                repo = SheetsRepository(dir),
+                bottomInset = androidx.compose.ui.unit.Dp(0f),
+                onBackToMixer = {},
+                onFloatOverMixer = {},
+            )
+        }
+        composeTestRule.waitUntil(timeoutMillis = 10_000) {
+            composeTestRule.onAllNodesWithText("Live set").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeTestRule.mainClock.autoAdvance = false
+        composeTestRule.mainClock.advanceTimeBy(1_500)
+        // Les libelles de section sont rendus en majuscules (OverlineLabel).
+        composeTestRule.onNodeWithText("SETS").assertExists()
+        composeTestRule.onNodeWithText("SHEETS").assertExists()
+        // Deux cartes de Set, une par Set de la graine.
+        composeTestRule.onAllNodesWithTag("set-card").assertCountEquals(2)
+        composeTestRule.onAllNodesWithText("Live set").assertCountEquals(2)
+        composeTestRule.onAllNodesWithText("Dimanche matin").assertCountEquals(2)
+        composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/sheets_sets.png")
+    }
+
+    /** Une feuille rangee dans un Set, vue depuis l'interieur du Set : ordre de jeu. */
+    @Test
+    fun sheets_inside_a_set() {
+        val dir = File.createTempFile("sheets-inset", "").let { it.delete(); it.mkdirs(); it }
+        seed(dir)
+        composeTestRule.setContent {
+            SheetsRoot(
+                repo = SheetsRepository(dir),
+                bottomInset = androidx.compose.ui.unit.Dp(0f),
+                onBackToMixer = {},
+                onFloatOverMixer = {},
+            )
+        }
+        composeTestRule.waitUntil(timeoutMillis = 10_000) {
+            composeTestRule.onAllNodesWithText("Live set").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeTestRule.mainClock.autoAdvance = false
+        composeTestRule.mainClock.advanceTimeBy(1_500)
+        // Ouvrir le Set depuis sa carte (la premiere de la grille : « Live set »).
+        composeTestRule.onAllNodesWithTag("set-card")[0].performClick()
+        composeTestRule.mainClock.advanceTimeBy(600)
+        // Dans un Set on ne montre plus les cartes de Sets : seulement les feuilles.
+        composeTestRule.onNodeWithText("SHEETS").assertDoesNotExist()
+        composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/sheets_inside_a_set.png")
+    }
+
+    private fun floatingSheet(sections: Int) = Sheet(
+        title = "Midnight Drive", keyPc = 9, bpm = 124, colorArgb = 0xFF7A5CFFL,
+        sections = listOf(
+            Section(kind = SectionKind.Verse, name = "Verse", bars = List(4) { Bar(chords = listOf(chord(it % 12))) }),
+            Section(kind = SectionKind.Chorus, name = "Chorus", bars = List(4) { Bar(chords = listOf(chord((it + 5) % 12))) }),
+            Section(kind = SectionKind.Bridge, name = "Bridge", bars = List(4) { Bar(chords = listOf(chord((it + 7) % 12))) }),
+            Section(kind = SectionKind.Outro, name = "Outro", bars = List(2) { Bar(chords = listOf(chord((it + 2) % 12))) }),
+        ).take(sections),
+    )
+
+    private fun renderFloating(sections: Int) {
+        val sheet = floatingSheet(sections)
+        composeTestRule.setContent {
+            androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(Color(0xFF10141CL))) {
+                com.aetherkeys.sheets.ui.floating.FloatingSheetHost(
+                    sheet = sheet,
+                    settings = SheetsSettings(),
+                    originRect = null,
+                    bottomInset = androidx.compose.ui.unit.Dp(0f),
+                    onOpenEditor = {},
+                    onClose = {},
+                )
+            }
+        }
+        composeTestRule.mainClock.autoAdvance = false
+        composeTestRule.mainClock.advanceTimeBy(2_000)
+    }
+
+    /**
+     * Pastille fine du bas : en allongeant la fenetre, les sections suivantes
+     * s'affichent tant qu'elles entrent dans la hauteur.
+     */
+    @Test
+    fun sheets_floating_tall() {
+        renderFloating(sections = 4)
+        // Avant : une seule section, celle choisie par defaut.
+        composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/sheets_floating_before.png")
+        composeTestRule.onNodeWithTag("resize-grip").performTouchInput {
+            down(center)
+            moveBy(androidx.compose.ui.geometry.Offset(0f, 400f))
+            up()
+        }
+        composeTestRule.mainClock.advanceTimeBy(800)
+        composeTestRule.onNodeWithText("Chorus").assertExists()
+        composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/sheets_floating_tall.png")
+    }
+
+    /**
+     * Pastille fine de gauche : en elargissant la fenetre, les polices des accords
+     * grandissent avec la largeur.
+     */
+    @Test
+    fun sheets_floating_wide() {
+        renderFloating(sections = 2)
+        composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/sheets_floating_narrow.png")
+        composeTestRule.onNodeWithTag("resize-grip-left").performTouchInput {
+            down(center)
+            moveBy(androidx.compose.ui.geometry.Offset(260f, 0f))
+            up()
+        }
+        composeTestRule.mainClock.advanceTimeBy(800)
+        composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/sheets_floating_wide.png")
     }
 }

@@ -104,6 +104,8 @@ object SheetsLayout {
     const val RibbonWeight = 0.40f
     const val PageWeight = 0.60f
     val FloatingWidth = 372.dp
+    val FloatingMinWidth = 260.dp
+    val FloatingMaxWidth = 620.dp
     val SectionTagWidth = 54.dp
     const val ChordMinSizeSp = 18f
     const val ChordMaxSizeSp = 56f

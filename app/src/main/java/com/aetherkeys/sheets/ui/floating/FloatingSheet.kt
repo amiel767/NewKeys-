@@ -71,6 +71,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
+import com.aetherkeys.sheets.model.Section
 import com.aetherkeys.sheets.model.Sheet
 import com.aetherkeys.sheets.model.SheetsSettings
 import com.aetherkeys.sheets.ui.chart.ChartLayout
@@ -118,8 +119,12 @@ fun FloatingSheetHost(
     // Sections affichées, par identifiant : vide = la première section.
     var shownIds by remember(sheet.id) { mutableStateOf(listOf(drawable.firstOrNull()?.id ?: "")) }
     var pickerOpen by remember { mutableStateOf(false) }
-    // Hauteur redimensionnable a la pince / poignee. La largeur ne bouge pas.
+    // Hauteur (pastille du bas) et largeur (pastille de gauche), reglables au doigt.
     var cardHeightPx by remember { mutableFloatStateOf(0f) }
+    var cardWidthPx by remember { mutableFloatStateOf(0f) }
+    // Mode « remplir » : la pastille du bas allonge la fenetre et la section suivante
+    // s'affiche tant qu'elle entre. Des qu'on choisit a la main, on obeit au choix.
+    var fitSections by remember(sheet.id) { mutableStateOf(false) }
     val progress = remember { Animatable(0f) }
 
     BoxWithConstraints(modifier.fillMaxSize().onGloballyPositioned { rootPos = it.positionInRoot() }) {
@@ -127,7 +132,13 @@ fun FloatingSheetHost(
         val containerH = with(density) { maxHeight.toPx() }
         val margin = with(density) { 16.dp.toPx() }
         val pad = with(density) { 22.dp.toPx() }
-        val cardW = minOf(with(density) { SheetsLayout.FloatingWidth.toPx() }, containerW - 2 * margin)
+        val baseW = with(density) { SheetsLayout.FloatingWidth.toPx() }
+        val minCardW = with(density) { SheetsLayout.FloatingMinWidth.toPx() }
+        val maxCardW = minOf(with(density) { SheetsLayout.FloatingMaxWidth.toPx() }, containerW - 2 * margin).coerceAtLeast(minCardW)
+        if (cardWidthPx == 0f) cardWidthPx = baseW.coerceIn(minCardW, maxCardW)
+        val cardW = cardWidthPx.coerceIn(minCardW, maxCardW)
+        // Les polices suivent la largeur : elargir la fenetre agrandit les accords.
+        val fontScale = (cardW / baseW).coerceIn(0.7f, 2f)
         val minX = margin
         val maxX = (containerW - cardW - margin).coerceAtLeast(minX)
         val minY = margin
@@ -140,24 +151,70 @@ fun FloatingSheetHost(
         val x = remember(containerW, cardW) { Animatable(maxX) }
         val y = remember(containerH) { Animatable(minY) }
 
-        val shown = drawable.filter { it.id in shownIds }.ifEmpty { listOfNotNull(drawable.firstOrNull()) }
+        // Un sheet « vu » a cette largeur : la taille des accords suit l'echelle.
+        fun scaled(sec: Section): Sheet {
+            val baseSize = sec.chordSizeSp ?: sheet.chordSizeSp
+            return sheet.copy(
+                chordSizeSp = (sheet.chordSizeSp * fontScale).coerceAtMost(SheetsLayout.ChordMaxSizeSp),
+                sections = listOf(sec.copy(chordSizeSp = (baseSize * fontScale).coerceAtMost(SheetsLayout.ChordMaxSizeSp))),
+            )
+        }
 
-        val plans = remember(sheet, settings, shown, cardW, maxCardH) {
+        val measure100: (String, String) -> Float = { text, fontId ->
+            textMeasurer.measure(text, TextStyle(fontFamily = SheetsFonts.family(fontId), fontSize = 100.sp), maxLines = 1, softWrap = false).size.width.toFloat()
+        }
+
+        // Hauteur naturelle de chaque section, sans pagination : c'est elle qui decide
+        // combien de sections entrent dans la fenetre.
+        val naturalHeights = remember(drawable, settings, cardW, fontScale) {
+            val tagH = with(density) { 26.dp.toPx() }
+            val gapH = with(density) { 16.dp.toPx() }
+            drawable.map { sec ->
+                val ps = ChartLayout.plan(
+                    sheet = scaled(sec), settings = settings,
+                    availWidthPx = cardW - 2 * pad,
+                    availHeightPx = Float.MAX_VALUE,
+                    pxPerSp = with(density) { 1.sp.toPx() },
+                    barPaddingPx = with(density) { 16.dp.toPx() },
+                    minSp = SheetsLayout.ChordMinSizeSp,
+                    measure100 = measure100,
+                )
+                val lineH = (ps.firstOrNull()?.sizeSp ?: 0f) * with(density) { 1.sp.toPx() } * 1.35f
+                ps.sumOf { it.lines.size } * lineH + tagH + gapH
+            }
+        }
+
+        val contentH = cardHeightPx - 2 * pad
+        val autoCount = remember(naturalHeights, contentH) {
+            var acc = 0f; var n = 0
+            for (h in naturalHeights) {
+                if (n == 0 || acc + h <= contentH) { acc += h; n++ } else break
+            }
+            n
+        }
+
+        val shown = if (fitSections) {
+            drawable.take(autoCount.coerceIn(1, drawable.size.coerceAtLeast(1)))
+        } else {
+            drawable.filter { it.id in shownIds }.ifEmpty { listOfNotNull(drawable.firstOrNull()) }
+        }
+
+        val plans = remember(sheet, settings, shown, cardW, maxCardH, fontScale) {
             shown.flatMap { sec ->
                 val idx = sheet.sections.indexOf(sec)
                 ChartLayout.plan(
-                    sheet = sheet.copy(sections = listOf(sec)), settings = settings,
+                    sheet = scaled(sec), settings = settings,
                     availWidthPx = cardW - 2 * pad,
                     availHeightPx = (maxCardH - 2 * pad - with(density) { 60.dp.toPx() }).coerceAtLeast(120f),
                     pxPerSp = with(density) { 1.sp.toPx() },
                     barPaddingPx = with(density) { 16.dp.toPx() },
                     minSp = SheetsLayout.ChordMinSizeSp,
-                    measure100 = { text, fontId ->
-                        textMeasurer.measure(text, TextStyle(fontFamily = SheetsFonts.family(fontId), fontSize = 100.sp), maxLines = 1, softWrap = false).size.width.toFloat()
-                    },
+                    measure100 = measure100,
                 ).map { it.copy(sectionIndex = idx) }
             }
         }
+
+        LaunchedEffect(cardW, minX, maxX) { x.snapTo(x.value.coerceIn(minX, maxX)) }
 
         LaunchedEffect(cardH > 0) {
             if (cardH > 0) progress.animateTo(1f, if (reduceMotion) tween(1) else spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessLow))
@@ -258,9 +315,10 @@ fun FloatingSheetHost(
                 }
             }
 
-            // Poignee de redimensionnement verticale, centree en bas.
+            // Pastille fine du bas : tirer vers le bas allonge la fenetre, et la section
+            // suivante s'affiche tant qu'elle entre dans la hauteur.
             Box(
-                Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp).size(width = 64.dp, height = 22.dp)
+                Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp).size(width = 76.dp, height = 26.dp)
                     .testTag("resize-grip")
                     .pointerInput(locked, minCardH, maxCardH) {
                         if (locked) return@pointerInput
@@ -268,12 +326,31 @@ fun FloatingSheetHost(
                             onDragStart = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
                             onDrag = { change, drag ->
                                 change.consume()
+                                fitSections = true
                                 cardHeightPx = (cardHeightPx + drag.y).coerceIn(minCardH, maxCardH)
                             },
                         )
                     },
                 contentAlignment = Alignment.Center,
-            ) { Box(Modifier.width(34.dp).height(4.dp).clip(RoundedCornerShape(3.dp)).background(ink.copy(alpha = 0.45f))) }
+            ) { Box(Modifier.width(46.dp).height(5.dp).clip(RoundedCornerShape(3.dp)).background(ink.copy(alpha = 0.5f))) }
+
+            // Pastille fine de gauche : tirer vers la droite elargit la fenetre, et les
+            // polices des accords grandissent avec la largeur.
+            Box(
+                Modifier.align(Alignment.CenterStart).padding(start = 4.dp).size(width = 26.dp, height = 92.dp)
+                    .testTag("resize-grip-left")
+                    .pointerInput(locked, minCardW, maxCardW, minX, maxX) {
+                        if (locked) return@pointerInput
+                        detectDragGestures(
+                            onDragStart = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
+                            onDrag = { change, drag ->
+                                change.consume()
+                                cardWidthPx = (cardWidthPx + drag.x).coerceIn(minCardW, maxCardW)
+                            },
+                        )
+                    },
+                contentAlignment = Alignment.Center,
+            ) { Box(Modifier.width(5.dp).height(56.dp).clip(RoundedCornerShape(3.dp)).background(ink.copy(alpha = 0.5f))) }
 
             // Pastille de section : ouvre la liste interne. Un simple tap sur le chart l'ouvre aussi.
             Box(
@@ -297,6 +374,7 @@ fun FloatingSheetHost(
                     shownIds = shownIds,
                     ink = ink,
                     onToggle = { id ->
+                        fitSections = false
                         shownIds = if (id in shownIds) {
                             (shownIds - id).ifEmpty { listOf(id) }
                         } else shownIds + id
