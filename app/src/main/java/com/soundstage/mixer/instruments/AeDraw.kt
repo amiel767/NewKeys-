@@ -39,7 +39,7 @@ class AeAnim {
         t += dt; lv += (s.level - lv) * 0.4f
         val held = s.held.isNotEmpty()
         fcm += ((if (held) 1f else 0f) - fcm) * 0.18f
-        if (s.instrument == AeInstrument.PIANO) {
+        if (AeSections.isKeyboardLike(s.instrument)) {
             val dtc = if (dt > 0f && dt < 0.1f) dt else 0.016f
             s.held.keys.forEach { pianoE[((it - 36) % pianoE.size + pianoE.size) % pianoE.size] = 1f }
             val rel = 2.2f - s.values[3] * 1.6f

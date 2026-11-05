@@ -56,7 +56,9 @@ object AeUserStore {
                     val va = o.optJSONArray("v") ?: continue
                     val v = FloatArray(inst.paramCount)
                     for (j in 0 until minOf(va.length(), v.size)) v[j] = va.optDouble(j, 0.0).toFloat()
-                    list.add(AePreset(name, USER_CATEGORY, v))
+                    // Un enregistrement d'avant les cases A/B n'a pas de champ "s" :
+                    // il retombe en A, ce qui est le rangement par defaut.
+                    list.add(AePreset(name, USER_CATEGORY, v, o.optString("s", AePreset.SLOT_A)))
                 }
             } catch (t: Throwable) {
                 Log.e(TAG, "parse(${inst.name}) failed: ${t.message}")
@@ -67,9 +69,9 @@ object AeUserStore {
     }
 
     /** Appends a preset and persists. Returns its index inside the user list. */
-    fun append(inst: AeInstrument, name: String, values: FloatArray): Int {
+    fun append(inst: AeInstrument, name: String, values: FloatArray, slot: String = AePreset.SLOT_A): Int {
         val list = load(inst)
-        list.add(AePreset(name, USER_CATEGORY, values.copyOf()))
+        list.add(AePreset(name, USER_CATEGORY, values.copyOf(), slot))
         save(inst)
         return list.size - 1
     }
@@ -79,6 +81,21 @@ object AeUserStore {
         if (index in list.indices) { list.removeAt(index); save(inst) }
     }
 
+    /**
+     * Range un preset deja enregistre dans la memoire A ou B.
+     *
+     * La liste est remplacee element par element plutot que modifiee en place : une
+     * SnapshotStateList ne se recompose que si son contenu est reassigne, et la case
+     * cochee doit suivre le doigt immediatement.
+     */
+    fun setSlot(inst: AeInstrument, index: Int, slot: String) {
+        val list = load(inst)
+        val p = list.getOrNull(index) ?: return
+        if (p.slot == slot) return
+        list[index] = AePreset(p.name, p.category, p.values, slot)
+        save(inst)
+    }
+
     private fun save(inst: AeInstrument) {
         val list = load(inst)
         try {
@@ -86,6 +103,7 @@ object AeUserStore {
             list.forEach { p ->
                 val o = JSONObject()
                 o.put("n", p.name)
+                o.put("s", p.slot)
                 val va = JSONArray()
                 p.values.forEach { va.put(it.toDouble()) }
                 o.put("v", va)

@@ -108,6 +108,14 @@ class AePianoModel(
 private fun col(h: Long) = Color(0xFF000000 or h)
 
 object AePianoModels {
+    /**
+     * Index, dans [all], du PREMIER modele electrique.  C'est la frontiere des deux
+     * sections : 0..7 = pianos acoustiques (carte « Piano »), 8..11 = claviers
+     * electriques (carte « Keyboards »).  Le moteur lit ce meme seuil : le parametre
+     * MODEL vaut `idx / 8f`, donc il bascule en electrique des l'index 8.
+     */
+    const val ELECTRIC_BASE = 8
+
     val all = listOf(
         AePianoModel("felt", "Felt", "Soft felt hammers · warm & round", false, col(0xE9A8B8), listOf(col(0xF7C6D3), col(0xFBE0E6), col(0xF2A9BD)), AePType.PETAL, floatArrayOf(0.15f, 0.05f, 0.50f, 0.30f, 0.42f, 0.32f, 0.50f, 0.6400f, 0.30f, 0.50f, 0.40f, 0.30f, 0.35f, 0.10f, 0.45f, 0.62f, 0.30f, 0.28f), 0),
         AePianoModel("studio", "Studio", "Concert grand · balanced & clear", false, col(0x4F9FE6), listOf(col(0xFFFFFF), col(0xCFE6FF), col(0x9CCAF5)), AePType.SPARK, floatArrayOf(0.55f, 0.45f, 0.50f, 0.65f, 0.55f, 0.40f, 0.60f, 0.7019f, 0.45f, 0.55f, 0.30f, 0.45f, 0.45f, 0.25f, 0.55f, 0.50f, 0.40f, 0.56f), 1),
@@ -126,10 +134,51 @@ object AePianoModels {
         AePianoModel("dx", "DX Bell", "FM bell electric · glassy", false, col(0x9AB6FF), listOf(col(0xC8D8FF), col(0x8FA8F0), col(0xEAF0FF)), AePType.STAR, floatArrayOf(0.85f, 0.75f, 0.20f, 0.85f, 0.60f, 0.30f, 0.70f, 0.9295f, 0.40f, 0.55f, 0.25f, 0.75f, 0.30f, 0.60f, 0.65f, 0.40f, 0.60f, 0.72f), 10),
         AePianoModel("epiano", "E.Piano", "Classic electric piano · round", true, col(0xE8B45A), listOf(col(0xFFD48A), col(0xD89A50), col(0xFFF0D0)), AePType.SPARK, floatArrayOf(0.45f, 0.60f, 0.35f, 0.60f, 0.75f, 0.45f, 0.75f, 0.9656f, 0.48f, 0.50f, 0.35f, 0.65f, 0.35f, 0.50f, 0.55f, 0.44f, 0.38f, 0.54f), 11),
     )
+
+    /** Les pianos acoustiques : ce que la carte « Piano » propose. */
+    val acoustic: List<AePianoModel> get() = all.subList(0, ELECTRIC_BASE)
+
+    /** Les claviers electriques : ce que la carte « Keyboards » propose. */
+    val electric: List<AePianoModel> get() = all.subList(ELECTRIC_BASE, all.size)
+}
+
+/**
+ * La section d'un instrument a modeles : quels modeles il propose, et comment un
+ * index de preset de la section se ramene a l'index GLOBAL de [AePianoModels.all].
+ *
+ * Le moteur et les banques ne connaissent que l'index global. La section, elle,
+ * numerote ses presets a partir de zero — la carte Keyboards liste donc Ballad en
+ * position 1 alors que le moteur la connait en position 9.
+ */
+object AeSections {
+    fun models(inst: AeInstrument): List<AePianoModel> =
+        if (inst == AeInstrument.KEYBOARDS) AePianoModels.electric else AePianoModels.acoustic
+
+    /**
+     * Index global du modele joue par un preset de la section.
+     *
+     * Un preset d'usine se lit par sa position (les quatre claviers occupent 8..11).
+     * Un preset de l'utilisateur porte son modele dans son propre parametre MODEL
+     * (15) : on le relit au lieu de le deduire de sa position, sinon un clavier
+     * enregistre depuis DX Bell se rejouerait comme le premier de la liste.
+     */
+    fun modelIndex(inst: AeInstrument, preset: Int, values: List<Float>): Int {
+        if (preset in 0 until models(inst).size) {
+            return if (inst == AeInstrument.KEYBOARDS) AePianoModels.ELECTRIC_BASE + preset else preset
+        }
+        return (values.getOrElse(15) { 0f } * 8f).roundToInt().coerceIn(0, AePianoModels.all.size - 1)
+    }
+
+    /** Vrai pour les instruments qui se partagent le moteur de piano. */
+    fun isKeyboardLike(inst: AeInstrument): Boolean =
+        inst == AeInstrument.PIANO || inst == AeInstrument.KEYBOARDS
 }
 
 /** Choisir un modèle = charger un preset (les potards glissent, MODEL bascule d'un coup). */
-val AePianoPresets: List<AePreset> = AePianoModels.all.map { AePreset(it.name, "Piano", it.values) }
+val AePianoPresets: List<AePreset> = AePianoModels.acoustic.map { AePreset(it.name, "Piano", it.values) }
+
+/** Les quatre claviers electriques, meme moteur, autre section. */
+val AeKeyboardPresets: List<AePreset> = AePianoModels.electric.map { AePreset(it.name, "Electric", it.values) }
 
 /**
  * Une scene de piano : l'image, et la luminance de sa bande haute.
@@ -292,7 +341,11 @@ fun BoxScope.AePianoUi(c: AeCtl, manager: AeManager, strip: Int, onOpenBrowser: 
     val s = manager.sessions[strip] ?: return
     val ctx = LocalContext.current
     val dens = LocalDensity.current.density
-    val model = AePianoModels.all[s.preset.coerceIn(0, AePianoModels.all.size - 1)]
+    // La section decide de la liste : huit acoustiques pour le piano, quatre claviers
+    // pour Keyboards. Le moteur, lui, ne connait que l'index global (voir AeSections).
+    val section = AeSections.models(s.instrument)
+    val gidx = AeSections.modelIndex(s.instrument, s.preset, s.values)
+    val model = AePianoModels.all[gidx.coerceIn(0, AePianoModels.all.size - 1)]
     val plate = remember(model.id) { AePianoAssets.plate(ctx, model.id) }
     val th = rememberAeThemeFromLuma(plate?.topLuma, model.acc)
     val baseNow by rememberUpdatedState(48)
@@ -335,7 +388,7 @@ fun BoxScope.AePianoUi(c: AeCtl, manager: AeManager, strip: Int, onOpenBrowser: 
         AeStage(Modifier.fillMaxSize()) {
             // Titre majestueux en Cinzel, la police des titres du depot : grand et
             // grave, centre sur la zone libre entre les deux panneaux de verre.
-            AeT("ÆTHER PIANO", 42, th.ink, Modifier.at(216, 8, 478, 48), AeFonts.plate, FontWeight.ExtraBold, 0.16f, TextAlign.Center)
+            AeT(if (s.instrument == AeInstrument.KEYBOARDS) "ÆTHER KEYBOARDS" else "ÆTHER PIANO", 42, th.ink, Modifier.at(216, 8, 478, 48), AeFonts.plate, FontWeight.ExtraBold, 0.16f, TextAlign.Center)
             // Le nom du modele est le seul libelle qui dit ce qui est charge, et la case
             // « Presets » de l'en-tete a ete retiree : c'est donc lui qui ouvre le navigateur.
             Box(Modifier.at(216, 58, 478, 34).clickable(remember { MutableInteractionSource() }, null, onClick = onOpenBrowser)) {
@@ -359,13 +412,13 @@ fun BoxScope.AePianoUi(c: AeCtl, manager: AeManager, strip: Int, onOpenBrowser: 
                 // la hauteur manquait aux reglages. Les deux panneaux descendent donc
                 // jusqu'a y=430.
                 AeGlassPanel(th, plate?.bitmap?.asAndroidBitmap(), 16, 88, 200, 342)
-                AeModelList(th, AePianoModels.all.map { it.name }, s.preset, 28, 100, 310) { manager.loadPreset(s.strip, it) }
+                AeModelList(th, section.map { it.name }, s.preset, 28, 100, 310) { manager.loadPreset(s.strip, it) }
                 AeGlassPanel(th, plate?.bitmap?.asAndroidBitmap(), 694, 54, 280, 376)
                 // Trois familles, une par ligne. Un modele electrique n'affiche pas
                 // les memes : pas de couvercle, pas de micro de piano, mais un tine et
                 // une position de pickup (demande utilisateur : « les reglages EP
                 // doivent etre autre chose »).
-                val groups = if (AeBanks.isElectricModel(s.preset)) EP_GROUPS else PIANO_GROUPS
+                val groups = if (AeBanks.isElectricModel(gidx)) EP_GROUPS else PIANO_GROUPS
                 groups.forEachIndexed { gi, g ->
                     // Trois familles au lieu de quatre : la mecanique est sortie du lot.
                     // L'espacement passe a 84 (et non 112) pour degager, sous la

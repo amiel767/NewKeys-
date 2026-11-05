@@ -17,7 +17,18 @@ enum class AeInstrument(val fxId: Int, val title: String, val paramCount: Int) {
     // marteau.  AMP et PUNCH sont retires du moteur : voir l'en-tete de fx_piano.h.
     // 17/18/19 = EQ 3 BANDES (medium, frequence du medium, aigus) : l'ancien EQ
     // tenait sur un seul potard qui liait les trois bandes.
-    PIANO(17, "Æther Piano", 20);
+    PIANO(17, "Æther Piano", 20),
+    /**
+     * Meme moteur que le piano (`fx_piano.h`, id 17), mais sa propre SECTION : les
+     * quatre modeles electriques y vivent seuls, sous leur propre carte.  Le piano
+     * acoustique et l'electrique ne partagent plus une meme liste — un Steinway et
+     * un tine ne se cherchent pas au meme endroit.
+     *
+     * L'index de preset est LOCAL a la section (0..3) ; c'est [AeBanks.modelIndex]
+     * qui le ramene a l'index global de `AePianoModels.all` (8..11), seul connu du
+     * moteur et des banques.
+     */
+    KEYBOARDS(17, "Æther Keyboards", 20);
     /** Parameters that switch instantly on a preset change (the others glide). */
     val discrete: IntArray get() = when (this) {
         ORGAN -> intArrayOf(18, 19, 20, 21, 22, 23, 24, 25)
@@ -27,11 +38,18 @@ enum class AeInstrument(val fxId: Int, val title: String, val paramCount: Int) {
         // 15 = MODEL : le timbre doit basculer d'un coup, pas glisser.
         // 18 = frequence du medium : un filtre qu'on regle en glissant siffle, donc
         // on le bascule d'un coup comme le modele.
-        PIANO -> intArrayOf(8, 15, 18)
+        PIANO, KEYBOARDS -> intArrayOf(8, 15, 18)
     }
 }
 
-class AePreset(val name: String, val category: String, val values: FloatArray)
+/**
+ * Un preset. [slot] est la memoire A ou B ou l'utilisateur l'a range : le preset
+ * s'en souvient (il est ecrit dans son propre enregistrement), donc recharger une
+ * liste rend le rangement tel qu'il a ete fait. Les presets d'usine sont tous en A.
+ */
+class AePreset(val name: String, val category: String, val values: FloatArray, val slot: String = SLOT_A) {
+    companion object { const val SLOT_A = "A"; const val SLOT_B = "B" }
+}
 
 /** Knobs, preset index and page of an unloaded instrument, kept so reloading it is not a reset. */
 class SavedAeState(val values: FloatArray, val preset: Int, val page: Int)
@@ -44,7 +62,7 @@ object AeFmt {
     fun format(inst: AeInstrument, i: Int, v: Float): String = when (inst) {
         AeInstrument.LEADS -> leads(i, v)
         AeInstrument.SAX -> sax(i, v)
-        AeInstrument.PIANO -> piano(i, v)
+        AeInstrument.PIANO, AeInstrument.KEYBOARDS -> piano(i, v)
         else -> classic(inst, i, v)
     }
     private fun leads(i: Int, v: Float): String = when (i) {
@@ -172,7 +190,16 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
     // Le sustain (64) est traite avant cette table, dans `onMidiCc`.
     val ccPiano = mutableMapOf(74 to 1, 1 to 1, 7 to 7, 91 to 5, 5 to 4, 72 to 8)
 
-    fun factoryPresets(i: AeInstrument): List<AePreset> = when (i) { AeInstrument.ORGAN -> AePresets.organ; AeInstrument.SYNTH -> AePresets.synth; AeInstrument.LEADS -> AePresets.leads; AeInstrument.SAX -> AePresets.sax; AeInstrument.PIANO -> AePresets.piano }
+    fun factoryPresets(i: AeInstrument): List<AePreset> = when (i) { AeInstrument.ORGAN -> AePresets.organ; AeInstrument.SYNTH -> AePresets.synth; AeInstrument.LEADS -> AePresets.leads; AeInstrument.SAX -> AePresets.sax; AeInstrument.PIANO -> AePresets.piano; AeInstrument.KEYBOARDS -> AePresets.keyboards }
+
+    /**
+     * Index GLOBAL du modele a charger pour une session : c'est lui, et lui seul, que
+     * connaissent le moteur et les banques.  Pour le piano et les claviers, l'index
+     * de preset est celui de la SECTION (0..7, 0..3) ; les autres instruments n'ont
+     * qu'une banque et passent leur index tel quel.
+     */
+    private fun modelOf(s: AeSession): Int =
+        if (AeSections.isKeyboardLike(s.instrument)) AeBanks.modelIndex(s.instrument, s.preset, s.values) else s.preset
 
     /**
      * Factory presets followed by the user's own, so a saved preset indexes like any other.
@@ -232,11 +259,25 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
     }
 
     /** Saves the session's CURRENT knob values as a named user preset and selects it. */
-    fun saveUserPreset(strip: Int, name: String) {
+    fun saveUserPreset(strip: Int, name: String, slot: String = AePreset.SLOT_A) {
         val s = sessions[strip] ?: return
         val clean = name.trim().ifBlank { "My ${s.instrument.title.removePrefix("Æther ")}" }
-        val userIndex = AeUserStore.append(s.instrument, clean, s.values.toFloatArray())
+        val userIndex = AeUserStore.append(s.instrument, clean, s.values.toFloatArray(), slot)
         s.preset = factoryPresets(s.instrument).size + userIndex
+    }
+
+    /** Range un preset utilisateur dans la memoire A ou B. Le choix est persiste avec lui. */
+    fun setSlot(strip: Int, index: Int, slot: String) {
+        val s = sessions[strip] ?: return
+        val ui = index - factoryPresets(s.instrument).size
+        if (ui < 0) return
+        AeUserStore.setSlot(s.instrument, ui, slot)
+    }
+
+    /** Memoire A ou B d'un preset, pour l'affichage. */
+    fun slotOf(strip: Int, index: Int): String {
+        val s = sessions[strip] ?: return AePreset.SLOT_A
+        return presets(s.instrument).getOrNull(index)?.slot ?: AePreset.SLOT_A
     }
 
     /** Deletes a user preset. Factory presets are never touched. */
@@ -263,11 +304,11 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
         // not a replacement: the synthesis stays underneath and covers the sample seams.
         // The bank is optional, so a failure here must not abort the load.
         val type = (init.firstOrNull() ?: 0f).let { (it * 3f).roundToInt() }
-        s.bankLoaded = host.loadBank(strip, inst, type, s.preset)
+        s.bankLoaded = host.loadBank(strip, inst, type, modelOf(s))
         // bankType identifie la BANQUE chargee : le type de sax, ou l'identite de la
         // banque du piano (0 queue, 1 droit, 8..11 electriques).  Confondre deux
         // banques ferait croire au piano qu'il a deja la bonne.
-        if (s.bankLoaded) s.bankType = if (inst == AeInstrument.PIANO) AeBanks.pianoBankId(s.preset) else type
+        if (s.bankLoaded) s.bankType = if (AeSections.isKeyboardLike(inst)) AeBanks.pianoBankId(modelOf(s)) else type
         return s
     }
 
@@ -303,10 +344,10 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
         // droit), et chaque modele electrique la sienne.  La comparaison porte donc
         // sur `want` (l'identite de la banque) : sans ca, passer de Studio a Cottage
         // ne rechargeait rien et les deux jouaient le meme echantillon.
-        if (s.instrument == AeInstrument.PIANO) {
-            val want = AeBanks.pianoBankId(s.preset)
+        if (AeSections.isKeyboardLike(s.instrument)) {
+            val want = AeBanks.pianoBankId(modelOf(s))
             if (want != s.bankType) {
-                s.bankLoaded = host.loadBank(strip, s.instrument, 0, s.preset)
+                s.bankLoaded = host.loadBank(strip, s.instrument, 0, modelOf(s))
                 s.bankType = if (s.bankLoaded) want else -1
             }
         }
@@ -414,7 +455,7 @@ class AeManager(private val host: AeHost, private val scope: CoroutineScope) {
         val s = sessions[channel] ?: return false
         if (cc == 64) { setSustain(channel, value >= 64); return true }
         if (cc == 1 && s.instrument == AeInstrument.ORGAN) { setParam(channel, 25, if (value > 63) 1f else 0.5f); return true }
-        val map = when (s.instrument) { AeInstrument.ORGAN -> ccOrgan; AeInstrument.SYNTH -> ccSynth; AeInstrument.LEADS -> ccLeads; AeInstrument.SAX -> ccSax; AeInstrument.PIANO -> ccPiano }
+        val map = when (s.instrument) { AeInstrument.ORGAN -> ccOrgan; AeInstrument.SYNTH -> ccSynth; AeInstrument.LEADS -> ccLeads; AeInstrument.SAX -> ccSax; AeInstrument.PIANO, AeInstrument.KEYBOARDS -> ccPiano }
         val idx = map[cc] ?: return false
         setParam(channel, idx, value / 127f); return true
     }

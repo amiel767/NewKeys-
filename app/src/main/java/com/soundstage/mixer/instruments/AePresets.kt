@@ -120,6 +120,9 @@ object AePresets {
 
     val piano: List<AePreset> = AePianoPresets
 
+    /** Les claviers electriques : meme moteur que le piano, autre section. */
+    val keyboards: List<AePreset> = AeKeyboardPresets
+
     val sax: List<AePreset> = listOf(
         AePreset("Jazz Ballad Alto", "Jazz", floatArrayOf(0.33f, 0f, 0.5f, 0.5f, 0.38f, 0f, 0f, 0.1f, 0.45f, 0.3f, 0.32f, 0.3f, 0.28f, 0.5f, 0.6f, 0.5f, 0.4f, 0.5f, 0.62f, 0.5f, 0.75f, 0.35f, 1f)),
         AePreset("Cool Jazz Alto", "Jazz", floatArrayOf(0.33f, 0.67f, 0.5f, 0.5f, 0.3f, 0f, 0f, 0.1f, 0.45f, 0.3f, 0.25f, 0.25f, 0.22f, 0.5f, 0.5f, 0.5f, 0.45f, 0.6f, 0.6f, 0.42f, 0.75f, 0.35f, 1f)),
