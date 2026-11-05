@@ -274,6 +274,7 @@ fun FloatingSheetHost(
                 .shadow(24.dp, shape)
                 .clip(shape)
                 .background(Brush.linearGradient(listOf(base, lerpColor(base, Color.Black, 0.12f))))
+                .testTag("floating-card")
                 .onSizeChanged { cardH = it.height }
                 // Un seul geste par intention, dans cet ordre de priorite :
                 //   appui long  -> edition rapide (clavier systeme, sur place)

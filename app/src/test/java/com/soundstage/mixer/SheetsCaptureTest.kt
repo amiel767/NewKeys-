@@ -13,6 +13,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performTouchInput
 import com.aetherkeys.sheets.model.Bar
 import com.aetherkeys.sheets.model.Chord
@@ -161,6 +162,47 @@ class SheetsCaptureTest {
         composeTestRule.onNodeWithTag("resize-grip").assertExists()
         composeTestRule.onNodeWithTag("section-strip").assertExists()
         composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/sheets_floating.png")
+    }
+
+    /**
+     * Edition rapide : un appui long sur la scene ouvre la ligne d'accords de la section
+     * affichee, relue au clavier systeme. C'est le meme langage que le chart, donc rien a
+     * expliquer ; l'editeur complet reste au double tap.
+     */
+    @Test
+    fun sheets_floating_quick_edit() {
+        val sheet = Sheet(
+            title = "Midnight Drive", keyPc = 9, bpm = 124, colorArgb = 0xFF7A5CFFL,
+            sections = listOf(
+                Section(
+                    kind = SectionKind.Verse, name = "Verse",
+                    bars = listOf(
+                        Bar(chords = listOf(chord(9))), Bar(chords = listOf(chord(2))),
+                        Bar(chords = listOf(chord(4))),
+                    ),
+                ),
+            ),
+        )
+        composeTestRule.setContent {
+            androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(Color(0xFF10141CL))) {
+                com.aetherkeys.sheets.ui.floating.FloatingSheetHost(
+                    sheet = sheet,
+                    settings = SheetsSettings(),
+                    originRect = null,
+                    bottomInset = androidx.compose.ui.unit.Dp(0f),
+                    onOpenEditor = {},
+                    onClose = {},
+                )
+            }
+        }
+        composeTestRule.mainClock.autoAdvance = false
+        composeTestRule.mainClock.advanceTimeBy(2_000)
+        composeTestRule.onNodeWithTag("floating-card").performTouchInput { longClick() }
+        composeTestRule.mainClock.advanceTimeBy(1_000)
+        // La ligne relue est celle de la section affichee, en degres (notation Nashville).
+        composeTestRule.onNodeWithText("1 | 4 | 5", substring = true).assertExists()
+        composeTestRule.onNodeWithText("Valider").assertExists()
+        composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/sheets_floating_quick_edit.png")
     }
 
     /** La liste des sections s'ouvre DANS la carte (voile interne), pas dans un popover. */

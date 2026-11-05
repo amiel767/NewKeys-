@@ -54,14 +54,16 @@ STATES = [
 
 # Rendus Compose réels (Roborazzi), pas la maquette : ce que le code fait vraiment.
 REAL = [
-    ("sheets_home_real.png", "La bibliothèque, rendue par Compose",
-     "Quatre cartes par ligne, titre en Plus Jakarta Sans, tonalité sur plaque noire, volume en XML. Les Sets ouvrent la grille, les feuilles suivent."),
+    ("sheets_home_real.png", "L'accueil, rendu par Compose",
+     "Les Sets sont en haut, toujours visibles : une rangée de cartes de 96 dp, la même taille que la page Setlists. En dessous, la liste des feuilles, une par ligne de 44 dp, avec l'aperçu des accords et les informations."),
     ("sheets_sets_real.png", "Les Sets, rendus par Compose",
-     "Un Set est un dossier de feuilles : nom choisi, couleur propre, nombre de feuilles, et l'aperçu des titres qu'il contient. Même gabarit que les feuilles, quatre par ligne."),
+     "Un Set est une carte large : nom choisi, couleur propre, aperçu des premières feuilles et de leurs accords, nombre de feuilles. On entre dans un Set par sa carte ; le Set ouvert se marque « OUVERT »."),
     ("sheets_inside_a_set_real.png", "Dans un Set, rendu par Compose",
-     "Ouvrir un Set ne montre que ses feuilles, dans l'ordre de jeu. Les cartes de Sets disparaissent : on est dans le dossier."),
+     "Ouvrir un Set ne montre que ses feuilles, dans l'ordre de jeu. La rangée de Sets reste visible pour passer d'un Set à l'autre ; « ← Tout » en sort."),
+    ("sheets_floating_quick_edit_real.png", "L'édition rapide, rendue par Compose",
+     "Un appui long sur la scène ouvre la ligne d'accords de la section affichée, au clavier système. C'est le langage du chart (« 1 4 | 5 6m | % »), donc rien de nouveau à apprendre ; l'éditeur complet reste au double tap."),
     ("sheets_floating_real.png", "Le flottant, rendu par Compose",
-     "X en haut à droite, verrou en bas à gauche, pastille fine en bas (hauteur) et à gauche (largeur), pastille de section en bas à droite."),
+     "X fondu en haut à droite, verrou en bas à gauche, pastilles de redimensionnement quasi invisibles collées aux bords (bas = hauteur, gauche = largeur), pastille de section en bas à droite."),
     ("sheets_floating_tall_real.png", "La pastille du bas allonge la fenêtre",
      "On tire la pastille fine du bas : la fenêtre s'allonge et la section suivante s'affiche dès qu'elle entre dans la hauteur."),
     ("sheets_floating_wide_real.png", "La pastille de gauche élargit, les polices suivent",
