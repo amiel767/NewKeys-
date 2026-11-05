@@ -5638,6 +5638,14 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         if (applied > 0 && rate > 0) {
             _uiState.update { it.copy(actualAudioBufferSize = applied, actualAudioSampleRate = rate) }
         }
+        // Le callback publie sa duree de rendu dans un atomique au lieu de journaliser
+        // lui-meme : LOGI() peut bloquer sur le socket du demon, ce qui est un blocage
+        // non borne sur le thread audio. On la journalise ici, sur un thread ordinaire.
+        val renderUs = NativeAudioBridge.lastRenderMicros()
+        if (renderUs > 0) {
+            val budgetUs = if (rate > 0) applied * 1_000_000L / rate else 0L
+            Log.d("AudioEngine", "Render bloc: ${renderUs}us (budget: ${budgetUs}us, buffer: $applied)")
+        }
     }
 
     fun setPolyphony(poly: Int) {

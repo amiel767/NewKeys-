@@ -221,22 +221,30 @@ private val PIANO_GROUPS = listOf(
 private fun eqhz(v: Float) = "${(300 * Math.pow(9.0, v.toDouble())).toInt()}Hz"
 
 /**
- * Mecanique : deux bruits, puis l'egaliseur a QUATRE potards (graves, medium,
- * frequence du medium, aigus).
+ * Mecanique : deux bruits, sous la rangee du milieu, avec la frequence du medium.
  *
- * L'utilisateur a demande de les « enlever du lot » et de les deplacer au centre, un
- * peu plus grands, sans titre.  L'EQ etait un seul potard qui inclinait les trois
- * bandes ensemble ; il est remplace par trois bandes independantes (graves, medium,
- * aigus) plus la frequence du medium, ce qui permet de creuser le « bark » d'un
- * Rhodes ou la chaleur d'un feutre sans eteindre le reste.  Six acoustiques jouent
- * la meme banque : c'est l'EQ qui les separe vraiment.
+ * L'EQ etait un seul potard qui inclinait les trois bandes ensemble ; il est remplace
+ * par trois bandes independantes (graves, medium, aigus) plus la frequence du medium,
+ * ce qui permet de creuser le « bark » d'un Rhodes ou la chaleur d'un feutre sans
+ * eteindre le reste.  Six acoustiques jouent la meme banque : c'est l'EQ qui les
+ * separe vraiment.  Les trois gains vivent dans la colonne de droite, la frequence
+ * reste ici (voir EQ_MID / EQ_SIDE).
  */
 private val MECHANICS = listOf(
     K("Key", 12, ::pc),
     K("Hammer", 16, ::pc),
+)
+
+/**
+ * Egaliseur : la frequence du medium reste au milieu (sous le nom du modele),
+ * les trois gains rejoignent la case de droite.  Ils sont volontairement plus
+ * petits que les autres potards : c'est un reglage de finition, pas un axe de
+ * jeu, et le panneau de droite n'a pas la place de les loger a taille pleine.
+ */
+private val EQ_MID = K("EQ Hz", 18, ::eqhz)
+private val EQ_SIDE = listOf(
     K("EQ Low", 14, ::eqdb),
     K("EQ Mid", 17, ::eqdb),
-    K("EQ Hz", 18, ::eqhz),
     K("EQ High", 19, ::eqdb),
 )
 
@@ -353,28 +361,37 @@ fun BoxScope.AePianoUi(c: AeCtl, manager: AeManager, strip: Int, onOpenBrowser: 
                 AeGlassPanel(th, plate?.bitmap?.asAndroidBitmap(), 16, 88, 200, 342)
                 AeModelList(th, AePianoModels.all.map { it.name }, s.preset, 28, 100, 310) { manager.loadPreset(s.strip, it) }
                 AeGlassPanel(th, plate?.bitmap?.asAndroidBitmap(), 694, 54, 280, 376)
-                // Quatre familles, une par ligne. Un modele electrique n'affiche pas
+                // Trois familles, une par ligne. Un modele electrique n'affiche pas
                 // les memes : pas de couvercle, pas de micro de piano, mais un tine et
                 // une position de pickup (demande utilisateur : « les reglages EP
                 // doivent etre autre chose »).
                 val groups = if (AeBanks.isElectricModel(s.preset)) EP_GROUPS else PIANO_GROUPS
                 groups.forEachIndexed { gi, g ->
                     // Trois familles au lieu de quatre : la mecanique est sortie du lot.
-                    // L'espacement passe donc de 88 a 112 pour remplir le panneau.
-                    val gy = 88 + gi * 112
+                    // L'espacement passe a 84 (et non 112) pour degager, sous la
+                    // derniere famille, la rangee de l'egaliseur : 62 + 2*84 + 16 + 72
+                    // = 318, et le panneau s'arrete a 430.
+                    val gy = 62 + gi * 84
                     AeT(g.title, 9, th.acc, Modifier.at(704, gy, 240, 12), AeFonts.plate, FontWeight.ExtraBold, 0.22f)
                     g.ks.forEachIndexed { j, k ->
                         AeLightKnob(th, c.v(k.idx), k.label, k.fmt(c.v(k.idx)), 704 + j * 62, gy + 16) { c.set(k.idx, it) }
                     }
                 }
-                // Mecanique + EQ : six potards plus grands, en BAS au milieu de la
-                // fenetre, sans titre.  « En bas milieu, pas au beau milieu » : sous
-                // le nom du modele, pas au centre de l'ecran.  Six potards de 64
-                // unites espaces de 74 tiennent en 434 (64 + 5*74), centres sur
-                // x=500 (320 + 3*74 - 42).  y=348 : la colonne mesure 97 unites,
-                // donc elle finit a 445, sous les panneaux de verre (430).
-                MECHANICS.forEachIndexed { j, k ->
-                    AeLightKnob(th, c.v(k.idx), k.label, k.fmt(c.v(k.idx)), 320 + j * 74, 348, 1.35f) { c.set(k.idx, it) }
+                // Les trois gains de l'egaliseur, sous les familles, dans la meme
+                // colonne de verre.  Plus petits que les potards de famille (0,95
+                // contre 1,0) : l'EQ se regle a l'oreille une fois pour toutes, il
+                // n'a pas besoin de la place d'un axe de jeu.  y=330 : la derniere
+                // famille finit a 318, le panneau a 430.
+                EQ_SIDE.forEachIndexed { j, k ->
+                    AeLightKnob(th, c.v(k.idx), k.label, k.fmt(c.v(k.idx)), 716 + j * 84, 330, 0.95f) { c.set(k.idx, it) }
+                }
+                // Mecanique + frequence de l'EQ, en BAS au milieu, sans titre.
+                // Trois potards de 1,05 espaces de 74 tiennent en 215, centres sur
+                // la meme abscisse que l'ancienne rangee de six (537).  Taille
+                // reduite : ce sont des reglages de finition, pas des axes de jeu.
+                val midRow = MECHANICS + EQ_MID
+                midRow.forEachIndexed { j, k ->
+                    AeLightKnob(th, c.v(k.idx), k.label, k.fmt(c.v(k.idx)), 429 + j * 74, 348, 1.05f) { c.set(k.idx, it) }
                 }
             }
         }

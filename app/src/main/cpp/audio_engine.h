@@ -812,6 +812,10 @@ public:
     int actualBufferSize() const {
         return mActualBufferSize.load(std::memory_order_relaxed);
     }
+
+    /** Duree du dernier bloc audio, en microsecondes.  Lue par le thread de controle
+     *  pour journaliser hors du thread audio (voir onAudioReady). */
+    long lastRenderMicros() const { return mLastRenderUs.load(std::memory_order_relaxed); }
     int actualSampleRate() const { return mSampleRate; }
 
     // DSP Controls
@@ -938,12 +942,20 @@ private:
      * Panic on the legacy master bus. The Æther path resets its own chains, but the
      * always-on master chain (delay, reverb, widener, EQ, compressor) keeps its
      * internal state between blocks: after a panic those tails kept ringing, so the
-     * panic button appeared not to cut the sound. Reset them here, on the control
-     * thread, before the stream's next callback. mRenderMutex serialises this
-     * against the audio thread, which is the only other caller of these objects.
+     * panic button appeared not to cut the sound.
+     *
+     * The clear() walk is deferred to the audio thread. It touches a dozen DSP
+     * objects and can outlast a block, and doing it here held mRenderMutex across
+     * that walk: the audio callback, which takes the same lock, stalled for the
+     * duration and the stall was heard as a drop-out right after a panic. Raising a
+     * flag costs nothing and the audio thread consumes it at the top of its next
+     * block, exactly like FxChain::requestPanic().
      */
-    void resetMasterBus() {
-        std::lock_guard<std::mutex> lock(mRenderMutex);
+    void resetMasterBus() { mMasterResetRequested.store(true, std::memory_order_release); }
+
+ private:
+    /** Audio-thread half of resetMasterBus(). Never call from the control thread. */
+    void applyMasterReset() {
         mMasterDelay.clear();
         mMasterChorus.clear();
         mMasterReverb.clear();
@@ -961,8 +973,6 @@ private:
         mMasterCompressor.clear();
         mMasterPunch.clear();
     }
-
- private:
     bool openAndStartStream();
     // Audio-thread: renders the whole Æther FX path. Returns false when disabled
     // so the caller falls back to the legacy mix unchanged.
@@ -1098,6 +1108,13 @@ private:
     // celle-ci, pas la demande, sinon elle annonce 1,5 ms pour un vrai 5,4 ms.
     std::atomic<int> mActualBufferSize{512};
     std::atomic<bool> mBypassMasterFX{false};
+    // Demande de purge du bus maitre, posee par resetMasterBus() (thread de
+    // controle) et consommee par le callback.  Voir applyMasterReset().
+    std::atomic<bool> mMasterResetRequested{false};
+    // Duree du dernier bloc audio, publiee par le callback (qui ne doit pas ecrire
+    // dans le log : LOGI peut bloquer sur le socket du demon).  Un thread de
+    // controle la lit et journalise.  Voir le commentaire dans onAudioReady().
+    std::atomic<long> mLastRenderUs{0};
     std::vector<float> mFloatRenderBuffer;
 
     std::atomic<float> mFluidSynthGain{1.2f};

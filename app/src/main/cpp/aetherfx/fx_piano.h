@@ -1082,7 +1082,14 @@ class PianoVoice {
 
       // gain_ = normalisation de crete du pack (mesuree au chargement) : le pack
       // brut sortait a 1,0 et le produit avec la courbe de velocite ecretait.
-      const float out = amp * vel_ * gain_;
+      // Le niveau par defaut du rendu etait trop bas : mesure sur un accord fort,
+      // les huit pianos acoustiques plafonnaient a 37-47 % de crete et n'atteignaient
+      // jamais le genou du limiteur (0,80) — ~6 dB de reserve perdue a LEVEL 100 %.
+      // Les electriques sortaient deja a 56-77 %, donc la compensation est franche
+      // pour l'acoustique et moderee pour le tine, sinon les seconds mordent le
+      // limiteur.  Aucune valeur de LEVEL n'est touchee : c'est le gain par defaut
+      // du rendu qui remonte, pas un retune des presets.
+      const float out = amp * vel_ * gain_ * (tine_ ? 1.15f : 1.70f);
       outL[i] += mL * out;
       outR[i] += mR * out;
       if (hammerEnv_ > 1e-4f) {

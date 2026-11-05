@@ -629,9 +629,15 @@ object NativeAudioBridge {
     fun actualSampleRate(): Int =
         if (isLibraryLoaded) runCatching { actualSampleRateNative() }.getOrDefault(0) else 0
 
+    /** Duree du dernier bloc audio en microsecondes, ou 0 si indisponible. */
+    fun lastRenderMicros(): Long =
+        if (isLibraryLoaded) runCatching { lastRenderMicrosNative() }.getOrDefault(0L) else 0L
+
     private external fun actualBufferSizeNative(): Int
 
     private external fun actualSampleRateNative(): Int
+
+    private external fun lastRenderMicrosNative(): Long
 
     fun safeSetMasterEq(lowGainDb: Float, midGainDb: Float, highGainDb: Float) {
         if (isLibraryLoaded) {
