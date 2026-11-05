@@ -1112,7 +1112,14 @@ class PianoVoice {
         // Etouffoir : feutre qui retombe sur la corde, uniquement au relachement.
         // Plus bas et plus court que la touche (c'est un contact amorti), et son
         // niveau suit DAMPER NOISE, le reglage dedie.
-        float dn = noiseDamper_.next() * damperEnv_ * damperAmt_ * 0.5f;
+        //
+        // Le bruit est mis a l'echelle du niveau de la note (`out`), pas ajoute a
+        // niveau fixe.  A niveau fixe, il DOMINAIT la corde des que celle-ci avait
+        // decru : mesure au relachement d'une note tenue 1,6 s, +12,9 dB a C4 et
+        // +31,9 dB a C6 (une « explosion » a chaque relachement, d'autant plus
+        // forte que la note etait aigue et deja eteinte).  A l'echelle, l'ecart
+        // tombe sous +1 dB et l'etouffoir reste audible comme un contact.
+        float dn = noiseDamper_.next() * damperEnv_ * damperAmt_ * 0.12f * out;
         dL_ += kA_ * (dn - dL_);
         dR_ += kA_ * (dn * 0.88f - dR_);
         outL[i] += kB_ * dL_;
