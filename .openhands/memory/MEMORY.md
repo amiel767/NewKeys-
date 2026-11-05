@@ -168,3 +168,16 @@
   blocs fixes, sinon les attaques derivent et le rythme se decale.
 - Verifier une ligne par controle spectral (FFT 16384, fenetre 150 ms) avant de
   publier : la hauteur mesuree doit coller a la partition.
+
+## Session 2026-11-05 (suite) — demo plage C0-C7 / velocite / tenue
+- Outils : `demo_range.cpp` (C0..C7 = MIDI 12..96, pp 42 puis ff 118, tenue 2,8 s),
+  `encode_range.py` (MP3 48 kbps), `demos_audio_page.py` (page a 2 sections ;
+  remplace `isl_page.py`). Lien : .../demos/ (24 MP3, 7,4 Mo).
+- **Velocite SAINE sur toute l'etendue** : ecart pp->ff de +9,9 a +23,2 dB
+  (moyenne 17,9 dB) sur 96 mesures (12 modeles x 8 octaves), aucune note muette.
+  Confirme que la courbe monotone `(vel/127)^gamma` + normalisation globale des
+  couches tiennent du grave a l'aigu. La couche de nuance est lue a vel>=~63
+  (gamma=1 -> v=0.5) : en dessous, les 2 couches existent mais aucune variation.
+- **Piege de banc** : apparier pp/ff par index consecutif est faux quand on
+  boucle 2 passes ; il faut `levels[k]` (passe 0) contre `levels[k+kNoteCount]`
+  (passe 1). Sinon on mesure 0 dB et on croit a tort que la velocite est morte.
