@@ -20,7 +20,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -43,25 +42,19 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Le potard de la fenêtre FX — **neumorphisme 3D**.
+ * Le potard de la fenêtre FX — **plat, à la Valhalla**.
  *
- * Le neumorphisme repose sur une seule règle : la même matière que le panneau,
- * dont on sculpte le relief par **deux ombres opposées**. Une lumière vient du
- * haut-gauche, donc l'objet porte une ombre SOMBRE en bas-droite et un reflet
- * CLAIR en haut-gauche. Le socle est donc creusé (ombre interne en haut, reflet
- * interne en bas) et le corps est bombé (exactement l'inverse). C'est ce
- * contraste socle-creusé / corps-bombé qui fait lire « extrudé » et pas
- * « rond posé dessus ».
+ * La référence a été MESURÉE, pas interprétée : dans une capture Valhalla, le
+ * disque du potard vaut 121 de luminance quand le panneau vaut 52, et il est
+ * **uniforme** sur tout son rayon. Il n'y a donc ni dôme, ni dégradé de corps,
+ * ni collerette : ces couches donnaient l'aspect « 3D bricolée » que la
+ * référence n'a pas. Ce qui fait lire le potard, c'est uniquement :
  *
- * Six couches, dans cet ordre :
- *  1. le puits : creux sombre, ombre interne en haut-gauche, reflet interne en bas ;
- *  2. l'anneau d'appui : une arête claire qui accroche la lumière en haut-gauche
- *     et sombre en bas-droite — c'est le contact du corps sur son socle ;
- *  3. le corps : dégradé linéaire diagonal, pas radial, pour que la lumière
- *     « roule » d'un bord à l'autre comme sur une surface convexe ;
- *  4. la collerette : deux anneaux concentriques, l'un sombre, l'un clair ;
- *  5. le dôme central avec son liseré ;
- *  6. l'index (fente creusée, lèvre claire) et la bille d'accent.
+ *  1. le disque : un aplat plus clair que le panneau, sans dégradé ;
+ *  2. le liseré : un filet fin, un peu plus clair, sur le bord du disque ;
+ *  3. la piste : l'arc creusé, très sombre ;
+ *  4. la valeur : un arc d'accent, fin, qui part de 135° ;
+ *  5. l'index : une aiguille du centre vers le bord, avec sa bille.
  *
  * L'ARC VA DE 135° À 405° (270° de course), comme la référence.
  *
@@ -109,158 +102,63 @@ fun FxKnob(
                     val a = Math.toRadians(deg.toDouble())
                     return Offset(c.x + rad * cos(a).toFloat(), c.y + rad * sin(a).toFloat())
                 }
-                // La lumière : tout part d'un seul point, en haut à gauche.
-                val light = Offset(c.x - r * .30f, c.y - r * .34f)
 
-                // ── 1. LE PUITS. C'est la seule couche qui dit « c'est creusé » :
-                //    sombre en haut-gauche (la lumière n'y entre pas), clair en
-                //    bas-droite (elle rebondit sur la paroi opposée).
+                // ── 1. LE DISQUE. Un APLAT, sans le moindre dégradé : c'est la
+                //    mesure de la référence (121 uniforme sur un panneau à 52).
+                //    Le disque est plus clair que le panneau, donc il se détache
+                //    par le contraste, pas par un relief.
+                val discR = r * .80f
+                drawCircle(Color(0xFF2A2F3C), radius = discR, center = c)
+
+                // ── 2. LE LISERÉ : un filet fin, un peu plus clair, sur le bord.
+                //    C'est lui, et l'index, qui donnent toute la lecture.
                 drawCircle(
-                    brush = Brush.linearGradient(
-                        listOf(Color(0xFF161A24), Color(0xFF1D222E)),
-                        start = light, end = Offset(c.x + r * .4f, c.y + r * .4f),
-                    ),
-                    radius = r * .985f, center = c,
+                    color = Color(0x30FFFFFF), radius = discR - r * .012f, center = c,
+                    style = Stroke(width = r * .024f),
                 )
-                drawArc(
-                    color = Color(0x8A000000), startAngle = 190f, sweepAngle = 160f,
-                    useCenter = false,
-                    topLeft = Offset(c.x - r * .94f, c.y - r * .94f),
-                    size = Size(r * 1.88f, r * 1.88f),
-                    style = Stroke(width = r * .16f),
-                )
-                drawArc(
-                    color = Color(0x14FFFFFF), startAngle = 12f, sweepAngle = 156f,
-                    useCenter = false,
-                    topLeft = Offset(c.x - r * .90f, c.y - r * .90f),
-                    size = Size(r * 1.80f, r * 1.80f),
-                    style = Stroke(width = r * .10f),
+                drawCircle(
+                    color = Color(0x5A000000), radius = discR + r * .010f, center = c,
+                    style = Stroke(width = r * .020f),
                 )
 
-                // ── 2. LA PISTE DE VALEUR, dans le puits.
-                val ringR = r * .845f
+                // ── 3. LA PISTE DE VALEUR : l'arc creusé, dans le panneau, juste
+                //    hors du disque. Très sombre, sans liseré clair.
+                val ringR = r * .93f
                 drawArc(
-                    color = Color(0x1FFFFFFF), startAngle = a0, sweepAngle = sweep,
+                    color = Color(0x66000000), startAngle = a0, sweepAngle = sweep,
                     useCenter = false,
                     topLeft = Offset(c.x - ringR, c.y - ringR),
                     size = Size(ringR * 2f, ringR * 2f),
-                    style = Stroke(width = r * .075f, cap = StrokeCap.Round),
+                    style = Stroke(width = r * .055f, cap = StrokeCap.Round),
                 )
+
+                // ── 4. LA VALEUR : l'arc d'accent, FIN. La référence ne pose pas
+                //    de halo : un trait net qui part de 135° et s'arrête à la
+                //    valeur. Une version épaisse et lumineuse faisait « jouet ».
                 if (v > .008f) {
                     drawArc(
-                        color = accent.copy(alpha = .22f), startAngle = a0, sweepAngle = v * sweep,
+                        color = accent, startAngle = a0, sweepAngle = v * sweep,
                         useCenter = false,
                         topLeft = Offset(c.x - ringR, c.y - ringR),
                         size = Size(ringR * 2f, ringR * 2f),
-                        style = Stroke(width = r * .155f, cap = StrokeCap.Round),
-                    )
-                    drawArc(
-                        brush = Brush.linearGradient(
-                            listOf(accent.copy(alpha = .70f), accent),
-                            start = pt(a0, ringR), end = pt(a0 + v * sweep, ringR),
-                        ),
-                        startAngle = a0, sweepAngle = v * sweep,
-                        useCenter = false,
-                        topLeft = Offset(c.x - ringR, c.y - ringR),
-                        size = Size(ringR * 2f, ringR * 2f),
-                        style = Stroke(width = r * .075f, cap = StrokeCap.Round),
+                        style = Stroke(width = r * .055f, cap = StrokeCap.Round),
                     )
                 }
 
-                // ── 3. L'ANNEAU D'APPUI : l'arête de contact du corps sur le socle.
-                //    Deux arcs opposés, pas un cercle : la lumière n'éclaire qu'un
-                //    côté et ne fait que frôler l'autre.
-                val seatR = r * .70f
-                drawArc(
-                    color = Color(0x99FFFFFF), startAngle = 186f, sweepAngle = 168f,
-                    useCenter = false,
-                    topLeft = Offset(c.x - seatR, c.y - seatR),
-                    size = Size(seatR * 2f, seatR * 2f),
-                    style = Stroke(width = r * .035f),
-                )
-                drawArc(
-                    color = Color(0x8A000000), startAngle = 8f, sweepAngle = 164f,
-                    useCenter = false,
-                    topLeft = Offset(c.x - seatR, c.y - seatR),
-                    size = Size(seatR * 2f, seatR * 2f),
-                    style = Stroke(width = r * .035f),
-                )
-
-                // ── 4. LE CORPS. Dégradé LINÉAIRE diagonal, du clair en haut-gauche
-                //    au sombre en bas-droite : c'est ce qui donne la convexité.
-                val bodyR = r * .675f
-                drawCircle(
-                    brush = Brush.linearGradient(
-                        listOf(
-                            Color(0xFF8E96AC), Color(0xFF6B7288),
-                            Color(0xFF474D60), Color(0xFF2A2F3E),
-                        ),
-                        start = light, end = Offset(c.x + r * .5f, c.y + r * .5f),
-                    ),
-                    radius = bodyR, center = c,
-                )
-
-                // ── 5. LA COLLERETTE : deux anneaux concentriques, la gorge sombre
-                //    puis son arête claire. C'est l'usinage, vu de dessus.
-                drawCircle(
-                    color = Color(0x4D000000), radius = r * .575f, center = c,
-                    style = Stroke(width = r * .022f),
-                )
-                drawCircle(
-                    color = Color(0x2EFFFFFF), radius = r * .545f, center = c,
-                    style = Stroke(width = r * .014f),
-                )
-
-                // ── 6. LE DÔME central, bombé dans l'autre sens que le corps.
-                val domeR = r * .485f
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        listOf(
-                            Color(0xFF9BA3B9), Color(0xFF737A90),
-                            Color(0xFF4C5265), Color(0xFF2E3342),
-                        ),
-                        center = Offset(c.x - r * .20f, c.y - r * .24f),
-                        radius = domeR * 1.85f,
-                    ),
-                    radius = domeR, center = c,
-                )
-                drawArc(
-                    color = Color(0x4DFFFFFF), startAngle = 200f, sweepAngle = 118f,
-                    useCenter = false,
-                    topLeft = Offset(c.x - domeR * .82f, c.y - domeR * .82f),
-                    size = Size(domeR * 1.64f, domeR * 1.64f),
-                    style = Stroke(width = r * .045f, cap = StrokeCap.Round),
-                )
-
-                // ── 7. L'INDEX : une fente CREUSÉE (ombre d'abord, puis la lèvre
-                //    claire sur son bord haut), avec la bille d'accent au bout.
+                // ── 5. L'INDEX : une aiguille rectiligne du centre vers le bord,
+                //    blanche, avec la bille au bout. Rien de creusé.
                 val deg = a0 + v * sweep
                 drawLine(
-                    color = Color(0xA6000000), start = pt(deg, r * .16f), end = pt(deg, r * .50f),
-                    strokeWidth = r * .105f, cap = StrokeCap.Round,
+                    color = Color(0xFFE8ECF5), start = pt(deg, r * .16f), end = pt(deg, r * .70f),
+                    strokeWidth = r * .075f, cap = StrokeCap.Round,
                 )
-                drawLine(
-                    color = accent.copy(alpha = .92f),
-                    start = pt(deg, r * .19f), end = pt(deg, r * .47f),
-                    strokeWidth = r * .060f, cap = StrokeCap.Round,
-                )
-                val lip = pt(deg - 7f, r * .19f)
-                drawLine(
-                    color = Color(0x66FFFFFF), start = lip,
-                    end = pt(deg - 7f, r * .45f),
-                    strokeWidth = r * .022f, cap = StrokeCap.Round,
-                )
-                val tip = pt(deg, r * .505f)
-                drawCircle(Color(0x8A000000), radius = r * .105f,
-                    center = Offset(tip.x + r * .012f, tip.y + r * .016f))
-                drawCircle(accent, radius = r * .080f, center = tip)
-                drawCircle(Color(0xCCFFFFFF), radius = r * .030f,
-                    center = Offset(tip.x - r * .022f, tip.y - r * .024f))
+                val tip = pt(deg, r * .70f)
+                drawCircle(Color(0xFFE8ECF5), radius = r * .085f, center = tip)
 
                 if (hot) {
                     drawCircle(
-                        accent.copy(alpha = .40f), radius = r * .99f,
-                        center = c, style = Stroke(r * .04f),
+                        accent.copy(alpha = .55f), radius = discR + r * .02f, center = c,
+                        style = Stroke(r * .035f),
                     )
                 }
             }

@@ -74,7 +74,7 @@ class FxDetachedCaptureTest {
             }
         }
         composeTestRule.mainClock.advanceTimeBy(1400)
-        composeTestRule.onRoot().captureRoboImage("app/src/test/screenshots/$name.png")
+        composeTestRule.onRoot().captureRoboImage("src/test/screenshots/$name.png")
     }
 
     /** Le rack : Space et l'Arpeggiator, deux emplacements libres. */
@@ -138,9 +138,11 @@ class FxDetachedCaptureTest {
             }
         }
         composeTestRule.mainClock.advanceTimeBy(1400)
-        composeTestRule.onNodeWithText("SpaceHall").performClick()
+        // Le bouton de preset est la PASTILLE compacte : son texte est le nom du
+        // preset seul. Le titre de la page (« Space Hall ») est un autre nœud.
+        composeTestRule.onNodeWithText("Hall").performClick()
         composeTestRule.mainClock.advanceTimeBy(220)
-        composeTestRule.onRoot().captureRoboImage("app/src/test/screenshots/fx_space_dropdown.png")
+        composeTestRule.onRoot().captureRoboImage("src/test/screenshots/fx_space_dropdown.png")
     }
 
     /**

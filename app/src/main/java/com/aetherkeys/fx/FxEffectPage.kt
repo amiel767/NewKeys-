@@ -121,20 +121,24 @@ fun FxEffectPage(state: FxWindowState, actions: FxWindowActions, arp: ArpState) 
             // ── LA COLONNE DE DROITE : le sélecteur, puis les contrôles ──────
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 Column(Modifier.fillMaxSize()) {
-                    FxPresetButton(
-                        preset = preset, custom = state.custom, palette = pal,
-                        open = presetOpen, onToggle = { presetOpen = !presetOpen },
-                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        FxPresetButton(
+                            preset = preset, custom = state.custom, palette = pal,
+                            open = presetOpen, onToggle = { presetOpen = !presetOpen },
+                        )
+                    }
                     Spacer(Modifier.height(8.dp))
                     FxControlsGrid(fx, values, mainIndex, actions)
                 }
                 if (presetOpen) {
-                    FxPresetList(
-                        fx = fx, preset = preset,
-                        userNames = state.userPresets[fx.id] ?: emptyList(),
-                        modifier = Modifier.padding(top = 40.dp).zIndex(2f),
-                        onPick = { actions.pickPreset(it); presetOpen = false },
-                    )
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopEnd) {
+                        FxPresetList(
+                            fx = fx, preset = preset,
+                            userNames = state.userPresets[fx.id] ?: emptyList(),
+                            modifier = Modifier.padding(top = 34.dp).width(168.dp).zIndex(2f),
+                            onPick = { actions.pickPreset(it); presetOpen = false },
+                        )
+                    }
                 }
             }
         }
@@ -190,8 +194,12 @@ private fun ColumnScope.FxControlsGrid(
 }
 
 /**
- * LE BOUTON DE PRESET — le titre « Space <Preset> », une pastille de la teinte
- * du preset, et un chevron qui dit si la liste est ouverte.
+ * LE SÉLECTEUR DE PRESET — une pastille COMPACTE : la teinte du preset, son nom,
+ * et un chevron qui dit si la liste est ouverte.
+ *
+ * Elle ne s'étire PAS sur toute la largeur : c'est un petit bouton, posé à
+ * droite de la grille, pas une barre. Le nom du preset vit aussi dans le titre
+ * de la page (« Space Hall »), donc ce bouton n'a pas besoin d'être large.
  *
  * Il ne tient PAS la liste : celle-ci est un frère de la grille, pour pouvoir
  * passer au-dessus. Le bouton ne fait que dire son état.
@@ -206,23 +214,24 @@ private fun FxPresetButton(
 ) {
     val hue = palette?.let { Color.hsv(it.h, it.s / 100f, it.l / 100f) } ?: FxC.acc
     Row(
-        Modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(10.dp))
-            .fxRectWell(10.dp, top = .14f, rim = .10f)
+        Modifier.height(26.dp).clip(RoundedCornerShape(8.dp))
+            .fxRectWell(8.dp, top = .14f, rim = .10f)
             .clickableNoRipple(onToggle)
-            .padding(horizontal = 11.dp),
+            .padding(horizontal = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(7.dp).clip(CircleShape).background(hue))
-        Spacer(Modifier.width(9.dp))
+        Box(Modifier.size(6.dp).clip(CircleShape).background(hue))
+        Spacer(Modifier.width(7.dp))
         Text(
-            "Space${preset ?: ""}", color = FxC.ink, fontSize = 14.sp,
-            fontWeight = FontWeight.ExtraBold, maxLines = 1, modifier = Modifier.weight(1f),
+            preset ?: "Preset", color = FxC.ink, fontSize = 11.sp,
+            fontWeight = FontWeight.ExtraBold, maxLines = 1,
         )
         if (custom) {
-            Text("Custom", color = Color(0xFFF2C97D), fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
-            Spacer(Modifier.width(7.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("•", color = Color(0xFFF2C97D), fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
         }
-        FxIcon(if (open) AeFxIcons.CHEV_UP else AeFxIcons.CHEV_DOWN, 13.dp, FxC.dim)
+        Spacer(Modifier.width(6.dp))
+        FxIcon(if (open) AeFxIcons.CHEV_UP else AeFxIcons.CHEV_DOWN, 11.dp, FxC.dim)
     }
 }
 
@@ -243,7 +252,7 @@ private fun FxPresetList(
 ) {
     val all = fx.presets.keys.toList() + userNames
     Column(
-        modifier.fillMaxWidth()
+        modifier
             .clip(RoundedCornerShape(11.dp))
             .background(Color(0xFF141926))
             .fxRectWell(11.dp, top = .10f, rim = .08f)

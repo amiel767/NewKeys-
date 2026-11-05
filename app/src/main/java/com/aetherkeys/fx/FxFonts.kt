@@ -33,6 +33,19 @@ object FxFonts {
      */
     val title = FontFamily(variable(R.font.cinzel, FontWeight.Bold))
 
+    /**
+     * Police du TITRE DE LA PAGE D'EFFET — Orbitron.
+     *
+     * C'est la police « technique, large, géométrique » qui approche le mieux le
+     * lettrage des plugins de reverb de la référence : des capitales larges aux
+     * contre-formes carrées, l'air « panneau d'instrument ». Cinzel était une
+     * sérif d'enseigne, pas d'interface audio.
+     */
+    val display = FontFamily(
+        Font(R.font.orbitron_medium, FontWeight.Medium),
+        Font(R.font.orbitron_bold, FontWeight.Bold),
+    )
+
     /** Libellés techniques. */
     val mono = FontFamily(variable(R.font.share_tech_mono, FontWeight.Normal))
 }

@@ -65,6 +65,9 @@ fun FxWindow(
     arpState: ArpState? = null,
 ) {
     val inEffect = state.openEffect != null
+    // Le titre d'une page reste le NOM de l'effet, tel quel. Le preset vit dans
+    // sa pastille, à droite : le mêler au titre était une invention de ma part,
+    // la référence ne fait pas ça.
     val title = when {
         state.openEffect != null -> state.openEffect.name
         state.catalogOpen -> "Add effect"
@@ -298,9 +301,10 @@ private fun iconFor(f: FxInfoD): String = when (f.type) {
 /**
  * En-tête : le repère ou le retour, le titre, le compteur, puis les actions.
  *
- * LE TITRE D'UNE PAGE EST EN CINZEL ET POSÉ DE TRAVERS — 1,2° de rotation et
- * 3 unités de descente. Bien aligné il se lit comme un libellé d'interface ;
- * décalé il se lit comme une enseigne. C'est le détail de la maquette.
+ * LE TITRE D'UNE PAGE EST EN ORBITRON — un lettrage technique large, comme le
+ * wordmark des plugins de reverb de la référence. L'ancien Cinzel était une
+ * sérif d'enseigne : juste, mais pas d'interface audio. Le titre reste
+ * légèrement de travers (1,2° et 3 unités), c'est le détail de la maquette.
  */
 @Composable
 fun FxHeader(
@@ -323,8 +327,8 @@ fun FxHeader(
         Spacer(Modifier.width(10.dp))
         if (big) {
             Text(
-                title, color = FxC.ink, fontSize = 27.sp, fontFamily = FxFonts.title,
-                fontWeight = FontWeight.Bold, maxLines = 1,
+                title, color = FxC.ink, fontSize = 25.sp, fontFamily = FxFonts.display,
+                fontWeight = FontWeight.Bold, maxLines = 1, letterSpacing = 1.2.sp,
                 modifier = Modifier.graphicsLayer(rotationZ = -1.2f, translationY = 3f),
             )
         } else {
