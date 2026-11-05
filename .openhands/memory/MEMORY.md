@@ -97,3 +97,19 @@ Detail par session : `.openhands/memory/YYYY-MM-DD.md` (jamais charge auto).
   "Æther Keys", test attend "SoundStage"), GreetingScreenshotTest,
   PianoPackFormatTest (pack 160 regions, test attend 68). Hors perimetre FX.
 
+
+## Session 2026-11-05 — section KEYBOARDS (f7fb0c4)
+- **Keyboards = SECTION, pas un nouvel instrument de bout en bout.** Meme moteur
+  `fx_piano.h` (fxId 17) ; `AeInstrument.KEYBOARDS` est une 2e vue du meme moteur.
+  Index de preset LOCAL a la section (0..3) -> GLOBAL (8..11) via
+  `AeSections.modelIndex` (`AePianoUi.kt`). Le moteur cuit le seuil en `MODEL = idx/8f`
+  donc on TRADUIT, on ne renumerote jamais.
+- **Regle** : tout `== AeInstrument.PIANO` devient `AeSections.isKeyboardLike(...)`.
+  Les `when` non exhaustifs servent de checklist : le compilateur liste les sites.
+- **Tests** : le suite Robolectric COMPLET se bloque sur `GreetingScreenshotTest`
+  (AppNotIdleException, worker qui ne rend jamais la main). Lancer CIBLE :
+  `./gradlew :app:testDebugUnitTest --tests "com.soundstage.mixer.AeManagerTest" --tests "...AePianoCaptureTest" ...` (~40 s).
+- **Echecs preexistants** (ne pas imputer) : `ExampleRobolectricTest` (app_name
+  "SoundStage" vs "Æther Keys"), `PianoPackFormatTest` (attend 68 regions/44100 Hz,
+  pack livre = 160). Perimes.
+- **Memoire A/B presets** : `AePreset.slot`, persiste `"s"`, absent = A.
