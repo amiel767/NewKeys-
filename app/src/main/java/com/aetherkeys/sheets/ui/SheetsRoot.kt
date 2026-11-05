@@ -1,7 +1,6 @@
 package com.aetherkeys.sheets.ui
 
 import android.content.Intent
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,7 +20,6 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aetherkeys.sheets.data.SheetsRepository
 import com.aetherkeys.sheets.export.ChordProExporter
-import com.aetherkeys.sheets.model.ExportFormat
 import com.aetherkeys.sheets.model.Sheet
 import com.aetherkeys.sheets.ui.editor.EditorScreen
 import com.aetherkeys.sheets.ui.home.HomeScreen
@@ -83,17 +81,15 @@ fun SheetsRoot(
                 // Mode scène : feuille flottante (swipe entre sections, verrou).
                 onOpenScene = { edState.sheet?.let { onFloatOverMixer(it) }; closeEditor() },
                 onSetNotation = lib::setNotation,
-                onExport = { f ->
+                onExport = {
                     val sheet = edState.sheet
-                    if (sheet != null && f == ExportFormat.ChordPro) {
+                    if (sheet != null) {
                         val send = Intent(Intent.ACTION_SEND).apply {
                             type = "text/plain"
                             putExtra(Intent.EXTRA_SUBJECT, sheet.title)
                             putExtra(Intent.EXTRA_TEXT, ChordProExporter.format(sheet))
                         }
                         ctx.startActivity(Intent.createChooser(send, null))
-                    } else {
-                        Toast.makeText(ctx, "${f.name} export is not available yet", Toast.LENGTH_SHORT).show()
                     }
                 },
             )

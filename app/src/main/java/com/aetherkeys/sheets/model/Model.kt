@@ -33,7 +33,6 @@ enum class SectionKind { Intro, Verse, PreChorus, Chorus, Bridge, Solo, Outro, T
 enum class Pagination { Unified, PerSection }
 enum class Notation { Nashville, Standard }
 enum class PassingDisplay { Auto, Raw }
-enum class ExportFormat { Pdf, Image, ChordPro }
 
 fun SectionKind.label(): String = when (this) {
     SectionKind.Intro -> "Intro"
@@ -112,7 +111,6 @@ data class SheetsSettings(
     val defaultLyricsFontId: String = FontIds.PlusJakartaSans,
     val lockOnOpen: Boolean = false,
     val swipeReversed: Boolean = false,
-    val exportFormat: ExportFormat = ExportFormat.Pdf,
 )
 
 data class Setlist(val id: String = newId(), val name: String, val sheetIds: List<String> = emptyList())

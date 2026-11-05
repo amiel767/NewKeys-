@@ -142,6 +142,11 @@ object SheetsIcons {
     val Close: ImageVector by lazy {
         icon("SheetsClose") { line("M6.5,6.5 L17.5,17.5 M17.5,6.5 L6.5,17.5") }
     }
+
+    /** Stacked layers: choose which sections the scene card shows. */
+    val Layers: ImageVector by lazy {
+        icon("SheetsLayers") { line("M12,3 L20,7.5 L12,12 L4,7.5 Z M4,12 L12,16.5 L20,12 M4,16.5 L12,21 L20,16.5") }
+    }
 }
 
 private fun icon(name: String, block: ImageVector.Builder.() -> Unit): ImageVector =

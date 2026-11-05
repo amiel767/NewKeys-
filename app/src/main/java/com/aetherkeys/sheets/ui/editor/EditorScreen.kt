@@ -63,7 +63,7 @@ fun EditorScreen(
     onBack: () -> Unit,
     onOpenScene: () -> Unit,
     onSetNotation: (Notation) -> Unit,
-    onExport: (ExportFormat) -> Unit,
+    onExport: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val sheet = state.sheet
@@ -346,7 +346,7 @@ private fun TextTab(st: EditorUiState, sheet: Sheet, a: EditorActions, open: Str
 @Composable
 private fun PageTab(
     st: EditorUiState, sheet: Sheet, settings: SheetsSettings, a: EditorActions,
-    onSetNotation: (Notation) -> Unit, onExport: (ExportFormat) -> Unit, open: String?, setOpen: (String?) -> Unit,
+    onSetNotation: (Notation) -> Unit, onExport: () -> Unit, open: String?, setOpen: (String?) -> Unit,
 ) {
     var scope by rememberSaveable { mutableStateOf(StyleScope.Sheet.name) }
     val sc = StyleScope.valueOf(scope)
@@ -399,7 +399,8 @@ private fun PageTab(
             listOf(4 to 4, 3 to 4, 2 to 4, 6 to 8, 12 to 8).forEach { (b, u) -> ToolChip("$b/$u", { a.setTimeSig(b, u) }, selected = sheet.beatsPerBar == b && sheet.beatUnit == u) }
         }
     }
-    Drawer("Export", open == "export", { tg("export") }, summary = settings.exportFormat.name) {
-        ChipFlow { ExportFormat.values().forEach { f -> ToolChip(f.name, { onExport(f) }) } }
+    Drawer("Export", open == "export", { tg("export") }, summary = "ChordPro") {
+        Text("Sends the sheet as ChordPro text.", style = SheetsType.Caption, color = SheetsColors.TextMuted)
+        ChipFlow { ToolChip("Share ChordPro", { onExport() }) }
     }
 }

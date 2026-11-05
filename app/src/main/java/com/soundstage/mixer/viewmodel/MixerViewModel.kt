@@ -240,8 +240,6 @@ data class MixerUiState(
      * through `FloatingSheetHost`, so it needs the structured sheet, not a plain-text digest.
      */
     val floatingSheetData: com.aetherkeys.sheets.model.Sheet? = null,
-    val floatingSheetIsLeft: Boolean = false,
-    val floatingSheetScale: Float = 1.0f,
 
     // Snapshots / Sub-Scenes (Section 2)
     val isSnapshotArmMode: Boolean = false,
@@ -2889,18 +2887,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                 currentPage = AppScreenPage.MIXER
             )
         }
-    }
-
-    fun toggleFloatingSheetPosition() {
-        _uiState.update { it.copy(floatingSheetIsLeft = !it.floatingSheetIsLeft) }
-    }
-
-    fun setFloatingSheetPosition(isLeft: Boolean) {
-        _uiState.update { it.copy(floatingSheetIsLeft = isLeft) }
-    }
-
-    fun updateFloatingSheetScale(scale: Float) {
-        _uiState.update { it.copy(floatingSheetScale = scale.coerceIn(0.75f, 1.5f)) }
     }
 
     fun closeFloatingSheet() {

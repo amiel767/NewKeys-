@@ -1,5 +1,9 @@
 package com.soundstage.mixer
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onRoot
@@ -103,5 +107,42 @@ class SheetsCaptureTest {
         composeTestRule.mainClock.autoAdvance = false
         composeTestRule.mainClock.advanceTimeBy(1_500)
         composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/sheets_home.png")
+    }
+
+    /**
+     * La carte flottante posee sur le mixer : sans contour, a la couleur de la feuille,
+     * plusieurs sections a la fois. Rendue seule (le mixer n'apporte rien au cadrage).
+     */
+    @Test
+    fun sheets_floating() {
+        val sheet = Sheet(
+            title = "Midnight Drive", keyPc = 9, bpm = 124, colorArgb = 0xFF7A5CFFL,
+            sections = listOf(
+                Section(
+                    kind = SectionKind.Verse, name = "Verse",
+                    bars = listOf(
+                        Bar(chords = listOf(chord(9))), Bar(chords = listOf(chord(2))),
+                        Bar(chords = listOf(chord(4))), Bar(chords = listOf(chord(7, setOf(Ext.Seven)))),
+                    ),
+                ),
+                Section(kind = SectionKind.Chorus, name = "Chorus", bars = listOf(Bar(chords = listOf(chord(0))), Bar(chords = listOf(chord(5))))),
+                Section(kind = SectionKind.Bridge, name = "Bridge", bars = listOf(Bar(chords = listOf(chord(11))), Bar(chords = listOf(chord(4))))),
+            ),
+        )
+        composeTestRule.setContent {
+            androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(Color(0xFF10141CL))) {
+                com.aetherkeys.sheets.ui.floating.FloatingSheetHost(
+                    sheet = sheet,
+                    settings = SheetsSettings(),
+                    originRect = null,
+                    bottomInset = androidx.compose.ui.unit.Dp(0f),
+                    onOpenEditor = {},
+                    onClose = {},
+                )
+            }
+        }
+        composeTestRule.mainClock.autoAdvance = false
+        composeTestRule.mainClock.advanceTimeBy(2_000)
+        composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/sheets_floating.png")
     }
 }

@@ -123,7 +123,7 @@ internal object SheetJson {
             put("notation", s.notation.name); put("passing", s.passing.name); put("defaultKey", s.defaultKeyPc)
             put("defaultPagination", s.defaultPagination.name); put("defaultChordFont", s.defaultChordFontId)
             put("defaultLyricsFont", s.defaultLyricsFontId); put("lockOnOpen", s.lockOnOpen)
-            put("swipeReversed", s.swipeReversed); put("export", s.exportFormat.name)
+            put("swipeReversed", s.swipeReversed)
         })
         put("setlists", JSONArray().also { a ->
             l.setlists.forEach { sl ->
@@ -144,7 +144,6 @@ internal object SheetJson {
             defaultLyricsFontId = s.optString("defaultLyricsFont", FontIds.PlusJakartaSans),
             lockOnOpen = s.optBoolean("lockOnOpen", false),
             swipeReversed = s.optBoolean("swipeReversed", false),
-            exportFormat = enumOr(s.optString("export"), ExportFormat.Pdf),
         )
         val lists = o.optJSONArray("setlists").mapObjects {
             Setlist(it.getString("id"), it.optString("name", "Setlist"), it.optJSONArray("sheets").strings())

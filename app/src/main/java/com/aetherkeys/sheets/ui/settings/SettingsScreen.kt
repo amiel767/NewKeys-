@@ -16,7 +16,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
-import com.aetherkeys.sheets.model.ExportFormat
 import com.aetherkeys.sheets.model.Notation
 import com.aetherkeys.sheets.model.PassingDisplay
 import com.aetherkeys.sheets.model.Pagination
@@ -90,11 +89,6 @@ fun SheetsSettingsScreen(
                 Group("SCENE MODE") {
                     SwitchRow("Lock on open", settings.lockOnOpen, onChange = { v -> actions.update { it.copy(lockOnOpen = v) } })
                     SwitchRow("Reverse swipe direction", settings.swipeReversed, onChange = { v -> actions.update { it.copy(swipeReversed = v) } })
-                }
-                Group("EXPORT") {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ExportFormat.values().forEach { f -> Pill(f.name, selected = settings.exportFormat == f) { actions.update { it.copy(exportFormat = f) } } }
-                    }
                 }
             }
         }
