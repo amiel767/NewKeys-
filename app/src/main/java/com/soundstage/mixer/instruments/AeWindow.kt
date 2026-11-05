@@ -74,6 +74,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 
+/** Instruments whose window shows the loaded preset name in the header, in place of the PRESETS label. */
+private val NAME_IN_HEADER = setOf(AeInstrument.LEADS, AeInstrument.SYNTH, AeInstrument.ORGAN)
+
 /**
  * The instrument window. Fill the soundfont window's bounds (or a dialog) with it; the stage letterboxes itself.
  * Recommended size: ratio 1000:460 (≈ 2.17, the phone's own ratio), about 97 % of the screen width.
@@ -137,16 +140,25 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
             // while every instrument already has a full preset list, and on the piano they sat
             // over the model name. A preset is now chosen from the list, never by a pair of arrows.
             //
-            // The preset name is not shown here at all (user: "le nom du preset uniquement sur
-            // l'affichage" — the mixer strip's name plate). The header chip that used to carry it
-            // is gone for every instrument; only the browser opener is kept, because it is the
-            // only way to reach the preset list on the instruments that have no always-on list.
+            // The preset name is not shown as a separate header chip (user: "le nom du preset
+            // uniquement sur l'affichage" — the mixer strip's name plate). What sits here is the
+            // preset browser opener, because it is the only way to reach the preset list on the
+            // instruments that have no always-on list; on Leads, Synth and Organ it carries the
+            // loaded preset's name as its label.
             val ns = RoundedCornerShape(10.su())
+            // LEADS, SYNTH and ORGAN carry no name plate of their own, so the preset browser shows
+            // the loaded preset instead of the word PRESETS. The preset list is where a sound is
+            // chosen, and without this the window never says which one is playing. PIANO/KEYBOARDS
+            // keep their model strip and SAX keeps its factory-name plate inside AeSaxUi, so neither
+            // gets a second readout. Geometry is unchanged, so the Save pill that appears left of it
+            // when a knob has moved cannot collide.
+            val nameHere = s.instrument in NAME_IN_HEADER
             if (!AeSections.isKeyboardLike(s.instrument) && s.instrument != AeInstrument.SAX) {
                 Box(Modifier.at(680, 7, 240, 32).clip(ns).background(winTh.glass).border(1.su(), winTh.edge, ns)
                     .clickable(remember { MutableInteractionSource() }, null) { list = !list },
                     contentAlignment = Alignment.Center) {
-                    AeT("PRESETS", 12, winTh.ink, Modifier.padding(horizontal = 12.su()))
+                    val label = if (nameHere) AeInstruments.presetNameOn(strip) ?: s.instrument.title else "PRESETS"
+                    AeT(label, 12, winTh.ink, Modifier.padding(horizontal = 12.su()), ellipsis = nameHere)
                 }
             }
             // Shown only once a knob has been moved away from the selected preset. The piano's
