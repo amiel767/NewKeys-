@@ -11,6 +11,11 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -64,13 +69,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
+import com.aetherkeys.sheets.model.ChordText
 import com.aetherkeys.sheets.model.Section
 import com.aetherkeys.sheets.model.Sheet
 import com.aetherkeys.sheets.model.SheetsSettings
@@ -103,6 +113,10 @@ fun FloatingSheetHost(
     onOpenEditor: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Edition rapide : la section relue au clavier systeme. Null = geste indisponible. */
+    onQuickEdit: ((Section, String) -> Unit)? = null,
+    /** Section quittee par glissement : le mixer suit la section affichee. */
+    onSectionChange: ((Section) -> Unit)? = null,
 ) {
     val density = LocalDensity.current
     val haptic = LocalHapticFeedback.current
@@ -125,6 +139,10 @@ fun FloatingSheetHost(
     // Mode « remplir » : la pastille du bas allonge la fenetre et la section suivante
     // s'affiche tant qu'elle entre. Des qu'on choisit a la main, on obeit au choix.
     var fitSections by remember(sheet.id) { mutableStateOf(false) }
+    // Edition rapide : la section en cours d'edition et son texte. Le clavier systeme
+    // s'ouvre sur place ; l'editeur complet reste accessible au double tap.
+    var quickSection by remember(sheet.id) { mutableStateOf<Section?>(null) }
+    var quickText by remember(sheet.id) { mutableStateOf("") }
     val progress = remember { Animatable(0f) }
 
     BoxWithConstraints(modifier.fillMaxSize().onGloballyPositioned { rootPos = it.positionInRoot() }) {
@@ -257,22 +275,55 @@ fun FloatingSheetHost(
                 .clip(shape)
                 .background(Brush.linearGradient(listOf(base, lerpColor(base, Color.Black, 0.12f))))
                 .onSizeChanged { cardH = it.height }
-                .pointerInput(locked) { if (!locked) detectTapGestures(onDoubleTap = { onOpenEditor() }, onTap = { pickerOpen = !pickerOpen; haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) }) }
+                // Un seul geste par intention, dans cet ordre de priorite :
+                //   appui long  -> edition rapide (clavier systeme, sur place)
+                //   double tap  -> editeur complet
+                //   tap         -> ouvre/ferme la liste des sections
+                //   glisse      -> deplace la fenetre (simple toucher puis glisser)
+                .pointerInput(locked, drawable) {
+                    if (locked) return@pointerInput
+                    detectTapGestures(
+                        onTap = {
+                            pickerOpen = !pickerOpen
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        },
+                        onDoubleTap = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onOpenEditor() },
+                        onLongPress = {
+                            val sec = shown.firstOrNull() ?: return@detectTapGestures
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            quickSection = sec
+                            quickText = ChordText.sectionLine(sec, sec.keyPc ?: sheet.keyPc, settings.notation)
+                        },
+                    )
+                }
+                // Glissement horizontal : change de section. La fenetre ne bouge pas
+                // pendant ce geste, c'est ce qui le distingue du deplacement.
                 .pointerInput(locked, drawable, shownIds) {
                     if (locked) return@pointerInput
                     detectHorizontalDragGestures { _, drag ->
+                        val i = drawable.indexOfFirst { it.id == shownIds.firstOrNull() }
                         if (drag < -60f) {
-                            val i = drawable.indexOfFirst { it.id == shownIds.firstOrNull() }
                             val next = drawable.getOrNull(i + 1)
-                            if (next != null) { shownIds = listOf(next.id); haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) }
+                            if (next != null) {
+                                fitSections = false
+                                shownIds = listOf(next.id)
+                                onSectionChange?.invoke(next)
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            }
                         } else if (drag > 60f) {
-                            val i = drawable.indexOfFirst { it.id == shownIds.firstOrNull() }
                             val prev = drawable.getOrNull(i - 1)
-                            if (prev != null) { shownIds = listOf(prev.id); haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) }
+                            if (prev != null) {
+                                fitSections = false
+                                shownIds = listOf(prev.id)
+                                onSectionChange?.invoke(prev)
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            }
                         }
                     }
                 }
-                .pointerInput(containerW, cardW, minX, maxX, minY, maxY, locked) {
+                // Deplacement : n'importe quel glissement vertical, ou un glissement
+                // horizontal quand il n'y a qu'une section (rien a faire glisser).
+                .pointerInput(containerW, cardW, minX, maxX, minY, maxY, locked, drawable.size) {
                     if (locked) return@pointerInput
                     detectDragGestures(
                         onDragStart = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
@@ -288,8 +339,8 @@ fun FloatingSheetHost(
         ) {
             // Barre de commandes : seul FERMER reste en haut a droite. Le verrou descend
             // en bas a gauche, la liste des sections vit DANS la carte.
-            Box(Modifier.align(Alignment.TopEnd).padding(10.dp)) {
-                SceneIconButton(SheetsIcons.Close, "Close scene", ink, active = false) { closeAnimated() }
+            Box(Modifier.align(Alignment.TopEnd).padding(8.dp)) {
+                CloseButton(ink) { closeAnimated() }
             }
             Column(Modifier.padding(22.dp).graphicsLayer { alpha = ((progress.value - 0.25f) / 0.75f).coerceIn(0f, 1f) }) {
                 shown.forEachIndexed { i, section ->
@@ -315,10 +366,10 @@ fun FloatingSheetHost(
                 }
             }
 
-            // Pastille fine du bas : tirer vers le bas allonge la fenetre, et la section
-            // suivante s'affiche tant qu'elle entre dans la hauteur.
+            // Pastille fine du bas : collee au bord, quasi invisible. La cible tactile
+            // reste large (24 dp), seul le trait est discret.
             Box(
-                Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp).size(width = 76.dp, height = 26.dp)
+                Modifier.align(Alignment.BottomCenter).padding(bottom = 2.dp).size(width = 84.dp, height = 24.dp)
                     .testTag("resize-grip")
                     .pointerInput(locked, minCardH, maxCardH) {
                         if (locked) return@pointerInput
@@ -331,13 +382,12 @@ fun FloatingSheetHost(
                             },
                         )
                     },
-                contentAlignment = Alignment.Center,
-            ) { Box(Modifier.width(46.dp).height(5.dp).clip(RoundedCornerShape(3.dp)).background(ink.copy(alpha = 0.5f))) }
+                contentAlignment = Alignment.BottomCenter,
+            ) { Box(Modifier.width(38.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(ink.copy(alpha = 0.18f))) }
 
-            // Pastille fine de gauche : tirer vers la droite elargit la fenetre, et les
-            // polices des accords grandissent avec la largeur.
+            // Pastille fine de gauche : collee au bord, quasi invisible. Meme cible large.
             Box(
-                Modifier.align(Alignment.CenterStart).padding(start = 4.dp).size(width = 26.dp, height = 92.dp)
+                Modifier.align(Alignment.CenterStart).padding(start = 2.dp).size(width = 24.dp, height = 92.dp)
                     .testTag("resize-grip-left")
                     .pointerInput(locked, minCardW, maxCardW, minX, maxX) {
                         if (locked) return@pointerInput
@@ -349,8 +399,8 @@ fun FloatingSheetHost(
                             },
                         )
                     },
-                contentAlignment = Alignment.Center,
-            ) { Box(Modifier.width(5.dp).height(56.dp).clip(RoundedCornerShape(3.dp)).background(ink.copy(alpha = 0.5f))) }
+                contentAlignment = Alignment.CenterStart,
+            ) { Box(Modifier.width(3.dp).height(48.dp).clip(RoundedCornerShape(2.dp)).background(ink.copy(alpha = 0.18f))) }
 
             // Pastille de section : ouvre la liste interne. Un simple tap sur le chart l'ouvre aussi.
             Box(
@@ -366,6 +416,23 @@ fun FloatingSheetHost(
                     )
                     Icon(SheetsIcons.Layers, contentDescription = "Choose sections", tint = ink.copy(alpha = 0.75f), modifier = Modifier.size(13.dp))
                 }
+            }
+
+            quickSection?.let { sec ->
+                QuickEditPanel(
+                    section = sec,
+                    text = quickText,
+                    ink = ink,
+                    onText = { quickText = it },
+                    onDone = {
+                        // On relit la ligne telle qu'elle est ecrite : c'est le meme
+                        // langage que celui affiche, donc rien a expliquer a l'utilisateur.
+                        onQuickEdit?.invoke(sec, quickText)
+                        quickSection = null
+                    },
+                    onCancel = { quickSection = null },
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
 
             if (pickerOpen) {
@@ -429,6 +496,84 @@ private fun InCardSectionPicker(
 
 /** L'encre claire signifie un fond sombre : le voile doit alors eclaircir. */
 private fun isLightInk(ink: Color): Boolean = (ink.red * 0.2126f + ink.green * 0.7152f + ink.blue * 0.0722f) < 0.5f
+
+/**
+ * Fermeture : le X est volontairement fondu pour ne pas attirer l'oeil pendant qu'on
+ * joue. La cible tactile reste large (40 dp) pour rester attrapable.
+ */
+@Composable
+private fun CloseButton(ink: Color, onClick: () -> Unit) {
+    val haptic = LocalHapticFeedback.current
+    Box(
+        Modifier.size(40.dp).clip(CircleShape).clickable {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onClick()
+        },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(SheetsIcons.Close, contentDescription = "Close scene", tint = ink.copy(alpha = 0.45f), modifier = Modifier.size(17.dp))
+    }
+}
+
+/**
+ * Edition rapide : on relit la ligne d'accords telle qu'elle est affichee, au clavier
+ * systeme, sans quitter la scene. Le langage est celui du chart (`1 4 | 5 6m | %`),
+ * donc rien de nouveau a apprendre. L'editeur complet reste au double tap.
+ */
+@Composable
+private fun QuickEditPanel(
+    section: com.aetherkeys.sheets.model.Section,
+    text: String,
+    ink: Color,
+    onText: (String) -> Unit,
+    onDone: () -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(section.id) { focus.requestFocus() }
+    Box(
+        modifier.clip(RoundedCornerShape(SheetsRadius.Floating))
+            .background(ink.copy(alpha = 0.14f))
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { },
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 18.dp)
+                .clip(RoundedCornerShape(14.dp)).background(ink.copy(alpha = 0.12f))
+                .border(1.dp, ink.copy(alpha = 0.20f), RoundedCornerShape(14.dp))
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(section.name, style = SheetsType.Overline, color = ink.copy(alpha = 0.75f))
+            BasicTextField(
+                value = text,
+                onValueChange = onText,
+                textStyle = SheetsType.chord(SheetsFonts.ArchitectsDaughter, 18f).copy(color = ink),
+                cursorBrush = SolidColor(ink),
+                singleLine = false,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { onDone() }),
+                modifier = Modifier.fillMaxWidth().focusRequester(focus),
+            )
+            Text("Barres separees par |   ·   - = case vide   ·   % = reprise", style = SheetsType.Caption, color = ink.copy(alpha = 0.6f))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                QuickEditAction("Annuler", ink, onCancel)
+                Spacer(Modifier.weight(1f))
+                QuickEditAction("Valider", ink, onDone, strong = true)
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuickEditAction(label: String, ink: Color, onClick: () -> Unit, strong: Boolean = false) {
+    Box(
+        Modifier.clip(RoundedCornerShape(10.dp))
+            .background(ink.copy(alpha = if (strong) 0.28f else 0.12f))
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+    ) { Text(label, style = SheetsType.Label, color = ink) }
+}
 
 @Composable
 private fun SceneIconButton(

@@ -2893,6 +2893,40 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(floatingSheet = null, floatingSheetData = null) }
     }
 
+    /**
+     * Edition rapide depuis la scene : [line] est la ligne d'accords relue au clavier
+     * systeme, dans le langage du chart. On la reanalyse et on reecrit la section dans
+     * la feuille, sur disque, pour que l'edition survive a la fermeture de la scene.
+     */
+    fun quickEditFloatingSection(section: com.aetherkeys.sheets.model.Section, line: String) {
+        val current = _uiState.value.floatingSheetData ?: return
+        val key = section.keyPc ?: current.keyPc
+        val updated = com.aetherkeys.sheets.model.ChordText.applyToSection(section, line, key)
+        val sheet = current.copy(
+            sections = current.sections.map { if (it.id == section.id) updated else it },
+            updatedAt = System.currentTimeMillis(),
+        )
+        _uiState.update {
+            it.copy(
+                floatingSheet = sheet.toSheetItem(it.sheets.size),
+                floatingSheetData = sheet,
+            )
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { com.aetherkeys.sheets.data.SheetsRepository(fileManager.sheetsDir).save(sheet) }
+        }
+    }
+
+    /**
+     * Section affichee dans la scene : le mixer suit ce qui est joue. Sans cela le
+     * panneau d'accords du mixer restait sur la premiere section de la feuille.
+     */
+    fun onFloatingSectionChanged(section: com.aetherkeys.sheets.model.Section) {
+        _uiState.update {
+            it.copy(floatingSheet = it.floatingSheetData?.toSheetItem(it.sheets.size, onlySectionId = section.id))
+        }
+    }
+
     fun closeDrumPad() {
         _uiState.update {
             val wasPinned = it.isDrumPadPinned || it.drumPadWasPinned

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -99,6 +100,7 @@ fun HomeScreen(
                 SetRow(
                     sets = sets,
                     sheets = state.sheets,
+                    settings = settings,
                     selectedId = inSet?.id,
                     onOpen = { actions.setFilter(LibraryFilter.OfSetlist(it)) },
                     onMenu = { setMenuFor = it },
@@ -150,6 +152,49 @@ fun HomeScreen(
     if (newSetlist) NameDialog("Nouveau Set", "Nom du Set", onDismiss = { newSetlist = false }) { actions.createSetlist(it); newSetlist = false }
 }
 
+@Composable
+private fun HomeHeader(state: LibraryUiState, actions: HomeActions, onBackToMixer: () -> Unit, onOpenSettings: () -> Unit) {
+    val notation = state.settings.notation
+    Box(Modifier.fillMaxWidth().height(44.dp)) {
+        Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            MixerIconButton(onBackToMixer)
+            SearchField(state.query, actions::setQuery, Modifier.width(220.dp))
+        }
+        Text("Sheets", style = SheetsType.Title, color = Color.White, modifier = Modifier.align(Alignment.Center))
+        Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SegmentedToggle(
+                options = listOf("1-7", "A-G"),
+                selectedIndex = if (notation == Notation.Nashville) 0 else 1,
+                onSelect = { actions.setNotation(if (it == 0) Notation.Nashville else Notation.Standard) },
+                modifier = Modifier.width(132.dp),
+            )
+            GlyphButton(SheetsIcons.Settings, onOpenSettings, contentDescription = "Sheets settings")
+        }
+    }
+}
+
+@Composable
+private fun SearchField(query: String, onChange: (String) -> Unit, modifier: Modifier = Modifier) {
+    Box(modifier.height(40.dp).clip(RoundedCornerShape(SheetsRadius.Chip)).background(SheetsColors.Chip).padding(horizontal = 16.dp), contentAlignment = Alignment.CenterStart) {
+        if (query.isEmpty()) Text("Search", style = SheetsType.Body, color = SheetsColors.TextMuted)
+        BasicTextField(query, onChange, singleLine = true, textStyle = SheetsType.Body.copy(color = SheetsColors.TextPrimary), cursorBrush = SolidColor(SheetsColors.Accent), modifier = Modifier.fillMaxWidth())
+    }
+}
+
+/**
+ * Deux portes seulement : tout, ou les favoris. Les Sets ne sont PAS repetes ici — ils
+ * sont deja des cartes juste en dessous, et deux fois le meme nom a deux endroits
+ * brouille la lecture. On entre dans un Set par sa carte, on en sort par « ← Tout ».
+ */
+@Composable
+private fun FilterRow(state: LibraryUiState, actions: HomeActions, onNewSet: () -> Unit) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        item { Pill("Tous · ${state.sheets.size}", selected = state.filter == LibraryFilter.All) { actions.setFilter(LibraryFilter.All) } }
+        item { Pill("★ Favoris", selected = state.filter == LibraryFilter.Favorites) { actions.setFilter(LibraryFilter.Favorites) } }
+        item { Pill("+ Set") { onNewSet() } }
+    }
+}
+
 // ────────────────────────────────────────────────────────────────────────────────────────
 // Rangee des Sets : cartes de la taille de celles de la page Setlists (96 dp).
 // Meme matiere que les feuilles (degrade + tranche + ombre), pas de verre.
@@ -162,6 +207,7 @@ private val SetCardHeight = 96.dp
 private fun SetRow(
     sets: List<Setlist>,
     sheets: List<Sheet>,
+    settings: SheetsSettings,
     selectedId: String?,
     onOpen: (String) -> Unit,
     onMenu: (Setlist) -> Unit,
@@ -172,6 +218,7 @@ private fun SetRow(
                 setlist = sl,
                 // Les feuilles du Set, dans l'ordre de jeu : sert au compte et a l'apercu.
                 sheets = sl.sheetIds.mapNotNull { id -> sheets.firstOrNull { it.id == id } },
+                settings = settings,
                 selected = sl.id == selectedId,
                 onOpen = { onOpen(sl.id) },
                 onMenu = { onMenu(sl) },
@@ -190,6 +237,7 @@ private fun SetRow(
 private fun SetChip(
     setlist: Setlist,
     sheets: List<Sheet>,
+    settings: SheetsSettings,
     selected: Boolean,
     onOpen: () -> Unit,
     onMenu: () -> Unit,
@@ -205,7 +253,7 @@ private fun SetChip(
     val firstSection = first?.sections?.firstOrNull { it.bars.isNotEmpty() }
     val key = firstSection?.let { first.keyFor(it) } ?: first?.keyPc ?: 0
     val preview = firstSection?.bars?.take(4)
-        ?.joinToString("  ") { Theory.barText(it, key, Notation.Nashville, PassingDisplay.Auto) }.orEmpty()
+        ?.joinToString("  ") { Theory.barText(it, key, settings.notation, settings.passing) }.orEmpty()
 
     Box(
         Modifier.testTag("set-card")

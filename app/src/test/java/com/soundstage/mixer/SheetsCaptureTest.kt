@@ -220,12 +220,15 @@ class SheetsCaptureTest {
         composeTestRule.mainClock.autoAdvance = false
         composeTestRule.mainClock.advanceTimeBy(1_500)
         // Les libelles de section sont rendus en majuscules (OverlineLabel).
-        composeTestRule.onNodeWithText("SETS").assertExists()
-        composeTestRule.onNodeWithText("SHEETS").assertExists()
-        // Deux cartes de Set, une par Set de la graine.
+        // Les Sets sont la, en haut, sans avoir touche au filtre.
         composeTestRule.onAllNodesWithTag("set-card").assertCountEquals(2)
-        composeTestRule.onAllNodesWithText("Live set").assertCountEquals(2)
-        composeTestRule.onAllNodesWithText("Dimanche matin").assertCountEquals(2)
+        // Un seul endroit porte le nom d'un Set : sa carte.
+        composeTestRule.onNodeWithText("Live set").assertExists()
+        composeTestRule.onNodeWithText("Dimanche matin").assertExists()
+        // La liste du bas montre les feuilles avec leurs informations.
+        composeTestRule.onNodeWithText("Midnight Drive").assertExists()
+        composeTestRule.onNodeWithText("Salt Wind").assertExists()
+        composeTestRule.onNodeWithText("RECEMMENT MODIFIES").assertExists()
         composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/sheets_sets.png")
     }
 
@@ -250,8 +253,11 @@ class SheetsCaptureTest {
         // Ouvrir le Set depuis sa carte (la premiere de la grille : « Live set »).
         composeTestRule.onAllNodesWithTag("set-card")[0].performClick()
         composeTestRule.mainClock.advanceTimeBy(600)
-        // Dans un Set on ne montre plus les cartes de Sets : seulement les feuilles.
-        composeTestRule.onNodeWithText("SHEETS").assertDoesNotExist()
+        // La rangee de Sets reste : on passe d'un Set a l'autre sans revenir en arriere.
+        composeTestRule.onAllNodesWithTag("set-card").assertCountEquals(2)
+        // Le Set ouvert se marque, et la liste annonce ce qu'on regarde.
+        composeTestRule.onNodeWithText("OUVERT").assertExists()
+        composeTestRule.onNodeWithText("← Tout").assertExists()
         composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/sheets_inside_a_set.png")
     }
 

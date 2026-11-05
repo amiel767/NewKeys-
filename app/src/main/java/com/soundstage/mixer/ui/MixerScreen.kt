@@ -1269,6 +1269,10 @@ fun MixerScreen(
                         viewModel.navigateToPage(AppScreenPage.SHEETS)
                     },
                     onClose = { viewModel.closeFloatingSheet() },
+                    // Edition rapide : la scene relit une section, le mixer la reecrit dans
+                    // la feuille rangee sur disque. Sans ce pont, « appui long » ne ferait rien.
+                    onQuickEdit = { section, line -> viewModel.quickEditFloatingSection(section, line) },
+                    onSectionChange = { section -> viewModel.onFloatingSectionChanged(section) },
                 )
             }
         }

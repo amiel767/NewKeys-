@@ -14,10 +14,11 @@ import com.aetherkeys.sheets.model.keyFor
  * written in Standard notation because the floating window re-converts them to
  * the mixer's current notation itself.
  */
-fun Sheet.toSheetItem(colorIndex: Int = 0): SheetItem {
+fun Sheet.toSheetItem(colorIndex: Int = 0, onlySectionId: String? = null): SheetItem {
     val keyName = Theory.noteName(keyPc, keyPc)
+    val shown = if (onlySectionId == null) sections else sections.filter { it.id == onlySectionId }
     val text = buildString {
-        sections.forEach { section ->
+        shown.forEach { section ->
             if (isEmpty()) {
                 appendLine("$keyName · $bpm BPM · $beatsPerBar/$beatUnit")
                 appendLine()
