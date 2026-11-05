@@ -22,10 +22,21 @@ def main() -> None:
     if not rows:
         sys.exit("no AePianoModel rows found -- did the constructor change?")
     for _id, name, vals, idx in rows:
-        v = [x.strip() for x in vals.split(",") if x.strip()]
-        # The Kotlin constructor appends the model index as the 16th value.
-        out = ",".join(v + [f"{int(idx) / 8:.4f}"])
-        print(f"{name}|{out}")
+        v = [float(x.strip().rstrip("f")) for x in vals.split(",") if x.strip()]
+        # Mirror of AePianoModel.values (20 parameters): 0..14 = d, then the
+        # derived mechanic noises and the 3-band EQ, then MODEL.
+        out = [0.0] * 20
+        for j in range(15):
+            out[j] = v[j]
+        out[10] = 0.20 + 0.30 * v[0]   # DAMPER
+        out[12] = 0.15 + 0.40 * v[0]   # KEY
+        out[13] = 0.0                  # free
+        out[15] = int(idx) / 8.0       # MODEL
+        out[16] = 0.25 + 0.60 * v[0]   # HAMMER N
+        out[17] = v[15]                # EQ MID
+        out[18] = v[16]                # EQ FREQ
+        out[19] = v[17]                # EQ HIGH
+        print(f"{name}|" + ",".join(f"{x:.4f}" for x in out))
 
 
 if __name__ == "__main__":

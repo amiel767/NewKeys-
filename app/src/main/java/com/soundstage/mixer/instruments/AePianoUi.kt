@@ -75,24 +75,33 @@ class AePianoModel(
     idx: Int,
 ) {
     /**
-     * 17 valeurs, une par paramètre du contrat `fx_piano.h`.
+     * 20 valeurs, une par paramètre du contrat `fx_piano.h`.
      *
-     * `d` (15 valeurs) porte les réglages de timbre 0..14.  Les trois bruits de
-     * mécanique et l'EQ sont DÉRIVÉS de la dureté du marteau `d[0]` plutôt que
-     * répétés douze fois : un piano à marteau dur claque et cliquette, un feutre
+     * `d` (18 valeurs) porte les réglages de timbre : 0..14 comme avant (14 = EQ
+     * GRAVES), puis 15/16/17 = EQ MÉDIUM / FRÉQUENCE DU MÉDIUM / EQ AIGUS.  Les
+     * trois bruits de mécanique sont DÉRIVÉS de la dureté du marteau `d[0]` plutôt
+     * que répétés douze fois : un piano à marteau dur claque et cliquette, un feutre
      * effleure.  Cela évite douze constantes à maintenir et garde la table lisible.
+     *
+     * L'EQ est le levier qui distingue vraiment deux modèles : six acoustiques
+     * jouent la MÊME banque, et trois électriques partagent leur propre prise.
+     * Avant, un seul potard inclinait les trois bandes ensemble, donc « Bright »
+     * ne pouvait pas creuser son grave sans perdre aussi son aigu.
      *
      * Les emplacements 10 (ex-PEDAL), 12 (ex-DRIVE) et 13 (ex-PUNCH) de `d` sont
      * désormais ignorés : DRIVE et PUNCH sont retirés du moteur, et DAMPER/KEY sont
      * recalculés ci-dessous.  Les y laisser serait du code mort déguisé.
      */
-    val values: FloatArray = FloatArray(17).also { v ->
+    val values: FloatArray = FloatArray(20).also { v ->
         for (i in 0..14) v[i] = d[i]
         v[10] = 0.20f + 0.30f * d[0]     // DAMPER : feutre discret, suit la dureté
         v[12] = 0.15f + 0.40f * d[0]     // KEY : contact de touche, jamais envahissant
         v[13] = 0f                        // libre (ex-PUNCH)
         v[15] = idx / 8f                  // MODEL : >= 1 dès l'index 8 = banque électrique
         v[16] = 0.25f + 0.60f * d[0]     // HAMMER N : bruit de la frappe
+        v[17] = d[15]                     // EQ MÉDIUM (peaking)
+        v[18] = d[16]                     // EQ FRÉQUENCE du médium (300..2700 Hz)
+        v[19] = d[17]                     // EQ AIGUS (shelf 3,2 kHz)
     }
 }
 
@@ -100,22 +109,22 @@ private fun col(h: Long) = Color(0xFF000000 or h)
 
 object AePianoModels {
     val all = listOf(
-        AePianoModel("felt", "Felt", "Soft felt hammers · warm & round", false, col(0xE9A8B8), listOf(col(0xF7C6D3), col(0xFBE0E6), col(0xF2A9BD)), AePType.PETAL, floatArrayOf(0.15f, 0.05f, 0.50f, 0.30f, 0.42f, 0.32f, 0.50f, 0.70f, 0.30f, 0.50f, 0.40f, 0.30f, 0.35f, 0.10f, 0.45f), 0),
-        AePianoModel("studio", "Studio", "Concert grand · balanced & clear", false, col(0x4F9FE6), listOf(col(0xFFFFFF), col(0xCFE6FF), col(0x9CCAF5)), AePType.SPARK, floatArrayOf(0.55f, 0.45f, 0.50f, 0.65f, 0.55f, 0.40f, 0.60f, 0.84f, 0.45f, 0.55f, 0.30f, 0.45f, 0.45f, 0.25f, 0.55f), 1),
-        AePianoModel("bright", "Bright", "Crisp attack · sparkling top", false, col(0xE8A812), listOf(col(0xFFE9A8), col(0xFFD166), col(0xFFF3C9)), AePType.LEAF, floatArrayOf(0.90f, 0.90f, 0.25f, 0.95f, 0.80f, 0.15f, 0.70f, 0.89f, 0.35f, 0.60f, 0.25f, 0.80f, 0.20f, 0.30f, 0.70f), 2),
-        AePianoModel("mellow", "Mellow", "Warm mids · rounded highs", true, col(0xFF9A5A), listOf(col(0xFFB27A), col(0xFF8A5C), col(0xFFD0A0)), AePType.PETAL, floatArrayOf(0.25f, 0.15f, 0.60f, 0.40f, 0.20f, 0.70f, 0.50f, 0.58f, 0.60f, 0.45f, 0.40f, 0.25f, 0.75f, 0.15f, 0.30f), 3),
-        AePianoModel("dark", "Dark", "Deep bass · cinematic night", true, col(0x8A9BFF), listOf(col(0xAEBCFF), col(0x7F8FE8), col(0xDFE6FF)), AePType.STAR, floatArrayOf(0.10f, 0.00f, 0.80f, 0.20f, 0.10f, 0.95f, 0.75f, 0.51f, 0.70f, 0.40f, 0.45f, 0.20f, 0.85f, 0.20f, 0.35f), 4),
-        AePianoModel("upright", "Cottage", "Small wooden body · close & intimate", true, col(0xD9A15A), listOf(col(0xE8C58F), col(0xD9A15A), col(0xFFF1D6)), AePType.DUST, floatArrayOf(0.50f, 0.35f, 0.60f, 0.30f, 0.45f, 0.30f, 0.40f, 0.79f, 0.35f, 0.50f, 0.60f, 0.40f, 0.30f, 0.45f, 0.65f), 5),
-        AePianoModel("lady", "Parlor", "Parlor grand · close & golden", true, col(0xE0A25A), listOf(col(0xFFD9A0), col(0xF2B866), col(0xFFF0D0)), AePType.SPARK, floatArrayOf(0.35f, 0.30f, 0.40f, 0.55f, 0.35f, 0.60f, 0.45f, 0.64f, 0.50f, 0.50f, 0.30f, 0.50f, 0.60f, 0.20f, 0.45f), 6),
-        AePianoModel("honky", "Saloon", "Detuned old upright · vintage", false, col(0xB8863C), listOf(col(0xA8743A), col(0xC89A5A), col(0x8A5A28)), AePType.LEAF, floatArrayOf(0.70f, 0.70f, 0.30f, 0.50f, 0.60f, 0.25f, 0.90f, 0.74f, 0.35f, 0.60f, 0.70f, 0.70f, 0.30f, 0.40f, 0.75f), 7),
-        AePianoModel("electric", "Tine Keys", "Tine keys · tremolo & neon", true, col(0xFF6AD5), listOf(col(0xFF8BE0), col(0x7BE0FF), col(0xC9A0FF)), AePType.NEON, floatArrayOf(0.40f, 0.85f, 0.15f, 0.70f, 0.90f, 0.35f, 0.85f, 0.74f, 0.45f, 0.50f, 0.20f, 0.85f, 0.25f, 0.55f, 0.60f), 8),
+        AePianoModel("felt", "Felt", "Soft felt hammers · warm & round", false, col(0xE9A8B8), listOf(col(0xF7C6D3), col(0xFBE0E6), col(0xF2A9BD)), AePType.PETAL, floatArrayOf(0.15f, 0.05f, 0.50f, 0.30f, 0.42f, 0.32f, 0.50f, 0.6400f, 0.30f, 0.50f, 0.40f, 0.30f, 0.35f, 0.10f, 0.45f, 0.62f, 0.30f, 0.28f), 0),
+        AePianoModel("studio", "Studio", "Concert grand · balanced & clear", false, col(0x4F9FE6), listOf(col(0xFFFFFF), col(0xCFE6FF), col(0x9CCAF5)), AePType.SPARK, floatArrayOf(0.55f, 0.45f, 0.50f, 0.65f, 0.55f, 0.40f, 0.60f, 0.7019f, 0.45f, 0.55f, 0.30f, 0.45f, 0.45f, 0.25f, 0.55f, 0.50f, 0.40f, 0.56f), 1),
+        AePianoModel("bright", "Bright", "Crisp attack · sparkling top", false, col(0xE8A812), listOf(col(0xFFE9A8), col(0xFFD166), col(0xFFF3C9)), AePType.LEAF, floatArrayOf(0.90f, 0.90f, 0.25f, 0.95f, 0.80f, 0.15f, 0.70f, 0.8641f, 0.35f, 0.60f, 0.25f, 0.80f, 0.20f, 0.30f, 0.70f, 0.34f, 0.45f, 0.86f), 2),
+        AePianoModel("mellow", "Mellow", "Warm mids · rounded highs", true, col(0xFF9A5A), listOf(col(0xFFB27A), col(0xFF8A5C), col(0xFFD0A0)), AePType.PETAL, floatArrayOf(0.25f, 0.15f, 0.60f, 0.40f, 0.20f, 0.70f, 0.50f, 0.7386f, 0.60f, 0.45f, 0.40f, 0.25f, 0.75f, 0.15f, 0.30f, 0.44f, 0.22f, 0.26f), 3),
+        AePianoModel("dark", "Dark", "Deep bass · cinematic night", true, col(0x8A9BFF), listOf(col(0xAEBCFF), col(0x7F8FE8), col(0xDFE6FF)), AePType.STAR, floatArrayOf(0.10f, 0.00f, 0.80f, 0.20f, 0.10f, 0.95f, 0.75f, 0.6935f, 0.70f, 0.40f, 0.45f, 0.20f, 0.85f, 0.20f, 0.35f, 0.40f, 0.18f, 0.18f), 4),
+        AePianoModel("upright", "Cottage", "Small wooden body · close & intimate", true, col(0xD9A15A), listOf(col(0xE8C58F), col(0xD9A15A), col(0xFFF1D6)), AePType.DUST, floatArrayOf(0.50f, 0.35f, 0.60f, 0.30f, 0.45f, 0.30f, 0.40f, 0.6931f, 0.35f, 0.50f, 0.60f, 0.40f, 0.30f, 0.45f, 0.65f, 0.56f, 0.30f, 0.50f), 5),
+        AePianoModel("lady", "Parlor", "Parlor grand · close & golden", true, col(0xE0A25A), listOf(col(0xFFD9A0), col(0xF2B866), col(0xFFF0D0)), AePType.SPARK, floatArrayOf(0.35f, 0.30f, 0.40f, 0.55f, 0.35f, 0.60f, 0.45f, 0.6400f, 0.50f, 0.50f, 0.30f, 0.50f, 0.60f, 0.20f, 0.45f, 0.54f, 0.34f, 0.62f), 6),
+        AePianoModel("honky", "Saloon", "Detuned old upright · vintage", false, col(0xB8863C), listOf(col(0xA8743A), col(0xC89A5A), col(0x8A5A28)), AePType.LEAF, floatArrayOf(0.70f, 0.70f, 0.30f, 0.50f, 0.60f, 0.25f, 0.90f, 0.5771f, 0.35f, 0.60f, 0.70f, 0.70f, 0.30f, 0.40f, 0.75f, 0.66f, 0.55f, 0.78f), 7),
+        AePianoModel("electric", "Tine Keys", "Tine keys · tremolo & neon", true, col(0xFF6AD5), listOf(col(0xFF8BE0), col(0x7BE0FF), col(0xC9A0FF)), AePType.NEON, floatArrayOf(0.40f, 0.85f, 0.15f, 0.70f, 0.90f, 0.35f, 0.85f, 0.8455f, 0.45f, 0.50f, 0.20f, 0.85f, 0.25f, 0.55f, 0.60f, 0.66f, 0.55f, 0.46f), 8),
         // Les trois suivants portent une BANQUE propre (voir AeBanks.electricModels) :
         // c'est ce qui les distingue des huit reglages acoustiques.  L'index est lu par
         // le moteur via le parametre MODEL (15) : `idx / 8f` depasse 1 des l'index 8,
         // donc le moteur les classe tous « electrique » — c'est voulu, ils le sont.
-        AePianoModel("ballad", "Ballad", "Ballad electric · soft & wide", true, col(0x7BD8A0), listOf(col(0xA8F0C8), col(0x6BC8E8), col(0xE0FFF0)), AePType.DUST, floatArrayOf(0.30f, 0.55f, 0.30f, 0.50f, 0.70f, 0.55f, 0.80f, 0.68f, 0.50f, 0.45f, 0.30f, 0.60f, 0.40f, 0.45f, 0.50f), 9),
-        AePianoModel("dx", "DX Bell", "FM bell electric · glassy", false, col(0x9AB6FF), listOf(col(0xC8D8FF), col(0x8FA8F0), col(0xEAF0FF)), AePType.STAR, floatArrayOf(0.85f, 0.75f, 0.20f, 0.85f, 0.60f, 0.30f, 0.70f, 0.80f, 0.40f, 0.55f, 0.25f, 0.75f, 0.30f, 0.60f, 0.65f), 10),
-        AePianoModel("epiano", "E.Piano", "Classic electric piano · round", true, col(0xE8B45A), listOf(col(0xFFD48A), col(0xD89A50), col(0xFFF0D0)), AePType.SPARK, floatArrayOf(0.45f, 0.60f, 0.35f, 0.60f, 0.75f, 0.45f, 0.75f, 0.72f, 0.48f, 0.50f, 0.35f, 0.65f, 0.35f, 0.50f, 0.55f), 11),
+        AePianoModel("ballad", "Ballad", "Ballad electric · soft & wide", true, col(0x7BD8A0), listOf(col(0xA8F0C8), col(0x6BC8E8), col(0xE0FFF0)), AePType.DUST, floatArrayOf(0.30f, 0.55f, 0.30f, 0.50f, 0.70f, 0.55f, 0.80f, 1.0000f, 0.50f, 0.45f, 0.30f, 0.60f, 0.40f, 0.45f, 0.50f, 0.44f, 0.30f, 0.40f), 9),
+        AePianoModel("dx", "DX Bell", "FM bell electric · glassy", false, col(0x9AB6FF), listOf(col(0xC8D8FF), col(0x8FA8F0), col(0xEAF0FF)), AePType.STAR, floatArrayOf(0.85f, 0.75f, 0.20f, 0.85f, 0.60f, 0.30f, 0.70f, 0.9295f, 0.40f, 0.55f, 0.25f, 0.75f, 0.30f, 0.60f, 0.65f, 0.40f, 0.60f, 0.72f), 10),
+        AePianoModel("epiano", "E.Piano", "Classic electric piano · round", true, col(0xE8B45A), listOf(col(0xFFD48A), col(0xD89A50), col(0xFFF0D0)), AePType.SPARK, floatArrayOf(0.45f, 0.60f, 0.35f, 0.60f, 0.75f, 0.45f, 0.75f, 0.9656f, 0.48f, 0.50f, 0.35f, 0.65f, 0.35f, 0.50f, 0.55f, 0.44f, 0.38f, 0.54f), 11),
     )
 }
 
@@ -209,17 +218,26 @@ private val PIANO_GROUPS = listOf(
     )),
 )
 
+private fun eqhz(v: Float) = "${(300 * Math.pow(9.0, v.toDouble())).toInt()}Hz"
+
 /**
- * Mecanique : trois reglages, sortis des familles et poses au milieu de la fenetre.
+ * Mecanique : deux bruits, puis l'egaliseur a QUATRE potards (graves, medium,
+ * frequence du medium, aigus).
  *
  * L'utilisateur a demande de les « enlever du lot » et de les deplacer au centre, un
- * peu plus grands, sans titre.  Ils ne tiennent donc plus dans la colonne de droite
- * et sont dessines a part, sous le nom du modele.
+ * peu plus grands, sans titre.  L'EQ etait un seul potard qui inclinait les trois
+ * bandes ensemble ; il est remplace par trois bandes independantes (graves, medium,
+ * aigus) plus la frequence du medium, ce qui permet de creuser le « bark » d'un
+ * Rhodes ou la chaleur d'un feutre sans eteindre le reste.  Six acoustiques jouent
+ * la meme banque : c'est l'EQ qui les separe vraiment.
  */
 private val MECHANICS = listOf(
     K("Key", 12, ::pc),
     K("Hammer", 16, ::pc),
-    K("EQ", 14, ::eqdb),
+    K("EQ Low", 14, ::eqdb),
+    K("EQ Mid", 17, ::eqdb),
+    K("EQ Hz", 18, ::eqhz),
+    K("EQ High", 19, ::eqdb),
 )
 
 /**
@@ -349,13 +367,14 @@ fun BoxScope.AePianoUi(c: AeCtl, manager: AeManager, strip: Int, onOpenBrowser: 
                         AeLightKnob(th, c.v(k.idx), k.label, k.fmt(c.v(k.idx)), 704 + j * 62, gy + 16) { c.set(k.idx, it) }
                     }
                 }
-                // Mecanique : trois potards plus grands, en BAS au milieu de la fenetre, sans titre.
-                // « En bas milieu, pas au beau milieu » : sous le nom du modele, pas au centre de
-                // l'ecran ou ils flottaient au-dessus de la photo. Centres sur x=500 (370 + 3*86/2).
-                // y=348 : la colonne mesure 72*1,35 = 97 unites, donc elle finit a 445, sous les
-                // panneaux de verre (430) et a 15 unites du bord bas (460) — « toujours un peu plus bas ».
+                // Mecanique + EQ : six potards plus grands, en BAS au milieu de la
+                // fenetre, sans titre.  « En bas milieu, pas au beau milieu » : sous
+                // le nom du modele, pas au centre de l'ecran.  Six potards de 64
+                // unites espaces de 74 tiennent en 434 (64 + 5*74), centres sur
+                // x=500 (320 + 3*74 - 42).  y=348 : la colonne mesure 97 unites,
+                // donc elle finit a 445, sous les panneaux de verre (430).
                 MECHANICS.forEachIndexed { j, k ->
-                    AeLightKnob(th, c.v(k.idx), k.label, k.fmt(c.v(k.idx)), 370 + j * 86, 348, 1.35f) { c.set(k.idx, it) }
+                    AeLightKnob(th, c.v(k.idx), k.label, k.fmt(c.v(k.idx)), 320 + j * 74, 348, 1.35f) { c.set(k.idx, it) }
                 }
             }
         }

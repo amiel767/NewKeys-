@@ -1189,7 +1189,7 @@ class PianoStudio {
   void reset() {
     for (auto& b : mem_) b.reset();
     for (auto& b : air_) b.reset();
-    for (int i = 0; i < 2; ++i) { tone_[i].reset(); pres_[i].reset(); }
+    for (int i = 0; i < 2; ++i) { eqL_[i].reset(); eqM_[i].reset(); eqH_[i].reset(); pres_[i].reset(); }
     pre_.reset(); rev_.reset();
     cf_ = -1;
   }
@@ -1205,8 +1205,8 @@ class PianoStudio {
    * Tout est recalcule seulement quand un reglage bouge : les Biquad ont un
    * cout de calcul par echantillon, pas par bloc.
    */
-  void set(float pos, float dist, float lid, float bass, float mid, float treb,
-           float pres, float space, float width) {
+  void set(float pos, float dist, float lid, float pres, float space, float width,
+           float eqLow, float eqMid, float eqFreq, float eqHigh) {
     // Chaque famille de reglages a SON propre garde.  Les regrouper sous celui du
     // micro etait un bug mesure : une fois le preset pose, bouger TONE, PRESENCE,
     // SPACE ou WIDTH ne faisait plus rien tant que le micro ne bougeait pas aussi.
@@ -1225,13 +1225,21 @@ class PianoStudio {
       air_[0].setHighShelf(sr_, 9000, air);
       air_[1].setHighShelf(sr_, 9000, air);
     }
-    if (std::fabs(bass - cBass_) > 0.002f || std::fabs(mid - cMid_) > 0.002f ||
-        std::fabs(treb - cTreb_) > 0.002f) {
-      cBass_ = bass; cMid_ = mid; cTreb_ = treb;
+    // EQ 3 BANDES, independant du micro.  TROIS filtres distincts, un par bande :
+    // les appeler tous les trois sur le MEME Biquad n'en garde qu'un (le dernier
+    // ecrit), ce qui rendait les bandes grave et medium mortes — l'ancien « EQ »
+    // n'etait en realite qu'un shelf aigu.  Chaque bande a son objet, donc les
+    // trois agissent en cascade.  Le medium choisit sa frequence (300 Hz ..
+    // 2,7 kHz) : de quoi viser le « bark » vers 800 Hz, la chaleur 100-300 Hz ou
+    // le « twang » d'un honky-tonk, sans toucher au reste.
+    const float mf = 300.f * std::pow(9.f, eqFreq);
+    if (std::fabs(eqLow - cEqLow_) > 0.002f || std::fabs(eqHigh - cEqHigh_) > 0.002f ||
+        std::fabs(eqMid - cEqMid_) > 0.002f || std::fabs(mf - cEqMf_) > 1.f) {
+      cEqLow_ = eqLow; cEqMid_ = eqMid; cEqHigh_ = eqHigh; cEqMf_ = mf;
       for (int ch2 = 0; ch2 < 2; ++ch2) {
-        tone_[ch2].setLowShelf(sr_, 180, (bass - 0.5f) * 20.f);
-        tone_[ch2].setPeaking(sr_, 750, 0.8, (mid - 0.5f) * 16.f);
-        tone_[ch2].setHighShelf(sr_, 3200, (treb - 0.5f) * 20.f);
+        eqL_[ch2].setLowShelf(sr_, 120, (eqLow - 0.5f) * 24.f);
+        eqM_[ch2].setPeaking(sr_, mf, 0.9, (eqMid - 0.5f) * 24.f);
+        eqH_[ch2].setHighShelf(sr_, 3200, (eqHigh - 0.5f) * 24.f);
       }
     }
     if (std::fabs(pres - cPres_) > 0.002f) {
@@ -1250,7 +1258,9 @@ class PianoStudio {
       l = pre_.process(0, l); r = pre_.process(1, r);
       l = mem_[0].process(0, l); r = mem_[1].process(1, r);
       l = air_[0].process(0, l); r = air_[1].process(1, r);
-      l = tone_[0].process(0, l); r = tone_[1].process(1, r);
+      l = eqL_[0].process(0, l); r = eqL_[1].process(1, r);
+      l = eqM_[0].process(0, l); r = eqM_[1].process(1, r);
+      l = eqH_[0].process(0, l); r = eqH_[1].process(1, r);
       l = pres_[0].process(0, l); r = pres_[1].process(1, r);
       if (widthAmt_ != 1.f) { const float m = 0.5f * (l + r), s = 0.5f * (l - r) * widthAmt_; l = m + s; r = m - s; }
       // Limiteur doux, LINEAIRE sous le genou.  Un `tanh(x)` sec est non lineaire des
@@ -1279,25 +1289,28 @@ class PianoStudio {
 
  private:
   float sr_ = 44100.f;
-  Biquad mem_[2], air_[2], pre_, tone_[2], pres_[2];
+  Biquad mem_[2], air_[2], pre_, eqL_[2], eqM_[2], eqH_[2], pres_[2];
   SpaceReverb rev_;
   float spaceAmt_ = 0.3f, widthAmt_ = 1.f;
   float cPos_ = -1.f, cDist_ = -1.f, cLid_ = -1.f;
-  float cBass_ = -1.f, cMid_ = -1.f, cTreb_ = -1.f, cPres_ = -1.f;
+  float cEqLow_ = -1.f, cEqMid_ = -1.f, cEqHigh_ = -1.f, cEqMf_ = -1.f;
+  float cPres_ = -1.f;
   int cf_ = -1;
 };
 
 // ---------------------------------------------------------------------------
-// Moteur.  17 parametres (contrat de l'interface ; l'ordre est fige) :
+// Moteur.  20 parametres (contrat de l'interface ; l'ordre est fige) :
 //   0 HAMMER   durete de marteau      9 VEL      courbe de velocite (monotone)
 //   1 TONE     brillance              10 DAMPER  bruit d'etouffoir (au relachement)
 //   2 RESONANCE couplage resonateurs  11 DIST    distance du micro
 //   3 LID      couvercle              12 KEY     bruit de touche (a l'appui)
 //   4 MIC POS  position du micro      13 (libre)  ex-PUNCH, retire
-//   5 SPACE    piece                  14 EQ      basse/mid/aigu (macro)
+//   5 SPACE    piece                  14 EQ LOW  graves (shelf 120 Hz)
 //   6 WIDTH    largeur stereo         15 MODEL   choix du modele (Kotlin, en dernier)
 //   7 LEVEL    niveau                 16 HAMMER N bruit de marteau (la frappe)
-//   8 RELEASE  longueur de queue
+//   8 RELEASE  longueur de queue      17 EQ MID  medium (peaking, freq. 18)
+//                                     18 EQ FREQ frequence du medium (300..2700 Hz)
+//                                     19 EQ HIGH aigus (shelf 3,2 kHz)
 //
 // DRIVE (12) et PUNCH (13) sont RETIRES : deux reglages qu'aucun piano acoustique
 // n'a, et dont la saturation en serie ecrasait un pack deja a sa crete (« Amp
@@ -1305,10 +1318,17 @@ class PianoStudio {
 // libre (les presets enregistres le portent, le moteur l'ignore).  Le bruit de
 // marteau reprend l'index 16 : c'est le meme contrat a 17 que l'ancien, donc aucun
 // preset enregistre n'est tronque.
+//
+// 17, 18, 19 = EQ 3 BANDES (extension du 2026-11-05).  L'ancien EQ tenait sur un
+// seul potard (index 14) qui inclinait graves, medium et aigus ENSEMBLE : impossible
+// de creuser le bas-medium d'un Rhodes (« bark » a 800 Hz) sans eteindre aussi son
+// grave et son aigu.  Trois bandes independantes, c'est ce qui manquait pour
+// accorder un preset a la nature sonore de son instrument.  14 = GRAVES,
+// 17 = MEDIUM, 18 = FREQUENCE du medium (300 Hz .. 2,7 kHz), 19 = AIGUS.
 // ---------------------------------------------------------------------------
 class PianoEngine : public SourceFx {
  public:
-  static constexpr int kParams = 17;
+  static constexpr int kParams = 20;
   // 12 voix ne tiennent pas un accord tenu avec la pedale : des la 13e note le
   // moteur volait une voix.  Mesure : 2,5 % de CPU a 32 voix contre 2,7 % a 12
   // (le cout est domine par l'etage studio, pas par la voix), donc la marge est
@@ -1540,7 +1560,7 @@ class PianoEngine : public SourceFx {
     // Etage studio : micro -> egaliseur -> largeur -> espace.  Il tourne meme sans
     // voix active, sinon la queue de reverb serait coupee net.  Plus d'ampli ni de
     // punch : les deux index sont retires du contrat (voir l'en-tete du moteur).
-    studio_.set(p(4), p(11), p(3), p(14), p(14), p(14), p(14), p(5), p(6));
+    studio_.set(p(4), p(11), p(3), p(14), p(5), p(6), p(14), p(17), p(18), p(19));
     if (any) {
       for (int i = 0; i < n; ++i) { io[2 * i] = tmpL_[i]; io[2 * i + 1] = tmpR_[i]; }
     } else {

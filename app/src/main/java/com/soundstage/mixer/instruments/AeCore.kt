@@ -15,7 +15,9 @@ enum class AeInstrument(val fxId: Int, val title: String, val paramCount: Int) {
     // 17 = contrat du moteur (fx_piano.h, kParams).  L'index 12 (ex-DRIVE) est
     // recycle en bruit de touche, 13 (ex-PUNCH) est libre, 16 est le bruit de
     // marteau.  AMP et PUNCH sont retires du moteur : voir l'en-tete de fx_piano.h.
-    PIANO(17, "Æther Piano", 17);
+    // 17/18/19 = EQ 3 BANDES (medium, frequence du medium, aigus) : l'ancien EQ
+    // tenait sur un seul potard qui liait les trois bandes.
+    PIANO(17, "Æther Piano", 20);
     /** Parameters that switch instantly on a preset change (the others glide). */
     val discrete: IntArray get() = when (this) {
         ORGAN -> intArrayOf(18, 19, 20, 21, 22, 23, 24, 25)
@@ -23,7 +25,9 @@ enum class AeInstrument(val fxId: Int, val title: String, val paramCount: Int) {
         LEADS -> intArrayOf(5, 6, 7, 8, 9, 17, 28)
         SAX -> intArrayOf(0, 1, 2, 3)
         // 15 = MODEL : le timbre doit basculer d'un coup, pas glisser.
-        PIANO -> intArrayOf(8, 15)
+        // 18 = frequence du medium : un filtre qu'on regle en glissant siffle, donc
+        // on le bascule d'un coup comme le modele.
+        PIANO -> intArrayOf(8, 15, 18)
     }
 }
 
@@ -61,7 +65,8 @@ object AeFmt {
         3 -> if (v < 0.33f) "Closed" else if (v < 0.66f) "Half" else "Open"
         4 -> if (v < 0.34f) "Under" else if (v < 0.67f) "Front" else "Over"
         11 -> if (v < 0.34f) "Near" else if (v < 0.67f) "Mid" else "Far"
-        14 -> "${((v - 0.5f) * 18f).toInt()}dB"                  // EQ
+        14, 17, 19 -> "${((v - 0.5f) * 24f).toInt()}dB"          // EQ LOW / MID / HIGH
+        18 -> hz(300f * 9f.pow(v))                               // EQ FREQ (medium)
         else -> pct(v)
     }
     private fun classic(inst: AeInstrument, i: Int, v: Float): String = if (inst == AeInstrument.ORGAN) {
