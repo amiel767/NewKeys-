@@ -22,6 +22,11 @@ STATES = [
     ("05_editor.png", "Éditeur", "Ruban 40 % / page 60 %, quatre onglets."),
 ]
 
+# Rendus Compose réels (Roborazzi), pas la maquette : ce que le code fait vraiment.
+REAL = [
+    ("floating_real.png", "Le flottant, rendu par Compose", "Capture Android réelle : carte à la couleur de la feuille, 371 dp, sans contour."),
+]
+
 STYLE = """
 :root{--bg:#0A0D13;--panel:#151922;--line:#242a36;--ink:#e8ecf3;--dim:#8b95a7;--gold:#d9a441;--tag:#7aa2f7}
 *{box-sizing:border-box}
@@ -64,6 +69,18 @@ def main() -> None:
         "<div class=grid>",
     ]
     for f, title, desc in STATES:
+        if not (PUB / f).exists():
+            continue
+        parts.append(
+            f"<figure><img src='/{html.escape(f)}' alt='{html.escape(title)}'>"
+            f"<figcaption><b>{html.escape(title)}</b><span>{html.escape(desc)}</span></figcaption></figure>"
+        )
+    parts.append("</div>")
+    parts.append("<h2>Le rendu Android réel</h2>")
+    parts.append("<div class=note>La maquette JSX est la référence de design ; voici ce que le code Compose produit vraiment, "
+                 "capturé par Roborazzi. C'est ce rendu qui a mis au jour la carte invisible sans rectangle d'origine.</div>")
+    parts.append("<div class=grid>")
+    for f, title, desc in REAL:
         if not (PUB / f).exists():
             continue
         parts.append(
