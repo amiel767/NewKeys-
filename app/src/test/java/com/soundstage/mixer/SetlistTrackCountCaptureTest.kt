@@ -48,7 +48,7 @@ class SetlistTrackCountCaptureTest {
     }
 
     @Test
-    fun aFreshSetlistRendersOneFader() {
+    fun aFreshSetlistRendersOnlyTheAddButton() {
         composeTestRule.mainClock.autoAdvance = false
         val app = ApplicationProvider.getApplicationContext<Application>()
         val viewModel = MixerViewModel(app)
@@ -70,6 +70,9 @@ class SetlistTrackCountCaptureTest {
         composeTestRule.runOnIdle {
             viewModel.createSetlistFromScreen(name, CreateMode.Blank)
         }
+        // The write runs on Dispatchers.IO, so opening before it lands reads nothing and
+        // the mixer keeps its startup default. Wait for the file to be listed, then open.
+        idleUntil(10_000) { viewModel.uiState.value.scenes.any { it.name == name } }
         composeTestRule.runOnIdle { viewModel.openProject(name) }
         // Write and load both bounce through Dispatchers.IO -> Dispatchers.Main, and the
         // test main looper is paused, so idle it until the load actually lands.
@@ -80,14 +83,14 @@ class SetlistTrackCountCaptureTest {
 
         assertEquals(
             "the mixer renders tracks.take(visibleTracksCount), so this is what is drawn",
-            1,
+            0,
             viewModel.uiState.value.visibleTracksCount
         )
         composeTestRule.onRoot()
-            .captureRoboImage(filePath = "src/test/screenshots/setlist_1_track.png")
+            .captureRoboImage(filePath = "src/test/screenshots/setlist_0_track.png")
 
         // The "+" affordance must still grow the mixer back to the full eight.
-        composeTestRule.runOnIdle { repeat(7) { viewModel.addSoundTrack() } }
+        composeTestRule.runOnIdle { repeat(8) { viewModel.addSoundTrack() } }
         composeTestRule.mainClock.advanceTimeBy(1_000)
         assertEquals(8, viewModel.uiState.value.visibleTracksCount)
         composeTestRule.onRoot()
