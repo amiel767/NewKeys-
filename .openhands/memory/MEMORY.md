@@ -202,3 +202,21 @@ Commit `e7a6c98`. `compileDebugKotlin` + `assembleDebug` OK (APK arm64 54,1 Mo).
   elle passe dessous.
 - Reference de design : `tools/design/SK_GRAMMAR.md` (Sunday Keys) ; Valhalla dans
   `/workspace/dl/valhalla/`. Livraison : `tools/shots_page.py` + `tools/serve.py` (12000).
+
+## Session 2026-11-05 (suite) — FX : potards PLATS (fin du dome 3D Valhalla)
+Branche `design/fx-reverb`, commit `3acac9c`. `main` reste a la conversation Æther
+Piano `9c93aa40` — ne pas y pousser.
+- **Le potard Valhalla est PLAT.** Mesure sur `room_24.jpg` : disque **uniforme 121**
+  sur panneau **52**, puis le liseré. Ni dôme, ni dégradé de corps, ni collerette.
+  Il ne se lit que par disque plus clair + filet clair au bord + arc de valeur +
+  aiguille blanche. **Test** : luminance au CENTRE contre au BORD — centre >> bord =
+  dôme (à supprimer), centre == bord = plat.
+- `FxKnob.kt` refait plat ; `FxMagmaKnob.kt` : disque plat + braise CONTENUE (une
+  lueur qui emplit le disque jusqu'au bord re-donne un dôme : 43 bord / 164 centre).
+- `FxFonts.display` = Orbitron (medium/bold) pour le titre de page (ex-Cinzel 27 sp).
+- Case preset = **pastille compacte** (26 dp, nom du preset seul), à droite ; la
+  liste déroulante est ancrée à droite en 168 dp.
+- **Chemin de capture** : le test JVM a `app/` comme cwd, donc `captureRoboImage`
+  doit écrire `src/test/screenshots/...` (pas `app/src/...`, qui crée `app/app/`).
+- **Environnement** : le snapshot Debian renvoie **404** sur openjdk-21 ->
+  télécharger Temurin (`api.adoptium.net`), `JAVA_HOME=/workspace/jdk/jdk-21.0.13+9`.
