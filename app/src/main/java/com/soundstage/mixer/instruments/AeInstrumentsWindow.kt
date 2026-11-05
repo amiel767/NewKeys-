@@ -82,10 +82,16 @@ fun AetherInstrumentsWindow(
     LaunchedEffect(isOpen, loaded, strip) {
         open = if (!isOpen) null else loaded
     }
+    // The window is composed fresh each time the popup opens, with isOpen already true, so
+    // AnimatedVisibility alone would show it at full size on the first frame. Gate it on a
+    // state that flips one frame later so the enter transition actually plays.
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { shown = true }
+    val visible = isOpen && shown
 
     Box(modifier.fillMaxSize().zIndex(50f)) {
         AnimatedVisibility(
-            visible = isOpen,
+            visible = visible,
             enter = fadeIn(tween(220)),
             exit = fadeOut(tween(180)),
         ) {
@@ -101,7 +107,7 @@ fun AetherInstrumentsWindow(
         }
 
         AnimatedVisibility(
-            visible = isOpen,
+            visible = visible,
             enter = scaleIn(
                 initialScale = 0.55f,
                 animationSpec = spring(dampingRatio = 0.7f, stiffness = 380f)
@@ -124,6 +130,13 @@ fun AetherInstrumentsWindow(
                             .aspectRatio(AE_W / AE_H)
                             .shadow(28.dp, AePanelShape, ambientColor = Color.Black, spotColor = Color(0xAA000000))
                             .clip(AePanelShape)
+                            // Swallow taps that land on the panel itself, so a press on an empty
+                            // area of the instrument does not reach the backdrop behind it and
+                            // close the window.
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                            ) {}
                     ) {
                         AeInstrumentWindow(
                             manager = manager,

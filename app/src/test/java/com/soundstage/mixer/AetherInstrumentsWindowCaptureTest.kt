@@ -94,4 +94,22 @@ class AetherInstrumentsWindowCaptureTest {
         composeTestRule.mainClock.advanceTimeBy(1_500)
         composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/aether_window_instrument.png")
     }
+
+    /**
+     * The Save affordance only appears once a knob has moved away from the preset, so the
+     * capture moves one parameter first. It is a labelled "Save" pill now: the old floppy
+     * glyph read as decoration rather than as a button.
+     */
+    @Test fun aether_window_save_button() {
+        val m = manager(AeInstrument.PIANO)
+        m.setParam(0, 2, 0.9f)
+        composeTestRule.mainClock.autoAdvance = false
+        composeTestRule.setContent {
+            Box(Modifier.fillMaxSize().background(Color(0xFF0E131C))) {
+                AetherInstrumentsWindow(manager = m, strip = 0, isOpen = true, onClose = {})
+            }
+        }
+        composeTestRule.mainClock.advanceTimeBy(1_500)
+        composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/aether_window_save.png")
+    }
 }

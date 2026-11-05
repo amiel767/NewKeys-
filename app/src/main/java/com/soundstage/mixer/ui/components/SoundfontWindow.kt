@@ -493,9 +493,15 @@ fun SoundfontWindow(
         SfCategory.values().filter { (countsByCategory[it] ?: 0) > 0 }
     }
 
+    // Composed fresh with isOpen already true, so AnimatedVisibility alone would paint the
+    // window at full size on the first frame. Gate it on a state that flips one frame later.
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { shown = true }
+    val visible = state.isOpen && shown
+
     Box(modifier = modifier.fillMaxSize().zIndex(50f)) {
         AnimatedVisibility(
-            visible = state.isOpen,
+            visible = visible,
             enter = fadeIn(tween(220)),
             exit = fadeOut(tween(180)),
         ) {
@@ -511,7 +517,7 @@ fun SoundfontWindow(
         }
 
         AnimatedVisibility(
-            visible = state.isOpen,
+            visible = visible,
             enter = scaleIn(
                 initialScale = 0.55f,
                 animationSpec = spring(dampingRatio = 0.7f, stiffness = 380f)

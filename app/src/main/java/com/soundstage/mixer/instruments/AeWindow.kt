@@ -61,7 +61,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import com.soundstage.mixer.ui.components.FloppyDiskIcon
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -150,8 +149,13 @@ fun AeInstrumentWindow(manager: AeManager, strip: Int, onClose: () -> Unit, modi
                     AeT("PRESETS", 12, winTh.ink, Modifier.padding(horizontal = 12.su()))
                 }
             }
-            // Shown only once a knob has been moved away from the selected preset.
-            if (manager.isModified(strip)) SaveDiskBtn(winTh, 604, 7) { naming = true }
+            // Shown only once a knob has been moved away from the selected preset. The piano's
+            // own model list already runs along the top-right, so its Save sits at the far right
+            // of the header; the other instruments keep it just left of the PRESETS chip.
+            if (manager.isModified(strip)) {
+                if (s.instrument == AeInstrument.PIANO) SaveButton(winTh, 916, 7) { naming = true }
+                else SaveButton(winTh, 590, 7) { naming = true }
+            }
             if (naming) NameSheet(
                 initial = "My ${s.instrument.title.removePrefix("Æther ")}",
                 onCancel = { naming = false },
@@ -394,12 +398,16 @@ private fun CatRow(name: String, count: Int, sel: Boolean, accent: Color, isAll:
     }
 }
 
-/** Floppy button that saves the current knobs as a user preset. Same chrome as the header buttons. */
+/**
+ * "Save" button that stores the current knobs as a user preset. Same raised chrome as the other
+ * header controls, but a labelled pill instead of the floppy glyph: the icon read as decoration,
+ * the word says what the button does.
+ */
 @Composable
-private fun BoxScope.SaveDiskBtn(th: AeTheme, x: Number, y: Number, onClick: () -> Unit) {
+private fun BoxScope.SaveButton(th: AeTheme, x: Number, y: Number, onClick: () -> Unit) {
     val sh = RoundedCornerShape(12.su())
     Box(
-        Modifier.at(x, y, 34, 34).clip(sh)
+        Modifier.at(x, y, 74, 32).clip(sh)
             // Lit top edge, shaded bottom: the button reads as raised like the other
             // header controls, instead of as a flat tinted square with a hard outline.
             .background(Brush.verticalGradient(listOf(Color(0x4DFFFFFF), Color(0x14FFFFFF))))
@@ -407,7 +415,7 @@ private fun BoxScope.SaveDiskBtn(th: AeTheme, x: Number, y: Number, onClick: () 
             .border(1.su(), th.edge, sh)
             .clickable(remember { MutableInteractionSource() }, null, onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) { FloppyDiskIcon(isArmed = false, tint = th.ink, modifier = Modifier.size(19.su())) }
+    ) { AeT("Save", 13, th.ink, font = AeFonts.ui, weight = FontWeight.ExtraBold, spacing = 0.04f) }
 }
 
 /**

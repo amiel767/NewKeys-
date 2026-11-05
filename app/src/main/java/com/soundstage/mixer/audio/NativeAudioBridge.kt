@@ -152,6 +152,7 @@ object NativeAudioBridge {
     external fun fxInstrumentSampleMix(strip: Int): Float
     external fun fxGetMeter(strip: Int, slot: Int, index: Int): Float
     external fun fxCollectGarbage()
+    external fun fxCollectGarbageNow()
     external fun fxPanic()
     external fun fxMatchShaper(fxId: Int, presetName: String, gmProgram: Int, bank: Int, keyLow: Int, keyHigh: Int): Int
 
@@ -849,6 +850,34 @@ object NativeAudioBridge {
                 fxPanic()
             } catch (e: Throwable) {
                 Log.e("NativeAudioBridge", "Error invoking fxPanic: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Frees the effects/sources the FX mixer retired. Replacing or clearing a slot only
+     * hands the old object to a garbage list, deleted after the audio thread has run a few
+     * more blocks; nothing reclaims it unless this is called. Unloading an Æther instrument
+     * without it kept the whole sample bank (up to 12 Mo) resident for the rest of the
+     * session, which is what "the unloaded instrument still weighs in RAM" was.
+     */
+    fun safeFxCollectGarbage() {
+        if (isLibraryLoaded) {
+            try {
+                fxCollectGarbage()
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking fxCollectGarbage: ${e.message}")
+            }
+        }
+    }
+
+    /** Same as [safeFxCollectGarbage] but frees the retired objects immediately (see the native doc). */
+    fun safeFxCollectGarbageNow() {
+        if (isLibraryLoaded) {
+            try {
+                fxCollectGarbageNow()
+            } catch (e: Throwable) {
+                Log.e("NativeAudioBridge", "Error invoking fxCollectGarbageNow: ${e.message}")
             }
         }
     }

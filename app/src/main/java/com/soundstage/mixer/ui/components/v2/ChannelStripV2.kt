@@ -1,9 +1,11 @@
 package com.soundstage.mixer.ui.components.v2
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.offset
@@ -29,6 +31,7 @@ import com.soundstage.mixer.ui.components.FaderSliderWithVuMeter
 import com.soundstage.mixer.ui.components.MicroPanKnob
 import com.soundstage.mixer.ui.components.TrackBottomRow
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ChannelStripV2(
     track: TrackChannel, isDimmed: Boolean, accentColor: Color,
@@ -36,7 +39,8 @@ fun ChannelStripV2(
     onSoloToggle: () -> Unit, onMuteToggle: () -> Unit,
     onTrackNameClick: () -> Unit, onFxClick: () -> Unit,
     onTrackSettingsClick: () -> Unit, onPowerToggle: () -> Unit,
-    onDeleteTrack: () -> Unit, modifier: Modifier = Modifier
+    onDeleteTrack: () -> Unit, modifier: Modifier = Modifier,
+    onTrackNameLongClick: () -> Unit = {}
 ) {
     val level = if (isDimmed) 0f else maxOf(track.peakMeterL, track.peakMeterR).coerceIn(0f, 1f)
     val auraAlpha = (0.17f + level * 0.42f) * (if (isDimmed) 0.3f else 1f)
@@ -85,7 +89,14 @@ fun ChannelStripV2(
                             cap = StrokeCap.Round
                         )
                     }
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onTrackNameClick() },
+                    // Tap opens the strip's source (or the chooser the first time); a long press
+                    // always reopens the chooser, so a track can be switched from SF2 to Æther.
+                    .combinedClickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { onTrackNameClick() },
+                        onLongClick = { onTrackNameLongClick() }
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 // An Æther instrument occupies the strip like a soundfont, so its preset name

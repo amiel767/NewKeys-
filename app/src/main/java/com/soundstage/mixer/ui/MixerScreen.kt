@@ -196,7 +196,10 @@ private fun MixerMainPageContent(
                         if (verticalMode) {
                             // trackScrollState lifted to MixerScreen level
                             val overlayWidth = if (isPadOpen) (this@BoxWithConstraints.maxWidth * 0.50f) else 0.dp
-                            val visibleTracks = uiState.tracks.take(uiState.visibleTracksCount.coerceIn(1, 8))
+                            // 0 is a valid count: a fresh setlist opens with no fader at all,
+                            // only the "+" that creates the first track. Coercing to 1 here
+                            // would show track 1 on a setlist that has none.
+                            val visibleTracks = uiState.tracks.take(uiState.visibleTracksCount.coerceIn(0, 8))
                             val showAddButton = uiState.visibleTracksCount < 8 && !isPadOpen
                             val activeItemCount = visibleTracks.size + (if (showAddButton) 1 else 0)
 
@@ -247,6 +250,7 @@ private fun MixerMainPageContent(
                                         onSoloToggle = { viewModel.onTrackSoloClick(track.id) },
                                         onMuteToggle = { viewModel.onTrackMuteClick(track.id) },
                                         onTrackNameClick = { viewModel.openSoundSourceForSlot(track.id - 1) },
+                                        onTrackNameLongClick = { viewModel.openSoundSourceForSlot(track.id - 1, force = true) },
                                         onFxClick = { viewModel.openEffectsForTrack(track.id) },
                                         onTrackSettingsClick = { viewModel.openTrackSettings(track.id) },
                                         onPowerToggle = { viewModel.toggleTrackPower(track.id) },
@@ -562,7 +566,7 @@ private fun MixerMainPageContent(
 
             // 5. RETRACTABLE MULTI-TOUCH VIRTUAL PIANO KEYBOARD (Smooth 380ms transition)
             val activePianoTracks = remember(uiState.tracks, uiState.visibleTracksCount) {
-                uiState.tracks.take(uiState.visibleTracksCount.coerceIn(1, 8)).filter { it.isEnabled }
+                uiState.tracks.take(uiState.visibleTracksCount.coerceIn(0, 8)).filter { it.isEnabled }
             }
             AnimatedVisibility(
                 visible = isKeyboardVisible,

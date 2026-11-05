@@ -845,6 +845,13 @@ Java_com_soundstage_mixer_audio_NativeAudioBridge_fxCollectGarbage(
 }
 
 JNIEXPORT void JNICALL
+Java_com_soundstage_mixer_audio_NativeAudioBridge_fxCollectGarbageNow(
+        JNIEnv *env,
+        jobject /* this */) {
+    gAudioEngine.fxCollectGarbageNow();
+}
+
+JNIEXPORT void JNICALL
 Java_com_soundstage_mixer_audio_NativeAudioBridge_fxPanic(
         JNIEnv *env,
         jobject /* this */) {

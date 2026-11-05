@@ -22,6 +22,26 @@ PUB = "/workspace/dl/pub"
 APK_SRC = os.path.join(REPO, "app/build/outputs/apk/debug/app-debug.apk")
 APK_DST = os.path.join(PUB, "aether.apk")
 
+# Captures des changements de cette build, montrees sous le bouton. Le fichier
+# vient de `tools/shots_page.py` (WebP compresse) ; la legende dit ce qu'on
+# regarde, pas ce que le code a fait.
+CHANGES = [
+    ("setlist_0_track", "Setlist neuf : aucune piste, seulement le « + »",
+     "Un setlist cree ouvre sur zero fader. Le « + » cree la premiere piste puis "
+     "demande sa source sonore."),
+    ("setlist_8_tracks", "Le « + » reconstruit bien les huit pistes",
+     "La creation de pistes n'a pas ete cassee : le bouton remonte a huit."),
+    ("sound_source_chooser", "Choix de la source sonore (Æther ou SF2)",
+     "Demande une seule fois par piste, au premier tap. Ensuite la plaque de nom "
+     "ouvre directement la fenetre choisie ; l'appui long rouvre le choix."),
+    ("aether_window_save", "Bouton « Save » lisible (Æther Piano)",
+     "L'icone disquette se lisait comme une decoration. Le bouton est desormais "
+     "une pastille libellee, montree des qu'un reglage a bouge."),
+    ("aether_window_instrument", "Fenetre Æther Piano (interface integree)",
+     "La meme fenetre heberge la liste et l'interface de l'instrument ; elle "
+     "s'agrandit au lieu d'ouvrir un second calque."),
+]
+
 
 def human(n: int) -> str:
     return f"{n / 1_048_576:.1f} Mo"
@@ -48,6 +68,26 @@ def main() -> int:
 
     os.makedirs(PUB, exist_ok=True)
     shutil.copy2(APK_SRC, APK_DST)
+
+    # Les vignettes WebP sont ecrites par `tools/shots_page.py` dans `pub/shots/`.
+    # Si elles manquent, la page se construit quand meme, sans les images.
+    shots_dir = os.path.join(PUB, "shots")
+    blocks = []
+    for name, title, caption in CHANGES:
+        thumb = os.path.join(shots_dir, f"{name}.thumb.webp")
+        full = os.path.join(shots_dir, f"{name}.webp")
+        if not os.path.exists(thumb):
+            continue
+        blocks.append(
+            f'    <div class="shot">'
+            f'<a href="/shots/{name}.webp" target="_blank">'
+            f'<img src="/shots/{name}.thumb.webp" alt="{title}" loading="lazy"></a>'
+            f'<div class="cap"><b>{title}</b><span>{caption}</span></div></div>'
+        )
+    gallery = "\n".join(blocks) if blocks else (
+        '    <div class="note">Captures non generees : lancer '
+        '<code>tools/shots_page.py</code>.</div>'
+    )
 
     page = f'''<!doctype html>
 <html lang="fr">
@@ -80,6 +120,15 @@ def main() -> int:
   .note{{background:#141821;border:1px solid var(--line);border-left:3px solid var(--gold2);
         border-radius:8px;padding:11px 13px;color:var(--dim);font-size:12.5px;margin:18px 0 0;text-align:left}}
   .note b{{color:var(--ink)}}
+  h2{{font-size:15px;margin:26px 0 4px;color:var(--gold);letter-spacing:.4px;
+      text-transform:uppercase;font-size:12.5px}}
+  .shots{{display:grid;grid-template-columns:1fr;gap:16px;margin-top:14px}}
+  .shot{{background:#10141b;border:1px solid var(--line);border-radius:12px;
+        overflow:hidden;text-align:left}}
+  .shot img{{display:block;width:100%;height:auto;background:#0a0c10}}
+  .shot .cap{{padding:10px 13px 12px}}
+  .shot .cap b{{display:block;color:var(--ink);font-size:13px;margin-bottom:3px}}
+  .shot .cap span{{color:var(--dim);font-size:12px;line-height:1.55}}
 </style>
 </head>
 <body>
@@ -102,6 +151,11 @@ def main() -> int:
     l'installation depuis cette source si Android le demande. Build de test
     (signature debug), a remplacer par une release signee pour une vraie
     distribution.
+  </div>
+
+  <h2>Ce qui a change</h2>
+  <div class="shots">
+{gallery}
   </div>
 </div>
 </body></html>

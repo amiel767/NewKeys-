@@ -12,6 +12,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -41,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -51,7 +54,9 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -64,14 +69,39 @@ import com.aetherkeys.sheets.ui.theme.*
 import kotlin.math.roundToInt
 import android.graphics.Color as AColor
 
+/**
+ * Rebond commun a toutes les cases de Sheets : la case s'enfonce au doigt
+ * (echelle 0.94) et revient par un ressort. Reprend exactement le geste du
+ * mixer (`TrackBottomRow.kt`), pour que l'app se lise d'un seul tenant.
+ *
+ * Renvoie le modificateur a poser sur la case et la source d'interaction a
+ * passer au `clickable` (`indication = null`, pas d'ondulation Material).
+ */
+@Composable
+fun rememberPressRebound(pressedScale: Float = 0.94f): Pair<Modifier, MutableInteractionSource> {
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        if (pressed) pressedScale else 1f,
+        spring(dampingRatio = 0.55f, stiffness = 900f),
+        label = "pressRebound",
+    )
+    return Modifier.graphicsLayer { scaleX = scale; scaleY = scale } to source
+}
+
 /** Pastille : filtres, setlists, bascules. */
 @Composable
 fun Pill(text: String, modifier: Modifier = Modifier, selected: Boolean = false, onClick: () -> Unit) {
+    val (press, source) = rememberPressRebound()
+    val haptic = LocalHapticFeedback.current
     Box(
         modifier
+            .then(press)
             .clip(RoundedCornerShape(SheetsRadius.Chip))
             .background(if (selected) SheetsColors.Accent else SheetsColors.Chip)
-            .clickable(onClick = onClick)
+            .clickable(interactionSource = source, indication = null) {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onClick()
+            }
             .padding(horizontal = 16.dp, vertical = 9.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -124,7 +154,7 @@ fun SegmentedToggle(
                     Modifier.weight(1f).fillMaxHeight().clickable { onSelect(i) },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(label, style = SheetsType.Label, color = c, maxLines = 1)
+                    Text(label, style = SheetsType.Label.copy(fontSize = 12.5.sp), color = c, maxLines = 1)
                 }
             }
         }
@@ -138,12 +168,19 @@ fun GlyphButton(
     contentDescription: String? = null,
     enabled: Boolean = true, filled: Boolean = false, size: Int = 40,
 ) {
+    val haptic = LocalHapticFeedback.current
+    val (press, source) = rememberPressRebound(0.92f)
     Box(
         modifier
             .size(size.dp)
+            .then(press)
             .clip(RoundedCornerShape(SheetsRadius.Button))
             .background(if (filled) SheetsColors.Accent else SheetsColors.SurfaceRaised)
-            .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier),
+            .then(
+                if (enabled) Modifier.clickable(interactionSource = source, indication = null) {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onClick()
+                } else Modifier
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

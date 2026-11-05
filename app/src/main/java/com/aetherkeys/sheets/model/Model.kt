@@ -33,7 +33,6 @@ enum class SectionKind { Intro, Verse, PreChorus, Chorus, Bridge, Solo, Outro, T
 enum class Pagination { Unified, PerSection }
 enum class Notation { Nashville, Standard }
 enum class PassingDisplay { Auto, Raw }
-enum class ExportFormat { Pdf, Image, ChordPro }
 
 fun SectionKind.label(): String = when (this) {
     SectionKind.Intro -> "Intro"
@@ -112,10 +111,21 @@ data class SheetsSettings(
     val defaultLyricsFontId: String = FontIds.PlusJakartaSans,
     val lockOnOpen: Boolean = false,
     val swipeReversed: Boolean = false,
-    val exportFormat: ExportFormat = ExportFormat.Pdf,
 )
 
-data class Setlist(val id: String = newId(), val name: String, val sheetIds: List<String> = emptyList())
+/**
+ * Un Set est un dossier de feuilles : on y range les feuilles qu'on joue ensemble,
+ * on lui donne le nom qu'on veut, et il s'affiche comme une carte de la bibliotheque.
+ * L'ordre de [sheetIds] est l'ordre de jeu.
+ */
+data class Setlist(
+    val id: String = newId(),
+    val name: String,
+    val sheetIds: List<String> = emptyList(),
+    val colorArgb: Long? = null,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
+)
 
 data class LibraryData(
     val settings: SheetsSettings = SheetsSettings(),

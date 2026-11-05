@@ -15,13 +15,14 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * "A new Setlist opens on eight faders instead of one."
+ * "A new Setlist opens on eight faders instead of none."
  *
  * The setlist file is written by `createSetlistFromScreen` and read back by `selectScene`.
  * The writer used to omit `visibleTracksCount`, so the reader fell back to
- * `tracks.count { it.isEnabled }` — which is 8, because every track ships enabled. This
- * test walks the real create -> open round trip and asserts the count that lands in the
- * UI state, so the fallback cannot silently come back.
+ * `tracks.count { it.isEnabled }` — which is 8, because every track ships enabled. A fresh
+ * setlist now opens on no strip at all: only the "+" that creates the first one and asks
+ * for its sound source. This test walks the real create -> open round trip and asserts the
+ * count that lands in the UI state, so the fallback cannot silently come back.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -49,7 +50,7 @@ class SetlistTrackCountTest {
     }
 
     @Test
-    fun aBrandNewSetlistOpensOnASingleTrack() {
+    fun aBrandNewSetlistOpensOnNoTrack() {
         val viewModel = vm()
         val name = "CountCheck${System.currentTimeMillis()}"
 
@@ -66,8 +67,8 @@ class SetlistTrackCountTest {
         )
 
         assertEquals(
-            "a fresh setlist must open on one track, not on every enabled track",
-            1,
+            "a fresh setlist must open on no track, not on every enabled track",
+            0,
             viewModel.uiState.value.visibleTracksCount
         )
     }

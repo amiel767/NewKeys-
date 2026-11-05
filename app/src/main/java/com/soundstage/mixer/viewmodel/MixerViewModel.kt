@@ -240,8 +240,6 @@ data class MixerUiState(
      * through `FloatingSheetHost`, so it needs the structured sheet, not a plain-text digest.
      */
     val floatingSheetData: com.aetherkeys.sheets.model.Sheet? = null,
-    val floatingSheetIsLeft: Boolean = false,
-    val floatingSheetScale: Float = 1.0f,
 
     // Snapshots / Sub-Scenes (Section 2)
     val isSnapshotArmMode: Boolean = false,
@@ -610,6 +608,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                                     pan = savedT.pan,
                                     soundfontName = savedT.soundfontName,
                                     patchName = savedT.patchName,
+                                    soundSource = savedT.soundSource,
                                     bank = savedT.bank,
                                     program = savedT.program,
                                     reverbPreset = savedT.reverbPreset,
@@ -844,8 +843,29 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         persistJob = viewModelScope.launch(Dispatchers.IO) {
             delay(500)
             syncActiveSnapshot()
+            syncAetherIntoState()
             persistCurrentState()
         }
+    }
+
+    /**
+     * Stamps the live Æther instruments onto the track list.
+     *
+     * An Æther instrument is owned by `AeInstruments` and the engine, not by
+     * `TrackChannel`, so the live tracks carried no record of it. Only
+     * [captureSnapshot] stamped it, and only into the snapshot copy — which is why a
+     * scene file and the app state were written without it, and the instrument the
+     * user had loaded was gone after a restart. Every writer funnels through
+     * [persistCurrentStateDebounced], so the stamp lives here, next to
+     * [syncActiveSnapshot] and for the same reason.
+     */
+    private fun syncAetherIntoState() {
+        val state = _uiState.value
+        val stamped = state.tracks.map { track ->
+            track.copy(aether = com.soundstage.mixer.instruments.AeInstruments.manager.snapshotState(track.id - 1))
+        }
+        if (stamped == state.tracks) return
+        _uiState.update { it.copy(tracks = stamped) }
     }
 
     /**
@@ -2869,18 +2889,6 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun toggleFloatingSheetPosition() {
-        _uiState.update { it.copy(floatingSheetIsLeft = !it.floatingSheetIsLeft) }
-    }
-
-    fun setFloatingSheetPosition(isLeft: Boolean) {
-        _uiState.update { it.copy(floatingSheetIsLeft = isLeft) }
-    }
-
-    fun updateFloatingSheetScale(scale: Float) {
-        _uiState.update { it.copy(floatingSheetScale = scale.coerceIn(0.75f, 1.5f)) }
-    }
-
     fun closeFloatingSheet() {
         _uiState.update { it.copy(floatingSheet = null, floatingSheetData = null) }
     }
@@ -2949,14 +2957,23 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Opens the sound-source chooser for a slot: the user then picks the soundfont window or the
-     * Æther Instruments window. The target channel is armed here so either window inherits it.
+     * Tapping a name plate opens the strip's sound source. The chooser (Æther vs SF2) is asked
+     * only once, the first time the strip is tapped: once the user has picked a source it is
+     * remembered on the track and the matching window opens directly on every later tap.
+     * [force] reopens the chooser, which is what a long press on the name plate does.
      */
-    fun openSoundSourceForSlot(slotId: Int) {
+    fun openSoundSourceForSlot(slotId: Int, force: Boolean = false) {
         audioEngine.activeTargetChannel = AudioSlot.midiChannelForSlot(slotId)
+        val chosen = _uiState.value.tracks.getOrNull(slotId)?.soundSource ?: ""
+        val direct = when {
+            force -> null
+            chosen == TrackChannel.SOURCE_AETHER -> ActivePopup.AETHER
+            chosen == TrackChannel.SOURCE_SF2 -> ActivePopup.SOUNDFONT
+            else -> null
+        }
         _uiState.update {
             it.copy(
-                activePopup = ActivePopup.SOUND_SOURCE,
+                activePopup = direct ?: ActivePopup.SOUND_SOURCE,
                 activeSoundfontSlotId = slotId
             )
         }
@@ -2985,7 +3002,17 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         val slotId = _uiState.value.activeSoundfontSlotId
         if (popup != ActivePopup.SOUNDFONT && popup != ActivePopup.AETHER) return
         audioEngine.activeTargetChannel = AudioSlot.midiChannelForSlot(slotId)
-        _uiState.update { it.copy(activePopup = popup) }
+        val source = if (popup == ActivePopup.AETHER) TrackChannel.SOURCE_AETHER else TrackChannel.SOURCE_SF2
+        _uiState.update { state ->
+            state.copy(
+                activePopup = popup,
+                tracks = state.tracks.map { if (it.id == slotId + 1) it.copy(soundSource = source) else it }
+            )
+        }
+        // Persist the choice here, at the moment it is made. Nothing else on this path
+        // wrote it, so the strip came back with an empty `soundSource` and the chooser
+        // was asked again on the next tap — the "reopening" the user reported.
+        persistCurrentStateDebounced()
     }
 
     // ================= DRUM PAD CONTROLS =================
@@ -3854,6 +3881,8 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                                 pan = tObj.optDouble("pan", originalTrack.pan.toDouble()).toFloat(),
                                 soundfontName = tObj.optString("soundfontName", originalTrack.soundfontName),
                                 patchName = tObj.optString("patchName", originalTrack.patchName),
+                                soundSource = tObj.optString("soundSource", originalTrack.soundSource),
+                                aether = AetherJson.fromJson(tObj.optJSONObject("aether")),
                                 bank = tObj.optInt("bank", originalTrack.bank),
                                 program = tObj.optInt("program", originalTrack.program),
                                 reverbPreset = tObj.optString("reverbPreset", originalTrack.reverbPreset),
@@ -4034,6 +4063,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                                         pan = to.optDouble("pan", 0.0).toFloat(),
                                         soundfontName = to.optString("soundfontName", ""),
                                         patchName = to.optString("patchName", "-"),
+                                        soundSource = to.optString("soundSource", ""),
                                         bank = to.optInt("bank", 0),
                                         program = to.optInt("program", 0),
                                         reverbPreset = to.optString("reverbPreset", "Concert Hall"),
@@ -4166,7 +4196,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
 
                 // Re-apply soundfonts into native engine
                 updatedSlots.forEach { s ->
-                    if (!s.soundFontPath.isNullOrEmpty() && java.io.File(s.soundFontPath).exists()) {
+                    // A track that carries an Æther instrument must not also get a
+                    // soundfont: the two are exclusive on a strip, and the instrument
+                    // pass just below would unload it again anyway. Mirrors the guard
+                    // in the snapshot recall.
+                    val carriesAether = updatedTracks.getOrNull(s.slotId)?.aether != null
+                    if (!carriesAether && !s.soundFontPath.isNullOrEmpty() && java.io.File(s.soundFontPath).exists()) {
                         val sfId = NativeAudioBridge.safeLoadSoundFont(NativeAudioBridge.ENGINE_FADER, s.soundFontPath)
                         if (sfId >= 0) {
                             NativeAudioBridge.safeSelectProgram(
@@ -4176,6 +4211,23 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                                 bank = s.bank,
                                 preset = s.preset
                             )
+                        }
+                    }
+                }
+                // Re-apply the Æther instruments. The scene file carries them, but the
+                // engine and `AeInstruments` are per-process: without this the strip came
+                // back with its instrument gone and the track was silent.
+                updatedTracks.forEachIndexed { idx, track ->
+                    if (idx in 0..7) {
+                        val st = track.aether
+                        if (st != null) {
+                            com.soundstage.mixer.instruments.AeInstruments.manager.restoreFromSnapshot(idx, st)
+                        } else if (com.soundstage.mixer.instruments.AeInstruments.isLoaded(idx)) {
+                            // The strip in memory still held an instrument that this
+                            // scene does not carry (an empty setlist, or a scene saved
+                            // before one was added): release it, or the previous
+                            // setlist's source would keep sounding on this channel.
+                            com.soundstage.mixer.instruments.AeInstruments.unload(idx)
                         }
                     }
                 }
@@ -4286,7 +4338,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     put("fxParameters", fxObj)
 
                     val tracksArray = org.json.JSONArray()
-                    state.tracks.forEach { t ->
+                    // Stamp the live instruments once, then write: the scene file is what
+                    // `selectScene` reads back, so an Æther instrument that is not in here
+                    // is simply gone on the next open.
+                    state.tracks.map { t ->
+                        t.copy(aether = com.soundstage.mixer.instruments.AeInstruments.manager.snapshotState(t.id - 1))
+                    }.forEach { t ->
                         val tObj = org.json.JSONObject().apply {
                             put("id", t.id)
                             put("name", t.name)
@@ -4295,10 +4352,12 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                             put("pan", t.pan)
                             put("soundfontName", t.soundfontName)
                             put("patchName", t.patchName)
+                            put("soundSource", t.soundSource)
                             put("bank", t.bank)
                             put("program", t.program)
                             put("reverbPreset", t.reverbPreset)
                             put("reverbMix", t.reverbMix)
+                            put("aether", AetherJson.toJson(t.aether))
                             put("velocityCurve", t.velocityCurve)
                             put("splitNoteMin", t.splitNoteMin)
                             put("splitNoteMax", t.splitNoteMax)
@@ -4461,18 +4520,31 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun addSoundTrack() {
+        val state = _uiState.value
+        if (state.visibleTracksCount >= 8) return
+        val nextTrackIdx = state.visibleTracksCount
         _uiState.update { current ->
-            if (current.visibleTracksCount < 8) {
-                val nextTrackIdx = current.visibleTracksCount
-                val updatedTracks = current.tracks.mapIndexed { idx, track ->
-                    if (idx == nextTrackIdx) track.copy(isEnabled = true) else track
-                }
-                current.copy(
-                    visibleTracksCount = current.visibleTracksCount + 1,
-                    tracks = updatedTracks
-                )
-            } else current
+            val updatedTracks = current.tracks.mapIndexed { idx, track ->
+                if (idx == nextTrackIdx) track.copy(isEnabled = true) else track
+            }
+            current.copy(
+                visibleTracksCount = current.visibleTracksCount + 1,
+                tracks = updatedTracks
+            )
         }
+        // The strip is now live, so the engine has to be told. Flipping only the UI flag
+        // left the channel muted and silent: the fader moved but nothing played, and the
+        // new track ignored its own volume, pan and velocity until something else happened
+        // to re-push them.
+        val added = _uiState.value.tracks.getOrNull(nextTrackIdx) ?: return
+        if (nextTrackIdx in 0..7) {
+            audioEngine.setChannelEnabled(nextTrackIdx, true)
+            audioEngine.setChannelPan(nextTrackIdx, added.pan)
+            applyTrackVolumes(_uiState.value)
+        }
+        audioEngine.setTrackVelocityProcessor(nextTrackIdx, VelocityProcessor(added.velocityConfig))
+        applyTrackPlaybackSettings(added)
+        persistCurrentStateDebounced()
     }
 
     /**
@@ -4529,13 +4601,19 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
         if (targetIdx in 0..7) {
             audioEngine.setChannelEnabled(targetIdx, false)
             NativeAudioBridge.safeAllNotesOff(targetIdx)
+            // The soundfont is dropped just below; the Æther instrument has to go with it,
+            // or a removed strip kept a live voice on its channel and the scene file still
+            // carried the instrument.
+            if (com.soundstage.mixer.instruments.AeInstruments.isLoaded(targetIdx)) {
+                com.soundstage.mixer.instruments.AeInstruments.unload(targetIdx)
+            }
         }
         _uiState.update { current ->
             if (current.visibleTracksCount > 1) {
                 val newCount = current.visibleTracksCount - 1
                 val updatedTracks = current.tracks.mapIndexed { idx, track ->
                     if (track.id == trackId) {
-                        track.copy(isEnabled = false, volume = 0.65f, soundfontName = "", patchName = "")
+                        track.copy(isEnabled = false, volume = 0.65f, soundfontName = "", patchName = "", aether = null, soundSource = "")
                     } else if (idx >= newCount) {
                         track.copy(isEnabled = false)
                     } else track
@@ -4848,7 +4926,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     name = "Patch 1",
                     tracks = fresh.tracks,
                     audioSlots = fresh.audioSlots,
-                    visibleTracksCount = 1,
+                    visibleTracksCount = 0,
                     transpose = 0,
                     octave = 0,
                     masterVolume = 0.85f,
@@ -4866,10 +4944,10 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                     put("drumVolume", 0.75)
                     put("drumReverb", 0.24)
                     put("masterVolume", 0.85)
-                    // A brand new setlist starts on a single track. Without this key the
-                    // loader falls back to `count { it.isEnabled }`, which is 8, and the
-                    // setlist opened on eight faders.
-                    put("visibleTracksCount", 1)
+                    // A brand new setlist opens on NO track at all: just the "+" to add one and
+                    // pick its source. Without this key the loader falls back to
+                    // `count { it.isEnabled }`, which is 8, and the setlist opened on eight faders.
+                    put("visibleTracksCount", 0)
                     // `tracks` / `audioSlots` must be written even though they are blank.
                     // `selectScene` treats a missing key as "keep whatever is in memory",
                     // so omitting them made a fresh setlist inherit the previous
@@ -4882,7 +4960,7 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
                         put(org.json.JSONObject().apply {
                             put("id", initialPatch.id)
                             put("name", initialPatch.name)
-                            put("visibleTracksCount", 1)
+                            put("visibleTracksCount", 0)
                             // Same reason as above: the patch reader also falls back to the
                             // in-memory tracks when its own `tracks` key is missing.
                             put("tracks", TrackJson.toJson(fresh.tracks))
@@ -5072,7 +5150,9 @@ class MixerViewModel(application: Application) : AndroidViewModel(application) {
             name = cleanName,
             tracks = if (isBlank) freshState.tracks else state.tracks,
             audioSlots = if (isBlank) freshState.audioSlots else state.audioSlots,
-            visibleTracksCount = if (isBlank) 1 else state.visibleTracksCount,
+            // A blank patch starts empty: no fader at all, only the "+" that adds the first
+            // track and asks for its sound source.
+            visibleTracksCount = if (isBlank) 0 else state.visibleTracksCount,
             transpose = if (isBlank) 0 else state.transpose,
             octave = if (isBlank) 0 else state.octave,
             masterVolume = state.masterTrack.volume,

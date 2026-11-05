@@ -136,6 +136,10 @@ data class TrackChannel(
     val fxSummary: String = "Fx, EQ...",
     val soundfontName: String = "",
     val patchName: String = "",
+    // Sound source the user picked for this strip: "" = not chosen yet (the chooser opens on
+    // the first tap), "sf2" = soundfont window, "aether" = Æther Instruments window. Once set,
+    // the name plate opens that window directly instead of asking again.
+    val soundSource: String = "",
     val bank: Int = 0,
     val program: Int = 0,
     // FX Tabs per track
@@ -160,10 +164,24 @@ data class TrackChannel(
     val selectedMidiDeviceId: String? = null, // null = All devices
     // Per-track colour override (ARGB). null = use the default palette colour for this track index.
     val customColorArgb: Int? = null,
+    /**
+     * Æther instrument running on this track, if any.
+     *
+     * The instrument itself is owned by `AeInstruments` and the engine; this field is
+     * the app-side record of it, refreshed by `MixerViewModel.syncAetherIntoState()`
+     * on every persist. It is what the scene file and the app state are written from,
+     * and what a restart reads back to re-load the instrument.
+     */
+    val aether: AetherTrackState? = null,
     // Peak meters (0f..1f)
     val peakMeterL: Float = 0.0f,
     val peakMeterR: Float = 0.0f
-)
+) {
+    companion object {
+        const val SOURCE_SF2 = "sf2"
+        const val SOURCE_AETHER = "aether"
+    }
+}
 
 data class DrumPadItem(
     val id: Int,

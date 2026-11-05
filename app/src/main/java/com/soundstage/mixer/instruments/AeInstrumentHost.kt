@@ -214,6 +214,15 @@ object AeInstrumentHost : AeHost {
     override fun releaseBank(instrument: AeInstrument, type: Int, model: Int) {
         AeBanks.fileFor(instrument, type, model)?.let { AeBanks.release(it) }
     }
+
+    override fun releaseNative() {
+        // The source object (and its decoded sample bank) is only *retired* by
+        // setInstrument(-1), and the mixer stops rendering once the last instrument is
+        // gone, so the deferred collector would never run. Free it now instead: the call
+        // takes the render lock, so no process() can be inside the chain it deletes.
+        NativeAudioBridge.safeFxCollectGarbageNow()
+        NativeAudioBridge.safeTrimMemory()
+    }
 }
 
 /**
