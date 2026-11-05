@@ -187,3 +187,18 @@ Commit `e7a6c98`. `compileDebugKotlin` + `assembleDebug` OK (APK arm64 54,1 Mo).
   animation d'entree `scaleIn(0.55f)+fadeIn`. **Piege** : la fenetre est composee
   avec `isOpen` deja vrai -> `AnimatedVisibility` seul peint la taille finale des la
   1re frame ; garde d'une frame (`shown` via `LaunchedEffect(Unit)`).
+
+## Session 2026-11-05 — finition FX Space (branche design/fx-reverb)
+- **Captures Roborazzi : les PNG sortent dans `app/app/src/test/screenshots/`** (chemin
+  relatif au module), et `-Proborazzi.test.record=true` **ne reecrit rien** si la tache
+  est `UP-TO-DATE` : il faut `--rerun-tasks`. Un md5 inchange = cache, pas un bug.
+- **Fond bicolore par preset** : un degrade entre deux teintes sombres ne se lit pas
+  (243° contre 249° mesures). Il faut l'aplat + DEUX voiles radiaux colores (`h` et
+  `h2`) en coins opposes. Verifier la teinte MESUREE.
+- **Magma du gros potard pilote par la valeur** : capture `fx_space_knob_low` le prouve
+  (noyau 80,9 -> 50,4 de luminance, 21257 -> 4778 px chauds). Braise contenue.
+- **Liste deroulante** : dans Compose, un frere declare apres passe dessus — il faut un
+  `Box` parent + `zIndex(2f)` + liste opaque. Declaree dans la colonne de la grille,
+  elle passe dessous.
+- Reference de design : `tools/design/SK_GRAMMAR.md` (Sunday Keys) ; Valhalla dans
+  `/workspace/dl/valhalla/`. Livraison : `tools/shots_page.py` + `tools/serve.py` (12000).
