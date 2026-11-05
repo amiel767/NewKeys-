@@ -126,12 +126,16 @@ class AePresetUiCaptureTest {
         composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/ae_leads_intensity.png")
     }
 
-    /** The naming sheet, reached by the floppy to the left of the chip. */
+    /** The naming sheet, reached by the "Save" pill once a knob has moved off the preset. */
     @Test
     fun ae_preset_naming_sheet() {
-        val (context, _) = open(AeInstrument.LEADS)
+        val (context, manager) = open(AeInstrument.LEADS)
+        // The Save pill only exists while the session differs from its preset, so a knob has to
+        // move first: without this the click lands on empty glass and no sheet ever opens.
+        manager.setParam(0, 0, 0.9f)
+        composeTestRule.mainClock.advanceTimeBy(200)
         val density = context.resources.displayMetrics.density
-        clickStage(567f, 23f, density)   // the save-to-disk button (now at x 552..582)
+        clickStage(627f, 23f, density)   // the "Save" pill, x 590..664 on the shared header
         composeTestRule.mainClock.advanceTimeBy(600)
         composeTestRule.onNode(isDialog()).captureRoboImage(filePath = "src/test/screenshots/ae_preset_naming.png")
     }
