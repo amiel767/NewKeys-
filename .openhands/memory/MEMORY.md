@@ -63,6 +63,25 @@
 - Verifier `git log` AVANT d'implementer un brief : REQ1/REQ2 etaient deja pousses.
   Detail : `.openhands/memory/2026-11-04.md`.
 
+## Sheets : Sets et fenetre flottante (2026-11-04)
+- **Un Set est un DOSSIER** : `Setlist(id, name, sheetIds, colorArgb, createdAt,
+  updatedAt)` dans `.library.json`. Le supprimer ne supprime AUCUNE feuille.
+  Le filtrage vit dans `LibraryUiState.visibleSetlists()` / `visibleSheets()`
+  (`LibraryFilter.{All,Favorites,Sets,OfSetlist}`).
+- **`LibraryCard`** (`ui/home/HomeScreen.kt`) est le gabarit commun des cartes de
+  bibliotheque (fond, sheen XML, tranche, ombre, rebond) ; `SheetCard` et
+  `SetCard` n'apportent que le contenu. La preview des accords se cale sur la
+  largeur reelle de la carte (`previewWidthFor`).
+- **Flottant** : pastille fine en bas = hauteur + mode « remplir » (les sections
+  suivantes s'affichent tant qu'elles entrent) ; pastille fine a gauche =
+  largeur, et `fontScale = cardW / FloatingWidth` fait grandir les polices.
+  Bornes `FloatingMinWidth` 260 dp / `FloatingMaxWidth` 620 dp.
+- **Piege de test** : le nom d'un Set est sur la carte ET sur la pastille de
+  filtre -> 2 noeuds. Taguer la carte (`set-card`). Et `OverlineLabel` passe en
+  MAJUSCULES : chercher `SETS`, pas `Sets`.
+- **Piege mesure** : la carte de Set prenait `sheetIds` (UUID) comme texte au lieu
+  de resoudre les titres. Toujours resoudre un id vers son titre a l'affichage.
+
 ## Carte du code Æther
 - Fenetres : `AeWindow.kt` dispatch -> `AePianoUi.kt` / `AeSaxUi.kt` / ...
 - Banques : `AeBanks` (`AeInstrumentHost.kt`) : `isElectricModel`, `pianoBankId`.
