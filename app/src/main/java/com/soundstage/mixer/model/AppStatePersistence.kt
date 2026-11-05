@@ -102,6 +102,14 @@ class AppStatePersistence(context: Context) {
         val program: Int,
         val reverbPreset: String,
         val reverbMix: Float,
+        /**
+         * The Æther instrument this strip was running, when it had one.
+         *
+         * An Æther source lives only in the engine and in `AeInstruments`; neither
+         * survives the process. Without this block the strip came back as a bare
+         * track on restart and the instrument the user had loaded was gone.
+         */
+        val aether: AetherTrackState? = null,
         val velocityCurve: Float = 0.5f,
         val velocityConfig: VelocityConfig = VelocityConfig(),
         val splitNoteMin: Int = 24,
@@ -289,6 +297,7 @@ class AppStatePersistence(context: Context) {
                     put("program", t.program)
                     put("reverbPreset", t.reverbPreset)
                     put("reverbMix", t.reverbMix.toDouble())
+                    put("aether", AetherJson.toJson(t.aether))
                     put("velocityCurve", t.velocityCurve.toDouble())
                     val velObj = JSONObject().apply {
                         put("floor", t.velocityConfig.floor)
@@ -586,6 +595,7 @@ class AppStatePersistence(context: Context) {
                             soundfontName = obj.optString("soundfontName", ""),
                             patchName = obj.optString("patchName", "-"),
                             soundSource = obj.optString("soundSource", ""),
+                            aether = AetherJson.fromJson(obj.optJSONObject("aether")),
                             bank = obj.optInt("bank", 0),
                             program = obj.optInt("program", 0),
                             reverbPreset = obj.optString("reverbPreset", "Concert Hall"),

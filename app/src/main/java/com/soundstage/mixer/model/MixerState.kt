@@ -164,6 +164,15 @@ data class TrackChannel(
     val selectedMidiDeviceId: String? = null, // null = All devices
     // Per-track colour override (ARGB). null = use the default palette colour for this track index.
     val customColorArgb: Int? = null,
+    /**
+     * Æther instrument running on this track, if any.
+     *
+     * The instrument itself is owned by `AeInstruments` and the engine; this field is
+     * the app-side record of it, refreshed by `MixerViewModel.syncAetherIntoState()`
+     * on every persist. It is what the scene file and the app state are written from,
+     * and what a restart reads back to re-load the instrument.
+     */
+    val aether: AetherTrackState? = null,
     // Peak meters (0f..1f)
     val peakMeterL: Float = 0.0f,
     val peakMeterR: Float = 0.0f
