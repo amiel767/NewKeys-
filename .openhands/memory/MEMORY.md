@@ -207,16 +207,28 @@ Commit `e7a6c98`. `compileDebugKotlin` + `assembleDebug` OK (APK arm64 54,1 Mo).
 Branche `design/fx-reverb`, commit `3acac9c`. `main` reste a la conversation Æther
 Piano `9c93aa40` — ne pas y pousser.
 - **Le potard Valhalla est PLAT.** Mesure sur `room_24.jpg` : disque **uniforme 121**
-  sur panneau **52**, puis le liseré. Ni dôme, ni dégradé de corps, ni collerette.
-  Il ne se lit que par disque plus clair + filet clair au bord + arc de valeur +
-  aiguille blanche. **Test** : luminance au CENTRE contre au BORD — centre >> bord =
-  dôme (à supprimer), centre == bord = plat.
-- `FxKnob.kt` refait plat ; `FxMagmaKnob.kt` : disque plat + braise CONTENUE (une
-  lueur qui emplit le disque jusqu'au bord re-donne un dôme : 43 bord / 164 centre).
+  sur panneau **52** (rapport 2,3), **sans liseré** (transition franche en 1 px).
+  Ni dôme, ni dégradé de corps, ni collerette. Il ne se lit que par disque plus
+  clair + aiguille + coin de valeur. **Test** : luminance au CENTRE contre au BORD —
+  centre >> bord = dôme (à supprimer), centre == bord = plat.
+- **L'aiguille est SOMBRE** sur le disque clair (RGB 52), jamais blanche — corrige
+  une note antérieure fausse. L'indicateur de valeur est un **coin plein** au bord
+  (rayon 28→57 sur un disque de 54, ~25°), pas un arc d'épaisseur constante.
+- `FxKnob.kt` refait plat ; `FxMagmaKnob.kt` : **meme pièce** que les petits
+  (`drawFxKnob` partagé, deux échelles). Une « braise » à lobes était une invention.
 - `FxFonts.display` = Orbitron (medium/bold) pour le titre de page (ex-Cinzel 27 sp).
 - Case preset = **pastille compacte** (26 dp, nom du preset seul), à droite ; la
   liste déroulante est ancrée à droite en 168 dp.
 - **Chemin de capture** : le test JVM a `app/` comme cwd, donc `captureRoboImage`
   doit écrire `src/test/screenshots/...` (pas `app/src/...`, qui crée `app/app/`).
+- **Roborazzi n'écrit un PNG qu'en `recordRoborazziDebug`.** En `testDebugUnitTest`
+  un test qui fait `assertTrue(File(...).exists())` échoue : le fichier n'est pas
+  régénéré. Piège reconfirmé (coûte une passe à chaque fois).
+- **`FxDesignTest`** (nouveau) exige `@RunWith(RobolectricTestRunner)` : `FxDesign`
+  construit ses couleurs par `android.graphics.Color.parseColor` (absent sur JVM nue).
+- **Geometrie des cellules** : `FxGeo.CELLS = 3`. A deux colonnes les rangees
+  ecrasaient le potard (**52 unites mesurees au lieu de 96**, invisible a l'oeil).
+  Le diametre est desormais adaptatif (`BoxWithConstraints` -> plus grand disque qui
+  entre). Mesure apres : gros potard **197**, potard de cellule **75**.
 - **Environnement** : le snapshot Debian renvoie **404** sur openjdk-21 ->
   télécharger Temurin (`api.adoptium.net`), `JAVA_HOME=/workspace/jdk/jdk-21.0.13+9`.
