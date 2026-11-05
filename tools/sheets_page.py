@@ -9,14 +9,43 @@ Usage : python3 tools/sheets_page.py
 from __future__ import annotations
 
 import html
+import os
 from pathlib import Path
 
+from PIL import Image
+
 PUB = Path("/workspace/dl/pub/sheets")
+SRC = Path("app/src/test/screenshots")
+
+# Meme convention que tools/shots_page.py : une capture ne se livre jamais en
+# PNG brut. Vignette 520 px q68 pour la grille, pleine 1500 px q78 pour le
+# detail. Un resize a la moitie de la capture perd la moitie de la definition :
+# la pleine largeur doit rester 1500 px.
+THUMB_W = 520
+THUMB_Q = 68
+FULL_W = 1500
+FULL_Q = 78
+
+
+def encode(src: Path) -> tuple[str, str] | None:
+    """Reencode une capture PNG en deux WebP ; renvoie (vignette, pleine)."""
+    if not src.exists():
+        return None
+    im = Image.open(src).convert("RGB")
+    tw = min(THUMB_W, im.width)
+    tim = im.resize((tw, round(tw * im.height / im.width)), Image.LANCZOS)
+    tpath = PUB / f"{src.stem}.thumb.webp"
+    tim.save(tpath, "WEBP", quality=THUMB_Q, method=5)
+
+    fw = min(FULL_W, im.width)
+    fim = im if fw == im.width else im.resize((fw, round(fw * im.height / im.width)), Image.LANCZOS)
+    fpath = PUB / f"{src.stem}.webp"
+    fim.save(fpath, "WEBP", quality=FULL_Q, method=5)
+    return tpath.name, fpath.name
 OUT = PUB / "index_page.html"
 
 STATES = [
     ("01_library.png", "Bibliothèque · grille", "Cartes riches : tranche de couleur, titre, accords sur rail, tonalité, BPM, nombre de sections, date."),
-    ("01b_list.png", "Bibliothèque · liste", "Même contenu en lignes compactes : bascule grille/liste dans l'en-tête."),
     ("02_floating_one.png", "Flottant · une section", "Double-tap sur une carte : elle se pose sur le mixer, une section. X en haut à droite, verrou en bas à gauche, poignée au centre."),
     ("03_picker_open.png", "Sections DANS la carte", "Tap sur la carte ou sur la pastille : la liste s'ouvre dans la carte, pas dans un popover externe."),
     ("04_floating_many.png", "Flottant · plusieurs sections", "Verse + Chorus + Bridge ; le balayage horizontal passe d'une section à l'autre."),
@@ -25,8 +54,9 @@ STATES = [
 
 # Rendus Compose réels (Roborazzi), pas la maquette : ce que le code fait vraiment.
 REAL = [
-    ("sheets_home_real.png", "La bibliothèque, rendue par Compose", "Capture Android réelle : cartes redessinées (tranche, accords, tonalité, BPM, sections, date) et bascule grille/liste."),
+    ("sheets_home_real.png", "La bibliothèque, rendue par Compose", "Capture Android réelle : quatre cartes par ligne, titre en Plus Jakarta Sans, tonalité sur plaque noire, volume en XML (liseret clair en haut, sombre en bas)."),
     ("sheets_floating_real.png", "Le flottant, rendu par Compose", "Capture Android réelle : X en haut à droite, verrou en bas à gauche, poignée de redimensionnement au centre, pastille de section en bas à droite."),
+    ("sheets_floating_sections_real.png", "La liste de sections, rendue par Compose", "Capture Android réelle : la liste s'ouvre DANS la carte, par-dessus le chart, avec un voile a la teinte de l'encre."),
 ]
 
 STYLE = """
@@ -67,14 +97,14 @@ def main() -> None:
         "la même convention que les autres maquettes du dépôt.</div></header>",
         "<div class=wrap>",
         "<a class=cta href='/sheets/'>▶ Ouvrir la maquette vivante <small>interactive — cliquable</small></a>",
-        "<h2>Les six états</h2>",
+        "<h2>Les cinq états de la maquette</h2>",
         "<div class=grid>",
     ]
     for f, title, desc in STATES:
         if not (PUB / f).exists():
             continue
         parts.append(
-            f"<figure><img src='/{html.escape(f)}' alt='{html.escape(title)}'>"
+            f"<figure><img src='{html.escape(f)}' alt='{html.escape(title)}'>"
             f"<figcaption><b>{html.escape(title)}</b><span>{html.escape(desc)}</span></figcaption></figure>"
         )
     parts.append("</div>")
@@ -82,14 +112,25 @@ def main() -> None:
     parts.append("<div class=note>La maquette JSX est la référence de design ; voici ce que le code Compose produit vraiment, "
                  "capturé par Roborazzi. C'est ce rendu qui a mis au jour la carte invisible sans rectangle d'origine.</div>")
     parts.append("<div class=grid>")
+    before = after = 0
     for f, title, desc in REAL:
-        if not (PUB / f).exists():
+        src = SRC / (f[:-len("_real.png")] + ".png")
+        enc = encode(src)
+        if enc is None:
             continue
+        thumb, full = enc
+        before += src.stat().st_size
+        after += (PUB / full).stat().st_size
         parts.append(
-            f"<figure><img src='/{html.escape(f)}' alt='{html.escape(title)}'>"
+            f"<figure><a href='{html.escape(full)}'><img loading=lazy src='{html.escape(thumb)}' alt='{html.escape(title)}'></a>"
             f"<figcaption><b>{html.escape(title)}</b><span>{html.escape(desc)}</span></figcaption></figure>"
         )
     parts.append("</div>")
+    if before:
+        parts.append(
+            f"<div class=note>{before / 1048576:.1f} Mo de PNG brut &rarr; {after / 1048576:.2f} Mo de WebP "
+            f"(vignette {THUMB_W} px, pleine {FULL_W} px). Cliquer une image ouvre la version pleine.</div>"
+        )
     parts.append(
         "<h2>Les sept points demandés</h2>"
         "<div class=note>"
