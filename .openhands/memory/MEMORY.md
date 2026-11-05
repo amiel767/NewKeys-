@@ -83,3 +83,17 @@ Detail par session : `.openhands/memory/YYYY-MM-DD.md` (jamais charge auto).
   (popup SOUND_SOURCE) ouvert au clic sur le nom de piste. `addSoundTrack()` ne doit
   RIEN ouvrir (appele en boucle par le bridge LiveUI) ; le « + » passe par
   `addSoundTrackAndChooseSource()`.
+
+## Session 2026-11-05 — FX : 3 slots audio, arp persistant, fenetre reduite (5b9b5d3)
+- **Rack = 3 emplacements AUDIO** ; la 4e carte est l'ARPEGIATEUR (MIDI), pas un
+  emplacement. Master = 4 audio sans MIDI. `TrackStrip{3,false}` / `master_{4,true}`.
+- **L'arp (presence + armement) vit dans le rack** : toute action du rack doit
+  l'ecrire, sinon suppression/bypass ne se persistent pas. Restaurer doit
+  repousser la GRILLE, pas seulement rearmer le canal.
+- **Roborazzi n'ecrit RIEN sans `-Proborazzi.test.record=true`** : mesurer un PNG
+  perime fait croire que le code ne marche pas. Verifier le mtime.
+- **Mesurer une fenetre = mesurer le PANNEAU**, pas le voile (seuil luminance).
+- **3 echecs de suite PREEXISTANTS** : ExampleRobolectricTest (app_name =
+  "Æther Keys", test attend "SoundStage"), GreetingScreenshotTest,
+  PianoPackFormatTest (pack 160 regions, test attend 68). Hors perimetre FX.
+
