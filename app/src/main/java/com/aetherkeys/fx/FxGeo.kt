@@ -49,6 +49,16 @@ object FxGeo {
     const val SLOTS = 4
     const val GAP = 10f
 
+    /**
+     * La fenêtre est rendue à 70 % de la maquette.
+     *
+     * À l'échelle 1 elle occupait tout l'écran, ce qui donnait l'impression d'une
+     * page et non d'une fenêtre. On réduit au rendu plutôt que dans les cotes :
+     * la maquette reste la référence (891 × 411, ses gouttières, ses rayons), et
+     * un seul facteur la fait tenir avec de l'air autour.
+     */
+    const val REDUCTION = 0.7f
+
     /** Largeur d'une carte : (891 − 24 − 30) / 4 = 209,25 → 208,8 mesuré. */
     const val CARD_W = (W - PAD * 2 - GAP * (SLOTS - 1)) / SLOTS
 
@@ -77,14 +87,14 @@ fun FxStage(
 }
 
 /**
- * Échelle qui fait tenir la maquette dans la place disponible. On ne dépasse
- * JAMAIS 1 : au-delà, la fenêtre s'étendrait sur tout l'écran au lieu de garder
- * la taille de la maquette.
+ * Échelle qui fait tenir la maquette dans la place disponible, puis la réduit de
+ * [FxGeo.REDUCTION]. On ne dépasse JAMAIS 1 : au-delà, la fenêtre s'étendrait sur
+ * tout l'écran au lieu de garder la taille de la maquette.
  */
 @Composable
 fun rememberFitScale(availableW: Dp, availableH: Dp): Float {
     val d = LocalDensity.current
     val w = availableW.value / FxGeo.W
     val h = availableH.value / FxGeo.H
-    return minOf(w, h, 1f)
+    return minOf(w, h, 1f) * FxGeo.REDUCTION
 }

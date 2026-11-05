@@ -11,6 +11,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.geometry.Offset
 import androidx.test.core.app.ApplicationProvider
 import com.github.takahirom.roborazzi.captureRoboImage
+import com.aetherkeys.fx.FxGeo
 import com.soundstage.mixer.model.AppScreenPage
 import com.soundstage.mixer.ui.MixerScreen
 import com.soundstage.mixer.ui.theme.DarkBg
@@ -81,7 +82,9 @@ class FxInAppCaptureTest {
         // C'est ce qui distingue « la fenetre est dessinee » de « la fenetre
         // repond » : la capture precedente ne prouverait pas la seconde.
         val s = 2.75f
-        val scale = minOf((851f - 16f) / 891f, (393f - 16f) / 411f, 1f)
+        // La fenetre est rendue a 70 % : sans ce facteur le tap visait a cote de
+        // la case, et le test ne prouvait plus qu'un tap reel ouvre le catalogue.
+        val scale = minOf((851f - 16f) / 891f, (393f - 16f) / 411f, 1f) * FxGeo.REDUCTION
         val left = (851f - 891f * scale) / 2f
         val top = (393f - 411f * scale) / 2f
         val slotX = left + (12f + 104f) * scale

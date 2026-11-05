@@ -1,6 +1,6 @@
 // FxMixer: everything the audio engine needs, in one object. Control thread: set*/apply* calls. Audio thread: process*/note*.
 // Strips: 0..7 soundfont tracks, 8 drum channel (soundfont ch 8), 9 tonic pad (soundfont ch 9), 10 drum-pad sampler, kMaster.
-// Instruments (shapers and sources) are allowed on strips 0..7 only. Effects: 6 slots per strip, 8 on the master. No instrument on the master.
+// Instruments (shapers and sources) are allowed on strips 0..7 only. Effects: 3 audio slots per track, 4 on the master. No instrument on the master. The fourth card a track shows is the MIDI slot (the arpeggiator), which is not a chain slot.
 #pragma once
 #include "fx_chain.h"
 
@@ -157,7 +157,9 @@ class FxMixer {
     active_.store(n, std::memory_order_relaxed);
   }
   TrackStrip tracks_[kStrips];
-  FxStrip master_{8, true};
+  // The master carries audio only: there is no MIDI channel to intercept, so it
+  // has four audio slots and no arpeggiator card.
+  FxStrip master_{4, true};
   std::atomic<int> active_{0};
 };
 
