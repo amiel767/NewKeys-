@@ -1,37 +1,40 @@
 #!/usr/bin/env python3
-"""Ecrit la page d'ecoute de la demo « Isn't She Lovely » (couplet).
+"""Ecrit la page d'ecoute des demos (couplet + plage/vitesse/tenue).
 
-    python3 tools/aetherfx/isl_page.py /workspace/dl/pub/demos
+    python3 tools/aetherfx/demos_audio_page.py /workspace/dl/pub/demos
 
 La page ne fait que lister les MP3 deja presents : les rendus viennent de
-demo_isnt_she_lovely.cpp, l'encodage de tools/aetherfx/encode_isl.py.  Regenerer
-les trois a chaque changement de moteur, sinon la page rejoue un instrument perime.
+demo_isnt_she_lovely.cpp / demo_range.cpp, l'encodage de encode_isl.py /
+encode_range.py.  Regenerer les trois a chaque changement de moteur, sinon la
+page rejoue un instrument perime.
 """
 import os
 import sys
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else "/workspace/dl/pub/demos"
 
-# (nom affiche, fichier, banque, description)
-PIANOS = [
-    ("Felt", "isl_00_Felt.mp3", "piano.bin", "queue, feutre : peu d'attaque"),
-    ("Studio", "isl_01_Studio.mp3", "piano.bin", "queue, le neutre de reference"),
-    ("Bright", "isl_02_Bright.mp3", "piano.bin", "clavier ouvert, attaques nettes"),
-    ("Mellow", "isl_03_Mellow.mp3", "piano.bin", "doux, fondu"),
-    ("Dark", "isl_04_Dark.mp3", "piano.bin", "sombre, pour la main gauche"),
-    ("Cottage (droit)", "isl_05_Cottage.mp3", "upright.bin", "droit, corps boise"),
-    ("Parlor (droit)", "isl_06_Parlor.mp3", "upright.bin", "droit clair, medium"),
-    ("Saloon", "isl_07_Saloon.mp3", "upright.bin", "bastringue, mordant"),
-    ("Tine Keys", "isl_08_Tine_Keys.mp3", "ep_tine.bin", "Wurlitzer, tine"),
-    ("Ballad", "isl_09_Ballad.mp3", "ep_ballad.bin", "electrique doux"),
-    ("DX Bell", "isl_10_DX_Bell.mp3", "ep_dx.bin", "DX7, cloche"),
-    ("E.Piano", "isl_11_E_Piano.mp3", "ep_piano.bin", "electrique, tine"),
+# (nom affiche, banque, description)
+MODELS = [
+    ("Felt", "piano.bin", "queue, feutre : peu d'attaque"),
+    ("Studio", "piano.bin", "queue, le neutre de reference"),
+    ("Bright", "piano.bin", "clavier ouvert, attaques nettes"),
+    ("Mellow", "piano.bin", "doux, fondu"),
+    ("Dark", "piano.bin", "sombre, pour la main gauche"),
+    ("Cottage (droit)", "upright.bin", "droit, corps boise"),
+    ("Parlor (droit)", "upright.bin", "droit clair, medium"),
+    ("Saloon", "upright.bin", "bastringue, mordant"),
+    ("Tine Keys", "ep_tine.bin", "Wurlitzer, tine"),
+    ("Ballad", "ep_ballad.bin", "electrique doux"),
+    ("DX Bell", "ep_dx.bin", "DX7, cloche"),
+    ("E.Piano", "ep_piano.bin", "electrique, tine"),
 ]
+SLUGS = ["Felt", "Studio", "Bright", "Mellow", "Dark", "Cottage",
+         "Parlor", "Saloon", "Tine_Keys", "Ballad", "DX_Bell", "E_Piano"]
 
 
-def card(name, f, bank, note):
+def card(name, f, bank, note, kbps):
     return f'''    <div class="card">
-      <div class="top"><span class="name">{name}</span><span class="meta">64k</span></div>
+      <div class="top"><span class="name">{name}</span><span class="meta">{kbps}</span></div>
       <div class="bank">{bank}</div>
       <p class="note-inline">{note}</p>
       <div class="bar">
@@ -44,13 +47,17 @@ def card(name, f, bank, note):
 
 
 def main():
-    rows = [card(*p) for p in PIANOS]
+    isl = [card(n, f"isl_{i:02d}_{s}.mp3", b, d, "64k")
+           for i, ((n, b, d), s) in enumerate(zip(MODELS, SLUGS))]
+    rng = [card(n, f"rng_{i:02d}_{s}.mp3", b, d, "48k")
+           for i, ((n, b, d), s) in enumerate(zip(MODELS, SLUGS))]
+
     page = f'''<!doctype html>
 <html lang="fr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AEther - demos : Isn't She Lovely</title>
+<title>AEther - demos (couplet + plage C0-C7)</title>
 <style>
   :root{{--bg:#0d0f13;--panel:#161a21;--panel2:#1e232c;--line:#2b313c;
         --ink:#e8ecf2;--dim:#8b95a5;--gold:#f2b84a;--gold2:#c8892a;}}
@@ -63,7 +70,7 @@ def main():
   h1 b{{color:var(--gold)}}
   .sub{{color:var(--dim);margin:0 0 18px;font-size:13.5px}}
   h2{{font-size:13px;text-transform:uppercase;letter-spacing:1.4px;color:var(--gold);
-     margin:30px 0 12px;font-weight:700}}
+     margin:32px 0 12px;font-weight:700}}
   .grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}}
   .card{{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);
         border-radius:12px;padding:12px 13px;display:flex;flex-direction:column;gap:9px}}
@@ -96,28 +103,36 @@ def main():
 </head>
 <body>
 <div class="wrap">
-  <h1>AEther - <b>Isn't She Lovely</b> (couplet)</h1>
-  <p class="sub">Le couplet, joue par le <b>moteur de l'app</b> (rendu hors Android), un fichier par instrument.
-     Presets lus depuis <code>AePianoUi.kt</code>, banques du depot, encodage 64 kbps - 1,8 Mo au total.</p>
+  <h1>AEther - <b>demos d'ecoute</b></h1>
+  <p class="sub">Joue par le <b>moteur de l'app</b> (rendu hors Android), un fichier par instrument.
+     Presets lus depuis <code>AePianoUi.kt</code>, banques du depot. Debit bas volontaire (48-64 kbps).</p>
 
   <p class="sub" style="margin:0 0 18px">
      <a class="dl" href="/aether.apk" download>Telecharger l'APK</a>
      &nbsp; meme moteur, correctif de boucle (fondu de raccord 200 ms) inclus.</p>
 
   <div class="note">
-    <b>Le morceau</b> : mi majeur, 12/8. Grille du couplet
-    <code>C#m7 | F#9 | B9sus4 | E</code>, la basse tient la fondamentale de chaque accord.
-    La ligne chantee est reconstituee en pentatonique de mi (la gamme du morceau) et se
-    termine sur le riff pentatonique <code>B-C#-E-F#-G#</code> releve a la guitare.
-    <br><br>
-    <b>Ce qu'il faut ecouter</b> : les notes tenues. Une note tenue doit decroitre
-    regulierement ; si l'enveloppe « rebondit » par vagues pendant la tenue, c'est le
+    <b>1. Le couplet de « Isn't She Lovely »</b> : mi majeur, 12/8. Grille
+    <code>C#m7 | F#9 | B9sus4 | E</code>, basse tenue sous la ligne chantee
+    (reconstituee en pentatonique de mi). Ecouter les <b>notes tenues</b> : une note
+    saine decroit regulierement, une enveloppe qui « rebondit » par vagues est le
     defaut de boucle corrige ici.
+    <br><br>
+    <b>2. La plage C0 a C7</b> : chaque octave jouee <b>piano (vel 42) puis forte
+    (vel 118)</b>, chaque note tenue 2,8 s. Mesure sur les 12 modeles : l'ecart
+    pp-&gt;ff va de <b>+9,9 a +23,2 dB</b> (moyenne 17,9 dB), aucune note muette.
+    C'est le test que la velocite change bien le timbre du grave a l'aigu, et que la
+    tenue longue ne « bat » nulle part.
   </div>
 
-  <h2>Pianos &amp; pianos electriques <span class="tag">12 - queue + droit + 4 EP</span></h2>
+  <h2>1. Couplet - Isn't She Lovely <span class="tag">12 modeles</span></h2>
   <div class="grid">
-{chr(10).join(rows)}
+{chr(10).join(isl)}
+  </div>
+
+  <h2>2. Plage C0-C7, velocite pp/ff, tenue longue <span class="tag">12 modeles</span></h2>
+  <div class="grid">
+{chr(10).join(rng)}
   </div>
 </div>
 <script>
@@ -152,7 +167,7 @@ cards.forEach(c=>{{
     with open(path, "w", encoding="utf-8") as f:
         f.write(page)
     print(f"page   : {path}")
-    print(f"mp3    : {len(PIANOS)} fichiers attendus dans {OUT}")
+    print(f"mp3    : {len(isl) + len(rng)} fichiers attendus dans {OUT}")
 
 
 if __name__ == "__main__":
