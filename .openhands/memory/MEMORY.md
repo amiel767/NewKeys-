@@ -235,4 +235,11 @@ Commit `e7a6c98`. `compileDebugKotlin` + `assembleDebug` OK (APK arm64 54,1 Mo).
 - **Echecs preexistants** (ne pas imputer) : `ExampleRobolectricTest` (app_name
   "SoundStage" vs "Æther Keys"), `PianoPackFormatTest` (attend 68 regions/44100 Hz,
   pack livre = 160). Perimes.
-- **Memoire A/B presets** : `AePreset.slot`, persiste `"s"`, absent = A.
+- **Memoire A/B presets** : `AePreset.slot`, persiste `"s"`, absent = A.- **PIEGE PAGE DE REVUE (cout d'une passe perdue)** : si la page est servie dans un
+  SOUS-dossier (`/new3/index.html`), les `src`/`href` doivent etre RELATIFS AU
+  SOUS-DOSSIER (`src="img.webp"`), jamais prefixes par le nom du dossier
+  (`src="new3/img.webp"` -> le navigateur demande `/new3/new3/...` = 404, page
+  « vide »). Verifier avec `curl -o /dev/null -w '%{http_code}'` sur CHAQUE image
+  (les vignettes ET les liens « plein ») et lire le log du serveur : un 200 sur
+  `index.html` ne dit RIEN sur les images. `python3 -m http.server` journalise
+  chaque GET dans `/tmp/srv.log`.
