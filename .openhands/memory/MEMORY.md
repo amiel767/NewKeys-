@@ -46,6 +46,22 @@
   correles. Correctifs dans `fx_piano.h` (`preload`, `PianoVoice::process`). Commit
   `94d393e` pousse. Detail : `.openhands/memory/2026-11-04.md`.
 
+## Session 2026-11-05 — relachement + vagues
+- **« Explosion » au relachement = bruit d'ETOUFFOIR a niveau FIXE** (`fx_piano.h`
+  ~l.1122). Ajoute au lieu d'etre mis a l'echelle de la note -> +12,9 dB (C4) a
+  +31,9 dB (C6) apres une tenue ; disparait a damper=0. Correctif `* 0.12f * out`
+  (commit `2ab7683`) -> <= +1,8 dB, l'etouffoir reste un contact. Ce n'est PAS le
+  bruit de touche (KEY, param 12, a l'appui).
+- **La boucle piano est SAINE** : enveloppe de tenue IDENTIQUE boucle active/coupee.
+  Ne pas re-corriger. Ecartes : longueur de fondu, entier de periodes, zone
+  pre-loopStart, fondu entre couches de velocite.
+- **Ondulation residuelle = battement modal de la REVERB** (~2 Hz, 0,5-0,6 dB).
+  Insensible au nombre de lignes, longueurs, allpass, modulation, decay, wet :
+  intrinseque. Le sample seul ondule PLUS que la boucle.
+- **Piege** : une metrique « modulation a la periode de boucle » n'est pas
+  discriminante (le sample bat) ; la calibrer boucle COUPEE d'abord.
+- **JDK** : sans root, telecharger Temurin 21 (api.adoptium.net) dans /workspace/jdk.
+
 ## Carte du code Æther
 - Fenetres : `AeWindow.kt` dispatch -> `AePianoUi.kt` / `AeSaxUi.kt` / ...
 - Banques : `AeBanks` (`AeInstrumentHost.kt`) : `isElectricModel`, `pianoBankId`.
@@ -90,14 +106,6 @@
 - **Parametre 22 = knob « Character »** (0 = synthese, 1 = echantillon). Les 23
   presets sax sont a **1,0** -> tous les controles de synthese (Breath, Growl,
   Scoop, Grit, Attack) sont annules. C'est « les articulations pas branchees ».
-- **Bulldog Sax V2** : l'utilisateur a declare le 2026-11-04 detenir la LICENCE
-  et l'ACCORD du proprietaire. **Tous les fichiers qu'il enverra desormais sont
-  livres avec accord** -> ne plus bloquer sur la licence ; reintegrer Bulldog.
-  **INTEGRE le 2026-11-03** (commit `700879f`) : `tools/saxpack/build_bulldog.py`
-  construit `saxpack_bulldog.bin` depuis les 36 `NN-EXP1.wav` (02 = MIDI 54, +1
-  demi-ton/fichier, mesure par hauteur). `AeBanks.fileFor` : l'**alto** (type 1)
-  joue Bulldog, repli `saxpack_alt.bin` dans `read()`. Boucle = entier de periodes
-  (seam 0,98 -> 0,21), tenue plate sur 6 s.
 - **Velocite piano/EP (T2/T5) : OK, pas de saut.** `piano_velocity_check` +
   balayage fin : courbe LISSE sur 1..127 (~41 dB), aucune inversion reelle. Le
   fondu a puissance constante entre couches (fx_piano.h ~l.1084) corrige le « ca
