@@ -243,3 +243,18 @@ Commit `e7a6c98`. `compileDebugKotlin` + `assembleDebug` OK (APK arm64 54,1 Mo).
   (les vignettes ET les liens « plein ») et lire le log du serveur : un 200 sur
   `index.html` ne dit RIEN sur les images. `python3 -m http.server` journalise
   chaque GET dans `/tmp/srv.log`.
+
+## Session 2026-11-05 (2e) — consoles Organ/Leads/Synth (90d487c)
+- **Claviers virtuels retires** de Organ/Leads/Synth ; la bande reprise par un
+  pupitre de sortie (vumetre, registration, couches, formes d'onde).
+- **FaderThumb recolorable** (`capTop`/`capBottom`, `showLed`) : son profil de
+  luminance est sombre, il faut le NORMALISER puis le projeter entre variante
+  claire et variante sombre — sinon blanc et noir se ressemblent.
+- **`AeRealism.kt`** : bois, metal brosse, plastique, knob tourne, vis, vumetre,
+  barres de couches. Procedural et deterministe (pas de bitmap).
+- **Pieges Compose** : `size` de layout masque `DrawScope.size` dans un Canvas
+  (utiliser `this.size`) ; `Brush.linearGradient` prend `start`/`end`, pas
+  `startX`/`endX` ; imports a ne pas oublier : `lerp`, `nativeCanvas`, `toArgb`.
+- **Param 29 (BendRange) du synth** : retire VOLONTAIREMENT (doublon Track
+  Settings), ne pas le remettre. Aucun parametre moteur cache a reveler.
+- Verifier en MESURANT l'image (au bon endroit) ; 74 tests, 0 echec.
