@@ -148,18 +148,6 @@ object SheetsIcons {
         icon("SheetsLayers") { line("M12,3 L20,7.5 L12,12 L4,7.5 Z M4,12 L12,16.5 L20,12 M4,16.5 L12,21 L20,16.5") }
     }
 
-    /** Grid: the library's tiled layout. */
-    val Grid: ImageVector by lazy {
-        icon("SheetsGrid") {
-            line("M4,4 L11,4 L11,11 L4,11 Z M13,4 L20,4 L20,11 L13,11 Z M4,13 L11,13 L11,20 L4,20 Z M13,13 L20,13 L20,20 L13,20 Z")
-        }
-    }
-
-    /** List: the library's compact row layout. */
-    val List: ImageVector by lazy {
-        icon("SheetsList") { line("M4,6.5 L20,6.5 M4,12 L20,12 M4,17.5 L20,17.5") }
-    }
-
     /** Check: a section currently shown in the scene card. */
     val Check: ImageVector by lazy {
         icon("SheetsCheck") { line("M5,12.5 L9.5,17 L19,7") }

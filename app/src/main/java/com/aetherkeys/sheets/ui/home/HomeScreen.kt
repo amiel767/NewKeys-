@@ -1,6 +1,9 @@
 package com.aetherkeys.sheets.ui.home
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,6 +21,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -37,12 +42,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -51,14 +61,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.soundstage.mixer.R
 import com.aetherkeys.sheets.model.*
 import com.aetherkeys.sheets.ui.components.*
 import com.aetherkeys.sheets.ui.theme.*
 import com.aetherkeys.sheets.vm.HomeActions
 import com.aetherkeys.sheets.vm.LibraryFilter
 import com.aetherkeys.sheets.vm.LibraryUiState
-import java.text.SimpleDateFormat
-import java.util.Locale
 
 @Composable
 fun HomeScreen(
@@ -76,37 +85,28 @@ fun HomeScreen(
     val bounds = remember { mutableStateMapOf<String, Rect>() }
     var menuFor by remember { mutableStateOf<Sheet?>(null) }
     var newSetlist by remember { mutableStateOf(false) }
-    var listView by remember { mutableStateOf(false) }
 
     SheetsPageBackground(modifier) {
         Column(Modifier.fillMaxSize().padding(horizontal = 28.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            HomeHeader(state, actions, onBackToMixer, onOpenSettings, listView, onToggleList = { listView = !listView })
+            HomeHeader(state, actions, onBackToMixer, onOpenSettings)
             SetlistRow(state, actions, onNewSetlist = { newSetlist = true })
             if (visible.isEmpty() && !state.loading) {
                 EmptyState(hasQuery = state.query.isNotBlank() || state.filter != LibraryFilter.All) { actions.createSheet(onOpenEditor) }
             } else {
                 BoxWithConstraints(Modifier.weight(1f)) {
-                    val cols = when { maxWidth < 360.dp -> 1; maxWidth < 600.dp -> 2; else -> 3 }
                     LazyVerticalGrid(
-                        columns = GridCells.Fixed(if (listView) 1 else cols),
+                        columns = GridCells.Fixed(4),
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 96.dp + bottomInset),
                     ) {
                         items(visible, key = { it.id }) { sheet ->
-                            if (listView) {
-                                SheetRow(
-                                    sheet = sheet, settings = settings, modifier = Modifier,
-                                    onOpen = { onOpenEditor(sheet.id) }, onFloat = { onFloatOverMixer(sheet) },
-                                )
-                            } else {
-                                SheetCard(
-                                    sheet = sheet, settings = settings, modifier = Modifier,
-                                    onOpen = { onOpenEditor(sheet.id) },
-                                    onFloat = { onFloatOverMixer(sheet) },
-                                    onMenu = { menuFor = sheet },
-                                )
-                            }
+                            SheetCard(
+                                sheet = sheet, settings = settings, modifier = Modifier,
+                                onOpen = { onOpenEditor(sheet.id) },
+                                onFloat = { onFloatOverMixer(sheet) },
+                                onMenu = { menuFor = sheet },
+                            )
                         }
                     }
                 }
@@ -128,7 +128,7 @@ fun HomeScreen(
 }
 
 @Composable
-private fun HomeHeader(state: LibraryUiState, actions: HomeActions, onBackToMixer: () -> Unit, onOpenSettings: () -> Unit, listView: Boolean, onToggleList: () -> Unit) {
+private fun HomeHeader(state: LibraryUiState, actions: HomeActions, onBackToMixer: () -> Unit, onOpenSettings: () -> Unit) {
     val notation = state.settings.notation
     Box(Modifier.fillMaxWidth().height(44.dp)) {
         Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -143,27 +143,7 @@ private fun HomeHeader(state: LibraryUiState, actions: HomeActions, onBackToMixe
                 onSelect = { actions.setNotation(if (it == 0) Notation.Nashville else Notation.Standard) },
                 modifier = Modifier.width(132.dp),
             )
-            LayoutToggle(listView, onToggleList)
             GlyphButton(SheetsIcons.Settings, onOpenSettings, contentDescription = "Sheets settings")
-        }
-    }
-}
-
-/** Bascule grille / liste : deux icones dans un rail, la vue active est teintee. */
-@Composable
-private fun LayoutToggle(listView: Boolean, onToggle: () -> Unit) {
-    Row(
-        Modifier.clip(RoundedCornerShape(12.dp)).background(SheetsColors.Chip).padding(3.dp),
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
-    ) {
-        listOf(false to SheetsIcons.Grid, true to SheetsIcons.List).forEach { (isList, icon) ->
-            val on = listView == isList
-            Box(
-                Modifier.size(34.dp).clip(RoundedCornerShape(9.dp))
-                    .background(if (on) SheetsColors.Accent else Color.Transparent)
-                    .clickable { onToggle() },
-                contentAlignment = Alignment.Center,
-            ) { Icon(icon, contentDescription = if (isList) "List view" else "Grid view", tint = if (on) SheetsColors.AccentText else SheetsColors.TextMuted, modifier = Modifier.size(16.dp)) }
         }
     }
 }
@@ -189,6 +169,13 @@ private fun SetlistRow(state: LibraryUiState, actions: HomeActions, onNewSetlist
     }
 }
 
+/**
+ * Carte de feuille, quatre par ligne. Fond a la couleur de la feuille, liseret et
+ * bande de lumiere dessines par `sheet_card_sheen.xml`, ombre portee par `shadow`.
+ *
+ * - tap : ouvrir l'editeur ; double-tap : poser sur le mixer ; appui long : menu
+ * - la carte s'enfonce au doigt (echelle 0.94, ressort) et donne un retour haptique
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SheetCard(
@@ -198,80 +185,64 @@ private fun SheetCard(
     val base = sheet.colorArgb.toColor()
     val ink = onColorFor(base)
     val family = SheetsFonts.family(sheet.chordFontId)
-    val dateFmt = remember { SimpleDateFormat("MMM d", Locale.ENGLISH) }
-    val firstSection = sheet.sections.firstOrNull { it.bars.isNotEmpty() }
-    val key = firstSection?.let { sheet.keyFor(it) } ?: sheet.keyPc
-    val preview = firstSection?.bars?.take(4)?.joinToString("   ") { Theory.barText(it, key, settings.notation, settings.passing) }.orEmpty()
-    Column(
-        modifier.height(172.dp).clip(RoundedCornerShape(18.dp))
-            .background(Brush.linearGradient(listOf(lerp(base, Color.White, 0.10f), base, lerp(base, Color.Black, 0.42f))))
-            .combinedClickable(onClick = onOpen, onDoubleClick = onFloat, onLongClick = onMenu),
-    ) {
-        Row(Modifier.fillMaxSize()) {
-            // Tranche de couleur : l'identite du sheet, lisible d'un coup d'oeil.
-            Box(Modifier.width(6.dp).fillMaxHeight().background(ink.copy(alpha = 0.5f)))
-            Column(
-                Modifier.weight(1f).padding(start = 16.dp, end = 18.dp, top = 15.dp, bottom = 13.dp),
-                verticalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                    Text(sheet.title, style = SheetsType.chord(family, 27f), color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                    if (sheet.favorite) Icon(SheetsIcons.Star, contentDescription = "Favorite", tint = SheetsColors.Warning, modifier = Modifier.padding(start = 6.dp, top = 2.dp).size(15.dp))
-                }
-                // Ligne d'accords sur son rail, comme la vraie portee.
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Box(Modifier.width(2.5.dp).height(26.dp).clip(RoundedCornerShape(2.dp)).background(ink.copy(alpha = 0.8f)))
-                    Text(preview, style = SheetsType.chord(family, 29f), color = ink, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
-                }
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.clip(RoundedCornerShape(8.dp)).background(ink.copy(alpha = 0.2f)).padding(horizontal = 10.dp, vertical = 4.dp)) {
-                        Text(Theory.KEY_NAMES[sheet.keyPc], style = SheetsType.Label.copy(fontSize = 12.sp), color = ink)
-                    }
-                    Spacer(Modifier.width(7.dp))
-                    Text("${sheet.bpm} BPM", style = SheetsType.Caption.copy(fontWeight = FontWeight.Bold), color = ink.copy(alpha = 0.72f))
-                    Spacer(Modifier.width(7.dp))
-                    Box(Modifier.size(3.dp).clip(CircleShape).background(ink.copy(alpha = 0.5f)))
-                    Spacer(Modifier.width(7.dp))
-                    Text("${sheet.sections.size} sect.", style = SheetsType.Caption.copy(fontWeight = FontWeight.Bold), color = ink.copy(alpha = 0.72f))
-                    Spacer(Modifier.weight(1f))
-                    Text(dateFmt.format(sheet.updatedAt), style = SheetsType.Caption.copy(fontSize = 10.5.sp), color = ink.copy(alpha = 0.6f))
-                }
-            }
-        }
-    }
-}
+    val haptic = LocalHapticFeedback.current
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.94f else 1f, spring(dampingRatio = 0.55f, stiffness = 900f), label = "cardPress")
 
-/** Ligne compacte : meme identite (tranche + tonalite), sans l'apercu d'accords. */
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun SheetRow(
-    sheet: Sheet, settings: SheetsSettings, modifier: Modifier,
-    onOpen: () -> Unit, onFloat: () -> Unit,
-) {
-    val base = sheet.colorArgb.toColor()
-    val ink = onColorFor(base)
-    val family = SheetsFonts.family(sheet.chordFontId)
     val firstSection = sheet.sections.firstOrNull { it.bars.isNotEmpty() }
     val key = firstSection?.let { sheet.keyFor(it) } ?: sheet.keyPc
     val preview = firstSection?.bars?.take(3)?.joinToString("  ") { Theory.barText(it, key, settings.notation, settings.passing) }.orEmpty()
-    Row(
-        modifier.height(62.dp).clip(RoundedCornerShape(14.dp))
-            .background(Brush.horizontalGradient(listOf(base, lerp(base, Color.Black, 0.34f))))
-            .combinedClickable(onClick = onOpen, onDoubleClick = onFloat),
-        verticalAlignment = Alignment.CenterVertically,
+
+    Box(
+        modifier.height(164.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .shadow(if (pressed) 6.dp else 14.dp, RoundedCornerShape(18.dp), clip = false)
+            .clip(RoundedCornerShape(18.dp))
+            .background(base)
+            .combinedClickable(
+                interactionSource = source,
+                indication = null,
+                onClick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onOpen() },
+                onDoubleClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onFloat() },
+                onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onMenu() },
+            ),
     ) {
-        Box(Modifier.width(5.dp).fillMaxHeight().background(ink.copy(alpha = 0.5f)))
-        Spacer(Modifier.width(15.dp))
-        Text(sheet.title, style = SheetsType.chord(family, 23f), color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-        if (sheet.favorite) { Icon(SheetsIcons.Star, contentDescription = "Favorite", tint = SheetsColors.Warning, modifier = Modifier.padding(horizontal = 6.dp).size(14.dp)) }
-        Text(preview, style = SheetsType.chord(family, 20f), color = ink.copy(alpha = 0.9f), maxLines = 1, softWrap = false)
-        Spacer(Modifier.width(14.dp))
-        Box(Modifier.clip(RoundedCornerShape(8.dp)).background(ink.copy(alpha = 0.2f)).padding(horizontal = 10.dp, vertical = 4.dp)) {
-            Text(Theory.KEY_NAMES[sheet.keyPc], style = SheetsType.Label.copy(fontSize = 12.sp), color = ink)
+        // Volume : liserets + bande de lumiere, dessines en XML.
+        Box(Modifier.matchParentSize().background(Brush.linearGradient(listOf(base, lerp(base, Color.Black, 0.34f)))))
+        Image(
+            painter = painterResource(R.drawable.sheet_card_sheen),
+            contentDescription = null,
+            contentScale = ContentScale.FillBounds,
+            modifier = Modifier.matchParentSize(),
+        )
+        // Tranche : identite du sheet, lisible d'un coup d'oeil.
+        Box(Modifier.width(5.dp).fillMaxHeight().background(ink.copy(alpha = 0.55f)))
+
+        Column(
+            Modifier.fillMaxSize().padding(start = 15.dp, end = 14.dp, top = 13.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                sheet.title, style = SheetsType.CardTitle, color = ink,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                Box(Modifier.width(2.5.dp).height(24.dp).clip(RoundedCornerShape(2.dp)).background(ink.copy(alpha = 0.75f)))
+                Text(preview, style = SheetsType.chord(family, 25f), color = ink, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                // Tonalite : plaque noire, texte blanc — lisible quelle que soit la teinte.
+                Box(Modifier.clip(RoundedCornerShape(7.dp)).background(Color(0xE6000000)).padding(horizontal = 9.dp, vertical = 3.dp)) {
+                    Text(Theory.KEY_NAMES[sheet.keyPc], style = SheetsType.CardMeta, color = Color.White)
+                }
+                Spacer(Modifier.width(6.dp))
+                Text("${sheet.bpm}", style = SheetsType.CardMeta, color = ink.copy(alpha = 0.7f))
+                Spacer(Modifier.weight(1f))
+                if (sheet.favorite) Icon(SheetsIcons.Star, contentDescription = "Favorite", tint = SheetsColors.Warning, modifier = Modifier.size(13.dp))
+                else Text("${sheet.sections.size} sect.", style = SheetsType.CardMeta, color = ink.copy(alpha = 0.7f))
+            }
         }
-        Spacer(Modifier.width(14.dp))
-        Text("${sheet.bpm} BPM", style = SheetsType.Caption.copy(fontWeight = FontWeight.Bold), color = ink.copy(alpha = 0.66f), modifier = Modifier.width(66.dp), textAlign = TextAlign.End)
-        Spacer(Modifier.width(16.dp))
     }
 }
 

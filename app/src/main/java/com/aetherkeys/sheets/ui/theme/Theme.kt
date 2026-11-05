@@ -163,6 +163,11 @@ object SheetsType {
     val Overline = TextStyle(fontFamily = SheetsFonts.PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 1.sp)
     val SectionTag = TextStyle(fontFamily = SheetsFonts.PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 11.sp)
 
+    /** Titre de carte de bibliotheque : la police de l'app, pas la police manuscrite. */
+    val CardTitle = TextStyle(fontFamily = SheetsFonts.PlusJakartaSans, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, letterSpacing = (-0.2).sp)
+    /** Metadonnees de carte (tonalite, BPM, sections) : compactes et nettes. */
+    val CardMeta = TextStyle(fontFamily = SheetsFonts.PlusJakartaSans, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+
     /** Notes : police de la partition (défaut Architects Daughter). */
     fun chord(family: FontFamily = SheetsFonts.ArchitectsDaughter, sizeSp: Float = 32f) =
         TextStyle(fontFamily = family, fontWeight = FontWeight.Normal, fontSize = sizeSp.sp)
