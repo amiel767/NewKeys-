@@ -46,6 +46,23 @@
   correles. Correctifs dans `fx_piano.h` (`preload`, `PianoVoice::process`). Commit
   `94d393e` pousse. Detail : `.openhands/memory/2026-11-04.md`.
 
+## Session 2026-11-04 (New 2) — persistance de l'instrument Æther
+- **`TrackChannel.aether` n'existait pas** (le champ n'etait que sur `TrackSnapshot`).
+  Ajoute : c'est le porteur de l'instrument dans l'etat vivant.
+- **Codec partage `model/AetherJson.kt`** (nom d'enum, pas l'ordinal ; `null` ->
+  `JSONObject.NULL` ; `fromJson` d'un bloc vide -> `null`).
+- **Un setlist ne portait pas `soundSource`** alors que `selectScene` le lit : d'ou
+  la redemande du choix Æther/SF2 a chaque tap. Le writer du setlist ecrit
+  desormais `soundSource` ET `aether` (les deux, sinon l'un des deux revient vide).
+- **`syncAetherIntoState()`** (dans `persistCurrentStateDebounced`, a cote de
+  `syncActiveSnapshot`) estampille les instruments vivants sur les pistes ; sans lui
+  le writer ecrit `null`. Au chargement, `selectScene` rejoue
+  `AeInstruments.manager.restoreFromSnapshot` et `unload` les pistes sans instrument.
+- **Regle** : un instrument Æther vit dans `AeInstruments` + le moteur (par-process).
+  Tout ce qui doit survivre doit etre recopie sur `TrackChannel` puis rejoue au load.
+- Verifier `git log` AVANT d'implementer un brief : REQ1/REQ2 etaient deja pousses.
+  Detail : `.openhands/memory/2026-11-04.md`.
+
 ## Carte du code Æther
 - Fenetres : `AeWindow.kt` dispatch -> `AePianoUi.kt` / `AeSaxUi.kt` / ...
 - Banques : `AeBanks` (`AeInstrumentHost.kt`) : `isElectricModel`, `pianoBankId`.
