@@ -110,11 +110,12 @@ def main() -> None:
     parts = [
         "<!doctype html><html lang=fr><meta charset=utf-8>",
         "<meta name=viewport content='width=device-width,initial-scale=1'>",
-        "<title>Refonte Sheets — maquette</title>",
+        "<title>Refonte Sheets — accueil et scène</title>",
         f"<style>{STYLE}</style>",
-        "<header><h1>Refonte <span>Sheets</span> — maquette de référence</h1>",
-        "<div class=sub>Source : <code>app/assets/SheetsPreview.jsx</code> · 891 × 411 dp, "
-        "la même convention que les autres maquettes du dépôt.</div></header>",
+        "<header><h1>Refonte <span>Sheets</span> — accueil et scène flottante</h1>",
+        "<div class=sub>Rendu <b>réel</b> du code Compose, capturé par Roborazzi en 2450 × 1130 "
+        "(w851dp-h393dp-440dpi, la convention des autres captures du dépôt). "
+        "Les PNG bruts pèsent 3,9 Mo ; la page ne sert que du WebP.</div></header>",
         "<div class=wrap>",
         "<a class=cta href='/sheets/'>▶ Ouvrir la maquette vivante <small>interactive — cliquable</small></a>",
         "<h2>Les cinq états de la maquette</h2>",
@@ -128,9 +129,9 @@ def main() -> None:
             f"<figcaption><b>{html.escape(title)}</b><span>{html.escape(desc)}</span></figcaption></figure>"
         )
     parts.append("</div>")
-    parts.append("<h2>Le rendu Android réel</h2>")
-    parts.append("<div class=note>La maquette JSX est la référence de design ; voici ce que le code Compose produit vraiment, "
-                 "capturé par Roborazzi. C'est ce rendu qui a mis au jour la carte invisible sans rectangle d'origine.</div>")
+    parts.append("<h2>Les huit captures</h2>")
+    parts.append("<div class=note>Chaque vignette pèse ~3 Ko ; cliquer ouvre la version 1500 px. "
+                 "Aucun PNG brut n'est servi : une capture Roborazzi pèse ~0,5 Mo, la même en WebP ~18 Ko.</div>")
     parts.append("<div class=grid>")
     before = after = 0
     for f, title, desc in REAL:
@@ -152,16 +153,21 @@ def main() -> None:
             f"(vignette {THUMB_W} px, pleine {FULL_W} px). Cliquer une image ouvre la version pleine.</div>"
         )
     parts.append(
-        "<h2>Les sept points demandés</h2>"
+        "<h2>Ce que la refonte change</h2>"
         "<div class=note>"
         "<ul>"
-        "<li>① Le texte en bas de la carte est <b>retiré</b> (plus de « Drag anywhere · double-tap to edit »).</li>"
-        "<li>② Sections : <b>balayage</b> gauche/droite <b>et</b> tap qui ouvre la <b>liste dans la carte</b>.</li>"
-        "<li>③ <b>X à droite</b> en haut, <b>cadenas en bas à gauche</b>.</li>"
-        "<li>④ La carte s'<b>allonge</b> ; redimensionnable par <b>pincement</b> / poignée, avec <b>retour haptique</b> au glissement.</li>"
-        "<li>⑤ <b>Double-tap</b> = flotter ; <b>tap simple</b> dans la bibliothèque = ouvrir l'éditeur.</li>"
-        "<li>⑥ Cartes de bibliothèque <b>redessinées</b> : tranche de couleur, accords sur rail, tonalité, BPM, sections, date — et bascule grille/liste.</li>"
-        "<li>⑦ Cohérence matérielle : palette app, rayons, typo, ruban 40 / page 60 inchangés.</li>"
+        "<li>① Les Sets <b>ne sont plus un filtre</b> ni une grille : ce sont des <b>cartes en haut</b>, "
+        "toujours visibles, à la <b>même hauteur que la page Setlists</b> (96 dp).</li>"
+        "<li>② <b>Pas d'icône dossier, pas d'aperçu de Set</b> : la carte porte le nom choisi, sa couleur, "
+        "les premières feuilles et l'aperçu de leurs accords.</li>"
+        "<li>③ Le contrôle <b>« + Set »</b> est aligné avec <b>Favoris</b> ; le nom d'un Set n'apparaît "
+        "qu'à un seul endroit (sa carte).</li>"
+        "<li>④ La liste du bas est <b>celle de la page Setlists</b> : une feuille par ligne de 44 dp, "
+        "avec l'aperçu des accords et les informations.</li>"
+        "<li>⑤ Dans un Set, la rangée reste visible pour <b>passer d'un Set à l'autre</b> ; « ← Tout » en sort.</li>"
+        "<li>⑥ La scène flottante est <b>allégée</b> : pastilles quasi invisibles collées aux bords, X fondu.</li>"
+        "<li>⑦ <b>Édition rapide</b> : un appui long relit la ligne d'accords de la section affichée, "
+        "au clavier système — et le mixer suit la section affichée, plus seulement la première.</li>"
         "</ul>"
         "</div>"
     )
