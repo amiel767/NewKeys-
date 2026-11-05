@@ -122,8 +122,39 @@ class SheetsCaptureTest {
     }
 
     /**
-     * La carte flottante posee sur le mixer : sans contour, a la couleur de la feuille,
-     * plusieurs sections a la fois, redimensionnable. Rendue seule.
+     * The settings screen. It is part of the redesign: the notation group explains what
+     * the choice does, and the default-key chips are spelled per key signature, so the
+     * settings and the list never disagree on a note name.
+     */
+    @Test
+    fun sheets_settings() {
+        val dir = File.createTempFile("sheets-settings", "").let { it.delete(); it.mkdirs(); it }
+        seed(dir)
+        composeTestRule.setContent {
+            SheetsRoot(
+                repo = SheetsRepository(dir),
+                bottomInset = androidx.compose.ui.unit.Dp(0f),
+                onBackToMixer = {},
+                onFloatOverMixer = {},
+            )
+        }
+        composeTestRule.waitUntil(timeoutMillis = 10_000) {
+            composeTestRule.onAllNodesWithText("Midnight Drive").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeTestRule.mainClock.autoAdvance = false
+        composeTestRule.mainClock.advanceTimeBy(1_500)
+        composeTestRule.onNodeWithContentDescription("Sheets settings").performClick()
+        composeTestRule.mainClock.advanceTimeBy(800)
+        // The explanation follows the chosen notation.
+        composeTestRule.onNodeWithText("Chords read as scale degrees (1, 4, 5) — the same chart transposes for free.").assertExists()
+        // The default key reads Bb, not A#.
+        composeTestRule.onNodeWithText("Bb").assertExists()
+        composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/sheets_settings.png")
+    }
+
+    /**
+     * The floating card sitting on the mixer: no outline, tinted like the sheet, several
+     * sections at once, resizable. Rendered on its own.
      */
     @Test
     fun sheets_floating() {
@@ -156,7 +187,7 @@ class SheetsCaptureTest {
         composeTestRule.mainClock.autoAdvance = false
         composeTestRule.mainClock.advanceTimeBy(2_000)
         // Les trois commandes de la carte existent : X (haut droite), verrou (bas gauche),
-        // et la pastille de section. Le verrou a quitte la barre du haut.
+        // and the section strip. The lock has left the top bar.
         composeTestRule.onNodeWithContentDescription("Close scene").assertExists()
         composeTestRule.onNodeWithContentDescription("Lock scene").assertExists()
         composeTestRule.onNodeWithTag("resize-grip").assertExists()
@@ -165,9 +196,9 @@ class SheetsCaptureTest {
     }
 
     /**
-     * Edition rapide : un appui long sur la scene ouvre la ligne d'accords de la section
-     * affichee, relue au clavier systeme. C'est le meme langage que le chart, donc rien a
-     * expliquer ; l'editeur complet reste au double tap.
+     * Quick edit: a long press on the scene opens the chord line of the displayed
+     * section, read back through the system keyboard. Same language as the chart, so
+     * nothing to explain; the full editor stays on double tap.
      */
     @Test
     fun sheets_floating_quick_edit() {
@@ -199,13 +230,13 @@ class SheetsCaptureTest {
         composeTestRule.mainClock.advanceTimeBy(2_000)
         composeTestRule.onNodeWithTag("floating-card").performTouchInput { longClick() }
         composeTestRule.mainClock.advanceTimeBy(1_000)
-        // La ligne relue est celle de la section affichee, en degres (notation Nashville).
+        // The line read back is the displayed section, in degrees (Nashville notation).
         composeTestRule.onNodeWithText("1 | 4 | 5", substring = true).assertExists()
-        composeTestRule.onNodeWithText("Valider").assertExists()
+        composeTestRule.onNodeWithText("Apply").assertExists()
         composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/sheets_floating_quick_edit.png")
     }
 
-    /** La liste des sections s'ouvre DANS la carte (voile interne), pas dans un popover. */
+    /** The section list opens INSIDE the card (internal veil), not in a popover. */
     @Test
     fun sheets_floating_sections() {
         val sheet = Sheet(
@@ -240,8 +271,8 @@ class SheetsCaptureTest {
     }
 
     /**
-     * Les Sets en tete de bibliotheque, quatre par ligne comme les feuilles : un Set
-     * est un dossier de feuilles, on lui donne un nom et une couleur, et il se range
+     * The Sets at the top of the library, one row of cards: a Set is a folder of sheets,
+     * it gets a name and a colour of its own, and it sits
      * dans la meme grille que le reste.
      */
     @Test
@@ -261,20 +292,20 @@ class SheetsCaptureTest {
         }
         composeTestRule.mainClock.autoAdvance = false
         composeTestRule.mainClock.advanceTimeBy(1_500)
-        // Les libelles de section sont rendus en majuscules (OverlineLabel).
-        // Les Sets sont la, en haut, sans avoir touche au filtre.
+        // Overline labels are uppercased, hence the shouty spelling.
+        // The Sets are there, at the top, without touching any filter.
         composeTestRule.onAllNodesWithTag("set-card").assertCountEquals(2)
-        // Un seul endroit porte le nom d'un Set : sa carte.
+        // Exactly one place carries a Set name: its card.
         composeTestRule.onNodeWithText("Live set").assertExists()
         composeTestRule.onNodeWithText("Dimanche matin").assertExists()
-        // La liste du bas montre les feuilles avec leurs informations.
+        // The list below shows the sheets with their details.
         composeTestRule.onNodeWithText("Midnight Drive").assertExists()
         composeTestRule.onNodeWithText("Salt Wind").assertExists()
-        composeTestRule.onNodeWithText("RECEMMENT MODIFIES").assertExists()
+        composeTestRule.onNodeWithText("RECENTLY EDITED").assertExists()
         composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/sheets_sets.png")
     }
 
-    /** Une feuille rangee dans un Set, vue depuis l'interieur du Set : ordre de jeu. */
+    /** A sheet filed in a Set, seen from inside the Set: play order. */
     @Test
     fun sheets_inside_a_set() {
         val dir = File.createTempFile("sheets-inset", "").let { it.delete(); it.mkdirs(); it }
@@ -292,14 +323,14 @@ class SheetsCaptureTest {
         }
         composeTestRule.mainClock.autoAdvance = false
         composeTestRule.mainClock.advanceTimeBy(1_500)
-        // Ouvrir le Set depuis sa carte (la premiere de la grille : « Live set »).
+        // Open the Set from its card (the first one: "Live set").
         composeTestRule.onAllNodesWithTag("set-card")[0].performClick()
         composeTestRule.mainClock.advanceTimeBy(600)
-        // La rangee de Sets reste : on passe d'un Set a l'autre sans revenir en arriere.
+        // The Set row stays: you move from one Set to the next without going back.
         composeTestRule.onAllNodesWithTag("set-card").assertCountEquals(2)
-        // Le Set ouvert se marque, et la liste annonce ce qu'on regarde.
-        composeTestRule.onNodeWithText("OUVERT").assertExists()
-        composeTestRule.onNodeWithText("← Tout").assertExists()
+        // The open Set is marked, and the list announces what is being shown.
+        composeTestRule.onNodeWithText("OPEN").assertExists()
+        composeTestRule.onNodeWithText("← All").assertExists()
         composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/sheets_inside_a_set.png")
     }
 

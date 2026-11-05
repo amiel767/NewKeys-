@@ -299,11 +299,15 @@ fun FloatingSheetHost(
                 }
                 // Glissement horizontal : change de section. La fenetre ne bouge pas
                 // pendant ce geste, c'est ce qui le distingue du deplacement.
-                .pointerInput(locked, drawable, shownIds) {
+                .pointerInput(locked, drawable, shownIds, settings.swipeReversed) {
                     if (locked) return@pointerInput
                     detectHorizontalDragGestures { _, drag ->
                         val i = drawable.indexOfFirst { it.id == shownIds.firstOrNull() }
-                        if (drag < -60f) {
+                        // Swiping left shows the NEXT section by default; "Reverse swipe
+                        // direction" swaps the two, so either habit works.
+                        val forward = if (settings.swipeReversed) drag > 60f else drag < -60f
+                        val backward = if (settings.swipeReversed) drag < -60f else drag > 60f
+                        if (forward) {
                             val next = drawable.getOrNull(i + 1)
                             if (next != null) {
                                 fitSections = false
@@ -311,7 +315,7 @@ fun FloatingSheetHost(
                                 onSectionChange?.invoke(next)
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             }
-                        } else if (drag > 60f) {
+                        } else if (backward) {
                             val prev = drawable.getOrNull(i - 1)
                             if (prev != null) {
                                 fitSections = false
@@ -556,11 +560,11 @@ private fun QuickEditPanel(
                 keyboardActions = KeyboardActions(onDone = { onDone() }),
                 modifier = Modifier.fillMaxWidth().focusRequester(focus),
             )
-            Text("Barres separees par |   ·   - = case vide   ·   % = reprise", style = SheetsType.Caption, color = ink.copy(alpha = 0.6f))
+            Text("Bars separated by |   ·   - = empty slot   ·   % = repeat", style = SheetsType.Caption, color = ink.copy(alpha = 0.6f))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                QuickEditAction("Annuler", ink, onCancel)
+                QuickEditAction("Cancel", ink, onCancel)
                 Spacer(Modifier.weight(1f))
-                QuickEditAction("Valider", ink, onDone, strong = true)
+                QuickEditAction("Apply", ink, onDone, strong = true)
             }
         }
     }

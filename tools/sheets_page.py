@@ -55,11 +55,13 @@ STATES = [
 # Rendus Compose réels (Roborazzi), pas la maquette : ce que le code fait vraiment.
 REAL = [
     ("sheets_home_real.png", "L'accueil, rendu par Compose",
-     "Les Sets sont en haut, toujours visibles : une rangée de cartes de 96 dp, la même taille que la page Setlists. En dessous, la liste des feuilles, une par ligne de 44 dp, avec l'aperçu des accords et les informations."),
+     "Les Sets sont en haut, toujours visibles : une rangée de cartes de 96 dp, la même taille que la page Setlists, avec la texture des feuilles. En dessous, la liste, une feuille par ligne de 58 dp — six mesures d'accords, titre sur deux lignes."),
     ("sheets_sets_real.png", "Les Sets, rendus par Compose",
      "Un Set est une carte large : nom choisi, couleur propre, aperçu des premières feuilles et de leurs accords, nombre de feuilles. On entre dans un Set par sa carte ; le Set ouvert se marque « OUVERT »."),
     ("sheets_inside_a_set_real.png", "Dans un Set, rendu par Compose",
      "Ouvrir un Set ne montre que ses feuilles, dans l'ordre de jeu. La rangée de Sets reste visible pour passer d'un Set à l'autre ; « ← Tout » en sort."),
+    ("sheets_settings_real.png", "The settings, rendered by Compose",
+     "Every control explains itself: the notation group says what the choice does to the charts on screen, the default key spells Bb rather than A#, and the scene switches say what they change."),
     ("sheets_floating_quick_edit_real.png", "L'édition rapide, rendue par Compose",
      "Un appui long sur la scène ouvre la ligne d'accords de la section affichée, au clavier système. C'est le langage du chart (« 1 4 | 5 6m | % »), donc rien de nouveau à apprendre ; l'éditeur complet reste au double tap."),
     ("sheets_floating_real.png", "Le flottant, rendu par Compose",
@@ -115,7 +117,7 @@ def main() -> None:
         "<header><h1>Refonte <span>Sheets</span> — accueil et scène flottante</h1>",
         "<div class=sub>Rendu <b>réel</b> du code Compose, capturé par Roborazzi en 2450 × 1130 "
         "(w851dp-h393dp-440dpi, la convention des autres captures du dépôt). "
-        "Les PNG bruts pèsent 3,9 Mo ; la page ne sert que du WebP.</div></header>",
+        "Les PNG bruts pèsent 4,4 Mo ; la page ne sert que du WebP.</div></header>",
         "<div class=wrap>",
         "<a class=cta href='/sheets/'>▶ Ouvrir la maquette vivante <small>interactive — cliquable</small></a>",
         "<h2>Les cinq états de la maquette</h2>",
@@ -129,7 +131,7 @@ def main() -> None:
             f"<figcaption><b>{html.escape(title)}</b><span>{html.escape(desc)}</span></figcaption></figure>"
         )
     parts.append("</div>")
-    parts.append("<h2>Les huit captures</h2>")
+    parts.append("<h2>Les neuf captures</h2>")
     parts.append("<div class=note>Chaque vignette pèse ~3 Ko ; cliquer ouvre la version 1500 px. "
                  "Aucun PNG brut n'est servi : une capture Roborazzi pèse ~0,5 Mo, la même en WebP ~18 Ko.</div>")
     parts.append("<div class=grid>")
@@ -162,12 +164,17 @@ def main() -> None:
         "les premières feuilles et l'aperçu de leurs accords.</li>"
         "<li>③ Le contrôle <b>« + Set »</b> est aligné avec <b>Favoris</b> ; le nom d'un Set n'apparaît "
         "qu'à un seul endroit (sa carte).</li>"
-        "<li>④ La liste du bas est <b>celle de la page Setlists</b> : une feuille par ligne de 44 dp, "
-        "avec l'aperçu des accords et les informations.</li>"
+        "<li>④ La liste du bas a <b>grandi</b> : une feuille par ligne de <b>58 dp</b> (avant 44), "
+        "six mesures d'accords au lieu de trois, titre sur deux lignes. Mesuré sur la capture : 58,2 dp.</li>"
         "<li>⑤ Dans un Set, la rangée reste visible pour <b>passer d'un Set à l'autre</b> ; « ← Tout » en sort.</li>"
         "<li>⑥ La scène flottante est <b>allégée</b> : pastilles quasi invisibles collées aux bords, X fondu.</li>"
         "<li>⑦ <b>Édition rapide</b> : un appui long relit la ligne d'accords de la section affichée, "
         "au clavier système — et le mixer suit la section affichée, plus seulement la première.</li>"
+        "<li>⑧ <b>Orthographe des notes</b> : elle suit l'armure. Une même feuille écrivait « A# » en Bb "
+        "et « Ab » en A ; désormais une seule table de noms, dérivée de <code>Theory.noteName</code>, "
+        "partagée par la liste, l'éditeur et l'export.</li>"
+        "<li>⑨ <b>Réglages</b> refaits pour la nouvelle interface : chaque contrôle explique ce qu'il change, "
+        "et le réglage « sens du balayage », stocké mais <b>jamais lu</b> depuis toujours, est enfin branché.</li>"
         "</ul>"
         "</div>"
     )

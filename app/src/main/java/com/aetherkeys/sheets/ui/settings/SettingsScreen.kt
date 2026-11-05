@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import com.aetherkeys.sheets.model.Notation
+import com.aetherkeys.sheets.model.Theory
 import com.aetherkeys.sheets.model.PassingDisplay
 import com.aetherkeys.sheets.model.Pagination
 import com.aetherkeys.sheets.model.SheetsSettings
@@ -34,9 +35,13 @@ import com.aetherkeys.sheets.ui.theme.SheetsSpacing
 import com.aetherkeys.sheets.ui.theme.SheetsType
 import com.aetherkeys.sheets.vm.SettingsActions
 
-private val KEY_NAMES = listOf("C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B")
-
-/** Réglages propres à Sheets (pas les réglages globaux de l'app). Tout est appliqué immédiatement. */
+/**
+ * Sheets' own settings (not the app's global ones). Everything applies immediately.
+ *
+ * The screen follows the current library: the "Notation" group explains what the
+ * change does to what is on screen, and "Default key" spells its chips the way the
+ * key signature asks for, so the list and the sheet never disagree.
+ */
 @Composable
 fun SheetsSettingsScreen(
     settings: SheetsSettings,
@@ -64,15 +69,34 @@ fun SheetsSettingsScreen(
                         Pill("Nashville", selected = settings.notation == Notation.Nashville) { actions.update { it.copy(notation = Notation.Nashville) } }
                         Pill("Standard", selected = settings.notation == Notation.Standard) { actions.update { it.copy(notation = Notation.Standard) } }
                     }
+                    Hint(
+                        if (settings.notation == Notation.Nashville)
+                            "Chords read as scale degrees (1, 4, 5) — the same chart transposes for free."
+                        else
+                            "Chords read as note names (C, F, G). Spelling follows the key signature: " +
+                                "flats in ${Theory.noteName(settings.defaultKeyPc, settings.defaultKeyPc)}-style keys, sharps elsewhere.",
+                    )
                 }
                 Group("PASSING CHORDS") {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Pill("Auto (5/5 when detected)", selected = settings.passing == PassingDisplay.Auto) { actions.update { it.copy(passing = PassingDisplay.Auto) } }
                         Pill("Raw degree", selected = settings.passing == PassingDisplay.Raw) { actions.update { it.copy(passing = PassingDisplay.Raw) } }
                     }
+                    Hint("A passing chord is written as two chords in one bar (5/5) when Auto recognises it.")
                 }
                 Group("DEFAULT KEY") {
-                    ChipFlow { KEY_NAMES.forEachIndexed { pc, n -> ToolChip(n, { actions.update { it.copy(defaultKeyPc = pc) } }, selected = settings.defaultKeyPc == pc) } }
+                    ChipFlow {
+                        // Spelled per key signature, so picking "Bb" does not then show "A#"
+                        // on every new sheet.
+                        for (pc in 0 until 12) {
+                            ToolChip(
+                                Theory.noteName(pc, pc),
+                                { actions.update { it.copy(defaultKeyPc = pc) } },
+                                selected = settings.defaultKeyPc == pc,
+                            )
+                        }
+                    }
+                    Hint("New sheets start in this key. Existing sheets keep their own.")
                 }
                 Group("DEFAULT PAGINATION") {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -88,11 +112,19 @@ fun SheetsSettingsScreen(
                 }
                 Group("SCENE MODE") {
                     SwitchRow("Lock on open", settings.lockOnOpen, onChange = { v -> actions.update { it.copy(lockOnOpen = v) } })
+                    Hint("Locked: the scene is read-only — a tap only opens the section list.")
                     SwitchRow("Reverse swipe direction", settings.swipeReversed, onChange = { v -> actions.update { it.copy(swipeReversed = v) } })
+                    Hint("Swiping left goes to the next section. On: swiping right does.")
                 }
             }
         }
     }
+}
+
+/** One line of explanation under a control: what the choice actually does. */
+@Composable
+private fun Hint(text: String) {
+    Text(text, style = SheetsType.Caption, color = SheetsColors.TextMuted)
 }
 
 @Composable

@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -149,7 +150,7 @@ fun HomeScreen(
 
     menuFor?.let { s -> CardMenuDialog(s, state, actions, onDismiss = { menuFor = null }) }
     setMenuFor?.let { sl -> SetMenuDialog(sl, actions, onDismiss = { setMenuFor = null }) }
-    if (newSetlist) NameDialog("Nouveau Set", "Nom du Set", onDismiss = { newSetlist = false }) { actions.createSetlist(it); newSetlist = false }
+    if (newSetlist) NameDialog("New Set", "Set name", onDismiss = { newSetlist = false }) { actions.createSetlist(it); newSetlist = false }
 }
 
 @Composable
@@ -182,25 +183,25 @@ private fun SearchField(query: String, onChange: (String) -> Unit, modifier: Mod
 }
 
 /**
- * Deux portes seulement : tout, ou les favoris. Les Sets ne sont PAS repetes ici — ils
- * sont deja des cartes juste en dessous, et deux fois le meme nom a deux endroits
- * brouille la lecture. On entre dans un Set par sa carte, on en sort par « ← Tout ».
+ * Two doors only: everything, or favorites. Sets are deliberately NOT repeated here —
+ * they are already cards right below, and the same name in two places reads as a bug.
+ * You enter a Set through its card and leave it through "← All".
  */
 @Composable
 private fun FilterRow(state: LibraryUiState, actions: HomeActions, onNewSet: () -> Unit) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        item { Pill("Tous · ${state.sheets.size}", selected = state.filter == LibraryFilter.All) { actions.setFilter(LibraryFilter.All) } }
-        item { Pill("★ Favoris", selected = state.filter == LibraryFilter.Favorites) { actions.setFilter(LibraryFilter.Favorites) } }
+        item { Pill("All · ${state.sheets.size}", selected = state.filter == LibraryFilter.All) { actions.setFilter(LibraryFilter.All) } }
+        item { Pill("★ Favorites", selected = state.filter == LibraryFilter.Favorites) { actions.setFilter(LibraryFilter.Favorites) } }
         item { Pill("+ Set") { onNewSet() } }
     }
 }
 
 // ────────────────────────────────────────────────────────────────────────────────────────
 // Rangee des Sets : cartes de la taille de celles de la page Setlists (96 dp).
-// Meme matiere que les feuilles (degrade + tranche + ombre), pas de verre.
+// Same material as the sheets (gradient + spine + shadow), not glass.
 // ────────────────────────────────────────────────────────────────────────────────────────
 
-private val SetCardWidth = 236.dp
+private val SetCardWidth = 252.dp
 private val SetCardHeight = 96.dp
 
 @Composable
@@ -216,7 +217,7 @@ private fun SetRow(
         items(sets, key = { it.id }) { sl ->
             SetChip(
                 setlist = sl,
-                // Les feuilles du Set, dans l'ordre de jeu : sert au compte et a l'apercu.
+                // The Set's sheets, in play order: feeds the count and the preview.
                 sheets = sl.sheetIds.mapNotNull { id -> sheets.firstOrNull { it.id == id } },
                 settings = settings,
                 selected = sl.id == selectedId,
@@ -228,9 +229,9 @@ private fun SetRow(
 }
 
 /**
- * Carte de Set : un dossier de feuilles, au format des cartes Setlists (96 dp).
- * La couleur est celle du Set ; le contenu annonce ce qu'il y a dedans — le nom des
- * premieres feuilles et un apercu de leurs accords, plus petit que dans la liste.
+ * Set card: a folder of sheets, at the Setlists page gauge (96 dp tall). The colour is
+ * the Set's own; the content announces what is inside — the first sheet titles and a
+ * preview of their chords. [LibraryTexture] gives it the same material as a sheet.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -261,41 +262,42 @@ private fun SetChip(
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .shadow(if (pressed) 5.dp else 12.dp, shape, clip = false)
             .clip(shape)
-            .background(Brush.linearGradient(listOf(base, lerp(base, Color.Black, 0.30f))))
+            .background(Brush.linearGradient(listOf(base, lerp(base, Color.Black, 0.32f))))
             .combinedClickable(
                 interactionSource = source, indication = null,
                 onClick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onOpen() },
                 onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onMenu() },
             ),
     ) {
-        // Tranche : meme repere que les feuilles, pour lire la couleur d'un coup d'oeil.
+        LibraryTexture(ink)
+        // Spine: the same landmark as a sheet, so the colour reads at a glance.
         Box(Modifier.width(4.dp).fillMaxHeight().background(ink.copy(alpha = 0.5f)))
         Column(
-            Modifier.fillMaxSize().padding(start = 15.dp, end = 11.dp, top = 10.dp, bottom = 9.dp),
+            Modifier.fillMaxSize().padding(start = 16.dp, end = 12.dp, top = 11.dp, bottom = 10.dp),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 Text(setlist.name, style = SheetsType.CardTitle, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                if (selected) Text("OUVERT", style = SheetsType.Overline.copy(fontSize = 8.sp), color = ink.copy(alpha = 0.85f))
+                if (selected) Text("OPEN", style = SheetsType.Overline.copy(fontSize = 8.sp), color = ink.copy(alpha = 0.85f))
             }
             Text(
-                if (sheets.isEmpty()) "Aucune feuille"
+                if (sheets.isEmpty()) "No sheets yet"
                 else sheets.take(2).joinToString(" · ") { it.title },
-                style = SheetsType.CardMeta.copy(fontSize = 11.sp), color = ink.copy(alpha = 0.85f),
+                style = SheetsType.CardMeta.copy(fontSize = 11.sp), color = ink.copy(alpha = 0.86f),
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (preview.isNotEmpty()) {
                     Text(
                         preview,
-                        style = SheetsType.chord(SheetsFonts.family(first?.chordFontId ?: FontIds.ArchitectsDaughter), 13f),
+                        style = SheetsType.chord(SheetsFonts.family(first?.chordFontId ?: FontIds.ArchitectsDaughter), 14f),
                         color = ink.copy(alpha = 0.92f), maxLines = 1, softWrap = false, overflow = TextOverflow.Clip,
                         modifier = Modifier.weight(1f),
                     )
                 } else Spacer(Modifier.weight(1f))
                 Text(
-                    "${sheets.size} feuille${if (sheets.size > 1) "s" else ""}",
-                    style = SheetsType.CardMeta.copy(fontSize = 10.sp), color = ink.copy(alpha = 0.7f),
+                    "${sheets.size} sheet${if (sheets.size > 1) "s" else ""}",
+                    style = SheetsType.CardMeta.copy(fontSize = 10.sp), color = ink.copy(alpha = 0.75f),
                 )
             }
         }
@@ -303,11 +305,11 @@ private fun SetChip(
 }
 
 // ────────────────────────────────────────────────────────────────────────────────────────
-// Liste du bas : une feuille par ligne, meme gabarit que les lignes de Setlists.
-// Apercu des accords + informations (tonalite, tempo, sections).
+// The list below: one sheet per row, at the Setlists row gauge (58 dp). The chord preview
+// gets real room, so the row reads as a line of music rather than a table row.
 // ────────────────────────────────────────────────────────────────────────────────────────
 
-private val SheetRowHeight = 44.dp
+private val SheetRowHeight = 58.dp
 
 @Composable
 private fun ListHeader(state: LibraryUiState, count: Int, inSetName: String?, onAll: () -> Unit) {
@@ -316,14 +318,14 @@ private fun ListHeader(state: LibraryUiState, count: Int, inSetName: String?, on
             Box(
                 Modifier.clip(RoundedCornerShape(SheetsRadius.Chip)).background(SheetsColors.Chip)
                     .clickable { onAll() }.padding(horizontal = 10.dp, vertical = 3.dp),
-            ) { Text("← Tout", style = SheetsType.Caption, color = SheetsColors.TextPrimary) }
+            ) { Text("← All", style = SheetsType.Caption, color = SheetsColors.TextPrimary) }
         }
         OverlineLabel(
             when {
                 inSetName != null -> inSetName
-                state.filter == LibraryFilter.Favorites -> "Favoris"
-                state.query.isNotBlank() -> "Resultats"
-                else -> "Recemment modifies"
+                state.filter == LibraryFilter.Favorites -> "Favorites"
+                state.query.isNotBlank() -> "Results"
+                else -> "Recently edited"
             },
         )
         Text("$count", style = SheetsType.Overline, color = SheetsColors.TextMuted)
@@ -350,48 +352,77 @@ private fun SheetRow(
     val family = SheetsFonts.family(sheet.chordFontId)
     val firstSection = sheet.sections.firstOrNull { it.bars.isNotEmpty() }
     val key = firstSection?.let { sheet.keyFor(it) } ?: sheet.keyPc
-    val preview = firstSection?.bars?.take(3)
-        ?.joinToString("  ") { Theory.barText(it, key, settings.notation, settings.passing) }.orEmpty()
+    // Six bars, not three: the row is wide and tall now, and a six-bar line is what
+    // actually tells one sheet from another at a glance.
+    val preview = firstSection?.bars?.take(6)
+        ?.joinToString("   ") { Theory.barText(it, key, settings.notation, settings.passing) }.orEmpty()
+    val keyInk = onColorFor(base)
 
     Row(
         Modifier.fillMaxWidth().height(SheetRowHeight)
             .graphicsLayer { scaleX = if (pressed) 0.99f else 1f; scaleY = if (pressed) 0.99f else 1f }
             .clip(shape)
-            .background(lerp(SheetsColors.Surface, base, 0.16f))
-            .border(1.dp, ink.copy(alpha = 0.10f), shape)
+            .background(lerp(SheetsColors.Surface, base, 0.18f))
+            .border(1.dp, ink.copy(alpha = 0.12f), shape)
             .combinedClickable(
                 interactionSource = source, indication = null,
                 onClick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onOpen() },
                 onDoubleClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onFloat() },
                 onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onMenu() },
             )
-            .padding(start = 10.dp, end = 6.dp),
+            .padding(start = 13.dp, end = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(11.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        // Pastille de couleur : la seule teinte de la ligne, comme les points de Setlists.
-        Box(Modifier.size(9.dp).clip(CircleShape).background(base))
-        Text(sheet.title, style = SheetsType.Label, color = SheetsColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        // Colour tab: the row's only tint, the same landmark as a Setlists dot.
+        Box(Modifier.width(4.dp).height(34.dp).clip(RoundedCornerShape(2.dp)).background(base))
+        Text(
+            sheet.title, style = SheetsType.RowTitle, color = SheetsColors.TextPrimary,
+            maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(186.dp),
+        )
         if (preview.isNotEmpty()) {
             Text(
                 preview,
-                style = SheetsType.chord(family, 13f), color = SheetsColors.TextMuted,
+                style = SheetsType.chord(family, 15f), color = SheetsColors.TextPrimary.copy(alpha = 0.86f),
                 maxLines = 1, softWrap = false, overflow = TextOverflow.Clip,
-                modifier = Modifier.weight(1.4f),
+                modifier = Modifier.weight(1f),
             )
-        } else Spacer(Modifier.weight(1.4f))
-        // Tonalite : plaque sombre, lisible sur n'importe quelle teinte.
-        Box(Modifier.clip(RoundedCornerShape(6.dp)).background(Color(0xE6000000)).padding(horizontal = 7.dp, vertical = 2.dp)) {
-            Text(Theory.KEY_NAMES[key], style = SheetsType.CardMeta.copy(fontSize = 10.sp), color = Color.White)
+        } else Spacer(Modifier.weight(1f))
+        // Key: dark plate, readable on any tint. Spelling follows the key signature.
+        Box(Modifier.clip(RoundedCornerShape(7.dp)).background(Color(0xE6000000)).padding(horizontal = 9.dp, vertical = 3.dp)) {
+            Text(Theory.noteName(key, key), style = SheetsType.CardMeta, color = Color.White)
         }
-        Text("${sheet.bpm}", style = SheetsType.CardMeta.copy(fontSize = 10.sp), color = SheetsColors.TextMuted, modifier = Modifier.width(30.dp))
-        Text("${sheet.sections.size} sect.", style = SheetsType.CardMeta.copy(fontSize = 10.sp), color = SheetsColors.TextMuted, modifier = Modifier.width(48.dp))
-        Box(Modifier.width(14.dp), contentAlignment = Alignment.Center) {
-            if (sheet.favorite) Icon(SheetsIcons.Star, contentDescription = "Favorite", tint = SheetsColors.Warning, modifier = Modifier.size(12.dp))
-            else if (setCount > 0) Icon(SheetsIcons.Layers, contentDescription = null, tint = SheetsColors.TextMuted, modifier = Modifier.size(12.dp))
+        Text("${sheet.bpm} BPM", style = SheetsType.CardMeta, color = SheetsColors.TextMuted, modifier = Modifier.width(58.dp))
+        Text(
+            "${sheet.sections.size} section${if (sheet.sections.size > 1) "s" else ""}",
+            style = SheetsType.CardMeta, color = SheetsColors.TextMuted, modifier = Modifier.width(72.dp),
+        )
+        Box(Modifier.width(16.dp), contentAlignment = Alignment.Center) {
+            if (sheet.favorite) Icon(SheetsIcons.Star, contentDescription = "Favorite", tint = SheetsColors.Warning, modifier = Modifier.size(13.dp))
+            else if (setCount > 0) Icon(SheetsIcons.Layers, contentDescription = "In a Set", tint = keyInk.copy(alpha = 0.55f), modifier = Modifier.size(13.dp))
         }
-        Icon(SheetsIcons.ChevronRight, contentDescription = null, tint = SheetsColors.TextMuted, modifier = Modifier.size(15.dp))
+        Icon(SheetsIcons.ChevronRight, contentDescription = null, tint = SheetsColors.TextMuted, modifier = Modifier.size(16.dp))
     }
+}
+
+/**
+ * Card material, shared by the sheet rows and the Set cards: a diagonal light band, a
+ * bright top edge and a dark bottom edge. Drawn in code rather than in XML so it can
+ * take the ink colour of any tint.
+ */
+@Composable
+private fun BoxScope.LibraryTexture(ink: Color) {
+    Box(
+        Modifier.matchParentSize().background(
+            Brush.linearGradient(
+                0f to ink.copy(alpha = 0.13f),
+                0.42f to ink.copy(alpha = 0.03f),
+                1f to Color.Transparent,
+            ),
+        ),
+    )
+    Box(Modifier.align(Alignment.TopStart).fillMaxWidth().height(1.dp).background(ink.copy(alpha = 0.28f)))
+    Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(1.dp).background(Color.Black.copy(alpha = 0.22f)))
 }
 
 @Composable
@@ -401,21 +432,21 @@ private fun EmptyState(state: LibraryUiState, onCreate: () -> Unit, onNewSet: ()
     Column(Modifier.fillMaxWidth().padding(top = 48.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text(
             when {
-                searching -> "Aucun resultat"
-                setsOnly -> "Aucun Set"
-                else -> "Aucune feuille"
+                searching -> "No results"
+                setsOnly -> "No Sets yet"
+                else -> "No sheets yet"
             },
             style = SheetsType.Title, color = Color.White,
         )
         if (!searching) {
             Text(
-                if (setsOnly) "Un Set rassemble les feuilles que tu joues ensemble."
-                else "Cree ta premiere feuille pour commencer a ecrire.",
+                if (setsOnly) "A Set gathers the sheets you play together."
+                else "Create your first sheet to start writing.",
                 style = SheetsType.Body, color = SheetsColors.TextMuted, textAlign = TextAlign.Center,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Pill("Nouvelle feuille", selected = true, onClick = onCreate)
-                Pill("Nouveau Set", onClick = onNewSet)
+                Pill("New sheet", selected = true, onClick = onCreate)
+                Pill("New Set", onClick = onNewSet)
             }
         }
     }
@@ -469,7 +500,7 @@ private enum class SetMenuPage { Main, Rename, Color, ConfirmDelete }
 
 /**
  * Menu d'un Set : renommer, recolorer, supprimer. Supprimer un Set ne supprime
- * aucune feuille — il ne fait que le retirer de la bibliotheque.
+ * deletes no sheet — it only removes the Set from the library.
  */
 @Composable
 private fun SetMenuDialog(setlist: Setlist, actions: HomeActions, onDismiss: () -> Unit) {
@@ -485,12 +516,12 @@ private fun SetMenuDialog(setlist: Setlist, actions: HomeActions, onDismiss: () 
                 }
                 SetMenuPage.Rename -> {
                     Text("Rename Set", style = SheetsType.Overline, color = SheetsColors.TextMuted, modifier = Modifier.padding(start = 14.dp, top = 12.dp, bottom = 6.dp))
-                    NameField(initial = setlist.name, placeholder = "Nom du Set", modifier = Modifier.padding(horizontal = 12.dp)) { v ->
+                    NameField(initial = setlist.name, placeholder = "Set name", modifier = Modifier.padding(horizontal = 12.dp)) { v ->
                         actions.renameSetlist(setlist.id, v); onDismiss()
                     }
                 }
                 SetMenuPage.Color -> {
-                    Text("Couleur du Set", style = SheetsType.Overline, color = SheetsColors.TextMuted, modifier = Modifier.padding(start = 14.dp, top = 12.dp, bottom = 6.dp))
+                    Text("Set colour", style = SheetsType.Overline, color = SheetsColors.TextMuted, modifier = Modifier.padding(start = 14.dp, top = 12.dp, bottom = 6.dp))
                     PaletteRow(selected = setlist.colorArgb) { actions.setSetlistColor(setlist.id, it) }
                     MenuItem("Remove colour") { actions.setSetlistColor(setlist.id, null); onDismiss() }
                 }
