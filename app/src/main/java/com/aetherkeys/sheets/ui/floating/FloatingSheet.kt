@@ -76,6 +76,7 @@ import com.aetherkeys.sheets.model.SheetsSettings
 import com.aetherkeys.sheets.ui.chart.ChartLayout
 import com.aetherkeys.sheets.ui.chart.ChartLines
 import com.aetherkeys.sheets.ui.components.SectionTagChip
+import com.aetherkeys.sheets.ui.components.rememberPressRebound
 import com.aetherkeys.sheets.ui.components.SheetsIcons
 import com.aetherkeys.sheets.ui.theme.*
 import kotlinx.coroutines.launch
@@ -329,10 +330,11 @@ private fun InCardSectionPicker(
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 sections.forEach { sec ->
                     val on = sec.id in shownIds
+                    val (press, source) = rememberPressRebound(0.97f)
                     Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(11.dp))
+                        Modifier.fillMaxWidth().then(press).clip(RoundedCornerShape(11.dp))
                             .background(ink.copy(alpha = if (on) 0.16f else 0.05f))
-                            .clickable { onToggle(sec.id) }
+                            .clickable(interactionSource = source, indication = null) { onToggle(sec.id) }
                             .padding(horizontal = 12.dp, vertical = 9.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -358,10 +360,14 @@ private fun SceneIconButton(
     active: Boolean,
     onClick: () -> Unit,
 ) {
+    val (press, source) = rememberPressRebound(0.90f)
+    val haptic = LocalHapticFeedback.current
     Box(
-        Modifier.size(30.dp).clip(RoundedCornerShape(9.dp))
+        Modifier.size(30.dp).then(press).clip(RoundedCornerShape(9.dp))
             .background(ink.copy(alpha = if (active) 0.26f else 0.14f))
-            .clickable(onClick = onClick),
+            .clickable(interactionSource = source, indication = null) {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onClick()
+            },
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, contentDescription = description, tint = ink, modifier = Modifier.size(16.dp))

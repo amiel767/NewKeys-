@@ -69,16 +69,34 @@ import com.aetherkeys.sheets.ui.theme.*
 import kotlin.math.roundToInt
 import android.graphics.Color as AColor
 
+/**
+ * Rebond commun a toutes les cases de Sheets : la case s'enfonce au doigt
+ * (echelle 0.94) et revient par un ressort. Reprend exactement le geste du
+ * mixer (`TrackBottomRow.kt`), pour que l'app se lise d'un seul tenant.
+ *
+ * Renvoie le modificateur a poser sur la case et la source d'interaction a
+ * passer au `clickable` (`indication = null`, pas d'ondulation Material).
+ */
+@Composable
+fun rememberPressRebound(pressedScale: Float = 0.94f): Pair<Modifier, MutableInteractionSource> {
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        if (pressed) pressedScale else 1f,
+        spring(dampingRatio = 0.55f, stiffness = 900f),
+        label = "pressRebound",
+    )
+    return Modifier.graphicsLayer { scaleX = scale; scaleY = scale } to source
+}
+
 /** Pastille : filtres, setlists, bascules. */
 @Composable
 fun Pill(text: String, modifier: Modifier = Modifier, selected: Boolean = false, onClick: () -> Unit) {
+    val (press, source) = rememberPressRebound()
     val haptic = LocalHapticFeedback.current
-    val source = remember { MutableInteractionSource() }
-    val pressed by source.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.95f else 1f, spring(dampingRatio = 0.55f, stiffness = 900f), label = "pillPress")
     Box(
         modifier
-            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .then(press)
             .clip(RoundedCornerShape(SheetsRadius.Chip))
             .background(if (selected) SheetsColors.Accent else SheetsColors.Chip)
             .clickable(interactionSource = source, indication = null) {
@@ -151,13 +169,11 @@ fun GlyphButton(
     enabled: Boolean = true, filled: Boolean = false, size: Int = 40,
 ) {
     val haptic = LocalHapticFeedback.current
-    val source = remember { MutableInteractionSource() }
-    val pressed by source.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed && enabled) 0.92f else 1f, spring(dampingRatio = 0.55f, stiffness = 900f), label = "glyphPress")
+    val (press, source) = rememberPressRebound(0.92f)
     Box(
         modifier
             .size(size.dp)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .then(press)
             .clip(RoundedCornerShape(SheetsRadius.Button))
             .background(if (filled) SheetsColors.Accent else SheetsColors.SurfaceRaised)
             .then(
