@@ -52,19 +52,24 @@ fun BoxScope.AeSynthUi(c: AeCtl, a: AeAnim) {
 
     when (c.s.page) {
         0 -> {
-            Card(22, 54, 272, 286, "OSCILLATORS")
-            Canvas(Modifier.at(36, 88, 240, 42)) { a.frame.intValue; drawWave(y(0), if (c.s.held.isEmpty()) 0f else a.t * 0.6f) }
-            Canvas(Modifier.at(36, 136, 240, 42)) { a.frame.intValue; drawWave(y(1), if (c.s.held.isEmpty()) 0.3f else a.t * 0.6f + 0.3f) }
-            AeGlassKnob(c, 0, "Wave A", 40, 188, 46); AeGlassKnob(c, 1, "Wave B", 106, 188, 46); AeGlassKnob(c, 2, "Detune", 172, 188, 46); AeGlassKnob(c, 3, "Sub", 238, 188, 46)
-            AeGlassKnob(c, 4, "Noise", 40, 254, 46); AeGlassKnob(c, 5, "Unison", 106, 254, 46); AeGlassKnob(c, 6, "Spread", 172, 254, 46)
+            // The cards run to y=426 instead of 340: the band the on-screen keyboard used to
+            // occupy now belongs to the controls that were cramped against it. The two waveform
+            // views, the filter curve and the envelope all roughly double in height, which is
+            // where the extra room actually reads — the knob rows are already at their tightest
+            // pitch (66 units, and an AeGlassKnob's touch box is its size plus 22).
+            Card(22, 54, 272, 372, "OSCILLATORS")
+            Canvas(Modifier.at(36, 84, 240, 56)) { a.frame.intValue; drawWave(y(0), if (c.s.held.isEmpty()) 0f else a.t * 0.6f) }
+            Canvas(Modifier.at(36, 146, 240, 56)) { a.frame.intValue; drawWave(y(1), if (c.s.held.isEmpty()) 0.3f else a.t * 0.6f + 0.3f) }
+            AeGlassKnob(c, 0, "Wave A", 40, 212, 46); AeGlassKnob(c, 1, "Wave B", 106, 212, 46); AeGlassKnob(c, 2, "Detune", 172, 212, 46); AeGlassKnob(c, 3, "Sub", 238, 212, 46)
+            AeGlassKnob(c, 4, "Noise", 40, 300, 46); AeGlassKnob(c, 5, "Unison", 106, 300, 46); AeGlassKnob(c, 6, "Spread", 172, 300, 46)
 
-            Card(706, 54, 272, 196, "FILTER")
+            Card(706, 54, 272, 246, "FILTER")
             arrayOf("LP", "HP", "BP", "NOTCH").forEachIndexed { i, t -> AeChip(c, 11, i, 4, t, 722 + i * 56, 82, 52) }
-            Canvas(Modifier.at(720, 108, 250, 75).drag01 { px, py -> c.set(7, px); c.set(8, 1f - py) }) { a.frame.intValue; drawFilter(a, y) }
-            AeGlassKnob(c, 7, "Cutoff", 722, 188, 40); AeGlassKnob(c, 8, "Reso", 784, 188, 40); AeGlassKnob(c, 9, "Drive", 846, 188, 40); AeGlassKnob(c, 10, "Env", 908, 188, 40)
+            Canvas(Modifier.at(720, 112, 250, 106).drag01 { px, py -> c.set(7, px); c.set(8, 1f - py) }) { a.frame.intValue; drawFilter(a, y) }
+            AeGlassKnob(c, 7, "Cutoff", 722, 228, 46); AeGlassKnob(c, 8, "Reso", 790, 228, 46); AeGlassKnob(c, 9, "Drive", 858, 228, 46); AeGlassKnob(c, 10, "Env", 926, 228, 46)
 
-            Card(706, 256, 272, 84, "ENVELOPE")
-            Canvas(Modifier.at(720, 282, 250, 50).drag01 { px, py ->
+            Card(706, 306, 272, 120, "ENVELOPE")
+            Canvas(Modifier.at(720, 330, 250, 86).drag01 { px, py ->
                 if (px < 0.28f) c.set(12, px / 0.28f * 0.9f)
                 else if (px < 0.55f) { c.set(13, (px - 0.28f) / 0.27f); c.set(14, 1f - py) }
                 else if (px > 0.7f) c.set(15, (px - 0.7f) / 0.3f)
@@ -94,24 +99,4 @@ fun BoxScope.AeSynthUi(c: AeCtl, a: AeAnim) {
             AeGlassKnob(c, 30, "Tune", 700, 130, 50); AeGlassKnob(c, 31, "Level", 812, 130, 50)
         }
     }
-    SynthConsole(c, a)
-}
-
-/**
- * The band the virtual keyboard used to fill: output level and the oscillator stack at a glance.
- *
- * The instrument is played from the mixer's own keyboard. In its place the window shows the
- * output meter and a readout of the two oscillators' shape and mix, which is the pair of
- * settings a player checks before touching anything else.
- */
-@Composable
-private fun BoxScope.SynthConsole(c: AeCtl, a: AeAnim) {
-    Box(Modifier.at(22, 352, 428, 96).clip(RoundedCornerShape(18.su())).background(Brush.linearGradient(listOf(Color(0x14FFFFFF), Color(0x05FFFFFF)))).border(1.su(), Color(0x1CFFFFFF), RoundedCornerShape(18.su())))
-    AeT("OUTPUT", 9, AeC.violet, Modifier.at(38, 362, 200, 12), weight = FontWeight.ExtraBold, spacing = 0.2f)
-    Canvas(Modifier.at(38, 380, 250, 58)) { a.frame.intValue; drawOutputMeter(a, c.v(31), AeC.p2) }
-    Box(Modifier.at(302, 352, 324, 96).clip(RoundedCornerShape(18.su())).background(Brush.linearGradient(listOf(Color(0x14FFFFFF), Color(0x05FFFFFF)))).border(1.su(), Color(0x1CFFFFFF), RoundedCornerShape(18.su())))
-    AeT("OSCILLATORS", 9, AeC.violet, Modifier.at(318, 362, 200, 12), weight = FontWeight.ExtraBold, spacing = 0.2f)
-    Canvas(Modifier.at(318, 380, 292, 30)) { a.frame.intValue; drawWave(c.v(0), if (c.s.held.isEmpty()) 0f else a.t * 0.6f) }
-    Canvas(Modifier.at(318, 412, 292, 30)) { a.frame.intValue; drawWave(c.v(1), if (c.s.held.isEmpty()) 0.3f else a.t * 0.6f + 0.3f) }
-    AeT("A " + c.fmt(0) + "   B " + c.fmt(1) + "   DETUNE " + c.fmt(2), 9, AeC.mute, Modifier.at(318, 434, 292, 12), AeFonts.mono, FontWeight.Normal)
 }

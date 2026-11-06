@@ -41,27 +41,26 @@ private val CAPS = intArrayOf(0, 0, 1, 1, 2, 1, 2, 2, 1)
 /** Registration readout: the nine drawbar steps as one number, spaced every three bars. */
 private fun reg(c: AeCtl, off: Int) = (0..8).joinToString("") { (if (it == 2 || it == 6) " " else "") + (c.v(off + it) * 8).roundToInt() }
 
-/** Walnut end cheek, real grain, with a lit edge where it meets the console. */
+/** End cheek: the same lacquered walnut as the cabinet, a shade darker, lit along its inner edge. */
 @Composable
 private fun BoxScope.Rail(x: Number, flip: Boolean) {
     val sh = RoundedCornerShape(topStart = if (flip) 0.su() else 24.su(), topEnd = if (flip) 24.su() else 0.su())
     Box(
-        Modifier.at(x, 0, 46, 460).clip(sh).aeWood(if (flip) Color(0xFF5C3418) else Color(0xFF6A3E1E), if (flip) 9 else 4)
+        Modifier.at(x, 0, 46, 460).clip(sh).aeWood(if (flip) Color(0xFF6A3D1C) else Color(0xFF7A4A24), if (flip) 9 else 4)
             .drawBehind {
                 val ex = if (flip) 0f else size.width
-                drawLine(AeC.organ.copy(alpha = 0.18f), Offset(ex, 0f), Offset(ex, size.height), 1.5f)
+                drawLine(Color(0x33FFFFFF), Offset(ex, 0f), Offset(ex, size.height), 1.5f)
             },
     )
 }
 
-/** Brushed-metal panel: the console body, with its own grain and a lit top edge. */
+/** Inset panel: darker walnut, so the manuals read as recessed into the cabinet. */
 @Composable
 private fun Panel(x: Number, y: Number, w: Number, h: Number, r: Number = 10) {
     val sh = RoundedCornerShape(r.su())
     Box(
-        Modifier.at(x, y, w, h).clip(sh).aeBrushed(Color(0xFF2B313A), (x.toInt() / 7) + 3)
-            .border(1.su(), Color(0x33000000), sh)
-            .drawBehind { drawLine(AeC.organ.copy(alpha = 0.10f), Offset(16f, 1f), Offset(size.width - 16f, 1f), 1.5f) },
+        Modifier.at(x, y, w, h).clip(sh).aeWood(Color(0xFF4E2E12), (x.toInt() / 7) + 3)
+            .border(1.su(), Color(0x33000000), sh),
     )
 }
 
@@ -74,37 +73,43 @@ private fun Caption(text: String, x: Number, y: Number, w: Number) {
 /**
  * Tonewheel organ, laid out like the reference console (stage 1000 x 460): two manuals of nine
  * drawbars with their registration number, the vibrato/chorus dial and its two switches, the
- * percussion row, and the rotary speaker with the stop/slow/fast lever. The five voicing knobs
- * keep the right-hand panel.
+ * percussion row, and the five voicing knobs.
+ *
+ * The band the virtual keyboard used to occupy now carries the voicing row, which is what those
+ * knobs needed: five of them could not be made larger while they were squeezed into the 372 units
+ * right of the manuals. There is no output meter and no tonewheel window here — the window is a
+ * control surface, and the instrument's own level knob already sits in the voicing row.
  */
 @Composable
 fun BoxScope.AeOrganUi(c: AeCtl, a: AeAnim) {
     Box(Modifier.fillMaxSize().drawBehind {
-        drawRect(Brush.verticalGradient(listOf(Color(0xFF131C29), Color(0xFF080B12))))
-        // Lit console: the reference's key light, kept soft so it does not wash the drawbars.
-        drawRect(Brush.radialGradient(listOf(Color(0x247FD4EE), Color.Transparent), center = Offset(size.width * 0.2f, -size.height * 0.15f), radius = size.width * 0.75f))
+        // Smooth lacquered walnut: the cabinet finish, not raw timber.
+        drawWood(Color(0xFF7A4A24), 4)
+        // Soft key light from the upper left, so the grain survives instead of washing into a
+        // flat tint.
+        drawRect(Brush.radialGradient(listOf(Color(0x1E7FD4EE), Color.Transparent), center = Offset(size.width * 0.2f, -size.height * 0.15f), radius = size.width * 0.75f))
     })
     Rail(0, flip = false)
     Rail(954, flip = true)
     // The two manuals. Each registration number sits with its own drawbar set, so a manual reads
-    // as one unit: panel, caption, registration, then the nine bars.
+    // as one unit: panel, caption, registration, then the nine bars. The bars are 250 long instead
+    // of 196, and their step spacing follows, which is the room the missing keyboard bought.
     listOf(Triple(54, 0, "UPPER MANUAL"), Triple(606, 9, "LOWER MANUAL")).forEach { (x, off, title) ->
-        Panel(x, 54, 340, 238)
+        Panel(x, 54, 340, 286)
         AeT(title, 9, AeC.organ, Modifier.at(x + 14, 62, 170, 12), weight = FontWeight.ExtraBold, spacing = 0.2f)
         AeT(reg(c, off), 13, AeC.organ, Modifier.at(x + 196, 58, 130, 18), AeFonts.mono, FontWeight.Normal, 0.08f, TextAlign.End)
-        for (i in 0 until 9) AeDrawbar(c, off + i, CAPS[i], FOOT[i], x + 17 + i * 34, 82)
-        for (k in 0..8) AeT("$k", 8, Color(0xFF8FA6B8), Modifier.at(x + 4, 82 + 23 + k * 17, 10, 10), AeFonts.mono, FontWeight.Normal, align = TextAlign.End)
+        for (i in 0 until 9) AeDrawbar(c, off + i, CAPS[i], FOOT[i], x + 17 + i * 34, 82, h = 250, step = 21)
+        for (k in 0..8) AeT("$k", 8, Color(0xFF8FA6B8), Modifier.at(x + 4, 82 + 24 + k * 21, 10, 10), AeFonts.mono, FontWeight.Normal, align = TextAlign.End)
     }
 
-    // Centre column: vibrato/chorus above, percussion below, as on the reference console.
-    Panel(402, 54, 196, 238)
+    // Centre column, same height as the manuals so the three panels read as one row: vibrato/chorus
+    // on top, then the two manual switches, percussion, and the rotary speaker.
+    Panel(402, 54, 196, 286)
     Caption("VIBRATO · CHORUS", 402, 62, 196)
     val step = (c.v(22) * 5).roundToInt()
-    // Drag, not click-to-advance: a six-position cycle needed up to five taps to cross the
-    // dial, which is what read as "you have to force it". A vertical drag moves it like the
-    // other knobs; the touch target keeps the 96-unit box the labels sit in.
+    // Drag, not click-to-advance: a six-position cycle needed up to five taps to cross the dial.
     val vibScale = LocalAeScale.current
-    val vibClick = Modifier.at(452, 78, 96, 96).pointerInput(Unit) {
+    val vibClick = Modifier.at(440, 72, 120, 120).pointerInput(Unit) {
         awaitEachGesture {
             val d = awaitFirstDown(requireUnconsumed = false)
             val start = c.v(22)
@@ -115,36 +120,28 @@ fun BoxScope.AeOrganUi(c: AeCtl, a: AeAnim) {
     Box(vibClick) {
         arrayOf("V1", "V2", "V3", "C1", "C2", "C3").forEachIndexed { i, t ->
             val an = Math.toRadians((-75 + 30 * i - 90).toDouble())
-            AeT(t, 8, AeC.organ, Modifier.at(48 + cos(an).toFloat() * 42f - 12f, 50 + sin(an).toFloat() * 42f - 8f, 24, 11), AeFonts.plate, FontWeight.ExtraBold, align = TextAlign.Center)
+            AeT(t, 8, AeC.organ, Modifier.at(60 + cos(an).toFloat() * 50f - 12f, 60 + sin(an).toFloat() * 50f - 8f, 24, 11), AeFonts.plate, FontWeight.ExtraBold, align = TextAlign.Center)
         }
-        Box(Modifier.at(21, 29, 54, 54).aeSvg(AeSvgs.KNOB_METAL))
+        Box(Modifier.at(27, 27, 66, 66).aeSvg(AeSvgs.KNOB_METAL))
         Canvas(Modifier.fillMaxSize()) {
-            val k = size.width / 96f
-            rotate(-75f + 30f * step, Offset(48f * k, 56f * k)) { drawRoundRect(Color(0xFF16161A), Offset(46.6f * k, 39f * k), Size(2.8f * k, 12f * k), CornerRadius(1.4f * k)) }
+            val k = size.width / 120f
+            rotate(-75f + 30f * step, Offset(60f * k, 60f * k)) { drawRoundRect(Color(0xFF16161A), Offset(58.4f * k, 43f * k), Size(3.2f * k, 15f * k), CornerRadius(1.6f * k)) }
         }
     }
-    AeRocker(c, 23, "UPPER", 418, 182, 76)
-    AeRocker(c, 24, "LOWER", 506, 182, 76)
+    AeRocker(c, 23, "UPPER", 414, 196, 84)
+    AeRocker(c, 24, "LOWER", 504, 196, 84)
 
-    // Percussion: one row of four tabs, captioned once.
-    Caption("PERCUSSION", 402, 218, 196)
-    AeRocker(c, 18, "ON", 412, 232, 40)
-    AeRocker(c, 19, "SOFT", 456, 232, 40)
-    AeRocker(c, 20, "FAST", 500, 232, 40)
-    AeRocker(c, 21, "3RD", 544, 232, 40)
+    Caption("PERCUSSION", 402, 230, 196)
+    AeRocker(c, 18, "ON", 410, 242, 44)
+    AeRocker(c, 19, "SOFT", 456, 242, 44)
+    AeRocker(c, 20, "FAST", 502, 242, 44)
+    AeRocker(c, 21, "3RD", 548, 242, 44)
 
-    // Rotary speaker: tonewheel window on the left, rotor and the stop/slow/fast lever on the right.
-    Panel(54, 298, 312, 40)
-    Canvas(Modifier.at(60, 301, 300, 34).clip(RoundedCornerShape(10.su()))) {
-        drawRect(Brush.verticalGradient(listOf(Color(0xFF0A0C10), Color(0xFF14171D))))
-        a.frame.intValue
-        drawTonewheels(a)
-    }
-    Caption("ROTARY", 372, 304, 60)
-    Canvas(Modifier.at(374, 314, 58, 34)) { a.frame.intValue; drawRotor(a) }
+    Caption("ROTARY", 402, 276, 196)
+    Canvas(Modifier.at(420, 288, 58, 34)) { a.frame.intValue; drawRotor(a) }
     val les = (c.v(25) * 2).roundToInt()
     val lx by animateFloatAsState(les * 50f, label = "leslie")
-    Box(Modifier.at(442, 301, 150, 34).clickable(remember { MutableInteractionSource() }, null) { c.set(25, ((les + 1) % 3) / 2f) }) {
+    Box(Modifier.at(442, 288, 150, 34).clickable(remember { MutableInteractionSource() }, null) { c.set(25, ((les + 1) % 3) / 2f) }) {
         Canvas(Modifier.fillMaxSize()) {
             val u = size.width / 150f
             drawRoundRect(Color(0xFF0A0A0D), Offset.Zero, size, CornerRadius(8f * u))
@@ -161,32 +158,12 @@ fun BoxScope.AeOrganUi(c: AeCtl, a: AeAnim) {
         }
     }
 
-    // Voicing knobs, clear of the lower-manual panel whose bottom edge is at y=292.
-    AeMetalKnob(c, 26, "CLICK", 640, 298, 44)
-    AeMetalKnob(c, 28, "DRIVE", 716, 298, 44)
-    AeMetalKnob(c, 27, "TONE", 792, 298, 44)
-    AeMetalKnob(c, 29, "SPACE", 868, 298, 44)
-    AeMetalKnob(c, 30, "LEVEL", 944, 298, 44)
-    // The band the virtual keyboard used to fill. The instrument is played from the mixer's own
-    // keyboard, so the window gives the space back to readouts an organist actually watches:
-    // the output level and both registrations, always in view while the drawbars are moved.
-    ConsoleStrip(c, a)
-}
-
-/** Output level and both registrations, in the band the on-screen keyboard used to occupy. */
-@Composable
-private fun BoxScope.ConsoleStrip(c: AeCtl, a: AeAnim) {
-    Panel(54, 348, 892, 100, 12)
-    Canvas(Modifier.fillMaxSize()) {
-        drawScrew(66f, 360f, 4.2f); drawScrew(934f, 360f, 4.2f)
-        drawScrew(66f, 436f, 4.2f); drawScrew(934f, 436f, 4.2f)
-    }
-    AeT("OUTPUT", 9, AeC.organ, Modifier.at(84, 358, 200, 12), weight = FontWeight.ExtraBold, spacing = 0.2f)
-    Canvas(Modifier.at(84, 374, 380, 62)) { a.frame.intValue; drawOutputMeter(a, c.v(30), AeC.organ) }
-    AeT("REGISTRATION", 9, AeC.organ, Modifier.at(500, 358, 200, 12), weight = FontWeight.ExtraBold, spacing = 0.2f)
-    AeT("UPPER", 8, AeC.goldDim, Modifier.at(500, 376, 60, 12), weight = FontWeight.ExtraBold, spacing = 0.14f)
-    AeT(reg(c, 0), 20, AeC.organ, Modifier.at(560, 372, 240, 24), AeFonts.mono)
-    AeT("LOWER", 8, AeC.goldDim, Modifier.at(500, 404, 60, 12), weight = FontWeight.ExtraBold, spacing = 0.14f)
-    AeT(reg(c, 9), 20, AeC.organ, Modifier.at(560, 400, 240, 24), AeFonts.mono)
-    AeT(arrayOf("STOP", "SLOW", "FAST")[(c.v(25) * 2).roundToInt().coerceIn(0, 2)] + " · " + (if (c.v(18) > 0.5f) "PERC ON" else "PERC OFF"), 9, AeC.goldDim, Modifier.at(820, 376, 120, 14), weight = FontWeight.ExtraBold, spacing = 0.1f, align = TextAlign.End)
+    // Voicing, in the band the keyboard used to fill: five knobs at 72 instead of 44, which is
+    // what the 372 units beside the manuals could not fit.
+    AeT("VOICING", 9, AeC.organ, Modifier.at(54, 344, 892, 12), weight = FontWeight.ExtraBold, spacing = 0.24f, align = TextAlign.Center)
+    AeMetalKnob(c, 26, "CLICK", 264, 358, 72)
+    AeMetalKnob(c, 28, "DRIVE", 424, 358, 72)
+    AeMetalKnob(c, 27, "TONE", 584, 358, 72)
+    AeMetalKnob(c, 29, "SPACE", 744, 358, 72)
+    AeMetalKnob(c, 30, "LEVEL", 904, 358, 72)
 }

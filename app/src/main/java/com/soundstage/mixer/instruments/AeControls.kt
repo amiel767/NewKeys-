@@ -33,6 +33,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import kotlin.math.roundToInt
+import com.soundstage.mixer.ui.components.FaderRail
 import com.soundstage.mixer.ui.components.FaderThumb
 
 /** Binds the controls to one session. All edits go through the manager (state + native engine). */
@@ -320,26 +321,30 @@ fun AeSeg(
 }
 
 /**
- * Hammond drawbar: fader rail + a FaderThumb cap tinted brown / white / black, chrome shaft drawn live,
- * snap spring, drag anywhere on the bar.
+ * Hammond drawbar: the mixer's own [FaderRail] in black with a white groove, and a [FaderThumb] cap
+ * tinted brown / white / black.
  *
- * The cap is the mixer's own [com.soundstage.mixer.ui.components.FaderThumb], the piece measured from a photo, so
- * a drawbar and a channel fader are the same hardware. The LED bar is off ([showLed]): a drawbar has no light,
- * and a bright band across the cap read as a seam. The cap's measured luminance profile is kept and only the
- * tint changes, so the white and black caps still show a lit lip and a shaded base instead of flattening out.
+ * The rail is the same part the channel faders and the Leads faders use — same chassis, rim,
+ * groove and shadow — so a drawbar reads as the same hardware. Only its body colour changes
+ * (black, not the mixer's grey) and the groove is white. It is 40 % THINNER than that rail: not a
+ * smaller rail, a narrower one. The thickness is the Modifier width and everything else (rim,
+ * groove, radii) derives from it, so passing a narrower box is enough.
+ *
+ * The cap is [FaderThumb] too, with its LED off: a drawbar has no light, and the bright band read
+ * as a seam across the cap. Its measured relief is kept and only the tint changes.
  */
 @Composable
-fun AeDrawbar(c: AeCtl, idx: Int, color: Int, foot: String, x: Number, y: Number) {
+fun AeDrawbar(c: AeCtl, idx: Int, color: Int, foot: String, x: Number, y: Number, h: Number = 196, step: Number = 16) {
     val sc = LocalAeScale.current
     val n = (c.v(idx) * 8).roundToInt()
-    val target = 14f + n * 16f
+    val target = 14f + n * step.toFloat()
     // While the finger is down the cap tracks it with no spring, otherwise a drag feels like it
     // has to push through the animation. The spring is only for outside changes (preset load,
     // undo, keyboard), where a small settle reads as mechanical rather than abrupt.
     var dragging by remember { mutableStateOf(false) }
     val animated by animateFloatAsState(target, spring(0.7f, Spring.StiffnessMedium), label = "drawbar")
     val capY = if (dragging) target else animated
-    fun fromY(py: Float) = (((py / sc) - 14f - 13f) / 16f).roundToInt().coerceIn(0, 8) / 8f
+    fun fromY(py: Float) = (((py / sc) - 14f - 13f) / step.toFloat()).roundToInt().coerceIn(0, 8) / 8f
     val capTop = when (color) {
         0 -> Color(0xFF6B3A1C)   // brown
         1 -> Color(0xFFEDE7DA)   // white
@@ -351,7 +356,7 @@ fun AeDrawbar(c: AeCtl, idx: Int, color: Int, foot: String, x: Number, y: Number
         else -> Color(0xFF0A0A0E)
     }
     Box(
-        Modifier.at(x, y, 34, 196).pointerInput(idx) {
+        Modifier.at(x, y, 34, h).pointerInput(idx) {
             awaitEachGesture {
                 val d = awaitFirstDown(requireUnconsumed = false)
                 dragging = true
@@ -361,31 +366,22 @@ fun AeDrawbar(c: AeCtl, idx: Int, color: Int, foot: String, x: Number, y: Number
             }
         },
     ) {
-        // Chrome rail, recessed: the groove is drawn in code so it reads as a slot milled into
-        // the panel, not a sticker with a border.
-        Box(Modifier.at(13, 0, 8, 196).aePlastic(Color(0xFF0D0D11), 9))
-        Canvas(Modifier.fillMaxSize()) {
-            val k = size.width / 34f
-            drawRoundRect(
-                Brush.horizontalGradient(listOf(Color(0xFF15151A), Color(0xFF3A3D45), Color(0xFF0A0A0D))),
-                Offset(12f * k, 4f * k), Size(10f * k, 188f * k), CornerRadius(5f * k),
-            )
-        }
+        // 9.6 units instead of the mixer rail's 16: same part, 40 % thinner.
+        FaderRail(
+            accent = Color(0xFFF2F5FA),
+            modifier = Modifier.at(12.2f, 0, 9.6f, h),
+            level = c.v(idx),
+            glow = 0f,
+            body = Color(0xFF0C0C10),
+        )
         AeT(foot, 8, Color(0xFFD6C79C), Modifier.at(0, 0.5f, 34, 11), AeFonts.plate, align = TextAlign.Center)
-        Canvas(Modifier.fillMaxSize()) {
-            val k = size.width / 34f
-            drawRect(
-                Brush.horizontalGradient(listOf(Color(0xFF6C7078), Color(0xFFF0F2F6), Color(0xFF9AA0AA), Color(0xFF4C5058)), 14.2f * k, 19.8f * k),
-                Offset(14.2f * k, 14f * k), Size(5.6f * k, (capY + 4f - 14f) * k),
-            )
-        }
         Box(Modifier.at(3f, capY, 28, 30)) {
             FaderThumb(
                 accent = Color.Transparent, modifier = Modifier.fillMaxSize(), showShadow = false,
                 capTop = capTop, capBottom = capBottom, showLed = false,
             )
         }
-        AeT("$n", 13, AeC.reg, Modifier.at(0, 176, 34, 16), AeFonts.mono, FontWeight.Normal, align = TextAlign.Center)
+        AeT("$n", 13, AeC.reg, Modifier.at(0, h.toFloat() - 20f, 34, 16), AeFonts.mono, FontWeight.Normal, align = TextAlign.Center)
     }
 }
 
