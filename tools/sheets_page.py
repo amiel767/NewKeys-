@@ -55,13 +55,13 @@ STATES = [
 # Rendus Compose réels (Roborazzi), pas la maquette : ce que le code fait vraiment.
 REAL = [
     ("sheets_home_real.png", "L'accueil, rendu par Compose",
-     "Les Sets sont en haut, toujours visibles : une rangée de cartes de verre dépoli de 272 × 96 dp. L'aperçu d'accords y occupe toute la rangée basse, à 21 sp. En dessous, la liste, une feuille par ligne de 58 dp, aperçu à 19 sp."),
+     "Les Sets sont en haut, toujours visibles : une rangée de cartes de verre dépoli de 272 × 96 dp. L'aperçu d'accords y occupe toute la rangée basse, à 21 sp. En dessous, la liste, une feuille par ligne de 43,5 dp, aperçu à 19 sp."),
     ("sheets_sets_real.png", "Les Sets, rendus par Compose",
      "Un Set est une carte large : nom choisi, couleur propre, aperçu des premières feuilles et de leurs accords, nombre de feuilles. On entre dans un Set par sa carte ; le Set ouvert se marque « OUVERT »."),
     ("sheets_inside_a_set_real.png", "Dans un Set, rendu par Compose",
      "Ouvrir un Set ne montre que ses feuilles, dans l'ordre de jeu. La rangée de Sets reste visible pour passer d'un Set à l'autre ; « ← Tout » en sort."),
-    ("sheets_settings_real.png", "The settings, rendered by Compose",
-     "Every control explains itself: the notation group says what the choice does to the charts on screen, the default key spells Bb rather than A#, and the scene switches say what they change."),
+    ("sheets_settings_real.png", "Les réglages, un panneau et non une page",
+     "Les réglages s'ouvrent en <b>panneau ancré en haut à droite</b>, comme ceux de Setlists : 538 × 334 dp, la bibliothèque reste visible derrière. Même matière (dégradé, liseré clair, ombre 14 dp) et même apparition (fondu + montée, 220 ms). Le contenu tient en deux colonnes, sans défilement. Chaque contrôle s'explique : le groupe Notation dit ce que le choix change sur les partitions affichées, la tonalité par défaut écrit Bb et non A#, et les interrupteurs de scène disent ce qu'ils modifient."),
     ("sheets_floating_quick_edit_real.png", "L'édition rapide, rendue par Compose",
      "Un appui long sur la scène ouvre la ligne d'accords de la section affichée, au clavier système. C'est le langage du chart (« 1 4 | 5 6m | % »), donc rien de nouveau à apprendre ; l'éditeur complet reste au double tap."),
     ("sheets_floating_real.png", "Le flottant, rendu par Compose",
