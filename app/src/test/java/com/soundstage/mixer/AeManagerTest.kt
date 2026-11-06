@@ -413,4 +413,32 @@ class AeManagerTest {
         assertEquals(AeInstrument.SAX, m.sessions[1]!!.instrument)
     }
 
+    /**
+     * The header of Leads, Synth and Organ reads its label from here, so this is what the user
+     * sees after picking a sound: the name must follow every load, not only the first one.
+     */
+    @Test fun presetNameFollowsEveryLoadOnLeadsSynthAndOrgan() {
+        val host = FakeHost()
+        val m = manager(host)
+        listOf(AeInstrument.LEADS, AeInstrument.SYNTH, AeInstrument.ORGAN).forEach { inst ->
+            m.load(0, inst)
+            val all = m.presets(inst)
+            assertTrue("${inst.title} has presets", all.size > 2)
+            assertEquals(all[0].name, m.presetNameOn(0))
+            m.loadPreset(0, 2)
+            assertEquals("loading another preset must update the header", all[2].name, m.presetNameOn(0))
+            // And it must survive a knob move: the Save pill appears, the name does not change.
+            m.setParam(0, 0, 0.9f)
+            assertEquals(all[2].name, m.presetNameOn(0))
+        }
+    }
+
+    /** The Sax names something the user cannot change, so it reads just "Sax" and not a preset. */
+    @Test fun saxDoesNotReportAPresetName() {
+        val host = FakeHost()
+        val m = manager(host)
+        m.load(0, AeInstrument.SAX)
+        assertEquals("Sax", m.presetNameOn(0))
+    }
+
 }

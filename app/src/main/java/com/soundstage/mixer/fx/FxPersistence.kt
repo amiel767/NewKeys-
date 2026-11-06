@@ -31,6 +31,29 @@ object FxPersistence {
         val abA: List<Float>?,
         val abB: List<Float>?,
         val abCur: Int,
+        /** The MIDI slot (arpeggiator). Null when the track has none. */
+        val arp: Arp? = null,
+    )
+
+    /**
+     * The arpeggiator, which is a track's MIDI slot.
+     *
+     * It is stored here rather than in `effects` because it is NOT a chain
+     * effect: the engine has no effect id for it. What persists is the whole
+     * setting of the card — the grid, the tempo — plus whether the card is
+     * present and engaged. Without [present] a removed card would come back on
+     * the next launch; without [engaged] a bypassed one would silently re-arm.
+     */
+    data class Arp(
+        val sub: Int = 2,
+        val style: Int = 0,
+        val steps: Int = 16,
+        val bpm: Int = 120,
+        val swing: Int = 12,
+        val on: List<Boolean> = List(16) { true },
+        val vel: List<Float> = List(16) { 1f },
+        val present: Boolean = true,
+        val engaged: Boolean = true,
     )
 
     data class Slot(val id: Int, val preset: String?, val params: List<Float>, val bypass: Boolean)
@@ -56,6 +79,19 @@ object FxPersistence {
                 })
             }
         })
+        if (state.arp != null) {
+            root.put("arp", JSONObject().apply {
+                put("present", state.arp.present)
+                put("engaged", state.arp.engaged)
+                put("sub", state.arp.sub)
+                put("style", state.arp.style)
+                put("steps", state.arp.steps)
+                put("bpm", state.arp.bpm)
+                put("swing", state.arp.swing)
+                put("on", JSONArray(state.arp.on.map { it }))
+                put("vel", JSONArray(state.arp.vel.map { it.toDouble() }))
+            })
+        }
         if (state.abA != null && state.abB != null) {
             root.put("ab", JSONObject().apply {
                 put("a", JSONArray(state.abA.map { it.toDouble() }))
@@ -94,6 +130,19 @@ object FxPersistence {
                 abA = ab?.let { floats(it.optJSONArray("a")).ifEmpty { null } },
                 abB = ab?.let { floats(it.optJSONArray("b")).ifEmpty { null } },
                 abCur = if (ab?.optString("cur") == "b") 1 else 0,
+                arp = root.optJSONObject("arp")?.let { a ->
+                    Arp(
+                        sub = a.optInt("sub", 2),
+                        style = a.optInt("style", 0),
+                        steps = a.optInt("steps", 16),
+                        bpm = a.optInt("bpm", 120),
+                        swing = a.optInt("swing", 12),
+                        on = bools(a.optJSONArray("on")),
+                        vel = floats(a.optJSONArray("vel")).ifEmpty { List(16) { 1f } },
+                        present = a.optBoolean("present", true),
+                        engaged = a.optBoolean("engaged", true),
+                    )
+                },
             )
         }.getOrNull()
     }
@@ -101,6 +150,11 @@ object FxPersistence {
     private fun floats(arr: JSONArray?): List<Float> {
         if (arr == null) return emptyList()
         return List(arr.length()) { arr.optDouble(it, 0.0).toFloat() }
+    }
+
+    private fun bools(arr: JSONArray?): List<Boolean> {
+        if (arr == null) return emptyList()
+        return List(arr.length()) { arr.optBoolean(it, true) }
     }
 
     fun save(context: Context, strip: Int, json: String) {

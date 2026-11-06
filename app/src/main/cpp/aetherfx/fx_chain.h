@@ -242,7 +242,10 @@ class FxStrip {
 class TrackStrip {
  public:
   FxChain instrument{1, false, &makeInstrument};
-  FxStrip strip{6, false};
+  // Three audio slots per track. The MIDI slot the window shows as the fourth
+  // card is not a chain slot: it is the arpeggiator, which intercepts the
+  // track's MIDI channel instead of processing audio (see FxMixer::setArpChannel).
+  FxStrip strip{3, false};
   void prepare(double sr, int maxBlock) { instrument.prepare(sr, maxBlock); strip.prepare(sr, maxBlock); }
   bool setInstrument(int id) { return instrument.setEffect(0, id); }  // id < 0: back to the plain soundfont
   int instrumentId() const { return instrument.effectId(0); }

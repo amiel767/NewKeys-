@@ -36,6 +36,8 @@ data class FxSlotState(
  */
 data class FxWindowState(
     val slots: List<FxSlotState?>,
+    /** Vrai pour la bande master : que de l'audio, aucune case MIDI. */
+    val master: Boolean = false,
     /** Les effets qu'on peut ajouter. `null` quand le catalogue est fermé. */
     val catalog: List<FxInfoD>? = null,
     /** L'effet dont la page est ouverte, `null` si on est sur le rack. */

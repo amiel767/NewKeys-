@@ -71,7 +71,7 @@ class FxDetachedCaptureTest {
             }
         }
         composeTestRule.mainClock.advanceTimeBy(1400)
-        composeTestRule.onRoot().captureRoboImage("app/src/test/screenshots/$name.png")
+        composeTestRule.onRoot().captureRoboImage("src/test/screenshots/$name.png")
     }
 
     /** Le rack : Space et l'Arpeggiator, deux emplacements libres. */

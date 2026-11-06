@@ -155,7 +155,7 @@ fun AeLightKnob(th: AeTheme, value: Float, label: String, text: String, x: Numbe
             drawCircle(Color(0x2E000000), 19f * k, c, style = Stroke(0.8f * k))
             rotate(-135f + 270f * value, c) { drawRoundRect(Color(0xFF3A3028), Offset(28.8f * k, 14f * k), Size(2.4f * k, 9f * k), CornerRadius(1.2f * k)) }
         }
-        AeT(label.uppercase(), 9 * s, th.ink2, weight = FontWeight.Normal, spacing = 0.18f, align = TextAlign.Center)
+        AeT(label.uppercase(), 9 * s, th.ink, weight = FontWeight.Normal, spacing = 0.18f, align = TextAlign.Center)
         AeT(text, 10 * s, th.ink, font = AeFonts.mono, weight = FontWeight.Normal, align = TextAlign.Center)
     }
 }

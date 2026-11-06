@@ -97,7 +97,7 @@ fun FxWindow(
                     title = title,
                     big = inEffect,
                     onBack = if (inEffect || state.catalogOpen) ({ actions.closePage() }) else null,
-                    counter = if (!inEffect && !state.catalogOpen) "$count / ${FxDesign.SLOTS}" else null,
+                    counter = if (!inEffect && !state.catalogOpen) "$count / ${state.slots.size}" else null,
                     trailing = {
                         if (inEffect && state.openEffect?.space == true) {
                             FxSaveButton(custom = state.custom) { actions.beginSave() }
@@ -143,7 +143,7 @@ fun FxWindow(
 @Composable
 private fun FxRack(state: FxWindowState, actions: FxWindowActions) {
     Row(Modifier.fillMaxSize()) {
-        for (i in 0 until FxDesign.SLOTS) {
+        for (i in state.slots.indices) {
             if (i > 0) Spacer(Modifier.width(FxGeo.GAP.dp))
             val slot = state.slots.getOrNull(i)
             if (slot != null) {
@@ -158,7 +158,9 @@ private fun FxRack(state: FxWindowState, actions: FxWindowActions) {
                     onRemove = { actions.remove(i) },
                 )
             } else {
-                val midi = i >= FxDesign.MAX_AUDIO
+                // Sur une piste le dernier emplacement est MIDI ; sur le master
+                // il n'y en a pas — les quatre sont audio.
+                val midi = !state.master && i >= FxDesign.MAX_AUDIO
                 FxEmptySlot(if (midi) "MIDI" else "Audio") {
                     actions.openCatalog(if (midi) FxKindD.MIDI else FxKindD.AUDIO)
                 }
@@ -204,7 +206,7 @@ private fun FxCatalog(state: FxWindowState, actions: FxWindowActions) {
     val families = remember(list) { listOf("All") + list.map { it.family }.distinct() }
     var fam = remember { androidx.compose.runtime.mutableStateOf("All") }
     val shown = list.filter { fam.value == "All" || it.family == fam.value }
-    val full = state.slots.count { it != null } >= FxDesign.SLOTS
+    val full = state.slots.count { it != null } >= state.slots.size
 
     Column(Modifier.fillMaxSize()) {
         Row(verticalAlignment = Alignment.CenterVertically) {

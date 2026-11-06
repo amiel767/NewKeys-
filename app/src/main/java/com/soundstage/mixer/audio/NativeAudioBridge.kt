@@ -115,8 +115,8 @@ object NativeAudioBridge {
     const val FX_STRIP_TONIC_PAD = 9
     const val FX_STRIP_DRUM_PAD = 10
     const val FX_STRIP_MASTER = 15
-    const val FX_SLOTS_TRACK = 6
-    const val FX_SLOTS_MASTER = 8
+    const val FX_SLOTS_TRACK = 3
+    const val FX_SLOTS_MASTER = 4
 
     external fun setFxEnabled(enabled: Boolean)
     external fun isFxEnabled(): Boolean
@@ -630,9 +630,15 @@ object NativeAudioBridge {
     fun actualSampleRate(): Int =
         if (isLibraryLoaded) runCatching { actualSampleRateNative() }.getOrDefault(0) else 0
 
+    /** Duree du dernier bloc audio en microsecondes, ou 0 si indisponible. */
+    fun lastRenderMicros(): Long =
+        if (isLibraryLoaded) runCatching { lastRenderMicrosNative() }.getOrDefault(0L) else 0L
+
     private external fun actualBufferSizeNative(): Int
 
     private external fun actualSampleRateNative(): Int
+
+    private external fun lastRenderMicrosNative(): Long
 
     fun safeSetMasterEq(lowGainDb: Float, midGainDb: Float, highGainDb: Float) {
         if (isLibraryLoaded) {

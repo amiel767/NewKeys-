@@ -39,7 +39,7 @@ class AeAnim {
         t += dt; lv += (s.level - lv) * 0.4f
         val held = s.held.isNotEmpty()
         fcm += ((if (held) 1f else 0f) - fcm) * 0.18f
-        if (s.instrument == AeInstrument.PIANO) {
+        if (AeSections.isKeyboardLike(s.instrument)) {
             val dtc = if (dt > 0f && dt < 0.1f) dt else 0.016f
             s.held.keys.forEach { pianoE[((it - 36) % pianoE.size + pianoE.size) % pianoE.size] = 1f }
             val rel = 2.2f - s.values[3] * 1.6f
@@ -186,4 +186,48 @@ fun DrawScope.drawLfo(rate: Float, shape: Int, depth: Float, phase: Float) = sca
     }
     drawPath(path, Color(0x66E05CFF), style = Stroke(8f, cap = StrokeCap.Round, join = StrokeJoin.Round))
     drawPath(path, Color.White, style = Stroke(2.4f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+}
+
+/**
+ * Output level history for one instrument, newest on the right.
+ *
+ * This is a real readout, not filler: [peak] is the same strip peak the mixer's meters use, so
+ * the trace follows what the instrument is actually putting out. It is drawn on a log-ish scale
+ * because a linear bar spends most of its life near zero and reads as dead.
+ */
+fun DrawScope.drawLevelTrace(peak: Float, t: Float, accent: Color) {
+    val w = size.width
+    val h = size.height
+    if (w <= 0f || h <= 0f) return
+    drawRoundRect(Color(0xFF0A0E15), Offset.Zero, size, CornerRadius(h * 0.10f))
+    drawRoundRect(Color(0x1AFFFFFF), Offset.Zero, size, CornerRadius(h * 0.10f), style = Stroke(1f))
+    // Graticule and a dim floor of bars: a meter at rest still has to read as a meter, otherwise
+    // the panel looks like an empty box whenever nothing is playing.
+    for (i in 1..3) {
+        val gy = h * i / 4f
+        drawLine(Color(0x1FFFFFFF), Offset(0f, gy), Offset(w, gy), 1f)
+    }
+    val cols = 60
+    val cw = w / cols
+    // A 22 % floor, not a hairline: at rest the meter still has to show its scale. A 5 % floor
+    // was invisible, so the band read as an empty panel until something was played.
+    val floor = (h - 4f) * 0.22f
+    for (i in 0 until cols) {
+        drawRoundRect(
+            accent.copy(alpha = 0.34f),
+            Offset(i * cw + cw * 0.18f, h - 2f - floor), Size(cw * 0.64f, floor), CornerRadius(cw * 0.32f),
+        )
+    }
+    for (i in 0 until cols) {
+        // The current peak is the rightmost bar; everything left of it is a decaying tail, which
+        // is what makes the strip read as history rather than as one number.
+        val k = 1f - (cols - 1 - i) / (cols - 1f)
+        val amp = peak * Math.pow(k.toDouble(), 1.6).toFloat() * (0.55f + 0.45f * sin((t * 6f + i * 0.7f).toDouble()).toFloat())
+        val bh = (h - 4f) * amp.coerceIn(0f, 1f)
+        if (bh < 0.6f) continue
+        drawRoundRect(
+            if (amp > 0.85f) Color(0xFFFF5A6E) else accent,
+            Offset(i * cw + cw * 0.18f, h - 2f - bh), Size(cw * 0.64f, bh), CornerRadius(cw * 0.32f),
+        )
+    }
 }

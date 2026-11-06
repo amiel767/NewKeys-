@@ -29,6 +29,7 @@ import com.aetherkeys.fx.FxWindowActions
 import com.aetherkeys.fx.FxWindowState
 import com.aetherkeys.fx.rememberFitScale
 import com.soundstage.mixer.fx.FxController
+import com.soundstage.mixer.fx.FxPersistence
 import com.soundstage.mixer.fx.FxRegistry
 
 /** FX strip for a mixer track: tracks 1..8 map to strips 0..7, track 0 is master. */
@@ -64,9 +65,10 @@ fun FxDesignHost(
     modifier: Modifier = Modifier,
 ) {
     val strip = stripForTrack(trackId)
+    val isMaster = strip == FxRegistry.STRIP_MASTER
     val appContext = LocalContext.current.applicationContext
     val controller = remember(strip) { FxController(strip, appContext) }
-    val host = remember(strip) { FxDesignModel(controller) }
+    val host = remember(strip) { FxDesignModel(controller, isMaster) }
 
     // L'état natif est restauré une fois, puis adopté : le moteur est l'autorité
     // à ce moment-là, le ré-adopter ensuite ne ferait que le rejouer.
@@ -91,15 +93,19 @@ fun FxDesignHost(
     LaunchedEffect(strip) {
         androidx.compose.runtime.snapshotFlow { host.arpRevision() }
             .collectLatest {
-                if (host.arpIsLive()) host.pushArp()
+                host.syncArp()
             }
     }
 
-    // Fermer la fenêtre DÉSARME l'arp. Le rack n'est pas encore persisté : sans
-    // ça, le canal resterait intercepté par un arp que plus aucune interface ne
-    // montre, et le joueur ne pourrait plus le couper.
+    // Fermer la fenêtre PERSISTE, elle ne désarme plus.
+    //
+    // Elle désarmait l'arp à la fermeture : le rack n'était pas persisté, donc
+    // sans ça un canal restait intercepté par un arp qu'aucune interface ne
+    // montrait. Maintenant que le rack EST persisté, ce désarmement est le bug :
+    // rouvrir la fenêtre ne retrouvait plus l'arp armé. On écrit l'état au lieu
+    // de le détruire, et c'est le bouton Bypass qui coupe.
     androidx.compose.runtime.DisposableEffect(strip) {
-        onDispose { controller.setArpArmed(false) }
+        onDispose { controller.save() }
     }
 
     Box(
@@ -119,7 +125,7 @@ fun FxDesignHost(
  * avec. Tout est en état Compose — une liste ordinaire ne ferait pas recomposer
  * le rack quand un effet s'ajoute.
  */
-private class FxDesignModel(private val controller: FxController) {
+private class FxDesignModel(private val controller: FxController, private val isMaster: Boolean = false) {
 
     /**
      * Un id de design par emplacement, -1 quand il est libre.
@@ -161,6 +167,11 @@ private class FxDesignModel(private val controller: FxController) {
 
     private fun touch() {
         revision++
+        // Toute action qui change le rack écrit aussi l'arp : sa PRÉSENCE et son
+        // ENGAGEMENT y vivent, et sans ça un arp supprimé ou contourné revenait
+        // armé au prochain lancement (le blob gardait la dernière copie faite
+        // quand la carte était vivante).
+        persistArp()
     }
 
     private fun vals(id: Int): SnapshotStateList<Float> = values.getOrPut(id) {
@@ -178,7 +189,7 @@ private class FxDesignModel(private val controller: FxController) {
         return if (id == FxDesign.SPACE.id) designSlot else -1
     }
 
-    /** Adopte ce que le moteur porte déjà sur cette bande. */
+    /** Adopte ce que le moteur porte déjà sur cette bande, puis l'arp persisté. */
     fun adoptFromEngine() {
         controller.effectIds.forEachIndexed { slot, id ->
             if (slot >= slotIds.size || id < 0) return@forEachIndexed
@@ -192,10 +203,44 @@ private class FxDesignModel(private val controller: FxController) {
             val v = vals(design.id)
             controller.params.getOrNull(slot)?.forEachIndexed { i, x -> if (i < v.size) v[i] = x }
         }
+        adoptArp()
+    }
+
+    /**
+     * Rétablit la carte MIDI depuis ce que le contrôleur a relu.
+     *
+     * Le moteur ne porte AUCUN état d'arpégiateur (ce n'est pas un effet de
+     * chaîne) : sans ceci, fermer puis rouvrir la fenêtre — ou relancer l'app —
+     * perdait la grille, le tempo et l'armement, et le canal restait intercepté
+     * sans que rien ne le montre. On restaure donc la carte ici, et on ne réarme
+     * le moteur que si elle était VIVANTE ; un arp contourné revient contourné.
+     */
+    private fun adoptArp() {
+        if (isMaster) return
+        val saved = controller.arp ?: return
+        arp.sub = saved.sub
+        arp.style = saved.style
+        arp.steps = saved.steps
+        arp.bpm = saved.bpm
+        arp.swing = saved.swing
+        saved.on.forEachIndexed { i, b -> if (i < arp.on.size) arp.on[i] = b }
+        saved.vel.forEachIndexed { i, v -> if (i < arp.vel.size) arp.vel[i] = v }
+        if (!saved.present) return
+        slotIds[FxDesign.SLOTS - 1] = FxDesign.ARP.id
+        engaged[FxDesign.ARP.id] = saved.engaged
+        // Un arp contourné revient contourné : on ne réarme pas le canal. Sinon
+        // on réarme ET on pousse la grille — restaurer l'armement sans les pas
+        // laisserait le moteur jouer la grille par défaut, pas celle qu'on avait
+        // réglée.
+        if (saved.engaged) armArp() else controller.setArpArmed(false)
     }
 
     fun state(): FxWindowState {
-        val slots = List(FxDesign.SLOTS) { i ->
+        // Le master ne porte que de l'audio : pas de carte MIDI, et QUATRE
+        // emplacements au lieu de trois. La fenêtre s'en sert pour libeller et
+        // pour choisir le catalogue du dernier emplacement.
+        val count = if (isMaster) FxDesign.MAX_MASTER else FxDesign.SLOTS
+        val slots = List(count) { i ->
             val id = slotIds.getOrNull(i) ?: -1
             val info = infoOf(id) ?: return@List null
             val name = presets[id] ?: info.presets.keys.firstOrNull()
@@ -209,6 +254,7 @@ private class FxDesignModel(private val controller: FxController) {
         }
         return FxWindowState(
             slots = slots,
+            master = isMaster,
             catalog = catalog?.let { FxDesign.list(it) },
             openEffect = openId?.let { infoOf(it) },
             custom = custom,
@@ -269,6 +315,11 @@ private class FxDesignModel(private val controller: FxController) {
             if (id == FxDesign.ARP.id) disarmArp()
             slotIds[slot] = -1
             engaged.remove(id)
+            // Aucun residu : les valeurs et le nom suivent l'effet. Les laisser
+            // faisait reapparaitre les reglages de l'effet supprime si on le
+            // rajoutait plus tard, et le nom se collait sur la case suivante.
+            values.remove(id)
+            presets.remove(id)
             if (openId == id) openId = null
             touch()
         }
@@ -279,9 +330,9 @@ private class FxDesignModel(private val controller: FxController) {
             val now = !(engaged[id] ?: true)
             engaged[id] = now
             if (id == FxDesign.ARP.id) {
-                // Contourner l'arp, c'est le désarmer : les notes repartent
-                // directement au synthé au lieu d'être avalées par le moteur.
-                if (now) armArp() else controller.setArpArmed(false)
+                // Contourner l'arp, c'est le desarmer : les notes repartent
+                // directement au synthe au lieu d'etre avalees par le moteur.
+                if (now) armArp() else disarmArp()
             } else {
                 val engine = engineSlot(slot)
                 if (engine >= 0) controller.setBypass(engine, !now)
@@ -333,6 +384,8 @@ private class FxDesignModel(private val controller: FxController) {
 
     /** Le premier emplacement libre du bon genre : 0..2 pour l'audio, 3 pour le MIDI. */
     private fun freeSlotFor(info: FxInfoD): Int? {
+        // Le master n'a que de l'audio : quatre emplacements, et aucune case MIDI.
+        if (isMaster) return (0 until FxDesign.MAX_MASTER).firstOrNull { slotIds[it] < 0 }
         val range = if (info.kind == FxKindD.MIDI) FxDesign.MAX_AUDIO until FxDesign.SLOTS
         else 0 until FxDesign.MAX_AUDIO
         return range.firstOrNull { slotIds[it] < 0 }
@@ -359,9 +412,6 @@ private class FxDesignModel(private val controller: FxController) {
         return engaged[FxDesign.ARP.id] ?: true
     }
 
-    /** Pour l'observateur : la page n'a pas de compteur, on en dérive un. */
-    fun arpIsLive(): Boolean = arpLive()
-
     /**
      * Une valeur qui change à chaque réglage de l'arp. `snapshotFlow` n'observe
      * que des lectures d'état Compose : on relit donc ici tout ce que la page
@@ -376,9 +426,11 @@ private class FxDesignModel(private val controller: FxController) {
         arp.on.count { it } * 31 +
         arp.vel.sumOf { (it * 1000).toInt() }
 
+    /** Pousse l'arp au moteur : la grille d'abord, l'armement ensuite. */
     private fun armArp() {
         pushArp()
         controller.setArpArmed(true)
+        persistArp()
     }
 
     private fun disarmArp() {
@@ -386,6 +438,38 @@ private class FxDesignModel(private val controller: FxController) {
         // Les notes déjà allumées par l'arp doivent être relâchées, sinon elles
         // sonnent sans fin : le moteur vide sa liste sur le canal d'émission.
         controller.arpAllNotesOff()
+        persistArp()
+    }
+
+    /**
+     * Écrit l'arp dans le contrôleur, qui le met dans le blob de la bande.
+     *
+     * C'est ce qui fait survivre la carte : le moteur n'en garde rien, donc sans
+     * cette copie fermer la fenêtre perdait la grille et l'armement. On écrit à
+     * chaque geste (le drag d'un pas, un BPM), mais `save()` est coalescé par
+     * l'hôte — seul le contrôleur reçoit une copie par geste, ce qui est gratuit.
+     */
+    private fun persistArp() {
+        if (isMaster) return
+        val present = slotIds.indexOf(FxDesign.ARP.id) >= 0
+        controller.arp = FxPersistence.Arp(
+            sub = arp.sub, style = arp.style, steps = arp.steps,
+            bpm = arp.bpm, swing = arp.swing,
+            on = arp.on.toList(), vel = arp.vel.toList(),
+            present = present,
+            engaged = present && (engaged[FxDesign.ARP.id] ?: true),
+        )
+    }
+
+    /**
+     * Le moteur doit suivre chaque geste de la page MIDI. On pousse la grille si
+     * l'arp est vivant, et on DÉSARME sinon — c'est ce qui rend le bouton Bypass
+     * effectif : la page continuait d'écrire ses pas dans un arp contourné, et
+     * un réglage bougé sur une carte grisée la ré-armait sans le dire.
+     */
+    fun syncArp() {
+        if (arpLive()) pushArp() else controller.setArpArmed(false)
+        persistArp()
     }
 
     /**

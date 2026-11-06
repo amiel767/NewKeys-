@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -62,6 +63,8 @@ object AeC {
     val tx = Color(0xFFE6EAF3); val mute = Color(0xFF8D96AB); val gold = Color(0xFFE8CF94); val goldDim = Color(0xFFC9B88F)
     val reg = Color(0xFFF2D58A); val knobLabel = Color(0xFF9A92C8); val violet = Color(0xFFB9A8FF)
     val p1 = Color(0xFF7A5CFF); val p2 = Color(0xFFE05CFF); val p3 = Color(0xFFFFB35C)
+    /** Tonewheel console accent: the cyan key light of the reference organ. */
+    val organ = Color(0xFF7FD4EE)
 }
 
 /** Assign the app's bundled fonts once at startup (Cinzel, Share Tech Mono, Sora, Plus Jakarta Sans). Defaults are system fallbacks. */
@@ -88,6 +91,7 @@ object AeFonts {
 fun AeT(
     text: String, size: Number, color: Color, modifier: Modifier = Modifier, font: FontFamily = AeFonts.ui,
     weight: FontWeight = FontWeight.Bold, spacing: Float = 0f, align: TextAlign = TextAlign.Start,
+    ellipsis: Boolean = false,
 ) {
     val textSize = size.fs()
     Box(
@@ -108,7 +112,8 @@ fun AeT(
             letterSpacing = spacing.em,
             maxLines = 1,
             softWrap = false,
-            modifier = Modifier.wrapContentWidth(unbounded = true),
+            overflow = if (ellipsis) TextOverflow.Ellipsis else TextOverflow.Clip,
+            modifier = Modifier.wrapContentWidth(unbounded = !ellipsis),
         )
     }
 }
@@ -132,12 +137,3 @@ fun Modifier.aeSvg(svg: String): Modifier = this.drawWithCache {
     onDrawBehind { drawImage(bmp) }
 }
 
-/** Walnut: gradient + seeded grain lines (no filters, deterministic). */
-fun Modifier.aeWood(): Modifier = this.drawBehind {
-    drawRect(Brush.horizontalGradient(listOf(Color(0xFF4A2815), Color(0xFF6A3A20), Color(0xFF3A1E0E))))
-    val r = Random(4)
-    repeat(150) {
-        val x = r.nextFloat() * size.width
-        drawLine(Color.Black.copy(alpha = 0.04f + r.nextFloat() * 0.12f), Offset(x, 0f), Offset(x + r.nextFloat() * 6f - 3f, size.height), 1f + r.nextFloat() * 2f)
-    }
-}

@@ -77,6 +77,13 @@ object FxDesign {
     const val MAX_MIDI = 1
     const val SLOTS = MAX_AUDIO + MAX_MIDI
 
+    /**
+     * Le master n'a pas de case MIDI : il ne porte que de l'audio, donc QUATRE
+     * emplacements et pas trois. Il n'a pas de canal MIDI à intercepter, un
+     * arpégiateur n'y aurait rien à faire.
+     */
+    const val MAX_MASTER = 4
+
     private fun pal(
         h: Float, dh: Float, s: Float, l: Float,
         core: String, rim: String, h2: Float = h, multi: Boolean = false,
