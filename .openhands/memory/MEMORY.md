@@ -232,3 +232,22 @@ Piano `9c93aa40` — ne pas y pousser.
   entre). Mesure apres : gros potard **197**, potard de cellule **75**.
 - **Environnement** : le snapshot Debian renvoie **404** sur openjdk-21 ->
   télécharger Temurin (`api.adoptium.net`), `JAVA_HOME=/workspace/jdk/jdk-21.0.13+9`.
+
+## Session 2026-11-05 — FX Space : potards plats, cellules, 15 reglages
+- **Perimetre** : perazfinage Design des FX uniquement, branche `design/fx-reverb`
+  (hors `main`). Fichiers : `AeSpaceScreen.kt`, `FxCard.kt`, `FxDesign.kt`,
+  `FxEffectPage.kt`, `FxWindowState.kt`, `FxDesignHost.kt`, `fx_space.h`,
+  `fx_registry.h`, les 2 `FxRegistry.kt`.
+- **Le 3D est retire** : la carte Slots ne porte plus d'orbe (`FxOrb` = MORT,
+  liste noire) mais **six potards plats** du preset (`AeSpaceSlotKnobs`),
+  reglables depuis la carte (`setSlotValue`). Le gros potard DECAY est un anneau
+  plat + aiguille, pas un dôme.
+- **15 reglages** dans l'ordre du moteur ; l'UI pousse par INDEX -> l'accord
+  catalogue <-> registre est verrouille par `FxDesignTest` (13/13, JVM pur).
+- **Robolectric n'a pas de cache ici** : un test qui l'exige echoue sans reseau.
+  `FxDesign` etant sans API Android, le test est JVM pur. **Mais** tout helper
+  vivant dans un fichier Compose (ex. `spaceStyleFor` dans `AeSpaceScreen.kt`)
+  tire les icones Android et leve `ExceptionInInitializerError` : le deplacer
+  dans le catalogue pur.
+- **Keystore de debug gitignore** : regenerer par `keytool -genkeypair` (alias
+  `androiddebugkey`, pass `android`) sinon `assembleDebug` echoue a la signature.
