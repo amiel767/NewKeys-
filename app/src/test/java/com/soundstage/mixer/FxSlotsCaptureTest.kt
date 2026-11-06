@@ -13,6 +13,8 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.hasText
 import com.aetherkeys.fx.AeArpScreen
+import com.aetherkeys.fx.AeSpaceScreen
+import com.aetherkeys.fx.FxDesign
 import com.aetherkeys.fx.ArpState
 import com.aetherkeys.fx.FxChain
 import com.aetherkeys.fx.FxKind
@@ -40,6 +42,19 @@ class FxSlotsCaptureTest {
 
     @get:Rule val composeTestRule = createComposeRule()
 
+    /**
+     * Le répertoire de travail du test dépend de la façon dont Gradle est lancé :
+     * un chemin relatif « app/src/... » atterrissait dans « app/app/src/... ».
+     * On remonte donc jusqu'à la racine du projet (celle qui porte settings.gradle).
+     */
+    private fun shotsDir(): java.io.File {
+        var d = java.io.File(System.getProperty("user.dir") ?: ".").absoluteFile
+        while (d.parentFile != null && !java.io.File(d, "settings.gradle.kts").exists() &&
+            !java.io.File(d, "settings.gradle").exists()
+        ) d = d.parentFile
+        return java.io.File(d, "app/src/test/screenshots").also { it.mkdirs() }
+    }
+
     private fun shot(name: String, chain: FxChain, act: (FxSlotsController) -> Unit = {}) {
         lateinit var c: FxSlotsController
         composeTestRule.mainClock.autoAdvance = false
@@ -53,14 +68,32 @@ class FxSlotsCaptureTest {
                     trackName = "Track 1",
                     trackColor = Color(0xFF8FB2E8),
                     onClose = {},
-                    editor = { kind, _ -> if (kind == FxKind.Arp) AeArpScreen(ArpState(), Modifier.fillMaxSize()) },
+                    editor = { kind, _ ->
+                        when (kind) {
+                            FxKind.Arp -> AeArpScreen(ArpState(), Modifier.fillMaxSize())
+                            FxKind.Reverb -> AeSpaceScreen(
+                                fx = FxDesign.SPACE,
+                                values = FxDesign.SPACE.params.map { it.def },
+                                presetName = "Hall",
+                                userNames = emptyList(),
+                                custom = false,
+                                onValue = { _, _ -> },
+                                onPreset = {},
+                                onSave = {},
+                                onDeleteUser = {},
+                                onBack = {},
+                                onClose = {},
+                            )
+                            else -> {}
+                        }
+                    },
                 )
             }
         }
         composeTestRule.mainClock.advanceTimeBy(1200)
         composeTestRule.runOnIdle { act(c) }
         composeTestRule.mainClock.advanceTimeBy(1200)
-        composeTestRule.onRoot().captureRoboImage("app/src/test/screenshots/$name.png")
+        composeTestRule.onRoot().captureRoboImage(java.io.File(shotsDir(), "$name.png").absolutePath)
     }
 
     @Composable
@@ -73,7 +106,13 @@ class FxSlotsCaptureTest {
     @Test
     fun slotsAvecSpaceEtArp() = shot(
         "fxslots_filled",
-        FxChain(midi = FxSlot(1, FxKind.Arp, true, "1/16 · up"), audio = listOf(FxSlot(2, FxKind.Reverb, true, "Hall"))),
+        FxChain(
+            midi = FxSlot(1, FxKind.Arp, true, "1/16 · up"),
+            // TROIS emplacements audio, comme l'app : une seule carte laissait la
+            // coque dessiner une carte pleine largeur, ce qui ne montre pas la
+            // taille réelle d'une case (et fait croire à un rack démesuré).
+            audio = listOf(FxSlot(2, FxKind.Reverb, true, "Hall"), null, null),
+        ),
     )
 
     @Test
@@ -83,4 +122,15 @@ class FxSlotsCaptureTest {
     fun editeurArp() = shot("fxslots_arp", FxChain(midi = FxSlot(1, FxKind.Arp, true, "1/16 · up"))) {
         it.openEditor(SlotRef(true))
     }
+
+    /**
+     * La fenêtre DOIT se remettre à la taille de l'éditeur quand on entre dans
+     * Space (860x392) et revenir à la taille des cases en sortant. Ce cas
+     * capture l'état agrandi : la coque est la même, seul le cadre change.
+     */
+    @Test
+    fun editeurSpace() = shot(
+        "fxslots_space",
+        FxChain(audio = listOf(FxSlot(2, FxKind.Reverb, true, "Hall"))),
+    ) { it.openEditor(SlotRef(false, 0)) }
 }

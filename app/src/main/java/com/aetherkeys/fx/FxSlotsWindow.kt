@@ -5,7 +5,7 @@ package com.aetherkeys.fx
  * (relief tiles, spring press, opaque surfaces under shadows, in-window overlays, UNDO instead of confirmations).
  *
  * STRUCTURE
- *   1 MIDI slot  (before the sound)   +   3 AUDIO slots (after the sound). A slot is either an effect card or "+ Add FX".
+ *   1 MIDI slot + 3 AUDIO slots. A slot is either an effect card or "+ Add FX".
  *   Every effect card shows a small LIVE preview of what it does (steps, rings, taps, waves, rotor, curve...), a summary,
  *   a power button and a remove button. Removing slides the card out and shows an UNDO bar.
  *
@@ -53,9 +53,12 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -81,7 +84,7 @@ enum class FxKind(val title: String, val midi: Boolean, val desc: String, val co
     Seq("Sequencer", true, "One note plays a sequence", Color(0xFF6FB3A8), 840, 372),
     Chords("Chord Sequencer", true, "Plays a chord progression", Color(0xFFC9A15C), 840, 384),
     Delay("Delay", false, "Echoes, tape and ping-pong", Color(0xFF7CC3FF), 620, 300),
-    Reverb("Æther Space", false, "The app's space: halls, plates, clouds", Color(0xFFFF6FB8), 860, 392),
+    Reverb("Space", false, "Halls, plates, clouds — the app's reverb", Color(0xFFFF6FB8), 860, 392),
     Chorus("Chorus", false, "Thickens and widens", Color(0xFFB28CFF), 620, 300),
     Tremolo("Tremolo", false, "Pulsing amplitude", Color(0xFFFFC56B), 580, 290),
     Rotor("Rotor", false, "Rotating horn and drum", Color(0xFFE6C07A), 660, 312),
@@ -205,9 +208,22 @@ private fun SmallButton(label: String, onClick: () -> Unit, width: Dp? = null, c
 private fun DrawScope.drawPreview(kind: FxKind, t: Float) {
     val w = size.width; val h = size.height; val c = kind.color; val cx = w / 2; val cy = h / 2
     when (kind) {
-        FxKind.Arp -> for (i in 0 until 10) {
-            val x = (i + 0.5f) * w / 10; val bw = w / 16f; val hh = h * (0.25f + 0.65f * hash(i * 1.7f)); val hot = ((t * 6f).toInt() % 10) == i
-            drawRoundRect(c.copy(alpha = if (hot) 1f else 0.42f), Offset(x - bw / 2, h - hh), Size(bw, hh), CornerRadius(bw / 3))
+        FxKind.Arp -> {
+            // La GRILLE DE PAS de l'écran : des colonnes JOINTIVES sur toute la
+            // largeur, la hauteur suivant la vélocité du pas. Seize barres fines
+            // laissaient de grands vides — on double le nombre de pas et on ne
+            // garde qu'un filet entre eux, pour que ça se lise comme une nappe.
+            val n = if (w >= 120f) 32 else 16
+            val step = w / n
+            val bw = step * 0.9f
+            val vel = floatArrayOf(1f, .58f, .74f, .58f, .88f, .52f, .68f, .52f)
+            for (i in 0 until n) {
+                val x = (i + 0.5f) * step
+                val hh = h * vel[i % vel.size]
+                val hot = ((t * 8f).toInt() % n) == i
+                drawRoundRect(c.copy(alpha = 0.12f), Offset(x - bw / 2, 0f), Size(bw, h), CornerRadius(bw * 0.28f))
+                drawRoundRect(c.copy(alpha = if (hot) 1f else 0.55f), Offset(x - bw / 2, h - hh), Size(bw, hh), CornerRadius(bw * 0.28f))
+            }
         }
         FxKind.Octave -> { val p = sin(t * 2f) * 0.5f + 0.5f; drawCircle(c, h * 0.12f, Offset(cx, h * 0.74f)); drawLine(c.copy(alpha = 0.3f), Offset(cx, h * 0.62f), Offset(cx, h * 0.4f), 2f); drawCircle(c.copy(alpha = 0.35f + 0.65f * p), h * 0.12f, Offset(cx, h * 0.28f)) }
         FxKind.Easy -> for (k in 0 until 4) for (n in 0 until 3) { val hot = ((t * 1.6f).toInt() % 4) == k; drawCircle(c.copy(alpha = if (hot) 1f else 0.35f), h * 0.085f, Offset(w * (0.2f + 0.2f * k), h * (0.26f + 0.24f * n))) }
@@ -287,9 +303,39 @@ private fun SlotCard(
                 horizontalArrangement = Arrangement.End,
             ) { Power(slot.on, 28.dp, onToggle) }
             Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp), contentAlignment = Alignment.Center) {
-                FxTitle(slot.kind.title, slot.kind.color, Modifier.fillMaxWidth())
+                if (slot.kind == FxKind.Reverb) SpaceCardTitle(slot.summary, Modifier.fillMaxWidth())
+                else FxTitle(slot.kind.title, slot.kind.color, Modifier.fillMaxWidth())
             }
         }
+    }
+}
+
+/**
+ * Le titre d'une carte AUDIO. Pour Space, il parle la langue de SON interface —
+ * mot pour mot `AeSpaceScreen` : « Space » dans la teinte du preset, puis le
+ * STYLE du preset (pas son nom) dans la teinte suivante. La carte ne dit donc
+ * ni le preset ni une approximation : elle dit la même chose que l'écran.
+ */
+@Composable
+private fun SpaceCardTitle(preset: String, modifier: Modifier) {
+    val pal = FxDesign.SPACE.palettes[preset] ?: FxDesign.SPACE.palettes.values.first()
+    val ramp = pal.colors
+    val style = spaceStyleFor(preset)
+    BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
+        // Même lettrage que l'écran (Space Grotesk, Bold, interlettre serrée) et
+        // même CORPS quand la case le permet : l'écran écrit « SpaceHall » sur
+        // 117 dp à 42 sp, soit ~0,31 em par caractère. La case en tient 42 sp
+        // tant que le style reste court ; seule une case plus étroite rétrécit.
+        val chars = style.label.length + 5
+        val size = min(42f, maxWidth.value / (chars * 0.34f)).coerceAtLeast(14f)
+        Text(
+            buildAnnotatedString {
+                withStyle(SpanStyle(color = ramp[0])) { append("Space") }
+                withStyle(SpanStyle(color = ramp[2])) { append(style.label) }
+            },
+            fontFamily = FxFonts.ui, fontSize = size.sp, fontWeight = FontWeight.Bold,
+            letterSpacing = (-1).sp, maxLines = 1, textAlign = TextAlign.Center,
+        )
     }
 }
 
@@ -332,7 +378,7 @@ private fun Label(text: String) = Text(text, color = Dim, fontSize = 9.5.sp, fon
 private fun CatalogView(target: SlotRef, t: Float, c: FxSlotsController) {
     val kinds = CATALOG.filter { it.midi == target.midi }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(if (target.midi) "A track has one MIDI effect. Picking another one replaces it." else "Audio effects run after the sound, in slot order.", color = Dim, fontSize = 11.sp, lineHeight = 16.sp)
+        Text(if (target.midi) "A track has one MIDI effect. Picking another one replaces it." else "Three audio slots, played in order.", color = Dim, fontSize = 11.sp, lineHeight = 16.sp)
         kinds.chunked(2).forEach { pair ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 pair.forEach { k ->
