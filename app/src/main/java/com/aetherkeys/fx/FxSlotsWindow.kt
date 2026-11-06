@@ -160,11 +160,18 @@ private val Dim = Color(0xFF7C86A8); private val Ink = Color(0xFFE9EDF5); privat
 private fun hash(n: Float) = abs(sin(n * 127.1f) * 43758.5453f) % 1f
 
 @Composable
-private fun Modifier.pressable(enabled: Boolean = true, onClick: () -> Unit): Modifier {
+private fun Modifier.pressable(enabled: Boolean = true, onLongPress: (() -> Unit)? = null, onClick: () -> Unit): Modifier {
     var pressed by remember { mutableStateOf(false) }
     val s by animateFloatAsState(if (pressed) 0.95f else 1f, spring(0.55f, 600f), label = "press")
     val click by rememberUpdatedState(onClick)
-    return this.scale(s).pointerInput(enabled) { if (enabled) detectTapGestures(onPress = { pressed = true; tryAwaitRelease(); pressed = false }, onTap = { click() }) }
+    val long by rememberUpdatedState(onLongPress)
+    return this.scale(s).pointerInput(enabled) {
+        if (enabled) detectTapGestures(
+            onPress = { pressed = true; tryAwaitRelease(); pressed = false },
+            onTap = { click() },
+            onLongPress = long?.let { { it() } },
+        )
+    }
 }
 
 @Composable
@@ -229,7 +236,10 @@ private fun rememberFxTime(): Float {
 /* ═══════════════════════════ SLOT CARDS ═══════════════════════════ */
 
 @Composable
-private fun SlotCard(slot: FxSlot?, hint: String, t: Float, big: Boolean, modifier: Modifier, onAdd: () -> Unit, onOpen: () -> Unit, onToggle: () -> Unit, onRemove: () -> Unit) {
+private fun SlotCard(
+    slot: FxSlot?, hint: String, t: Float, big: Boolean, modifier: Modifier,
+    onAdd: () -> Unit, onOpen: () -> Unit, onToggle: () -> Unit, onRemove: () -> Unit,
+) {
     val shape = RoundedCornerShape(16.dp)
     if (slot == null) {
         Box(
@@ -247,36 +257,65 @@ private fun SlotCard(slot: FxSlot?, hint: String, t: Float, big: Boolean, modifi
     var leaving by remember { mutableStateOf(false) }
     val a by animateFloatAsState(if (leaving) 0f else 1f, tween(200), label = "leave")
     LaunchedEffect(leaving) { if (leaving) { delay(210); onRemove(); leaving = false } }
-    Column(
-        modifier.graphicsLayer { alpha = a; translationX = -(1f - a) * 40.dp.toPx(); scaleX = 0.96f + 0.04f * a; scaleY = 0.96f + 0.04f * a }
-            .shadow(5.dp, shape, ambientColor = Color.Black, spotColor = Color.Black).clip(shape).background(Color(0xFF1B2231)).background(CardBg, shape)
-            .border(1.dp, slot.kind.color.copy(alpha = if (slot.on) 0.4f else 0.12f), shape).pressable(onClick = onOpen).padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+    val card = modifier.graphicsLayer { alpha = a; translationX = -(1f - a) * 40.dp.toPx(); scaleX = 0.96f + 0.04f * a; scaleY = 0.96f + 0.04f * a }
+        .shadow(5.dp, shape, ambientColor = Color.Black, spotColor = Color.Black).clip(shape)
+        .background(Color(0xFF1B2231)).background(CardBg, shape)
+        .border(1.dp, slot.kind.color.copy(alpha = if (slot.on) 0.4f else 0.12f), shape)
+
+    if (big) {
+        // MIDI : titre à gauche, juste à côté, un aperçu court, et le power à droite.
+        // Le retrait se fait par APPUI LONG : la carte reste propre, sans corbeille.
+        Row(
+            card.pressable(onLongPress = { leaving = true }, onClick = onOpen).padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             Box(Modifier.size(4.dp, 18.dp).background(slot.kind.color, RoundedCornerShape(2.dp)))
-            Spacer(Modifier.width(8.dp))
-            Text(slot.kind.title, Modifier.weight(1f), color = Ink, fontSize = if (big) 14.sp else 13.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(slot.kind.title, color = Ink, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Preview(slot.kind, t, slot.on, Modifier.weight(1f).fillMaxHeight())
             Power(slot.on, 30.dp, onToggle)
         }
-        Preview(slot.kind, t, slot.on, Modifier.weight(1f).fillMaxWidth())
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(slot.summary, Modifier.weight(1f), color = Dim, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Box(Modifier.size(28.dp).clickable(remember { MutableInteractionSource() }, null) { leaving = true }, contentAlignment = Alignment.Center) {
-                Canvas(Modifier.size(14.dp)) { val u = size.width / 24f; val c = Color(0xFF6F85B5)   // trash glyph
-                    drawLine(c, Offset(4f * u, 7f * u), Offset(20f * u, 7f * u), 2f * u, StrokeCap.Round); drawLine(c, Offset(6f * u, 7f * u), Offset(7f * u, 20f * u), 2f * u, StrokeCap.Round)
-                    drawLine(c, Offset(18f * u, 7f * u), Offset(17f * u, 20f * u), 2f * u, StrokeCap.Round); drawLine(c, Offset(7f * u, 20f * u), Offset(17f * u, 20f * u), 2f * u, StrokeCap.Round); drawLine(c, Offset(9f * u, 7f * u), Offset(9f * u, 4f * u), 2f * u, StrokeCap.Round); drawLine(c, Offset(9f * u, 4f * u), Offset(15f * u, 4f * u), 2f * u, StrokeCap.Round); drawLine(c, Offset(15f * u, 4f * u), Offset(15f * u, 7f * u), 2f * u, StrokeCap.Round) }
+    } else {
+        // AUDIO : rien qu'un grand titre au centre, dans le style et la couleur du
+        // FX (comme SPACE). L'aperçu n'a pas sa place ici — la case audio est
+        // étroite et doit rester libre pour en ajouter d'autres.
+        Column(
+            card.pressable(onLongPress = { leaving = true }, onClick = onOpen),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(start = 10.dp, end = 6.dp, top = 6.dp),
+                horizontalArrangement = Arrangement.End,
+            ) { Power(slot.on, 28.dp, onToggle) }
+            Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp), contentAlignment = Alignment.Center) {
+                FxTitle(slot.kind.title, slot.kind.color, Modifier.fillMaxWidth())
             }
         }
     }
 }
 
+/**
+ * Le grand titre d'un effet, dans le style de SPACE : la police du titre, la
+ * teinte du FX, l'interlettre serrée. Le mot reste entier — il rétrécit pour
+ * tenir, il ne se coupe pas.
+ */
+@Composable
+private fun FxTitle(text: String, color: Color, modifier: Modifier) {
+    BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
+        val size = min(26f, maxWidth.value / (text.length * 0.62f)).coerceAtLeast(13f)
+        Text(
+            text, color = color, fontFamily = FxFonts.title, fontSize = size.sp,
+            fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp,
+            maxLines = 1, textAlign = TextAlign.Center,
+        )
+    }
+}
+
 @Composable
 private fun SlotsView(chain: FxChain, t: Float, c: FxSlotsController) {
-    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Label("MIDI  ·  BEFORE THE SOUND")
-        SlotCard(chain.midi, "MIDI effect", t, true, Modifier.fillMaxWidth().height(96.dp), { c.openCatalog(SlotRef(true)) }, { c.openEditor(SlotRef(true)) }, { c.toggle(SlotRef(true)) }, { c.remove(SlotRef(true)) })
-        Label("AUDIO  ·  AFTER THE SOUND")
+    Column(Modifier.fillMaxSize().padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Label("MIDI")
+        SlotCard(chain.midi, "MIDI effect", t, true, Modifier.fillMaxWidth().height(78.dp), { c.openCatalog(SlotRef(true)) }, { c.openEditor(SlotRef(true)) }, { c.toggle(SlotRef(true)) }, { c.remove(SlotRef(true)) })
+        Label("AUDIO")
         Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             chain.audio.forEachIndexed { i, s ->
                 val r = SlotRef(false, i)
@@ -326,7 +365,7 @@ fun FxSlotsWindow(
     val t = rememberFxTime()
     val view = state.view
     val kind = (view as? FxView.Editor)?.let { state.chain[it.ref]?.kind }
-    val (tw, th) = when (view) { FxView.Slots -> 640 to 344; is FxView.Catalog -> 560 to 336; is FxView.Editor -> (kind?.editorW ?: 640) to (kind?.editorH ?: 344) }
+    val (tw, th) = when (view) { FxView.Slots -> 640 to 320; is FxView.Catalog -> 560 to 300; is FxView.Editor -> (kind?.editorW ?: 640) to (kind?.editorH ?: 320) }
     BoxWithConstraints(modifier.fillMaxSize()) {
         val w by animateDpAsState(min(tw.dp.value, maxWidth.value - 24f).dp, spring(0.8f, Spring.StiffnessMediumLow), label = "w")
         val h by animateDpAsState(min(th.dp.value, maxHeight.value - 24f).dp, spring(0.8f, Spring.StiffnessMediumLow), label = "h")
