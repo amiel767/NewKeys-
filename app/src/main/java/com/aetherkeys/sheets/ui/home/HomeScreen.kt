@@ -204,7 +204,7 @@ private fun FilterRow(state: LibraryUiState, actions: HomeActions, onNewSet: () 
 
 // ────────────────────────────────────────────────────────────────────────────────────────
 // Rangee des Sets : cartes de la taille de celles de la page Setlists (96 dp).
-// Same material as the sheets: frosted glass, spine, shadow.
+// Same material as the sheets: frosted glass and spine, no drop shadow.
 // ────────────────────────────────────────────────────────────────────────────────────────
 
 private val SetCorner = 16.dp
@@ -270,7 +270,6 @@ private fun SetChip(
         Modifier.testTag("set-card")
             .width(SetCardWidth).height(SetCardHeight)
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .shadow(if (pressed) 6.dp else 16.dp, shape, clip = false, ambientColor = Color.Black, spotColor = base.copy(alpha = 0.55f))
             .clip(shape)
             .combinedClickable(
                 interactionSource = source, indication = null,
@@ -314,11 +313,11 @@ private fun SetChip(
 }
 
 // ────────────────────────────────────────────────────────────────────────────────────────
-// The list below: one sheet per row, at the Setlists row gauge (58 dp). The chord preview
-// gets real room, so the row reads as a line of music rather than a table row.
+// The list below: one sheet per row, 43.5 dp — a quarter thinner than the Setlists gauge.
+// The chord preview still gets the height, so the row reads as a line of music.
 // ────────────────────────────────────────────────────────────────────────────────────────
 
-private val SheetRowHeight = 58.dp
+private val SheetRowHeight = 43.5.dp
 
 @Composable
 private fun ListHeader(state: LibraryUiState, count: Int, inSetName: String?, onAll: () -> Unit) {
@@ -385,7 +384,7 @@ private fun SheetRow(
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         // Colour tab: the row's only tint, the same landmark as a Setlists dot.
-        Box(Modifier.width(4.dp).height(34.dp).clip(RoundedCornerShape(2.dp)).background(base))
+        Box(Modifier.width(4.dp).height(26.dp).clip(RoundedCornerShape(2.dp)).background(base))
         Text(
             sheet.title, style = SheetsType.RowTitle, color = SheetsColors.TextPrimary,
             maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(186.dp),
@@ -426,14 +425,16 @@ private fun SheetRow(
  */
 @Composable
 private fun BoxScope.LibraryGlass(base: Color, ink: Color, corner: Dp) {
-    // 1. The pane itself: the sheet's tint at low alpha, plus a neutral lift so the
-    //    glass stays readable over the dark page.
+    // 1. The pane itself: the sheet's own colour, straight — not lerped toward the grey
+    //    surface, which is what drained the palette. This is where the vivid colours the
+    //    sheets already carry live. Alpha keeps a third of the page showing through, so
+    //    it stays a pane rather than a flat fill.
     Box(
         Modifier.matchParentSize().background(
             Brush.verticalGradient(
                 listOf(
-                    lerp(SheetsColors.SurfaceRaised, base, 0.30f).copy(alpha = 0.62f),
-                    lerp(SheetsColors.Surface, base, 0.20f).copy(alpha = 0.50f),
+                    base.copy(alpha = 0.72f),
+                    lerp(base, Color.Black, 0.30f).copy(alpha = 0.60f),
                 ),
             ),
         ),
@@ -474,21 +475,15 @@ private fun BoxScope.LibraryGlass(base: Color, ink: Color, corner: Dp) {
         // Edge light: bright along the top, fading to nothing at the bottom, so the
         // card is lit rather than outlined.
         drawLine(
-            color = ink.copy(alpha = 0.30f),
+            color = ink.copy(alpha = 0.22f),
             start = Offset(cornerPx, 0.6f),
             end = Offset(w - cornerPx, 0.6f),
             strokeWidth = 1.2f,
         )
-        drawLine(
-            color = Color.Black.copy(alpha = 0.16f),
-            start = Offset(6f, h - 0.6f),
-            end = Offset(w - 6f, h - 0.6f),
-            strokeWidth = 1f,
-        )
 
         // Specular rim: a short bright arc where the light catches the top-left radius.
         drawArc(
-            color = Color.White.copy(alpha = 0.22f),
+            color = Color.White.copy(alpha = 0.16f),
             startAngle = 150f, sweepAngle = 70f, useCenter = false,
             topLeft = Offset(1f, 1f),
             size = Size(cornerPx * 1.7f, cornerPx * 1.7f),
