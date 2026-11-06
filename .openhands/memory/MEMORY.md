@@ -21,17 +21,14 @@
 - Ne JAMAIS declencher de workflow GitHub (release.yml = workflow_dispatch only).
 - **Pack multi-couches : normaliser PAR COUCHE, jamais globalement.** Une cible RMS
   unique pour toutes les couches ecrase la dynamique -> courbe de velocite plate et
-  NON monotone (frapper plus fort donne moins). Et pour un fondu entre deux prises de
-  la MEME source (correlees) : fondu LINEAIRE, pas cos/sin (puissance constante).
-- **Pack heterogene : NE PAS forcer une note a lire toutes ses couches sur une seule
-  racine.** Mesure du 2026-11-04 (3e) : la racine 60 ne porte qu'UNE couche (la
-  DOUCE) ; les couches fortes vivent sur la racine 59. Forcer la racine 60 a la note
-  60 remplace la couche forte (rms 0,040) par la douce (0,001) -> **-18 dB** et
-  timbre detruit. Une couche = une racine distincte dans ces packs. Le « dain dain »
-  suppose du 04 n'a PAS ete confirme : l'enveloppe du moteur d'origine (fenetre 50 ms
-  / hop 10 ms, detrend) est une decroissance MONOTONE lisse, sans ondulation.
-  Attention : un banc a fenetre de tendance courte (250 ms) invente un « battement »
-  qui n'existe pas — le valider sur un signal temoin (prise seule) avant de conclure.
+  NON monotone. Fondu entre deux prises de la MEME source (correlees) : LINEAIRE, pas
+  cos/sin (puissance constante).
+- **Pack heterogene : une couche = une racine distincte.** La racine 60 ne porte que
+  la couche DOUCE ; les fortes vivent sur 59. Forcer une note a lire toutes ses
+  couches sur une racine donne **-18 dB** et detruit le timbre. Le « dain dain »
+  suppose n'existe pas : l'enveloppe (fenetre 50 ms / hop 10 ms, detrend) est une
+  decroissance MONOTONE. Un banc a fenetre courte (250 ms) invente un battement —
+  le valider sur un temoin avant de conclure. (Detail : journal 2026-11-04.)
 
 ## Environnement (verifie 2026-11-04, New 2)
 - **Le depot vit dans `/workspace/project/NewKeys-`** (verifie : `git rev-parse
