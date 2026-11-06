@@ -76,6 +76,23 @@
   `SetlistsScreen.kt:559`) + **liste verticale des feuilles** (44 dp = `compactRows`
   de Setlists). On entre dans un Set par sa carte ; `← Tout` en sort. La rangee de
   Sets RESTE visible dans un Set (pour passer de l'un a l'autre).
+- **Reglages Sheets = un PANNEAU, pas un ecran** (commit `e2688d4`, 2026-11-04).
+  `SheetsSettingsScreen` faisait `SheetsPageBackground{fillMaxSize}` et recouvrait la
+  bibliotheque. Copie de Setlists (`SlSettingsPanel`) : `Box(align TopEnd)
+  .padding(top=60,end=18)` + voile `detectTapGestures` qui ferme, croix 28 dp,
+  materiau `.sheetsPanel()` (ombre 14 + degrade PanelTop->PanelBottom + liseré 0,10),
+  apparition `.sheetsAppear()` (fondu + montee 8 dp + scale 0,96->1, 220 ms).
+  Mesure : **538 x 334 dp** (Setlists ~540 x 314). Reparti en **2 colonnes de 4
+  groupes** pour tenir sans scroll (un `verticalScroll` en 2 colonnes ne reduit rien).
+  `SheetsColors.PanelTop/Accent/Well` == `SlColors.*` : aucune conversion de couleur.
+  **Regle** : un reglage de page est une pop-up ; copier la forme du voisin qui fait
+  deja la meme chose, ne pas en inventer une.
+- **Piege de test** : `SheetsCaptureTest` ecrit les feuilles dans un dossier
+  temporaire et la liste suit l'ordre du dossier : il varie d'une execution a
+  l'autre, donc les couleurs de lignes (teal/rose) **s'inversent** dans
+  `sheets_home/sets/inside_a_set.png` (17-27 % de pixels). Pas une regression.
+- **Piege de compilation** : `SwitchRow(label, checked, onChange = {...})` —
+  `onChange` est un parametre NOMME, pas un lambda final.
 - **Piege de test** : un nom de Set en double (pastille de filtre + carte) fait
   echouer `onNodeWithText` (« found 2 nodes »). C'est ce qui a fait retirer les
   Setlists de la rangee de filtres.
