@@ -258,3 +258,15 @@ Commit `e7a6c98`. `compileDebugKotlin` + `assembleDebug` OK (APK arm64 54,1 Mo).
 - **Param 29 (BendRange) du synth** : retire VOLONTAIREMENT (doublon Track
   Settings), ne pas le remettre. Aucun parametre moteur cache a reveler.
 - Verifier en MESURANT l'image (au bon endroit) ; 74 tests, 0 echec.
+
+## Session 2026-11-06 — Organ : mesurer la bonne zone (2bf3acd)
+- **Le « knob du milieu » = le dial vibrato**, pas une tirette. Localiser par
+  coordonnees avant de mesurer, sinon faux diagnostic garanti.
+- Le « reflet blanc » venait du **SVG KNOB_METAL** (#F6F7FA), pas seulement de
+  `drawPlasticKnob` (supprimee : plus d'appelant).
+- Tirettes : rail **encastre aux deux bouts** (pied au-dessus, cran en dessous).
+  Reference d'origine : `app/assets/aether-instruments-final.zip` -> AeControls.kt.
+- Le **titre d'instrument** et le **nom de preset** sont deux choses : les deux
+  s'affichent. La pilule doit lire le `manager` recu, PAS le singleton `AeInstruments`.
+- **Jamais deux controles pour un meme parametre** (chips ROTARY = duplication du p25).
+- Page de revue : `/workspace/dl/pub/new5/index.html` (sert `/workspace/dl/pub/`).
