@@ -1023,6 +1023,12 @@ fun MixerScreen(
                     trackId = uiState.activeEffectTrackId,
                     onClose = { viewModel.closePopup() },
                     modifier = Modifier.fillMaxSize().zIndex(130f),
+                    // Les effets appartiennent au patch : deux patches ne partagent
+                    // jamais un rack, et en changer laisse le précédent derrière.
+                    scope = com.soundstage.mixer.ui.fx.fxScopeOf(
+                        uiState.activePatchId,
+                        uiState.activeSceneId.ifEmpty { uiState.activeProjectName },
+                    ),
                 )
             }
             ActivePopup.SOUNDFONT -> {

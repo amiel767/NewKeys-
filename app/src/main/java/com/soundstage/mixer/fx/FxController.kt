@@ -14,7 +14,16 @@ import com.soundstage.mixer.audio.NativeAudioBridge
  *
  * All setters are control-thread calls and cheap enough for a slider drag.
  */
-class FxController(private val strip: Int, private val context: Context? = null) {
+class FxController(
+    private val strip: Int,
+    private val context: Context? = null,
+    /**
+     * Owner of this rack: the active patch id. Two patches of the same setlist must
+     * not share effects, so the persisted key carries it. Empty = the legacy,
+     * un-scoped key (no patch loaded).
+     */
+    private val scope: String = "",
+) {
     /** Instrument id on this strip, -1 when the soundfont plays as it is. */
     var instrumentId by mutableStateOf(-1)
         private set
@@ -208,13 +217,13 @@ class FxController(private val strip: Int, private val context: Context? = null)
     /** Persists the current strip state. */
     fun save() {
         val ctx = context ?: return
-        FxPersistence.save(ctx, strip, FxPersistence.toJson(strip, snapshot()))
+        FxPersistence.save(ctx, scope, strip, FxPersistence.toJson(strip, snapshot()))
     }
 
     /** Restores the strip from storage and pushes everything to the native mixer. */
     fun restore() {
         val ctx = context ?: return
-        val saved = FxPersistence.fromJson(FxPersistence.load(ctx, strip), slotCount) ?: return
+        val saved = FxPersistence.fromJson(FxPersistence.loadMigrating(ctx, scope, strip), slotCount) ?: return
         if (saved.instrumentId >= 0) {
             setInstrument(saved.instrumentId)
             saved.instrumentParams.forEachIndexed { i, v -> setInstrumentParam(i, v) }

@@ -37,6 +37,18 @@ fun stripForTrack(trackId: Int): Int =
     if (trackId == 0) FxRegistry.STRIP_MASTER else (trackId - 1).coerceIn(0, 7)
 
 /**
+ * Owner of an FX rack. Effects belong to the patch, not to the mixer: two patches of
+ * the same setlist must not share a rack, and switching patch must leave the outgoing
+ * one behind. The patch id is unique app-wide, so it alone scopes the persisted keys.
+ * With no patch loaded the setlist name scopes it, so two setlists do not share either;
+ * only a session with neither falls back to the legacy, un-scoped key.
+ */
+fun fxScopeOf(patchId: String?, setlist: String? = null): String =
+    patchId?.trim()?.takeIf { it.isNotEmpty() }
+        ?: setlist?.trim()?.takeIf { it.isNotEmpty() }?.let { "setlist_$it" }
+        ?: ""
+
+/**
  * L'HÔTE DE LA FENÊTRE FX. Elle est détachée : `FxSlotsWindow` est sa propre
  * surface, et ce fichier est le seul endroit qui connaît à la fois le vocabulaire
  * du moteur (ids d'effet, tableaux de paramètres, armement du canal d'arp) et
@@ -54,22 +66,25 @@ fun FxDesignHost(
     trackId: Int,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    scope: String = "",
 ) {
     val strip = stripForTrack(trackId)
     val appContext = LocalContext.current.applicationContext
-    val controller = remember(strip) { FxController(strip, appContext) }
-    val model = remember(strip) { FxHostModel(controller, trackId) }
+    // `scope` est dans les clés : changer de patch doit recréer le contrôleur, sinon
+    // la fenêtre garderait la chaîne du patch précédent.
+    val controller = remember(strip, scope) { FxController(strip, appContext, scope) }
+    val model = remember(strip, scope) { FxHostModel(controller, trackId) }
 
     // Le moteur est l'autorité à l'ouverture : on lit ce qu'il porte déjà, puis
     // on pose la chaîne SANS la lui rejouer.
-    LaunchedEffect(strip) {
+    LaunchedEffect(strip, scope) {
         controller.restore()
         model.adoptFromEngine()
     }
 
     // Un drag de potard émet une valeur par frame ; on n'écrit dans les
     // préférences qu'une fois le doigt levé.
-    LaunchedEffect(strip) {
+    LaunchedEffect(strip, scope) {
         androidx.compose.runtime.snapshotFlow { model.revision }
             .collectLatest {
                 kotlinx.coroutines.delay(500)
@@ -78,15 +93,20 @@ fun FxDesignHost(
     }
 
     // L'arp pousse son état au moteur dès qu'il est vivant.
-    LaunchedEffect(strip) {
+    LaunchedEffect(strip, scope) {
         androidx.compose.runtime.snapshotFlow { model.arpRevision() }
             .collectLatest { if (model.arpIsLive()) model.pushArp() }
     }
 
     // Fermer la fenêtre DÉSARME l'arp : sinon le canal resterait intercepté sans
-    // qu'aucune interface ne le montre.
-    DisposableEffect(strip) {
-        onDispose { controller.setArpArmed(false) }
+    // qu'aucune interface ne le montre. On écrit aussi le rack du patch en partant :
+    // la sauvegarde débattue de 500 ms ne doit pas perdre la dernière édition quand
+    // l'utilisateur change de patch juste après avoir tourné un bouton.
+    DisposableEffect(strip, scope) {
+        onDispose {
+            controller.setArpArmed(false)
+            controller.save()
+        }
     }
 
     // Le contrôleur publie un StateFlow : le lire en composition ne recompose
